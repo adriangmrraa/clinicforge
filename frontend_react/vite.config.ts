@@ -7,4 +7,9 @@ export default defineConfig({
   server: {
     allowedHosts: true
   },
+  build: {
+    rollupOptions: {
+      external: ['/env-config.js']
+    }
+  }
 })
