@@ -1364,8 +1364,6 @@ allowed_origins_str = os.getenv("CORS_ALLOWED_ORIGINS", "")
 origins = [
     "http://localhost:3000",
     "http://localhost:5173",
-    "https://dentalogic-frontend.ugwrjq.easypanel.host",
-    "https://dentalogic-orchestrator.ugwrjq.easypanel.host",
 ]
 
 if allowed_origins_str:
