@@ -43,11 +43,6 @@ export const clearTenantId = (): void => {
 // AXIOS INSTANCE
 // ============================================
 
-interface RetryConfig {
-  retries: number;
-  delay: number;
-}
-
 // Utility para delay
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -80,25 +75,34 @@ api.interceptors.request.use(
 
     // Self-healing: clear polluted storage from previous versions
     if (adminToken === 'RUNTIME_REPLACE') {
+      import.meta.env.DEV && console.warn('🚨 Corrupt ADMIN_TOKEN detected in localStorage. Clearing...');
       localStorage.removeItem('ADMIN_TOKEN');
       adminToken = null;
     }
 
     // Auto-init for Admin Token (Compatibility)
-    if (!adminToken) {
+    if (!adminToken || adminToken === 'RUNTIME_REPLACE') {
       const envToken = getEnv('VITE_ADMIN_TOKEN');
       if (envToken && envToken !== 'RUNTIME_REPLACE') {
         localStorage.setItem('ADMIN_TOKEN', envToken);
         adminToken = envToken;
+      } else if (envToken === 'RUNTIME_REPLACE') {
+        console.error('🚨 VITE_ADMIN_TOKEN is still "RUNTIME_REPLACE" in the environment! Check your deployment configuration.');
+        adminToken = null; // NEVER send RUNTIME_REPLACE
       }
     }
 
     if (config.headers) {
       // Layer 1: Infrastructure Security
-      if (adminToken) config.headers['X-Admin-Token'] = adminToken;
+      if (adminToken && adminToken !== 'RUNTIME_REPLACE') {
+        config.headers['X-Admin-Token'] = adminToken;
+      } else if (adminToken === 'RUNTIME_REPLACE') {
+        console.error('🚫 Blocked request with "RUNTIME_REPLACE" token');
+        return Promise.reject(new Error('Auth blocked: Corrupt token detected'));
+      }
 
       // Layer 2: Identity Security (Nexus v7.6)
-      if (jwtToken) {
+      if (jwtToken && jwtToken !== 'RUNTIME_REPLACE') {
         config.headers['Authorization'] = `Bearer ${jwtToken}`;
       }
     }

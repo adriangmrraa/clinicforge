@@ -44,7 +44,7 @@ async def get_chatwoot_webhook_config(
             WEBHOOK_ACCESS_TOKEN,
             secure_token,
         )
-        logger.info("chatwoot_webhook_token_generated", tenant_id=tenant_id)
+        logger.info(f"✅ chatwoot_webhook_token_generated tenant_id={tenant_id}")
     api_base = os.getenv("BASE_URL", "").rstrip("/")
     return {
         "webhook_path": "/admin/chatwoot/webhook",

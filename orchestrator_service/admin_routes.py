@@ -103,10 +103,15 @@ async def verify_admin_token(
     """
     # 1. Validar X-Admin-Token
     if not ADMIN_TOKEN:
-        logger.warning("⚠️ ADMIN_TOKEN no configurado. Validación estática omitida.")
-    elif x_admin_token != ADMIN_TOKEN:
-        logger.warning(f"❌ 401: X-Admin-Token mismatch. Received: {x_admin_token!r}")
+        logger.error("🚨 CRITICAL: ADMIN_TOKEN is NOT configured in the backend environment!")
+        # No dejar pasar si se requiere seguridad
+    
+    if x_admin_token != ADMIN_TOKEN:
+        msg = f"❌ 401: X-Admin-Token mismatch. Received: {x_admin_token!r} (len={len(x_admin_token or '')}), Expected: {ADMIN_TOKEN[:3]}...{ADMIN_TOKEN[-3:] if ADMIN_TOKEN else ''}"
+        logger.warning(msg)
         raise HTTPException(status_code=401, detail="Token de infraestructura (X-Admin-Token) inválido.")
+    else:
+        logger.debug(f"✅ X-Admin-Token validado (len={len(x_admin_token or '')})")
 
     # 2. Validar JWT (Capa de Identidad)
     if not authorization or not authorization.startswith("Bearer "):

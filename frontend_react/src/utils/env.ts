@@ -36,6 +36,13 @@ export function getEnv(key: keyof RuntimeEnv): string {
 
     // 2. Vite build-time injection (local dev)
     const viteVal = (import.meta.env as Record<string, string>)?.[key];
+
+    // Debug logging for Admin Token
+    if (key === 'VITE_ADMIN_TOKEN') {
+        if (runtimeVal === 'RUNTIME_REPLACE') console.error('Detected RUNTIME_REPLACE in window.__ENV__.VITE_ADMIN_TOKEN');
+        if (viteVal === 'RUNTIME_REPLACE') console.error('Detected RUNTIME_REPLACE in import.meta.env.VITE_ADMIN_TOKEN');
+    }
+
     if (viteVal && viteVal !== 'RUNTIME_REPLACE' && !viteVal.startsWith('__VITE_')) {
         return viteVal;
     }
