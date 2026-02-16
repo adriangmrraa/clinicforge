@@ -6,6 +6,9 @@ import json
 import logging
 import os
 import uuid
+import hmac
+import hashlib
+import time
 from typing import Any, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, File, UploadFile
@@ -26,6 +29,44 @@ router = APIRouter()
 
 
 from admin_routes import get_resolved_tenant_id
+
+# Clave secreta para firmar URLs (usar variable de entorno en producción)
+MEDIA_PROXY_SECRET = os.getenv("MEDIA_PROXY_SECRET", "dentalogic-media-proxy-secret-2026")
+MEDIA_URL_TTL = 3600  # 1 hora de validez
+
+def generate_signed_url(url: str, tenant_id: int) -> str:
+    """
+    Genera una URL firmada para acceso seguro al proxy de medios.
+    """
+    expires = int(time.time()) + MEDIA_URL_TTL
+    
+    # Crear firma HMAC
+    message = f"{url}|{tenant_id}|{expires}"
+    signature = hmac.new(
+        MEDIA_PROXY_SECRET.encode(),
+        message.encode(),
+        hashlib.sha256
+    ).hexdigest()
+    
+    return signature, expires
+
+def verify_signed_url(url: str, tenant_id: int, signature: str, expires: int) -> bool:
+    """
+    Verifica que la URL firmada sea válida y no haya expirado.
+    """
+    # Verificar expiración
+    if int(time.time()) > expires:
+        return False
+    
+    # Verificar firma
+    message = f"{url}|{tenant_id}|{expires}"
+    expected_signature = hmac.new(
+        MEDIA_PROXY_SECRET.encode(),
+        message.encode(),
+        hashlib.sha256
+    ).hexdigest()
+    
+    return hmac.compare_digest(signature, expected_signature)
 
 
 
@@ -132,13 +173,39 @@ async def chat_messages(
             elif isinstance(raw_attrs, list):
                 attachments = raw_attrs
         
+        # Generar URLs firmadas para cada attachment
+        signed_attachments = []
+        for att in attachments:
+            original_url = att.get("url", "")
+            if original_url and not original_url.startswith("/media/"):
+                # Generar firma para URL externa
+                signature, expires = generate_signed_url(original_url, tenant_id)
+                # Construir URL del proxy con parámetros de seguridad
+                from urllib.parse import urlencode, quote
+                proxy_params = {
+                    "url": original_url,
+                    "tenant_id": tenant_id,
+                    "signature": signature,
+                    "expires": expires
+                }
+                proxy_url = f"/admin/chat/media/proxy?{urlencode(proxy_params)}"
+                
+                signed_attachments.append({
+                    **att,
+                    "url": proxy_url,  # URL firmada para el proxy
+                    "original_url": original_url  # Preservar URL original para referencia
+                })
+            else:
+                # URLs locales no necesitan firma
+                signed_attachments.append(att)
+        
         messages.append({
             "id": str(r["id"]),
             "conversation_id": str(r["conversation_id"]) if r.get("conversation_id") else None,
             "role": r["role"],
             "content": r["content"] or "",
             "timestamp": r["created_at"].isoformat() if r["created_at"] else None,
-            "attachments": attachments,
+            "attachments": signed_attachments,
             "correlation_id": r.get("correlation_id"),
         })
 
@@ -307,18 +374,26 @@ async def human_override(
 @router.get("/admin/chat/media/proxy")
 async def media_proxy(
     url: str = Query(..., description="Original media URL"),
+    tenant_id: int = Query(..., description="Tenant ID"),
+    signature: str = Query(..., description="HMAC signature"),
+    expires: int = Query(..., description="Expiration timestamp"),
 ):
     """
-    Proxy seguro para medios (Spec 19).
-    Evita problemas de CORS y oculta URLs privadas de proveedores.
+    Proxy seguro para medios con URLs firmadas (Spec 19).
     
-    NOTA: Este endpoint NO requiere autenticación porque es usado desde <img> tags
-    que no pueden enviar headers personalizados. La seguridad se garantiza validando
-    dominios permitidos.
+    Seguridad:
+    - HMAC signature para autenticidad
+    - Timestamp de expiración (1 hora TTL)
+    - Whitelist de dominios permitidos
+    - Compatible con <img> tags (autenticación via query params)
     """
-    logger.info(f"🎞️ Proxying media request: {url}")
     
-    # Validar dominio permitido (seguridad sin autenticación)
+    # 1. Verificar firma y expiración
+    if not verify_signed_url(url, tenant_id, signature, expires):
+        logger.warning(f"❌ Firma inválida o expirada para URL: {url}")
+        raise HTTPException(status_code=403, detail="URL inválida o expirada")
+    
+    # 2. Validar dominio permitido (defensa en profundidad)
     allowed_domains = [
         "lookaside.fbsbx.com",  # Instagram/Facebook CDN
         "scontent",  # Facebook content
@@ -328,8 +403,10 @@ async def media_proxy(
     
     is_allowed = any(domain in url for domain in allowed_domains) or url.startswith("/media/")
     if not is_allowed:  
-        logger.warning(f"❌ Dominio no permitido en proxy: {url}")
+        logger.warning(f"❌ Dominio no permitido: {url}")
         raise HTTPException(status_code=403, detail="Dominio no permitido")
+    
+    logger.info(f"🎞️ Proxying media (tenant {tenant_id}): {url}")
     
     async def stream_content():
         async with httpx.AsyncClient(follow_redirects=True, timeout=30.0) as client:
