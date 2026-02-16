@@ -619,12 +619,34 @@ export default function ChatsView() {
 
   type ListRow = { type: 'ycloud'; session: ChatSession } | { type: 'chatwoot'; item: ChatSummaryItem };
   const mergedList: ListRow[] = [];
+  const seenPhones = new Set<string>(); // ✅ Deduplicación por número de teléfono
+
+  // Priorizar YCloud (WhatsApp directo) sobre Chatwoot
   if (channelFilter === 'all' || channelFilter === 'whatsapp') {
-    filteredSessions.forEach(s => mergedList.push({ type: 'ycloud', session: s }));
+    filteredSessions.forEach(s => {
+      const phone = s.phone_number;
+      if (!seenPhones.has(phone)) {
+        mergedList.push({ type: 'ycloud', session: s });
+        seenPhones.add(phone); // Marcar como visto
+      }
+    });
   }
+
   if (channelFilter === 'all' || channelFilter === 'whatsapp' || channelFilter === 'instagram' || channelFilter === 'facebook') {
-    filteredChatwoot.forEach(item => mergedList.push({ type: 'chatwoot', item }));
+    filteredChatwoot.forEach(item => {
+      // Normalizar número de teléfono para comparación
+      const phone = item.external_user_id || item.phone_number || '';
+      const normalizedPhone = phone.replace(/\s+/g, ''); // Quitar espacios
+
+      // Solo agregar si no existe en YCloud
+      if (!seenPhones.has(normalizedPhone) && !seenPhones.has(phone)) {
+        mergedList.push({ type: 'chatwoot', item });
+        seenPhones.add(normalizedPhone);
+        if (phone !== normalizedPhone) seenPhones.add(phone);
+      }
+    });
   }
+
   mergedList.sort((a, b) => {
     const timeA = a.type === 'ycloud' ? (a.session.last_message_time || 0) : (a.item.last_message_at || 0);
     const timeB = b.type === 'ycloud' ? (b.session.last_message_time || 0) : (b.item.last_message_at || 0);
