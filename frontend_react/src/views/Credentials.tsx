@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { useApi } from '../hooks/useApi';
 import { Modal } from '../components/Modal';
-import { Shield, Globe, Store, Trash2, Edit2, Plus, Lock, Key } from 'lucide-react';
+import { Shield, Globe, Store, Trash2, Edit2, Lock, Key, Zap } from 'lucide-react';
 import PageHeader from '../components/PageHeader';
+import { IntegrationWizard } from '../components/integrations/IntegrationWizard';
 
 interface Credential {
     id?: number;
@@ -24,6 +25,7 @@ export const Credentials: React.FC = () => {
     const [credentials, setCredentials] = useState<Credential[]>([]);
     const [tenants, setTenants] = useState<Tenant[]>([]);
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [isWizardOpen, setIsWizardOpen] = useState(false);
     const [editingCred, setEditingCred] = useState<Credential | null>(null);
 
     // Form State
@@ -94,7 +96,7 @@ export const Credentials: React.FC = () => {
         setIsModalOpen(true);
     };
 
-    const openNew = () => {
+    const openNewManual = () => {
         setEditingCred(null);
         setFormData({
             name: '',
@@ -107,15 +109,26 @@ export const Credentials: React.FC = () => {
         setIsModalOpen(true);
     };
 
+    const openWizard = () => {
+        setIsWizardOpen(true);
+    }
+
     const getCategoryIcon = (cat: string) => {
         switch (cat) {
             case 'openai': return <Globe size={16} className="text-green-600" />;
-            case 'whatsapp_cloud': return <Key size={16} className="text-emerald-600" />;
-            case 'chatwoot': return <Key size={16} className="text-blue-600" />;
+            case 'whatsapp_cloud': return <MessageIcon color="text-green-600" />;
+            case 'chatwoot': return <MessageIcon color="text-blue-600" />;
             case 'icloud': return <Lock size={16} className="text-gray-600" />;
+            case 'ycloud': return <Zap size={16} className="text-yellow-600" />;
             default: return <Key size={16} className="text-indigo-600" />;
         }
     };
+
+    const MessageIcon = ({ color }: { color: string }) => (
+        <svg className={`w-4 h-4 ${color}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+        </svg>
+    );
 
     return (
         <div className="p-6 max-w-7xl mx-auto">
@@ -125,13 +138,21 @@ export const Credentials: React.FC = () => {
                     subtitle="Gestión segura de claves API y secretos del sistema."
                     icon={<Shield size={22} />}
                 />
-                <button
-                    onClick={openNew}
-                    className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-lg shadow-indigo-600/20 transition-all font-medium"
-                >
-                    <Plus size={18} />
-                    Nueva Credencial
-                </button>
+                <div className="flex gap-3">
+                    <button
+                        onClick={openNewManual}
+                        className="px-4 py-2.5 text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all font-medium text-sm"
+                    >
+                        Manual (Avanzado)
+                    </button>
+                    <button
+                        onClick={openWizard}
+                        className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-lg shadow-indigo-600/20 transition-all font-medium"
+                    >
+                        <Zap size={18} />
+                        Nueva Integración
+                    </button>
+                </div>
             </div>
 
             <div className="space-y-8">
@@ -233,6 +254,15 @@ export const Credentials: React.FC = () => {
                 </section>
             </div>
 
+            {/* Wizard Modal */}
+            <Modal isOpen={isWizardOpen} onClose={() => setIsWizardOpen(false)} title="">
+                <IntegrationWizard
+                    onSuggestClose={() => setIsWizardOpen(false)}
+                    onRefresh={loadData}
+                />
+            </Modal>
+
+            {/* Manual Edit Modal (Classic) */}
             <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editingCred ? 'Editar Credencial' : 'Nueva Credencial'}>
                 <form onSubmit={handleSubmit} className="space-y-4">
                     <div>
@@ -253,7 +283,7 @@ export const Credentials: React.FC = () => {
                         <div className="relative">
                             <input
                                 required
-                                type="password"
+                                type="password" // Always password for safety
                                 className="w-full px-4 py-2 pl-10 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all font-mono text-sm"
                                 value={formData.value}
                                 onChange={e => setFormData({ ...formData, value: e.target.value })}

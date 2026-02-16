@@ -594,6 +594,142 @@ async def delete_credential(cred_id: int, user_data = Depends(verify_admin_token
 
 @router.get("/tenants", tags=["Sedes"])
 async def list_tenants_admin(user_data = Depends(verify_admin_token)):
+    """Lista todas las sedes (tenants). Solo CEO."""
+    if user_data.role != 'ceo':
+        raise HTTPException(status_code=403, detail="Acceso denegado.")
+    
+    rows = await db.fetch("SELECT id, name, address, phone FROM tenants ORDER BY id ASC")
+    return [dict(r) for r in rows]
+
+# ==================== INTEGRATIONS WIZARD ENDPOINTS (Spec 16) ====================
+
+class IntegrationConfig(BaseModel):
+    provider: str # ycloud | chatwoot
+    # Chatwoot fields
+    chatwoot_base_url: Optional[str] = None
+    chatwoot_api_token: Optional[str] = None
+    chatwoot_account_id: Optional[str] = None # String to handle potential non-numeric IDs in future or masks
+    # YCloud fields
+    ycloud_api_key: Optional[str] = None
+    ycloud_webhook_secret: Optional[str] = None
+    
+    tenant_id: Optional[int] = None # Optional override for multi-tenant setup
+
+@router.get("/integrations/{provider}/config", tags=["Integraciones"])
+async def get_integration_config(provider: str, user_data = Depends(verify_admin_token), resolved_tenant_id: int = Depends(get_resolved_tenant_id)):
+    """
+    Obtiene la configuración enmascarada para un proveedor específico.
+    Provider: 'chatwoot' | 'ycloud'
+    """
+    if user_data.role != 'ceo':
+        raise HTTPException(status_code=403, detail="Acceso denegado.")
+        
+    tenant_id = resolved_tenant_id # Default to current context, or could be passed as query param if CEO managing other tenants
+    
+    config = {}
+    
+    if provider == "chatwoot":
+        # Retrieve Chatwoot credentials
+        rows = await db.fetch("""
+            SELECT name, value FROM credentials 
+            WHERE tenant_id = $1 AND name IN ('CHATWOOT_BASE_URL', 'CHATWOOT_API_TOKEN', 'CHATWOOT_ACCOUNT_ID')
+        """, tenant_id)
+        
+        data = {r['name']: r['value'] for r in rows}
+        
+        # Base URL (Visible)
+        config['chatwoot_base_url'] = data.get('CHATWOOT_BASE_URL', 'https://app.chatwoot.com')
+        
+        # API Token (Masked)
+        token = data.get('CHATWOOT_API_TOKEN')
+        if token:
+             decrypted = _decrypt_credential(token) or token
+             config['chatwoot_api_token'] = f"••••••••{decrypted[-4:]}" if len(decrypted) > 4 else "••••••••"
+        
+        # Account ID (Visible)
+        config['chatwoot_account_id'] = data.get('CHATWOOT_ACCOUNT_ID', '')
+
+    elif provider == "ycloud":
+        rows = await db.fetch("""
+            SELECT name, value FROM credentials 
+            WHERE tenant_id = $1 AND name IN ('YCLOUD_API_KEY', 'YCLOUD_WEBHOOK_SECRET')
+        """, tenant_id)
+        data = {r['name']: r['value'] for r in rows}
+        
+        # API Key (Masked)
+        key = data.get('YCLOUD_API_KEY')
+        if key:
+            decrypted = _decrypt_credential(key) or key
+            config['ycloud_api_key'] = f"••••••••{decrypted[-4:]}" if len(decrypted) > 4 else "••••••••"
+            
+        # Webhook Secret (Masked)
+        secret = data.get('YCLOUD_WEBHOOK_SECRET')
+        if secret:
+            decrypted = _decrypt_credential(secret) or secret
+            config['ycloud_webhook_secret'] = f"••••••••{decrypted[-4:]}" if len(decrypted) > 4 else "••••••••"
+            
+    else:
+        raise HTTPException(status_code=400, detail=f"Proveedor no soportado: {provider}")
+        
+    return config
+
+@router.post("/integrations/{provider}/config", tags=["Integraciones"])
+async def save_integration_config(provider: str, payload: IntegrationConfig, user_data = Depends(verify_admin_token), resolved_tenant_id: int = Depends(get_resolved_tenant_id)):
+    """
+    Guarda la configuración de integración para YCloud o Chatwoot.
+    Maneja encriptación y upsert de múltiples credenciales.
+    """
+    if user_data.role != 'ceo':
+        raise HTTPException(status_code=403, detail="Acceso denegado.")
+    
+    target_tenant_id = payload.tenant_id if payload.tenant_id else resolved_tenant_id
+    
+    creds_to_save = []
+    
+    if provider == "chatwoot":
+        if payload.chatwoot_base_url:
+            creds_to_save.append(("CHATWOOT_BASE_URL", payload.chatwoot_base_url, "Chatwoot URL", False))
+        
+        if payload.chatwoot_api_token and not payload.chatwoot_api_token.startswith("••••"):
+            creds_to_save.append(("CHATWOOT_API_TOKEN", payload.chatwoot_api_token, "Chatwoot API Token", True))
+            
+        if payload.chatwoot_account_id:
+            creds_to_save.append(("CHATWOOT_ACCOUNT_ID", payload.chatwoot_account_id, "Chatwoot Account ID", False))
+            
+    elif provider == "ycloud":
+        if payload.ycloud_api_key and not payload.ycloud_api_key.startswith("••••"):
+             creds_to_save.append(("YCLOUD_API_KEY", payload.ycloud_api_key, "YCloud API Key", True))
+             
+        if payload.ycloud_webhook_secret and not payload.ycloud_webhook_secret.startswith("••••"):
+             creds_to_save.append(("YCLOUD_WEBHOOK_SECRET", payload.ycloud_webhook_secret, "YCloud Webhook Secret", True))
+             
+    else:
+        raise HTTPException(status_code=400, detail="Proveedor no reconocido")
+
+    # Execute Upserts
+    for key, value, desc, encrypt in creds_to_save:
+        final_val = value.strip()
+        if encrypt:
+            encrypted = _encrypt_credential(final_val)
+            if not encrypted:
+                 raise HTTPException(status_code=500, detail="Error de encriptación")
+            final_val = encrypted
+            
+        # Check integrity: if exists update, else insert
+        existing = await db.fetchval("SELECT id FROM credentials WHERE tenant_id = $1 AND name = $2", target_tenant_id, key)
+        
+        if existing:
+            await db.execute("""
+                UPDATE credentials SET value = $1, updated_at = NOW()
+                WHERE id = $2
+            """, final_val, existing)
+        else:
+            await db.execute("""
+                INSERT INTO credentials (name, value, category, description, scope, tenant_id, created_at, updated_at)
+                VALUES ($1, $2, $3, $4, 'tenant', $5, NOW(), NOW())
+            """, key, final_val, provider, desc, target_tenant_id)
+            
+    return {"message": f"Integración {provider} actualizada correctamente."}
     """Lista simple de tenants para selectores (id, name)."""
     # Permitir a CEO y Secretary (para selectores de contexto)
     rows = await db.fetch("SELECT id, clinic_name FROM tenants ORDER BY id ASC")
