@@ -43,8 +43,23 @@ export const Credentials: React.FC = () => {
                 fetchApi('/admin/tenants'),
                 fetchApi('/admin/config/deployment')
             ]);
-            setCredentials(credsData);
-            setTenants(tenantsData);
+            console.log('Credentials Response:', credsData);
+            console.log('Tenants Response:', tenantsData);
+
+            if (Array.isArray(credsData)) {
+                setCredentials(credsData);
+            } else {
+                console.error('Expected array for credentials, got:', credsData);
+                setCredentials([]);
+            }
+
+            if (Array.isArray(tenantsData)) {
+                setTenants(tenantsData);
+            } else {
+                console.error('Expected array for tenants, got:', tenantsData);
+                setTenants([]);
+            }
+
             setDeploymentConfig(deployData);
         } catch (e) {
             console.error(e);
