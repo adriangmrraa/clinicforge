@@ -4,7 +4,7 @@ import {
   MessageCircle, Send, Calendar, User, Activity,
   Pause, Play, AlertCircle, Clock, ChevronLeft,
   Search, XCircle, Bell, Volume2, VolumeX,
-  Instagram, Facebook
+  Instagram, Facebook, Lock, Paperclip, FileText, Image as ImageIcon, Video, Music, Download, ExternalLink, MessageSquare
 } from 'lucide-react';
 import api, { BACKEND_URL } from '../api/axios';
 import * as chatsApi from '../api/chats';
@@ -41,11 +41,122 @@ interface ChatSession {
 interface ChatMessage {
   id: number;
   from_number: string;
-  role: 'user' | 'assistant' | 'system';
+  role: 'user' | 'assistant' | 'system' | 'human_supervisor';
   content: string;
   created_at: string;
+  attachments?: any[];
   is_derivhumano?: boolean;
 }
+
+// Helper para convertir URLs en links
+const Linkify = ({ text }: { text: string }) => {
+  const urlRegex = /(https?:\/\/[^\s]+)/g;
+  const parts = text.split(urlRegex);
+
+  return (
+    <>
+      {parts.map((part, i) => (
+        urlRegex.test(part) ? (
+          <a
+            key={i}
+            href={part}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-blue-500 hover:underline inline-flex items-center gap-1"
+          >
+            {part} <ExternalLink size={12} />
+          </a>
+        ) : part
+      ))}
+    </>
+  );
+};
+
+const MessageMedia = ({ attachments }: { attachments: any[] }) => {
+  if (!attachments || attachments.length === 0) return null;
+
+  const getProxyUrl = (url: string) => {
+    if (url.startsWith('/media/')) return `${BACKEND_URL}${url}`;
+    return `${BACKEND_URL}/admin/chat/media/proxy?url=${encodeURIComponent(url)}`;
+  };
+
+  const renderFileIcon = (type: string) => {
+    switch (type) {
+      case 'image': return <ImageIcon className="text-blue-500" />;
+      case 'video': return <Video className="text-purple-500" />;
+      case 'audio': return <Music className="text-green-500" />;
+      default: return <FileText className="text-gray-500" />;
+    }
+  };
+
+  const isGrouped = attachments.length > 4;
+
+  return (
+    <div className={`mt-2 flex flex-wrap gap-2 ${isGrouped ? 'grid grid-cols-3' : 'flex-col'}`}>
+      {attachments.map((att, idx) => {
+        const type = att.type || 'file';
+        const url = getProxyUrl(att.url);
+
+        if (type === 'image' && !isGrouped) {
+          return (
+            <div key={idx} className="relative group">
+              <img
+                src={url}
+                alt="attachment"
+                className="max-w-xs rounded-lg cursor-pointer hover:opacity-90 transition-opacity border"
+                onClick={() => window.open(url, '_blank')}
+              />
+            </div>
+          );
+        }
+
+        if (type === 'audio' && !isGrouped) {
+          return (
+            <div key={idx} className="bg-gray-50 p-2 rounded-lg border flex flex-col gap-2 min-w-[240px]">
+              <div className="flex items-center gap-2">
+                <audio controls src={url} className="h-8 w-full" />
+              </div>
+              {att.transcription && (
+                <div className="text-xs text-gray-600 bg-white p-2 rounded border italic">
+                  "{att.transcription}"
+                </div>
+              )}
+            </div>
+          );
+        }
+
+        return (
+          <div
+            key={idx}
+            className={`flex items-center gap-2 p-2 rounded-lg border bg-white hover:bg-gray-50 transition-colors cursor-pointer ${isGrouped ? 'aspect-square justify-center' : ''}`}
+            onClick={() => window.open(url, '_blank')}
+          >
+            {renderFileIcon(type)}
+            {!isGrouped && (
+              <div className="flex-1 overflow-hidden">
+                <p className="text-xs font-medium truncate">{att.file_name || 'Archivo'}</p>
+                {att.file_size && <p className="text-[10px] text-gray-500">{(att.file_size / 1024).toFixed(1)} KB</p>}
+              </div>
+            )}
+            {!isGrouped && <Download size={14} className="text-gray-400" />}
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
+const MessageContent = ({ message }: { message: ChatMessage | ChatApiMessage }) => {
+  const content = message.content || '';
+  const attachments = (message as any).attachments || (message as any).content_attributes || [];
+
+  return (
+    <div className="flex flex-col gap-1">
+      {content && <div className="whitespace-pre-wrap"><Linkify text={content} /></div>}
+      <MessageMedia attachments={Array.isArray(attachments) ? attachments : []} />
+    </div>
+  );
+};
 
 interface PatientContext {
   patient_id?: number;
@@ -101,6 +212,8 @@ export default function ChatsView() {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [newMessage, setNewMessage] = useState('');
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [messageOffset, setMessageOffset] = useState(0);
   const [hasMoreMessages, setHasMoreMessages] = useState(true);
@@ -471,22 +584,39 @@ export default function ChatsView() {
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newMessage.trim() || !selectedSession) return;
+    if ((!newMessage.trim() && selectedFiles.length === 0) || !selectedSession) return;
 
     setSending(true);
     try {
+      // Upload media if any
+      const attachments = [];
+      if (selectedFiles.length > 0) {
+        for (const file of selectedFiles) {
+          const formData = new FormData();
+          formData.append('file', file);
+          formData.append('tenant_id', selectedSession.tenant_id.toString());
+          const uploadRes = await api.post('/admin/chat/upload', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' }
+          });
+          attachments.push(uploadRes.data); // { type, url, file_name }
+        }
+      }
+
       await api.post('/admin/chat/send', {
         phone: selectedSession.phone_number,
         tenant_id: selectedSession.tenant_id,
         message: newMessage,
+        attachments: attachments
       });
       setNewMessage('');
+      setSelectedFiles([]);
       fetchMessages(selectedSession.phone_number, selectedSession.tenant_id);
 
       socketRef.current?.emit('MANUAL_MESSAGE', {
         phone: selectedSession.phone_number,
         tenant_id: selectedSession.tenant_id,
         message: newMessage,
+        attachments: attachments
       });
     } catch (error) {
       console.error('Error sending message:', error);
@@ -535,8 +665,16 @@ export default function ChatsView() {
       setNewMessage('');
       const list = await chatsApi.fetchChatMessages(selectedChatwoot.id, { limit: 50 });
       setChatwootMessages(list);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error sending Chatwoot message:', err);
+      if (err.response?.status === 403) {
+        setShowToast({
+          id: Date.now().toString(),
+          type: 'error',
+          title: 'Ventana Cerrada',
+          message: 'Canal bloqueado por Meta. Use plantillas para contactar al paciente.',
+        });
+      }
     } finally {
       setSending(false);
     }
@@ -641,6 +779,13 @@ export default function ChatsView() {
       avatarBg: 'bg-primary',
       cardBorder: '',
     };
+  };
+
+  const isWindowOpen = (lastUserMsgTime?: string | null) => {
+    if (!lastUserMsgTime) return false;
+    const lastDate = new Date(lastUserMsgTime).getTime();
+    const now = new Date().getTime();
+    return (now - lastDate) < 24 * 60 * 60 * 1000;
   };
 
   const getPlatformConfig = (channel: string) => {
@@ -805,7 +950,7 @@ export default function ChatsView() {
                           {(session.patient_name || session.phone_number).charAt(0)}
                         </div>
                         <div className={`absolute -bottom-1 -right-1 p-1 rounded-full shadow-sm border border-white ${platform.bgColor}`}>
-                          {platform.icon}
+                          {item.id && !isWindowOpen(item.last_user_message_at) ? <Lock size={10} className="text-white" /> : platform.icon}
                         </div>
                       </div>
                       <div className="flex-1 min-w-0">
@@ -839,6 +984,7 @@ export default function ChatsView() {
               const isSelected = selectedChatwoot?.id === item.id;
               const platform = getPlatformConfig(item.channel || 'chatwoot');
               const avatarUrl = item.meta?.customer_avatar || item.avatar_url;
+              const windowOpen = isWindowOpen(item.last_user_message_at);
 
               return (
                 <div
@@ -1031,15 +1177,22 @@ export default function ChatsView() {
                 </div>
               )}
 
-              {/* Banner de Ventana de 24hs Cerrada (solo YCloud) */}
-              {selectedSession && selectedSession.is_window_open === false && (
-                <div className="bg-yellow-50 border-b border-yellow-200 px-4 py-2 flex items-center gap-2">
-                  <Clock size={16} className="text-yellow-600" />
-                  <span className="text-sm text-yellow-700">
-                    ⏳ {t('chats.window_24h_closed')}
-                  </span>
-                </div>
-              )}
+              {/* Banner de Ventana de 24hs Cerrada (Omnicanal) */}
+              {((selectedSession && selectedSession.is_window_open === false) ||
+                (selectedChatwoot && !isWindowOpen(selectedChatwoot.last_user_message_at))) && (
+                  <div className="bg-yellow-50 border-b border-yellow-200 px-4 py-2 flex items-center gap-2">
+                    <Clock size={16} className="text-yellow-600" />
+                    <span className="text-sm text-yellow-700">
+                      ⏳ {t('chats.window_24h_closed')}
+                    </span>
+                    <button
+                      onClick={() => navigate('/templates')}
+                      className="ml-auto flex items-center gap-1 text-xs font-bold text-yellow-700 hover:bg-yellow-100 px-2 py-1 rounded border border-yellow-300 transition-colors"
+                    >
+                      Plantillas Meta <ChevronRight size={14} />
+                    </button>
+                  </div>
+                )}
 
               {/* Messages Area */}
               <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50 flex flex-col min-h-0">
@@ -1086,7 +1239,7 @@ export default function ChatsView() {
                             <span className="font-medium">{t('chats.auto_handoff')}</span>
                           </div>
                         )}
-                        <p className="text-sm">{message.content}</p>
+                        <MessageContent message={message} />
                         <p className={`text-xs mt-1 ${message.role === 'user' ? 'text-gray-400' : 'opacity-70'}`}>
                           {new Date(message.created_at).toLocaleTimeString()}
                         </p>
@@ -1106,7 +1259,7 @@ export default function ChatsView() {
                         className={`flex ${msg.role === 'user' ? 'justify-start' : 'justify-end'}`}
                       >
                         <div className={`max-w-[70%] rounded-lg px-4 py-3 ${msg.role === 'user' ? 'bg-white shadow-sm' : `${platform.bgColor} text-white shadow-sm`}`}>
-                          <p className="text-sm">{msg.content}</p>
+                          <MessageContent message={msg} />
                           <p className={`text-xs mt-1 ${msg.role === 'user' ? 'text-gray-400' : 'opacity-70'}`}>
                             {msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString() : ''}
                           </p>
@@ -1124,47 +1277,80 @@ export default function ChatsView() {
                 onSubmit={selectedChatwoot ? handleSendChatwootMessage : handleSendMessage}
                 className="p-4 border-t bg-white"
               >
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={newMessage}
-                    onChange={(e) => setNewMessage(e.target.value)}
-                    placeholder={
-                      selectedSession && selectedSession.is_window_open === false
-                        ? "Ventana cerrada - Esperando paciente..."
-                        : "Escribe un mensaje..."
-                    }
-                    disabled={!!(selectedSession && selectedSession.is_window_open === false)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault();
-                        if (selectedChatwoot) handleSendChatwootMessage(e as any);
-                        else handleSendMessage(e as any);
+                <div className="flex flex-col flex-1 gap-2">
+                  {selectedFiles.length > 0 && (
+                    <div className="flex flex-wrap gap-2 pb-2">
+                      {selectedFiles.map((f, i) => (
+                        <div key={i} className="bg-medical-50 text-medical-700 px-2 py-1 rounded-md text-xs flex items-center gap-1 border border-medical-100">
+                          <span className="truncate max-w-[100px]">{f.name}</span>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedFiles(prev => prev.filter((_, idx) => idx !== i))}
+                            className="hover:text-red-500"
+                          >
+                            <XCircle size={14} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div className="flex gap-2">
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      onChange={(e) => setSelectedFiles(prev => [...prev, ...Array.from(e.target.files || [])])}
+                      className="hidden"
+                      multiple
+                    />
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="p-2 text-gray-400 hover:text-medical-600 hover:bg-medical-50 rounded-lg transition-colors"
+                      title="Adjuntar archivo"
+                    >
+                      <Paperclip size={20} />
+                    </button>
+                    <input
+                      type="text"
+                      value={newMessage}
+                      onChange={(e) => setNewMessage(e.target.value)}
+                      placeholder={
+                        (selectedSession && selectedSession.is_window_open === false) || (selectedChatwoot && !isWindowOpen(selectedChatwoot.last_user_message_at))
+                          ? "Ventana cerrada - Esperando paciente..."
+                          : "Escribe un mensaje..."
                       }
-                    }}
-                    className={`flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 bg-white text-gray-900 
-                      ${selectedSession && selectedSession.is_window_open === false ? 'bg-gray-100 cursor-not-allowed opacity-75' : ''}
-                      ${selectedSession ? 'focus:ring-green-500' : selectedChatwoot?.channel === 'instagram' ? 'focus:ring-pink-500' : selectedChatwoot?.channel === 'facebook' ? 'focus:ring-blue-500' : 'focus:ring-medical-500'}
-                    `}
-                  />
-                  <button
-                    type="submit"
-                    disabled={
-                      sending ||
-                      !newMessage.trim() ||
-                      !!(selectedSession && selectedSession.is_window_open === false)
-                    }
-                    className={`p-2 text-white rounded-lg disabled:opacity-50 flex items-center justify-center transition-colors min-w-[44px]
-                      ${selectedSession ? 'bg-green-600 hover:bg-green-700' : selectedChatwoot?.channel === 'instagram' ? 'bg-pink-600 hover:bg-pink-700' : selectedChatwoot?.channel === 'facebook' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-medical-600 hover:bg-medical-700'}
-                    `}
-                    title={selectedSession && selectedSession.is_window_open === false ? "Ventana de 24hs cerrada" : "Enviar mensaje"}
-                  >
-                    {sending ? (
-                      <Activity size={20} className="animate-spin" />
-                    ) : (
-                      <Send size={20} />
-                    )}
-                  </button>
+                      disabled={!!((selectedSession && selectedSession.is_window_open === false) || (selectedChatwoot && !isWindowOpen(selectedChatwoot.last_user_message_at)))}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault();
+                          if (selectedChatwoot) handleSendChatwootMessage(e as any);
+                          else handleSendMessage(e as any);
+                        }
+                      }}
+                      className={`flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 bg-white text-gray-900 
+                        ${selectedSession && selectedSession.is_window_open === false ? 'bg-gray-100 cursor-not-allowed opacity-75' : ''}
+                        ${selectedSession ? 'focus:ring-green-500' : selectedChatwoot?.channel === 'instagram' ? 'focus:ring-pink-500' : selectedChatwoot?.channel === 'facebook' ? 'focus:ring-blue-500' : 'focus:ring-medical-500'}
+                      `}
+                    />
+                    <button
+                      type="submit"
+                      disabled={
+                        sending ||
+                        (!newMessage.trim() && selectedFiles.length === 0) ||
+                        !!((selectedSession && selectedSession.is_window_open === false) || (selectedChatwoot && !isWindowOpen(selectedChatwoot.last_user_message_at)))
+                      }
+                      className={`p-2 text-white rounded-lg disabled:opacity-50 flex items-center justify-center transition-colors min-w-[44px]
+                        ${selectedSession ? 'bg-green-600 hover:bg-green-700' : selectedChatwoot?.channel === 'instagram' ? 'bg-pink-600 hover:bg-pink-700' : selectedChatwoot?.channel === 'facebook' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-medical-600 hover:bg-medical-700'}
+                      `}
+                      title={(selectedSession && selectedSession.is_window_open === false) || (selectedChatwoot && !isWindowOpen(selectedChatwoot.last_user_message_at)) ? "Ventana de 24hs cerrada" : "Enviar mensaje"}
+                    >
+                      {sending ? (
+                        <Activity size={20} className="animate-spin" />
+                      ) : (
+                        <Send size={20} />
+                      )}
+                    </button>
+                  </div>
                 </div>
               </form>
             </div>

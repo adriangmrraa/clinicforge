@@ -143,14 +143,16 @@ Operations Center shows ALL conversations in one unified view
 (filter by: Todos | WhatsApp | Instagram | Facebook)
 ```
 
-### Key Omnichannel Features
+### Key Omnichannel Features (v1.1)
 
-- **Unified inbox**: All channels appear in the same Chats view with channel badges
-- **Channel filter**: Staff can filter conversations by channel (Todos, WhatsApp, Instagram, Facebook)
-- **Same AI brain**: The LangChain agent processes messages identically regardless of source channel
-- **Human handoff**: `derivhumano` tool works across all channels with 24h silence window per clinic/phone
-- **Credential isolation**: Chatwoot tokens, OPENAI_API_KEY, and other secrets stored per-tenant (Vault)
-- **Meta Ads attribution**: Referral tracking works automatically for WhatsApp ads; Chatwoot channels add conversation source metadata
+- **Unified Outgoing API**: A single endpoint `/admin/chat/send` handles all outgoing messages, automatically routing to YCloud or Chatwoot based on the platform.
+- **Meta 24h Window Policy**: Continuous tracking of `last_user_message_at`. The system automatically blocks standard sessions after 24 hours of inactivity to comply with Meta's policy.
+- **Re-engagement Flow**: Visual "Lock" indicators and banners guide operators to **Meta Templates** when the 24h window is closed.
+- **Unified inbox**: All channels appear in the same Chats view with platform-specific badges and "Lock" icons for closed windows.
+- **Channel filter**: Staff can filter conversations by channel (Todos, WhatsApp, Instagram, Facebook).
+- **Same AI brain**: The LangChain agent processes messages identically regardless of source channel.
+- **Human handoff**: `derivhumano` tool works across all channels with 24h silence window per clinic/phone.
+- **Credential isolation**: Chatwoot tokens, OPENAI_API_KEY, and other secrets stored per-tenant (Vault).
 
 ---
 
@@ -252,9 +254,10 @@ ClinicForge uses a **Sovereign Microservices Architecture**, designed to scale w
 ### 💬 Conversations (Chats)
 
 - **Per clinic:** Sessions and messages filtered by `tenant_id`; CEO can switch clinic.
-- **Context:** Last/upcoming appointment, treatment plan, human override and 24h window.
+- **Context:** Last/upcoming appointment, treatment plan, human override and 24h window state.
 - **Ad Context Card:** When a patient came from a Meta Ad, a card shows the ad headline and body at the top of the conversation for staff awareness.
-- **Actions:** Human intervention, remove silence, send message; click on derivation notification opens the right conversation.
+- **Actions:** Human intervention, remove silence, unified messaging outlet; click on derivation notification opens the right conversation.
+- **Meta Templates View**: Dedicated section for managing re-engagement campaigns and approved platform templates (upcoming).
 
 ### 📊 Analytics (CEO + Marketing)
 
@@ -296,8 +299,8 @@ ClinicForge uses a **Sovereign Microservices Architecture**, designed to scale w
 ClinicForge/
 ├── 📂 frontend_react/            # React 18 + Vite SPA (Operations Center)
 │   ├── src/
-│   │   ├── components/           # Layout, Sidebar, MarketingPerformanceCard, AdContextCard, etc.
-│   │   ├── views/                # Dashboard, Agenda, Patients, Chats, Landing, etc.
+│   │   ├── components/           # Layout, Sidebar, MarketingPerformanceCard, AdContextCard, Vault components, etc.
+│   │   ├── views/                # Dashboard, Agenda, Patients, Chats, MetaTemplatesView, ConfigView, Landing, etc.
 │   │   ├── context/              # AuthContext, LanguageContext
 │   │   ├── locales/              # es.json, en.json, fr.json
 │   │   └── api/                  # axios (JWT + X-Admin-Token)
@@ -320,7 +323,8 @@ ClinicForge/
 │   └── requirements.txt
 ├── 📂 whatsapp_service/          # YCloud relay & Whisper
 │   ├── main.py
-│   └── ycloud_client.py
+│   ├── ycloud_client.py          # Unified WhatsApp messaging client
+│   └── chatwoot_client.py        # Meta/Omnichannel messaging client
 ├── 📂 shared/                    # Shared Pydantic models
 ├── 📂 docs/                      # Documentation (30+ files)
 │   ├── meta_ads_backend.md       # Meta Ads backend architecture & data flow

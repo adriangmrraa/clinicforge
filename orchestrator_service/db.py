@@ -480,6 +480,17 @@ class Database:
                 END IF;
             END $$;
             """,
+            # Parche 21: Ventana de 24h - Tracking del último mensaje del usuario
+            """
+            DO $$
+            BEGIN
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'chat_conversations' AND column_name = 'last_user_message_at') THEN
+                    ALTER TABLE chat_conversations ADD COLUMN last_user_message_at TIMESTAMP WITH TIME ZONE;
+                    -- Inicializar con el last_message_at actual para no romper ventanas existentes
+                    UPDATE chat_conversations SET last_user_message_at = last_message_at WHERE last_user_message_at IS NULL;
+                END IF;
+            END $$;
+            """,
         ]
 
         async with self.pool.acquire() as conn:
@@ -523,10 +534,45 @@ class Database:
         async with self.pool.acquire() as conn:
             await conn.execute(query, provider, provider_message_id, error)
 
-    async def append_chat_message(self, from_number: str, role: str, content: str, correlation_id: str, tenant_id: int = 1):
-        query = "INSERT INTO chat_messages (from_number, role, content, correlation_id, tenant_id) VALUES ($1, $2, $3, $4, $5)"
+    async def append_chat_message(self, from_number: str, role: str, content: str, correlation_id: str, tenant_id: int = 1, conversation_id: Optional[str] = None, content_attributes: Optional[dict] = None):
+        if not conversation_id:
+            # Fallback: Resolver conversación si no viene explícita
+            row = await self.fetchrow(
+                "SELECT id FROM chat_conversations WHERE tenant_id = $1 AND channel = 'whatsapp' AND external_user_id = $2 LIMIT 1",
+                tenant_id, from_number
+            )
+            if row:
+                conversation_id = str(row['id'])
+
+        query = """
+        INSERT INTO chat_messages (from_number, role, content, correlation_id, tenant_id, conversation_id, content_attributes) 
+        VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)
+        """
         async with self.pool.acquire() as conn:
-            await conn.execute(query, from_number, role, content, correlation_id, tenant_id)
+            await conn.execute(query, from_number, role, content, correlation_id, tenant_id, 
+                               uuid.UUID(conversation_id) if conversation_id else None, 
+                               json.dumps(content_attributes) if content_attributes else None)
+        
+        # Sincronizar conversación (Spec 18)
+        await self.sync_conversation(tenant_id, "whatsapp", from_number, content, role == "user")
+
+    async def sync_conversation(self, tenant_id: int, channel: str, external_user_id: str, last_message: str, is_user: bool):
+        """
+        Actualiza los metadatos de la conversación.
+        Si es un mensaje del usuario, actualiza last_user_message_at (Ventana 24h).
+        """
+        sql = """
+            INSERT INTO chat_conversations (tenant_id, channel, external_user_id, last_message_at, last_message_preview, last_user_message_at, updated_at)
+            VALUES ($1, $2, $3, NOW(), LEFT($4, 255), CASE WHEN $5 THEN NOW() ELSE NULL END, NOW())
+            ON CONFLICT (tenant_id, channel, external_user_id)
+            DO UPDATE SET
+                last_message_at = NOW(),
+                last_message_preview = EXCLUDED.last_message_preview,
+                last_user_message_at = CASE WHEN $5 THEN NOW() ELSE chat_conversations.last_user_message_at END,
+                updated_at = NOW()
+        """
+        async with self.pool.acquire() as conn:
+            await conn.execute(sql, tenant_id, channel, external_user_id, last_message, is_user)
 
     async def ensure_patient_exists(self, phone_number: Optional[str], tenant_id: int, first_name: str = 'Visitante', status: str = 'guest', external_id: Optional[dict] = None):
         """

@@ -309,12 +309,37 @@ Fuerza el mirroring entre Google Calendar y la BD local (bloqueos externos → `
 Las rutas de chat filtran por `tenant_id`; Human Override y ventana 24h son independientes por clínica.
 
 - `GET /admin/chat/tenants` — Clínicas disponibles para Chats (CEO: todas; otros: una). Response: `[{ "id", "clinic_name" }]`.
-- `GET /admin/chat/sessions?tenant_id=<id>` — Sesiones de esa clínica (obligatorio `tenant_id`).
-- `GET /admin/chat/messages/{phone}?tenant_id=<id>` — Historial por clínica.
+### Enviar mensaje (Unificado)
+`POST /admin/chat/send` (Alias: `POST /admin/whatsapp/send`)
+
+**Payload:**
+```json
+{
+  "conversation_id": "<UUID>",
+  "message": "Texto del mensaje"
+}
+```
+Opcionalmente soporta `phone` y `tenant_id` para compatibilidad legacy.
+
+**Lógica:**
+1. Valida la **Ventana de 24h de Meta** usando `last_user_message_at`. Si pasaron >24h, retorna **403 Forbidden**.
+2. Enruta el mensaje según el `provider` de la conversación:
+   - **YCloud**: Envío directo de WhatsApp.
+   - **Chatwoot**: Envío a través de la API de Chatwoot (Instagram, Facebook, WhatsApp).
+3. Persiste en `chat_messages` y sincroniza metadata.
+
+---
+
+## Chat (multi-tenant - Legacy/YCloud focus)
+
+Las rutas de chat filtran por `tenant_id`; Human Override y ventana 24h son independientes por clínica.
+
+- `GET /admin/chat/tenants` — Clínicas disponibles para Chats.
+- `GET /admin/chat/sessions?tenant_id=<id>` — Sesiones YCloud.
+- `GET /admin/chat/messages/{phone}?tenant_id=<id>` — Historial.
 - `PUT /admin/chat/sessions/{phone}/read?tenant_id=<id>` — Marcar como leído.
-- `POST /admin/chat/human-intervention` — Body: `phone`, `tenant_id`, `activate`, `duration`.
-- `POST /admin/chat/remove-silence` — Body: `phone`, `tenant_id`.
-- `POST /admin/chat/send` — Body: `phone`, `tenant_id`, `message`.
+- `POST /admin/chat/human-intervention` — Override temporal.
+- `POST /admin/chat/send` — (Ver sección anterior: Endpoint Unificado).
 
 ---
 
@@ -345,7 +370,7 @@ Devuelve la URL del webhook y el token para copiar/pegar en Chatwoot (Configurac
 
 **Query params:** `limit` (default 20), `offset` (default 0), `channel` (opcional: `whatsapp`, `instagram`, `facebook`), `human_override` (opcional: `true` para solo con override activo).
 
-Devuelve conversaciones del tenant resuelto del usuario (Chatwoot y/o YCloud según tablas). Cada ítem incluye `id` (UUID), `name`, `channel`, `provider`, `last_message`, `last_message_at`, `is_locked` (human override activo), `status`, `external_user_id`, `avatar_url`, `meta`.
+Devuelve conversaciones del tenant resuelto del usuario (Chatwoot y/o YCloud según tablas). Cada ítem incluye `id` (UUID), `name`, `channel`, `provider`, `last_message`, `last_message_at`, **`last_user_message_at`** (para cálculo de ventana 24h), `is_locked` (human override activo), `status`, `external_user_id`, `avatar_url`, `meta`.
 
 ### Mensajes de una conversación
 `GET /admin/chats/{conversation_id}/messages`
@@ -354,12 +379,8 @@ Devuelve conversaciones del tenant resuelto del usuario (Chatwoot y/o YCloud seg
 
 Lista mensajes de esa conversación (orden `created_at` DESC). Response: array de `{ id, conversation_id, role, content, timestamp, attachments, correlation_id }`.
 
-### Enviar mensaje
-`POST /admin/whatsapp/send`
-
-**Body:** `{ "conversation_id": "<UUID>", "message": "texto" }`.
-
-El backend enruta por `provider` de la conversación: Chatwoot (API Chatwoot) o YCloud. Inserta el mensaje en `chat_messages` y devuelve `{ "status": "sent" }`.
+> [!IMPORTANT]
+> A partir de la Spec 18, este endpoint está deprecado en favor de `POST /admin/chat/send` (el cual actúa como alias), pero mantiene la misma lógica de enrutamiento y validación.
 
 ### Human override (24h)
 `POST /admin/conversations/{conversation_id}/human-override`

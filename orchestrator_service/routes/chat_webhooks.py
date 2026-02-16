@@ -93,9 +93,9 @@ async def receive_chatwoot_webhook(
         INSERT INTO chat_conversations (
             id, tenant_id, channel, channel_source, external_user_id, status, provider,
             external_chatwoot_id, external_account_id, display_name, meta,
-            last_message_at, last_message_preview, updated_at
+            last_message_at, last_message_preview, last_user_message_at, updated_at
         )
-        VALUES ($1, $2, $3, $3, $4, 'open', 'chatwoot', $5, $6, $7, $8::jsonb, NOW(), LEFT($9, 255), NOW())
+        VALUES ($1, $2, $3, $3, $4, 'open', 'chatwoot', $5, $6, $7, $8::jsonb, NOW(), LEFT($9, 255), CASE WHEN $10 = 'incoming' THEN NOW() ELSE NULL END, NOW())
         ON CONFLICT (tenant_id, channel, external_user_id)
         DO UPDATE SET
             external_chatwoot_id = EXCLUDED.external_chatwoot_id,
@@ -103,6 +103,7 @@ async def receive_chatwoot_webhook(
             meta = chat_conversations.meta || EXCLUDED.meta,
             last_message_at = NOW(),
             last_message_preview = EXCLUDED.last_message_preview,
+            last_user_message_at = CASE WHEN EXCLUDED.last_user_message_at IS NOT NULL THEN EXCLUDED.last_user_message_at ELSE chat_conversations.last_user_message_at END,
             updated_at = NOW()
         RETURNING id
     """
@@ -118,6 +119,7 @@ async def receive_chatwoot_webhook(
             display_name,
             json.dumps(meta_data),
             data[:255] if data else "",
+            msg_type,
         )
     except Exception as e:
         logger.warning("chatwoot_upsert_failed", error=str(e), tenant_id=tenant_id)
@@ -182,6 +184,25 @@ async def receive_chatwoot_webhook(
         json.dumps(payload),
         json.dumps(content_attrs),
     )
+
+    # --- Transcripción Universal (Spec 19) ---
+    if msg_type == "incoming":
+        for att in content_attrs:
+            if att["type"] == "audio":
+                try:
+                    from services.whisper_service import transcribe_audio_url
+                    background_tasks.add_task(
+                        transcribe_audio_url,
+                        url=att["url"],
+                        tenant_id=tenant_id,
+                        conversation_id=str(conv_id),
+                        external_user_id=str(identifier)
+                    )
+                    logger.info(f"🎙️ Transcription queued for Chatwoot audio: {att['url']}")
+                except ImportError:
+                    logger.warning("whisper_service not available for universal transcription")
+                except Exception as e:
+                    logger.error(f"❌ Error queuing transcription: {str(e)}")
 
     if msg_type == "incoming":
         override_row = await pool.fetchrow(

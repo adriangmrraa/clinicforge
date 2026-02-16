@@ -13,6 +13,7 @@ import UserApprovalView from './views/UserApprovalView';
 import ProfileView from './views/ProfileView';
 import ClinicsView from './views/ClinicsView';
 import ConfigView from './views/ConfigView';
+import MetaTemplatesView from './views/MetaTemplatesView';
 import { Logs } from './views/Logs';
 import { AuthProvider } from './context/AuthContext';
 import { LanguageProvider } from './context/LanguageContext';
@@ -58,6 +59,11 @@ function App() {
                     <Route path="configuracion" element={
                       <ProtectedRoute allowedRoles={['ceo']}>
                         <ConfigView />
+                      </ProtectedRoute>
+                    } />
+                    <Route path="templates" element={
+                      <ProtectedRoute allowedRoles={['ceo', 'operator']}>
+                        <MetaTemplatesView />
                       </ProtectedRoute>
                     } />
 

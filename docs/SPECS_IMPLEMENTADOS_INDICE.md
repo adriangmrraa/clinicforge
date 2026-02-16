@@ -30,6 +30,7 @@ Este documento registra las especificaciones (`.spec.md`) que existían en el pr
 | **version_estable_clinicas (Chatwoot omnicanal)** | Implementado | Spec en `Version Estable/docs/specs/version_estable_clinicas.spec.md`. En CLINICASV1.0: `docs/AUDIT_CHATWOOT_2025-02-13.md` (auditoría y correcciones), `API_REFERENCE.md` (sección Chat omnicanal), tablas `chat_conversations` y `credentials`, webhook `/admin/chatwoot/webhook`, API `/admin/chats/summary`, `/admin/chats/{id}/messages`, `/admin/whatsapp/send`, `/admin/conversations/{id}/human-override`, ConfigView (URL webhook), ChatsView (filtro canal Todos/WhatsApp/Instagram/Facebook, Vault agente por tenant). |
 | **spec_13_unified_clinical_context.spec.md** | Implementado | `13_lead_patient_workflow.md` (identidad y visibilidad), `API_REFERENCE.md` (soporte platform IDs). |
 | **spec_14_multichannel_ui.spec.md** | Implementado | `meta_ads_frontend.md` (sección 6 - Patrones de UI), `ChatsView.tsx` (lógica de estilos dinámicos). |
+| **spec_18_outgoing_messages.spec.md** | Implementado | `API_REFERENCE.md` (sección "4. Envío de Mensajes (Omnicanal)" con `POST /admin/chat/send`, validación 24h, enrutamiento a YCloudClient/ChatwootClient). |
 
 Cualquier criterio de aceptación o detalle técnico de los specs anteriores que no figure en los documentos indicados se considera cubierto por la implementación en código y por AGENTS.md (reglas de soberanía, scroll, auth).
 

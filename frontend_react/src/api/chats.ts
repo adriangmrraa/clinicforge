@@ -38,7 +38,7 @@ export async function sendChatMessage(
   conversationId: string,
   message: string
 ): Promise<{ status: string }> {
-  const res = await api.post<{ status: string }>('/admin/whatsapp/send', {
+  const res = await api.post<{ status: string }>('/admin/chat/send', {
     conversation_id: conversationId,
     message,
   });

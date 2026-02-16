@@ -10,6 +10,9 @@ from contextlib import asynccontextmanager
 from dateutil.parser import parse as dateutil_parse
 import re
 from gcal_service import gcal_service
+import httpx
+import mimetypes
+from urllib.parse import urlparse
 
 from fastapi import BackgroundTasks, FastAPI, Request, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
@@ -54,6 +57,37 @@ ARG_TZ = timezone(timedelta(hours=-3))
 def get_now_arg():
     """Obtiene la fecha y hora actual garantizando zona horaria de Argentina."""
     return datetime.now(ARG_TZ)
+
+async def download_media(url: str, tenant_id: int) -> str:
+    """Descarga un archivo de media y lo guarda localmente (Spec 19)."""
+    async with httpx.AsyncClient(follow_redirects=True, timeout=30.0) as client:
+        try:
+            res = await client.get(url)
+            res.raise_for_status()
+            
+            # Determinar extensión
+            ext = mimetypes.guess_extension(res.headers.get("content-type", "")) or ".bin"
+            # Si la URL tiene una extensión, usar esa preferentemente
+            parsed_url = urlparse(url)
+            url_path = parsed_url.path
+            for e in [".png", ".jpg", ".jpeg", ".mp4", ".ogg", ".pdf", ".mp3"]:
+                if url_path.lower().endswith(e):
+                    ext = e
+                    break
+            
+            filename = f"{uuid.uuid4()}{ext}"
+            # Asegurar directorio de media
+            media_dir = os.path.join(os.getcwd(), "media", str(tenant_id))
+            os.makedirs(media_dir, exist_ok=True)
+            
+            local_path = os.path.join(media_dir, filename)
+            with open(local_path, "wb") as f:
+                f.write(res.content)
+            
+            return f"/media/{tenant_id}/{filename}"
+        except Exception as e:
+            logger.error(f"❌ Error downloading media from {url}: {str(e)}")
+            return url  # Fallback a la URL original si falla
 
 # ContextVars para rastrear el usuario en la sesión de LangChain
 current_customer_phone: ContextVar[Optional[str]] = ContextVar("current_customer_phone", default=None)
@@ -1579,13 +1613,29 @@ async def chat_endpoint(req: ChatRequest, background_tasks: BackgroundTasks):
                 logger.error(f"⚠️ Error en atribución Meta Ads: {attr_err}")
         # ---------------------------------------------------
         
+        # --- Procesamiento de Medios (Spec 19) ---
+        attachments = []
+        if req.media:
+            for item in req.media:
+                media_url = item.get("url")
+                media_type = item.get("type", "document")
+                
+                # Para YCloud, descargamos localmente para persistencia
+                if provider == "ycloud" and media_url:
+                    local_url = await download_media(media_url, tenant_id)
+                    item["url"] = local_url
+                
+                attachments.append(item)
+        
         # 1. Guardar mensaje del usuario PRIMERO (para no perderlo si hay error)
+        # Ahora incluimos attachments y content_attributes
         await db.append_chat_message(
             from_number=req.final_phone,
             role='user',
             content=req.final_message,
             correlation_id=correlation_id,
-            tenant_id=tenant_id
+            tenant_id=tenant_id,
+            content_attributes=attachments if attachments else None
         )
         
         # --- Notificar al Frontend (Real-time) ---
@@ -1593,6 +1643,7 @@ async def chat_endpoint(req: ChatRequest, background_tasks: BackgroundTasks):
             'phone_number': req.final_phone,
             'tenant_id': tenant_id,
             'message': req.final_message,
+            'attachments': attachments,
             'role': 'user'
         }))
         # -----------------------------------------
