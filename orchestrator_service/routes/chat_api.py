@@ -124,7 +124,7 @@ async def chat_messages(
             "role": r["role"],
             "content": r["content"] or "",
             "timestamp": r["created_at"].isoformat() if r["created_at"] else None,
-            "attachments": (r["content_attributes"] or []) if isinstance(r.get("content_attributes"), list) else (r.get("content_attributes") or {}),
+            "attachments": r["content_attributes"] if isinstance(r.get("content_attributes"), list) else [],
             "correlation_id": r.get("correlation_id"),
         }
         for r in rows

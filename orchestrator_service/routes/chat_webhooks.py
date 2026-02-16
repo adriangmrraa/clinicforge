@@ -161,13 +161,25 @@ async def receive_chatwoot_webhook(
         return {"status": "ignored", "reason": "duplicate"}
 
     role = "user" if msg_type == "incoming" else "human_supervisor"
-    raw_attachments = payload.get("attachments", [])
+    
+    # Extraction robusta de adjuntos (Chatwoot v3+ y canales variados)
+    raw_attachments = payload.get("attachments")
+    if not isinstance(raw_attachments, list):
+        raw_attachments = payload.get("message", {}).get("attachments")
+    if not isinstance(raw_attachments, list):
+        raw_attachments = []
+        
     content_attrs = []
     for att in raw_attachments:
+        # Normalización de tipos para el frontend (image, audio, video, file)
+        ftype = att.get("file_type", "file")
+        if ftype == "voice": ftype = "audio"
+        
         content_attrs.append({
-            "type": att.get("file_type", "file"),
+            "type": ftype,
             "url": att.get("data_url") or att.get("source_url", ""),
             "file_name": att.get("file_name", "attachment"),
+            "file_size": att.get("file_size"),
         })
 
     # CLINICASV1.0: chat_messages tiene from_number NOT NULL e id BIGSERIAL (no UUID)

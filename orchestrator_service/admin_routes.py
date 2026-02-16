@@ -932,7 +932,7 @@ async def get_chat_messages(
     )
     if has_tenant:
         rows = await db.pool.fetch("""
-            SELECT id, from_number, role, content, created_at, correlation_id
+            SELECT id, from_number, role, content, created_at, correlation_id, content_attributes
             FROM chat_messages
             WHERE from_number = $1 AND tenant_id = $2
             ORDER BY created_at DESC
@@ -940,7 +940,7 @@ async def get_chat_messages(
         """, phone, tenant_id, limit, offset)
     else:
         rows = await db.pool.fetch("""
-            SELECT id, from_number, role, content, created_at, correlation_id
+            SELECT id, from_number, role, content, created_at, correlation_id, content_attributes
             FROM chat_messages
             WHERE from_number = $1
             ORDER BY created_at DESC
@@ -961,7 +961,8 @@ async def get_chat_messages(
             "role": row['role'],
             "content": row['content'],
             "created_at": row['created_at'].isoformat(),
-            "is_derivhumano": is_derivhumano
+            "is_derivhumano": is_derivhumano,
+            "attachments": row['content_attributes'] if isinstance(row.get('content_attributes'), list) else []
         })
     
     return messages

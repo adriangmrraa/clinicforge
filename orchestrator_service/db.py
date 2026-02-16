@@ -1,6 +1,7 @@
 import asyncpg
 import os
 import json
+import uuid
 from typing import List, Tuple, Optional
 
 POSTGRES_DSN = os.getenv("POSTGRES_DSN")
@@ -423,7 +424,12 @@ class Database:
                     END IF;
                 END IF;
                 IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'chat_messages' AND column_name = 'content_attributes') THEN
-                    ALTER TABLE chat_messages ADD COLUMN content_attributes JSONB DEFAULT '{}';
+                    ALTER TABLE chat_messages ADD COLUMN content_attributes JSONB DEFAULT '[]'::jsonb;
+                ELSE
+                    -- Si ya existe pero el default es {}, lo cambiamos a []
+                    ALTER TABLE chat_messages ALTER COLUMN content_attributes SET DEFAULT '[]'::jsonb;
+                    -- Fix existing {} to []
+                    UPDATE chat_messages SET content_attributes = '[]'::jsonb WHERE content_attributes = '{}'::jsonb OR content_attributes IS NULL;
                 END IF;
                 IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'chat_messages' AND column_name = 'platform_metadata') THEN
                     ALTER TABLE chat_messages ADD COLUMN platform_metadata JSONB DEFAULT '{}';
@@ -551,7 +557,7 @@ class Database:
         async with self.pool.acquire() as conn:
             await conn.execute(query, from_number, role, content, correlation_id, tenant_id, 
                                uuid.UUID(conversation_id) if conversation_id else None, 
-                               json.dumps(content_attributes) if content_attributes else None)
+                               json.dumps(content_attributes) if content_attributes is not None else '[]')
         
         # Sincronizar conversación (Spec 18)
         await self.sync_conversation(tenant_id, "whatsapp", from_number, content, role == "user")
