@@ -1,6 +1,6 @@
 # ✅ DEPLOYMENT CHECKLIST - Backend Final
 
-## Estado Actual
+## Estado Actual 
 
 ✅ **main.py:** Actualizado con:
 - Lifespan context manager (db.connect/disconnect)
