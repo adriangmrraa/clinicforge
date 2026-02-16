@@ -8,7 +8,7 @@ import os
 import uuid
 from typing import Any, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from core.credentials import (
     CHATWOOT_BASE_URL,
