@@ -3,7 +3,8 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import {
   MessageCircle, Send, Calendar, User, Activity,
   Pause, Play, AlertCircle, Clock, ChevronLeft,
-  Search, XCircle, Bell, Volume2, VolumeX
+  Search, XCircle, Bell, Volume2, VolumeX,
+  Instagram, Facebook
 } from 'lucide-react';
 import api, { BACKEND_URL } from '../api/axios';
 import * as chatsApi from '../api/chats';
@@ -642,6 +643,51 @@ export default function ChatsView() {
     };
   };
 
+  const getPlatformConfig = (channel: string) => {
+    switch (channel.toLowerCase()) {
+      case 'instagram':
+        return {
+          color: 'text-pink-600',
+          bgColor: 'bg-[#E1306C]',
+          hoverBg: 'hover:bg-pink-50',
+          selectedBg: 'bg-pink-50',
+          borderColor: 'border-pink-500',
+          icon: <Instagram size={12} className="text-white" />,
+          label: 'Instagram'
+        };
+      case 'facebook':
+        return {
+          color: 'text-blue-600',
+          bgColor: 'bg-[#1877F2]',
+          hoverBg: 'hover:bg-blue-50',
+          selectedBg: 'bg-blue-50',
+          borderColor: 'border-blue-500',
+          icon: <Facebook size={12} className="text-white" />,
+          label: 'Facebook'
+        };
+      case 'whatsapp':
+        return {
+          color: 'text-green-600',
+          bgColor: 'bg-[#25D366]',
+          hoverBg: 'hover:bg-green-50',
+          selectedBg: 'bg-green-50',
+          borderColor: 'border-green-500',
+          icon: <MessageCircle size={12} className="text-white" />,
+          label: 'WhatsApp'
+        };
+      default:
+        return {
+          color: 'text-gray-600',
+          bgColor: 'bg-gray-600',
+          hoverBg: 'hover:bg-gray-50',
+          selectedBg: 'bg-gray-50',
+          borderColor: 'border-gray-500',
+          icon: <MessageCircle size={12} className="text-white" />,
+          label: channel
+        };
+    }
+  };
+
 
   // ============================================
   // RENDER
@@ -741,14 +787,15 @@ export default function ChatsView() {
               if (row.type === 'ycloud') {
                 const session = row.session;
                 const { avatarBg } = getStatusConfig(session);
+                const platform = getPlatformConfig('whatsapp');
                 const isHighlighted = highlightedSession === session.phone_number;
                 const isSelected = selectedSession?.phone_number === session.phone_number;
                 return (
                   <div
                     key={`ycloud-${session.phone_number}`}
                     onClick={() => { setSelectedSession(session); setSelectedChatwoot(null); }}
-                    className={`px-4 py-3 border-b cursor-pointer transition-all relative
-                      ${isSelected ? 'bg-medical-50' : 'hover:bg-gray-50 active:bg-gray-100'}
+                    className={`px-4 py-3 border-b cursor-pointer transition-all relative border-l-4
+                      ${isSelected ? `${platform.selectedBg} ${platform.borderColor}` : `hover:bg-gray-50 border-transparent`}
                       ${isHighlighted ? 'bg-orange-50 animate-pulse' : ''}
                     `}
                   >
@@ -757,18 +804,18 @@ export default function ChatsView() {
                         <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-lg shadow-sm ${avatarBg}`}>
                           {(session.patient_name || session.phone_number).charAt(0)}
                         </div>
-                        {session.status === 'human_handling' && (
-                          <div className="absolute -bottom-1 -right-1 bg-white p-0.5 rounded-full shadow-sm">
-                            <User size={12} className="text-orange-500 fill-orange-500" />
-                          </div>
-                        )}
+                        <div className={`absolute -bottom-1 -right-1 p-1 rounded-full shadow-sm border border-white ${platform.bgColor}`}>
+                          {platform.icon}
+                        </div>
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex justify-between items-baseline mb-0.5">
-                          <span className={`font-semibold truncate ${isSelected ? 'text-medical-900' : 'text-gray-900'}`}>
+                          <span className={`font-semibold truncate ${isSelected ? 'text-gray-900' : 'text-gray-900'}`}>
                             {session.patient_name || session.phone_number}
                           </span>
-                          <span className="text-[10px] text-gray-400 shrink-0 ml-1">WhatsApp</span>
+                          <span className={`text-[10px] font-bold ${platform.color} shrink-0 ml-1`}>
+                            {platform.label}
+                          </span>
                         </div>
                         <div className="flex justify-between items-center">
                           <p className={`text-sm truncate pr-4 ${session.unread_count > 0 ? 'text-gray-900 font-medium' : 'text-gray-500'}`}>
@@ -785,33 +832,42 @@ export default function ChatsView() {
                         </span>
                       </div>
                     </div>
-                    {session.urgency_level === 'CRITICAL' && (
-                      <div className="absolute top-3 right-4 lg:hidden w-2 h-2 rounded-full bg-red-500 animate-ping" />
-                    )}
                   </div>
                 );
               }
               const item = row.item;
               const isSelected = selectedChatwoot?.id === item.id;
+              const platform = getPlatformConfig(item.channel || 'chatwoot');
+              const avatarUrl = item.meta?.customer_avatar || item.avatar_url;
+
               return (
                 <div
                   key={`chatwoot-${item.id}`}
                   onClick={() => { setSelectedChatwoot(item); setSelectedSession(null); }}
-                  className={`px-4 py-3 border-b cursor-pointer transition-all
-                    ${isSelected ? 'bg-medical-50' : 'hover:bg-gray-50 active:bg-gray-100'}
+                  className={`px-4 py-3 border-b cursor-pointer transition-all relative border-l-4
+                    ${isSelected ? `${platform.selectedBg} ${platform.borderColor}` : `hover:bg-gray-50 border-transparent`}
                   `}
                 >
                   <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-lg shadow-sm bg-indigo-500 shrink-0">
-                      {(item.name || item.external_user_id || '?').charAt(0)}
+                    <div className="relative shrink-0">
+                      {avatarUrl ? (
+                        <img src={avatarUrl} alt={item.name} className="w-12 h-12 rounded-full object-cover shadow-sm" />
+                      ) : (
+                        <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-lg shadow-sm ${platform.bgColor}`}>
+                          {(item.name || item.external_user_id || '?').charAt(0)}
+                        </div>
+                      )}
+                      <div className={`absolute -bottom-1 -right-1 p-1 rounded-full shadow-sm border border-white ${platform.bgColor}`}>
+                        {platform.icon}
+                      </div>
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex justify-between items-baseline mb-0.5">
-                        <span className={`font-semibold truncate ${isSelected ? 'text-medical-900' : 'text-gray-900'}`}>
+                        <span className={`font-semibold truncate ${isSelected ? 'text-gray-900' : 'text-gray-900'}`}>
                           {item.name || item.external_user_id || 'Chatwoot'}
                         </span>
-                        <span className="text-[10px] text-indigo-600 shrink-0 ml-1">
-                          {(item.channel || 'chatwoot').charAt(0).toUpperCase() + (item.channel || 'chatwoot').slice(1)}
+                        <span className={`text-[10px] font-bold ${platform.color} shrink-0 ml-1`}>
+                          {platform.label}
                         </span>
                       </div>
                       <p className="text-sm truncate text-gray-500">{item.last_message || t('chats.no_messages')}</p>
@@ -845,30 +901,59 @@ export default function ChatsView() {
                   >
                     <ChevronLeft size={24} />
                   </button>
-                  {selectedSession ? (
-                    <>
-                      <div
-                        onClick={() => window.innerWidth < 1280 && setShowMobileContext(!showMobileContext)}
-                        className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold shrink-0 cursor-pointer ${selectedSession.status === 'human_handling' || selectedSession.status === 'silenced' ? 'bg-orange-500' : 'bg-medical-600'}`}
-                      >
-                        {(selectedSession.patient_name || selectedSession.phone_number).charAt(0)}
-                      </div>
-                      <div className="min-w-0 flex-1 cursor-pointer" onClick={() => window.innerWidth < 1280 && setShowMobileContext(!showMobileContext)}>
-                        <h3 className="font-bold text-gray-900 truncate leading-tight">{selectedSession.patient_name || t('chats.no_name')}</h3>
-                        <p className="text-xs text-gray-500 truncate">{selectedSession.phone_number}</p>
-                      </div>
-                    </>
-                  ) : selectedChatwoot ? (
-                    <>
-                      <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold shrink-0 bg-indigo-500">
-                        {(selectedChatwoot.name || selectedChatwoot.external_user_id || '?').charAt(0)}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <h3 className="font-bold text-gray-900 truncate leading-tight">{selectedChatwoot.name || selectedChatwoot.external_user_id || 'Chatwoot'}</h3>
-                        <p className="text-xs text-gray-500 truncate">{selectedChatwoot.channel} · {selectedChatwoot.external_user_id || ''}</p>
-                      </div>
-                    </>
-                  ) : null}
+                  {selectedSession ? (() => {
+                    const platform = getPlatformConfig('whatsapp');
+                    return (
+                      <>
+                        <div
+                          onClick={() => window.innerWidth < 1280 && setShowMobileContext(!showMobileContext)}
+                          className="relative shrink-0 cursor-pointer"
+                        >
+                          <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold ${selectedSession.status === 'human_handling' || selectedSession.status === 'silenced' ? 'bg-orange-500' : 'bg-medical-600'}`}>
+                            {(selectedSession.patient_name || selectedSession.phone_number).charAt(0)}
+                          </div>
+                          <div className={`absolute -bottom-0.5 -right-0.5 p-0.5 rounded-full shadow-sm border border-white ${platform.bgColor}`}>
+                            {platform.icon}
+                          </div>
+                        </div>
+                        <div className="min-w-0 flex-1 cursor-pointer" onClick={() => window.innerWidth < 1280 && setShowMobileContext(!showMobileContext)}>
+                          <h3 className="font-bold text-gray-900 truncate leading-tight flex items-center gap-2">
+                            {selectedSession.patient_name || t('chats.no_name')}
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded bg-green-50 ${platform.color} border border-green-100`}>WhatsApp</span>
+                          </h3>
+                          <p className="text-xs text-gray-500 truncate">{selectedSession.phone_number}</p>
+                        </div>
+                      </>
+                    );
+                  })() : selectedChatwoot ? (() => {
+                    const platform = getPlatformConfig(selectedChatwoot.channel || 'chatwoot');
+                    const avatarUrl = selectedChatwoot.meta?.customer_avatar || selectedChatwoot.avatar_url;
+                    return (
+                      <>
+                        <div className="relative shrink-0">
+                          {avatarUrl ? (
+                            <img src={avatarUrl} alt={selectedChatwoot.name} className="w-10 h-10 rounded-full object-cover shadow-sm" />
+                          ) : (
+                            <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold ${platform.bgColor}`}>
+                              {(selectedChatwoot.name || selectedChatwoot.external_user_id || '?').charAt(0)}
+                            </div>
+                          )}
+                          <div className={`absolute -bottom-0.5 -right-0.5 p-0.5 rounded-full shadow-sm border border-white ${platform.bgColor}`}>
+                            {platform.icon}
+                          </div>
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <h3 className="font-bold text-gray-900 truncate leading-tight flex items-center gap-2">
+                            {selectedChatwoot.name || selectedChatwoot.external_user_id || 'Chatwoot'}
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded border ${platform.selectedBg} ${platform.color} ${platform.borderColor}`}>
+                              {platform.label}
+                            </span>
+                          </h3>
+                          <p className="text-xs text-gray-500 truncate">{selectedChatwoot.external_user_id || ''}</p>
+                        </div>
+                      </>
+                    );
+                  })() : null}
                 </div>
 
                 <div className="flex items-center gap-1 sm:gap-2">
@@ -980,35 +1065,39 @@ export default function ChatsView() {
                     />
                   )}
 
-                {selectedSession && messages.map((message) => (
-                  <div
-                    key={message.id}
-                    className={`flex ${message.role === 'user' ? 'justify-start' : 'justify-end'}`}
-                  >
+                {selectedSession && (() => {
+                  const platform = getPlatformConfig('whatsapp');
+                  return messages.map((message) => (
                     <div
-                      className={`max-w-[70%] rounded-lg px-4 py-3 ${message.role === 'user'
-                        ? 'bg-white shadow-sm'
-                        : message.is_derivhumano
-                          ? 'bg-orange-100 border border-orange-300 shadow-sm text-gray-800'
-                          : 'bg-blue-600 text-white shadow-sm'
-                        }`}
+                      key={message.id}
+                      className={`flex ${message.role === 'user' ? 'justify-start' : 'justify-end'}`}
                     >
-                      {message.is_derivhumano && (
-                        <div className="flex items-center gap-1 text-xs text-orange-600 mb-1">
-                          <User size={12} />
-                          <span className="font-medium">{t('chats.auto_handoff')}</span>
-                        </div>
-                      )}
-                      <p className="text-sm">{message.content}</p>
-                      <p className={`text-xs mt-1 ${message.role === 'user' ? 'text-gray-400' : 'text-blue-200'}`}>
-                        {new Date(message.created_at).toLocaleTimeString()}
-                      </p>
+                      <div
+                        className={`max-w-[70%] rounded-lg px-4 py-3 ${message.role === 'user'
+                          ? 'bg-white shadow-sm'
+                          : message.is_derivhumano
+                            ? 'bg-orange-100 border border-orange-300 shadow-sm text-gray-800'
+                            : `${platform.bgColor} text-white shadow-sm`
+                          }`}
+                      >
+                        {message.is_derivhumano && (
+                          <div className="flex items-center gap-1 text-xs text-orange-600 mb-1">
+                            <User size={12} />
+                            <span className="font-medium">{t('chats.auto_handoff')}</span>
+                          </div>
+                        )}
+                        <p className="text-sm">{message.content}</p>
+                        <p className={`text-xs mt-1 ${message.role === 'user' ? 'text-gray-400' : 'opacity-70'}`}>
+                          {new Date(message.created_at).toLocaleTimeString()}
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ));
+                })()}
 
-                {selectedChatwoot && (
-                  loadingChatwootMessages ? (
+                {selectedChatwoot && (() => {
+                  const platform = getPlatformConfig(selectedChatwoot.channel || 'chatwoot');
+                  return loadingChatwootMessages ? (
                     <div className="p-4 text-center text-gray-500">{t('common.loading')}</div>
                   ) : (
                     [...chatwootMessages].reverse().map((msg) => (
@@ -1016,16 +1105,16 @@ export default function ChatsView() {
                         key={msg.id}
                         className={`flex ${msg.role === 'user' ? 'justify-start' : 'justify-end'}`}
                       >
-                        <div className={`max-w-[70%] rounded-lg px-4 py-3 ${msg.role === 'user' ? 'bg-white shadow-sm' : 'bg-indigo-600 text-white shadow-sm'}`}>
+                        <div className={`max-w-[70%] rounded-lg px-4 py-3 ${msg.role === 'user' ? 'bg-white shadow-sm' : `${platform.bgColor} text-white shadow-sm`}`}>
                           <p className="text-sm">{msg.content}</p>
-                          <p className={`text-xs mt-1 ${msg.role === 'user' ? 'text-gray-400' : 'text-indigo-200'}`}>
+                          <p className={`text-xs mt-1 ${msg.role === 'user' ? 'text-gray-400' : 'opacity-70'}`}>
                             {msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString() : ''}
                           </p>
                         </div>
                       </div>
                     ))
-                  )
-                )}
+                  );
+                })()}
 
                 <div ref={messagesEndRef} />
               </div>
@@ -1053,7 +1142,10 @@ export default function ChatsView() {
                         else handleSendMessage(e as any);
                       }
                     }}
-                    className={`flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-medical-500 bg-white text-gray-900 ${selectedSession && selectedSession.is_window_open === false ? 'bg-gray-100 cursor-not-allowed opacity-75' : ''}`}
+                    className={`flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 bg-white text-gray-900 
+                      ${selectedSession && selectedSession.is_window_open === false ? 'bg-gray-100 cursor-not-allowed opacity-75' : ''}
+                      ${selectedSession ? 'focus:ring-green-500' : selectedChatwoot?.channel === 'instagram' ? 'focus:ring-pink-500' : selectedChatwoot?.channel === 'facebook' ? 'focus:ring-blue-500' : 'focus:ring-medical-500'}
+                    `}
                   />
                   <button
                     type="submit"
@@ -1062,10 +1154,16 @@ export default function ChatsView() {
                       !newMessage.trim() ||
                       !!(selectedSession && selectedSession.is_window_open === false)
                     }
-                    className="p-2 bg-medical-600 text-white rounded-lg hover:bg-medical-700 disabled:opacity-50 flex items-center justify-center transition-colors min-w-[44px]"
+                    className={`p-2 text-white rounded-lg disabled:opacity-50 flex items-center justify-center transition-colors min-w-[44px]
+                      ${selectedSession ? 'bg-green-600 hover:bg-green-700' : selectedChatwoot?.channel === 'instagram' ? 'bg-pink-600 hover:bg-pink-700' : selectedChatwoot?.channel === 'facebook' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-medical-600 hover:bg-medical-700'}
+                    `}
                     title={selectedSession && selectedSession.is_window_open === false ? "Ventana de 24hs cerrada" : "Enviar mensaje"}
                   >
-                    <Send size={20} />
+                    {sending ? (
+                      <Activity size={20} className="animate-spin" />
+                    ) : (
+                      <Send size={20} />
+                    )}
                   </button>
                 </div>
               </form>
