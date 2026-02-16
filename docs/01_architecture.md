@@ -4,7 +4,7 @@ Este documento describe la estructura técnica, el flujo de datos y la interacci
 
 ## 1. Diagrama de Bloques (Conceptual)
 
-```
+``` 
 Usuario WhatsApp (Paciente)
         |
         | Audio/Texto
