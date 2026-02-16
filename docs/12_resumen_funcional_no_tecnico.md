@@ -2,7 +2,7 @@
 
 Este documento explica de forma sencilla, sin tecnicismos, qué hace este sistema y cómo ayuda a que la clínica funcione mejor.
 
----
+--- 
 
 ## 1. El Concepto: La Asistente Virtual de la Dra. Laura
 Imagina que tenés una secretaria muy eficiente que nunca duerme. Ella atiende el WhatsApp de la clínica, responde dudas de los pacientes y anota los turnos. Pero no es solo un bot que repite opciones; ella "entiende" lo que le dicen, ya sea por texto o por audio, usando un tono cálido y natural.
