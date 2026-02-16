@@ -67,7 +67,9 @@ CREATE TABLE IF NOT EXISTS credentials (
     scope TEXT DEFAULT 'global',
     tenant_id INTEGER REFERENCES tenants(id) ON DELETE CASCADE,
     description TEXT,
-    created_at TIMESTAMPTZ DEFAULT NOW()
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE (tenant_id, name)
 );
 
 -- System Events (For monitoring and debugging)

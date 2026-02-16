@@ -149,7 +149,25 @@ class Database:
                 WHEN others THEN null; -- Ignorar si ya se aplicó o falla
             END $$;
             """,
-            # Parche 4: Asegurar constraint unique (tenant_id, phone_number) en patients
+            # Parche 4: Asegurar updated_at en tabla credentials
+            """
+            DO $$ 
+            BEGIN 
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='credentials' AND column_name='updated_at') THEN
+                    ALTER TABLE credentials ADD COLUMN updated_at TIMESTAMPTZ DEFAULT NOW();
+                END IF;
+            END $$;
+            """,
+            # Parche 5: Asegurar constraint unique (tenant_id, name) en credentials
+            """
+            DO $$ 
+            BEGIN 
+                IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE table_name='credentials' AND constraint_name='idx_credentials_tenant_name_unique') THEN
+                    ALTER TABLE credentials ADD CONSTRAINT idx_credentials_tenant_name_unique UNIQUE (tenant_id, name);
+                END IF;
+            END $$;
+            """,
+            # Parche 6: Asegurar constraint unique (tenant_id, phone_number) en patients
             """
             DO $$ 
             BEGIN 
