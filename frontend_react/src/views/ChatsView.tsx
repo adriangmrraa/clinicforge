@@ -344,6 +344,15 @@ export default function ChatsView() {
     }
     setSelectedSession(null);
     setPatientContext(null);
+
+    // Intentar cargar contexto clínico si hay teléfono en el contacto de Chatwoot
+    if (selectedChatwoot.external_user_id && selectedChatwoot.external_user_id.startsWith('+')) {
+      fetchPatientContext(selectedChatwoot.external_user_id);
+    } else if (selectedChatwoot.external_user_id && /^\d+$/.test(selectedChatwoot.external_user_id)) {
+      // Si es solo números sin +, normalizar
+      fetchPatientContext('+' + selectedChatwoot.external_user_id);
+    }
+
     let isInitial = true;
     const load = async () => {
       if (isInitial) setLoadingChatwootMessages(true);
@@ -863,7 +872,7 @@ export default function ChatsView() {
                 </div>
 
                 <div className="flex items-center gap-1 sm:gap-2">
-                  {selectedSession && (
+                  {(selectedSession || selectedChatwoot) && (
                     <button
                       onClick={() => setShowMobileContext(!showMobileContext)}
                       className="p-2 text-medical-600 hover:bg-medical-50 rounded-full lg:hidden transition-colors"
@@ -1063,15 +1072,15 @@ export default function ChatsView() {
             </div>
           </div>
 
-          {/* Clinical Context Panel - solo para YCloud (paciente con ficha) */}
-          {selectedSession && (
+          {/* Clinical Context Panel - Unificado (WhatsApp + Meta via Chatwoot) */}
+          {(selectedSession || selectedChatwoot) && (
             <div className={`
-            ${showMobileContext ? 'flex' : 'hidden'}
-            xl:flex flex-col
-            fixed inset-0 z-40 bg-white
-            xl:relative xl:z-0 xl:w-80 xl:border-l xl:inset-auto
-            animate-slide-in xl:animate-none
-          `}>
+              ${showMobileContext ? 'flex' : 'hidden'}
+              xl:flex flex-col
+              fixed inset-0 z-40 bg-white
+              xl:relative xl:z-0 xl:w-80 xl:border-l xl:inset-auto
+              animate-slide-in xl:animate-none
+            `}>
               {/* Context Header (Mobile only) */}
               <div className="p-4 border-b flex justify-between items-center xl:hidden">
                 <div className="flex items-center gap-2">
@@ -1093,56 +1102,65 @@ export default function ChatsView() {
               </div>
 
               <div className="flex-1 overflow-y-auto">
-                {/* AI Status */}
-                <div className={`p-3 rounded-lg ${selectedSession.status === 'human_handling' || selectedSession.status === 'silenced'
-                  ? 'bg-orange-50 border border-orange-200'
-                  : 'bg-green-50 border border-green-200'
-                  }`}>
-                  <div className="flex items-center gap-2 mb-1">
-                    {selectedSession.status === 'human_handling' || selectedSession.status === 'silenced' ? (
-                      <User size={16} className="text-orange-600" />
-                    ) : (
-                      <Activity size={16} className="text-green-600" />
-                    )}
-                    <span className="font-medium text-sm">
-                      {t('chats.bot_status')}
-                    </span>
-                  </div>
-                  <p className="text-sm text-gray-600">
-                    {selectedSession.status === 'human_handling'
-                      ? 'Atendido por persona'
-                      : selectedSession.status === 'silenced'
-                        ? t('chats.silenced_24h')
-                        : t('chats.ia_active')}
-                  </p>
-                  {selectedSession.human_override_until && (
-                    <p className="text-xs text-gray-500 mt-1">
-                      Hasta: {new Date(selectedSession.human_override_until).toLocaleString()}
-                    </p>
-                  )}
-                </div>
+                {/* AI Status / Bot Status */}
+                {(() => {
+                  const isHuman = selectedSession
+                    ? (selectedSession.status === 'human_handling' || selectedSession.status === 'silenced')
+                    : selectedChatwoot?.is_locked;
+                  const overrideUntil = selectedSession?.human_override_until;
 
-                {/* Patient / Contact Info — Lead vs Paciente (solo con turno = ficha con historial) */}
+                  return (
+                    <div className={`p-3 rounded-lg ${isHuman
+                      ? 'bg-orange-50 border border-orange-200'
+                      : 'bg-green-50 border border-green-200'
+                      }`}>
+                      <div className="flex items-center gap-2 mb-1">
+                        {isHuman ? (
+                          <User size={16} className="text-orange-600" />
+                        ) : (
+                          <Activity size={16} className="text-green-600" />
+                        )}
+                        <span className="font-medium text-sm">
+                          {t('chats.bot_status')}
+                        </span>
+                      </div>
+                      <p className="text-sm text-gray-600">
+                        {isHuman
+                          ? 'Atendido por persona'
+                          : t('chats.ia_active')}
+                      </p>
+                      {overrideUntil && (
+                        <p className="text-xs text-gray-500 mt-1">
+                          Hasta: {new Date(overrideUntil).toLocaleString()}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {/* Patient / Contact Info — Lead vs Paciente */}
                 {(() => {
                   const hasAppointments = !!(patientContext?.last_appointment || patientContext?.upcoming_appointment);
                   const apiPatient = (patientContext as { patient?: { first_name?: string; last_name?: string } })?.patient;
                   const nameFromApi = apiPatient ? [apiPatient.first_name, apiPatient.last_name].filter(Boolean).join(' ').trim() : '';
-                  const displayName = (patientContext as any)?.patient_name || nameFromApi || selectedSession.patient_name || selectedSession.phone_number;
+                  const displayName = (patientContext as any)?.patient_name || nameFromApi || selectedSession?.patient_name || selectedChatwoot?.name || selectedSession?.phone_number || selectedChatwoot?.external_user_id;
+                  const displayPhone = selectedSession?.phone_number || selectedChatwoot?.external_user_id || '';
+
                   return (
-                    <>
+                    <div className="mt-4 space-y-4 px-3">
                       <div className={`p-3 rounded-lg ${hasAppointments ? 'bg-gray-50' : 'bg-amber-50 border border-amber-200'}`}>
                         {hasAppointments ? (
                           <>
                             <h4 className="text-xs font-medium text-gray-500 mb-2">{t('chats.patient_label')}</h4>
                             <p className="font-medium">{displayName}</p>
-                            <p className="text-sm text-gray-500">{selectedSession.phone_number}</p>
+                            <p className="text-sm text-gray-500">{displayPhone}</p>
                           </>
                         ) : (
                           <>
-                            <h4 className="text-xs font-medium text-amber-700 mb-2">{t('chats.contact_no_appointments')}</h4>
+                            <h4 className="text-xs font-medium text-amber-700 mb-2">Lead (Sin turnos)</h4>
                             <p className="font-medium">{displayName}</p>
-                            <p className="text-sm text-gray-500">{selectedSession.phone_number}</p>
-                            <p className="text-xs text-amber-700 mt-2">{t('chats.no_appointments_yet')}</p>
+                            <p className="text-sm text-gray-500">{displayPhone}</p>
+                            <p className="text-xs text-amber-700 mt-2">Este contacto aún no es paciente registrado.</p>
                           </>
                         )}
                       </div>
@@ -1214,7 +1232,7 @@ export default function ChatsView() {
                           <p className="text-sm text-gray-500 italic">{t('chats.no_clinical_history')}</p>
                         </div>
                       )}
-                    </>
+                    </div>
                   );
                 })()}
               </div>

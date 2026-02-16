@@ -198,17 +198,38 @@ async def get_patient_clinical_context(
     Si se pasa tenant_id_override (ej. CEO eligió una clínica en Chats), se usa si el usuario tiene acceso.
     """
     tenant_id = tenant_id_override if (tenant_id_override is not None and tenant_id_override in allowed_ids) else resolved_tenant_id
-    normalized_phone = normalize_phone(phone)
     
-    # 1. Buscar paciente con isolation
-    patient = await db.pool.fetchrow("""
-        SELECT id, first_name, last_name, phone_number, status, urgency_level, urgency_reason, preferred_schedule,
-               acquisition_source, meta_ad_id, meta_ad_headline, meta_ad_body
-        FROM patients 
-        WHERE tenant_id = $1 AND (phone_number = $2 OR phone_number = $3)
-        AND status != 'deleted'
-    """, tenant_id, normalized_phone, phone)
+    # 1. Resolver paciente (por Teléfono o por ID de Plataforma)
+    # Si el "phone" no empieza con + o no son solo números, lo tratamos como plataforma_id
+    is_pure_platform_id = not (phone.startswith('+') or phone.isdigit())
     
+    patient = None
+    if not is_pure_platform_id:
+        normalized_phone = normalize_phone(phone)
+        patient = await db.pool.fetchrow("""
+            SELECT id, first_name, last_name, phone_number, status, urgency_level, urgency_reason, preferred_schedule,
+                   acquisition_source, meta_ad_id, meta_ad_headline, meta_ad_body, external_ids
+            FROM patients 
+            WHERE tenant_id = $1 AND (phone_number = $2 OR phone_number = $3)
+            AND status != 'deleted'
+        """, tenant_id, normalized_phone, phone)
+    
+    if not patient:
+        # Buscar por external_ids (IG/FB)
+        # Probamos el ID contra todas las claves del JSONB
+        patient = await db.pool.fetchrow("""
+            SELECT id, first_name, last_name, phone_number, status, urgency_level, urgency_reason, preferred_schedule,
+                   acquisition_source, meta_ad_id, meta_ad_headline, meta_ad_body, external_ids
+            FROM patients 
+            WHERE tenant_id = $1 
+            AND (
+                external_ids->>'instagram' = $2 OR 
+                external_ids->>'facebook' = $2 OR 
+                external_ids->>'chatwoot' = $2
+            )
+            AND status != 'deleted'
+        """, tenant_id, phone)
+
     if not patient:
         # Si no existe, es un lead puro sin registro previo
         return {

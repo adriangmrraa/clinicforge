@@ -470,6 +470,16 @@ class Database:
             END $$;
             CREATE INDEX IF NOT EXISTS idx_patients_acquisition_source ON patients(acquisition_source);
             """,
+            # Parche 20: Soporte de Identidad Multi-plataforma (JSONB)
+            """
+            DO $$
+            BEGIN
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'patients' AND column_name = 'external_ids') THEN
+                    ALTER TABLE patients ADD COLUMN external_ids JSONB DEFAULT '{}';
+                    CREATE INDEX IF NOT EXISTS idx_patients_external_ids ON patients USING GIN (external_ids);
+                END IF;
+            END $$;
+            """,
         ]
 
         async with self.pool.acquire() as conn:
@@ -518,15 +528,47 @@ class Database:
         async with self.pool.acquire() as conn:
             await conn.execute(query, from_number, role, content, correlation_id, tenant_id)
 
-    async def ensure_patient_exists(self, phone_number: str, tenant_id: int, first_name: str = 'Visitante', status: str = 'guest'):
+    async def ensure_patient_exists(self, phone_number: Optional[str], tenant_id: int, first_name: str = 'Visitante', status: str = 'guest', external_id: Optional[dict] = None):
         """
-        Ensures a patient record exists for the given phone number.
-        If it exists as a 'guest', it can be updated to 'active' or update its name.
+        Asegura que exista un registro de paciente/lead.
+        Soporta búsqueda por phone_number (WhatsApp) o por external_id (Meta/IG/FB).
         """
-        query = """
-        INSERT INTO patients (tenant_id, phone_number, first_name, status, created_at)
-        VALUES ($1, $2, $3, $4, NOW())
-        ON CONFLICT (tenant_id, phone_number) 
+        # 1. Intentar buscar por external_id si viene (ej: {"instagram": "user_id"})
+        if external_id:
+            for platform, platform_id in external_id.items():
+                query_lookup = """
+                    SELECT id, status FROM patients 
+                    WHERE tenant_id = $1 AND external_ids->>$2 = $3
+                    LIMIT 1
+                """
+                async with self.pool.acquire() as conn:
+                    row = await conn.fetchrow(query_lookup, tenant_id, platform, str(platform_id))
+                    if row:
+                        return row
+
+        # 2. Intentar buscar por phone_number si viene
+        if phone_number:
+            query_lookup_phone = """
+                SELECT id, status FROM patients 
+                WHERE tenant_id = $1 AND phone_number = $2
+                LIMIT 1
+            """
+            async with self.pool.acquire() as conn:
+                row = await conn.fetchrow(query_lookup_phone, tenant_id, phone_number)
+                if row:
+                    # Si encontramos por teléfono y traemos external_id, actualizamos para vincular
+                    if external_id:
+                        await conn.execute("""
+                            UPDATE patients SET external_ids = external_ids || $1::jsonb, updated_at = NOW()
+                            WHERE id = $2
+                        """, json.dumps(external_id), row['id'])
+                    return row
+
+        # 3. Si no existe, crear nuevo (Lead o Paciente según status)
+        query_insert = """
+        INSERT INTO patients (tenant_id, phone_number, first_name, status, external_ids, created_at)
+        VALUES ($1, $2, $3, $4, $5::jsonb, NOW())
+        ON CONFLICT (tenant_id, phone_number) WHERE phone_number IS NOT NULL
         DO UPDATE SET 
             first_name = CASE 
                 WHEN patients.status = 'guest' 
@@ -536,11 +578,12 @@ class Database:
                 ELSE patients.first_name 
             END,
             status = CASE WHEN patients.status = 'guest' AND EXCLUDED.status = 'active' THEN 'active' ELSE patients.status END,
+            external_ids = patients.external_ids || EXCLUDED.external_ids,
             updated_at = NOW() 
         RETURNING id, status
         """
         async with self.pool.acquire() as conn:
-            return await conn.fetchrow(query, tenant_id, phone_number, first_name, status)
+            return await conn.fetchrow(query_insert, tenant_id, phone_number, first_name, status, json.dumps(external_id or {}))
 
     async def get_chat_history(self, from_number: str, limit: int = 15, tenant_id: Optional[int] = None) -> List[dict]:
         """Returns list of {'role': ..., 'content': ...} in chronological order. Opcional tenant_id para aislamiento por clínica."""
