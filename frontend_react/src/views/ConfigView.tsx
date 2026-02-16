@@ -114,11 +114,10 @@ export default function ConfigView() {
                                     type="button"
                                     onClick={() => handleLanguageChange(opt.value)}
                                     disabled={saving}
-                                    className={`px-4 py-2.5 rounded-xl font-medium transition-colors border-2 min-h-[44px] touch-manipulation ${
-                                        selectedLang === opt.value
+                                    className={`px-4 py-2.5 rounded-xl font-medium transition-colors border-2 min-h-[44px] touch-manipulation ${selectedLang === opt.value
                                             ? 'border-blue-600 bg-blue-50 text-blue-700'
                                             : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50'
-                                    }`}
+                                        }`}
                                 >
                                     {saving && selectedLang === opt.value ? (
                                         <Loader2 className="w-5 h-5 animate-spin inline-block" />
@@ -152,14 +151,13 @@ export default function ConfigView() {
                                 <div className="flex gap-2 mb-3">
                                     <input
                                         readOnly
-                                        value={`${(chatwootConfig.api_base || '').replace(/\/$/, '')}${chatwootConfig.webhook_path}?access_token=${chatwootConfig.access_token}`}
+                                        value={chatwootConfig.full_webhook_url}
                                         className="flex-1 px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-sm font-mono"
                                     />
                                     <button
                                         type="button"
                                         onClick={() => {
-                                            const url = `${(chatwootConfig.api_base || '').replace(/\/$/, '')}${chatwootConfig.webhook_path}?access_token=${chatwootConfig.access_token}`;
-                                            navigator.clipboard.writeText(url);
+                                            navigator.clipboard.writeText(chatwootConfig.full_webhook_url);
                                             setSuccess('URL copiada al portapapeles');
                                             setTimeout(() => setSuccess(null), 3000);
                                         }}

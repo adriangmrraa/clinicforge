@@ -27,6 +27,7 @@ from admin_routes import get_resolved_tenant_id
 
 @router.get("/admin/integrations/chatwoot/config")
 async def get_chatwoot_webhook_config(
+    request: Request,
     tenant_id: int = Depends(get_resolved_tenant_id),
 ) -> dict:
     try:
@@ -42,12 +43,25 @@ async def get_chatwoot_webhook_config(
                 secure_token,
             )
             logger.info(f"✅ chatwoot_webhook_token_generated tenant_id={tenant_id}")
+        # Detección dinámica de URL base (Nexus Sovereign Protocol)
+        # 1. Intentar desde env 
+        # 2. Si no, usar request.base_url (detecta protocolo y dominio/puerto actual)
         api_base = os.getenv("BASE_URL", "").rstrip("/")
+        if not api_base:
+            # Reconstrucción manual para mayor precisión con Proxies
+            scheme = request.headers.get("x-forwarded-proto", request.url.scheme)
+            host = request.headers.get("x-forwarded-host", request.url.netloc)
+            api_base = f"{scheme}://{host}"
+            
+        webhook_path = "/admin/chatwoot/webhook"
+        full_url = f"{api_base}{webhook_path}?access_token={secure_token}"
+            
         return {
-            "webhook_path": "/admin/chatwoot/webhook",
+            "webhook_path": webhook_path,
             "access_token": secure_token,
             "tenant_id": tenant_id,
             "api_base": api_base,
+            "full_webhook_url": full_url,
         }
     except Exception as e:
         logger.exception(f"🔥 Error en get_chatwoot_webhook_config para tenant={tenant_id}: {e}")

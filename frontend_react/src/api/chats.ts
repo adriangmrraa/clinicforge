@@ -62,12 +62,14 @@ export async function fetchChatwootConfig(): Promise<{
   access_token: string;
   tenant_id: number;
   api_base: string;
+  full_webhook_url: string;
 }> {
   const res = await api.get<{
     webhook_path: string;
     access_token: string;
     tenant_id: number;
     api_base: string;
+    full_webhook_url: string;
   }>('/admin/integrations/chatwoot/config');
   return res.data;
 }
