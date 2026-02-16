@@ -6,11 +6,11 @@ RUN npm install --legacy-peer-deps
 COPY . .
 
 # Placeholders — real values injected at container start
-ENV VITE_API_URL=RUNTIME_REPLACE
-ENV VITE_API_BASE_URL=RUNTIME_REPLACE
-ENV VITE_BFF_URL=RUNTIME_REPLACE
-ENV VITE_WS_URL=RUNTIME_REPLACE
-ENV VITE_ADMIN_TOKEN=RUNTIME_REPLACE
+ENV VITE_API_URL=""
+ENV VITE_API_BASE_URL=""
+ENV VITE_BFF_URL=""
+ENV VITE_WS_URL=""
+ENV VITE_ADMIN_TOKEN=""
 ENV VITE_APP_NAME=ClinicForge
 
 # Skip tsc (strict mode breaks CI). Vite handles TS fine.

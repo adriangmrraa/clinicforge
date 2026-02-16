@@ -1,6 +1,9 @@
 #!/bin/sh
 # Runtime environment injection for Vite SPA
 # Writes VITE_* env vars to window.__ENV__ so the app can read them at runtime
+echo "🔍 Checking runtime environment variables..."
+[ -z "$VITE_API_URL" ] && echo "⚠️ VITE_API_URL is missing" || echo "✅ VITE_API_URL is present"
+[ -z "$VITE_ADMIN_TOKEN" ] && echo "⚠️ VITE_ADMIN_TOKEN is missing" || echo "✅ VITE_ADMIN_TOKEN is present"
 
 cat <<EOF > /usr/share/nginx/html/env-config.js
 window.__ENV__ = {

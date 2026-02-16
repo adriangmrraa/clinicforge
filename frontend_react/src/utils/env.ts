@@ -30,13 +30,13 @@ declare global {
 export function getEnv(key: keyof RuntimeEnv): string {
     // 1. Runtime injection (Docker/EasyPanel)
     const runtimeVal = window.__ENV__?.[key];
-    if (runtimeVal && !runtimeVal.startsWith('__VITE_')) {
+    if (runtimeVal && runtimeVal !== 'RUNTIME_REPLACE' && !runtimeVal.startsWith('__VITE_')) {
         return runtimeVal;
     }
 
     // 2. Vite build-time injection (local dev)
     const viteVal = (import.meta.env as Record<string, string>)?.[key];
-    if (viteVal && !viteVal.startsWith('__VITE_')) {
+    if (viteVal && viteVal !== 'RUNTIME_REPLACE' && !viteVal.startsWith('__VITE_')) {
         return viteVal;
     }
 
