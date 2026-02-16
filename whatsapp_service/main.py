@@ -433,7 +433,31 @@ async def ycloud_webhook(request: Request):
                 raw_res = await forward_to_orchestrator(payload, headers)
                 logger.info("orchestrator_response_received", status=raw_res.get("status"))
                 
-                return {"status": "processed", "correlation_id": correlation_id, "source": "audio"}
+                # ✅ Procesar respuesta del orchestrator y enviar a WhatsApp (Spec 21)
+                try:
+                    orch_res = OrchestratorResult(**raw_res)
+                    
+                    if orch_res.status == "duplicate":
+                        logger.info("audio_duplicate_ignored", provider_message_id=payload.get("provider_message_id"))
+                        return {"status": "duplicate", "correlation_id": correlation_id}
+                    
+                    if orch_res.send:
+                        if not YCLOUD_API_KEY:
+                            logger.error("missing_ycloud_api_key_audio_reply")
+                        else:
+                            msgs = orch_res.messages
+                            if not msgs and orch_res.text:
+                                msgs = [OrchestratorMessage(text=orch_res.text)]
+                            
+                            if msgs:
+                                await send_sequence(msgs, from_n, to_n, event.get("id"), correlation_id)
+                                logger.info("audio_response_sent", success=True, message_count=len(msgs))
+                    
+                    return {"status": "processed", "correlation_id": correlation_id, "source": "audio"}
+                    
+                except Exception as e:
+                    logger.error("audio_response_processing_error", error=str(e))
+                    return {"status": "error", "correlation_id": correlation_id, "error": str(e)}
             
             return {"status": "ignored_no_link", "type": msg_type}
         
