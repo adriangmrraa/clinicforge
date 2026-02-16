@@ -1,4 +1,4 @@
-# Índice de documentación – Dentalogic
+# Índice de documentación – ClinicForge
 
 Este documento lista **todos** los archivos de la carpeta `docs/` con una breve descripción. Sirve como mapa para encontrar rápidamente qué documento consultar.  
 **Protocolo:** Non-Destructive Fusion. Última revisión: 2026-02.
@@ -10,7 +10,7 @@ Este documento lista **todos** los archivos de la carpeta `docs/` con una breve 
 | # | Archivo | Contenido |
 |---|---------|-----------|
 | 01 | [01_architecture.md](01_architecture.md) | Arquitectura del sistema: diagrama, microservicios (Orchestrator, WhatsApp), tools clínicas, cerebro híbrido, Socket.IO, multi-tenant, analytics. |
-| 02 | [02_environment_variables.md](02_environment_variables.md) | Variables de entorno por servicio: Orchestrator, WhatsApp, PostgreSQL, Redis, OpenAI, YCloud, Google, JWT, ADMIN_TOKEN, CREDENTIALS_FERNET_KEY. |
+| 02 | [02_environment_variables.md](02_environment_variables.md) | Variables de entorno por servicio: Orchestrator, WhatsApp, PostgreSQL, Redis, OpenAI, YCloud, Google, JWT, ADMIN_TOKEN, CREDENTIALS_FERNET_KEY, Meta Ads. |
 | 03 | [03_deployment_guide.md](03_deployment_guide.md) | Guía de despliegue: EasyPanel, configuración de producción, service accounts. |
 | 04 | [04_agent_logic_and_persona.md](04_agent_logic_and_persona.md) | Lógica del agente dental: persona, reglas de conversación, tools (check_availability, book_appointment, triage, etc.), flujo de datos. |
 | 05 | [05_developer_notes.md](05_developer_notes.md) | Notas para desarrolladores: añadir tools, paginación, debugging, Maintenance Robot, i18n, agenda móvil, analytics, landing. |
@@ -40,13 +40,18 @@ Este documento lista **todos** los archivos de la carpeta `docs/` con una breve 
 | [CONTEXTO_AGENTE_IA.md](CONTEXTO_AGENTE_IA.md) | Punto de entrada para agentes IA: qué es el proyecto, stack, carpetas, reglas, API, rutas frontend, BD, i18n, índice de documentación, tareas frecuentes. |
 | [Instrucciones para IA.md](Instrucciones%20para%20IA.md) | Instrucciones dirigidas a una IA que trabaje en el proyecto. |
 | [MATRIZ_DECISION_SKILLS.md](MATRIZ_DECISION_SKILLS.md) | Matriz de decisión para elegir skills según tipo de tarea. |
+| [meta_ads_audit_2026-02-16.md](meta_ads_audit_2026-02-16.md) | **Meta Ads:** Auditoría pre-despliegue. Bugs encontrados/corregidos, checklists de soberanía, migración, frontend y seguridad. |
+| [meta_ads_backend.md](meta_ads_backend.md) | **Meta Ads:** Arquitectura backend completa. Graph API client, atribución First Touch, enrichment async (Redis), IA contextual, endpoints, variables de entorno, diagrama de flujo Mermaid. |
+| [meta_ads_database.md](meta_ads_database.md) | **Meta Ads:** Migración DB (Parche 19). Esquema de columnas, índices, flujo de escritura, queries de lectura, rollback, notas de performance. |
+| [meta_ads_frontend.md](meta_ads_frontend.md) | **Meta Ads:** Componentes frontend (MarketingPerformanceCard, AdContextCard), interfaces TypeScript, integración en PatientDetail/DashboardView/ChatsView. |
 | [mision_maestra_agenda.md](mision_maestra_agenda.md) | Misión maestra de la agenda: objetivos y criterios. |
+| [Plan Maestro_ Integración Meta Ads & Dentalogic.md](Plan%20Maestro_%20Integraci%C3%B3n%20Meta%20Ads%20%26%20Dentalogic.md) | Plan maestro original de la integración Meta Ads: alcance, fases, criterios de éxito. |
 | [PROMPT_CONTEXTO_IA_COMPLETO.md](PROMPT_CONTEXTO_IA_COMPLETO.md) | Bloque de texto listo para copiar/pegar al inicio de una conversación con una IA: contexto global, reglas, workflows, skills, checklist. |
 | [PROTOCOLO_AUTONOMIA_SDD.md](PROTOCOLO_AUTONOMIA_SDD.md) | Protocolo de autonomía SDD v2.0: ciclo de retroalimentación, criterios de detención, soberanía de datos. |
 | [REFERENCIA_VERSION_ESTABLE_CHATWOOT.md](REFERENCIA_VERSION_ESTABLE_CHATWOOT.md) | Enlaces a spec y plan de Chatwoot en Version Estable; estado de implementación en CLINICASV1.0 y comprobación de alineación. |
 | [riesgos_entendimiento_agente_agendar.md](riesgos_entendimiento_agente_agendar.md) | Riesgos de entendimiento del agente al agendar: análisis y mitigaciones. |
-| [SPECS_IMPLEMENTADOS_INDICE.md](SPECS_IMPLEMENTADOS_INDICE.md) | Índice de especificaciones implementadas: consolidación de .spec.md retirados; dónde está documentada cada funcionalidad. |
-| [TRANSFORMACION_AGNOSTICA_NICHO.md](TRANSFORMACION_AGNOSTICA_NICHO.md) | Transformación a plataforma agnóstica de nicho: base reutilizable, qué cambia por nicho, ejemplo CRM vendedores/setters, 10 prompts clave para empezar; para arrancar conversación con agente de código (leer con CONTEXTO_AGENTE_IA y PROMPT_CONTEXTO_IA_COMPLETO). |
+| [SPECS_IMPLEMENTADOS_INDICE.md](SPECS_IMPLEMENTADOS_INDICE.md) | Índice de especificaciones implementadas: consolidación de .spec.md retirados; dónde está documentada cada funcionalidad. Incluye Specs 01-12 de Meta Ads. |
+| [TRANSFORMACION_AGNOSTICA_NICHO.md](TRANSFORMACION_AGNOSTICA_NICHO.md) | Transformación a plataforma agnóstica de nicho: base reutilizable, qué cambia por nicho, ejemplo CRM vendedores/setters, 10 prompts clave para empezar. |
 
 ---
 
@@ -61,7 +66,7 @@ Este documento lista **todos** los archivos de la carpeta `docs/` con una breve 
 
 ## Total
 
-- **En `docs/`:** 30+ archivos Markdown (numerados 01–31 y por nombre; incluye AUDIT_CHATWOOT_2025-02-13).
+- **En `docs/`:** 36+ archivos Markdown (numerados 01–31 y por nombre; incluye Meta Ads suite y AUDIT_CHATWOOT).
 - **En raíz:** AGENTS.md, README.md.
 
 Para una lista detallada de endpoints y contratos API, usar [API_REFERENCE.md](API_REFERENCE.md) y Swagger en `http://localhost:8000/docs`.
