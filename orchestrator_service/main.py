@@ -1419,10 +1419,11 @@ app.add_middleware(
 
 # --- RUTAS ---
 app.include_router(auth_router)
-app.include_router(admin_router)
-# Chatwoot: webhook (público con token) y API de chats (requiere auth admin)
-app.include_router(chat_webhooks.router)
+# Chatwoot API: Specific routes must come BEFORE generic admin routes to avoid shadowing
 app.include_router(chat_api.router)
+app.include_router(admin_router)
+# Chatwoot Webhooks
+app.include_router(chat_webhooks.router)
 
 
 # OpenAPI: inyectar securitySchemes para que en Swagger UI se pueda usar Authorize (JWT + X-Admin-Token)
