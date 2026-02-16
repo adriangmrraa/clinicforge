@@ -29,7 +29,7 @@ export default function ConfigView() {
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState<string | null>(null);
     const [selectedLang, setSelectedLang] = useState<UiLanguage>('en');
-    const [chatwootConfig, setChatwootConfig] = useState<{ webhook_path: string; access_token: string; api_base: string } | null>(null);
+    const [chatwootConfig, setChatwootConfig] = useState<{ webhook_path: string; access_token: string; api_base: string; full_webhook_url?: string } | null>(null);
     const [deploymentConfig, setDeploymentConfig] = useState<any>(null);
     const [chatwootConfigLoading, setChatwootConfigLoading] = useState(false);
 
@@ -159,13 +159,14 @@ export default function ConfigView() {
                         <div className="flex gap-2 mb-3">
                             <input
                                 readOnly
-                                value={chatwootConfig.full_webhook_url}
+                                value={chatwootConfig.full_webhook_url || `${chatwootConfig.api_base}${chatwootConfig.webhook_path}?access_token=${chatwootConfig.access_token}`}
                                 className="flex-1 px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-sm font-mono"
                             />
                             <button
                                 type="button"
                                 onClick={() => {
-                                    navigator.clipboard.writeText(chatwootConfig.full_webhook_url);
+                                    const urlToCopy = chatwootConfig.full_webhook_url || `${chatwootConfig.api_base}${chatwootConfig.webhook_path}?access_token=${chatwootConfig.access_token}`;
+                                    navigator.clipboard.writeText(urlToCopy);
                                     setSuccess('URL copiada al portapapeles');
                                     setTimeout(() => setSuccess(null), 3000);
                                 }}
