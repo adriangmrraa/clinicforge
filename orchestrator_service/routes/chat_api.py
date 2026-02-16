@@ -176,6 +176,11 @@ async def chat_messages(
         # Generar URLs firmadas para cada attachment
         signed_attachments = []
         for att in attachments:
+            # ✅ FIX: Validar que att sea dict, no string
+            if not isinstance(att, dict):
+                logger.warning(f"⚠️ Skipping invalid attachment (not a dict): {type(att)} - {att}")
+                continue
+            
             original_url = att.get("url", "")
             if original_url and not original_url.startswith("/media/"):
                 # Generar firma para URL externa
