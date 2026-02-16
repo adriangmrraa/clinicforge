@@ -14,7 +14,8 @@
     "close_menu": "Cerrar menú",
     "expand": "Expandir",
     "collapse": "Contraer",
-    "app_name": "Dental Clinic"
+    "app_name": "Dental Clinic",
+    "credentials": "Credenciales"
   },
   "common": {
     "save": "Guardar",
