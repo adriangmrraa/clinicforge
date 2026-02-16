@@ -104,6 +104,9 @@ htmlcov/
 *.tar.gz
 *.rar
 
+# ==================== EasyPanel / Deployment Configs (contain secrets) ====================
+easypanel-*.json
+
 # ==================== Misc ====================
 *.swp
 *.swo

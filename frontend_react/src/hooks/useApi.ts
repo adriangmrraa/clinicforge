@@ -1,7 +1,8 @@
 import { useState, useCallback } from 'react';
+import { getEnv } from '../utils/env';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || detectApiBase();
-const ADMIN_TOKEN = import.meta.env.VITE_ADMIN_TOKEN || "";
+const API_BASE = getEnv('VITE_API_BASE_URL') || detectApiBase();
+const ADMIN_TOKEN = getEnv('VITE_ADMIN_TOKEN') || "";
 
 function detectApiBase() {
     if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {

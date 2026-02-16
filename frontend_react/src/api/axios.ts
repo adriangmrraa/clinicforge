@@ -1,6 +1,7 @@
 import axios, { type AxiosInstance, type AxiosError, type AxiosRequestConfig, type InternalAxiosRequestConfig } from 'axios';
+import { getEnv } from '../utils/env';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const API_URL = getEnv('VITE_API_URL') || 'http://localhost:8000';
 export const BACKEND_URL = API_URL;
 const MAX_RETRIES = 3;
 const BASE_DELAY = 1000;
@@ -20,7 +21,7 @@ export const getCurrentTenantId = (): string | null => {
   if (sessionTenant) return sessionTenant;
 
   // Default tenant for development (can be overridden by environment)
-  return import.meta.env.VITE_DEFAULT_TENANT_ID || 'default';
+  return getEnv('VITE_DEFAULT_TENANT_ID') || 'default';
 };
 
 // Set tenant ID for the session
@@ -79,7 +80,7 @@ api.interceptors.request.use(
 
     // Auto-init for Admin Token (Compatibility)
     if (!adminToken) {
-      const envToken = import.meta.env.VITE_ADMIN_TOKEN;
+      const envToken = getEnv('VITE_ADMIN_TOKEN');
       if (envToken) {
         localStorage.setItem('ADMIN_TOKEN', envToken);
         adminToken = envToken;
