@@ -579,6 +579,51 @@ class Database:
         """
         async with self.pool.acquire() as conn:
             await conn.execute(sql, tenant_id, channel, external_user_id, last_message, is_user)
+    
+    async def get_or_create_conversation(
+        self,
+        tenant_id: int,
+        channel: str,  # "whatsapp", "instagram", "facebook"
+        external_user_id: str,  # Phone number o user_id
+        display_name: Optional[str] = None
+    ) -> uuid.UUID:
+        """
+        Obtiene conversación existente o crea una nueva (Spec 20).
+        Garantiza UNA sola conversación por external_user_id + channel.
+        
+        Args:
+            tenant_id: ID del tenant (multi-tenancy)
+            channel: Canal de comunicación,
+            external_user_id: Identificador único del usuario (teléfono o user_id)
+            display_name: Nombre para mostrar (opcional)
+        
+        Returns:
+            UUID de la conversación (existente o recién creada)
+        """
+        # 1. Buscar conversación existente
+        existing = await self.pool.fetchrow("""
+            SELECT id FROM chat_conversations
+            WHERE tenant_id = $1 AND channel = $2 AND external_user_id = $3
+        """, tenant_id, channel, external_user_id)
+        
+        if existing:
+            logger.debug(f"📧 Conversation exists: {existing['id']}")
+            return existing['id']
+        
+        # 2. Crear nueva conversación (ON CONFLICT para race conditions)
+        conv_id = await self.pool.fetchval("""
+            INSERT INTO chat_conversations (
+                tenant_id, channel, external_user_id, display_name,
+                last_message_at, updated_at
+            )
+            VALUES ($1, $2, $3, $4, NOW(), NOW())
+            ON CONFLICT (tenant_id, channel, external_user_id) 
+            DO UPDATE SET updated_at = NOW()
+            RETURNING id
+        """, tenant_id, channel, external_user_id, display_name or external_user_id)
+        
+        logger.info(f"✅ New conversation created: {conv_id}")
+        return conv_id
 
     async def ensure_patient_exists(self, phone_number: Optional[str], tenant_id: int, first_name: str = 'Visitante', status: str = 'guest', external_id: Optional[dict] = None):
         """

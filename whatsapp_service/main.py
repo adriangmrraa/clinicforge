@@ -389,26 +389,53 @@ async def ycloud_webhook(request: Request):
                 return {"status": "buffering_started", "correlation_id": correlation_id}
             return {"status": "buffering_updated", "correlation_id": correlation_id}
 
-        # A.2 Audio -> Transcribir y usar el MISMO buffer que el texto (misma lógica, misma dedup)
+
+        # A.2 Audio → Enviar URL del audio + transcripción (FIX CRÍTICO Spec 20)
         if msg_type == "audio":
             node = msg.get("audio", {})
-            if node.get("link"):
-                logger.info("audio_received_starting_transcription", correlation_id=correlation_id)
-                transcription = await transcribe_audio(node.get("link"), correlation_id)
-                if transcription and transcription.strip():
-                    buffer_key, timer_key, lock_key = f"buffer:{from_n}", f"timer:{from_n}", f"active_task:{from_n}"
-                    redis_client.rpush(buffer_key, json.dumps({
-                        "text": transcription.strip(),
-                        "wamid": msg.get("wamid") or event.get("id"),
-                        "event_id": event.get("id")
-                    }))
-                    redis_client.setex(timer_key, DEBOUNCE_SECONDS, "1")
-                    if not redis_client.get(lock_key):
-                        redis_client.setex(lock_key, 60, "1")
-                        asyncio.create_task(process_user_buffer(from_n, to_n, name, event.get("id"), msg.get("wamid") or event.get("id")))
-                    return {"status": "buffering_started", "correlation_id": correlation_id, "source": "audio"}
-                logger.warning("audio_transcription_empty_or_failed", correlation_id=correlation_id)
-            return {"status": "ignored_type_or_empty", "type": msg_type}
+            audio_link = node.get("link")
+            
+            if audio_link:
+                logger.info("audio_received", correlation_id=correlation_id, voice=node.get("voice"))
+                
+                # Transcribir audio
+                transcription = await transcribe_audio(audio_link, correlation_id)
+                
+                # ✅ Construir media_list para el audio (igual que imagen/document)
+                media_list = [{
+                    "type": "audio",
+                    "url": audio_link,
+                    "mime_type": node.get("mime_type"),
+                    "provider_id": node.get("id"),
+                    "voice": node.get("voice", False),
+                    "transcription": transcription.strip() if transcription else None
+                }]
+                
+                # ✅ Enviar AMBOS: audio + transcripción
+                payload = {
+                    "provider": "ycloud",
+                    "event_id": event.get("id"),
+                    "provider_message_id": msg.get("wamid") or event.get("id"),
+                    "from_number": from_n,
+                    "to_number": to_n,
+                    "text": transcription.strip() if transcription else None,
+                    "customer_name": name,
+                    "event_type": "whatsapp.inbound_message.received",
+                    "correlation_id": correlation_id,
+                    "media": media_list,  # ✅ Audio URL + transcripción
+                }
+                
+                headers = {"X-Correlation-Id": correlation_id}
+                if INTERNAL_API_TOKEN:
+                    headers["X-Internal-Token"] = INTERNAL_API_TOKEN
+                
+                logger.info("forwarding_audio_to_orchestrator", has_transcription=bool(transcription))
+                raw_res = await forward_to_orchestrator(payload, headers)
+                logger.info("orchestrator_response_received", status=raw_res.get("status"))
+                
+                return {"status": "processed", "correlation_id": correlation_id, "source": "audio"}
+            
+            return {"status": "ignored_no_link", "type": msg_type}
         
         # B. Media Messages (image, document) -> Immediate Forward (No Buffer)
         media_list = []

@@ -16,7 +16,7 @@ from urllib.parse import urlparse
 
 from fastapi import BackgroundTasks, FastAPI, Request, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
@@ -88,6 +88,45 @@ async def download_media(url: str, tenant_id: int) -> str:
         except Exception as e:
             logger.error(f"❌ Error downloading media from {url}: {str(e)}")
             return url  # Fallback a la URL original si falla
+
+def normalize_whatsapp_attachments(media_items: list) -> list:
+    """
+    Normaliza attachments de WhatsApp a estructura estándar (Spec 20).
+    Compatible con estructura de Chatwoot.
+    
+    Args:
+        media_items: Lista de items de media del payload de YCloud/WhatsApp
+    
+    Returns:
+        Lista normalizada con estructura: {type, url, file_name, file_size, mime_type, transcription}
+    """
+    if not media_items:
+        return []
+    
+    normalized = []
+    
+    for item in media_items:
+        media_type = (item.get("type") or "file").lower()
+        
+        # Normalización de tipos
+        if media_type in ["voice", "ptt"]:
+            media_type = "audio"
+        elif media_type == "document":
+            media_type = "file"
+        elif media_type in ["picture", "photo"]:
+            media_type = "image"
+        
+        normalized.append({
+            "type": media_type,
+            "url": item.get("url", ""),
+            "file_name": item.get("file_name") or item.get("filename") or "attachment",
+            "file_size": item.get("file_size") or item.get("size"),
+            "mime_type": item.get("mime_type") or item.get("mimeType"),
+            "provider_id": item.get("provider_id"),  # Para referencia
+            "transcription": item.get("transcription")  # Para audios
+        })
+    
+    return normalized
 
 # ContextVars para rastrear el usuario en la sesión de LangChain
 current_customer_phone: ContextVar[Optional[str]] = ContextVar("current_customer_phone", default=None)
@@ -1797,6 +1836,34 @@ async def chat_endpoint(req: ChatRequest, background_tasks: BackgroundTasks):
             status_code=500,
             content={"error": "Error interno del orquestador", "correlation_id": correlation_id}
         )
+
+# --- MEDIA SERVING ENDPOINT (Spec 20) ---
+@app.get("/media/{tenant_id}/{filename}")
+async def serve_local_media(tenant_id: int, filename: str):
+    """
+    Sirve archivos de media descargados localmente (Spec 19 + Spec 20).
+    Path: /media/{tenant_id}/{filename}
+    """
+    # Seguridad: validar filename para prevenir path traversal
+    if ".." in filename or "/" in filename or "\\" in filename:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    
+    media_path = os.path.join(os.getcwd(), "media", str(tenant_id), filename)
+    
+    if not os.path.exists(media_path):
+        logger.warning(f"❌ Media file not found: {media_path}")
+        raise HTTPException(status_code=404, detail="Not Found")
+    
+    # Determinar content type
+    mime_type, _ = mimetypes.guess_type(filename)
+    
+    logger.info(f"🖼️ Serving media: {media_path}")
+    return FileResponse(
+        media_path,
+        media_type=mime_type or "application/octet-stream",
+        filename=filename
+    )
+
 
 @app.get("/health", tags=["Health"])
 async def health():
