@@ -501,6 +501,104 @@ class CredentialPayload(BaseModel):
     scope: str = "global"  # global | tenant
     tenant_id: Optional[int] = None
 
+# ==================== ENDPOINTS CREDENTIALS MANAGEMENT ====================
+
+@router.get("/credentials", tags=["Credenciales"])
+async def list_credentials(user_data = Depends(verify_admin_token)):
+    """Lista todas las credenciales (globales y por tenant). Solo CEO."""
+    if user_data.role != 'ceo':
+        raise HTTPException(status_code=403, detail="Acceso denegado. Solo CEO.")
+    
+    rows = await db.fetch("SELECT * FROM credentials ORDER BY created_at DESC")
+    results = []
+    for r in rows:
+        val = r['value']
+        # Enmascarar valor para seguridad en UI
+        masked = "••••••••"
+        if val:
+            try:
+                # Intentar desencriptar para ver longitud real, si falla es texto plano
+                decrypted = _decrypt_credential(val) or val
+                if len(decrypted) > 4:
+                    masked = f"••••••••{decrypted[-4:]}"
+            except:
+                pass
+
+        results.append({
+            "id": r['id'],
+            "name": r['name'],
+            "value": masked, # Frontend espera string enmascarado
+            "category": r['category'],
+            "description": r['description'],
+            "scope": r['scope'],
+            "tenant_id": r['tenant_id']
+        })
+    return results
+
+@router.post("/credentials", tags=["Credenciales"])
+async def create_credential(payload: CredentialPayload, user_data = Depends(verify_admin_token)):
+    """Crea una nueva credencial encriptada. Solo CEO."""
+    if user_data.role != 'ceo':
+        raise HTTPException(status_code=403, detail="Acceso denegado.")
+
+    # Encriptar valor
+    encrypted_val = _encrypt_credential(payload.value)
+    if not encrypted_val:
+        raise HTTPException(status_code=500, detail="Error en sistema de encriptación (Key no configurada).")
+
+    await db.execute("""
+        INSERT INTO credentials (name, value, category, description, scope, tenant_id, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
+    """, payload.name, encrypted_val, payload.category, payload.description, payload.scope, payload.tenant_id)
+    
+    return {"message": "Credencial guardada exitosamente."}
+
+@router.put("/credentials/{cred_id}", tags=["Credenciales"])
+async def update_credential(cred_id: int, payload: CredentialPayload, user_data = Depends(verify_admin_token)):
+    """Actualiza una credencial existente. Solo CEO."""
+    if user_data.role != 'ceo':
+        raise HTTPException(status_code=403, detail="Acceso denegado.")
+
+    # Verificar existencia
+    existing = await db.fetch_row("SELECT * FROM credentials WHERE id = $1", cred_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Credencial no encontrada.")
+
+    # Si viene value, encriptarlo. Si viene vacío/masked, mantener el anterior?
+    # El frontend manda masked "••••••••" si no se tocó.
+    # Si el usuario edita, mandará el valor nuevo.
+    # Lógica: Si value == "••••••••" (o similar), ignorar update de value.
+    
+    new_val = existing['value']
+    if payload.value and not payload.value.startswith("••••"):
+         encrypted = _encrypt_credential(payload.value)
+         if encrypted:
+             new_val = encrypted
+
+    await db.execute("""
+        UPDATE credentials 
+        SET name=$1, value=$2, category=$3, description=$4, scope=$5, tenant_id=$6, updated_at=NOW()
+        WHERE id = $7
+    """, payload.name, new_val, payload.category, payload.description, payload.scope, payload.tenant_id, cred_id)
+
+    return {"message": "Credencial actualizada."}
+
+@router.delete("/credentials/{cred_id}", tags=["Credenciales"])
+async def delete_credential(cred_id: int, user_data = Depends(verify_admin_token)):
+    """Elimina una credencial. Solo CEO."""
+    if user_data.role != 'ceo':
+        raise HTTPException(status_code=403, detail="Acceso denegado.")
+    
+    await db.execute("DELETE FROM credentials WHERE id = $1", cred_id)
+    return {"message": "Credencial eliminada."}
+
+@router.get("/tenants", tags=["Sedes"])
+async def list_tenants_admin(user_data = Depends(verify_admin_token)):
+    """Lista simple de tenants para selectores (id, name)."""
+    # Permitir a CEO y Secretary (para selectores de contexto)
+    rows = await db.fetch("SELECT id, clinic_name FROM tenants ORDER BY id ASC")
+    return [{"id": r["id"], "name": r["clinic_name"]} for r in rows]
+
 # ==================== ENDPOINTS CHAT MANAGEMENT ====================
 
 @router.get("/chat/tenants", dependencies=[Depends(verify_admin_token)], tags=["Chat"])

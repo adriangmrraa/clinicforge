@@ -30,6 +30,7 @@ export default function ConfigView() {
     const [success, setSuccess] = useState<string | null>(null);
     const [selectedLang, setSelectedLang] = useState<UiLanguage>('en');
     const [chatwootConfig, setChatwootConfig] = useState<{ webhook_path: string; access_token: string; api_base: string } | null>(null);
+    const [deploymentConfig, setDeploymentConfig] = useState<any>(null);
     const [chatwootConfigLoading, setChatwootConfigLoading] = useState(false);
 
     useEffect(() => {
@@ -57,6 +58,10 @@ export default function ConfigView() {
             const res = await api.get<ClinicSettings>('/admin/settings/clinic');
             setSettings(res.data);
             setSelectedLang((res.data.ui_language as UiLanguage) || 'en');
+
+            // Fetch Deployment Config (YCloud URL)
+            const depRes = await api.get('/admin/config/deployment');
+            setDeploymentConfig(depRes.data);
         } catch (err) {
             setError(t('config.load_error'));
         } finally {
@@ -115,8 +120,8 @@ export default function ConfigView() {
                                     onClick={() => handleLanguageChange(opt.value)}
                                     disabled={saving}
                                     className={`px-4 py-2.5 rounded-xl font-medium transition-colors border-2 min-h-[44px] touch-manipulation ${selectedLang === opt.value
-                                            ? 'border-blue-600 bg-blue-50 text-blue-700'
-                                            : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50'
+                                        ? 'border-blue-600 bg-blue-50 text-blue-700'
+                                        : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50'
                                         }`}
                                 >
                                     {saving && selectedLang === opt.value ? (
@@ -132,49 +137,85 @@ export default function ConfigView() {
                         </p>
                     </div>
 
-                    {/* Sección Chatwoot: URL webhook para conectar inbox */}
-                    <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
-                        <div className="flex items-center gap-2 mb-4">
-                            <MessageCircle size={20} className="text-indigo-600" />
-                            <h2 className="text-lg font-semibold text-gray-800">Chatwoot</h2>
-                        </div>
-                        <p className="text-sm text-gray-500 mb-4">
-                            Conecta tu inbox de Chatwoot (WhatsApp, Instagram, Facebook) para recibir y responder conversaciones desde esta plataforma. Usa la URL de webhook siguiente en la configuración de tu inbox.
-                        </p>
-                        {chatwootConfigLoading ? (
-                            <div className="flex items-center gap-2 text-gray-500">
-                                <Loader2 className="w-5 h-5 animate-spin" />
-                                <span>Cargando configuración...</span>
-                            </div>
-                        ) : chatwootConfig ? (
-                            <>
-                                <div className="flex gap-2 mb-3">
-                                    <input
-                                        readOnly
-                                        value={chatwootConfig.full_webhook_url}
-                                        className="flex-1 px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-sm font-mono"
-                                    />
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            navigator.clipboard.writeText(chatwootConfig.full_webhook_url);
-                                            setSuccess('URL copiada al portapapeles');
-                                            setTimeout(() => setSuccess(null), 3000);
-                                        }}
-                                        className="px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 flex items-center gap-2 shrink-0"
-                                    >
-                                        <Copy size={18} />
-                                        Copiar
-                                    </button>
-                                </div>
-                                <p className="text-xs text-gray-500">
-                                    Pega esta URL en Chatwoot → Configuración del Inbox → Webhooks → URL del webhook. Así recibirás los mensajes en la bandeja de Chats de esta clínica.
-                                </p>
-                            </>
-                        ) : (
-                            <p className="text-sm text-amber-700">No se pudo cargar la configuración de Chatwoot. Comprueba que tienes acceso de administrador.</p>
-                        )}
+                </div>
+            )}
+
+            {/* Sección Chatwoot: URL webhook para conectar inbox */}
+            <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm mt-6">
+                <div className="flex items-center gap-2 mb-4">
+                    <MessageCircle size={20} className="text-indigo-600" />
+                    <h2 className="text-lg font-semibold text-gray-800">Chatwoot</h2>
+                </div>
+                <p className="text-sm text-gray-500 mb-4">
+                    Conecta tu inbox de Chatwoot (WhatsApp, Instagram, Facebook) para recibir y responder conversaciones desde esta plataforma. Usa la URL de webhook siguiente en la configuración de tu inbox.
+                </p>
+                {chatwootConfigLoading ? (
+                    <div className="flex items-center gap-2 text-gray-500">
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                        <span>Cargando configuración...</span>
                     </div>
+                ) : chatwootConfig ? (
+                    <>
+                        <div className="flex gap-2 mb-3">
+                            <input
+                                readOnly
+                                value={chatwootConfig.full_webhook_url}
+                                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-sm font-mono"
+                            />
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    navigator.clipboard.writeText(chatwootConfig.full_webhook_url);
+                                    setSuccess('URL copiada al portapapeles');
+                                    setTimeout(() => setSuccess(null), 3000);
+                                }}
+                                className="px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 flex items-center gap-2 shrink-0"
+                            >
+                                <Copy size={18} />
+                                Copiar
+                            </button>
+                        </div>
+                        <p className="text-xs text-gray-500">
+                            Pega esta URL en Chatwoot → Configuración del Inbox → Webhooks → URL del webhook. Así recibirás los mensajes en la bandeja de Chats de esta clínica.
+                        </p>
+                    </>
+                ) : (
+                    <p className="text-sm text-amber-700">No se pudo cargar la configuración de Chatwoot. Comprueba que tienes acceso de administrador.</p>
+                )}
+            </div>
+
+            {/* Sección YCloud Webhook (Movido desde Credenciales) */}
+            {deploymentConfig && (
+                <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm mt-6">
+                    <div className="flex items-center gap-2 mb-4">
+                        <Globe size={20} className="text-emerald-600" />
+                        <h2 className="text-lg font-semibold text-gray-800">YCloud Webhook</h2>
+                    </div>
+                    <p className="text-sm text-gray-500 mb-4">
+                        Configuración para recibir mensajes de WhatsApp Business API via YCloud.
+                    </p>
+                    <div className="flex gap-2 mb-3">
+                        <input
+                            readOnly
+                            value={deploymentConfig.webhook_ycloud_url}
+                            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-sm font-mono"
+                        />
+                        <button
+                            type="button"
+                            onClick={() => {
+                                navigator.clipboard.writeText(deploymentConfig.webhook_ycloud_url);
+                                setSuccess('URL copiada al portapapeles');
+                                setTimeout(() => setSuccess(null), 3000);
+                            }}
+                            className="px-4 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 flex items-center gap-2 shrink-0"
+                        >
+                            <Copy size={18} />
+                            Copiar
+                        </button>
+                    </div>
+                    <p className="text-xs text-gray-400">
+                        Puerto interno: {deploymentConfig.webhook_ycloud_internal_port}
+                    </p>
                 </div>
             )}
 
