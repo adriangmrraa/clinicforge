@@ -5,6 +5,8 @@ httpx
 tenacity
 structlog
 asyncpg
+sqlalchemy[asyncio]
+cryptography
 redis
 langchain==0.1.0
 langchain-openai==0.0.5

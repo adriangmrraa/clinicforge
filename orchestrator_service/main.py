@@ -61,7 +61,15 @@ current_patient_id: ContextVar[Optional[int]] = ContextVar("current_patient_id",
 current_tenant_id: ContextVar[int] = ContextVar("current_tenant_id", default=1)
 
 # --- DATABASE SETUP ---
-engine = create_async_engine(POSTGRES_DSN, echo=False)
+# Normalize DSN for SQLAlchemy: must be postgresql+asyncpg://
+_sa_dsn = POSTGRES_DSN
+if _sa_dsn.startswith("postgres://"):
+    _sa_dsn = _sa_dsn.replace("postgres://", "postgresql+asyncpg://", 1)
+elif _sa_dsn.startswith("postgresql://"):
+    _sa_dsn = _sa_dsn.replace("postgresql://", "postgresql+asyncpg://", 1)
+elif not _sa_dsn.startswith("postgresql+asyncpg://"):
+    _sa_dsn = "postgresql+asyncpg://" + _sa_dsn.split("://", 1)[-1] if "://" in _sa_dsn else _sa_dsn
+engine = create_async_engine(_sa_dsn, echo=False) if _sa_dsn else None
 AsyncSessionLocal = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 # --- MODELOS DE DATOS (API) ---
