@@ -78,10 +78,16 @@ api.interceptors.request.use(
     let adminToken = localStorage.getItem('ADMIN_TOKEN');
     const jwtToken = localStorage.getItem('JWT_TOKEN');
 
+    // Self-healing: clear polluted storage from previous versions
+    if (adminToken === 'RUNTIME_REPLACE') {
+      localStorage.removeItem('ADMIN_TOKEN');
+      adminToken = null;
+    }
+
     // Auto-init for Admin Token (Compatibility)
     if (!adminToken) {
       const envToken = getEnv('VITE_ADMIN_TOKEN');
-      if (envToken) {
+      if (envToken && envToken !== 'RUNTIME_REPLACE') {
         localStorage.setItem('ADMIN_TOKEN', envToken);
         adminToken = envToken;
       }
