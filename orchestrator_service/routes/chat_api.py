@@ -23,35 +23,35 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-# Usar la resolución de tenant de admin_routes (auth admin + professionals)
-def _get_tenant_dep():
-    from admin_routes import get_resolved_tenant_id
-    return get_resolved_tenant_id
-
+from admin_routes import get_resolved_tenant_id
 
 @router.get("/admin/integrations/chatwoot/config")
 async def get_chatwoot_webhook_config(
-    tenant_id: int = Depends(_get_tenant_dep()),
+    tenant_id: int = Depends(get_resolved_tenant_id),
 ) -> dict:
-    pool = get_pool()
-    secure_token = await get_tenant_credential(tenant_id, WEBHOOK_ACCESS_TOKEN)
-    if not secure_token:
-        secure_token = uuid.uuid4().hex + uuid.uuid4().hex
-        await pool.execute(
-            "INSERT INTO credentials (tenant_id, name, value, updated_at) VALUES ($1, $2, $3, NOW()) "
-            "ON CONFLICT (tenant_id, name) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()",
-            tenant_id,
-            WEBHOOK_ACCESS_TOKEN,
-            secure_token,
-        )
-        logger.info(f"✅ chatwoot_webhook_token_generated tenant_id={tenant_id}")
-    api_base = os.getenv("BASE_URL", "").rstrip("/")
-    return {
-        "webhook_path": "/admin/chatwoot/webhook",
-        "access_token": secure_token,
-        "tenant_id": tenant_id,
-        "api_base": api_base,
-    }
+    try:
+        pool = get_pool()
+        secure_token = await get_tenant_credential(tenant_id, WEBHOOK_ACCESS_TOKEN)
+        if not secure_token:
+            secure_token = uuid.uuid4().hex + uuid.uuid4().hex
+            await pool.execute(
+                "INSERT INTO credentials (tenant_id, name, value, updated_at) VALUES ($1, $2, $3, NOW()) "
+                "ON CONFLICT (tenant_id, name) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()",
+                tenant_id,
+                WEBHOOK_ACCESS_TOKEN,
+                secure_token,
+            )
+            logger.info(f"✅ chatwoot_webhook_token_generated tenant_id={tenant_id}")
+        api_base = os.getenv("BASE_URL", "").rstrip("/")
+        return {
+            "webhook_path": "/admin/chatwoot/webhook",
+            "access_token": secure_token,
+            "tenant_id": tenant_id,
+            "api_base": api_base,
+        }
+    except Exception as e:
+        logger.exception(f"🔥 Error en get_chatwoot_webhook_config para tenant={tenant_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/admin/chats/summary")
@@ -60,7 +60,7 @@ async def chats_summary(
     offset: int = Query(0, ge=0),
     channel: Optional[str] = Query(None),
     human_override: Optional[bool] = Query(None),
-    tenant_id: int = Depends(_get_tenant_dep()),
+    tenant_id: int = Depends(get_resolved_tenant_id),
 ) -> List[dict]:
     from datetime import datetime, timezone
     pool = get_pool()
@@ -117,7 +117,7 @@ async def chat_messages(
     conversation_id: uuid.UUID,
     limit: int = Query(30, ge=1, le=100),
     offset: int = Query(0, ge=0),
-    tenant_id: int = Depends(_get_tenant_dep()),
+    tenant_id: int = Depends(get_resolved_tenant_id),
 ) -> List[dict]:
     pool = get_pool()
     row = await pool.fetchrow(
@@ -157,7 +157,7 @@ async def chat_messages(
 @router.post("/admin/whatsapp/send")
 async def send_message(
     body: dict,
-    tenant_id: int = Depends(_get_tenant_dep()),
+    tenant_id: int = Depends(get_resolved_tenant_id),
 ) -> dict:
     conv_id_raw = body.get("conversation_id") if isinstance(body, dict) else getattr(body, "conversation_id", None)
     message = (body.get("message", "") if isinstance(body, dict) else getattr(body, "message", "")) or ""
@@ -208,7 +208,7 @@ async def send_message(
 async def human_override(
     conversation_id: uuid.UUID,
     body: dict,
-    tenant_id: int = Depends(_get_tenant_dep()),
+    tenant_id: int = Depends(get_resolved_tenant_id),
 ) -> dict:
     enabled = body.get("enabled", False)
     pool = get_pool()
