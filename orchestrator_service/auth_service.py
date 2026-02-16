@@ -57,6 +57,7 @@ class AuthService:
             tenant_id: int = payload.get("tenant_id")
             
             if user_id is None or email is None or role is None or tenant_id is None:
+                logger.warning(f"❌ 401: Incomplete JWT payload. user_id={user_id}, email={email}, role={role}, tenant_id={tenant_id}")
                 return None
                 
             return TokenData(

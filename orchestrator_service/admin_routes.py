@@ -105,10 +105,12 @@ async def verify_admin_token(
     if not ADMIN_TOKEN:
         logger.warning("⚠️ ADMIN_TOKEN no configurado. Validación estática omitida.")
     elif x_admin_token != ADMIN_TOKEN:
+        logger.warning(f"❌ 401: X-Admin-Token mismatch. Received: {x_admin_token!r}")
         raise HTTPException(status_code=401, detail="Token de infraestructura (X-Admin-Token) inválido.")
 
     # 2. Validar JWT (Capa de Identidad)
     if not authorization or not authorization.startswith("Bearer "):
+        logger.warning(f"❌ 401: Missing or invalid Authorization header: {authorization!r}")
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Sesión no válida. Token JWT requerido.")
     
     token = authorization.split(" ")[1]
@@ -116,6 +118,7 @@ async def verify_admin_token(
     user_data = auth_service.decode_token(token)
     
     if not user_data:
+        logger.warning(f"❌ 401: JWT decode failed for token: {token[:10]}...")
         raise HTTPException(status_code=401, detail="Token de sesión expirado o inválido.")
     
     # 3. Validar Rol (CEOs, Secretarias y Profesionales tienen acceso básico)
