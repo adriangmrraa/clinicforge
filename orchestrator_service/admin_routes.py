@@ -965,6 +965,7 @@ async def get_chat_messages(
             "attachments": row['content_attributes'] if isinstance(row.get('content_attributes'), list) else []
         })
     
+    logger.info(f"📤 Devueltos {len(messages)} mensajes para {phone} (attachments check: {[len(m.get('attachments', []) or []) for m in messages]})")
     return messages
 
 

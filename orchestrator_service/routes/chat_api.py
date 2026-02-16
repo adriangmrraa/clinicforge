@@ -86,6 +86,7 @@ async def chats_summary(
             "status": r["status"],
             "meta": meta,
         })
+    logger.info(f"📤 Devueltos {len(out)} chats unificados (limit={limit}, offset={offset})")
     return out
 
 
@@ -117,7 +118,7 @@ async def chat_messages(
         limit,
         offset,
     )
-    return [
+    messages = [
         {
             "id": str(r["id"]),
             "conversation_id": str(r["conversation_id"]) if r.get("conversation_id") else None,
@@ -129,6 +130,8 @@ async def chat_messages(
         }
         for r in rows
     ]
+    logger.info(f"📤 Devueltos {len(messages)} mensajes para conversación {conversation_id} (attachments check: {[len(m.get('attachments', [])) for m in messages]})")
+    return messages
 
 
 @router.post("/admin/chat/send")

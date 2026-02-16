@@ -159,6 +159,10 @@ async def receive_chatwoot_webhook(
     )
     if dup:
         return {"status": "ignored", "reason": "duplicate"}
+    logger.info(f"📥 Recibiendo webhook de Chatwoot: event={payload.get('event')}, msg_type={msg_type}")
+    
+    # Log de adjuntos crudos para depuración
+    logger.info(f"📦 DEBUG PAYLOAD: {json.dumps(payload)[:1000]}...") # Limit length
 
     role = "user" if msg_type == "incoming" else "human_supervisor"
     
@@ -181,6 +185,11 @@ async def receive_chatwoot_webhook(
             "file_name": att.get("file_name", "attachment"),
             "file_size": att.get("file_size"),
         })
+    
+    if content_attrs:
+        logger.info(f"🖇️ Adjuntos extraídos ({len(content_attrs)}): {json.dumps(content_attrs)}")
+    else:
+        logger.warning(f"⚠️ No se encontraron adjuntos en el payload para el mensaje {payload.get('id')}")
 
     # CLINICASV1.0: chat_messages tiene from_number NOT NULL e id BIGSERIAL (no UUID)
     await pool.execute(
