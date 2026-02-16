@@ -1,6 +1,6 @@
 # Integración Meta Ads — Documentación Frontend
 
-> Fecha: 2026-02-16 | Versión: 1.0 | Specs: 08, 09, 10
+> Fecha: 2026-02-16 | Versión: 1.1 | Specs: 13, 14
 
 ---
 
@@ -133,3 +133,24 @@ Todos los iconos usados provienen de `lucide-react`:
 - **Responsive**: Grid de KPIs usa `grid-cols-3` que se adapta al contenedor padre
 - **Overflow**: Lista de campañas tiene `max-h-40 overflow-y-auto` para evitar overflow
 - **Truncado**: Textos largos usan `truncate` y `line-clamp-2` con `title` tooltip nativo
+
+---
+
+## 6. Patrones de UI Multi-canal (Fase 14)
+
+Se implementó un sistema de "Contexto Visual Inmersivo" para diferenciar los canales de origen.
+
+### 6.1. Identidad por Platform Config
+La función `getPlatformConfig(channel)` en `ChatsView.tsx` mapea:
+
+| Canal | Color Primario | Icono | Badge |
+|-------|----------------|-------|-------|
+| **WhatsApp** | Green-600 | `MessageCircle` | Verde / WA |
+| **Instagram** | Pink-600 | `Instagram` | Violeta / IG |
+| **Facebook** | Blue-600 | `Facebook` | Azul / FB |
+
+### 6.2. Elementos de Acento
+- **Borde Lateral**: El chat seleccionado adquiere un borde lateral de `4px` con el color de la plataforma.
+- **Burbujas de Respuesta**: El fondo de los mensajes del asistente (`role="assistant"`) cambia al color de la plataforma.
+- **Inputs dinámicos**: El foco del campo de texto y el botón "Enviar" se tiñen con el color del canal activo.
+- **Avatares Reales**: Priorización de `customer_avatar` de Meta sobre las iniciales genéricas.

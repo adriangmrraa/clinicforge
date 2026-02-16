@@ -436,23 +436,22 @@ Devuelve información de cobertura/obra social del paciente.
 
 Retorna información consolidada para la vista de chat (Última cita, próxima cita, plan de tratamiento). Aislado por `tenant_id`.
 
+**Resolución de identidad**:
+- Si `{phone}` es un número (empieza con `+` o es dígito), busca por `phone_number`.
+- Si `{phone}` es texto (ej: `adriangmrraa`), busca por **External IDs** (`instagram`, `facebook`, `chatwoot`) en el campo JSONB.
+
 **Response:**
 ```json
 {
-  "patient": { "id": 1, "first_name": "Juan", ... },
-  "last_appointment": {
-    "date": "2026-02-01T10:00:00",
-    "type": "Limpieza",
-    "duration_minutes": 30,
-    "professional_name": "Dr. Smith"
+  "patient": { 
+    "id": 1, 
+    "first_name": "Juan", 
+    "external_ids": {"instagram": "user_id"},
+    ... 
   },
-  "upcoming_appointment": {
-    "date": "2026-02-15T15:00:00",
-    "type": "Control",
-    "duration_minutes": 20,
-    "professional_name": "Dra. Gomez"
-  },
-  "treatment_plan": "Blanqueamiento dental en 3 sesiones",
+  "last_appointment": { ... },
+  "upcoming_appointment": { ... },
+  "treatment_plan": "...",
   "is_guest": false
 }
 ```

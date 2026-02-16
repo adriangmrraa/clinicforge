@@ -202,6 +202,7 @@ async def send_message(
             raise HTTPException(status_code=503, detail="Chatwoot credentials not configured")
         from chatwoot_client import ChatwootClient
         client = ChatwootClient(base_url, token)
+        # El conversation_id externo y el account_id ya están en la fila recuperada de la BD
         await client.send_text_message(account_id, cw_conv_id, message)
     elif provider == "ycloud":
         api_key = await get_tenant_credential(tenant_id, YCLOUD_API_KEY)

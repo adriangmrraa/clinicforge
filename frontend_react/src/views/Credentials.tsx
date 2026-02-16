@@ -224,6 +224,7 @@ export const Credentials: React.FC = () => {
                             >
                                 <option value="openai">OpenAI</option>
                                 <option value="whatsapp_cloud">WhatsApp Cloud API</option>
+                                <option value="chatwoot">Chatwoot API (IG/FB)</option>
                                 <option value="tiendanube">Tienda Nube</option>
                                 <option value="database">Database</option>
                                 <option value="other">Otro</option>

@@ -26,8 +26,38 @@ async def get_tenant_credential(tenant_id: int, name: str) -> Optional[str]:
         name,
     )
     if not row or not row["value"]:
-        return None
-    return str(row["value"]).strip()
+        # Fallback a variable de entorno global (Nexus Resilience Protocol)
+        import os
+        env_val = os.getenv(name)
+        return env_val.strip() if env_val else None
+    
+    # Intentar decriptar si es un valor encriptado (Fernet)
+    val = str(row["value"]).strip()
+    # Detectar si parece fernet (opcional, por ahora intentamos desencriptar si falla usamos el valor raw)
+    # Pero admin_routes._decrypt_credential no es accesible aquí fácilmente sin ciclo de importación.
+    # Movemos la lógica de criptografía a un util o la duplicamos aquí mínimamente.
+    
+    # MEJORA: Importar funcion de desencriptado de un modulo común si existiera, 
+    # pero como está en admin_routes (mala practica), lo mejor es mover las funciones crypto a 
+    # core/security.py o similar. Por ahora, para no romper, implementamos desencriptado inline 
+    # o movemos _get_fernet aquí.
+    
+    try:
+        from cryptography.fernet import Fernet
+        import os
+        key = os.getenv("CREDENTIALS_FERNET_KEY")
+        if key:
+            f = Fernet(key.encode("utf-8") if isinstance(key, str) else key)
+            try:
+                # Intentar decriptar
+                return f.decrypt(val.encode("ascii")).decode("utf-8")
+            except:
+                # Si falla, asumir que estaba en texto plano (migración gradual)
+                return val
+    except Exception as e:
+        logger.warning(f"Error decrypting credential {name}: {e}")
+    
+    return val
 
 
 async def get_tenant_credential_int(tenant_id: int, name: str) -> Optional[int]:

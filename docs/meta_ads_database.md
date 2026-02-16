@@ -1,6 +1,6 @@
 # Integración Meta Ads — Documentación Database
 
-> Fecha: 2026-02-16 | Versión: 1.0 | Spec: 01
+> Fecha: 2026-02-16 | Versión: 1.1 | Specs: 13, 14
 
 ---
 
@@ -41,6 +41,10 @@ BEGIN
 END $$;
 
 CREATE INDEX IF NOT EXISTS idx_patients_acquisition_source ON patients(acquisition_source);
+
+-- Parche 20: Soporte de Identidad Multi-plataforma (JSONB)
+ALTER TABLE patients ADD COLUMN IF NOT EXISTS external_ids JSONB DEFAULT '{}';
+CREATE INDEX IF NOT EXISTS idx_patients_external_ids ON patients USING GIN (external_ids);
 ```
 
 ---

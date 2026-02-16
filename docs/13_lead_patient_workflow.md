@@ -58,8 +58,8 @@ Para agilizar la recepción, el panel administrativo permite un "Alta Express":
 
 Para facilitar la atención humana, la vista de **Chats** integra un panel de **Contexto Clínico** que se sincroniza en tiempo real:
 
-- **Detección Automática**: Al seleccionar una conversación, el sistema busca el perfil del paciente por número de teléfono.
-- **Diferenciación Visual**:
-    - **Leads**: Muestran "Sin citas programadas" y "Sin plan de tratamiento".
+- **Detección Automática**: Al seleccionar una conversación, el sistema busca el perfil del paciente por número de teléfono o platform ID (Meta).
+- **Diferenciación Visual y de Seguridad**:
+    - **Leads**: El sistema bloquea visualmente las secciones de "Próximos Turnos" y "Tratamiento" (mostrando un placeholder de "Sin historial") para no saturar la vista con datos vacíos.
     - **Pacientes**: Muestran detalles de la última visita (incluyendo duración y profesional) y próximas citas agendadas.
-- **Soberanía**: La información mostrada está estrictamente aislada por el `tenant_id` de la clínica actual.
+- **Sincronización Multi-plataforma**: Si un contacto de Instagram (ID) se asocia manualmente o mediante turno a un paciente con teléfono, el panel unifica ambos contextos instantáneamente.

@@ -77,6 +77,7 @@ async def process_buffer_task(
             if token:
                 from chatwoot_client import ChatwootClient
                 client = ChatwootClient(base_url, token)
+                # account_id y cw_conv_id recuperados de la BD (chat_conversations)
                 await client.send_text_message(account_id, cw_conv_id, response_text)
                 # from_number NOT NULL en CLINICASV1.0; usamos external_user_id como identificador de la conversación
                 await pool.execute(

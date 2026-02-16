@@ -47,6 +47,18 @@ def _encrypt_credential(plain: str) -> Optional[str]:
         logger.error(f"Encryption failed: {e}")
         return None
 
+def _decrypt_credential(cipher: str) -> Optional[str]:
+    """Decrypt a credential value with Fernet (AES-256). Returns plaintext or None if failed."""
+    f = _get_fernet()
+    if not f:
+        return None
+    try:
+        if not cipher: return None
+        return f.decrypt(cipher.encode("ascii")).decode("utf-8")
+    except Exception as e:
+        logger.error(f"Decryption failed: {e}")
+        return None
+
 ARG_TZ = timezone(timedelta(hours=-3))
 
 router = APIRouter(prefix="/admin", tags=["Dental Admin"])
@@ -480,6 +492,15 @@ class ConnectSovereignPayload(BaseModel):
     access_token: str  # Token de Auth0 (se guarda cifrado en credentials)
     tenant_id: Optional[int] = None  # Solo CEO puede especificar; si no, se usa la clínica resuelta
 
+class CredentialPayload(BaseModel):
+    id: Optional[int] = None
+    name: str
+    value: str
+    category: str
+    description: Optional[str] = ""
+    scope: str = "global"  # global | tenant
+    tenant_id: Optional[int] = None
+
 # ==================== ENDPOINTS CHAT MANAGEMENT ====================
 
 @router.get("/chat/tenants", dependencies=[Depends(verify_admin_token)], tags=["Chat"])
@@ -788,6 +809,162 @@ async def get_internal_credential(name: str, x_internal_token: str = Header(None
         raise HTTPException(status_code=404, detail=f"Credential '{name}' not supported by this endpoint")
         
     return {"name": name, "value": val}
+
+
+# ==================== ENDPOINTS CREDENCIALES (SEGURIDAD) ====================
+
+@router.get("/credentials", dependencies=[Depends(verify_admin_token)], tags=["Credenciales"])
+async def list_credentials(
+    resolved_tenant_id: int = Depends(get_resolved_tenant_id),
+    allowed_ids: List[int] = Depends(get_allowed_tenant_ids),
+    user_data=Depends(verify_admin_token)
+):
+    """
+    Lista credenciales.
+    - Globales: Solo visibles por CEO.
+    - Tenant: Visibles por CEO y Admin de esa sede.
+    Las valores se devuelven enmascarados (Sanitized).
+    """
+    try:
+        # Consulta base
+        query = "SELECT id, name, value, category, description, scope, tenant_id FROM credentials"
+        params = []
+        conditions = []
+
+        if user_data.role != 'ceo':
+            # No CEO: solo scope='tenant' y tenant_id en allowed_ids (o tenant_id NULL para algunos casos?)
+            # Asumimos que secretarias solo ven credenciales de SU tenant.
+            conditions.append("scope = 'tenant'")
+            conditions.append(f"tenant_id = ANY(${len(params) + 1}::int[])")
+            params.append(allowed_ids)
+        else:
+            # CEO: ve todo global + todo tenant
+            pass
+
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+        
+        query += " ORDER BY category, name"
+        
+        rows = await db.pool.fetch(query, *params)
+        
+        results = []
+        for r in rows:
+            val = r['value']
+            # Enmascarar valor para UI
+            masked = "••••••••" 
+            if val and len(str(val)) > 4:
+                 masked = f"••••••••{str(val)[-4:]}"
+            
+            # Ocultar valor real
+            results.append({
+                "id": r['id'],
+                "name": r['name'],
+                "value": masked, # Frontend espera string, no enviamos el real
+                "category": r['category'],
+                "description": r['description'],
+                "scope": r['scope'],
+                "tenant_id": r['tenant_id']
+            })
+        return results
+    except Exception as e:
+        logger.error(f"Error listing credentials: {e}")
+        raise HTTPException(status_code=500, detail="Error al listar credenciales")
+
+@router.post("/credentials", dependencies=[Depends(verify_admin_token)], tags=["Credenciales"])
+async def create_or_update_credential(
+    payload: CredentialPayload,
+    resolved_tenant_id: int = Depends(get_resolved_tenant_id),
+    allowed_ids: List[int] = Depends(get_allowed_tenant_ids),
+    user_data=Depends(verify_admin_token)
+):
+    """
+    Crea o actualiza una credencial.
+    - SIEMPRE encripta el valor (Fernet) antes de guardar.
+    - Validación de permisos por scope/tenant.
+    """
+    # 1. Validaciones de Seguridad
+    if payload.scope == 'global' and user_data.role != 'ceo':
+        raise HTTPException(status_code=403, detail="Solo el CEO puede gestionar credenciales globales.")
+    
+    target_tenant_id = payload.tenant_id
+    if payload.scope == 'tenant':
+        if target_tenant_id is None:
+             # Si no viene, usamos el resuelto (propia clínica)
+             target_tenant_id = resolved_tenant_id
+        
+        # Verificar acceso
+        if target_tenant_id not in allowed_ids:
+             raise HTTPException(status_code=403, detail="No tienes permiso para gestionar credenciales de esta clínica.")
+    else:
+        target_tenant_id = None # Global
+        
+    # 2. Encriptación
+    encrypted_value = _encrypt_credential(payload.value)
+    if not encrypted_value:
+        raise HTTPException(status_code=503, detail="Error de encriptación. Verificar CREDENTIALS_FERNET_KEY.")
+        
+    try:
+        # 3. Upsert vs Update vs Insert
+        # La UI envia ID si edita.
+        if payload.id:
+            # Update existente
+            # Verificar ownership antes de update
+            existing = await db.pool.fetchrow("SELECT id, scope, tenant_id FROM credentials WHERE id = $1", payload.id)
+            if not existing:
+                raise HTTPException(status_code=404, detail="Credencial no encontrada")
+            
+            # Si era global y user no es CEO -> ya validado arriba, pero por si acaso cambio de scope
+            if existing['scope'] == 'global' and user_data.role != 'ceo':
+                 raise HTTPException(status_code=403, detail="No puedes editar credenciales globales.")
+            if existing['scope'] == 'tenant' and existing['tenant_id'] not in allowed_ids:
+                 raise HTTPException(status_code=403, detail="No tienes acceso a esta credencial.")
+
+            await db.pool.execute("""
+                UPDATE credentials 
+                SET name = $1, value = $2, category = $3, description = $4, scope = $5, tenant_id = $6, updated_at = NOW()
+                WHERE id = $7
+            """, payload.name, encrypted_value, payload.category, payload.description, payload.scope, target_tenant_id, payload.id)
+            action = "updated"
+        else:
+            # Insert
+            await db.pool.execute("""
+                INSERT INTO credentials (name, value, category, description, scope, tenant_id, created_at, updated_at)
+                VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
+            """, payload.name, encrypted_value, payload.category, payload.description, payload.scope, target_tenant_id)
+            action = "created"
+            
+        logger.info(f"Credential {action}: name={payload.name} scope={payload.scope} tenant={target_tenant_id} by {user_data.email}")
+        return {"status": "ok", "action": action}
+        
+    except Exception as e:
+        logger.error(f"Error saving credential: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.delete("/credentials/{id}", dependencies=[Depends(verify_admin_token)], tags=["Credenciales"])
+async def delete_credential(
+    id: int,
+    allowed_ids: List[int] = Depends(get_allowed_tenant_ids),
+    user_data=Depends(verify_admin_token)
+):
+    try:
+        existing = await db.pool.fetchrow("SELECT scope, tenant_id FROM credentials WHERE id = $1", id)
+        if not existing:
+             return {"status": "deleted"} # Idempotente
+             
+        if existing['scope'] == 'global' and user_data.role != 'ceo':
+             raise HTTPException(status_code=403, detail="Solo CEO puede eliminar credenciales globales.")
+        
+        if existing['scope'] == 'tenant' and existing['tenant_id'] not in allowed_ids:
+             raise HTTPException(status_code=403, detail="No tienes acceso a esta clínica.")
+             
+        await db.pool.execute("DELETE FROM credentials WHERE id = $1", id)
+        return {"status": "deleted"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting credential: {e}")
+        raise HTTPException(status_code=500, detail="Error al eliminar credencial")
 
 
 @router.post("/chat/send", dependencies=[Depends(verify_admin_token)], tags=["Chat"])
