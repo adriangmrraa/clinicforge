@@ -1,0 +1,112 @@
+# ==================== Python ====================
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+.virtualenv/
+
+# PyCharm
+.idea/
+
+# VS Code
+.vscode/
+
+# ==================== Node.js ====================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+.yarn/
+.pnp.*
+
+# ==================== Environment & Secrets ====================
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+*.p12
+google-credentials.json
+
+# ==================== Docker ====================
+docker-compose.override.yml
+
+# ==================== Database ====================
+*.db
+*.sqlite
+*.sqlite3
+postgres_data/
+
+# ==================== Logs ====================
+*.log
+logs/
+
+# ==================== OS ====================
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+*~
+
+# ==================== Frontend (React/Vite) ====================
+dist/
+.cache/
+.parcel-cache/
+.vite/
+coverage/
+
+# ==================== Testing ====================
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.hypothesis/
+
+# ==================== AI / IDE Agent Tooling ====================
+.agent/
+.cursor/
+.gemini/
+
+# ==================== Archives / Binaries ====================
+*.zip
+*.tar.gz
+*.rar
+
+# ==================== Misc ====================
+*.swp
+*.swo
+*.bak
+*.tmp
+.vagrant/

@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+pydantic
+httpx
+tenacity
+structlog
+redis
+python-dotenv
+prometheus-client
+requests

@@ -1,0 +1,101 @@
+version: '3.8'
+services:
+  # --- New Microservices ---
+  bff_service:
+    build: ./bff_service
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - ORCHESTRATOR_URL=http://orchestrator_service:8000
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:3000/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    depends_on:
+      - orchestrator_service
+
+  frontend_react:
+    build: ./frontend_react
+    ports:
+      - "4173:80"
+    environment:
+      - VITE_API_BASE_URL=https://bff.pointcoach.shop # Logic needed here or baking in build
+    depends_on:
+      - bff_service
+
+  # --- Existing Backend Services ---
+
+  orchestrator_service:
+    build: ./orchestrator_service
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./orchestrator_service:/app
+    environment:
+      - WHATSAPP_SERVICE_URL=http://whatsapp_service:8002
+      - REDIS_URL=redis://redis:6379
+      - POSTGRES_DSN=${POSTGRES_DSN}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - INTERNAL_API_TOKEN=${INTERNAL_API_TOKEN}
+      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS}
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    depends_on:
+      - redis
+      - postgres
+
+  whatsapp_service:
+    build: ./whatsapp_service
+    ports:
+      - "8002:8002"
+    volumes:
+      - ./whatsapp_service:/app
+    environment:
+      - YCLOUD_API_KEY=${YCLOUD_API_KEY}
+      - YCLOUD_WEBHOOK_SECRET=${YCLOUD_WEBHOOK_SECRET}
+      - INTERNAL_API_TOKEN=${INTERNAL_API_TOKEN}
+      - ORCHESTRATOR_SERVICE_URL=http://orchestrator_service:8000
+      - REDIS_URL=redis://redis:6379
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8002/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    depends_on:
+      - redis
+      - orchestrator_service
+
+  # --- Infrastructure ---
+
+  redis:
+    image: "redis:alpine"
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  postgres:
+    image: "postgres:13"
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER}" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
