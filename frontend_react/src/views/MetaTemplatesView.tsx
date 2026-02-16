@@ -1,6 +1,6 @@
 import React from 'react';
 import { Layout, MessageSquare, Send, BarChart3, Clock, CheckCircle2, ChevronRight, Sparkles } from 'lucide-react';
-import { useTranslation } from 'react-i18next';
+import { useTranslation } from '../context/LanguageContext';
 
 const MetaTemplatesView: React.FC = () => {
     const { t } = useTranslation();
