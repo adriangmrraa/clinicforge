@@ -841,7 +841,7 @@ export default function ChatsView() {
                           {(session.patient_name || session.phone_number).charAt(0)}
                         </div>
                         <div className={`absolute -bottom-1 -right-1 p-1 rounded-full shadow-sm border border-white ${platform.bgColor}`}>
-                          {item.id && !isWindowOpen(item.last_user_message_at) ? <Lock size={10} className="text-white" /> : platform.icon}
+                          {session.is_window_open === false ? <Lock size={10} className="text-white" /> : platform.icon}
                         </div>
                       </div>
                       <div className="flex-1 min-w-0">
@@ -895,7 +895,7 @@ export default function ChatsView() {
                         </div>
                       )}
                       <div className={`absolute -bottom-1 -right-1 p-1 rounded-full shadow-sm border border-white ${platform.bgColor}`}>
-                        {platform.icon}
+                        {!isWindowOpen(item.last_user_message_at) ? <Lock size={10} className="text-white" /> : platform.icon}
                       </div>
                     </div>
                     <div className="flex-1 min-w-0">
@@ -950,7 +950,7 @@ export default function ChatsView() {
                             {(selectedSession.patient_name || selectedSession.phone_number).charAt(0)}
                           </div>
                           <div className={`absolute -bottom-0.5 -right-0.5 p-0.5 rounded-full shadow-sm border border-white ${platform.bgColor}`}>
-                            {platform.icon}
+                            {selectedSession.is_window_open === false ? <Lock size={10} className="text-white" /> : platform.icon}
                           </div>
                         </div>
                         <div className="min-w-0 flex-1 cursor-pointer" onClick={() => window.innerWidth < 1280 && setShowMobileContext(!showMobileContext)}>
@@ -976,7 +976,7 @@ export default function ChatsView() {
                             </div>
                           )}
                           <div className={`absolute -bottom-0.5 -right-0.5 p-0.5 rounded-full shadow-sm border border-white ${platform.bgColor}`}>
-                            {platform.icon}
+                            {!isWindowOpen(selectedChatwoot.last_user_message_at) ? <Lock size={10} className="text-white" /> : platform.icon}
                           </div>
                         </div>
                         <div className="min-w-0 flex-1">
