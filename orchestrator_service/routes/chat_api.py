@@ -118,18 +118,30 @@ async def chat_messages(
         limit,
         offset,
     )
-    messages = [
-        {
+    messages = []
+    for r in rows:
+        # Parse content_attributes if it's a JSON string
+        attachments = []
+        raw_attrs = r.get("content_attributes")
+        if raw_attrs:
+            if isinstance(raw_attrs, str):
+                try:
+                    attachments = json.loads(raw_attrs)
+                except (json.JSONDecodeError, TypeError):
+                    attachments = []
+            elif isinstance(raw_attrs, list):
+                attachments = raw_attrs
+        
+        messages.append({
             "id": str(r["id"]),
             "conversation_id": str(r["conversation_id"]) if r.get("conversation_id") else None,
             "role": r["role"],
             "content": r["content"] or "",
             "timestamp": r["created_at"].isoformat() if r["created_at"] else None,
-            "attachments": r["content_attributes"] if isinstance(r.get("content_attributes"), list) else [],
+            "attachments": attachments,
             "correlation_id": r.get("correlation_id"),
-        }
-        for r in rows
-    ]
+        })
+
     # Debug: mostrar el contenido crudo de content_attributes de cada mensaje
     if messages:
         sample_attrs = [(i, r.get("content_attributes"), type(r.get("content_attributes"))) for i, r in enumerate(rows[:3])]

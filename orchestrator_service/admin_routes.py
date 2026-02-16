@@ -955,6 +955,18 @@ async def get_chat_messages(
         # Detectar si es un mensaje de derivhumano (sistema indica handoff)
         is_derivhumano = row['role'] == 'assistant' and 'representante humano' in row['content'].lower()
         
+        # Parse content_attributes if it's a JSON string
+        attachments = []
+        raw_attrs = row.get('content_attributes')
+        if raw_attrs:
+            if isinstance(raw_attrs, str):
+                try:
+                    attachments = json.loads(raw_attrs)
+                except (json.JSONDecodeError, TypeError):
+                    attachments = []
+            elif isinstance(raw_attrs, list):
+                attachments = raw_attrs
+        
         messages.append({
             "id": row['id'],
             "from_number": row['from_number'],
@@ -962,7 +974,7 @@ async def get_chat_messages(
             "content": row['content'],
             "created_at": row['created_at'].isoformat(),
             "is_derivhumano": is_derivhumano,
-            "attachments": row['content_attributes'] if isinstance(row.get('content_attributes'), list) else []
+            "attachments": attachments
         })
     
     logger.info(f"📤 Devueltos {len(messages)} mensajes para {phone} (attachments check: {[len(m.get('attachments', []) or []) for m in messages]})")
