@@ -1,5 +1,7 @@
 import React from 'react';
-import { FileText, Image as ImageIcon, Video, Music, Download, ExternalLink } from 'lucide-react';
+import { FileText, Image as ImageIcon, Video, Music, Download, ExternalLink, RefreshCw } from 'lucide-react';
+import api from '../../api/axios';
+import { getCurrentTenantId } from '../../api/axios';
 import { BACKEND_URL } from '../../api/axios';
 import type { ChatApiMessage } from '../../types/chat';
 
@@ -37,8 +39,23 @@ export const Linkify = ({ text }: { text: string }) => {
     );
 };
 
-export const MessageMedia = ({ attachments }: { attachments: any[] }) => {
+export const MessageMedia = ({ attachments, message }: { attachments: any[], message: any }) => {
     if (!attachments || attachments.length === 0) return null;
+
+    const handleTranscribeAgain = async (url: string) => {
+        try {
+            await api.post('/admin/chat/transcribe-again', {
+                url,
+                tenant_id: parseInt(getCurrentTenantId() || "1"),
+                conversation_id: message.conversation_id,
+                external_user_id: message.from_number
+            });
+            alert("Transcripción solicitada.");
+        } catch (error) {
+            console.error("Error transcribing again:", error);
+            alert("Error al solicitar transcripción.");
+        }
+    };
 
     const getProxyUrl = (url: string) => {
         if (url.startsWith('/media/')) return `${BACKEND_URL}${url}`;
@@ -80,9 +97,16 @@ export const MessageMedia = ({ attachments }: { attachments: any[] }) => {
                         <div key={idx} className="bg-gray-50 p-2 rounded-lg border flex flex-col gap-2 min-w-[240px]">
                             <div className="flex items-center gap-2">
                                 <audio controls src={url} className="h-8 w-full" />
+                                <button
+                                    onClick={() => handleTranscribeAgain(att.url)}
+                                    className="p-1.5 hover:bg-gray-200 rounded-full transition-colors text-gray-500"
+                                    title="Transcribir de nuevo"
+                                >
+                                    <RefreshCw size={14} />
+                                </button>
                             </div>
                             {att.transcription && (
-                                <div className="text-xs text-gray-600 bg-white p-2 rounded border italic">
+                                <div className="text-xs text-gray-600 bg-white p-2 rounded border italic relative group/text">
                                     "{att.transcription}"
                                 </div>
                             )}
@@ -118,7 +142,10 @@ export const MessageContent = ({ message }: { message: ChatMessage | ChatApiMess
     return (
         <div className="flex flex-col gap-1">
             {content && <div className="whitespace-pre-wrap"><Linkify text={content} /></div>}
-            <MessageMedia attachments={Array.isArray(attachments) ? attachments : []} />
+            <MessageMedia
+                attachments={Array.isArray(attachments) ? attachments : []}
+                message={message}
+            />
         </div>
     );
 };

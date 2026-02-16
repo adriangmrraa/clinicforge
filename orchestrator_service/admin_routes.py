@@ -8,7 +8,7 @@ import re
 from datetime import datetime, timedelta, date, timezone
 from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, HTTPException, Header, Depends, Request, status, BackgroundTasks
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 from db import db
 from gcal_service import gcal_service
@@ -60,6 +60,9 @@ def _decrypt_credential(cipher: str) -> Optional[str]:
         return None
 
 ARG_TZ = timezone(timedelta(hours=-3))
+
+from services.whisper_service import transcribe_audio_url
+import glob
 
 router = APIRouter(prefix="/admin", tags=["Dental Admin"])
 
@@ -1071,6 +1074,89 @@ async def get_internal_credential(name: str, x_internal_token: str = Header(None
         raise HTTPException(status_code=404, detail=f"Credential '{name}' not supported by this endpoint")
         
     return {"name": name, "value": val}
+
+
+# ==================== ENDPOINTS CREDENCIALES (SEGURIDAD) ====================
+
+# --- SPEC 19: MEDIA MANAGEMENT & MAINTENANCE ---
+
+@router.get("/chat/media/proxy", tags=["Chat"])
+async def media_proxy(url: str, user_data=Depends(verify_admin_token)):
+    """
+    Proxy seguro para servir archivos multimedia (YCloud, Local, Chatwoot).
+    Permite visualizar contenido sin exponer URLs directas o lidiar con CORS/Expiración.
+    """
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        try:
+            resp = await client.get(url)
+            if resp.status_code != 200:
+                 raise HTTPException(status_code=resp.status_code, detail="Remote media unreachable")
+            
+            return StreamingResponse(
+                resp.iter_bytes(),
+                media_type=resp.headers.get("Content-Type", "application/octet-stream")
+            )
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Proxy error: {str(e)}")
+
+@router.post("/chat/transcribe-again", tags=["Chat"])
+async def transcribe_again(
+    payload: Dict[str, Any],
+    background_tasks: BackgroundTasks,
+    user_data=Depends(verify_admin_token),
+    allowed_ids: List[int] = Depends(get_allowed_tenant_ids)
+):
+    """
+    Manual re-trigger of Whisper transcription for a given audio message.
+    Payload: { 'url': str, 'tenant_id': int, 'conversation_id': str, 'external_user_id': str }
+    """
+    tid = payload.get("tenant_id")
+    if tid not in allowed_ids:
+        raise HTTPException(status_code=403, detail="Sin permiso para este tenant.")
+        
+    background_tasks.add_task(
+        transcribe_audio_url,
+        url=payload.get("url"),
+        tenant_id=tid,
+        conversation_id=payload.get("conversation_id"),
+        external_user_id=payload.get("external_user_id")
+    )
+    return {"message": "Transcription re-queued successfully."}
+
+@router.post("/maintenance/clean-media", tags=["Mantenimiento"])
+async def clean_media_maintenance(
+    payload: Dict[str, Any], 
+    user_data=Depends(verify_admin_token)
+):
+    """
+    Elimina archivos de medios antiguos en el servidor.
+    Payload: { 'days': int } (e.g. 180 para 6 meses)
+    Solo CEO.
+    """
+    if user_data.role != 'ceo':
+        raise HTTPException(status_code=403, detail="Acceso denegado.")
+    
+    days = payload.get("days", 180)
+    cutoff = datetime.now() - timedelta(days=days)
+    
+    # Directorio de medios (ajustar según despliegue)
+    media_dir = os.getenv("MEDIA_DIR", "/public/media")
+    if not os.path.exists(media_dir):
+        return {"message": "Dircetorio de medios no encontrado.", "deleted": 0}
+        
+    deleted_count = 0
+    # Buscar archivos recursivamente
+    for filepath in glob.glob(os.path.join(media_dir, "**", "*"), recursive=True):
+        if os.path.isfile(filepath):
+            mtime = datetime.fromtimestamp(os.path.getmtime(filepath))
+            if mtime < cutoff:
+                try:
+                    os.remove(filepath)
+                    deleted_count += 1
+                except Exception as e:
+                    logger.error(f"Failed to delete {filepath}: {e}")
+                    
+    return {"message": f"Limpieza completada.", "deleted": deleted_count}
 
 
 # ==================== ENDPOINTS CREDENCIALES (SEGURIDAD) ====================

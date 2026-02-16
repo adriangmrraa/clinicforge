@@ -334,11 +334,20 @@ async def chat_upload(
 ):
     """
     Sube un archivo de media localmente para ser enviado en el chat (Spec 19).
+    Límite de 20MB.
     """
     import mimetypes
     import os
     import uuid
     
+    # 1. Enforce 20MB limit (20 * 1024 * 1024 bytes)
+    MAX_SIZE = 20 * 1024 * 1024
+    
+    # Check if we can get size from headers (fast check)
+    content_length = file.size # Starlette/FastAPI 0.100+ typical place for size
+    if content_length and content_length > MAX_SIZE:
+        raise HTTPException(status_code=413, detail="File too large (Max 20MB)")
+
     # Determinar tipo
     content_type = file.content_type or ""
     file_type = "file"
@@ -354,12 +363,21 @@ async def chat_upload(
     os.makedirs(media_dir, exist_ok=True)
     
     local_path = os.path.join(media_dir, filename)
+    
+    size_so_far = 0
     with open(local_path, "wb") as f:
-        content = await file.read()
-        f.write(content)
+        # We read in chunks to avoid memory spikes and double-check size
+        while chunk := await file.read(65536): # 64KB chunks
+            size_so_far += len(chunk)
+            if size_so_far > MAX_SIZE:
+                 f.close()
+                 os.remove(local_path)
+                 raise HTTPException(status_code=413, detail="File too large (Max 20MB)")
+            f.write(chunk)
     
     return {
         "type": file_type,
         "url": f"/media/{tenant_id}/{filename}",
-        "file_name": file.filename
+        "file_name": file.filename,
+        "size": size_so_far
     }

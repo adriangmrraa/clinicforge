@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Settings, Globe, Loader2, CheckCircle2, Copy, Trash2, Edit2, Zap, MessageCircle, Key, User, Plus, Info, Save, Store, Link as LinkIcon, Shield, AlertTriangle } from 'lucide-react';
+import { Settings, Globe, Loader2, CheckCircle2, Copy, Trash2, Edit2, Zap, MessageCircle, Key, User, Plus, Info, Save, Store, Link as LinkIcon, Shield, AlertTriangle, Clock, Database } from 'lucide-react';
 import api from '../api/axios';
 import { useTranslation } from '../context/LanguageContext';
 import PageHeader from '../components/PageHeader';
@@ -55,7 +55,7 @@ interface IntegrationConfig {
 export default function ConfigView() {
     const { t, setLanguage } = useTranslation();
     const { user } = useAuth();
-    const [activeTab, setActiveTab] = useState<'general' | 'ycloud' | 'chatwoot' | 'meta_ads' | 'others'>('general');
+    const [activeTab, setActiveTab] = useState<'general' | 'ycloud' | 'chatwoot' | 'meta_ads' | 'others' | 'maintenance'>('general');
 
     // General Settings State
     const [settings, setSettings] = useState<ClinicSettings | null>(null);
@@ -205,6 +205,19 @@ export default function ConfigView() {
             showSuccess("Credencial guardada.");
         } catch (e: any) {
             alert('Error: ' + e.message);
+        }
+    };
+
+    const handleCleanMedia = async (days: number) => {
+        if (!confirm(`¿Estás seguro de que deseas eliminar los archivos multimedia con más de ${days} días de antigüedad? Esta acción es irreversible.`)) return;
+        setSaving(true);
+        try {
+            const { data } = await api.post('/admin/maintenance/clean-media', { days });
+            showSuccess(`Limpieza completada. Se eliminaron ${data.deleted} archivos.`);
+        } catch (err: any) {
+            setError(err.message || "Error al realizar limpieza.");
+        } finally {
+            setSaving(false);
         }
     };
 
@@ -634,6 +647,71 @@ export default function ConfigView() {
         </div>
     );
 
+    const renderMaintenanceTab = () => (
+        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+            <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
+                <div className="flex items-center gap-2 mb-4">
+                    <Database size={20} className="text-gray-600" />
+                    <h2 className="text-lg font-semibold text-gray-800">Mantenimiento de Medios</h2>
+                </div>
+                <p className="text-sm text-gray-500 mb-6">
+                    Gestiona el almacenamiento de archivos multimedia del chat. Los archivos eliminados no podrán recuperarse.
+                </p>
+
+                <div className="space-y-6">
+                    <div className="flex flex-col gap-4 p-4 bg-gray-50 rounded-xl border">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <h4 className="font-medium text-gray-900 flex items-center gap-2">
+                                    <Clock size={16} className="text-gray-500" /> Limpieza de Archivos
+                                </h4>
+                                <p className="text-xs text-gray-500">Elimina fotos, videos y audios antiguos.</p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <span className="text-sm font-medium text-gray-700">Antigüedad:</span>
+                                <select
+                                    className="px-3 py-1.5 bg-white border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                                    defaultValue="180"
+                                    id="cleanup-days-select"
+                                >
+                                    <option value="30">1 mes</option>
+                                    <option value="90">3 meses</option>
+                                    <option value="180">6 meses</option>
+                                    <option value="365">1 año</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div className="flex justify-end">
+                            <button
+                                onClick={() => {
+                                    const select = document.getElementById('cleanup-days-select') as HTMLSelectElement;
+                                    handleCleanMedia(parseInt(select.value));
+                                }}
+                                disabled={saving}
+                                className="px-6 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-medium shadow-md transition-all flex items-center gap-2"
+                            >
+                                {saving ? <Loader2 className="animate-spin" size={18} /> : <><Trash2 size={18} /> Ejecutar Limpieza Ahora</>}
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="p-4 bg-blue-50 rounded-xl border border-blue-100 border-dashed">
+                        <div className="flex gap-3">
+                            <Info size={20} className="text-blue-600 shrink-0" />
+                            <div>
+                                <h4 className="text-sm font-semibold text-blue-900">Almacenamiento Inteligente</h4>
+                                <p className="text-xs text-blue-800 leading-relaxed mt-1">
+                                    El sistema utiliza URLs directas de Chatwoot/YCloud siempre que es posible.
+                                    Solo los archivos subidos manualmente o descargados por backup ocupan espacio local.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+
     if (loading && !settings) {
         return (
             <div className="p-6 flex items-center justify-center min-h-[400px]">
@@ -698,6 +776,12 @@ export default function ConfigView() {
                             >
                                 <Key size={18} /> Otras
                             </button>
+                            <button
+                                onClick={() => setActiveTab('maintenance')}
+                                className={`px-6 py-4 font-medium text-sm whitespace-nowrap border-b-2 transition-all flex items-center gap-2 ${activeTab === 'maintenance' ? 'border-amber-600 text-amber-600 font-semibold' : 'border-transparent text-gray-500 hover:text-amber-600 hover:border-amber-200'}`}
+                            >
+                                <Database size={18} /> Mantenimiento
+                            </button>
                         </>
                     )}
                 </div>
@@ -711,6 +795,7 @@ export default function ConfigView() {
                     {activeTab === 'chatwoot' && user?.role === 'ceo' && renderChatwootTab()}
                     {activeTab === 'meta_ads' && user?.role === 'ceo' && renderMetaAdsTab()}
                     {activeTab === 'others' && user?.role === 'ceo' && renderOthersTab()}
+                    {activeTab === 'maintenance' && user?.role === 'ceo' && renderMaintenanceTab()}
                 </div>
             </div>
 
