@@ -205,6 +205,9 @@ async def receive_chatwoot_webhook(
         json.dumps(payload),
         json.dumps(content_attrs),
     )
+    
+    # Verificar que se guardó correctamente
+    logger.info(f"✅ Mensaje insertado en DB con {len(content_attrs)} adjuntos (conversation_id={conv_id})")
 
     # --- Transcripción Universal (Spec 19) ---
     if msg_type == "incoming":

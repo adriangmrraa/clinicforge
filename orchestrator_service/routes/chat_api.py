@@ -130,7 +130,11 @@ async def chat_messages(
         }
         for r in rows
     ]
-    logger.info(f"📤 Devueltos {len(messages)} mensajes para conversación {conversation_id} (attachments check: {[len(m.get('attachments', [])) for m in messages]})")
+    # Debug: mostrar el contenido crudo de content_attributes de cada mensaje
+    if messages:
+        sample_attrs = [(i, r.get("content_attributes"), type(r.get("content_attributes"))) for i, r in enumerate(rows[:3])]
+        logger.info(f"🔍 Muestra de content_attributes crudos (primeros 3): {sample_attrs}")
+    logger.info(f"📤 Devueltos {len(messages)} mensajes para conversación {conversation_id} (attachments check: {[len(m.get('attachments', []) or []) for m in messages]})")
     return messages
 
 
