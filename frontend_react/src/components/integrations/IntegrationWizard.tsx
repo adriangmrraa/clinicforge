@@ -61,8 +61,8 @@ export const IntegrationWizard: React.FC<IntegrationWizardProps> = ({ onSuggestC
 
             try {
                 // Append tenant_id query param if selected
-                const query = config.tenant_id ? `? tenant_id = ${config.tenant_id} ` : '';
-                const { data } = await api.get(`/ admin / integrations / ${provider}/config${query}`);
+                const query = config.tenant_id ? `?tenant_id=${config.tenant_id}` : '';
+                const { data } = await api.get(`/admin/integrations/${provider}/config${query}`);
 
                 // Merge loaded data with current provider/tenant selection
                 // We preserve tenant_id and provider from state, and overwrite config fields
@@ -306,7 +306,7 @@ export const IntegrationWizard: React.FC<IntegrationWizardProps> = ({ onSuggestC
                         onClick={handleSave}
                         disabled={loading}
                         className={`px-8 py-3 rounded-xl font-bold text-white shadow-lg transition-all transform hover:-translate-y-0.5 active:translate-y-0 flex items-center
-                ${loading
+                        ${loading
                                 ? 'bg-gray-400 cursor-not-allowed shadow-none'
                                 : provider === 'ycloud' ? 'bg-green-600 hover:bg-green-700 shadow-green-200' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-200'
                             }`}
