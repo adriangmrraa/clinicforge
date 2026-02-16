@@ -592,14 +592,6 @@ async def delete_credential(cred_id: int, user_data = Depends(verify_admin_token
     await db.execute("DELETE FROM credentials WHERE id = $1", cred_id)
     return {"message": "Credencial eliminada."}
 
-@router.get("/tenants", tags=["Sedes"])
-async def list_tenants_admin(user_data = Depends(verify_admin_token)):
-    """Lista todas las sedes (tenants). Solo CEO."""
-    if user_data.role != 'ceo':
-        raise HTTPException(status_code=403, detail="Acceso denegado.")
-    
-    rows = await db.fetch("SELECT id, name, address, phone FROM tenants ORDER BY id ASC")
-    return [dict(r) for r in rows]
 
 # ==================== INTEGRATIONS WIZARD ENDPOINTS (Spec 16) ====================
 
