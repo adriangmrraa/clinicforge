@@ -618,6 +618,7 @@ class IntegrationConfig(BaseModel):
 @router.get("/integrations/{provider}/config", tags=["Integraciones"])
 async def get_integration_config(
     provider: str, 
+    request: Request,
     tenant_id: Optional[int] = None, 
     user_data = Depends(verify_admin_token), 
     resolved_tenant_id: int = Depends(get_resolved_tenant_id)
@@ -655,6 +656,34 @@ async def get_integration_config(
         
         # Account ID (Visible)
         config['chatwoot_account_id'] = data.get('CHATWOOT_ACCOUNT_ID', '')
+
+        # --- Generate Webhook URL (Moved from chat_api.py) ---
+        # 1. Get/Create Webhook Token
+        webhook_token = await db.pool.fetchval(
+            "SELECT value FROM credentials WHERE tenant_id = $1 AND name = 'WEBHOOK_ACCESS_TOKEN'",
+            target_tenant_id
+        )
+        if not webhook_token:
+            webhook_token = uuid.uuid4().hex + uuid.uuid4().hex
+            await db.pool.execute("""
+                INSERT INTO credentials (tenant_id, name, value, category, description, scope, created_at, updated_at)
+                VALUES ($1, 'WEBHOOK_ACCESS_TOKEN', $2, 'system', 'Token para webhook de Chatwoot', 'tenant', NOW(), NOW())
+                ON CONFLICT (tenant_id, name) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+            """, target_tenant_id, webhook_token)
+        
+        config['access_token'] = webhook_token
+        
+        # 2. Construct URL
+        api_base = os.getenv("BASE_URL", "").rstrip("/")
+        if not api_base:
+             # Fallback using request
+             scheme = request.headers.get("x-forwarded-proto", request.url.scheme)
+             host = request.headers.get("x-forwarded-host", request.url.netloc)
+             api_base = f"{scheme}://{host}"
+             
+        config['api_base'] = api_base
+        config['webhook_path'] = "/admin/chatwoot/webhook"
+        config['full_webhook_url'] = f"{api_base}/admin/chatwoot/webhook?access_token={webhook_token}"
 
     elif provider == "ycloud":
         rows = await db.fetch("""

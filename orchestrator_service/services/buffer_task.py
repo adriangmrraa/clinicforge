@@ -70,23 +70,38 @@ async def process_buffer_task(
     if provider == "chatwoot":
         account_id = row["external_account_id"]
         cw_conv_id = row["external_chatwoot_id"]
+        
+        logger.info(f"🤖 Processing Chatwoot Response | tenant={tenant_id} conv={conversation_id} ext_acc={account_id} ext_conv={cw_conv_id}")
+
         if account_id and cw_conv_id:
             from core.credentials import get_tenant_credential, CHATWOOT_API_TOKEN, CHATWOOT_BASE_URL
             token = await get_tenant_credential(tenant_id, CHATWOOT_API_TOKEN)
             base_url = await get_tenant_credential(tenant_id, CHATWOOT_BASE_URL) or "https://app.chatwoot.com"
+            
+            # Sensitive Data Masking for Logs
+            token_preview = f"{token[:4]}...{token[-4:]}" if token and len(token) > 8 else "INVALID/NONE"
+            logger.info(f"🔑 Credentials loaded: URL={base_url} TOKEN={token_preview}")
+
             if token:
-                from chatwoot_client import ChatwootClient
-                client = ChatwootClient(base_url, token)
-                # account_id y cw_conv_id recuperados de la BD (chat_conversations)
-                await client.send_text_message(account_id, cw_conv_id, response_text)
-                # from_number NOT NULL en CLINICASV1.0; usamos external_user_id como identificador de la conversación
-                await pool.execute(
-                    """
-                    INSERT INTO chat_messages (tenant_id, conversation_id, role, content, from_number)
-                    VALUES ($1, $2, 'assistant', $3, $4)
-                    """,
-                    tenant_id, conversation_id, response_text, external_user_id or "chatwoot",
-                )
+                try:
+                    from chatwoot_client import ChatwootClient
+                    client = ChatwootClient(base_url, token)
+                    # account_id y cw_conv_id recuperados de la BD (chat_conversations)
+                    await client.send_text_message(account_id, cw_conv_id, response_text)
+                    logger.info(f"✅ Message sent to Chatwoot successfully: {response_text[:30]}...")
+
+                    # from_number NOT NULL en CLINICASV1.0; usamos external_user_id como identificador de la conversación
+                    await pool.execute(
+                        """
+                        INSERT INTO chat_messages (tenant_id, conversation_id, role, content, from_number)
+                        VALUES ($1, $2, 'assistant', $3, $4)
+                        """,
+                        tenant_id, conversation_id, response_text, external_user_id or "chatwoot",
+                    )
+                except Exception as send_err:
+                    logger.exception(f"❌ Failed sending to Chatwoot: {send_err}")
+            else:
+                 logger.error(f"❌ Missing Chatwoot Token for tenant {tenant_id}")
         else:
             logger.warning("process_buffer_task_chatwoot_missing_ids", conv_id=conversation_id)
     elif provider == "ycloud":

@@ -13,7 +13,7 @@ import UserApprovalView from './views/UserApprovalView';
 import ProfileView from './views/ProfileView';
 import ClinicsView from './views/ClinicsView';
 import ConfigView from './views/ConfigView';
-import { Credentials } from './views/Credentials';
+import { Logs } from './views/Logs';
 import { AuthProvider } from './context/AuthContext';
 import { LanguageProvider } from './context/LanguageContext';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -49,6 +49,7 @@ function App() {
                         <UserApprovalView />
                       </ProtectedRoute>
                     } />
+
                     <Route path="sedes" element={
                       <ProtectedRoute allowedRoles={['ceo']}>
                         <ClinicsView />
@@ -59,11 +60,7 @@ function App() {
                         <ConfigView />
                       </ProtectedRoute>
                     } />
-                    <Route path="credenciales" element={
-                      <ProtectedRoute allowedRoles={['ceo']}>
-                        <Credentials />
-                      </ProtectedRoute>
-                    } />
+
                     <Route path="*" element={<Navigate to="/" replace />} />
                   </Routes>
                 </Layout>

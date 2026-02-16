@@ -2,7 +2,6 @@ import React from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Calendar,
-  Key,
   Users,
   MessageSquare,
   Settings,
@@ -43,7 +42,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle, onCloseMo
     { id: 'treatments', labelKey: 'nav.treatments' as const, icon: <Clock size={20} />, path: '/tratamientos', roles: ['ceo', 'secretary'] },
     { id: 'profile', labelKey: 'nav.profile' as const, icon: <User size={20} />, path: '/perfil', roles: ['ceo', 'professional', 'secretary'] },
     { id: 'settings', labelKey: 'nav.settings' as const, icon: <Settings size={20} />, path: '/configuracion', roles: ['ceo'] },
-    { id: 'credentials', labelKey: 'nav.credentials' as const, icon: <Key size={20} />, path: '/credenciales', roles: ['ceo'] },
+
   ];
 
   const filteredItems = menuItems.filter(item => user && item.roles.includes(user.role));
