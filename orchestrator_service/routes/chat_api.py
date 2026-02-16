@@ -307,16 +307,29 @@ async def human_override(
 @router.get("/admin/chat/media/proxy")
 async def media_proxy(
     url: str = Query(..., description="Original media URL"),
-    tenant_id: int = Depends(get_resolved_tenant_id),
 ):
     """
-    Proxy seguro para medios (Spec 19). 
+    Proxy seguro para medios (Spec 19).
     Evita problemas de CORS y oculta URLs privadas de proveedores.
-    """
-    logger.info(f"🎞️ Proxying media request for tenant {tenant_id}: {url}")
     
-    # Validar que la URL sea de un dominio conocido (opcional pero recomendado por seguridad)
-    # Por ahora permitimos todas las URLs ya que el acceso está protegido por get_resolved_tenant_id
+    NOTA: Este endpoint NO requiere autenticación porque es usado desde <img> tags
+    que no pueden enviar headers personalizados. La seguridad se garantiza validando
+    dominios permitidos.
+    """
+    logger.info(f"🎞️ Proxying media request: {url}")
+    
+    # Validar dominio permitido (seguridad sin autenticación)
+    allowed_domains = [
+        "lookaside.fbsbx.com",  # Instagram/Facebook CDN
+        "scontent",  # Facebook content
+        "cdn.ycloud.com",  # YCloud
+        "storage.googleapis.com",  # Google Cloud Storage
+    ]
+    
+    is_allowed = any(domain in url for domain in allowed_domains) or url.startswith("/media/")
+    if not is_allowed:  
+        logger.warning(f"❌ Dominio no permitido en proxy: {url}")
+        raise HTTPException(status_code=403, detail="Dominio no permitido")
     
     async def stream_content():
         async with httpx.AsyncClient(follow_redirects=True, timeout=30.0) as client:
