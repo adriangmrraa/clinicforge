@@ -616,15 +616,22 @@ class IntegrationConfig(BaseModel):
     tenant_id: Optional[int] = None # Optional override for multi-tenant setup
 
 @router.get("/integrations/{provider}/config", tags=["Integraciones"])
-async def get_integration_config(provider: str, user_data = Depends(verify_admin_token), resolved_tenant_id: int = Depends(get_resolved_tenant_id)):
+async def get_integration_config(
+    provider: str, 
+    tenant_id: Optional[int] = None, 
+    user_data = Depends(verify_admin_token), 
+    resolved_tenant_id: int = Depends(get_resolved_tenant_id)
+):
     """
     Obtiene la configuración enmascarada para un proveedor específico.
     Provider: 'chatwoot' | 'ycloud'
+    Query param 'tenant_id' permite a CEO ver config de otra sede.
     """
     if user_data.role != 'ceo':
         raise HTTPException(status_code=403, detail="Acceso denegado.")
         
-    tenant_id = resolved_tenant_id # Default to current context, or could be passed as query param if CEO managing other tenants
+    # Use query param if provided (CEO override), otherwise current context
+    target_tenant_id = tenant_id if tenant_id else resolved_tenant_id
     
     config = {}
     
@@ -633,7 +640,7 @@ async def get_integration_config(provider: str, user_data = Depends(verify_admin
         rows = await db.fetch("""
             SELECT name, value FROM credentials 
             WHERE tenant_id = $1 AND name IN ('CHATWOOT_BASE_URL', 'CHATWOOT_API_TOKEN', 'CHATWOOT_ACCOUNT_ID')
-        """, tenant_id)
+        """, target_tenant_id)
         
         data = {r['name']: r['value'] for r in rows}
         
