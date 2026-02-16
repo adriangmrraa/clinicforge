@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Settings, Globe, Loader2, CheckCircle2, Copy, MessageCircle, Key, Shield, Zap, User, Store, AlertTriangle, Trash2, Edit2, Link as LinkIcon, Plus } from 'lucide-react';
+import { Settings, Globe, Loader2, CheckCircle2, Copy, Trash2, Edit2, Zap, MessageCircle, Key, User, Plus, Info, Save, Store, Link as LinkIcon, Shield, AlertTriangle } from 'lucide-react';
 import api from '../api/axios';
 import { useTranslation } from '../context/LanguageContext';
 import PageHeader from '../components/PageHeader';
@@ -55,7 +55,7 @@ interface IntegrationConfig {
 export default function ConfigView() {
     const { t, setLanguage } = useTranslation();
     const { user } = useAuth();
-    const [activeTab, setActiveTab] = useState<'general' | 'ycloud' | 'chatwoot' | 'others'>('general');
+    const [activeTab, setActiveTab] = useState<'general' | 'ycloud' | 'chatwoot' | 'meta_ads' | 'others'>('general');
 
     // General Settings State
     const [settings, setSettings] = useState<ClinicSettings | null>(null);
@@ -144,17 +144,16 @@ export default function ConfigView() {
 
             setIntConfig(prev => ({
                 ...prev,
-                ...data, // This will overwrite fields like api_key, base_url etc.
+                ...data,
                 provider,
-                tenant_id: tenantId // Request config for specific tenant, but keep current selection
+                tenant_id: tenantId
             }));
 
-            // For YCloud, we might need deployment config for the webhook URL if not returned by integration endpoint
+            // For YCloud, we might need deployment config for the webhook URL
             if (provider === 'ycloud' && !data.ycloud_webhook_url) {
                 const depRes = await api.get('/admin/config/deployment');
                 setIntConfig(prev => ({ ...prev, ycloud_webhook_url: depRes.data.webhook_ycloud_url }));
             }
-
         } catch (err) {
             console.error(err);
         } finally {
@@ -275,33 +274,33 @@ export default function ConfigView() {
     const renderYCloudTab = () => (
         <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-300">
             {/* 1. Webhook Info */}
-            <div className="bg-green-50 border border-green-200 rounded-2xl p-6">
+            <div className="bg-green-50 border border-green-200 rounded-2xl p-6 shadow-sm">
                 <div className="flex items-center gap-2 mb-2 text-green-800">
                     <Zap className="w-5 h-5" />
                     <h3 className="font-semibold">Webhook para WhatsApp (YCloud)</h3>
                 </div>
                 <p className="text-sm text-green-700 mb-4">Configura este Webhook en tu consola de YCloud para recibir mensajes.</p>
-                <div className="flex gap-2">
-                    <input readOnly value={intConfig.ycloud_webhook_url || 'Cargando...'} className="flex-1 px-3 py-2 bg-white rounded-lg border border-green-200 text-sm font-mono text-gray-600" />
-                    <button onClick={() => copyToClipboard(intConfig.ycloud_webhook_url || '')} className="px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition">
-                        <Copy size={16} />
+                <div className="flex flex-col sm:flex-row gap-2">
+                    <input readOnly value={intConfig.ycloud_webhook_url || 'Cargando...'} className="flex-1 px-3 py-2 bg-white rounded-lg border border-green-200 text-sm font-mono text-gray-600 focus:outline-none" />
+                    <button onClick={() => copyToClipboard(intConfig.ycloud_webhook_url || '')} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition flex items-center justify-center gap-2 font-medium">
+                        <Copy size={16} /> <span className="sm:hidden">Copiar URL</span>
                     </button>
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
                 {/* 2. Form */}
-                <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm h-fit">
+                <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
                     <h2 className="text-lg font-semibold text-gray-900 mb-6 flex items-center gap-2">
                         <MessageCircle className="text-green-600" size={20} />
-                        Configurar Credenciales
+                        Configurar Credencial
                     </h2>
 
                     <div className="space-y-4">
                         <div>
                             <label className="text-sm font-medium text-gray-700 mb-1 block">Sede (Tenant)</label>
                             <select
-                                className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500 outline-none"
+                                className="w-full px-4 py-2 bg-gray-50 border border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500 outline-none transition-all"
                                 value={intConfig.tenant_id === null ? '' : intConfig.tenant_id}
                                 onChange={(e) => setIntConfig({ ...intConfig, tenant_id: e.target.value ? Number(e.target.value) : null })}
                             >
@@ -314,7 +313,7 @@ export default function ConfigView() {
                             <label className="text-sm font-medium text-gray-700 mb-1 block">YCloud API Key</label>
                             <input
                                 type="password"
-                                className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500 outline-none"
+                                className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500 outline-none transition-all"
                                 placeholder="sk_..."
                                 value={intConfig.ycloud_api_key || ''}
                                 onChange={e => setIntConfig({ ...intConfig, ycloud_api_key: e.target.value })}
@@ -325,7 +324,7 @@ export default function ConfigView() {
                             <label className="text-sm font-medium text-gray-700 mb-1 block">Webhook Secret</label>
                             <input
                                 type="password"
-                                className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500 outline-none"
+                                className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500 outline-none transition-all"
                                 placeholder="whsec_..."
                                 value={intConfig.ycloud_webhook_secret || ''}
                                 onChange={e => setIntConfig({ ...intConfig, ycloud_webhook_secret: e.target.value })}
@@ -335,44 +334,56 @@ export default function ConfigView() {
                         <button
                             onClick={handleSaveIntegration}
                             disabled={saving}
-                            className="w-full py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-xl font-medium shadow-lg shadow-green-600/20 transition-all flex justify-center items-center gap-2"
+                            className="w-full py-3 bg-green-600 hover:bg-green-700 text-white rounded-xl font-semibold shadow-lg shadow-green-600/20 transition-all flex justify-center items-center gap-2 mt-4"
                         >
-                            {saving ? <Loader2 className="animate-spin" /> : "Guardar Configuración"}
+                            {saving ? <Loader2 className="animate-spin" /> : <><CheckCircle2 size={18} /> Guardar Configuración</>}
                         </button>
                     </div>
                 </div>
 
                 {/* 3. Table */}
-                <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm overflow-hidden flex flex-col">
+                <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm flex flex-col min-h-[400px]">
                     <h2 className="text-lg font-semibold text-gray-900 mb-4">Credenciales Activas</h2>
-                    <div className="overflow-y-auto flex-1 min-h-[300px]">
+                    <div className="overflow-x-auto flex-1">
                         <table className="w-full text-left text-sm">
-                            <thead className="bg-gray-50 text-gray-500">
+                            <thead className="bg-gray-50 text-gray-500 uppercase text-xs tracking-wider">
                                 <tr>
-                                    <th className="px-4 py-3 rounded-l-lg">Sede</th>
-                                    <th className="px-4 py-3">Estado</th>
-                                    <th className="px-4 py-3 rounded-r-lg text-right">Acciones</th>
+                                    <th className="px-4 py-3 rounded-l-lg font-semibold">Sede</th>
+                                    <th className="px-4 py-3 font-semibold">Estado</th>
+                                    <th className="px-4 py-3 rounded-r-lg text-right font-semibold">Acciones</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100">
                                 {credentials.filter(c => c.category === 'ycloud' && c.name === 'YCLOUD_API_KEY').map(c => (
-                                    <tr key={c.id} className="hover:bg-gray-50/50">
-                                        <td className="px-4 py-3 font-medium text-gray-900">{getTenantName(c.tenant_id)}</td>
-                                        <td className="px-4 py-3 text-green-600 flex items-center gap-1">
-                                            <CheckCircle2 size={14} /> Configurado
+                                    <tr key={c.id} className="hover:bg-gray-50/50 transition-colors">
+                                        <td className="px-4 py-4 font-medium text-gray-900">{getTenantName(c.tenant_id)}</td>
+                                        <td className="px-4 py-4">
+                                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-green-100 text-green-700 text-xs font-medium">
+                                                <CheckCircle2 size={12} /> Activo
+                                            </span>
                                         </td>
-                                        <td className="px-4 py-3 text-right">
-                                            <button
-                                                onClick={() => setIntConfig({ ...intConfig, tenant_id: c.tenant_id || null })}
-                                                className="text-indigo-600 hover:bg-indigo-50 p-1.5 rounded-md transition"
-                                            >
-                                                <Edit2 size={16} />
-                                            </button>
+                                        <td className="px-4 py-4 text-right">
+                                            <div className="flex justify-end gap-2">
+                                                <button
+                                                    onClick={() => setIntConfig({ ...intConfig, tenant_id: c.tenant_id || null })}
+                                                    className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors border border-transparent hover:border-indigo-100"
+                                                    title="Editar"
+                                                >
+                                                    <Edit2 size={16} />
+                                                </button>
+                                                <button
+                                                    onClick={() => handleDeleteCredential(c.id!)}
+                                                    className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors border border-transparent hover:border-rose-100"
+                                                    title="Eliminar"
+                                                >
+                                                    <Trash2 size={16} />
+                                                </button>
+                                            </div>
                                         </td>
                                     </tr>
                                 ))}
                                 {credentials.filter(c => c.category === 'ycloud').length === 0 && (
-                                    <tr><td colSpan={3} className="px-4 py-8 text-center text-gray-400">No hay credenciales configuradas.</td></tr>
+                                    <tr><td colSpan={3} className="px-4 py-12 text-center text-gray-400 italic">No hay servicios de WhatsApp configurados.</td></tr>
                                 )}
                             </tbody>
                         </table>
@@ -385,33 +396,33 @@ export default function ConfigView() {
     const renderChatwootTab = () => (
         <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-300">
             {/* 1. Webhook Info */}
-            <div className="bg-blue-50 border border-blue-200 rounded-2xl p-6">
+            <div className="bg-blue-50 border border-blue-200 rounded-2xl p-6 shadow-sm">
                 <div className="flex items-center gap-2 mb-2 text-blue-800">
                     <MessageCircle className="w-5 h-5" />
                     <h3 className="font-semibold">Webhook para Chatwoot (Meta)</h3>
                 </div>
-                <p className="text-sm text-blue-700 mb-4">Usa esta URL en la configuración de "Inbox" de Chatwoot para recibir mensajes de IG/FB.</p>
-                <div className="flex gap-2">
-                    <input readOnly value={intConfig.full_webhook_url || 'Cargando...'} className="flex-1 px-3 py-2 bg-white rounded-lg border border-blue-200 text-sm font-mono text-gray-600" />
-                    <button onClick={() => copyToClipboard(intConfig.full_webhook_url || '')} className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
-                        <Copy size={16} />
+                <p className="text-sm text-blue-700 mb-4">Usa esta URL en la configuración de "Inbox" de Chatwoot para recibir mensajes de Instagram y Facebook.</p>
+                <div className="flex flex-col sm:flex-row gap-2">
+                    <input readOnly value={intConfig.full_webhook_url || 'Cargando...'} className="flex-1 px-3 py-2 bg-white rounded-lg border border-blue-200 text-sm font-mono text-gray-600 focus:outline-none" />
+                    <button onClick={() => copyToClipboard(intConfig.full_webhook_url || '')} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition flex items-center justify-center gap-2 font-medium">
+                        <Copy size={16} /> <span className="sm:hidden">Copiar URL</span>
                     </button>
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
                 {/* 2. Form */}
-                <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm h-fit">
+                <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
                     <h2 className="text-lg font-semibold text-gray-900 mb-6 flex items-center gap-2">
                         <User className="text-blue-600" size={20} />
-                        Configurar Credenciales
+                        Configurar Credencial
                     </h2>
 
                     <div className="space-y-4">
                         <div>
                             <label className="text-sm font-medium text-gray-700 mb-1 block">Sede (Tenant)</label>
                             <select
-                                className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
+                                className="w-full px-4 py-2 bg-gray-50 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all"
                                 value={intConfig.tenant_id === null ? '' : intConfig.tenant_id}
                                 onChange={(e) => setIntConfig({ ...intConfig, tenant_id: e.target.value ? Number(e.target.value) : null })}
                             >
@@ -423,28 +434,30 @@ export default function ConfigView() {
                         <div>
                             <label className="text-sm font-medium text-gray-700 mb-1 block">Chatwoot Base URL</label>
                             <input
-                                className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
+                                className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all"
                                 placeholder="https://app.chatwoot.com"
                                 value={intConfig.chatwoot_base_url || ''}
                                 onChange={e => setIntConfig({ ...intConfig, chatwoot_base_url: e.target.value })}
                             />
                         </div>
 
-                        <div>
-                            <label className="text-sm font-medium text-gray-700 mb-1 block">Account ID</label>
-                            <input
-                                className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
-                                placeholder="Ej: 1"
-                                value={intConfig.chatwoot_account_id || ''}
-                                onChange={e => setIntConfig({ ...intConfig, chatwoot_account_id: e.target.value })}
-                            />
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label className="text-sm font-medium text-gray-700 mb-1 block">Account ID</label>
+                                <input
+                                    className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                                    placeholder="Ej: 1"
+                                    value={intConfig.chatwoot_account_id || ''}
+                                    onChange={e => setIntConfig({ ...intConfig, chatwoot_account_id: e.target.value })}
+                                />
+                            </div>
                         </div>
 
                         <div>
                             <label className="text-sm font-medium text-gray-700 mb-1 block">User API Token</label>
                             <input
                                 type="password"
-                                className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
+                                className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all"
                                 placeholder="Token de administrador..."
                                 value={intConfig.chatwoot_api_token || ''}
                                 onChange={e => setIntConfig({ ...intConfig, chatwoot_api_token: e.target.value })}
@@ -454,48 +467,117 @@ export default function ConfigView() {
                         <button
                             onClick={handleSaveIntegration}
                             disabled={saving}
-                            className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-medium shadow-lg shadow-blue-600/20 transition-all flex justify-center items-center gap-2"
+                            className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-semibold shadow-lg shadow-blue-600/20 transition-all flex justify-center items-center gap-2 mt-4"
                         >
-                            {saving ? <Loader2 className="animate-spin" /> : "Guardar Configuración"}
+                            {saving ? <Loader2 className="animate-spin" /> : <><CheckCircle2 size={18} /> Guardar Configuración</>}
                         </button>
                     </div>
                 </div>
 
                 {/* 3. Table */}
-                <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm overflow-hidden flex flex-col">
+                <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm flex flex-col min-h-[400px]">
                     <h2 className="text-lg font-semibold text-gray-900 mb-4">Credenciales Activas</h2>
-                    <div className="overflow-y-auto flex-1 min-h-[300px]">
+                    <div className="overflow-x-auto flex-1">
                         <table className="w-full text-left text-sm">
-                            <thead className="bg-gray-50 text-gray-500">
+                            <thead className="bg-gray-50 text-gray-500 uppercase text-xs tracking-wider">
                                 <tr>
-                                    <th className="px-4 py-3 rounded-l-lg">Sede</th>
-                                    <th className="px-4 py-3">Account ID</th>
-                                    <th className="px-4 py-3 rounded-r-lg text-right">Acciones</th>
+                                    <th className="px-4 py-3 rounded-l-lg font-semibold">Sede</th>
+                                    <th className="px-4 py-3 font-semibold">Account ID</th>
+                                    <th className="px-4 py-3 rounded-r-lg text-right font-semibold">Acciones</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100">
-                                {/* We group by tenant to avoid checking multiple rows, but here we just list the Account ID row primarily */}
                                 {credentials.filter(c => c.category === 'chatwoot' && c.name === 'CHATWOOT_ACCOUNT_ID').map(c => (
-                                    <tr key={c.id} className="hover:bg-gray-50/50">
-                                        <td className="px-4 py-3 font-medium text-gray-900">{getTenantName(c.tenant_id)}</td>
-                                        <td className="px-4 py-3 text-gray-600">{c.value}</td>
-                                        <td className="px-4 py-3 text-right">
-                                            <button
-                                                onClick={() => setIntConfig({ ...intConfig, tenant_id: c.tenant_id || null })}
-                                                className="text-indigo-600 hover:bg-indigo-50 p-1.5 rounded-md transition"
-                                            >
-                                                <Edit2 size={16} />
-                                            </button>
+                                    <tr key={c.id} className="hover:bg-gray-50/50 transition-colors">
+                                        <td className="px-4 py-4 font-medium text-gray-900">{getTenantName(c.tenant_id)}</td>
+                                        <td className="px-4 py-4 text-gray-600 font-mono tracking-tight">{c.value}</td>
+                                        <td className="px-4 py-4 text-right">
+                                            <div className="flex justify-end gap-2">
+                                                <button
+                                                    onClick={() => setIntConfig({ ...intConfig, tenant_id: c.tenant_id || null })}
+                                                    className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors border border-transparent hover:border-indigo-100"
+                                                    title="Editar"
+                                                >
+                                                    <Edit2 size={16} />
+                                                </button>
+                                                <button
+                                                    onClick={() => handleDeleteCredential(c.id!)}
+                                                    className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors border border-transparent hover:border-rose-100"
+                                                    title="Eliminar"
+                                                >
+                                                    <Trash2 size={16} />
+                                                </button>
+                                            </div>
                                         </td>
                                     </tr>
                                 ))}
                                 {credentials.filter(c => c.category === 'chatwoot').length === 0 && (
-                                    <tr><td colSpan={3} className="px-4 py-8 text-center text-gray-400">No hay credenciales configuradas.</td></tr>
+                                    <tr><td colSpan={3} className="px-4 py-12 text-center text-gray-400 italic">No hay servicios de Meta/Chatwoot configurados.</td></tr>
                                 )}
                             </tbody>
                         </table>
                     </div>
                 </div>
+            </div>
+        </div>
+    );
+
+    const renderMetaAdsTab = () => (
+        <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div className="bg-white border border-gray-200 rounded-3xl p-10 shadow-xl shadow-indigo-500/5 relative overflow-hidden text-center group">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-50 rounded-full blur-3xl -mr-16 -mt-16 group-hover:bg-indigo-100 transition-colors duration-500"></div>
+                <div className="absolute bottom-0 left-0 w-32 h-32 bg-blue-50 rounded-full blur-3xl -ml-16 -mb-16 group-hover:bg-blue-100 transition-colors duration-500"></div>
+
+                <div className="relative z-10 space-y-6">
+                    <div className="mx-auto w-24 h-24 bg-indigo-50 rounded-3xl flex items-center justify-center mb-4 transform group-hover:rotate-6 transition-transform duration-300 shadow-inner">
+                        <Store size={48} className="text-indigo-600" />
+                    </div>
+
+                    <div className="space-y-2">
+                        <h2 className="text-3xl font-bold text-gray-900 tracking-tight">Meta Ads Integration</h2>
+                        <p className="text-lg text-gray-500 max-w-lg mx-auto leading-relaxed">
+                            Gestiona tus campañas de marketing directamente desde el panel de la clínica.
+                        </p>
+                    </div>
+
+                    <div className="bg-indigo-50/50 rounded-2xl p-6 border border-indigo-100/50 inline-block text-left max-w-md">
+                        <h4 className="flex items-center gap-2 font-semibold text-indigo-900 mb-2">
+                            <Zap size={18} /> Próximamente disponible
+                        </h4>
+                        <ul className="text-sm text-indigo-800/80 space-y-2">
+                            <li className="flex items-start gap-2">• Seguimiento de ROI automático por sede.</li>
+                            <li className="flex items-start gap-2">• Vinculación de leads directamente a la agenda.</li>
+                            <li className="flex items-start gap-2">• Reportes detallados de conversión clínica.</li>
+                        </ul>
+                    </div>
+
+                    <div className="pt-4 flex flex-col sm:flex-row gap-4 justify-center items-center">
+                        <button
+                            onClick={() => alert('Próximamente: Estamos trabajando en la conexión nativa con Meta Ads Business SDK.')}
+                            className="px-8 py-4 bg-gray-900 text-white rounded-2xl font-bold shadow-2xl hover:bg-black transition-all transform hover:-translate-y-1 active:scale-95 flex items-center gap-2 group/btn"
+                        >
+                            <LinkIcon size={20} className="group-hover/btn:rotate-12 transition-transform" />
+                            Conectar con Facebook Ads
+                        </button>
+                        <button className="px-6 py-4 text-gray-500 font-semibold hover:text-gray-900 transition-colors">
+                            Ver Documentación
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {[
+                    { icon: <Shield className="w-6 h-6 text-emerald-600" />, title: "Privacidad", desc: "Datos protegidos bajo HIPAA y GDPR." },
+                    { icon: <Zap className="w-6 h-6 text-yellow-600" />, title: "Automatización", desc: "Captura de leads en tiempo real." },
+                    { icon: <CheckCircle2 className="w-6 h-6 text-blue-600" />, title: "Sincronía", desc: "Agenda y Ads en perfecta armonía." }
+                ].map((item, i) => (
+                    <div key={i} className="bg-white border border-gray-100 p-6 rounded-2xl shadow-sm hover:shadow-md transition-shadow">
+                        <div className="mb-3">{item.icon}</div>
+                        <h4 className="font-bold text-gray-900 mb-1">{item.title}</h4>
+                        <p className="text-sm text-gray-500 leading-snug">{item.desc}</p>
+                    </div>
+                ))}
             </div>
         </div>
     );
@@ -561,63 +643,75 @@ export default function ConfigView() {
     }
 
     return (
-        <div className="p-6 max-w-6xl mx-auto">
-            <PageHeader
-                title={t('config.title')}
-                subtitle="Gestión centralizada de la clínica y canales de comunicación."
-                icon={<Settings size={22} />}
-            />
+        <div className="h-screen flex flex-col bg-gray-50 overflow-hidden">
+            {/* Header & Tabs Area (Fixed) */}
+            <div className="flex-none p-6 pb-0 max-w-6xl mx-auto w-full">
+                <PageHeader
+                    title={t('config.title')}
+                    subtitle="Gestión centralizada de la clínica y canales de comunicación."
+                    icon={<Settings size={22} />}
+                />
 
-            {/* Error/Success Messages */}
-            {error && (
-                <div className="mb-6 p-4 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm flex items-center gap-2">
-                    <AlertTriangle size={18} /> {error}
-                </div>
-            )}
-            {success && (
-                <div className="mb-6 p-4 rounded-xl bg-green-50 border border-green-200 text-green-700 text-sm flex items-center gap-2">
-                    <CheckCircle2 size={18} /> {success}
-                </div>
-            )}
-
-            {/* Tabs Header */}
-            <div className="flex border-b border-gray-200 mb-8 overflow-x-auto">
-                <button
-                    onClick={() => setActiveTab('general')}
-                    className={`px-6 py-3 font-medium text-sm whitespace-nowrap border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'general' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
-                >
-                    <Globe size={18} /> General
-                </button>
-                {user?.role === 'ceo' && (
-                    <>
-                        <button
-                            onClick={() => setActiveTab('ycloud')}
-                            className={`px-6 py-3 font-medium text-sm whitespace-nowrap border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'ycloud' ? 'border-green-600 text-green-600' : 'border-transparent text-gray-500 hover:text-green-600 hover:border-green-200'}`}
-                        >
-                            <Zap size={18} /> YCloud (WhatsApp)
-                        </button>
-                        <button
-                            onClick={() => setActiveTab('chatwoot')}
-                            className={`px-6 py-3 font-medium text-sm whitespace-nowrap border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'chatwoot' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-blue-600 hover:border-blue-200'}`}
-                        >
-                            <MessageCircle size={18} /> Chatwoot (Meta)
-                        </button>
-                        <button
-                            onClick={() => setActiveTab('others')}
-                            className={`px-6 py-3 font-medium text-sm whitespace-nowrap border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'others' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-indigo-600 hover:border-indigo-200'}`}
-                        >
-                            <Key size={18} /> Otras
-                        </button>
-                    </>
+                {/* Error/Success Messages */}
+                {error && (
+                    <div className="mb-4 p-4 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm flex items-center gap-2 animate-in fade-in zoom-in duration-300">
+                        <AlertTriangle size={18} /> {error}
+                    </div>
                 )}
+                {success && (
+                    <div className="mb-4 p-4 rounded-xl bg-green-50 border border-green-200 text-green-700 text-sm flex items-center gap-2 animate-in fade-in zoom-in duration-300">
+                        <CheckCircle2 size={18} /> {success}
+                    </div>
+                )}
+
+                {/* Tabs Header */}
+                <div className="flex border-b border-gray-200 mb-0 overflow-x-auto bg-white/50 backdrop-blur-sm rounded-t-2xl px-2 scrollbar-hide">
+                    <button
+                        onClick={() => setActiveTab('general')}
+                        className={`px-6 py-4 font-medium text-sm whitespace-nowrap border-b-2 transition-all flex items-center gap-2 ${activeTab === 'general' ? 'border-indigo-600 text-indigo-600 font-semibold' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
+                    >
+                        <Globe size={18} /> General
+                    </button>
+                    {user?.role === 'ceo' && (
+                        <>
+                            <button
+                                onClick={() => setActiveTab('ycloud')}
+                                className={`px-6 py-4 font-medium text-sm whitespace-nowrap border-b-2 transition-all flex items-center gap-2 ${activeTab === 'ycloud' ? 'border-green-600 text-green-600 font-semibold' : 'border-transparent text-gray-500 hover:text-green-600 hover:border-green-200'}`}
+                            >
+                                <Zap size={18} /> YCloud (WhatsApp)
+                            </button>
+                            <button
+                                onClick={() => setActiveTab('chatwoot')}
+                                className={`px-6 py-4 font-medium text-sm whitespace-nowrap border-b-2 transition-all flex items-center gap-2 ${activeTab === 'chatwoot' ? 'border-blue-600 text-blue-600 font-semibold' : 'border-transparent text-gray-500 hover:text-blue-600 hover:border-blue-200'}`}
+                            >
+                                <MessageCircle size={18} /> Chatwoot (Meta)
+                            </button>
+                            <button
+                                onClick={() => setActiveTab('meta_ads')}
+                                className={`px-6 py-4 font-medium text-sm whitespace-nowrap border-b-2 transition-all flex items-center gap-2 ${activeTab === 'meta_ads' ? 'border-fuchsia-600 text-fuchsia-600 font-semibold' : 'border-transparent text-gray-500 hover:text-fuchsia-600 hover:border-fuchsia-200'}`}
+                            >
+                                <Store size={18} /> Meta Ads
+                            </button>
+                            <button
+                                onClick={() => setActiveTab('others')}
+                                className={`px-6 py-4 font-medium text-sm whitespace-nowrap border-b-2 transition-all flex items-center gap-2 ${activeTab === 'others' ? 'border-indigo-500 text-indigo-500 font-semibold' : 'border-transparent text-gray-500 hover:text-indigo-500 hover:border-indigo-200'}`}
+                            >
+                                <Key size={18} /> Otras
+                            </button>
+                        </>
+                    )}
+                </div>
             </div>
 
-            {/* Tabs Content */}
-            <div className="min-h-[400px]">
-                {activeTab === 'general' && renderGeneralTab()}
-                {activeTab === 'ycloud' && user?.role === 'ceo' && renderYCloudTab()}
-                {activeTab === 'chatwoot' && user?.role === 'ceo' && renderChatwootTab()}
-                {activeTab === 'others' && user?.role === 'ceo' && renderOthersTab()}
+            {/* Content Area (Scrollable) */}
+            <div className="flex-1 overflow-y-auto bg-gray-50/50 scrollbar-thin scrollbar-thumb-gray-200">
+                <div className="p-6 max-w-6xl mx-auto pb-32">
+                    {activeTab === 'general' && renderGeneralTab()}
+                    {activeTab === 'ycloud' && user?.role === 'ceo' && renderYCloudTab()}
+                    {activeTab === 'chatwoot' && user?.role === 'ceo' && renderChatwootTab()}
+                    {activeTab === 'meta_ads' && user?.role === 'ceo' && renderMetaAdsTab()}
+                    {activeTab === 'others' && user?.role === 'ceo' && renderOthersTab()}
+                </div>
             </div>
 
             {/* Others Generic Credential Modal */}
