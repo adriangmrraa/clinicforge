@@ -123,7 +123,7 @@ export default function ChatsView() {
   const [showToast, setShowToast] = useState<Toast | null>(null);
   const [showMobileContext, setShowMobileContext] = useState(false);
 
-  import { useSmartScroll } from '../hooks/useSmartScroll';
+
 
   // Refs
   // const messagesEndRef = useRef<HTMLDivElement>(null); // Replaced by useSmartScroll
