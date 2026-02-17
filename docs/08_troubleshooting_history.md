@@ -54,4 +54,24 @@ Este documento registra problemas encontrados y sus soluciones para referencia f
 
 ---
 
+## Vision AI Limit: "No veo la imagen" (v8.0)
+
+**Problema:** El usuario enviaba una imagen y texto simultáneamente (o muy seguido). El bot respondía al texto inmediatamente diciendo "No veo ninguna imagen", ignorando el archivo adjunto que se estaba procesando en segundo plano.
+
+**Causas:**
+- **Race Condition**: El mensaje de texto disparaba al Agente ANTES de que el servicio de visión terminara de analizar la imagen y actualizar la metadata en la base de datos.
+- **Falta de Buffer**: El sistema procesaba cada mensaje individualmente (FIFO estricto) sin esperar contexto adicional.
+
+**Solución Aplicada (Spec 24/25 - Buffer Unificado):**
+- **Buffer Inteligente**: Se implementó un buffer en `relay.py` que retiene los mensajes.
+- **Dynamic TTL**:
+  - Si es **Texto**: espera **10s** (Sliding Window).
+  - Si es **Imagen**: espera **20s** (para dar tiempo al análisis).
+- **Resultado**: El bot ahora recibe el paquete completo [Texto + Contexto Visual] antes de generar una respuesta.
+
+**Estado:**
+- ✅ Solucionado en v8.0 con implementación de `relay.py` global.
+
+---
+
 *Histórico de Problemas y Soluciones Nexus v3 © 2026*

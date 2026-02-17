@@ -68,3 +68,22 @@ Para garantizar idempotencia ante reintentos de webhooks y "ecos" de Chatwoot.
   2. Si hay conflicto (duplicado), retorna `False` -> Se ignora el mensaje.
   3. Si es nuevo, retorna `True` -> Se procesa.
 - **Ventana de Procesamiento**: Redis Lock para evitar condiciones de carrera en intervalos de milisegundos.
+
+## 5. Buffering & Contexto (Spec 24/25)
+
+El sistema implementa un **Buffer Unificado** (`relay.py`) para WhatsApp (YCloud) e Instagram/Facebook (Chatwoot) con el objetivo de agrupar mensajes en ráfaga y dar tiempo al análisis de imágenes.
+
+### Lógica "Sliding Window" (Rebote)
+- **Comportamiento**: Cada mensaje nuevo del usuario reinicia el contador de espera.
+- **Debounce**: El bot no responde hasta que detecta "silencio" por X segundos.
+
+### Tiempos de Espera (TTL)
+1. **Texto/Audio**: **10 segundos**. (Para conversaciones fluidas).
+2. **Imagen**: **20 segundos**. (Para dar tiempo a GPT-4o Vision).
+   - **Critical**: Si llega una imagen, el buffer se extiende a 20s. Mensajes de texto posteriores **NO** reducen este tiempo (se respeta el `max(remaining_ttl, 10)`).
+
+### Recuperación de Contexto (Amnesia Fix)
+Antes de invocar al Agente, la tarea `process_buffer_task`:
+1. **Fetch History**: Recupera los últimos **10 mensajes** de la BD (no solo el buffer).
+2. **Deduplicación**: Elimina el último mensaje del historial si coincide con el primero del buffer (evita duplicados).
+3. **Ad Context**: Inyecta información de `meta_ad_headline` si el paciente provino de un anuncio (ej. Urgencias).
