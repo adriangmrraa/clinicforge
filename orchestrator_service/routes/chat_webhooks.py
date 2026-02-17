@@ -176,8 +176,17 @@ async def receive_chatwoot_webhook(
     content_attrs = []
     for att in raw_attachments:
         # Normalización de tipos para el frontend (image, audio, video, file)
+        # Spec 23: Mejorar detección de tipo para Chatwoot
         ftype = (att.get("file_type") or "file").lower()
-        if ftype == "voice": ftype = "audio"
+        if ftype == "voice": 
+            ftype = "audio"
+        elif ftype == "file":
+             # Fallback por extensión si viene como generic file
+             filename = (att.get("file_name") or "").lower()
+             if filename.endswith(('.ogg', '.opus', '.mp3', '.m4a', '.wav')):
+                 ftype = "audio"
+             elif filename.endswith(('.jpg', '.jpeg', '.png', '.webp', '.gif')):
+                 ftype = "image"
         
         content_attrs.append({
             "type": ftype,
@@ -192,10 +201,12 @@ async def receive_chatwoot_webhook(
         logger.warning(f"⚠️ No se encontraron adjuntos en el payload para el mensaje {payload.get('id')}")
 
     # CLINICASV1.0: chat_messages tiene from_number NOT NULL e id BIGSERIAL (no UUID)
-    await pool.execute(
+    # Spec 23: Usar fetchval para obtener message_id para tareas de visión
+    message_id = await pool.fetchval(
         """
         INSERT INTO chat_messages (tenant_id, conversation_id, role, content, from_number, platform_metadata, content_attributes)
         VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb)
+        RETURNING id
         """,
         tenant_id,
         conv_id,
@@ -209,9 +220,10 @@ async def receive_chatwoot_webhook(
     # Verificar que se guardó correctamente
     logger.info(f"✅ Mensaje insertado en DB con {len(content_attrs)} adjuntos (conversation_id={conv_id})")
 
-    # --- Transcripción Universal (Spec 19) ---
+    # --- Transcripción Universal & Vision (Spec 19 & 23) ---
     if msg_type == "incoming":
         for att in content_attrs:
+            # 1. Audio Transcription
             if att["type"] == "audio":
                 try:
                     from services.whisper_service import transcribe_audio_url
@@ -227,6 +239,22 @@ async def receive_chatwoot_webhook(
                     logger.warning("whisper_service not available for universal transcription")
                 except Exception as e:
                     logger.error(f"❌ Error queuing transcription: {str(e)}")
+
+            # 2. Vision Analysis (Spec 23)
+            if att["type"] == "image":
+                try:
+                    from services.vision_service import process_vision_task
+                    background_tasks.add_task(
+                        process_vision_task,
+                        message_id=message_id,
+                        image_url=att["url"],
+                        tenant_id=tenant_id
+                    )
+                    logger.info(f"👁️ Vision task queued for image: {att['url']}")
+                except ImportError:
+                     logger.warning("vision_service not available")
+                except Exception as e:
+                    logger.error(f"❌ Error queuing vision task: {str(e)}")
 
     if msg_type == "incoming":
         override_row = await pool.fetchrow(

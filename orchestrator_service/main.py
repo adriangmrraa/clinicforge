@@ -1728,7 +1728,7 @@ async def chat_endpoint(req: ChatRequest, background_tasks: BackgroundTasks):
         
         # 1. Guardar mensaje del usuario PRIMERO (para no perderlo si hay error)
         # Ahora incluimos attachments y content_attributes
-        await db.append_chat_message(
+        message_id = await db.append_chat_message(
             from_number=req.final_phone,
             role='user',
             content=req.final_message,
@@ -1736,6 +1736,22 @@ async def chat_endpoint(req: ChatRequest, background_tasks: BackgroundTasks):
             tenant_id=tenant_id,
             content_attributes=attachments if attachments else None
         )
+        
+        # Spec 23: Vision Trigger (YCloud/Others)
+        if message_id and attachments:
+             for att in attachments:
+                 if att.get("type") == "image":
+                      try:
+                          from services.vision_service import process_vision_task
+                          background_tasks.add_task(
+                              process_vision_task,
+                              message_id=message_id,
+                              image_url=att["url"],
+                              tenant_id=tenant_id
+                          )
+                          logger.info(f"👁️ Vision task queued for image (YCloud/API): {att['url']}")
+                      except Exception as e:
+                          logger.error(f"❌ Error queuing vision task: {e}")
         
         # --- Notificar al Frontend (Real-time) ---
         await sio.emit('NEW_MESSAGE', to_json_safe({

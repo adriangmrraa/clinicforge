@@ -57,6 +57,51 @@ async def process_buffer_task(
         )
         chat_history = [HumanMessage(content=m) for m in messages[:-1]]
         user_input = messages[-1]
+
+        # Spec 23: Inyección de Contexto Visual (Multimodalidad diferida)
+        # Busamos descripciones de imágenes recientes (últimos 5 min) para dar contexto al bot
+        try:
+             img_rows = await pool.fetch(
+                 """
+                 SELECT content_attributes 
+                 FROM chat_messages 
+                 WHERE conversation_id = $1 
+                   AND role = 'user' 
+                   AND created_at > NOW() - INTERVAL '5 minutes'
+                   AND content_attributes IS NOT NULL
+                 ORDER BY created_at ASC
+                 """,
+                 conversation_id
+             )
+             
+             vision_context_str = ""
+             seen_desc = set()
+             
+             for r in img_rows:
+                 if not r["content_attributes"]: continue
+                 try:
+                     # content_attributes es JSONB, asyncpg lo devuelve como string o dict dependiendo del codec
+                     # Asumimos string si fetchrow no lo decodifica auto (pero db.py suele configurar codec)
+                     attrs = r["content_attributes"]
+                     if isinstance(attrs, str):
+                         attrs = json.loads(attrs)
+                     
+                     if isinstance(attrs, list):
+                         for att in attrs:
+                             desc = att.get("description")
+                             if desc and desc not in seen_desc:
+                                 vision_context_str += f"\n[IMAGEN: {desc}]"
+                                 seen_desc.add(desc)
+                 except Exception:
+                     pass
+
+             if vision_context_str:
+                 logger.info(f"👁️ Inyectando contexto visual: {len(vision_context_str)} chars")
+                 user_input += f"\n\nCONTEXTO VISUAL (Imágenes recientes):{vision_context_str}"
+
+        except Exception as vision_err:
+             logger.warning(f"⚠️ Error leyendo contexto visual: {vision_err}")
+
         executor = await get_agent_executable_for_tenant(tenant_id)
         response = await executor.ainvoke({
             "input": user_input,

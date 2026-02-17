@@ -540,7 +540,7 @@ class Database:
         async with self.pool.acquire() as conn:
             await conn.execute(query, provider, provider_message_id, error)
 
-    async def append_chat_message(self, from_number: str, role: str, content: str, correlation_id: str, tenant_id: int = 1, conversation_id: Optional[str] = None, content_attributes: Optional[dict] = None):
+    async def append_chat_message(self, from_number: str, role: str, content: str, correlation_id: str, tenant_id: int = 1, conversation_id: Optional[str] = None, content_attributes: Optional[dict] = None) -> Optional[int]:
         if not conversation_id:
             # Fallback: Resolver conversación si no viene explícita
             row = await self.fetchrow(
@@ -553,14 +553,17 @@ class Database:
         query = """
         INSERT INTO chat_messages (from_number, role, content, correlation_id, tenant_id, conversation_id, content_attributes) 
         VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)
+        RETURNING id
         """
+        msg_id = None
         async with self.pool.acquire() as conn:
-            await conn.execute(query, from_number, role, content, correlation_id, tenant_id, 
+            msg_id = await conn.fetchval(query, from_number, role, content, correlation_id, tenant_id, 
                                uuid.UUID(conversation_id) if conversation_id else None, 
                                json.dumps(content_attributes) if content_attributes is not None else '[]')
         
         # Sincronizar conversación (Spec 18)
         await self.sync_conversation(tenant_id, "whatsapp", from_number, content, role == "user")
+        return msg_id
 
     async def sync_conversation(self, tenant_id: int, channel: str, external_user_id: str, last_message: str, is_user: bool):
         """
