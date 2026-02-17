@@ -851,7 +851,6 @@ export default function ChatsView() {
                 const session = row.session;
                 const { avatarBg } = getStatusConfig(session);
                 const platform = getPlatformConfig('whatsapp');
-                const isHighlighted = highlightedSession === session.phone_number;
                 const isSelected = selectedSession?.phone_number === session.phone_number;
                 return (
                   <div
@@ -859,7 +858,6 @@ export default function ChatsView() {
                     onClick={() => { setSelectedSession(session); setSelectedChatwoot(null); }}
                     className={`px-4 py-3 border-b cursor-pointer transition-all relative border-l-4
                       ${isSelected ? `${platform.selectedBg} ${platform.borderColor}` : `hover:bg-gray-50 border-transparent`}
-                      ${isHighlighted ? 'bg-orange-50 animate-pulse' : ''}
                     `}
                   >
                     <div className="flex items-center gap-3">
