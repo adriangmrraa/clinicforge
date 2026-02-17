@@ -611,6 +611,39 @@ export default function ChatsView() {
   // UTILIDADES
   // ============================================
 
+  const safeFormatDate = (dateStr: string | null | undefined) => {
+    if (!dateStr) return '';
+    try {
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return '';
+      return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    } catch { return ''; }
+  };
+
+  const safeFormatTime = (dateStr: string | null | undefined) => {
+    if (!dateStr) return '';
+    try {
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return '';
+      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    } catch { return ''; }
+  };
+
+  const formatTimeSummary = (dateStr: string | null | undefined) => {
+    if (!dateStr) return '';
+    try {
+      const date = new Date(dateStr);
+      if (isNaN(date.getTime())) return '';
+      const now = new Date();
+      const diff = now.getTime() - date.getTime();
+
+      if (diff < 60000) return 'Ahora';
+      if (diff < 3600000) return `${Math.floor(diff / 60000)}m`;
+      if (diff < 86400000) return `${Math.floor(diff / 3600000)}h`;
+      return date.toLocaleDateString();
+    } catch { return ''; }
+  };
+
   const filteredSessions = sessions.filter(session =>
     session.patient_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     session.phone_number.includes(searchTerm)
@@ -624,30 +657,25 @@ export default function ChatsView() {
 
   type ListRow = { type: 'ycloud'; session: ChatSession } | { type: 'chatwoot'; item: ChatSummaryItem };
   const mergedList: ListRow[] = [];
-  const seenPhones = new Set<string>(); // ✅ Deduplicación por número de teléfono
+  const seenIds = new Set<string>(); // ✅ Deduplicación mejorada
 
-  // Priorizar YCloud (WhatsApp directo) sobre Chatwoot
+  // 1. Agregar YCloud primero
   if (channelFilter === 'all' || channelFilter === 'whatsapp') {
     filteredSessions.forEach(s => {
-      const phone = s.phone_number;
-      if (!seenPhones.has(phone)) {
-        mergedList.push({ type: 'ycloud', session: s });
-        seenPhones.add(phone); // Marcar como visto
-      }
+      mergedList.push({ type: 'ycloud', session: s });
+      seenIds.add(s.phone_number);
+      // También marcar como visto el external_user_id de Chatwoot si coincide
+      if (s.phone_number.startsWith('+')) seenIds.add(s.phone_number.substring(1));
     });
   }
 
+  // 2. Agregar Chatwoot (Deduplicando por external_user_id)
   if (channelFilter === 'all' || channelFilter === 'whatsapp' || channelFilter === 'instagram' || channelFilter === 'facebook') {
     filteredChatwoot.forEach(item => {
-      // Normalizar número de teléfono para comparación
-      const phone = item.external_user_id || item.phone_number || '';
-      const normalizedPhone = phone.replace(/\s+/g, ''); // Quitar espacios
-
-      // Solo agregar si no existe en YCloud
-      if (!seenPhones.has(normalizedPhone) && !seenPhones.has(phone)) {
+      const externalId = item.external_user_id || item.id;
+      if (!seenIds.has(externalId) && !seenIds.has(`+${externalId}`)) {
         mergedList.push({ type: 'chatwoot', item });
-        seenPhones.add(normalizedPhone);
-        if (phone !== normalizedPhone) seenPhones.add(phone);
+        seenIds.add(externalId);
       }
     });
   }
@@ -658,16 +686,6 @@ export default function ChatsView() {
     return new Date(timeB).getTime() - new Date(timeA).getTime();
   });
 
-  const formatTime = (dateStr: string) => {
-    const date = new Date(dateStr);
-    const now = new Date();
-    const diff = now.getTime() - date.getTime();
-
-    if (diff < 60000) return 'Ahora';
-    if (diff < 3600000) return `${Math.floor(diff / 60000)}m`;
-    if (diff < 86400000) return `${Math.floor(diff / 3600000)}h`;
-    return date.toLocaleDateString();
-  };
 
   const getStatusConfig = (session: ChatSession) => {
     if (session.status === 'human_handling' || session.status === 'silenced') {
@@ -889,7 +907,7 @@ export default function ChatsView() {
                           )}
                         </div>
                         <span className={`text-[11px] ${session.unread_count > 0 ? 'text-medical-600 font-bold' : 'text-gray-400'}`}>
-                          {formatTime(session.last_message_time)}
+                          {formatTimeSummary(session.last_message_time)}
                         </span>
                       </div>
                     </div>
@@ -934,7 +952,7 @@ export default function ChatsView() {
                       </div>
                       <p className="text-sm truncate text-gray-500">{item.last_message || t('chats.no_messages')}</p>
                       <span className="text-[11px] text-gray-400">
-                        {item.last_message_at ? formatTime(item.last_message_at) : ''}
+                        {item.last_message_at ? formatTimeSummary(item.last_message_at) : ''}
                       </span>
                     </div>
                   </div>
@@ -1069,7 +1087,7 @@ export default function ChatsView() {
                 <div className="bg-orange-50 border-b border-orange-200 px-4 py-2 flex items-center gap-2">
                   <AlertCircle size={16} className="text-orange-500" />
                   <span className="text-sm text-orange-700">
-                    ⚠️ {t('chats.handoff_banner').replace('{{time}}', new Date(selectedSession.last_derivhumano_at).toLocaleTimeString())}
+                    ⚠️ {t('chats.handoff_banner').replace('{{time}}', safeFormatTime(selectedSession.last_derivhumano_at))}
                   </span>
                   <button
                     onClick={handleRemoveSilence}
@@ -1157,7 +1175,7 @@ export default function ChatsView() {
                         )}
                         <MessageContent message={message} />
                         <p className={`text-xs mt-1 ${message.role === 'user' ? 'text-gray-400' : 'opacity-70'}`}>
-                          {new Date(message.created_at).toLocaleTimeString()}
+                          {safeFormatTime(message.created_at)}
                         </p>
                       </div>
                     </div>
@@ -1177,7 +1195,7 @@ export default function ChatsView() {
                         <div className={`max-w-[70%] rounded-lg px-4 py-3 ${msg.role === 'user' ? 'bg-white shadow-sm' : `${platform.bgColor} text-white shadow-sm`}`}>
                           <MessageContent message={msg} />
                           <p className={`text-xs mt-1 ${msg.role === 'user' ? 'text-gray-400' : 'opacity-70'}`}>
-                            {msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString() : ''}
+                            {msg.timestamp ? safeFormatTime(msg.timestamp) : ''}
                           </p>
                         </div>
                       </div>
@@ -1331,7 +1349,7 @@ export default function ChatsView() {
                       </p>
                       {overrideUntil && (
                         <p className="text-xs text-gray-500 mt-1">
-                          Hasta: {new Date(overrideUntil).toLocaleString()}
+                          Hasta: {safeFormatTime(overrideUntil)}
                         </p>
                       )}
                     </div>
@@ -1376,7 +1394,7 @@ export default function ChatsView() {
                               <div className="space-y-1">
                                 <p className="text-sm font-medium">{patientContext.last_appointment.type}</p>
                                 <div className="flex items-center gap-2 text-xs text-gray-500">
-                                  <span>{new Date(patientContext.last_appointment.date).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                                  <span>{safeFormatDate(patientContext.last_appointment.date)} {safeFormatTime(patientContext.last_appointment.date)}</span>
                                   {patientContext.last_appointment.duration_minutes && (
                                     <span className="bg-gray-200 px-1.5 rounded-sm">{patientContext.last_appointment.duration_minutes} min</span>
                                   )}
@@ -1399,7 +1417,7 @@ export default function ChatsView() {
                               <div className="space-y-1">
                                 <p className="text-sm font-medium">{patientContext.upcoming_appointment.type}</p>
                                 <div className="flex items-center gap-2 text-xs text-primary font-medium">
-                                  <span>{new Date(patientContext.upcoming_appointment.date).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                                  <span>{safeFormatDate(patientContext.upcoming_appointment.date)} {safeFormatTime(patientContext.upcoming_appointment.date)}</span>
                                   {patientContext.upcoming_appointment.duration_minutes && (
                                     <span className="bg-medical-100 px-1.5 rounded-sm">{patientContext.upcoming_appointment.duration_minutes} min</span>
                                   )}

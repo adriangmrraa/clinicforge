@@ -56,18 +56,30 @@ class ChatwootAdapter(ChannelAdapter):
         # 3. Procesar Adjuntos
         media_items = self._extract_media(payload)
         
-        # 4. Construir Canonical
+        # 3. Determinar external_user_id (Priorizar username para IG/FB si existe en meta)
+        # Spec 30: Usamos handles si están disponibles para evitar duplicados en DB
+        target_external_id = sender_id
+        if nexus_channel in ["instagram", "facebook"]:
+            username = conversation.get("meta", {}).get("sender", {}).get("username")
+            if username:
+                target_external_id = username
+                logger.info(f"🆔 Using username '{username}' as external_id for {nexus_channel}")
+
+        # 4. Procesar Adjuntos
+        media_items = self._extract_media(payload)
+        
+        # 5. Construir Canonical
         canonical = CanonicalMessage(
             provider="chatwoot",
             original_channel=nexus_channel,
-            external_user_id=sender_id, # ID interno de CW, Service resolverá el real
+            external_user_id=target_external_id,
             display_name=sender_data["name"],
             tenant_id=tenant_id,
             content=content,
             media=media_items,
             is_agent=(msg_type == "outgoing"),
             raw_payload=payload,
-            sender=sender_data # Nuevo campo rico
+            sender=sender_data
         )
         
         self._log_normalization("Chatwoot", 1, [str(m.type) for m in media_items])
