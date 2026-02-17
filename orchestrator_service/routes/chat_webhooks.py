@@ -176,7 +176,7 @@ async def receive_chatwoot_webhook(
     content_attrs = []
     for att in raw_attachments:
         # Normalización de tipos para el frontend (image, audio, video, file)
-        ftype = att.get("file_type", "file")
+        ftype = (att.get("file_type") or "file").lower()
         if ftype == "voice": ftype = "audio"
         
         content_attrs.append({

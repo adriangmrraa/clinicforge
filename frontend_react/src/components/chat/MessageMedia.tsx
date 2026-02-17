@@ -58,7 +58,8 @@ export const MessageMedia = ({ attachments, message }: { attachments: any[], mes
     };
 
     const getProxyUrl = (url: string) => {
-        if (url.startsWith('/media/')) return `${BACKEND_URL}${url}`;
+        if (!url) return '';
+        if (url.startsWith('/media/') || url.startsWith('/admin/')) return `${BACKEND_URL}${url}`;
         return `${BACKEND_URL}/admin/chat/media/proxy?url=${encodeURIComponent(url)}`;
     };
 
