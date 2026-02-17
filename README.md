@@ -179,7 +179,7 @@ ClinicForge uses a **Sovereign Microservices Architecture**, designed to scale w
 |------------|------------|
 | **Orchestrator** | FastAPI (Python 3.11+) – central brain, LangChain agent, Socket.IO server |
 | **Add-ons** | Pydantic, Uvicorn (ASGI) |
-| **Microservices** | `orchestrator_service`: main API, agent, calendar, tenants, auth; `whatsapp_service`: YCloud relay, Whisper transcription |
+| **Microservices** | `orchestrator_service`: main API, agent, calendar, tenants, auth, **relay (buffer)**; `whatsapp_service`: YCloud relay, Whisper transcription |
 
 ### 🗄️ Infrastructure & Persistence
 

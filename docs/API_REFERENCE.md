@@ -604,7 +604,7 @@ Sirve archivos de medios (imágenes/audio) de forma segura, resolviendo URLs fir
 ### Chat (IA / WhatsApp / Vision)
 `POST /chat`
 
-Endpoint usado por el **WhatsApp Service** (y pruebas) para enviar mensajes al agente LangChain. Ahora con soporte MULTIMODAL (Spec 23).
+Endpoint usado por el **WhatsApp Service** (y pruebas) para enviar mensajes al agente LangChain. Ahora con soporte MULTIMODAL (Spec 23) y BUFFER UNIFICADO (Spec 24/25).
 
 **Payload:**
 ```json
@@ -617,6 +617,11 @@ Endpoint usado por el **WhatsApp Service** (y pruebas) para enviar mensajes al a
   ]
 }
 ```
+**Comportamiento (Async Queue):**
+- **Buffer 10s (Texto/Audio):** Agrupa mensajes en ráfaga (Sliding Window).
+- **Buffer 20s (Imagen):** Extiende la espera si detecta una imagen para dar tiempo al análisis de Visión.
+- **Respuesta Inmediata:** `{ "status": "queued", "send": false, "text": "[Procesando...]" }`. El agente responde asincrónicamente via YCloud/Chatwoot.
+
 - **Vision**: Si viene `media` de tipo `image`, se dispara análisis GPT-4o.
 - **Persistencia**: Historial en BD + Inyección de contexto visual.
 

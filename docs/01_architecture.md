@@ -52,14 +52,22 @@ AgendaView / Odontograma
 **Responsabilidades:**
 - **Transcripción Whisper:** Convierte audios de síntomas en texto para el análisis de la IA.
 - **Deduplicación:** Evita procesar el mismo mensaje de WhatsApp múltiples veces.
-- **Buffering:** Agrupa mensajes enviados en ráfaga para dar un contexto completo.
+- **Deduplicación:** Evita procesar el mismo mensaje de WhatsApp múltiples veces.
+- **Relay (Buffering):** Encola mensajes en `orchestrator_service` para agrupación inteligente (Sliding Window).
 - **Relay de Audio/Imagen:** Permite que los audios e imágenes sean procesados y visualizados en el dashboard.
 
 ### B. Orchestrator Service (Puerto 8000) - **Coordinador Clínico**
 
 **Tecnología:** FastAPI + LangChain + OpenAI + PostgreSQL
 
-**Función:** Procesamiento de lenguaje natural, clasificación de urgencias y gestión de agenda.
+**Función:** Procesamiento de lenguaje natural, clasificación de urgencias, gestión de agenda y **Buffer Unificado**.
+
+**NUEVO: Relay Service (Spec 24/25):**
+- **Buffer Unificado:** Agrupa mensajes de WhatsApp y Chatwoot.
+- **Sliding Window:** Cada mensaje reinicia el contador de espera (Debounce).
+- **Dynamic TTL:**
+    - Texto/Audio: **10 segundos**.
+    - Imagen: **20 segundos** (protegido para análisis de visión).
 
 **NUEVO: Vision Service (Spec 23):**
 - **Capacidad:** Análisis de imágenes (Rx, fotos clínicas) usando GPT-4o.
