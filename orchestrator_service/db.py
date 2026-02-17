@@ -2,9 +2,12 @@ import asyncpg
 import os
 import json
 import uuid
+import logging
 from typing import List, Tuple, Optional
 
 POSTGRES_DSN = os.getenv("POSTGRES_DSN")
+
+logger = logging.getLogger(__name__)
 
 class Database:
     def __init__(self):
@@ -34,9 +37,6 @@ class Database:
         Sistema de Auto-Migración (Maintenance Robot / Schema Surgeon).
         Se asegura de que la base de datos esté siempre actualizada y saludable.
         """
-        import logging
-        logger = logging.getLogger("db")
-        
         try:
             # 1. Auditoría de Salud: ¿Existe la base mínima?
             async with self.pool.acquire() as conn:

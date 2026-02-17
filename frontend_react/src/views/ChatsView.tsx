@@ -156,9 +156,9 @@ export default function ChatsView() {
           : s
       ));
 
-      // Resaltar el chat en la lista
-      setHighlightedSession(data.phone_number);
-      setTimeout(() => setHighlightedSession(null), 5000);
+      // Resaltar el chat en la lista (removido por ahora si no hay estado)
+      // setHighlightedSession(data.phone_number);
+      // setTimeout(() => setHighlightedSession(null), 5000);
 
       // Mostrar toast (idioma según selector)
       setShowToast({

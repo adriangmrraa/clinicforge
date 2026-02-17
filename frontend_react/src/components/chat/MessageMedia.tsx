@@ -58,7 +58,7 @@ export const MessageMedia = ({ attachments, message }: { attachments: any[], mes
     };
 
     const getProxyUrl = (url: string) => {
-        if (!url) return '';
+        if (!url || typeof url !== 'string') return '';
         if (url.startsWith('/media/') || url.startsWith('/admin/')) return `${BACKEND_URL}${url}`;
         return `${BACKEND_URL}/admin/chat/media/proxy?url=${encodeURIComponent(url)}`;
     };
@@ -77,8 +77,10 @@ export const MessageMedia = ({ attachments, message }: { attachments: any[], mes
     return (
         <div className={`mt-2 flex flex-wrap gap-2 ${isGrouped ? 'grid grid-cols-3' : 'flex-col'}`}>
             {attachments.map((att, idx) => {
+                if (!att || typeof att !== 'object') return null;
                 const type = att.type || 'file';
                 const url = getProxyUrl(att.url);
+                if (!url) return null; // No renderizar si no hay URL válida
 
                 if (type === 'image' && !isGrouped) {
                     return (
@@ -137,7 +139,8 @@ export const MessageMedia = ({ attachments, message }: { attachments: any[], mes
 };
 
 export const MessageContent = ({ message }: { message: ChatMessage | ChatApiMessage }) => {
-    const content = message.content || '';
+    if (!message) return null;
+    const content = typeof message.content === 'string' ? message.content : '';
     const attachments = (message as any).attachments || (message as any).content_attributes || [];
 
     return (
