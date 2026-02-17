@@ -39,6 +39,19 @@ class ChannelService:
             canonical_msgs = await adapter.normalize_payload(payload, tenant_id)
             if canonical_msgs:
                 logger.info(f"✅ ChannelService: Normalized {len(canonical_msgs)} msgs from {provider}")
+                
+                # Download Media Logic
+                from services.media_downloader import download_media
+                for msg in canonical_msgs:
+                    for m_item in msg.media:
+                        try:
+                            # Descargar y actualizar URL a path local
+                            local_path = await download_media(m_item.url, tenant_id, m_item.type.value)
+                            m_item.local_path = local_path
+                            m_item.url = local_path # Update URL for DB persistence
+                        except Exception as e:
+                            logger.error(f"Failed to download media {m_item.url}: {e}")
+                            
             return canonical_msgs
         except Exception as e:
             logger.exception(f"❌ ChannelService Error normalizing {provider}: {e}")

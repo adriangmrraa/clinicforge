@@ -13,6 +13,7 @@ import { io, Socket } from 'socket.io-client';
 import type { ChatSummaryItem, ChatApiMessage } from '../types/chat';
 import AdContextCard from '../components/AdContextCard';
 import { MessageContent } from '../components/chat/MessageMedia';
+import { useSmartScroll } from '../hooks/useSmartScroll';
 
 // ============================================
 // INTERFACES
@@ -120,13 +121,18 @@ export default function ChatsView() {
   // Estados de UI
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [showToast, setShowToast] = useState<Toast | null>(null);
-  const [highlightedSession, setHighlightedSession] = useState<string | null>(null);
   const [showMobileContext, setShowMobileContext] = useState(false);
 
+  import { useSmartScroll } from '../hooks/useSmartScroll';
+
   // Refs
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  // const messagesEndRef = useRef<HTMLDivElement>(null); // Replaced by useSmartScroll
   const socketRef = useRef<Socket | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  // Scroll Inteligente
+  const { containerRef, messagesEndRef, showScrollButton, scrollToBottom } = useSmartScroll([messages, chatwootMessages]);
+
 
   // ============================================
   // WEBSOCKET - CONEXIÓN EN TIEMPO REAL
@@ -374,13 +380,14 @@ export default function ChatsView() {
       }
     };
     load();
-    const interval = setInterval(load, 3000);
+    const interval = setInterval(load, 40000); // Polling optimizado a 40s
     return () => clearInterval(interval);
   }, [selectedChatwoot]);
 
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages, chatwootMessages]);
+  // useEffect(() => {
+  //   scrollToBottom();
+  // }, [messages, chatwootMessages]); // Handled by useSmartScroll
+
 
   // ============================================
   // FUNCIONES DE DATOS
