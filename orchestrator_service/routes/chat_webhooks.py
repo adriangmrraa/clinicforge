@@ -61,11 +61,17 @@ async def receive_chatwoot_webhook(
         try:
             # A. Resolver Conversación (Idempotente)
             # El user_id externo y el canal vienen del mensaje normalizado
+            # Spec 34: Extraer IDs de Chatwoot para persistencia
+            cw_acc_id = payload.get("account", {}).get("id")
+            cw_conv_id = payload.get("conversation", {}).get("id")
+            
             conv_id = await db.get_or_create_conversation(
                 tenant_id=tenant_id,
                 channel=msg.original_channel,
                 external_user_id=msg.external_user_id,
-                display_name=msg.display_name
+                display_name=msg.display_name,
+                external_chatwoot_id=cw_conv_id,
+                external_account_id=cw_acc_id
             )
             
             # B. Deduplicación de Mensaje
@@ -243,11 +249,17 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
 
     for msg in messages:
         try:
+            # Spec 34: Intentar extraer IDs si vienen en el crudo (para Chatwoot)
+            cw_acc_id = msg.raw_payload.get("account", {}).get("id")
+            cw_conv_id = msg.raw_payload.get("conversation", {}).get("id")
+            
             conv_id = await db.get_or_create_conversation(
                 tenant_id=tenant_id,
                 channel=msg.original_channel,
                 external_user_id=msg.external_user_id,
-                display_name=msg.display_name
+                display_name=msg.display_name,
+                external_chatwoot_id=cw_conv_id,
+                external_account_id=cw_acc_id
             )
             
             # Deduplicación básica

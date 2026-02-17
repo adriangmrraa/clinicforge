@@ -1198,23 +1198,34 @@ export default function ChatsView() {
 
                 {selectedChatwoot && (() => {
                   const platform = getPlatformConfig(selectedChatwoot.channel || 'chatwoot');
-                  return loadingChatwootMessages ? (
-                    <div className="p-4 text-center text-gray-500">{t('common.loading')}</div>
-                  ) : (
-                    (chatwootMessages || []).slice().reverse().map((msg) => (
-                      <div
-                        key={msg.id}
-                        className={`flex ${msg.role === 'user' ? 'justify-start' : 'justify-end'}`}
-                      >
-                        <div className={`max-w-[70%] rounded-lg px-4 py-3 ${msg.role === 'user' ? 'bg-white shadow-sm' : `${platform.bgColor} text-white shadow-sm`}`}>
-                          <MessageContent message={msg} />
-                          <p className={`text-xs mt-1 ${msg.role === 'user' ? 'text-gray-400' : 'opacity-70'}`}>
-                            {msg.timestamp ? safeFormatTime(msg.timestamp) : ''}
-                          </p>
-                        </div>
+                  if (loadingChatwootMessages) {
+                    return <div className="p-4 text-center text-gray-500">{t('common.loading')}</div>;
+                  }
+
+                  const msgs = chatwootMessages || [];
+                  if (msgs.length === 0) {
+                    return (
+                      <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-gray-400">
+                        <MessageCircle size={48} className="mb-2 opacity-20" />
+                        <p className="text-sm font-medium">No hay mensajes aún en esta conversación</p>
+                        <p className="text-xs opacity-70">Los mensajes nuevos aparecerán aquí automáticamente.</p>
                       </div>
-                    ))
-                  );
+                    );
+                  }
+
+                  return msgs.slice().reverse().map((msg) => (
+                    <div
+                      key={msg.id}
+                      className={`flex ${msg.role === 'user' ? 'justify-start' : 'justify-end'}`}
+                    >
+                      <div className={`max-w-[70%] rounded-lg px-4 py-3 ${msg.role === 'user' ? 'bg-white shadow-sm' : `${platform.bgColor} text-white shadow-sm`}`}>
+                        <MessageContent message={msg} />
+                        <p className={`text-xs mt-1 ${msg.role === 'user' ? 'text-gray-400' : 'opacity-70'}`}>
+                          {msg.timestamp ? safeFormatTime(msg.timestamp) : ''}
+                        </p>
+                      </div>
+                    </div>
+                  ));
                 })()}
 
                 <div ref={messagesEndRef} />

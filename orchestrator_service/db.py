@@ -588,20 +588,14 @@ class Database:
         tenant_id: int,
         channel: str,  # "whatsapp", "instagram", "facebook"
         external_user_id: str,  # Phone number o user_id
-        display_name: Optional[str] = None
+        display_name: Optional[str] = None,
+        external_chatwoot_id: Optional[int] = None,
+        external_account_id: Optional[int] = None
     ) -> uuid.UUID:
         """
         Obtiene conversación existente o crea una nueva (Spec 20).
         Garantiza UNA sola conversación por external_user_id + channel.
-        
-        Args:
-            tenant_id: ID del tenant (multi-tenancy)
-            channel: Canal de comunicación,
-            external_user_id: Identificador único del usuario (teléfono o user_id)
-            display_name: Nombre para mostrar (opcional)
-        
-        Returns:
-            UUID de la conversación (existente o recién creada)
+        Soporta persistencia de IDs de Chatwoot (Spec 34) para respuesta de la IA.
         """
         # 1. Buscar conversación existente
         existing = await self.pool.fetchrow("""
@@ -610,24 +604,36 @@ class Database:
         """, tenant_id, channel, external_user_id)
         
         if existing:
-            logger.debug(f"📧 Conversation exists: {existing['id']}")
+            # Si existe pero no tenía IDs de Chatwoot, los actualizamos
+            if external_chatwoot_id or external_account_id:
+                await self.pool.execute("""
+                    UPDATE chat_conversations 
+                    SET external_chatwoot_id = COALESCE($1, external_chatwoot_id),
+                        external_account_id = COALESCE($2, external_account_id),
+                        updated_at = NOW()
+                    WHERE id = $3
+                """, external_chatwoot_id, external_account_id, existing['id'])
             return existing['id']
         
         # 2. Crear nueva conversación (ON CONFLICT para race conditions)
         conv_id = await self.pool.fetchval("""
             INSERT INTO chat_conversations (
                 tenant_id, channel, external_user_id, display_name,
+                external_chatwoot_id, external_account_id,
                 last_message_at, updated_at
             )
-            VALUES ($1, $2, $3, $4, NOW(), NOW())
+            VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
             ON CONFLICT (tenant_id, channel, external_user_id) 
             DO UPDATE SET 
                 updated_at = NOW(),
-                display_name = COALESCE(EXCLUDED.display_name, chat_conversations.display_name)
+                display_name = COALESCE(EXCLUDED.display_name, chat_conversations.display_name),
+                external_chatwoot_id = COALESCE(EXCLUDED.external_chatwoot_id, chat_conversations.external_chatwoot_id),
+                external_account_id = COALESCE(EXCLUDED.external_account_id, chat_conversations.external_account_id)
             RETURNING id
-        """, tenant_id, channel, external_user_id, display_name or external_user_id)
+        """, tenant_id, channel, external_user_id, display_name or external_user_id, 
+           external_chatwoot_id, external_account_id)
         
-        logger.info(f"✅ New conversation created: {conv_id}")
+        logger.info(f"✅ New conversation created: {conv_id} with Chatwoot IDs: {external_chatwoot_id}/{external_account_id}")
         return conv_id
 
     async def ensure_patient_exists(self, phone_number: Optional[str], tenant_id: int, first_name: str = 'Visitante', status: str = 'guest', external_id: Optional[dict] = None):

@@ -36,9 +36,14 @@ class ChatwootAdapter(ChannelAdapter):
         sender_id = str(sender.get("id"))
         
         # Extraer metadatos ricos del sender
+        import re
+        raw_name = sender.get("name") or "Visitante"
+        # Limpiar etiquetas de IG/FB como "| Contenido Orgánico"
+        clean_name = re.sub(r'\s*\|\s*Contenido Orgánico.*', '', raw_name, flags=re.IGNORECASE).strip()
+
         sender_data = {
             "id": sender.get("id"),
-            "name": sender.get("name"),
+            "name": clean_name,
             "avatar": sender.get("avatar_url") or sender.get("thumbnail"),
             "email": sender.get("email"),
             "phone": sender.get("phone_number"),
