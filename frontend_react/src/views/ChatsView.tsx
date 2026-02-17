@@ -657,25 +657,32 @@ export default function ChatsView() {
 
   type ListRow = { type: 'ycloud'; session: ChatSession } | { type: 'chatwoot'; item: ChatSummaryItem };
   const mergedList: ListRow[] = [];
-  const seenIds = new Set<string>(); // ✅ Deduplicación mejorada
+  const seenIds = new Set<string>();
+  const seenNames = new Set<string>(); // ✅ Spec 31: Deduplicación por nombre para IG/FB
 
   // 1. Agregar YCloud primero
   if (channelFilter === 'all' || channelFilter === 'whatsapp') {
     filteredSessions.forEach(s => {
       mergedList.push({ type: 'ycloud', session: s });
       seenIds.add(s.phone_number);
-      // También marcar como visto el external_user_id de Chatwoot si coincide
       if (s.phone_number.startsWith('+')) seenIds.add(s.phone_number.substring(1));
     });
   }
 
-  // 2. Agregar Chatwoot (Deduplicando por external_user_id)
+  // 2. Agregar Chatwoot (Deduplicando por ID y por Nombre para IG/FB)
   if (channelFilter === 'all' || channelFilter === 'whatsapp' || channelFilter === 'instagram' || channelFilter === 'facebook') {
     filteredChatwoot.forEach(item => {
       const externalId = item.external_user_id || item.id;
-      if (!seenIds.has(externalId) && !seenIds.has(`+${externalId}`)) {
+      const channel = item.channel || 'chatwoot';
+      const nameKey = `${channel}:${(item.name || '').toLowerCase()}`;
+
+      const isDuplicateId = seenIds.has(externalId) || seenIds.has(`+${externalId}`);
+      const isDuplicateName = (channel === 'instagram' || channel === 'facebook') && seenNames.has(nameKey);
+
+      if (!isDuplicateId && !isDuplicateName) {
         mergedList.push({ type: 'chatwoot', item });
         seenIds.add(externalId);
+        if (item.name) seenNames.add(nameKey);
       }
     });
   }

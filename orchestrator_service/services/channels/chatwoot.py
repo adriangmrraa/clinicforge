@@ -62,8 +62,9 @@ class ChatwootAdapter(ChannelAdapter):
         if nexus_channel in ["instagram", "facebook"]:
             username = conversation.get("meta", {}).get("sender", {}).get("username")
             if username:
-                target_external_id = username
-                logger.info(f"🆔 Using username '{username}' as external_id for {nexus_channel}")
+                # Normalizar: lowercase y strip para evitar duplicados por casing (Spec 31)
+                target_external_id = str(username).strip().lower()
+                logger.info(f"🆔 Using normalized username '{target_external_id}' as external_id for {nexus_channel}")
 
         # 4. Procesar Adjuntos
         media_items = self._extract_media(payload)

@@ -188,12 +188,13 @@ async def chat_messages(
                 logger.warning(f"⚠️ Skipping invalid attachment (not a dict): {type(att)} - {att}")
                 continue
             
+            # Sign ALL URLs to ensure they go through the proxy (fixes audio mime-type issues)
             original_url = att.get("url", "")
-            if original_url and not original_url.startswith("/media/"):
-                # Generar firma para URL externa
+            if original_url:
+                # Generar firma para URL (sea externa o local /media/)
                 signature, expires = generate_signed_url(original_url, tenant_id)
                 # Construir URL del proxy con parámetros de seguridad
-                from urllib.parse import urlencode, quote
+                from urllib.parse import urlencode
                 proxy_params = {
                     "url": original_url,
                     "tenant_id": tenant_id,
@@ -208,7 +209,6 @@ async def chat_messages(
                     "original_url": original_url  # Preservar URL original para referencia
                 })
             else:
-                # URLs locales no necesitan firma
                 signed_attachments.append(att)
         
         messages.append({
@@ -420,24 +420,44 @@ async def media_proxy(
     
     logger.info(f"🎞️ Proxying media (tenant {tenant_id}): {url}")
     
+    import mimetypes
+    
+    # Determinar Content-Type
+    media_content_type, _ = mimetypes.guess_type(url)
+    if not media_content_type:
+        # Fallback manual para tipos comunes si mimetypes falla
+        if ".ogg" in url.lower() or ".opus" in url.lower():
+            media_content_type = "audio/ogg"
+        elif ".mp3" in url.lower():
+            media_content_type = "audio/mpeg"
+        else:
+            media_content_type = "application/octet-stream"
+
     async def stream_content():
         async with httpx.AsyncClient(follow_redirects=True, timeout=30.0) as client:
             try:
-                # Si es una URL local del servidor (almacenamiento persistente), leer del disco
+                # Si es una URL local del servidor, leer del disco de forma segura
                 if url.startswith("/media/"):
-                    # Asumimos que /media en la URL mapea a una carpeta local
-                    # En una implementación real con Docker, esto sería un volumen
-                    local_path = os.path.join(os.getcwd(), "media", url.replace("/media/", ""))
-                    if os.path.exists(local_path):
+                    # Normalizar path para evitar traversal
+                    path_parts = url.replace("/media/", "").split("/")
+                    # Bloquear paths que contengan ".."
+                    if ".." in path_parts:
+                        return
+                        
+                    local_path = os.path.join(os.getcwd(), "media", *path_parts)
+                    if os.path.exists(local_path) and os.path.isfile(local_path):
                         with open(local_path, "rb") as f:
-                            while chunk := f.read(8192):
+                            while chunk := f.read(65536):
                                 yield chunk
+                        return
+                    else:
+                        logger.error(f"❌ Local media not found: {local_path}")
                         return
                 
                 # De lo contrario, descargar del proveedor
                 async with client.stream("GET", url) as response:
                     if response.status_code != 200:
-                        logger.error(f"❌ Failed to proxy media: {response.status_code}")
+                        logger.error(f"❌ Failed to proxy media ({response.status_code}): {url}")
                         return
                     
                     async for chunk in response.aiter_bytes():
@@ -445,7 +465,8 @@ async def media_proxy(
             except Exception as e:
                 logger.error(f"❌ Error streaming media: {str(e)}")
 
-    return StreamingResponse(stream_content())
+    headers = {"Content-Type": media_content_type}
+    return StreamingResponse(stream_content(), headers=headers)
 
 
 @router.post("/admin/chat/upload")
