@@ -424,37 +424,44 @@ async def media_proxy(
     
     # Determinar Content-Type
     media_content_type, _ = mimetypes.guess_type(url)
+    
+    # Fallback manual para tipos comunes si mimetypes falla (especialmente .ogg/.opus de WhatsApp)
     if not media_content_type:
-        # Fallback manual para tipos comunes si mimetypes falla
-        if ".ogg" in url.lower() or ".opus" in url.lower():
+        low_url = url.lower()
+        if ".ogg" in low_url or ".opus" in low_url:
             media_content_type = "audio/ogg"
-        elif ".mp3" in url.lower():
+        elif ".mp3" in low_url:
             media_content_type = "audio/mpeg"
+        elif ".m4a" in low_url:
+            media_content_type = "audio/mp4"
         else:
             media_content_type = "application/octet-stream"
 
+    # --- Spec 33: Mejorar serving de archivos locales ---
+    # Si es una URL local del servidor, usar FileResponse (soporta Range headers nativamente)
+    if url.startswith("/media/"):
+        # Normalizar path para evitar traversal
+        path_parts = url.replace("/media/", "").split("/")
+        if ".." in path_parts:
+             raise HTTPException(status_code=400, detail="Invalid path")
+            
+        local_path = os.path.join(os.getcwd(), "media", *path_parts)
+        if os.path.exists(local_path) and os.path.isfile(local_path):
+            from fastapi.responses import FileResponse
+            logger.info(f"📁 Serving local media via FileResponse: {local_path} (Range Support)")
+            return FileResponse(
+                local_path, 
+                media_type=media_content_type,
+                filename=os.path.basename(local_path)
+            )
+        else:
+            logger.error(f"❌ Local media not found: {local_path}")
+            raise HTTPException(status_code=404, detail="File not found")
+
+    # De lo contrario (URLs externas), mantener StreamingResponse
     async def stream_content():
         async with httpx.AsyncClient(follow_redirects=True, timeout=30.0) as client:
             try:
-                # Si es una URL local del servidor, leer del disco de forma segura
-                if url.startswith("/media/"):
-                    # Normalizar path para evitar traversal
-                    path_parts = url.replace("/media/", "").split("/")
-                    # Bloquear paths que contengan ".."
-                    if ".." in path_parts:
-                        return
-                        
-                    local_path = os.path.join(os.getcwd(), "media", *path_parts)
-                    if os.path.exists(local_path) and os.path.isfile(local_path):
-                        with open(local_path, "rb") as f:
-                            while chunk := f.read(65536):
-                                yield chunk
-                        return
-                    else:
-                        logger.error(f"❌ Local media not found: {local_path}")
-                        return
-                
-                # De lo contrario, descargar del proveedor
                 async with client.stream("GET", url) as response:
                     if response.status_code != 200:
                         logger.error(f"❌ Failed to proxy media ({response.status_code}): {url}")

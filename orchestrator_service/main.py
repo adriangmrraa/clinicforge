@@ -40,11 +40,13 @@ from routes import chat_webhooks, chat_api
 from email_service import email_service
 
 # --- CONFIGURACIÓN ---
+import logging
+logger = logging.getLogger("orchestrator")
+
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 logging.basicConfig(level=LOG_LEVEL)
 from core.log_sanitizer import install_log_sanitizer  # noqa: E402
 install_log_sanitizer()
-logger = logging.getLogger("orchestrator")
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 POSTGRES_DSN = os.getenv("POSTGRES_DSN", "")
