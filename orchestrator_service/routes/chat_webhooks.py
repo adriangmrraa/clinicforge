@@ -161,34 +161,50 @@ async def receive_chatwoot_webhook(
         return {"status": "ignored", "reason": "duplicate"}
     logger.info(f"📥 Recibiendo webhook de Chatwoot: event={payload.get('event')}, msg_type={msg_type}")
     
-    # Log de adjuntos crudos para depuración
     logger.info(f"📦 DEBUG PAYLOAD: {json.dumps(payload)[:1000]}...") # Limit length
 
     role = "user" if msg_type == "incoming" else "human_supervisor"
     
     # Extraction robusta de adjuntos (Chatwoot v3+ y canales variados)
+    # --- DEBUG YCLOUD/GENERAL PAYLOAD ---
+    # Log full payload for debugging YCloud image issues
+    event_type = payload.get("event")
+    provider = "chatwoot" # As per upsert_sql
+    if provider == "chatwoot": # or provider == "ycloud" if direct
+        try:
+             # Limit log size but show structure
+            safe_payload = json.dumps(payload)[:2000]
+            logger.info(f"📨 Webhook Payload ({event_type}): {safe_payload}")
+        except:
+            pass
+
+    # Extract attachments
     raw_attachments = payload.get("attachments")
-    if not isinstance(raw_attachments, list):
+    
+    # Fallback: YCloud sometimes sends image in message object but not in root attachments
+    if not raw_attachments:
         raw_attachments = payload.get("message", {}).get("attachments")
+    
+    # Fallback 2: Check for image URL in content if attachments is empty (YCloud/WhatsApp specific)
+    img_fallback_url = None
+    if not raw_attachments:
+        content_txt = data or "" # Using 'data' which is the message content
+        # Check if content looks like a raw URL (common in some bridges)
+        if content_txt.startswith("http") and any(ext in content_txt.lower() for ext in [".jpg", ".jpeg", ".png", ".webp"]):
+             logger.info(f"⚠️ YCloud/Bridge: No attachments, but found URL in content: {content_txt}")
+             img_fallback_url = content_txt
+             # We construct a fake attachment
+             raw_attachments = [{
+                 "file_type": "image",
+                 "data_url": img_fallback_url,
+                 "thumb_url": img_fallback_url
+             }]
+
     if not isinstance(raw_attachments, list):
         raw_attachments = []
         
     content_attrs = []
     for att in raw_attachments:
-        # Normalización de tipos para el frontend (image, audio, video, file)
-        # Spec 23: Mejorar detección de tipo para Chatwoot
-        ftype = (att.get("file_type") or "file").lower()
-        if ftype == "voice": 
-            ftype = "audio"
-        elif ftype == "file":
-             # Fallback por extensión si viene como generic file
-             filename = (att.get("file_name") or "").lower()
-             if filename.endswith(('.ogg', '.opus', '.mp3', '.m4a', '.wav')):
-                 ftype = "audio"
-             elif filename.endswith(('.jpg', '.jpeg', '.png', '.webp', '.gif')):
-                 ftype = "image"
-        
-        content_attrs.append({
             "type": ftype,
             "url": att.get("data_url") or att.get("source_url", ""),
             "file_name": att.get("file_name", "attachment"),

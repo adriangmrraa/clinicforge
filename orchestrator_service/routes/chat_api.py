@@ -168,6 +168,13 @@ async def chat_messages(
             if isinstance(raw_attrs, str):
                 try:
                     attachments = json.loads(raw_attrs)
+                    # Handle double-encoded JSON (e.g. '"[]"') which returns a string after first load
+                    if isinstance(attachments, str):
+                        try:
+                            attachments = json.loads(attachments)
+                        except (json.JSONDecodeError, TypeError):
+                            # If second parse fails, treat as empty or leave as is (likely not valid structure)
+                            pass
                 except (json.JSONDecodeError, TypeError):
                     attachments = []
             elif isinstance(raw_attrs, list):

@@ -31,6 +31,8 @@ async def process_buffer_task(
         logger.warning("process_buffer_task_conversation_not_found", conv_id=conversation_id)
         return
     provider = row["provider"] or "chatwoot"
+    logger.info(f"🦾 Processing Buffer Task | tenant={tenant_id} conv={conversation_id} user={external_user_id} provider={provider} msgs={len(messages)}")
+
     if not messages:
         return
 
@@ -110,14 +112,10 @@ async def process_buffer_task(
         db_history_dicts = await db.get_chat_history(external_user_id, limit=10, tenant_id=tenant_id)
         
         # Deduplication: If the last message in DB matches the first in Buffer, remove it from history
-        # (This happens because main.py inserts user message BEFORE buffering)
         if db_history_dicts and messages:
             last_db_msg = db_history_dicts[-1]['content']
             first_buffer_msg = messages[0]
             if last_db_msg.strip() == first_buffer_msg.strip():
-                # We want to avoid the agent seeing the same message twice.
-                # Since 'messages' (buffer) contains the user input we want to react to,
-                # we remove it from 'chat_history' so it doesn't appear as "already said".
                 db_history_dicts.pop()
 
         chat_history = []
@@ -127,12 +125,10 @@ async def process_buffer_task(
             else:
                 chat_history.append(AIMessage(content=msg['content']))
 
-        # Append buffered messages as ONE block (or separate? Plan said unified input)
-        # Usually we join them to simulate a single long message
+        # Append buffered messages as ONE block
         user_input = "\n".join(messages)
         
         # Spec 23: Inyección de Contexto Visual (Multimodalidad diferida)
-        # Busamos descripciones de imágenes recientes (últimos 5 min) para dar contexto al bot
         try:
              # Using uuid cast for conversation_id
              img_rows = await pool.fetch(
@@ -176,12 +172,14 @@ async def process_buffer_task(
              logger.warning(f"⚠️ Error leyendo contexto visual: {vision_err}")
 
         executor = await get_agent_executable_for_tenant(tenant_id)
+        logger.info(f"🧠 Invoking Agent for {external_user_id}...")
         response = await executor.ainvoke({
             "input": user_input,
             "chat_history": chat_history,
             "system_prompt": system_prompt,
         })
         response_text = response.get("output", "") or "[Sin respuesta]"
+        logger.info(f"🤖 Agent Response: {response_text[:50]}...")
     except Exception as e:
         logger.exception("process_buffer_task_agent_error", error=str(e))
         response_text = "[Error al procesar. Intente de nuevo.]"
@@ -201,7 +199,7 @@ async def process_buffer_task(
                     from chatwoot_client import ChatwootClient
                     client = ChatwootClient(base_url, token)
                     await client.send_text_message(account_id, cw_conv_id, response_text)
-                    logger.info(f"✅ Message sent to Chatwoot successfully: {response_text[:30]}...")
+                    logger.info(f"✅ Message sent to Chatwoot/Meta successfully: {response_text[:30]}...")
 
                     await pool.execute(
                         """
@@ -211,7 +209,7 @@ async def process_buffer_task(
                         tenant_id, conversation_id, response_text, external_user_id or "chatwoot",
                     )
                 except Exception as send_err:
-                    logger.exception(f"❌ Failed sending to Chatwoot: {send_err}")
+                    logger.exception(f"❌ Failed sending to Chatwoot/Meta: {send_err}")
             else:
                  logger.error(f"❌ Missing Chatwoot Token for tenant {tenant_id}")
         else:
