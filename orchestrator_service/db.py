@@ -621,7 +621,9 @@ class Database:
             )
             VALUES ($1, $2, $3, $4, NOW(), NOW())
             ON CONFLICT (tenant_id, channel, external_user_id) 
-            DO UPDATE SET updated_at = NOW()
+            DO UPDATE SET 
+                updated_at = NOW(),
+                display_name = COALESCE(EXCLUDED.display_name, chat_conversations.display_name)
             RETURNING id
         """, tenant_id, channel, external_user_id, display_name or external_user_id)
         

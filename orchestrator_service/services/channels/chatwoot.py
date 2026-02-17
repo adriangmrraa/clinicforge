@@ -33,24 +33,41 @@ class ChatwootAdapter(ChannelAdapter):
         content = payload.get("content") or ""
         
         sender = payload.get("sender", {})
+        sender_id = str(sender.get("id"))
         
+        # Extraer metadatos ricos del sender
+        sender_data = {
+            "id": sender.get("id"),
+            "name": sender.get("name"),
+            "avatar": sender.get("avatar_url") or sender.get("thumbnail"),
+            "email": sender.get("email"),
+            "phone": sender.get("phone_number"),
+            "type": sender.get("type")  # "contact" or "user"
+        }
+        
+        # Fallback: Si el nombre parece un ID o está vacío, intentar usar meta de conversación
+        conversation_meta = conversation.get("meta", {}).get("sender", {})
+        if not sender_data["name"] or str(sender_data["name"]) == sender_id:
+            if conversation_meta.get("name"):
+                sender_data["name"] = conversation_meta.get("name")
+            if conversation_meta.get("thumbnail"):
+                sender_data["avatar"] = conversation_meta.get("thumbnail")
+
         # 3. Procesar Adjuntos
         media_items = self._extract_media(payload)
         
         # 4. Construir Canonical
-        # Nota: La resolución de conversation_id y external_user_id se hace en el Service
-        # Aquí solo extraemos la data raw útil
-        
         canonical = CanonicalMessage(
             provider="chatwoot",
             original_channel=nexus_channel,
-            external_user_id=str(sender.get("id")), # ID interno de CW, Service resolverá el real
-            display_name=sender.get("name"),
+            external_user_id=sender_id, # ID interno de CW, Service resolverá el real
+            display_name=sender_data["name"],
             tenant_id=tenant_id,
             content=content,
             media=media_items,
             is_agent=(msg_type == "outgoing"),
-            raw_payload=payload
+            raw_payload=payload,
+            sender=sender_data # Nuevo campo rico
         )
         
         self._log_normalization("Chatwoot", 1, [str(m.type) for m in media_items])
