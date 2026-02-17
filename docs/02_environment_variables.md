@@ -67,7 +67,7 @@ Este proyecto se configura completamente mediante variables de entorno. En despl
 | Variable | Descripción | Ejemplo | Requerida |
 | :--- | :--- | :--- | :--- |
 | `BASE_URL` | URL pública del Orchestrator (para devolver `api_base` en GET /admin/integrations/chatwoot/config; el frontend construye la URL del webhook para copiar en Chatwoot) | `https://api.clinica.com` | ❌ (si no se usa Chatwoot) |
-| `REDIS_URL` | Usado por el buffer atómico (16s) de Chatwoot; si no hay Redis, el webhook no encola y el agente no se dispara para mensajes entrantes Chatwoot | `redis://redis:6379/0` | ❌ (opcional para Chatwoot) |
+| `REDIS_URL` | Usado por el buffer dinámico (10s/20s) de Chatwoot; si no hay Redis, el webhook no encola y el agente no se dispara para mensajes entrantes Chatwoot | `redis://redis:6379/0` | ❌ (opcional para Chatwoot) |
 
 Las credenciales por tenant (WEBHOOK_ACCESS_TOKEN, CHATWOOT_API_TOKEN, CHATWOOT_BASE_URL, OPENAI_API_KEY, etc.) se guardan en la tabla `credentials`; no son variables de entorno globales. Ver `API_REFERENCE.md` (sección Chat omnicanal) y Configuración en el panel (sección Chatwoot).
 

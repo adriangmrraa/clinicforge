@@ -46,7 +46,7 @@ orchestrator_service/
   core/credentials.py  # get_tenant_credential, resolve_tenant_from_webhook_token (Vault por tenant)
   routes/chat_webhooks.py  # POST /admin/chatwoot/webhook (evento message_created)
   routes/chat_api.py   # GET /admin/chats/summary, /admin/chats/{id}/messages, POST /admin/whatsapp/send, human-override, config
-  services/relay.py    # Buffer atómico 16s (Redis); enqueue_buffer_and_schedule_task
+  services/relay.py    # Buffer inteligente (10s texto/audio, 20s imagen); enqueue_buffer_and_schedule_task
   services/buffer_task.py  # process_buffer_task: invoca agente por tenant, envía respuesta por Chatwoot
 
 frontend_react/src/
