@@ -380,7 +380,7 @@ export default function ChatsView() {
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages]);
+  }, [messages, chatwootMessages]);
 
   // ============================================
   // FUNCIONES DE DATOS
