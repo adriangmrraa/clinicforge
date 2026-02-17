@@ -605,9 +605,7 @@ export default function ChatsView() {
     }
   };
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
+
 
   // ============================================
   // UTILIDADES
