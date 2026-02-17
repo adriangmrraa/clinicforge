@@ -1727,6 +1727,15 @@ async def chat_endpoint(req: ChatRequest, background_tasks: BackgroundTasks):
                 attachments.append(item)
         
         # 1. Guardar mensaje del usuario PRIMERO (para no perderlo si hay error)
+        # Spec 24: Ensure conversation exists for Buffering
+        conv_uuid = await db.get_or_create_conversation(
+            tenant_id=tenant_id,
+            channel="whatsapp",
+            external_user_id=req.final_phone,
+            display_name=req.final_name or req.final_phone
+        )
+        conversation_id = str(conv_uuid)
+
         # Ahora incluimos attachments y content_attributes
         message_id = await db.append_chat_message(
             from_number=req.final_phone,
@@ -1734,6 +1743,7 @@ async def chat_endpoint(req: ChatRequest, background_tasks: BackgroundTasks):
             content=req.final_message,
             correlation_id=correlation_id,
             tenant_id=tenant_id,
+            conversation_id=conversation_id,
             content_attributes=attachments if attachments else None
         )
         
@@ -1804,98 +1814,29 @@ async def chat_endpoint(req: ChatRequest, background_tasks: BackgroundTasks):
                         WHERE tenant_id = $1 AND phone_number = $2
                     """, tenant_id, req.final_phone)
         
-        # 2. Cargar historial de BD (últimos 20 mensajes, misma clínica)
-        chat_history = await db.get_chat_history(req.final_phone, limit=20, tenant_id=tenant_id)
-        
-        if chat_history and chat_history[-1]['content'] == req.final_message and chat_history[-1]['role'] == 'user':
-            chat_history.pop() 
+        # Spec 24: Relay Handling (Async Buffer)
+        # Replaces direct agent invocation to allow buffering (16s/20s) and Vision Context injection
+        try:
+            from services.relay import enqueue_buffer_and_schedule_task
+            background_tasks.add_task(enqueue_buffer_and_schedule_task, tenant_id, conversation_id, req.final_phone)
+            logger.info(f"⏳ Message buffered for {req.final_phone} (Spec 24 Vision Fix) - conv_id={conversation_id}")
+        except ImportError:
+            logger.error("❌ services.relay not found")
+            return {
+                "status": "error",
+                "message": "relay_service_not_found"
+            }
+        except Exception as e:
+            logger.error(f"❌ Error enqueuing buffer task: {e}")
+            return {
+                "status": "error",
+                "message": str(e)
+            }
 
-        messages = []
-        for msg in chat_history:
-            if msg['role'] == 'user':
-                messages.append(HumanMessage(content=msg['content']))
-            else:
-                messages.append(AIMessage(content=msg['content']))
-        
-        # 2b. Obtener nombre de la clínica del tenant (prompt agnóstico)
-        tenant_row = await db.pool.fetchrow(
-            "SELECT clinic_name FROM tenants WHERE id = $1",
-            tenant_id
-        )
-        clinic_name = (tenant_row["clinic_name"] or CLINIC_NAME) if tenant_row else CLINIC_NAME
-        
-        # 2c. Detectar idioma del mensaje para responder en el mismo idioma
-        detected_lang = detect_message_language(req.final_message)
-        
-        # 2d. Spec 06: Construir contexto de anuncio (si el paciente vino de Meta Ads)
-        ad_context = ""
-        if existing_patient:
-            meta_headline = existing_patient.get("meta_ad_headline") or ""
-            meta_source = existing_patient.get("acquisition_source") or ""
-            if meta_source and meta_source != "ORGANIC" and meta_headline:
-                # Detectar si el anuncio es de urgencia
-                urgency_ad_keywords = ["urgencia", "dolor", "emergencia", "trauma", "emergency", "pain", "urgent"]
-                is_urgency_ad = any(kw in meta_headline.lower() for kw in urgency_ad_keywords)
-                if is_urgency_ad:
-                    ad_context = (
-                        f"• EL PACIENTE VIENE DE UN ANUNCIO DE URGENCIA: \"{meta_headline}\".\n"
-                        f"• PRIORIZA EL TRIAJE CLÍNICO sobre la captura de datos administrativos.\n"
-                        f"• Preguntá inmediatamente por el dolor/síntoma y usá 'triage_urgency' cuanto antes.\n"
-                        f"• Recién después del triaje, procedé con datos (nombre, DNI, obra social)."
-                    )
-                else:
-                    ad_context = (
-                        f"• El paciente llegó desde un anuncio de Meta Ads: \"{meta_headline}\".\n"
-                        f"• Podés personalizar el saludo mencionando el tema del anuncio de forma natural."
-                    )
-        
-        # 3. Construir system prompt dinámico (clínica + idioma + ad context) e invocar agente
-        now = get_now_arg()
-        dias_semana = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
-        nombre_dia = dias_semana[now.weekday()]
-        current_time_str = f"{nombre_dia} {now.strftime('%d/%m/%Y %H:%M')}"
-        system_prompt = build_system_prompt(
-            clinic_name=clinic_name,
-            current_time=current_time_str,
-            response_language=detected_lang,
-            hours_start=CLINIC_HOURS_START,
-            hours_end=CLINIC_HOURS_END,
-            ad_context=ad_context,
-        )
-        
-        executor = await get_agent_executable_for_tenant(tenant_id)
-        response = await executor.ainvoke({
-            "input": req.final_message,
-            "chat_history": messages,
-            "system_prompt": system_prompt,
-        })
-        
-        assistant_response = response.get("output", "Error procesando respuesta")
-        
-        # 4. Guardar respuesta del asistente
-        await db.append_chat_message(
-            from_number=req.final_phone,
-            role='assistant',
-            content=assistant_response,
-            correlation_id=correlation_id,
-            tenant_id=tenant_id,
-        )
-        
-        # --- Notificar al Frontend (Real-time AI) ---
-        await sio.emit('NEW_MESSAGE', to_json_safe({
-            'phone_number': req.final_phone,
-            'tenant_id': tenant_id,
-            'message': assistant_response,
-            'role': 'assistant'
-        }))
-        # --------------------------------------------
-        
-        logger.info(f"✅ Chat procesado para {req.final_phone} (correlation_id={correlation_id})")
-        
         return {
-            "status": "ok",
-            "send": True,
-            "text": assistant_response,
+            "status": "queued",
+            "send": False,
+            "text": "[Procesando...]",
             "correlation_id": correlation_id
         }
         

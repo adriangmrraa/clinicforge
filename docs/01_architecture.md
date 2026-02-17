@@ -2,12 +2,12 @@
 
 Este documento describe la estructura técnica, el flujo de datos y la interacción entre los componentes de la plataforma de gestión clínica Dentalogic.
 
-## 1. Diagrama de Bloques (Conceptual)
+### 1. Diagrama de Bloques (Conceptual)
 
 ``` 
 Usuario WhatsApp (Paciente)
         |
-        | Audio/Texto
+        | Audio/Texto/Imagen
         v
 WhatsApp Service (8002)
   - YCloud Webhook
@@ -18,6 +18,7 @@ WhatsApp Service (8002)
         v
 Orchestrator Service (8000)
   - LangChain Agent (Asistente Dental)
+  - Vision Service (GPT-4o)  <-- NUEVO
   - Tools Clínicas (Agenda, Triaje)
   - Memoria Histórica (Postgres)
   - Lockout (24h)
@@ -27,7 +28,7 @@ Orchestrator Service (8000)
    /    |    \
   v     v     v
 PostgreSQL Redis OpenAI
-(Historias)(Locks)(LLM)
+(Historias)(Locks)(LLM/Vision)
    |
    v
 Frontend React (5173)
@@ -52,13 +53,17 @@ AgendaView / Odontograma
 - **Transcripción Whisper:** Convierte audios de síntomas en texto para el análisis de la IA.
 - **Deduplicación:** Evita procesar el mismo mensaje de WhatsApp múltiples veces.
 - **Buffering:** Agrupa mensajes enviados en ráfaga para dar un contexto completo.
-- **Relay de Audio:** Permite que los audios sean escuchados por humanos en el dashboard.
+- **Relay de Audio/Imagen:** Permite que los audios e imágenes sean procesados y visualizados en el dashboard.
 
 ### B. Orchestrator Service (Puerto 8000) - **Coordinador Clínico**
 
 **Tecnología:** FastAPI + LangChain + OpenAI + PostgreSQL
 
 **Función:** Procesamiento de lenguaje natural, clasificación de urgencias y gestión de agenda.
+
+**NUEVO: Vision Service (Spec 23):**
+- **Capacidad:** Análisis de imágenes (Rx, fotos clínicas) usando GPT-4o.
+- **Flujo:** Webhook -> Descarga -> Análisis Async -> Inyección de Contexto Visual en el Agente.
 
 **Tools Clínicas Integradas:**
 - `check_availability(date_query, [professional_name], [treatment_name], [time_preference])`: Implementa lógica **Just-in-Time (JIT)** y **cerebro híbrido** por sede.
@@ -114,15 +119,20 @@ AgendaView / Odontograma
 - **Odontograma y Pantallas de Alta Densidad:** Utilizan el patrón de **Sub-Scrolling**, permitiendo que herramientas complejas mantengan sus controles visibles mientras los diagramas scrollean.
 - **ChatsView Rígido:** Implementa una jerarquía flex con `min-h-0` que fuerza el scroll únicamente en el área de mensajes.
 
-### E. Chat omnicanal (Chatwoot)
+### E. Chat omnicanal (Chatwoot/YCloud Unificado)
 
 **Objetivo:** Recibir y responder conversaciones de WhatsApp, Instagram y Facebook vía **Chatwoot** en la misma bandeja de Chats que YCloud (por teléfono).
+
+**Nuevas Capacidades (Spec 23):**
+- **Transcripción de Audio**: Chatwoot ahora transcribe notas de voz igual que YCloud.
+- **AI Vision**: Ambos canales soportan envío de imágenes, analizadas por GPT-4o e inyectadas en el contexto del agente.
 
 **Componentes:**
 - **Webhook:** `POST /admin/chatwoot/webhook?access_token=...` (público). Valida tenant por token en tabla `credentials`; evento `message_created`: upsert en `chat_conversations`, INSERT en `chat_messages`, buffer atómico 16s (Redis) y disparo del agente por tenant (Vault: `get_agent_executable_for_tenant(tenant_id)` con OPENAI_API_KEY por tenant).
 - **API UI:** `GET /admin/chats/summary` (filtro `channel`: whatsapp|instagram|facebook), `GET /admin/chats/{id}/messages`, `POST /admin/whatsapp/send`, `POST /admin/conversations/{id}/human-override`, `GET /admin/integrations/chatwoot/config` (URL webhook + token para Configuración).
 - **Frontend:** ChatsView con lista unificada (sesiones YCloud + conversaciones Chatwoot), filtro por canal (Todos, WhatsApp, Instagram, Facebook), envío y human override; ConfigView con sección Chatwoot (URL + botón Copiar). Polling lista 10s, mensajes Chatwoot 3s.
 - **Tablas:** `chat_conversations` (tenant_id, channel, provider, external_user_id, human_override_until, etc.), `credentials` (tenant_id, name, value), extensión de `chat_messages` (conversation_id, content_attributes, platform_metadata). Ver `docs/API_REFERENCE.md` (Chat omnicanal) y `docs/AUDIT_CHATWOOT_2025-02-13.md`.
+- **Proxy de Medios (Spec 22)**: `/admin/chat/media/proxy` para servir adjuntos de forma segura sin exponer URLs de S3/Facebook expirables.
 
 ## 6. Paginación y Carga Incremental
 

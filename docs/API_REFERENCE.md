@@ -581,6 +581,19 @@ Lista los últimos casos de urgencia detectados por el sistema de triaje IA.
 
 ---
 
+### Proxy de Medios (Spec 22)
+`GET /admin/chat/media/proxy`
+
+Sirve archivos de medios (imágenes/audio) de forma segura, resolviendo URLs firmadas o locales sin exponerlas directamente.
+
+**Query Params:**
+- `url`: URL absoluta del recurso (S3, YCloud, o path local `/media/...`).
+- `tenant_id`: ID del tenant para validación de acceso.
+
+**Response:** Stream de bytes del archivo con el Content-Type correcto.
+
+---
+
 ## Otros
 
 ### Health
@@ -588,12 +601,24 @@ Lista los últimos casos de urgencia detectados por el sistema de triaje IA.
 
 **Público.** Respuesta: `{ "status": "ok", "service": "dental-orchestrator" }`. Usado por orquestadores y monitoreo.
 
-### Chat (IA / WhatsApp)
+### Chat (IA / WhatsApp / Vision)
 `POST /chat`
 
-Endpoint usado por el **WhatsApp Service** (y pruebas) para enviar mensajes al agente LangChain. Persiste historial en BD. No usa JWT ni X-Admin-Token; la seguridad se gestiona en el servicio que llama (webhook con secret, IP, etc.).
+Endpoint usado por el **WhatsApp Service** (y pruebas) para enviar mensajes al agente LangChain. Ahora con soporte MULTIMODAL (Spec 23).
 
-**Payload:** Incluye identificador de conversación (ej. `phone`), `message`, y contexto de tenant/clínica según integración.
+**Payload:**
+```json
+{
+  "final_phone": "+54911...",
+  "final_message": "Hola, me duele...",
+  "media": [
+    { "type": "image", "url": "https://..." },
+    { "type": "audio", "url": "https://..." }
+  ]
+}
+```
+- **Vision**: Si viene `media` de tipo `image`, se dispara análisis GPT-4o.
+- **Persistencia**: Historial en BD + Inyección de contexto visual.
 
 ---
 
