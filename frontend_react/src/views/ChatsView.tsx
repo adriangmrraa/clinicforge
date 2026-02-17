@@ -671,7 +671,14 @@ export default function ChatsView() {
 
   // 2. Agregar Chatwoot (Deduplicando por ID y por Nombre para IG/FB)
   if (channelFilter === 'all' || channelFilter === 'whatsapp' || channelFilter === 'instagram' || channelFilter === 'facebook') {
-    filteredChatwoot.forEach(item => {
+    // Spec 32: Priorizar chat con avatar
+    const sorted = [...filteredChatwoot].sort((a, b) => {
+      const aAv = !!(a.meta?.customer_avatar || a.avatar_url);
+      const bAv = !!(b.meta?.customer_avatar || b.avatar_url);
+      return aAv === bAv ? 0 : aAv ? -1 : 1;
+    });
+
+    sorted.forEach(item => {
       const externalId = item.external_user_id || item.id;
       const channel = item.channel || 'chatwoot';
       const nameKey = `${channel}:${(item.name || '').toLowerCase()}`;
@@ -1161,7 +1168,7 @@ export default function ChatsView() {
 
                 {selectedSession && (() => {
                   const platform = getPlatformConfig('whatsapp');
-                  return messages.map((message) => (
+                  return (messages || []).map((message) => (
                     <div
                       key={message.id}
                       className={`flex ${message.role === 'user' ? 'justify-start' : 'justify-end'}`}
@@ -1194,7 +1201,7 @@ export default function ChatsView() {
                   return loadingChatwootMessages ? (
                     <div className="p-4 text-center text-gray-500">{t('common.loading')}</div>
                   ) : (
-                    [...chatwootMessages].reverse().map((msg) => (
+                    (chatwootMessages || []).slice().reverse().map((msg) => (
                       <div
                         key={msg.id}
                         className={`flex ${msg.role === 'user' ? 'justify-start' : 'justify-end'}`}
