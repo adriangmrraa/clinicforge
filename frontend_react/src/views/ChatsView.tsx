@@ -238,6 +238,8 @@ export default function ChatsView() {
     // Evento: Estado de override cambiado (por clínica: solo actualizar si es la clínica seleccionada)
     socketRef.current.on('HUMAN_OVERRIDE_CHANGED', (data: { phone_number: string; enabled: boolean; until?: string; tenant_id?: number }) => {
       if (data.tenant_id != null && selectedTenantId != null && data.tenant_id !== selectedTenantId) return;
+
+      // Update YCloud Sessions
       setSessions(prev => {
         const updated = prev.map(s =>
           s.phone_number === data.phone_number
@@ -257,6 +259,17 @@ export default function ChatsView() {
 
         return updated;
       });
+
+      // Update Chatwoot List & Selection (Spec 34)
+      setChatwootList(prev => prev.map(c =>
+        (c.external_user_id === data.phone_number)
+          ? { ...c, is_locked: data.enabled }
+          : c
+      ));
+
+      if (selectedChatwoot?.external_user_id === data.phone_number) {
+        setSelectedChatwoot(prev => prev ? { ...prev, is_locked: data.enabled } : null);
+      }
     });
 
     // Evento: Chat seleccionado actualizado (para sincronización)
@@ -1154,14 +1167,23 @@ export default function ChatsView() {
                     </button>
                   )}
                 </div>
-              ) : (selectedSession && (selectedSession.status === 'silenced' || selectedSession.status === 'human_handling')) && (
+              ) : ((selectedSession && (selectedSession.status === 'silenced' || selectedSession.status === 'human_handling')) || (selectedChatwoot && selectedChatwoot.is_locked)) && (
                 <div className="bg-blue-50 border-b border-blue-200 px-4 py-2 flex items-center gap-2">
                   <Pause size={16} className="text-blue-500" />
                   <span className="text-sm text-blue-700">
                     ✋ {t('chats.manual_mode_active')}
                   </span>
                   <button
-                    onClick={handleToggleHumanMode}
+                    onClick={async () => {
+                      if (selectedSession) handleToggleHumanMode();
+                      else if (selectedChatwoot) {
+                        try {
+                          await chatsApi.setHumanOverride(selectedChatwoot.id, false);
+                          setChatwootList(prev => prev.map(c => c.id === selectedChatwoot.id ? { ...c, is_locked: false } : c));
+                          setSelectedChatwoot(prev => prev ? { ...prev, is_locked: false } : null);
+                        } catch (e) { console.error(e); }
+                      }
+                    }}
                     className="ml-auto text-xs text-blue-600 hover:underline"
                   >
                     {t('chats.activate_ai')}
