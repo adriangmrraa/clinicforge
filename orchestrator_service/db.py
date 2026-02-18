@@ -438,6 +438,7 @@ class Database:
                 IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'chat_messages' AND column_name = 'platform_message_id') THEN
                     ALTER TABLE chat_messages ADD COLUMN platform_message_id VARCHAR(255);
                 END IF;
+            END $$;
             CREATE INDEX IF NOT EXISTS idx_chat_messages_conversation_id ON chat_messages(conversation_id) WHERE conversation_id IS NOT NULL;
             """,
             # Parche 18: Tabla credentials (Vault por tenant)
