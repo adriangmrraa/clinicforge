@@ -471,6 +471,15 @@ async def human_override(
                  "UPDATE patients SET human_handoff_requested = FALSE, human_override_until = NULL WHERE tenant_id = $1 AND phone_number = $2",
                  tenant_id, row["external_user_id"]
              )
+    # Spec 34: Real-time update
+    from main import sio
+    await sio.emit("HUMAN_OVERRIDE_CHANGED", {
+        "phone_number": row["external_user_id"],
+        "enabled": enabled,
+        "until": (datetime.now() + timedelta(hours=24)).isoformat() if enabled else None,
+        "tenant_id": tenant_id
+    })
+
     return {"status": "ok", "human_override": enabled}
 @router.get("/admin/chat/media/proxy")
 async def media_proxy(
