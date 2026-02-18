@@ -440,15 +440,19 @@ async def human_override(
     body: dict,
     tenant_id: int = Depends(get_resolved_tenant_id),
 ) -> dict:
-    enabled = body.get("enabled", False)
+    logger.info(f"🔄 HUMAN_OVERRIDE Request: conv={conversation_id}, enabled={enabled}, tenant={tenant_id}")
     pool = get_pool()
     row = await pool.fetchrow(
-        "SELECT id FROM chat_conversations WHERE id = $1 AND tenant_id = $2",
+        "SELECT id, channel, external_user_id FROM chat_conversations WHERE id = $1 AND tenant_id = $2",
         conversation_id,
         tenant_id,
     )
     if not row:
+        logger.error(f"❌ Conversation not found: {conversation_id} (tenant={tenant_id})")
         raise HTTPException(status_code=404, detail="Conversation not found")
+    
+    logger.info(f"✅ Found conversation: {row['id']}, channel={row['channel']}, ext_id={row['external_user_id']}")
+
     if enabled:
         await pool.execute(
             "UPDATE chat_conversations SET human_override_until = NOW() + INTERVAL '24 hours' WHERE id = $1",
@@ -471,15 +475,18 @@ async def human_override(
                  "UPDATE patients SET human_handoff_requested = FALSE, human_override_until = NULL WHERE tenant_id = $1 AND phone_number = $2",
                  tenant_id, row["external_user_id"]
              )
+    
     # Spec 34: Real-time update
     from main import sio
-    await sio.emit("HUMAN_OVERRIDE_CHANGED", {
+    payload = {
         "phone_number": row["external_user_id"],
         "conversation_id": str(conversation_id), # UUID to string
         "enabled": enabled,
         "until": (datetime.now() + timedelta(hours=24)).isoformat() if enabled else None,
         "tenant_id": tenant_id
-    })
+    }
+    logger.info(f"📡 Emitting HUMAN_OVERRIDE_CHANGED: {payload}")
+    await sio.emit("HUMAN_OVERRIDE_CHANGED", payload)
 
     return {"status": "ok", "human_override": enabled}
 @router.get("/admin/chat/media/proxy")

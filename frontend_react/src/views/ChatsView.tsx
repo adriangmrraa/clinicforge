@@ -614,10 +614,12 @@ export default function ChatsView() {
 
     try {
       // 2. API Call
+      console.log('🔒 Toggling Chatwoot Lock:', { id: selectedChatwoot.id, activate, tenant_id: selectedChatwoot.tenant_id });
       await chatsApi.setHumanOverride(selectedChatwoot.id, activate);
+      console.log('✅ Chatwoot Lock API success');
       // Socket event will confirm the state later, but UI is already updated.
     } catch (error) {
-      console.error('Error toggling Chatwoot lock:', error);
+      console.error('❌ Error toggling Chatwoot lock:', error);
       // Rollback on error
       const rollbackFn = (c: ChatSummaryItem) => c.id === selectedChatwoot.id
         ? { ...c, is_locked: !activate }
