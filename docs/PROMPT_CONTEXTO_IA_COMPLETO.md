@@ -1,4 +1,4 @@
-# Prompt de contexto global para IA – Proyecto Dentalogic
+# Prompt de contexto global para IA – Proyecto Dentalogic.
 
 **Uso:** Copia todo el contenido de esta sección (desde "Eres un agente..." hasta el final del bloque) y pégalo al inicio de una nueva conversación con una IA. Así la IA tendrá contexto completo del proyecto y sabrá cómo trabajar en fixes y cambios correctamente.
 
