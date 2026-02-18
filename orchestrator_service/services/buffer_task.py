@@ -231,15 +231,24 @@ async def process_buffer_task(
             if api_key and sender_number:
                 from ycloud_client import YCloudClient
                 client = YCloudClient(api_key, sender_number)
-                await client.send_whatsapp_text(external_user_id, response_text)
-                logger.info(f"✅ Message sent to YCloud successfully: {response_text[:30]}...")
+                
+                # Spec 34: Capture YCloud Message ID
+                yc_resp = await client.send_whatsapp_text(external_user_id, response_text)
+                yc_msg_id = yc_resp.get("id") if isinstance(yc_resp, dict) else None
+                
+                logger.info(f"✅ Message sent to YCloud successfully: {response_text[:30]}... ID: {yc_msg_id}")
+                
+                meta_json = json.dumps({
+                    "provider": "ycloud",
+                    "provider_message_id": str(yc_msg_id) if yc_msg_id else None
+                })
                 
                 await pool.execute(
                     """
-                    INSERT INTO chat_messages (tenant_id, conversation_id, role, content, from_number)
-                    VALUES ($1, $2, 'assistant', $3, $4)
+                    INSERT INTO chat_messages (tenant_id, conversation_id, role, content, from_number, platform_metadata)
+                    VALUES ($1, $2, 'assistant', $3, $4, $5::jsonb)
                     """,
-                    tenant_id, conversation_id, response_text, external_user_id,
+                    tenant_id, conversation_id, response_text, external_user_id, meta_json
                 )
             else:
                 logger.error(f"❌ Missing YCloud Credentials for tenant {tenant_id}")

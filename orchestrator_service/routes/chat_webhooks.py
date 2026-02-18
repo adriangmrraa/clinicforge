@@ -55,7 +55,8 @@ async def receive_chatwoot_webhook(
 
     # 2. Bucle de Procesamiento Canonizado
     # Usamos la función compartida para garantizar paridad y reducir duplicación
-    return await _process_canonical_messages(messages, tenant_id, "chatwoot", background_tasks)
+    # FIX: Pass the detected 'provider' variable instead of hardcoded "chatwoot"
+    return await _process_canonical_messages(messages, tenant_id, provider, background_tasks)
 
 
 @router.post("/admin/ycloud/webhook")
@@ -123,7 +124,19 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
             # Deduplicación robusta (Spec 34)
             # 1. Contenido idéntico reciente (5s)
             # 2. ID de proveedor coincidente (evitar eco de mensajes salientes de la IA)
-            external_id_check = str(msg.raw_payload.get("id")) if msg.raw_payload and msg.raw_payload.get("id") else "NO_MATCH"
+            # Deduplicación robusta (Spec 34)
+            # 1. Contenido idéntico reciente (5s)
+            # 2. ID de proveedor coincidente (evitar eco de mensajes salientes de la IA)
+            
+            ext_id_candidate = None
+            if provider == "ycloud":
+                # YCloud: message ID is nested in 'message.id', NOT 'id' (which is event ID)
+                ext_id_candidate = msg.raw_payload.get("message", {}).get("id")
+            else:
+                # Chatwoot/Default: ID is top-level 'id'
+                ext_id_candidate = msg.raw_payload.get("id")
+            
+            external_id_check = str(ext_id_candidate) if ext_id_candidate else "NO_MATCH"
             
             dup = await pool.fetchval(
                 """
