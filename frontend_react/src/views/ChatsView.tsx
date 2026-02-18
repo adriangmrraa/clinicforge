@@ -186,8 +186,8 @@ export default function ChatsView() {
         playNotificationSound();
       }
 
-      // 3. Si es el chat abierto (YCloud), agregar mensaje localmente
-      if (selectedSession?.phone_number === data.phone_number) {
+      // 3. Si es el chat abierto (YCloud/WhatsApp), agregar mensaje localmente
+      if (data.channel === 'whatsapp' && selectedSession?.phone_number === data.phone_number) {
         setMessages(prev => {
           const isDuplicate = prev.some(m =>
             m.role === data.role &&
@@ -206,7 +206,7 @@ export default function ChatsView() {
       }
 
       // 4. Si es el chat abierto (Chatwoot/FB/IG), refrescar mensajes desde API
-      if (selectedChatwoot?.external_user_id === data.phone_number) {
+      if (data.channel !== 'whatsapp' && selectedChatwoot?.external_user_id === data.phone_number) {
         chatsApi.fetchChatMessages(selectedChatwoot.id, { limit: 20 })
           .then(list => setChatwootMessages(list))
           .catch(err => console.error("Error refreshing chatwoot messages:", err));

@@ -853,11 +853,15 @@ async def get_chat_sessions(
                         WHEN p.human_override_until > NOW() THEN 'silenced'
                         ELSE 'active'
                     END as status,
-                    urgency.urgency_level
+                    urgency.urgency_level,
+                    cc.last_read_at,
+                    cc.last_user_message_at as conv_last_user_msg_at,
+                    cc.id as conversation_id
                 FROM patients p
+                LEFT JOIN chat_conversations cc ON cc.tenant_id = p.tenant_id AND cc.channel = 'whatsapp' AND cc.external_user_id = p.phone_number
                 LEFT JOIN LATERAL (
                     SELECT content, created_at FROM chat_messages
-                    WHERE tenant_id = $1 AND from_number = p.phone_number
+                    WHERE tenant_id = $1 AND from_number = p.phone_number AND conversation_id = cc.id
                     ORDER BY created_at DESC LIMIT 1
                 ) cm ON true
                 LEFT JOIN LATERAL (
@@ -875,29 +879,46 @@ async def get_chat_sessions(
     for row in rows:
         unread_sql = """
             SELECT COUNT(*) FROM chat_messages
-            WHERE from_number = $1 AND role = 'user'
-            AND created_at > COALESCE(
-                (SELECT created_at FROM chat_messages
-                 WHERE from_number = $1 AND role = 'assistant'
-                 """ + (" AND tenant_id = $2" if has_tenant_in_cm else "") + """
-                 ORDER BY created_at DESC LIMIT 1),
-                '1970-01-01'::timestamptz
+            WHERE correlation_id = (SELECT id FROM chat_conversations WHERE tenant_id = $1 AND id = $2) -- Just a safety check, or use conversation_id directly
+            OR conversation_id = $2
+            AND role = 'user'
+            AND tenant_id = $1
+            AND created_at > GREATEST(
+                COALESCE(
+                    (SELECT created_at FROM chat_messages
+                     WHERE (conversation_id = $2 OR (from_number = $3 AND tenant_id = $1)) AND role = 'assistant'
+                     ORDER BY created_at DESC LIMIT 1),
+                    '1970-01-01'::timestamptz
+                ),
+                COALESCE($4, '1970-01-01'::timestamptz)
             )
-            """ + (" AND tenant_id = $2" if has_tenant_in_cm else "")
-        unread_params = [row["phone_number"]] + ([tenant_id] if has_tenant_in_cm else [])
-        unread = await db.pool.fetchval(unread_sql, *unread_params)
-        last_user_sql = """
-            SELECT created_at FROM chat_messages
-            WHERE from_number = $1 AND role = 'user'
-            """ + (" AND tenant_id = $2" if has_tenant_in_cm else "") + """
-            ORDER BY created_at DESC LIMIT 1
         """
-        last_user_params = [row["phone_number"]] + ([tenant_id] if has_tenant_in_cm else [])
-        last_user_msg = await db.pool.fetchval(last_user_sql, *last_user_params)
+        # unread_sql simplificado con ID de conversación (Spec 14 isolation)
+        unread_sql = """
+            SELECT COUNT(*) FROM chat_messages
+            WHERE (conversation_id = $1 OR (from_number = $2 AND tenant_id = $3))
+            AND role = 'user'
+            AND tenant_id = $3
+            AND created_at > GREATEST(
+                COALESCE(
+                    (SELECT created_at FROM chat_messages
+                     WHERE (conversation_id = $1 OR (from_number = $2 AND tenant_id = $3)) 
+                     AND role = 'assistant' AND tenant_id = $3
+                     ORDER BY created_at DESC LIMIT 1),
+                    '1970-01-01'::timestamptz
+                ),
+                COALESCE($4, '1970-01-01'::timestamptz)
+            )
+        """
+        unread = await db.pool.fetchval(unread_sql, row.get("conversation_id"), row["phone_number"], tenant_id, row.get("last_read_at"))
+        
+        last_user_msg = row.get("conv_last_user_msg_at")
         is_window_open = False
         if last_user_msg:
-            now_localized = datetime.now(last_user_msg.tzinfo if last_user_msg.tzinfo else ARG_TZ)
-            is_window_open = (now_localized - last_user_msg) < timedelta(hours=24)
+            # Ventana estricta de 24h (Spec 14 / Clarificación)
+            now_utc = datetime.now(timezone.utc)
+            msg_utc = last_user_msg if last_user_msg.tzinfo else last_user_msg.replace(tzinfo=timezone.utc)
+            is_window_open = (now_utc - msg_utc) < timedelta(hours=24)
         sessions.append({
             "phone_number": row["phone_number"],
             "patient_id": row["patient_id"],
@@ -990,7 +1011,14 @@ async def mark_chat_session_read(
     """Marca la conversación (tenant_id, phone) como leída. Por clínica."""
     if tenant_id not in allowed_ids:
         raise HTTPException(status_code=403, detail="No tienes acceso a esta clínica.")
-    # Estado de "leído" es solo en frontend; el backend puede persistirlo más adelante si se desea
+    
+    # Persistir estado de lectura (Spec 14 / Fase 3)
+    await db.execute("""
+        UPDATE chat_conversations 
+        SET last_read_at = NOW(), updated_at = NOW()
+        WHERE tenant_id = $1 AND channel = 'whatsapp' AND external_user_id = $2
+    """, tenant_id, phone)
+    
     return {"status": "ok", "phone": phone, "tenant_id": tenant_id}
 
 

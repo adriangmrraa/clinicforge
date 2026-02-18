@@ -397,6 +397,7 @@ class Database:
                 meta JSONB DEFAULT '{}',
                 last_message_at TIMESTAMP WITH TIME ZONE,
                 last_message_preview VARCHAR(255),
+                last_read_at TIMESTAMP WITH TIME ZONE DEFAULT '1970-01-01 00:00:00+00',
                 created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
                 updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
             );
@@ -437,7 +438,6 @@ class Database:
                 IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'chat_messages' AND column_name = 'platform_message_id') THEN
                     ALTER TABLE chat_messages ADD COLUMN platform_message_id VARCHAR(255);
                 END IF;
-            END $$;
             CREATE INDEX IF NOT EXISTS idx_chat_messages_conversation_id ON chat_messages(conversation_id) WHERE conversation_id IS NOT NULL;
             """,
             # Parche 18: Tabla credentials (Vault por tenant)
@@ -454,7 +454,16 @@ class Database:
             CREATE INDEX IF NOT EXISTS idx_credentials_tenant ON credentials(tenant_id);
             CREATE INDEX IF NOT EXISTS idx_credentials_tenant_name ON credentials(tenant_id, name);
             """,
-            # Parche 19: Meta Ads - Atribución 360 en tabla patients (idempotente)
+            # Parche 19: Asegurar last_read_at en chat_conversations (Spec 14 / Notificaciones)
+            """
+            DO $$ 
+            BEGIN 
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='chat_conversations' AND column_name='last_read_at') THEN
+                    ALTER TABLE chat_conversations ADD COLUMN last_read_at TIMESTAMP WITH TIME ZONE DEFAULT '1970-01-01 00:00:00+00';
+                END IF;
+            END $$;
+            """,
+            # Parche 20: Meta Ads - Atribución 360 en tabla patients (idempotente)
             """
             DO $$
             BEGIN

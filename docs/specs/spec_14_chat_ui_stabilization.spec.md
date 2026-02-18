@@ -48,5 +48,13 @@ Scenario: Avatar de Meta expirado
 - [x] **Manejo de Avatares**: Si el proxy falla o no hay foto, se muestran iniciales con el color de fondo del canal (WhatsApp: Verde, Facebook: Azul, Instagram: Rosa/Morado).
 - [x] **Notificaciones Sonoras**: Habilitar sonidos para todos los canales para unificar la experiencia.
 - [x] **Volumen de Historial**: 20 mensajes iniciales en la interfaz de usuario.
-- [x] **Estado de Lectura**: No es crítico para esta fase.
+- [x] **Estado de Lectura**: CRÍTICO. Se implementará `last_read_at` en `chat_conversations` para persistir el estado de lectura y evitar que las notificaciones reaparezcan tras refrescar la lista.
+- [x] **Aislamiento por Canal**: Todas las consultas de mensajes y conteos DEBEN filtrar por `channel` para evitar colisiones entre IDs de redes sociales y números de teléfono.
+- [x] **Ventana de 24h**: Estrictamente 24 horas desde el último mensaje del usuario, independientemente del cambio de día. Se debe refrescar el estado visual al recibir mensajes que abran o cierren esta ventana.
 - [x] **Paridad de Funcionalidades**: Las conversaciones de Chatwoot deben heredar TODAS las funciones de YCloud: contexto clínico (desktop/mobile), scroll automático al final, integración con base de datos de pacientes y agendamiento.
+- [x] **Notificaciones**: Sin distinción entre modo manual e IA; todas deben sonar y mostrar badge de la misma forma.
+
+## 5. Clarificaciones (Workflow /clarify)
+- **C1**: El estado "leído" se persiste en DB mediante `last_read_at`.
+- **C2**: El `unread_count` solo cuenta mensajes del usuario posteriores a `last_read_at` y al último mensaje del asistente.
+- **C3**: La ventana de 24h se calcula matemáticamente por segundos, no por fecha calendario.
