@@ -453,42 +453,50 @@ async def human_override(
     
     logger.info(f"✅ Found conversation: {row['id']}, channel={row['channel']}, ext_id={row['external_user_id']}")
 
-    if enabled:
-        await pool.execute(
-            "UPDATE chat_conversations SET human_override_until = NOW() + INTERVAL '24 hours' WHERE id = $1",
-            conversation_id,
-        )
-        # Spec 24: Sync with patients table if it's a WhatsApp/Phone-based conversation
-        if row["channel"] == "whatsapp":
-             await pool.execute(
-                 "UPDATE patients SET human_handoff_requested = TRUE, human_override_until = NOW() + INTERVAL '24 hours' WHERE tenant_id = $1 AND phone_number = $2",
-                 tenant_id, row["external_user_id"]
-             )
-    else:
-        await pool.execute(
-            "UPDATE chat_conversations SET human_override_until = NULL WHERE id = $1",
-            conversation_id,
-        )
-        # Spec 24: Sync with patients table
-        if row["channel"] == "whatsapp":
-             await pool.execute(
-                 "UPDATE patients SET human_handoff_requested = FALSE, human_override_until = NULL WHERE tenant_id = $1 AND phone_number = $2",
-                 tenant_id, row["external_user_id"]
-             )
-    
-    # Spec 34: Real-time update
-    from main import sio
-    payload = {
-        "phone_number": row["external_user_id"],
-        "conversation_id": str(conversation_id), # UUID to string
-        "enabled": enabled,
-        "until": (datetime.now() + timedelta(hours=24)).isoformat() if enabled else None,
-        "tenant_id": tenant_id
-    }
-    logger.info(f"📡 Emitting HUMAN_OVERRIDE_CHANGED: {payload}")
-    await sio.emit("HUMAN_OVERRIDE_CHANGED", payload)
+    try:
+        if enabled:
+            await pool.execute(
+                "UPDATE chat_conversations SET human_override_until = NOW() + INTERVAL '24 hours' WHERE id = $1",
+                conversation_id,
+            )
+            # Spec 24: Sync with patients table if it's a WhatsApp/Phone-based conversation
+            if row["channel"] == "whatsapp":
+                 await pool.execute(
+                     "UPDATE patients SET human_handoff_requested = TRUE, human_override_until = NOW() + INTERVAL '24 hours' WHERE tenant_id = $1 AND phone_number = $2",
+                     tenant_id, row["external_user_id"]
+                 )
+        else:
+            await pool.execute(
+                "UPDATE chat_conversations SET human_override_until = NULL WHERE id = $1",
+                conversation_id,
+            )
+            # Spec 24: Sync with patients table
+            if row["channel"] == "whatsapp":
+                 await pool.execute(
+                     "UPDATE patients SET human_handoff_requested = FALSE, human_override_until = NULL WHERE tenant_id = $1 AND phone_number = $2",
+                     tenant_id, row["external_user_id"]
+                 )
+        
+        # Spec 34: Real-time update
+        from main import sio
+        payload = {
+            "phone_number": row["external_user_id"],
+            "conversation_id": str(conversation_id), # UUID to string
+            "enabled": enabled,
+            "until": (datetime.now() + timedelta(hours=24)).isoformat() if enabled else None,
+            "tenant_id": tenant_id
+        }
+        logger.info(f"📡 Emitting HUMAN_OVERRIDE_CHANGED: {payload}")
+        await sio.emit("HUMAN_OVERRIDE_CHANGED", payload)
 
-    return {"status": "ok", "human_override": enabled}
+        return {"status": "ok", "human_override": enabled}
+
+    except Exception as e:
+        import traceback
+        error_details = f"human_override ERROR: {str(e)}\n{traceback.format_exc()}"
+        logger.error(f"❌ {error_details}")
+        # Retornamos 500 pero con el detalle del error para que el frontend lo muestre en el popup
+        raise HTTPException(status_code=500, detail=error_details)
 @router.get("/admin/chat/media/proxy")
 async def media_proxy(
     url: str = Query(..., description="Original media URL"),
