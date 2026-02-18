@@ -598,6 +598,35 @@ export default function ChatsView() {
     }
   };
 
+  // Spec: Parity for Chatwoot Manual Mode
+  const handleToggleChatwootLock = async () => {
+    if (!selectedChatwoot) return;
+
+    const activate = !selectedChatwoot.is_locked;
+
+    // 1. Optimistic Update (Immediate Feedback)
+    const updateFn = (c: ChatSummaryItem) => c.id === selectedChatwoot.id
+      ? { ...c, is_locked: activate }
+      : c;
+
+    setChatwootList(prev => prev.map(updateFn));
+    setSelectedChatwoot(prev => prev ? updateFn(prev) : null);
+
+    try {
+      // 2. API Call
+      await chatsApi.setHumanOverride(selectedChatwoot.id, activate);
+      // Socket event will confirm the state later, but UI is already updated.
+    } catch (error) {
+      console.error('Error toggling Chatwoot lock:', error);
+      // Rollback on error
+      const rollbackFn = (c: ChatSummaryItem) => c.id === selectedChatwoot.id
+        ? { ...c, is_locked: !activate }
+        : c;
+      setChatwootList(prev => prev.map(rollbackFn));
+      setSelectedChatwoot(prev => prev ? rollbackFn(prev) : null);
+    }
+  };
+
   const handleSendChatwootMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedChatwoot || (!newMessage.trim() && selectedFiles.length === 0)) return;
@@ -1120,6 +1149,7 @@ export default function ChatsView() {
                   })() : null}
                 </div>
 
+                {/* Header Buttons */}
                 <div className="flex items-center gap-1 sm:gap-2">
                   {(selectedSession || selectedChatwoot) && (
                     <button
@@ -1134,7 +1164,7 @@ export default function ChatsView() {
                     <button
                       onClick={handleToggleHumanMode}
                       className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold transition-all shadow-sm
-                        ${selectedSession.status === 'human_handling' || selectedSession.status === 'silenced'
+                      ${selectedSession.status === 'human_handling' || selectedSession.status === 'silenced'
                           ? 'bg-green-100 text-green-700 hover:bg-green-200 border border-green-200'
                           : 'bg-orange-100 text-orange-700 hover:bg-orange-200 border border-orange-200'
                         }`}
@@ -1148,17 +1178,9 @@ export default function ChatsView() {
                   )}
                   {selectedChatwoot && (
                     <button
-                      onClick={async () => {
-                        if (!selectedChatwoot) return;
-                        const enable = !selectedChatwoot.is_locked;
-                        try {
-                          await chatsApi.setHumanOverride(selectedChatwoot.id, enable);
-                          setChatwootList(prev => prev.map(c => c.id === selectedChatwoot.id ? { ...c, is_locked: enable } : c));
-                          setSelectedChatwoot(prev => prev ? { ...prev, is_locked: enable } : null);
-                        } catch (e) { console.error(e); }
-                      }}
+                      onClick={handleToggleChatwootLock}
                       className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold transition-all shadow-sm
-                        ${selectedChatwoot.is_locked ? 'bg-green-100 text-green-700 hover:bg-green-200 border border-green-200' : 'bg-orange-100 text-orange-700 hover:bg-orange-200 border border-orange-200'}`}
+                      ${selectedChatwoot.is_locked ? 'bg-green-100 text-green-700 hover:bg-green-200 border border-green-200' : 'bg-orange-100 text-orange-700 hover:bg-orange-200 border border-orange-200'}`}
                     >
                       {selectedChatwoot.is_locked ? <><Play size={14} className="fill-current" /> <span className="hidden sm:inline">{t('chats.activate_ai')}</span></> : <><Pause size={14} className="fill-current" /> <span className="hidden sm:inline">{t('chats.manual')}</span></>}
                     </button>
@@ -1169,42 +1191,37 @@ export default function ChatsView() {
               {/* Alert Banner para derivhumano (YCloud & Chatwoot) */}
               {(selectedSession?.last_derivhumano_at || selectedChatwoot?.last_derivhumano_at) ? (
                 <div className="bg-orange-50 border-b border-orange-200 px-4 py-2 flex items-center gap-2">
-                  <AlertCircle size={16} className="text-orange-500" />
-                  <span className="text-sm text-orange-700">
-                    ⚠️ {t('chats.handoff_banner').replace('{{time}}', safeFormatTime(selectedSession?.last_derivhumano_at || selectedChatwoot?.last_derivhumano_at))}
-                  </span>
-                  {selectedSession && (
-                    <button
-                      onClick={handleRemoveSilence}
-                      className="ml-auto text-xs text-orange-600 hover:underline"
-                    >
-                      {t('chats.remove_silence')}
-                    </button>
-                  )}
+                  <AlertCircle size={16} className="text-orange-600" />
+                  <span className="text-sm text-orange-800 font-medium">Attention required: Human handoff requested</span>
                 </div>
-              ) : ((selectedSession && (selectedSession.status === 'silenced' || selectedSession.status === 'human_handling')) || (selectedChatwoot && selectedChatwoot.is_locked)) && (
-                <div className="bg-blue-50 border-b border-blue-200 px-4 py-2 flex items-center gap-2">
-                  <Pause size={16} className="text-blue-500" />
-                  <span className="text-sm text-blue-700">
-                    ✋ {t('chats.manual_mode_active')}
+              ) : null}
+
+              {/* Banner Warning: Window 24h Closed */}
+              {selectedSession && selectedSession.is_window_open === false && (
+                <div className="bg-gray-100 border-b border-gray-300 px-4 py-2 flex items-center justify-center gap-2">
+                  <Lock size={14} className="text-gray-500" />
+                  <span className="text-xs text-gray-600 font-medium">
+                    {t('chats.window_closed_warning')}
                   </span>
-                  <button
-                    onClick={async () => {
-                      if (selectedSession) handleToggleHumanMode();
-                      else if (selectedChatwoot) {
-                        try {
-                          await chatsApi.setHumanOverride(selectedChatwoot.id, false);
-                          setChatwootList(prev => prev.map(c => c.id === selectedChatwoot.id ? { ...c, is_locked: false } : c));
-                          setSelectedChatwoot(prev => prev ? { ...prev, is_locked: false } : null);
-                        } catch (e) { console.error(e); }
-                      }
-                    }}
-                    className="ml-auto text-xs text-blue-600 hover:underline"
-                  >
-                    {t('chats.activate_ai')}
-                  </button>
                 </div>
               )}
+
+              {/* Banner: Manual Mode Active */}
+              {((selectedSession && (selectedSession.status === 'silenced' || selectedSession.status === 'human_handling')) ||
+                (selectedChatwoot && selectedChatwoot.is_locked)) && (
+                  <div className="bg-blue-50 border-b border-blue-200 px-4 py-2 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Pause size={16} className="text-blue-600 fill-current" />
+                      <span className="text-sm text-blue-800 font-bold">✋ Manual mode active</span>
+                    </div>
+                    <button
+                      onClick={() => selectedSession ? handleToggleHumanMode() : handleToggleChatwootLock()}
+                      className="text-xs bg-blue-100 hover:bg-blue-200 text-blue-700 px-3 py-1 rounded-full font-bold transition-colors"
+                    >
+                      Activate AI
+                    </button>
+                  </div>
+                )}
 
               {/* Banner de Ventana de 24hs Cerrada (Omnicanal) */}
               {((selectedSession && selectedSession.is_window_open === false) ||
