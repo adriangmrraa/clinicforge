@@ -506,6 +506,15 @@ class Database:
                 END IF;
             END $$;
             """,
+            # Parche 22: Fix Critical - Agregar last_derivhumano_at (Spec Handoff Banner)
+            """
+            DO $$ 
+            BEGIN 
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='chat_conversations' AND column_name='last_derivhumano_at') THEN
+                    ALTER TABLE chat_conversations ADD COLUMN last_derivhumano_at TIMESTAMP WITH TIME ZONE;
+                END IF;
+            END $$;
+            """,
         ]
 
         async with self.pool.acquire() as conn:
