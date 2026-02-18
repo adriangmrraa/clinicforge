@@ -4,7 +4,7 @@ import {
   MessageCircle, Send, Calendar, User, Activity,
   Pause, Play, AlertCircle, Clock, ChevronLeft,
   Search, XCircle, Bell, Volume2, VolumeX,
-  Instagram, Facebook, Lock, Paperclip, FileText, Image as ImageIcon, Video, Music, Download, ExternalLink, MessageSquare
+  Instagram, Facebook, Lock, ChevronRight, Paperclip
 } from 'lucide-react';
 import api, { BACKEND_URL } from '../api/axios';
 import * as chatsApi from '../api/chats';
@@ -174,61 +174,51 @@ export default function ChatsView() {
       }
     });
 
-    // Evento: Nuevo mensaje en chat (tenant_id opcional; si viene, solo actualizar si es la clínica seleccionada)
-    socketRef.current.on('NEW_MESSAGE', (data: { phone_number: string; message: string; role: string; tenant_id?: number }) => {
-      if (data.tenant_id != null && selectedTenantId != null && data.tenant_id !== selectedTenantId) return;
-      setSessions(prev => {
-        const updatedSessions = prev.map(s =>
-          s.phone_number === data.phone_number
-            ? {
-              ...s,
-              last_message: data.message,
-              last_message_time: new Date().toISOString(),
-              unread_count: s.phone_number === selectedSession?.phone_number ? 0 : s.unread_count + 1,
-              is_window_open: data.role === 'user' ? true : s.is_window_open
-            }
-            : s
-        );
+    // Evento: Nuevo mensaje (Omnicanal) — Spec 14
+    socketRef.current.on('NEW_MESSAGE', (data: { phone_number: string; message: string; role: string; tenant_id: number; channel?: string }) => {
+      // 1. Validar clínica seleccionada
+      if (selectedTenantId != null && data.tenant_id !== selectedTenantId) return;
 
-        // Re-ordenar: último mensaje arriba
-        const sortedSessions = [...updatedSessions].sort((a, b) => {
-          const timeA = new Date(a.last_message_time || 0).getTime();
-          const timeB = new Date(b.last_message_time || 0).getTime();
-          return timeB - timeA;
-        });
+      console.log('📨 NEW_MESSAGE socket event:', data);
 
-        // Si la sesión seleccionada recibió un mensaje, actualizarla para refrescar la UI (banner/input)
-        if (data.phone_number === selectedSession?.phone_number) {
-          const current = sortedSessions.find(s => s.phone_number === data.phone_number);
-          if (current) {
-            setSelectedSession(current);
-          }
-        }
+      // 2. Notificaciones sonoras transversales
+      if (soundEnabled) {
+        playNotificationSound();
+      }
 
-        return sortedSessions;
-      });
-
-      // Si es del chat seleccionado, agregar mensaje si no existe
-      if (data.phone_number === selectedSession?.phone_number) {
+      // 3. Si es el chat abierto (YCloud), agregar mensaje localmente
+      if (selectedSession?.phone_number === data.phone_number) {
         setMessages(prev => {
-          // Evitar duplicados (chequeo simple por contenido y timestamp reciente o id si viniera)
           const isDuplicate = prev.some(m =>
             m.role === data.role &&
             m.content === data.message &&
             new Date(m.created_at).getTime() > Date.now() - 5000
           );
-
           if (isDuplicate) return prev;
-
           return [...prev, {
-            id: Date.now(), // ID temporal
-            role: data.role as 'user' | 'assistant' | 'system',
+            id: Date.now(),
+            role: data.role as 'user' | 'assistant',
             content: data.message,
             created_at: new Date().toISOString(),
             from_number: data.phone_number
           }];
         });
       }
+
+      // 4. Si es el chat abierto (Chatwoot/FB/IG), refrescar mensajes desde API
+      if (selectedChatwoot?.external_user_id === data.phone_number) {
+        chatsApi.fetchChatMessages(selectedChatwoot.id, { limit: 20 })
+          .then(list => setChatwootMessages(list))
+          .catch(err => console.error("Error refreshing chatwoot messages:", err));
+      }
+
+      // 5. Refrescar listas de chats siempre para ver vistas previas actualizadas
+      if (selectedTenantId != null) {
+        fetchSessions(selectedTenantId);
+      }
+      chatsApi.fetchChatsSummary({ limit: 50, channel: channelFilter === 'all' ? undefined : channelFilter })
+        .then(list => setChatwootList(list))
+        .catch(err => console.error("Error refreshing chatwoot summary:", err));
     });
 
     // Evento: Estado de override cambiado (por clínica: solo actualizar si es la clínica seleccionada)
@@ -657,19 +647,20 @@ export default function ChatsView() {
 
   type ListRow = { type: 'ycloud'; session: ChatSession } | { type: 'chatwoot'; item: ChatSummaryItem };
   const mergedList: ListRow[] = [];
-  const seenIds = new Set<string>();
-  const seenNames = new Set<string>(); // ✅ Spec 31: Deduplicación por nombre para IG/FB
+  const seenKeys = new Set<string>();
 
-  // 1. Agregar YCloud primero
+  // 1. Agregar YCloud primero (Siempre WhatsApp)
   if (channelFilter === 'all' || channelFilter === 'whatsapp') {
     filteredSessions.forEach(s => {
-      mergedList.push({ type: 'ycloud', session: s });
-      seenIds.add(s.phone_number);
-      if (s.phone_number.startsWith('+')) seenIds.add(s.phone_number.substring(1));
+      const key = `whatsapp:${s.phone_number}`;
+      if (!seenKeys.has(key)) {
+        mergedList.push({ type: 'ycloud', session: s });
+        seenKeys.add(key);
+      }
     });
   }
 
-  // 2. Agregar Chatwoot (Deduplicando por ID y por Nombre para IG/FB)
+  // 2. Agregar Chatwoot (Deduplicando por ID + Canal)
   if (channelFilter === 'all' || channelFilter === 'whatsapp' || channelFilter === 'instagram' || channelFilter === 'facebook') {
     // Spec 32: Priorizar chat con avatar
     const sorted = [...filteredChatwoot].sort((a, b) => {
@@ -680,16 +671,12 @@ export default function ChatsView() {
 
     sorted.forEach(item => {
       const externalId = item.external_user_id || item.id;
-      const channel = item.channel || 'chatwoot';
-      const nameKey = `${channel}:${(item.name || '').toLowerCase()}`;
+      const channel = item.channel || 'whatsapp';
+      const key = `${channel}:${externalId}`;
 
-      const isDuplicateId = seenIds.has(externalId) || seenIds.has(`+${externalId}`);
-      const isDuplicateName = (channel === 'instagram' || channel === 'facebook') && seenNames.has(nameKey);
-
-      if (!isDuplicateId && !isDuplicateName) {
+      if (!seenKeys.has(key)) {
         mergedList.push({ type: 'chatwoot', item });
-        seenIds.add(externalId);
-        if (item.name) seenNames.add(nameKey);
+        seenKeys.add(key);
       }
     });
   }

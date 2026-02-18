@@ -199,6 +199,30 @@ async def receive_chatwoot_webhook(
                 except ImportError:
                     logger.debug("relay not available")
 
+            # F. Notificar al Frontend (Real-time) - Spec 14
+            try:
+                # Acceder a sio desde el request via app state (inyectado en main.py)
+                # Como estamos en un loop de mensajes procesados, necesitamos el sio
+                # Podemos usar app.state si tenemos acceso al objeto app o via global.
+                # En FastAPI, podemos usar request.app.state o importarlo si se expone.
+                # Aquí usamos la referencia que configuramos en main.py
+                from main import app
+                sio = getattr(app.state, "sio", None)
+                to_json_safe = getattr(app.state, "to_json_safe", lambda x: x)
+                
+                if sio:
+                    await sio.emit('NEW_MESSAGE', to_json_safe({
+                        'phone_number': msg.external_user_id,
+                        'tenant_id': tenant_id,
+                        'message': msg.content or (f"[{msg.media[0].type.value.upper()}]" if msg.media else ""),
+                        'attachments': content_attrs,
+                        'role': role,
+                        'channel': msg.original_channel
+                    }))
+                    logger.info(f"📡 Socket NEW_MESSAGE emitted for {msg.external_user_id} on {msg.original_channel}")
+            except Exception as sio_err:
+                logger.error(f"⚠️ Error emitting SocketIO event: {sio_err}")
+
         except Exception as msg_err:
             logger.error(f"❌ Error processing message {msg}: {msg_err}")
 

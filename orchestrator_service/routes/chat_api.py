@@ -104,6 +104,8 @@ async def chats_summary(
     rows = await pool.fetch(sql, *params)
     utc_now = datetime.now(timezone.utc)
     out = []
+    from urllib.parse import urlencode
+
     for r in rows:
         meta = r["meta"] or {}
         if isinstance(meta, str):
@@ -112,11 +114,24 @@ async def chats_summary(
             except Exception:
                 meta = {}
         ho = r["human_override_until"]
+        
+        avatar_url = meta.get("customer_avatar")
+        # ✅ Proxy avatar if it looks like a remote Meta/External URL
+        if avatar_url and (avatar_url.startswith("http") or avatar_url.startswith("https")) and "/admin/chat/media/proxy" not in avatar_url:
+            signature, expires = generate_signed_url(avatar_url, tenant_id)
+            proxy_params = {
+                "url": avatar_url,
+                "tenant_id": tenant_id,
+                "signature": signature,
+                "expires": expires
+            }
+            avatar_url = f"/admin/chat/media/proxy?{urlencode(proxy_params)}"
+
         out.append({
             "id": str(r["id"]),
             "tenant_id": r["tenant_id"],
             "name": r["display_name"] or r["external_user_id"] or "",
-            "avatar_url": meta.get("customer_avatar"),
+            "avatar_url": avatar_url,
             "external_user_id": r["external_user_id"],
             "channel": r["channel"],
             "provider": r["provider"],

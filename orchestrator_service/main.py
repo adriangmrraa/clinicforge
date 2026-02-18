@@ -1507,6 +1507,10 @@ app.openapi = _custom_openapi
 sio = socketio.AsyncServer(async_mode='asgi', cors_allowed_origins=origins)
 socket_app = socketio.ASGIApp(sio, app)
 
+# Expose sio and helpers for other routes
+app.state.sio = sio
+app.state.to_json_safe = to_json_safe
+
 # Socket.IO event handlers
 @sio.event
 async def connect(sid, environ):
