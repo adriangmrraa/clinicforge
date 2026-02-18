@@ -110,14 +110,20 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
                 cw_acc_id = msg.raw_payload.get("account", {}).get("id")
                 cw_conv_id = msg.raw_payload.get("conversation", {}).get("id")
 
+            # Fix Chat Name Persistence: Only update name/avatar if not an agent (Spec 34)
+            # If msg.is_agent is True, we pass None so DB keeps existing value (COALESCE)
+            # or inserts NULL (favors external_user_id) instead of "Adrian Gamarra"
+            safe_display_name = msg.display_name if not msg.is_agent else None
+            safe_avatar_url = (msg.sender.get("avatar") if msg.sender else None) if not msg.is_agent else None
+
             conv_id = await db.get_or_create_conversation(
                 tenant_id=tenant_id,
                 channel=msg.original_channel,
                 external_user_id=msg.external_user_id,
-                display_name=msg.display_name,
+                display_name=safe_display_name,
                 external_chatwoot_id=cw_conv_id,
                 external_account_id=cw_acc_id,
-                avatar_url=msg.sender.get("avatar") if msg.sender else None,
+                avatar_url=safe_avatar_url,
                 provider=provider
             )
             
