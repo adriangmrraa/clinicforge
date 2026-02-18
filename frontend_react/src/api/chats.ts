@@ -36,12 +36,28 @@ export async function fetchChatMessages(
 
 export async function sendChatMessage(
   conversationId: string,
-  message: string
+  message: string,
+  attachments: any[] = []
 ): Promise<{ status: string }> {
   const res = await api.post<{ status: string }>('/admin/chat/send', {
     conversation_id: conversationId,
     message,
+    attachments,
   });
+  return res.data;
+}
+
+export async function uploadChatMedia(
+  file: File,
+  tenantId: number
+): Promise<{ type: string; url: string; file_name: string; size: number }> {
+  const formData = new FormData();
+  formData.append('file', file);
+  const res = await api.post<{ type: string; url: string; file_name: string; size: number }>(
+    `/admin/chat/upload?tenant_id=${tenantId}`,
+    formData,
+    { headers: { 'Content-Type': 'multipart/form-data' } }
+  );
   return res.data;
 }
 

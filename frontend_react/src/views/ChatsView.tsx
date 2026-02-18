@@ -572,11 +572,25 @@ export default function ChatsView() {
 
   const handleSendChatwootMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedChatwoot || !newMessage.trim()) return;
+    if (!selectedChatwoot || (!newMessage.trim() && selectedFiles.length === 0)) return;
     setSending(true);
     try {
-      await chatsApi.sendChatMessage(selectedChatwoot.id, newMessage.trim());
+      // 1. Upload media if any (reuse uploadChatMedia)
+      const attachments = [];
+      if (selectedFiles.length > 0 && selectedTenantId) {
+        for (const file of selectedFiles) {
+          const uploaded = await chatsApi.uploadChatMedia(file, selectedTenantId);
+          attachments.push(uploaded);
+        }
+      }
+
+      // 2. Send message with attachments
+      await chatsApi.sendChatMessage(selectedChatwoot.id, newMessage.trim(), attachments);
+
       setNewMessage('');
+      setSelectedFiles([]); // Clear files
+
+      // 3. Refresh messages
       const list = await chatsApi.fetchChatMessages(selectedChatwoot.id, { limit: 50 });
       setChatwootMessages(list);
     } catch (err: any) {
@@ -1046,7 +1060,10 @@ export default function ChatsView() {
                     const avatarUrl = selectedChatwoot.meta?.customer_avatar || selectedChatwoot.avatar_url;
                     return (
                       <>
-                        <div className="relative shrink-0">
+                        <div
+                          onClick={() => window.innerWidth < 1280 && setShowMobileContext(!showMobileContext)}
+                          className="relative shrink-0 cursor-pointer"
+                        >
                           {avatarUrl ? (
                             <img src={avatarUrl} alt={selectedChatwoot.name} className="w-10 h-10 rounded-full object-cover shadow-sm" />
                           ) : (
@@ -1058,7 +1075,10 @@ export default function ChatsView() {
                             {!isWindowOpen(selectedChatwoot.last_user_message_at) ? <Lock size={10} className="text-white" /> : platform.icon}
                           </div>
                         </div>
-                        <div className="min-w-0 flex-1">
+                        <div
+                          onClick={() => window.innerWidth < 1280 && setShowMobileContext(!showMobileContext)}
+                          className="min-w-0 flex-1 cursor-pointer"
+                        >
                           <h3 className="font-bold text-gray-900 truncate leading-tight flex items-center gap-2">
                             {selectedChatwoot.name || selectedChatwoot.external_user_id || 'Chatwoot'}
                             <span className={`text-[10px] px-1.5 py-0.5 rounded border ${platform.selectedBg} ${platform.color} ${platform.borderColor}`}>
@@ -1118,19 +1138,21 @@ export default function ChatsView() {
                 </div>
               </div>
 
-              {/* Alert Banner para derivhumano (solo YCloud) */}
-              {selectedSession?.last_derivhumano_at ? (
+              {/* Alert Banner para derivhumano (YCloud & Chatwoot) */}
+              {(selectedSession?.last_derivhumano_at || selectedChatwoot?.last_derivhumano_at) ? (
                 <div className="bg-orange-50 border-b border-orange-200 px-4 py-2 flex items-center gap-2">
                   <AlertCircle size={16} className="text-orange-500" />
                   <span className="text-sm text-orange-700">
-                    ⚠️ {t('chats.handoff_banner').replace('{{time}}', safeFormatTime(selectedSession.last_derivhumano_at))}
+                    ⚠️ {t('chats.handoff_banner').replace('{{time}}', safeFormatTime(selectedSession?.last_derivhumano_at || selectedChatwoot?.last_derivhumano_at))}
                   </span>
-                  <button
-                    onClick={handleRemoveSilence}
-                    className="ml-auto text-xs text-orange-600 hover:underline"
-                  >
-                    {t('chats.remove_silence')}
-                  </button>
+                  {selectedSession && (
+                    <button
+                      onClick={handleRemoveSilence}
+                      className="ml-auto text-xs text-orange-600 hover:underline"
+                    >
+                      {t('chats.remove_silence')}
+                    </button>
+                  )}
                 </div>
               ) : (selectedSession && (selectedSession.status === 'silenced' || selectedSession.status === 'human_handling')) && (
                 <div className="bg-blue-50 border-b border-blue-200 px-4 py-2 flex items-center gap-2">

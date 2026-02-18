@@ -95,7 +95,7 @@ async def chats_summary(
     sql = f"""
         SELECT c.id, c.tenant_id, c.channel, c.provider, c.external_user_id, c.display_name,
                c.last_message_preview AS last_message, c.last_message_at AS last_message_at,
-               c.last_user_message_at, c.status, c.human_override_until, c.meta, c.last_read_at
+               c.last_user_message_at, c.status, c.human_override_until, c.last_derivhumano_at, c.meta, c.last_read_at
         FROM chat_conversations c
         WHERE {where}
         ORDER BY c.last_message_at DESC NULLS LAST
@@ -158,6 +158,7 @@ async def chats_summary(
             "last_user_message_at": r["last_user_message_at"].isoformat() if r["last_user_message_at"] else None,
             "is_locked": ho is not None and (ho if ho.tzinfo else ho.replace(tzinfo=timezone.utc)) > utc_now,
             "status": r["status"],
+            "last_derivhumano_at": r["last_derivhumano_at"].isoformat() if r["last_derivhumano_at"] else None,
             "meta": meta,
             "unread_count": unread or 0
         })
@@ -294,9 +295,10 @@ async def unified_send_message(
     # Soporte para el formato antiguo de la UI que enviaba 'phone' para YCloud
     phone = body.get("phone")
     message = (body.get("message", "") or "").strip()
+    attachments = body.get("attachments", [])
     
-    if not message:
-        raise HTTPException(status_code=400, detail="message required")
+    if not message and not attachments:
+        raise HTTPException(status_code=400, detail="message or attachments required")
 
     pool = get_pool()
     
@@ -364,7 +366,33 @@ async def unified_send_message(
             
             from chatwoot_client import ChatwootClient
             client = ChatwootClient(base_url, token)
-            await client.send_text_message(account_id, cw_conv_id, message)
+            
+            # Send text if present
+            if message:
+                await client.send_text_message(account_id, cw_conv_id, message)
+            
+            # Send attachments
+            import os
+            for att in attachments:
+                # att is expected to be { type: 'image', url: '/media/...' }
+                # Resolve local path from URL
+                url = att.get("url", "")
+                if url.startswith("/media/"):
+                    # url format: /media/{tenant_id}/{filename}
+                    # local path: os.getcwd()/media/{tenant_id}/{filename}
+                    rel_path = url.lstrip("/")
+                    # Security check: ensure no directory traversal
+                    parts = rel_path.split("/")
+                    if ".." in parts:
+                        logger.warning(f"⚠️ Skip unsafe attachment path: {url}")
+                        continue
+                        
+                    file_path = os.path.join(os.getcwd(), *parts)
+                    if os.path.exists(file_path):
+                        await client.send_attachment(account_id, cw_conv_id, file_path)
+                    else:
+                        logger.warning(f"⚠️ Attachment file not found: {file_path}")
+
             
         elif provider == "ycloud":
             api_key = await get_tenant_credential(tenant_id, YCLOUD_API_KEY)
@@ -386,10 +414,11 @@ async def unified_send_message(
         from db import db
         await db.pool.execute(
             """
-            INSERT INTO chat_messages (tenant_id, conversation_id, role, content, from_number) 
-            VALUES ($1, $2, 'human_supervisor', $3, $4)
+            INSERT INTO chat_messages (tenant_id, conversation_id, role, content, from_number, content_attributes) 
+            VALUES ($1, $2, 'human_supervisor', $3, $4, $5::jsonb)
             """,
-            tenant_id, conv_id, message, external_user_id,
+            tenant_id, conv_id, message, external_user_id, json.dumps(attachments) if attachments else None
+
         )
         
         # Sincronizar metadata de conversación (sin tocar la ventana de 24h ya que es saliente)
