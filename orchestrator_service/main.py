@@ -135,6 +135,7 @@ class ChatRequest(BaseModel):
     event_id: Optional[str] = None
     provider_message_id: Optional[str] = None
     referral: Optional[Dict[str, Any]] = None # Meta Ads Referral Data
+    role: Optional[str] = "user" # 'user' or 'assistant' (for echoes)
 
     @property
     def final_message(self) -> str:
@@ -1657,15 +1658,28 @@ async def chat_endpoint(req: ChatRequest, background_tasks: BackgroundTasks):
         conversation_id = str(conv_uuid)
 
         # Ahora incluimos attachments y content_attributes
+        role = req.role or 'user'
         message_id = await db.append_chat_message(
             from_number=req.final_phone,
-            role='user',
+            role=role,
             content=req.final_message,
             correlation_id=correlation_id,
             tenant_id=tenant_id,
             conversation_id=conversation_id,
             content_attributes=attachments if attachments else None
         )
+        
+        # Sincronizar conversación para el preview (Spec 14 / WhatsApp Fix)
+        try:
+            await db.sync_conversation(
+                tenant_id=tenant_id,
+                channel="whatsapp",
+                external_user_id=req.final_phone,
+                last_message=req.final_message or (f"[{attachments[0].get('type').upper()}]" if attachments else "[Media]"),
+                is_user=(role == 'user')
+            )
+        except Exception as sync_err:
+            logger.error(f"⚠️ Error syncing WhatsApp preview: {sync_err}")
         
         # Spec 23: Vision Trigger (YCloud/Others)
         if message_id and attachments:

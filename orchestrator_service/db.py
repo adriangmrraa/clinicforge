@@ -599,23 +599,54 @@ class Database:
         Soporta persistencia de IDs de Chatwoot (Spec 34) para respuesta de la IA.
         """
         # 1. Buscar conversación existente
-        existing = await self.pool.fetchrow("""
-            SELECT id FROM chat_conversations
-            WHERE tenant_id = $1 AND channel = $2 AND external_user_id = $3
-        """, tenant_id, channel, external_user_id)
+        # ✅ Fase 2: Buscar por ID de Chatwoot primero para evitar splits de ID numérico vs Handle
+        existing = None
+        if external_chatwoot_id:
+            existing = await self.pool.fetchrow("""
+                SELECT id, external_user_id FROM chat_conversations
+                WHERE tenant_id = $1 AND external_chatwoot_id = $2
+            """, tenant_id, external_chatwoot_id)
+        
+        if not existing:
+            existing = await self.pool.fetchrow("""
+                SELECT id, external_user_id FROM chat_conversations
+                WHERE tenant_id = $1 AND channel = $2 AND external_user_id = $3
+            """, tenant_id, channel, external_user_id)
         
         if existing:
-            # Si existe pero no tenía IDs de Chatwoot, los actualizamos
-            if external_chatwoot_id or external_account_id:
+            # Si existe pero no tenía IDs de Chatwoot, o cambió el user_id (split fix), actualizamos
+            # ✅ Fase 2: Si el handle (external_user_id) cambió, verificar que no colisione con otra fila
+            target_user_id = external_user_id
+            if external_user_id and existing['external_user_id'] != external_user_id:
+                collision = await self.pool.fetchval("""
+                    SELECT id FROM chat_conversations 
+                    WHERE tenant_id = $1 AND channel = $2 AND external_user_id = $3 AND id != $4
+                """, tenant_id, channel, external_user_id, existing['id'])
+                if collision:
+                    logger.warning(f"⚠️ Collision detected for handle '{external_user_id}'. Sticking with existing row {existing['id']} but not updating user_id.")
+                    target_user_id = existing['external_user_id'] # No cambiarlo para evitar error de UNICIDAD
+
+            await self.pool.execute("""
+                UPDATE chat_conversations 
+                SET external_chatwoot_id = COALESCE($1, external_chatwoot_id),
+                    external_account_id = COALESCE($2, external_account_id),
+                    external_user_id = COALESCE($3, external_user_id),
+                    display_name = COALESCE($4, display_name),
+                    updated_at = NOW()
+                WHERE id = $5
+            """, external_chatwoot_id, external_account_id, target_user_id, display_name, existing['id'])
+
+            # Si existe y tiene avatar nuevo, lo fusionamos
+            if avatar_url:
                 await self.pool.execute("""
                     UPDATE chat_conversations 
-                    SET external_chatwoot_id = COALESCE($1, external_chatwoot_id),
-                        external_account_id = COALESCE($2, external_account_id),
+                    SET meta = meta || $1::jsonb,
                         updated_at = NOW()
-                    WHERE id = $3
-                """, external_chatwoot_id, external_account_id, existing['id'])
+                    WHERE id = $2
+                """, json.dumps({"customer_avatar": avatar_url}), existing['id'])
             return existing['id']
         
+        # 2. Crear nueva conversación (ON CONFLICT para race conditions)
         conv_id = await self.pool.fetchval("""
             INSERT INTO chat_conversations (
                 tenant_id, channel, external_user_id, display_name,

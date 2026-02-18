@@ -353,11 +353,14 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
 
             # Sincronizar conversación para el preview (Spec 14 / Bug Fix)
             try:
+                # ✅ Fase 2: Robust fallback for previews
+                content_preview = msg.content or (f"[{msg.media[0].type.value.upper()}]" if msg.media else "[Media]")
+                
                 await db.sync_conversation(
                     tenant_id=tenant_id,
                     channel=msg.original_channel,
                     external_user_id=msg.external_user_id,
-                    last_message=msg.content or (f"[{msg.media[0].type.value.upper()}]" if msg.media else "[Media]"),
+                    last_message=content_preview,
                     is_user=(not msg.is_agent)
                 )
             except Exception as sync_err:
