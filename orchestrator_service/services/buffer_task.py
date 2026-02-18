@@ -3,6 +3,7 @@ process_buffer_task: invoca agente IA y envía respuesta por Chatwoot (o YCloud)
 CLINICASV1.0 - integrado con chat_conversations; usa get_agent_executable_for_tenant (Vault).
 """
 import logging
+import json
 from typing import List
 
 from db import get_pool
@@ -196,15 +197,22 @@ async def process_buffer_task(
                 try:
                     from chatwoot_client import ChatwootClient
                     client = ChatwootClient(base_url, token)
-                    await client.send_text_message(account_id, cw_conv_id, response_text)
-                    logger.info(f"✅ Message sent to Chatwoot/Meta successfully: {response_text[:30]}...")
+                    resp_data = await client.send_text_message(account_id, cw_conv_id, response_text)
+                    cw_msg_id = resp_data.get("id")
+                    logger.info(f"✅ Message sent to Chatwoot/Meta successfully: {response_text[:30]}... ID: {cw_msg_id}")
+
+                    # Spec 34: Guardar provider_message_id para deduplicación robusta
+                    meta_json = json.dumps({
+                        "provider": "chatwoot", 
+                        "provider_message_id": str(cw_msg_id) if cw_msg_id else None
+                    })
 
                     await pool.execute(
                         """
-                        INSERT INTO chat_messages (tenant_id, conversation_id, role, content, from_number)
-                        VALUES ($1, $2, 'assistant', $3, $4)
+                        INSERT INTO chat_messages (tenant_id, conversation_id, role, content, from_number, platform_metadata)
+                        VALUES ($1, $2, 'assistant', $3, $4, $5::jsonb)
                         """,
-                        tenant_id, conversation_id, response_text, external_user_id or "chatwoot",
+                        tenant_id, conversation_id, response_text, external_user_id or "chatwoot", meta_json
                     )
                 except Exception as send_err:
                     logger.exception(f"❌ Failed sending to Chatwoot/Meta: {send_err}")

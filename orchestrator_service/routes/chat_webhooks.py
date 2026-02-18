@@ -120,17 +120,25 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
                 provider=provider
             )
             
-            # Deduplicación básica
+            # Deduplicación robusta (Spec 34)
+            # 1. Contenido idéntico reciente (5s)
+            # 2. ID de proveedor coincidente (evitar eco de mensajes salientes de la IA)
+            external_id_check = str(msg.raw_payload.get("id")) if msg.raw_payload and msg.raw_payload.get("id") else "NO_MATCH"
+            
             dup = await pool.fetchval(
                 """
                 SELECT id FROM chat_messages
                 WHERE conversation_id = $1 
-                  AND (content = $2)
-                  AND created_at > NOW() - INTERVAL '5 seconds'
+                  AND (
+                    (content = $2 AND created_at > NOW() - INTERVAL '5 seconds')
+                    OR 
+                    (platform_metadata->>'provider_message_id' = $3)
+                  )
                 LIMIT 1
                 """,
                 conv_id,
-                msg.content
+                msg.content,
+                external_id_check
             )
             if dup:
                 logger.info(f"♻️ Skipping duplicate message in conv {conv_id}")

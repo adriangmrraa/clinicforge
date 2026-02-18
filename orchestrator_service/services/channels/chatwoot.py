@@ -64,12 +64,39 @@ class ChatwootAdapter(ChannelAdapter):
         # 3. Determinar external_user_id (Priorizar username para IG/FB si existe en meta)
         # Spec 30: Usamos handles si están disponibles para evitar duplicados en DB
         target_external_id = sender_id
-        if nexus_channel in ["instagram", "facebook"]:
-            username = conversation.get("meta", {}).get("sender", {}).get("username")
-            if username:
-                # Normalizar: lowercase y strip para evitar duplicados por casing (Spec 31)
-                target_external_id = str(username).strip().lower()
-                logger.info(f"🆔 Using normalized username '{target_external_id}' as external_id for {nexus_channel}")
+
+        # FIX: Si es outgoing (agente), el sender_id es del agente, pero necesitamos el del contacto.
+        # Intentamos obtenerlo de meta.sender
+        is_outgoing = (msg_type == "outgoing")
+        
+        if is_outgoing:
+             # En outgoing, confiamos en conversation.meta validados.
+             contact_meta = conversation.get("meta", {}).get("sender", {})
+             contact_eff_id = str(contact_meta.get("id"))
+             
+             # Si nexus_channel es ig/fb, intentamos username primero
+             if nexus_channel in ["instagram", "facebook"]:
+                 username = contact_meta.get("username")
+                 if username:
+                     target_external_id = str(username).strip().lower()
+                 elif contact_eff_id and contact_eff_id != "None":
+                     target_external_id = contact_eff_id
+             else:
+                 # WhatsApp / Web: Usar ID numérico del contacto si existe
+                 if contact_eff_id and contact_eff_id != "None":
+                      target_external_id = contact_eff_id
+                 # Fallback: source_id
+                 elif conversation.get("contact_inbox", {}).get("source_id"):
+                      target_external_id = conversation.get("contact_inbox", {}).get("source_id")
+
+        else:
+            # Incoming: Sender ES el contacto
+            if nexus_channel in ["instagram", "facebook"]:
+                username = conversation.get("meta", {}).get("sender", {}).get("username")
+                if username:
+                    # Normalizar: lowercase y strip para evitar duplicados por casing (Spec 31)
+                    target_external_id = str(username).strip().lower()
+                    logger.info(f"🆔 Using normalized username '{target_external_id}' as external_id for {nexus_channel}")
 
         # 4. Procesar Adjuntos
         media_items = self._extract_media(payload)
