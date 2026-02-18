@@ -132,7 +132,8 @@ export default function ChatsView() {
   const lastSoundTimes = useRef<Record<string, number>>({});
 
   // Scroll Inteligente
-  const { containerRef, messagesEndRef, showScrollButton, scrollToBottom } = useSmartScroll([messages, chatwootMessages]);
+  const scrollDependency = useMemo(() => [messages, chatwootMessages], [messages, chatwootMessages]);
+  const { containerRef, messagesEndRef, showScrollButton, scrollToBottom } = useSmartScroll(scrollDependency);
 
 
   // ============================================
@@ -620,6 +621,7 @@ export default function ChatsView() {
       // Socket event will confirm the state later, but UI is already updated.
     } catch (error) {
       console.error('❌ Error toggling Chatwoot lock:', error);
+      alert(`Error updating Manual Mode: ${JSON.stringify(error)}`); // Temporary alert for debugging
       // Rollback on error
       const rollbackFn = (c: ChatSummaryItem) => c.id === selectedChatwoot.id
         ? { ...c, is_locked: !activate }
