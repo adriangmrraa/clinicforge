@@ -600,7 +600,8 @@ class Database:
         display_name: Optional[str] = None,
         external_chatwoot_id: Optional[int] = None,
         external_account_id: Optional[int] = None,
-        avatar_url: Optional[str] = None
+        avatar_url: Optional[str] = None,
+        provider: Optional[str] = None
     ) -> uuid.UUID:
         """
         Obtiene conversación existente o crea una nueva (Spec 20).
@@ -641,9 +642,10 @@ class Database:
                     external_account_id = COALESCE($2, external_account_id),
                     external_user_id = COALESCE($3, external_user_id),
                     display_name = COALESCE($4, display_name),
+                    provider = COALESCE($5, provider),
                     updated_at = NOW()
-                WHERE id = $5
-            """, external_chatwoot_id, external_account_id, target_user_id, display_name, existing['id'])
+                WHERE id = $6
+            """, external_chatwoot_id, external_account_id, target_user_id, display_name, provider, existing['id'])
 
             # Si existe y tiene avatar nuevo, lo fusionamos
             if avatar_url:
@@ -660,20 +662,22 @@ class Database:
             INSERT INTO chat_conversations (
                 tenant_id, channel, external_user_id, display_name,
                 external_chatwoot_id, external_account_id,
-                last_message_at, updated_at, meta
+                last_message_at, updated_at, meta, provider
             )
-            VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW(), $7::jsonb)
+            VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW(), $7::jsonb, $8)
             ON CONFLICT (tenant_id, channel, external_user_id) 
             DO UPDATE SET 
                 updated_at = NOW(),
                 display_name = COALESCE(EXCLUDED.display_name, chat_conversations.display_name),
                 external_chatwoot_id = COALESCE(EXCLUDED.external_chatwoot_id, chat_conversations.external_chatwoot_id),
                 external_account_id = COALESCE(EXCLUDED.external_account_id, chat_conversations.external_account_id),
+                provider = COALESCE(EXCLUDED.provider, chat_conversations.provider),
                 meta = chat_conversations.meta || EXCLUDED.meta
             RETURNING id
         """, tenant_id, channel, external_user_id, display_name or external_user_id, 
            external_chatwoot_id, external_account_id, 
-           json.dumps({"customer_avatar": avatar_url}) if avatar_url else '{}')
+           json.dumps({"customer_avatar": avatar_url}) if avatar_url else '{}',
+           provider)
         
         logger.info(f"✅ New conversation created: {conv_id} with Chatwoot IDs: {external_chatwoot_id}/{external_account_id}")
         return conv_id
