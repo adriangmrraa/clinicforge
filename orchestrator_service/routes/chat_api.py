@@ -475,6 +475,7 @@ async def human_override(
     from main import sio
     await sio.emit("HUMAN_OVERRIDE_CHANGED", {
         "phone_number": row["external_user_id"],
+        "conversation_id": str(conversation_id), # UUID to string
         "enabled": enabled,
         "until": (datetime.now() + timedelta(hours=24)).isoformat() if enabled else None,
         "tenant_id": tenant_id

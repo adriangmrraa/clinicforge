@@ -236,10 +236,11 @@ export default function ChatsView() {
     });
 
     // Evento: Estado de override cambiado (por clínica: solo actualizar si es la clínica seleccionada)
-    socketRef.current.on('HUMAN_OVERRIDE_CHANGED', (data: { phone_number: string; enabled: boolean; until?: string; tenant_id?: number }) => {
+    socketRef.current.on('HUMAN_OVERRIDE_CHANGED', (data: { phone_number: string; conversation_id?: string; enabled: boolean; until?: string; tenant_id?: number }) => {
+      console.log("🔔 Socket Received: HUMAN_OVERRIDE_CHANGED", data);
       if (data.tenant_id != null && selectedTenantId != null && data.tenant_id !== selectedTenantId) return;
 
-      // Update YCloud Sessions
+      // Update YCloud Sessions (Match by Phone)
       setSessions(prev => {
         const updated = prev.map(s =>
           s.phone_number === data.phone_number
@@ -260,15 +261,29 @@ export default function ChatsView() {
         return updated;
       });
 
-      // Update Chatwoot List & Selection (Spec 34)
-      setChatwootList(prev => prev.map(c =>
-        (c.external_user_id === data.phone_number)
-          ? { ...c, is_locked: data.enabled }
-          : c
-      ));
+      // Update Chatwoot List & Selection (Match by ID if available, fallback to phone/external_id)
+      setChatwootList(prev => prev.map(c => {
+        const isMatch = data.conversation_id
+          ? c.id === data.conversation_id
+          : c.external_user_id === data.phone_number;
 
-      if (selectedChatwoot?.external_user_id === data.phone_number) {
-        setSelectedChatwoot(prev => prev ? { ...prev, is_locked: data.enabled } : null);
+        if (isMatch) {
+          console.log("✅ Match found in Chatwoot list (by ID/Phone), updating:", c.id);
+          return { ...c, is_locked: data.enabled };
+        }
+        return c;
+      }));
+
+      // Update Selected Chatwoot (Match by ID if available)
+      if (selectedChatwoot) {
+        const isMatch = data.conversation_id
+          ? selectedChatwoot.id === data.conversation_id
+          : selectedChatwoot.external_user_id === data.phone_number;
+
+        if (isMatch) {
+          console.log("✅ Updating selectedChatwoot:", selectedChatwoot.id);
+          setSelectedChatwoot(prev => prev ? { ...prev, is_locked: data.enabled } : null);
+        }
       }
     });
 
