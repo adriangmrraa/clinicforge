@@ -53,7 +53,7 @@ Scenario: Avatar de Meta expirado
 - [x] **Ventana de 24h**: Estrictamente 24 horas desde el último mensaje del usuario, independientemente del cambio de día. Se debe refrescar el estado visual al recibir mensajes que abran o cierren esta ventana.
 - [x] **Paridad de Funcionalidades**: Las conversaciones de Chatwoot deben heredar TODAS las funciones de YCloud: contexto clínico (desktop/mobile), scroll automático al final, integración con base de datos de pacientes y agendamiento.
 - [x] **Notificaciones**: Sin distinción entre modo manual e IA; todas deben sonar y mostrar badge de la misma forma.
-
+ 
 ## 5. Clarificaciones (Workflow /clarify)
 - **C1**: El estado "leído" se persiste en DB mediante `last_read_at`.
 - **C2**: El `unread_count` solo cuenta mensajes del usuario posteriores a `last_read_at` y al último mensaje del asistente.
