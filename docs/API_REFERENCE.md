@@ -324,9 +324,9 @@ Opcionalmente soporta `phone` y `tenant_id` para compatibilidad legacy.
 **Lógica:**
 1. Valida la **Ventana de 24h de Meta** usando `last_user_message_at`. Si pasaron >24h, retorna **403 Forbidden**.
 2. Enruta el mensaje según el `provider` de la conversación:
-   - **YCloud**: Envío directo de WhatsApp.
+   - **YCloud**: Envío directo de WhatsApp API (requiere `YCLOUD_WHATSAPP_NUMBER` en credentials).
    - **Chatwoot**: Envío a través de la API de Chatwoot (Instagram, Facebook, WhatsApp).
-3. Persiste en `chat_messages` y sincroniza metadata.
+3. Persiste en `chat_messages` con `platform_metadata` (incluyendo `provider_message_id` para deduplicación).
 
 ---
 

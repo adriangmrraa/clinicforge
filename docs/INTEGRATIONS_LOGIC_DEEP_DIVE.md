@@ -69,6 +69,12 @@ Para garantizar idempotencia ante reintentos de webhooks y "ecos" de Chatwoot.
   3. Si es nuevo, retorna `True` -> Se procesa.
 - **Ventana de Procesamiento**: Redis Lock para evitar condiciones de carrera en intervalos de milisegundos.
 
+### 4.1. Deduplicación Robusta (YCloud/Chatwoot Echo)
+Para evitar que el bot se responda a sí mismo o duplique mensajes confirmados por webhook:
+- **Estrategia**: Se ignora el mensaje entrante si su ID coincide con `platform_metadata->>'provider_message_id'` de un mensaje ya guardado.
+- **YCloud**: El ID del mensaje se extrae de `message.id` (no del evento).
+- **Chatwoot**: El ID del mensaje se extrae de `id`.
+
 ## 5. Buffering & Contexto (Spec 24/25)
 
 El sistema implementa un **Buffer Unificado** (`relay.py`) para WhatsApp (YCloud) e Instagram/Facebook (Chatwoot) con el objetivo de agrupar mensajes en ráfaga y dar tiempo al análisis de imágenes.
@@ -87,3 +93,15 @@ Antes de invocar al Agente, la tarea `process_buffer_task`:
 1. **Fetch History**: Recupera los últimos **10 mensajes** de la BD (no solo el buffer).
 2. **Deduplicación**: Elimina el último mensaje del historial si coincide con el primero del buffer (evita duplicados).
 3. **Ad Context**: Inyecta información de `meta_ad_headline` si el paciente provino de un anuncio (ej. Urgencias).
+
+## 6. Configuración de Credenciales (YCloud)
+> [!IMPORTANT]
+> Para que el canal de WhatsApp (YCloud) funcione, es OBLIGATORIO configurar las siguientes credenciales en la base de datos (tabla `credentials`):
+
+| Nombre | Descripción | Ejemplo |
+| :--- | :--- | :--- |
+| `YCLOUD_API_KEY` | API Key de YCloud | `gAAAA...` |
+| `YCLOUD_WHATSAPP_NUMBER` | Número del remitente (Bot) | `+54911...` |
+| `YCLOUD_WEBHOOK_SECRET` | Secreto para validar firma | `whsec_...` |
+
+Sin `YCLOUD_WHATSAPP_NUMBER`, el servicio `buffer_task.py` fallará al intentar enviar respuestas.
