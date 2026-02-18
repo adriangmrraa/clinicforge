@@ -15,6 +15,7 @@ export interface ChatSummaryItem {
   last_message: string;
   last_message_at: string | null;
   last_user_message_at?: string | null;
+  unread_count: number;
   is_locked: boolean;
   status?: string;
   external_user_id?: string;

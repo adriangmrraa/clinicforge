@@ -56,6 +56,15 @@ export async function setHumanOverride(
   return res.data;
 }
 
+export async function markConversationRead(
+  conversationId: string
+): Promise<{ status: string }> {
+  const res = await api.put<{ status: string }>(
+    `/admin/chats/${conversationId}/read`
+  );
+  return res.data;
+}
+
 /** Config Chatwoot para Config/Settings (URL webhook + token). */
 export async function fetchChatwootConfig(): Promise<{
   webhook_path: string;

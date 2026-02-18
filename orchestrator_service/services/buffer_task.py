@@ -119,57 +119,55 @@ async def process_buffer_task(
                 db_history_dicts.pop()
 
         chat_history = []
+        vision_context_str = ""
+        audio_context_str = ""
+        seen_multimodal = set()
+
+        def extract_multimodal(msg_attrs):
+            nonlocal vision_context_str, audio_context_str
+            if not msg_attrs: return
+            try:
+                attrs = msg_attrs
+                if isinstance(attrs, str):
+                    import json
+                    attrs = json.loads(attrs)
+                if isinstance(attrs, list):
+                    for att in attrs:
+                        # Vision
+                        desc = att.get("description")
+                        if desc and desc not in seen_multimodal:
+                            vision_context_str += f"\n[IMAGEN: {desc}]"
+                            seen_multimodal.add(desc)
+                        # Audio (Spec 21/28)
+                        trans = att.get("transcription")
+                        if trans and trans not in seen_multimodal:
+                            audio_context_str += f"\n[AUDIO: {trans}]"
+                            seen_multimodal.add(trans)
+            except Exception: pass
+
         for msg in db_history_dicts:
-            if msg['role'] == 'user':
-                chat_history.append(HumanMessage(content=msg['content']))
+            role = msg['role']
+            content = msg['content']
+            attrs = msg.get('content_attributes')
+            
+            # Extract context from history
+            extract_multimodal(attrs)
+            
+            if role == 'user':
+                chat_history.append(HumanMessage(content=content))
             else:
-                chat_history.append(AIMessage(content=msg['content']))
+                chat_history.append(AIMessage(content=content))
 
         # Append buffered messages as ONE block
         user_input = "\n".join(messages)
         
-        # Spec 23: Inyección de Contexto Visual (Multimodalidad diferida)
-        try:
-             # Using uuid cast for conversation_id
-             img_rows = await pool.fetch(
-                 """
-                 SELECT content_attributes 
-                 FROM chat_messages 
-                 WHERE conversation_id = $1 
-                   AND role = 'user' 
-                   AND created_at > NOW() - INTERVAL '5 minutes'
-                   AND content_attributes IS NOT NULL
-                 ORDER BY created_at ASC
-                 """,
-                 conversation_id 
-             )
-             
-             vision_context_str = ""
-             seen_desc = set()
-             
-             import json
-             for r in img_rows:
-                 if not r["content_attributes"]: continue
-                 try:
-                     attrs = r["content_attributes"]
-                     if isinstance(attrs, str):
-                         attrs = json.loads(attrs)
-                     
-                     if isinstance(attrs, list):
-                         for att in attrs:
-                             desc = att.get("description")
-                             if desc and desc not in seen_desc:
-                                 vision_context_str += f"\n[IMAGEN: {desc}]"
-                                 seen_desc.add(desc)
-                 except Exception:
-                     pass
-
-             if vision_context_str:
-                 logger.info(f"👁️ Inyectando contexto visual: {len(vision_context_str)} chars")
-                 user_input += f"\n\nCONTEXTO VISUAL (Imágenes recientes):{vision_context_str}"
-
-        except Exception as vision_err:
-             logger.warning(f"⚠️ Error leyendo contexto visual: {vision_err}")
+        if vision_context_str:
+            logger.info(f"👁️ Inyectando contexto visual: {len(vision_context_str)} chars")
+            user_input += f"\n\nCONTEXTO VISUAL (Imágenes recientes):{vision_context_str}"
+        
+        if audio_context_str:
+            logger.info(f"🎙️ Inyectando contexto de audio: {len(audio_context_str)} chars")
+            user_input += f"\n\nCONTEXTO DE AUDIO (Transcripciones recientes):{audio_context_str}"
 
         executor = await get_agent_executable_for_tenant(tenant_id)
         logger.info(f"🧠 Invoking Agent for {external_user_id}...")
@@ -239,3 +237,32 @@ async def process_buffer_task(
                 logger.error(f"❌ Missing YCloud Credentials for tenant {tenant_id}")
         except Exception as send_err:
              logger.error(f"❌ Failed sending to YCloud: {send_err}")
+
+    # --- Spec 14: Socket.IO Notification (Real-time AI Response) ---
+    try:
+        from main import app
+        sio = getattr(app.state, "sio", None)
+        to_json_safe = getattr(app.state, "to_json_safe", lambda x: x)
+        
+        if sio and response_text:
+            await sio.emit('NEW_MESSAGE', to_json_safe({
+                'phone_number': external_user_id,
+                'tenant_id': tenant_id,
+                'message': response_text,
+                'attachments': [],
+                'role': 'assistant',
+                'channel': row.get("channel") or "whatsapp"
+            }))
+            logger.info(f"📡 Socket AI NEW_MESSAGE emitted for {external_user_id}")
+            
+            # Sincronizar conversación para el preview inmediato
+            from db import db as db_inst
+            await db_inst.sync_conversation(
+                tenant_id=tenant_id,
+                channel=row.get("channel") or "whatsapp",
+                external_user_id=external_user_id,
+                last_message=response_text,
+                is_user=False
+            )
+    except Exception as sio_err:
+        logger.error(f"⚠️ Error emitting SocketIO response: {sio_err}")

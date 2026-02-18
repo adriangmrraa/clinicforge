@@ -1044,6 +1044,14 @@ async def toggle_human_intervention(
                 updated_at = NOW()
             WHERE tenant_id = $2 AND phone_number = $3
         """, override_until, payload.tenant_id, payload.phone)
+        # Spec 24 / Phase 5: Sync with chat_conversations for omnichannel buffering parity
+        await db.pool.execute("""
+            UPDATE chat_conversations
+            SET human_override_until = $1,
+                updated_at = NOW()
+            WHERE tenant_id = $2 AND channel = 'whatsapp' AND external_user_id = $3
+        """, override_until, payload.tenant_id, payload.phone)
+
         logger.info(f"👤 Intervención humana activada para {payload.phone} (tenant={payload.tenant_id}) hasta {override_until}")
         await emit_appointment_event("HUMAN_OVERRIDE_CHANGED", {
             "phone_number": payload.phone,
@@ -1060,6 +1068,14 @@ async def toggle_human_intervention(
                 updated_at = NOW()
             WHERE tenant_id = $1 AND phone_number = $2
         """, payload.tenant_id, payload.phone)
+        # Spec 24 / Phase 5: Sync with chat_conversations for omnichannel buffering parity
+        await db.pool.execute("""
+            UPDATE chat_conversations
+            SET human_override_until = NULL,
+                updated_at = NOW()
+            WHERE tenant_id = $1 AND channel = 'whatsapp' AND external_user_id = $2
+        """, payload.tenant_id, payload.phone)
+
         logger.info(f"🤖 IA reactivada para {payload.phone} (tenant={payload.tenant_id})")
         await emit_appointment_event("HUMAN_OVERRIDE_CHANGED", {
             "phone_number": payload.phone,

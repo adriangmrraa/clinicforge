@@ -58,3 +58,9 @@ Scenario: Avatar de Meta expirado
 - **C1**: El estado "leído" se persiste en DB mediante `last_read_at`.
 - **C2**: El `unread_count` solo cuenta mensajes del usuario posteriores a `last_read_at` y al último mensaje del asistente.
 - **C3**: La ventana de 24h se calcula matemáticamente por segundos, no por fecha calendario.
+- **C4**: **Buffering Omnicanal (Fase 5)**:
+    - **Ámbito**: Aplicable a **TODOS** los canales (Chatwoot e YCloud).
+    - **UI**: Los mensajes deben aparecer inmediatamente en la interfaz (SocketIO).
+    - **IA**: La respuesta del agente se deboucea/agrupa (10-20s de silencio) para procesar toda la ráfaga como un solo bloque.
+    - **Multimodal**: La IA debe recibir contexto completo incluyendo transcripciones de audio y descripciones de visión.
+    - **Sonido**: Debe sonar solo al inicio de una ráfaga y solo si el chat NO está seleccionado.

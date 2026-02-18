@@ -57,9 +57,9 @@ async def enqueue_buffer_and_schedule_task(tenant_id: int, conversation_id: str,
             if isinstance(attrs, str):
                 attrs = json.loads(attrs)
             if isinstance(attrs, list):
-                if any(str(a.get("type")).lower() == "image" for a in attrs):
+                if any(str(a.get("type")).lower() in ["image", "audio", "voice"] for a in attrs):
                     req_ttl = 20
-                    logger.info(f"⏳ Vision Buffer: Image detected, requiring {req_ttl}s")
+                    logger.info(f"⏳ Multimedia Buffer: Media detected, requiring {req_ttl}s")
     except Exception as e:
         logger.warning(f"Error checking attributes for TTL: {e}")
 

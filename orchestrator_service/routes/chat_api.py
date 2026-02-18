@@ -95,7 +95,7 @@ async def chats_summary(
     sql = f"""
         SELECT c.id, c.tenant_id, c.channel, c.provider, c.external_user_id, c.display_name,
                c.last_message_preview AS last_message, c.last_message_at AS last_message_at,
-               c.last_user_message_at, c.status, c.human_override_until, c.meta
+               c.last_user_message_at, c.status, c.human_override_until, c.meta, c.last_read_at
         FROM chat_conversations c
         WHERE {where}
         ORDER BY c.last_message_at DESC NULLS LAST
@@ -107,6 +107,24 @@ async def chats_summary(
     from urllib.parse import urlencode
 
     for r in rows:
+        conv_id = r["id"]
+        # Conteo de no leídos (Spec 14 isolation)
+        unread_sql = """
+            SELECT COUNT(*) FROM chat_messages
+            WHERE conversation_id = $1
+            AND role = 'user'
+            AND tenant_id = $2
+            AND created_at > GREATEST(
+                COALESCE(
+                    (SELECT created_at FROM chat_messages
+                     WHERE conversation_id = $1 AND role = 'assistant' AND tenant_id = $2
+                     ORDER BY created_at DESC LIMIT 1),
+                    '1970-01-01'::timestamptz
+                ),
+                COALESCE($3, '1970-01-01'::timestamptz)
+            )
+        """
+        unread = await pool.fetchval(unread_sql, conv_id, tenant_id, r.get("last_read_at"))
         meta = r["meta"] or {}
         if isinstance(meta, str):
             try:
@@ -141,10 +159,25 @@ async def chats_summary(
             "is_locked": ho is not None and (ho if ho.tzinfo else ho.replace(tzinfo=timezone.utc)) > utc_now,
             "status": r["status"],
             "meta": meta,
+            "unread_count": unread or 0
         })
     logger.info(f"📤 Devueltos {len(out)} chats unificados (limit={limit}, offset={offset})")
     return out
 
+
+@router.put("/admin/chats/{conversation_id}/read")
+async def mark_conversation_read(
+    conversation_id: str,
+    tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    """Marca una conversación omnicanal como leída."""
+    pool = get_pool()
+    await pool.execute("""
+        UPDATE chat_conversations 
+        SET last_read_at = NOW(), updated_at = NOW()
+        WHERE id = $1 AND tenant_id = $2
+    """, uuid.UUID(conversation_id), tenant_id)
+    return {"status": "ok", "conversation_id": conversation_id}
 
 @router.get("/admin/chats/{conversation_id}/messages")
 async def chat_messages(
@@ -392,11 +425,23 @@ async def human_override(
             "UPDATE chat_conversations SET human_override_until = NOW() + INTERVAL '24 hours' WHERE id = $1",
             conversation_id,
         )
+        # Spec 24: Sync with patients table if it's a WhatsApp/Phone-based conversation
+        if row["channel"] == "whatsapp":
+             await pool.execute(
+                 "UPDATE patients SET human_handoff_requested = TRUE, human_override_until = NOW() + INTERVAL '24 hours' WHERE tenant_id = $1 AND phone_number = $2",
+                 tenant_id, row["external_user_id"]
+             )
     else:
         await pool.execute(
             "UPDATE chat_conversations SET human_override_until = NULL WHERE id = $1",
             conversation_id,
         )
+        # Spec 24: Sync with patients table
+        if row["channel"] == "whatsapp":
+             await pool.execute(
+                 "UPDATE patients SET human_handoff_requested = FALSE, human_override_until = NULL WHERE tenant_id = $1 AND phone_number = $2",
+                 tenant_id, row["external_user_id"]
+             )
     return {"status": "ok", "human_override": enabled}
 @router.get("/admin/chat/media/proxy")
 async def media_proxy(

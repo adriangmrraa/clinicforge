@@ -736,13 +736,13 @@ class Database:
             return await conn.fetchrow(query_insert, tenant_id, phone_number, first_name, status, json.dumps(external_id or {}))
 
     async def get_chat_history(self, from_number: str, limit: int = 15, tenant_id: Optional[int] = None) -> List[dict]:
-        """Returns list of {'role': ..., 'content': ...} in chronological order. Opcional tenant_id para aislamiento por clínica."""
+        """Returns list of {'role': ..., 'content': ..., 'content_attributes': ...} in chronological order."""
         if tenant_id is not None:
-            query = "SELECT role, content FROM chat_messages WHERE from_number = $1 AND tenant_id = $2 ORDER BY created_at DESC LIMIT $3"
+            query = "SELECT role, content, content_attributes FROM chat_messages WHERE from_number = $1 AND tenant_id = $2 ORDER BY created_at DESC LIMIT $3"
             async with self.pool.acquire() as conn:
                 rows = await conn.fetch(query, from_number, tenant_id, limit)
                 return [dict(row) for row in reversed(rows)]
-        query = "SELECT role, content FROM chat_messages WHERE from_number = $1 ORDER BY created_at DESC LIMIT $2"
+        query = "SELECT role, content, content_attributes FROM chat_messages WHERE from_number = $1 ORDER BY created_at DESC LIMIT $2"
         async with self.pool.acquire() as conn:
             rows = await conn.fetch(query, from_number, limit)
             return [dict(row) for row in reversed(rows)]

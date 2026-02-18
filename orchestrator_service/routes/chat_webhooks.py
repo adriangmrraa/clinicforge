@@ -379,17 +379,53 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
                      try:
                         from services.whisper_service import transcribe_audio_url
                         background_tasks.add_task(transcribe_audio_url, url=m_item.url, tenant_id=tenant_id, conversation_id=str(conv_id), external_user_id=msg.external_user_id)
-                     except: pass
+                     except: logger.warning("whisper_service not available")
                 elif m_item.type == MediaType.IMAGE:
                     try:
                         from services.vision_service import process_vision_task
                         background_tasks.add_task(process_vision_task, message_id=msg_id, image_url=m_item.url, tenant_id=tenant_id)
-                    except: pass
+                    except: logger.warning("vision_service not available")
 
+            # --- Spec 14: Socket.IO Notification (Real-time) ---
             try:
-                from services.relay import enqueue_buffer_and_schedule_task
-                background_tasks.add_task(enqueue_buffer_and_schedule_task, tenant_id, str(conv_id), msg.external_user_id)
-            except: pass
+                from main import app
+                sio = getattr(app.state, "sio", None)
+                to_json_safe = getattr(app.state, "to_json_safe", lambda x: x)
+                if sio:
+                    await sio.emit('NEW_MESSAGE', to_json_safe({
+                        'phone_number': msg.external_user_id,
+                        'tenant_id': tenant_id,
+                        'message': msg.content or (f"[{msg.media[0].type.value.upper()}]" if msg.media else ""),
+                        'attachments': content_attrs,
+                        'role': role,
+                        'channel': msg.original_channel
+                    }))
+                    logger.info(f"📡 Socket NEW_MESSAGE emitted for {msg.external_user_id} via {provider}")
+            except Exception as sio_err:
+                logger.error(f"⚠️ Error emitting SocketIO event: {sio_err}")
+
+            # --- Spec 24: Buffer / Agent Trigger (Only if not locked) ---
+            override_row = await pool.fetchrow(
+                "SELECT human_override_until FROM chat_conversations WHERE id = $1",
+                conv_id,
+            )
+            from datetime import datetime, timezone
+            utc_now = datetime.now(timezone.utc)
+            is_locked = (
+                override_row
+                and override_row["human_override_until"] is not None
+                and (override_row["human_override_until"] if override_row["human_override_until"].tzinfo else override_row["human_override_until"].replace(tzinfo=timezone.utc)) > utc_now
+            )
+
+            if not is_locked:
+                try:
+                    from services.relay import enqueue_buffer_and_schedule_task
+                    background_tasks.add_task(enqueue_buffer_and_schedule_task, tenant_id, str(conv_id), msg.external_user_id)
+                    logger.info(f"⏳ Relay task queued for {msg.external_user_id}")
+                except ImportError:
+                    logger.debug("relay not available")
+            else:
+                logger.info(f"🔇 AI silenced by human override for {msg.external_user_id}")
 
         except Exception as e:
             logger.error(f"Error processing msg: {e}")

@@ -129,6 +129,7 @@ export default function ChatsView() {
   // const messagesEndRef = useRef<HTMLDivElement>(null); // Replaced by useSmartScroll
   const socketRef = useRef<Socket | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const lastSoundTimes = useRef<Record<string, number>>({});
 
   // Scroll Inteligente
   const { containerRef, messagesEndRef, showScrollButton, scrollToBottom } = useSmartScroll([messages, chatwootMessages]);
@@ -181,9 +182,22 @@ export default function ChatsView() {
 
       console.log('📨 NEW_MESSAGE socket event:', data);
 
-      // 2. Notificaciones sonoras transversales
-      if (soundEnabled) {
-        playNotificationSound();
+      // 2. Notificaciones sonoras inteligentes:
+      // - Solo si el sonido está activado
+      // - Solo si NO es el chat que el usuario tiene abierto actualmente
+      // - Solo al inicio de una ráfaga (ej: primer mensaje en 30 segundos)
+      const isActiveChat = (
+        (data.channel === 'whatsapp' && selectedSession?.phone_number === data.phone_number) ||
+        (data.channel !== 'whatsapp' && selectedChatwoot?.external_user_id === data.phone_number)
+      );
+
+      if (soundEnabled && !isActiveChat && data.role === 'user') {
+        const now = Date.now();
+        const lastTime = lastSoundTimes.current[data.phone_number] || 0;
+        if (now - lastTime > 30000) { // 30s de silencio entre sonidos por chat
+          playNotificationSound();
+          lastSoundTimes.current[data.phone_number] = now;
+        }
       }
 
       // 3. Si es el chat abierto (YCloud/WhatsApp), agregar mensaje localmente
@@ -371,6 +385,7 @@ export default function ChatsView() {
     };
     load();
     const interval = setInterval(load, 40000); // Polling optimizado a 40s
+    markChatwootAsRead(selectedChatwoot.id);
     return () => clearInterval(interval);
   }, [selectedChatwoot]);
 
@@ -463,6 +478,17 @@ export default function ChatsView() {
       ));
     } catch (error) {
       console.error('Error marking as read:', error);
+    }
+  };
+
+  const markChatwootAsRead = async (conversationId: string) => {
+    try {
+      await chatsApi.markConversationRead(conversationId);
+      setChatwootList(prev => prev.map(item =>
+        item.id === conversationId ? { ...item, unread_count: 0 } : item
+      ));
+    } catch (error) {
+      console.error('Error marking chatwoot as read:', error);
     }
   };
 
@@ -951,8 +977,17 @@ export default function ChatsView() {
                           {platform.label}
                         </span>
                       </div>
-                      <p className="text-sm truncate text-gray-500">{item.last_message || t('chats.no_messages')}</p>
-                      <span className="text-[11px] text-gray-400">
+                      <div className="flex justify-between items-center">
+                        <p className={`text-sm truncate pr-4 ${item.unread_count > 0 ? 'text-gray-900 font-medium' : 'text-gray-500'}`}>
+                          {item.last_message || t('chats.no_messages')}
+                        </p>
+                        {item.unread_count > 0 && (
+                          <span className={`${item.channel === 'whatsapp' ? 'bg-medical-600' : 'bg-purple-600'} text-white text-[10px] font-bold min-w-[20px] h-5 px-1.5 rounded-full flex items-center justify-center`}>
+                            {item.unread_count}
+                          </span>
+                        )}
+                      </div>
+                      <span className={`text-[11px] ${item.unread_count > 0 ? (item.channel === 'whatsapp' ? 'text-medical-600 font-bold' : 'text-purple-600 font-bold') : 'text-gray-400'}`}>
                         {item.last_message_at ? formatTimeSummary(item.last_message_at) : ''}
                       </span>
                     </div>
