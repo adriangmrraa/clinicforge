@@ -42,6 +42,7 @@ class CanonicalMessage(BaseModel):
     # Metadata
     is_agent: bool = False # Si es mensaje del propio sistema
     raw_payload: Dict[str, Any] = Field(default_factory=dict)
+    sender: Dict[str, Any] = Field(default_factory=dict)
 
 class ChannelException(Exception):
     pass

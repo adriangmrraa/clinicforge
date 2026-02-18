@@ -71,7 +71,8 @@ async def receive_chatwoot_webhook(
                 external_user_id=msg.external_user_id,
                 display_name=msg.display_name,
                 external_chatwoot_id=cw_conv_id,
-                external_account_id=cw_acc_id
+                external_account_id=cw_acc_id,
+                avatar_url=msg.sender.get("avatar") if msg.sender else None
             )
             
             # B. Deduplicación de Mensaje
@@ -132,6 +133,18 @@ async def receive_chatwoot_webhook(
             )
             saved_ids.append(msg_id)
             logger.info(f"✅ Message saved: {msg_id} (Conv: {conv_id}) | Provider: {provider}")
+
+            # Sincronizar conversación para el preview (Spec 14 / Bug Fix)
+            try:
+                await db.sync_conversation(
+                    tenant_id=tenant_id,
+                    channel=msg.original_channel,
+                    external_user_id=msg.external_user_id,
+                    last_message=msg.content or (f"[{msg.media[0].type.value.upper()}]" if msg.media else "[Media]"),
+                    is_user=(not msg.is_agent)
+                )
+            except Exception as sync_err:
+                logger.error(f"⚠️ Error syncing conversation summary: {sync_err}")
 
             if msg.is_agent:
                 # Si es mensaje de salida, extender human override
@@ -283,7 +296,8 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
                 external_user_id=msg.external_user_id,
                 display_name=msg.display_name,
                 external_chatwoot_id=cw_conv_id,
-                external_account_id=cw_acc_id
+                external_account_id=cw_acc_id,
+                avatar_url=msg.sender.get("avatar") if msg.sender else None
             )
             
             # Deduplicación básica
@@ -336,6 +350,18 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
             )
             saved_ids.append(msg_id)
             logger.info(f"✅ Message saved: {msg_id} (Conv: {conv_id})")
+
+            # Sincronizar conversación para el preview (Spec 14 / Bug Fix)
+            try:
+                await db.sync_conversation(
+                    tenant_id=tenant_id,
+                    channel=msg.original_channel,
+                    external_user_id=msg.external_user_id,
+                    last_message=msg.content or (f"[{msg.media[0].type.value.upper()}]" if msg.media else "[Media]"),
+                    is_user=(not msg.is_agent)
+                )
+            except Exception as sync_err:
+                logger.error(f"⚠️ Error syncing conversation summary: {sync_err}")
 
             if msg.is_agent:
                 await pool.execute(
