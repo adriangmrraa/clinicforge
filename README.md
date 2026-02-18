@@ -101,8 +101,8 @@ The attribution system uses a **First Touch** model:
 1. **Webhook Capture**: When a patient clicks your ad and opens WhatsApp, YCloud sends referral data (`ad_id`, `headline`, `body`) via webhook
 2. **First Touch Attribution**: The first ad that brings a patient is recorded permanently (subsequent ads don't overwrite)
 3. **Async Enrichment**: A background task calls Meta Graph API to enrich the ad data with campaign names, using Redis cache (48h TTL) to avoid rate limits
-4. **AI Context Injection**: The AI system prompt receives the ad context, enabling personalized greetings and urgency-aware triage
-5. **Dashboard Aggregation**: `GET /admin/marketing/stats` aggregates leads and appointments per campaign/ad with conversion rates
+4. **AI Context Injection**: The AI system prompt receives the ad context, enabling **personalized greetings** (e.g., "Vi que te interesa ortodoncia") and **urgency-aware triage** (prioritizing patients from "Urgencia 24h" ads).
+5. **Dashboard Aggregation**: `GET /admin/marketing/stats` aggregates leads and appointments per campaign/ad with conversion rates.
 
 > **Full technical documentation**: [`docs/meta_ads_backend.md`](docs/meta_ads_backend.md) | [`docs/meta_ads_database.md`](docs/meta_ads_database.md) | [`docs/meta_ads_frontend.md`](docs/meta_ads_frontend.md)
 
@@ -143,16 +143,16 @@ Operations Center shows ALL conversations in one unified view
 (filter by: Todos | WhatsApp | Instagram | Facebook)
 ```
 
-### Key Omnichannel Features (v1.1)
+### Key Omnichannel Features (v2.0 - Stable)
 
-- **Unified Outgoing API**: A single endpoint `/admin/chat/send` handles all outgoing messages, automatically routing to YCloud or Chatwoot based on the platform.
+- **Unified Outgoing API**: A single endpoint `/admin/chat/send` handles everything. It automatically routes to **YCloud** (direct WhatsApp) or **Chatwoot** (IG/FB) based on the conversation provider.
+- **Robust Deduplication**: Logic to prevent "echo" messages and double-posting, using `provider_message_id` tracking for both Chatwoot and YCloud.
 - **Meta 24h Window Policy**: Continuous tracking of `last_user_message_at`. The system automatically blocks standard sessions after 24 hours of inactivity to comply with Meta's policy.
 - **Re-engagement Flow**: Visual "Lock" indicators and banners guide operators to **Meta Templates** when the 24h window is closed.
-- **Unified inbox**: All channels appear in the same Chats view with platform-specific badges and "Lock" icons for closed windows.
-- **Channel filter**: Staff can filter conversations by channel (Todos, WhatsApp, Instagram, Facebook).
-- **Same AI brain**: The LangChain agent processes messages identically regardless of source channel.
-- **Human handoff**: `derivhumano` tool works across all channels with 24h silence window per clinic/phone.
-- **Credential isolation**: Chatwoot tokens, OPENAI_API_KEY, and other secrets stored per-tenant (Vault).
+- **Unified inbox**: All channels appear in the same Chats view with platform-specific badges and real-time updates via **Socket.IO**.
+- **Same AI brain**: The LangChain agent processes messages identically regardless of source channel, maintaining context across platforms.
+- **Human handoff**: `derivhumano` tool works across all channels with 24h silence window per clinic/phone, synchronizing state between DB and UI.
+- **Credential isolation**: Chatwoot tokens, YCloud Keys, and OPENAI_API_KEY stored per-tenant (Vault).
 
 ---
 
@@ -367,7 +367,8 @@ cd clinicforge
 cp dental.env.example .env
 # Edit .env (see docs/02_environment_variables.md):
 # - OPENAI_API_KEY
-# - YCLOUD_API_KEY / YCLOUD_WEBHOOK_SECRET (WhatsApp)
+# - YCloud: YCLOUD_API_KEY, YCLOUD_WEBHOOK_SECRET
+# - YCLOUD_WHATSAPP_NUMBER (Mandatory in DB credentials table)
 # - POSTGRES_DSN / REDIS_URL
 # - CLINIC_NAME, BOT_PHONE_NUMBER
 # - META_ADS_TOKEN (for ad enrichment — optional)
