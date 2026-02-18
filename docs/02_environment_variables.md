@@ -9,7 +9,7 @@ Este proyecto se configura completamente mediante variables de entorno. En despl
 | `INTERNAL_API_TOKEN` | Token de seguridad entre microservicios | `compu-global-hyper-mega-net` | ✅ |
 | `OPENAI_API_KEY` | Clave API de OpenAI (GPT-4o-mini + Whisper) | `sk-proj-xxxxx` | ✅ |
 | `REDIS_URL` | URL de conexión a Redis | `redis://redis:6379` | ✅ |
-| `POSTGRES_DSN` | URL de conexión a PostgreSQL | `postgres://user:pass@db:5432/database` | ✅ |
+| `POSTGRES_DSN` | URL de conexión a PostgreSQL | `postgres://user:pass@db:5432/database` | ✅  
 
 ## 2. Orchestrator Service (8000)
 
