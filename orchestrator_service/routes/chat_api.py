@@ -9,6 +9,8 @@ import uuid
 import hmac
 import hashlib
 import time
+import traceback
+from datetime import datetime, timedelta
 from typing import Any, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, File, UploadFile
@@ -440,6 +442,7 @@ async def human_override(
     body: dict,
     tenant_id: int = Depends(get_resolved_tenant_id),
 ) -> dict:
+    enabled = body.get("enabled", False)
     logger.info(f"🔄 HUMAN_OVERRIDE Request: conv={conversation_id}, enabled={enabled}, tenant={tenant_id}")
     pool = get_pool()
     row = await pool.fetchrow(
@@ -492,7 +495,6 @@ async def human_override(
         return {"status": "ok", "human_override": enabled}
 
     except Exception as e:
-        import traceback
         error_details = f"human_override ERROR: {str(e)}\n{traceback.format_exc()}"
         logger.error(f"❌ {error_details}")
         # Retornamos 500 pero con el detalle del error para que el frontend lo muestre en el popup
