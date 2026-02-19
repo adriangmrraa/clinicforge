@@ -17,6 +17,11 @@ YCLOUD_API_KEY = "YCLOUD_API_KEY"
 YCLOUD_WEBHOOK_SECRET = "YCLOUD_WEBHOOK_SECRET"
 YCLOUD_WHATSAPP_NUMBER = "YCLOUD_WHATSAPP_NUMBER"
 
+# Meta Ads
+META_APP_ID = "META_APP_ID"
+META_APP_SECRET = "META_APP_SECRET"
+META_USER_LONG_TOKEN = "META_USER_LONG_TOKEN"
+
 
 async def get_tenant_credential(tenant_id: int, name: str) -> Optional[str]:
     """Obtiene el valor de una credencial del tenant desde la tabla credentials."""
@@ -81,3 +86,31 @@ async def resolve_tenant_from_webhook_token(access_token: str) -> Optional[int]:
         access_token.strip(),
     )
     return int(row["tenant_id"]) if row else None
+
+
+async def save_tenant_credential(tenant_id: int, name: str, value: str, category: str = "general") -> bool:
+    """Guarda o actualiza una credencial para un tenant."""
+    pool = get_pool()
+    # Encriptar si hay una key configurada
+    from cryptography.fernet import Fernet
+    import os
+    final_value = value
+    key = os.getenv("CREDENTIALS_FERNET_KEY")
+    if key:
+        try:
+            f = Fernet(key.encode("utf-8") if isinstance(key, str) else key)
+            final_value = f.encrypt(value.encode("utf-8")).decode("ascii")
+        except Exception as e:
+            logger.error(f"Error encrypting credential {name}: {e}")
+            
+    try:
+        await pool.execute("""
+            INSERT INTO credentials (tenant_id, name, value, category, updated_at)
+            VALUES ($1, $2, $3, $4, NOW())
+            ON CONFLICT (tenant_id, name) 
+            DO UPDATE SET value = $3, category = $4, updated_at = NOW()
+        """, tenant_id, name, final_value, category)
+        return True
+    except Exception as e:
+        logger.error(f"Error saving credential {name} for tenant {tenant_id}: {e}")
+        return False

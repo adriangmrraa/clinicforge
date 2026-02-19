@@ -17,10 +17,11 @@ from analytics_service import analytics_service
 logger = logging.getLogger(__name__)
 
 # Configuración
-ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "admin-secret-token")
+from core.credentials import get_tenant_credential, CREDENTIALS_FERNET_KEY
+from core.auth import verify_admin_token, get_resolved_tenant_id, ADMIN_TOKEN
+
 INTERNAL_API_TOKEN = os.getenv("INTERNAL_API_TOKEN", "internal-secret-token")
 WHATSAPP_SERVICE_URL = os.getenv("WHATSAPP_SERVICE_URL", "http://whatsapp:8002")
-CREDENTIALS_FERNET_KEY = os.getenv("CREDENTIALS_FERNET_KEY")  # Base64 key for AES-256 (Fernet) encryption
 
 def _get_fernet():
     """Fernet instance for encrypting credentials. Uses CREDENTIALS_FERNET_KEY (url-safe base64)."""
@@ -105,75 +106,9 @@ async def send_to_whatsapp_task(phone: str, message: str, business_number: str):
     except Exception as e:
         logger.error(f"❌ WhatsApp background send CRITICAL failed for {normalized}: {str(e)}")
 
-# --- Dependencia de Seguridad (Triple Capa Nexus v7.6) ---
-async def verify_admin_token(
-    request: Request,
-    x_admin_token: str = Header(None),
-    authorization: str = Header(None)
-):
-    """
-    Implementa la validación de doble factor para administración:
-    1. Validar Token JWT (Identidad y Sesión)
-    2. Validar X-Admin-Token (Autorización Estática de Infraestructura)
-    """
-    # 1. Validar X-Admin-Token
-    if not ADMIN_TOKEN:
-        logger.error("🚨 CRITICAL: ADMIN_TOKEN is NOT configured in the backend environment!")
-        # No dejar pasar si se requiere seguridad
-    
-    if x_admin_token != ADMIN_TOKEN:
-        msg = f"❌ 401: X-Admin-Token mismatch. Received: {x_admin_token!r} (len={len(x_admin_token or '')}), Expected: {ADMIN_TOKEN[:3]}...{ADMIN_TOKEN[-3:] if ADMIN_TOKEN else ''}"
-        logger.warning(msg)
-        raise HTTPException(status_code=401, detail="Token de infraestructura (X-Admin-Token) inválido.")
-    else:
-        logger.debug(f"✅ X-Admin-Token validado (len={len(x_admin_token or '')})")
+# --- Dependencias de Seguridad (Triple Capa Nexus v7.6) ---
+# Movido a core/auth.py
 
-    # 2. Validar JWT (Capa de Identidad)
-    if not authorization or not authorization.startswith("Bearer "):
-        logger.warning(f"❌ 401: Missing or invalid Authorization header: {authorization!r}")
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Sesión no válida. Token JWT requerido.")
-    
-    token = authorization.split(" ")[1]
-    from auth_service import auth_service
-    user_data = auth_service.decode_token(token)
-    
-    if not user_data:
-        logger.warning(f"❌ 401: JWT decode failed for token: {token[:10]}...")
-        raise HTTPException(status_code=401, detail="Token de sesión expirado o inválido.")
-    
-    # 3. Validar Rol (CEOs, Secretarias y Profesionales tienen acceso básico)
-    if user_data.role not in ['ceo', 'secretary', 'professional']:
-        raise HTTPException(status_code=403, detail="No tienes permisos suficientes para realizar esta acción.")
-
-    # Inyectar datos del usuario en el request state para uso posterior
-    request.state.user = user_data
-    return user_data
-
-
-# --- Regla de Oro: resolver tenant_id desde professionals por user_id (aislamiento total) ---
-async def get_resolved_tenant_id(user_data=Depends(verify_admin_token)) -> int:
-    """
-    Resuelve el tenant_id real consultando la tabla professionals mediante el UUID del current_user.
-    Garantiza aislamiento total: nunca se usa tenant_id del JWT sin validar contra BD.
-    - Si el usuario es professional: tenant_id de su fila en professionals.
-    - Si es CEO/secretary (sin fila en professionals): primera clínica (tenants ORDER BY id LIMIT 1).
-    """
-    try:
-        tid = await db.pool.fetchval(
-            "SELECT tenant_id FROM professionals WHERE user_id = $1",
-            uuid.UUID(user_data.user_id)
-        )
-        if tid is not None:
-            return int(tid)
-    except (ValueError, TypeError):
-        pass
-    except Exception:
-        pass  # BD sin professionals o sin tenant_id
-    try:
-        first = await db.pool.fetchval("SELECT id FROM tenants ORDER BY id ASC LIMIT 1")
-        return int(first) if first is not None else 1
-    except Exception:
-        return 1  # Fallback para no devolver 500 si tenants no existe
 
 
 async def get_allowed_tenant_ids(user_data=Depends(verify_admin_token)) -> List[int]:
