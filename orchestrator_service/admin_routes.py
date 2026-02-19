@@ -7,7 +7,7 @@ import logging
 import re
 from datetime import datetime, timedelta, date, timezone
 from typing import List, Optional, Dict, Any
-from fastapi import APIRouter, HTTPException, Header, Depends, Request, status, BackgroundTasks
+from fastapi import APIRouter, HTTPException, Query, Header, Depends, Request, status, BackgroundTasks
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 from db import db
@@ -3364,60 +3364,96 @@ async def get_marketing_stats(
     user_data=Depends(verify_admin_token),
 ):
     """
-    Spec 07: Estadísticas de rendimiento de campañas Meta Ads.
-    Devuelve leads, citas y tasa de conversión por campaña.
-    Soberanía: filtrado por tenant_id resuelto.
+    Spec 07: Estadísticas de rendimiento de campañas Meta Ads con ROI Real.
+    Cruza leads del CRM con Gasto de Meta Ads API e Ingresos de clinical_records.
     """
     if user_data.role not in ['ceo', 'secretary']:
         raise HTTPException(status_code=403, detail="Solo administradores pueden ver estadísticas de marketing.")
 
     try:
-        rows = await db.pool.fetch("""
+        # 1. Obtener Leads, Citas e Ingresos desde la DB
+        # Ingreso = suma de 'cost' en los tratamientos de patients atribuidos a Meta
+        db_rows = await db.pool.fetch("""
             SELECT 
-                COALESCE(p.meta_campaign_id, 'Sin Campaña') AS campaign_name,
-                COALESCE(p.meta_ad_id, 'Unknown') AS ad_id,
-                COALESCE(p.meta_ad_headline, '') AS ad_headline,
-                COUNT(*) AS leads,
-                COUNT(a.id) AS appointments,
-                CASE 
-                    WHEN COUNT(*) > 0 THEN ROUND(COUNT(a.id)::numeric / COUNT(*)::numeric, 2)
-                    ELSE 0
-                END AS conversion_rate
+                p.meta_ad_id AS ad_id,
+                p.meta_campaign_id AS campaign_name,
+                COUNT(DISTINCT p.id) AS leads,
+                COUNT(DISTINCT a.id) AS appointments,
+                SUM(COALESCE((t.cost)::numeric, 0)) AS revenue
             FROM patients p
             LEFT JOIN appointments a 
                 ON a.patient_id = p.id 
                 AND a.tenant_id = p.tenant_id
                 AND a.status IN ('scheduled', 'confirmed', 'completed')
+            LEFT JOIN LATERAL (
+                SELECT (treatment->>'cost')::numeric as cost
+                FROM clinical_records cr, jsonb_array_elements(cr.treatments) as treatment
+                WHERE cr.patient_id = p.id AND cr.tenant_id = p.tenant_id
+            ) t ON TRUE
             WHERE p.tenant_id = $1
               AND p.acquisition_source = 'META_ADS'
-            GROUP BY p.meta_campaign_id, p.meta_ad_id, p.meta_ad_headline
-            ORDER BY leads DESC
+            GROUP BY p.meta_ad_id, p.meta_campaign_id
         """, resolved_tenant_id)
 
+        # 2. Obtener Gasto desde Meta Ads API
+        from services.meta_ads_service import MetaAdsClient
+        # Nota: En un entorno real, el ad_account_id vendría de la tabla credentials
+        # Por ahora usamos el del env como fallback o uno genérico
+        ad_account_id = os.getenv("META_AD_ACCOUNT_ID")
+        meta_client = MetaAdsClient()
+        meta_insights = []
+        if ad_account_id:
+            try:
+                meta_insights = await meta_client.get_ads_insights(ad_account_id)
+            except Exception as e:
+                logger.error(f"Error fetching meta insights: {e}")
+
+        # 3. Mapear insights por ad_id
+        spend_map = {item["ad_id"]: float(item["spend"]) for item in meta_insights}
+        name_map = {item["ad_id"]: item["ad_name"] for item in meta_insights}
+
         campaigns = []
-        for row in rows:
+        for row in db_rows:
+            ad_id = row["ad_id"]
+            spend = spend_map.get(ad_id, 0.0)
+            revenue = float(row["revenue"] or 0)
+            roi = round((revenue - spend) / spend, 2) if spend > 0 else 0
+            
             campaigns.append({
-                "campaign_name": row["campaign_name"],
-                "ad_id": row["ad_id"],
-                "ad_headline": row["ad_headline"],
+                "ad_id": ad_id,
+                "ad_name": name_map.get(ad_id, f"Ad {ad_id}"),
+                "campaign_name": row["campaign_name"] or "Unknown",
                 "leads": row["leads"],
                 "appointments": row["appointments"],
-                "conversion_rate": float(row["conversion_rate"]),
+                "spend": spend,
+                "revenue": revenue,
+                "roi": roi,
+                "conversion_rate": round(row["appointments"] / row["leads"], 2) if row["leads"] > 0 else 0
             })
 
         # Totals summary
         total_leads = sum(c["leads"] for c in campaigns)
         total_appointments = sum(c["appointments"] for c in campaigns)
-        total_conversion = round(total_appointments / total_leads, 2) if total_leads > 0 else 0
-
+        total_spend = sum(c["spend"] for c in campaigns)
+        total_revenue = sum(c["revenue"] for c in campaigns)
+        
         return {
             "campaigns": campaigns,
             "summary": {
                 "total_leads": total_leads,
                 "total_appointments": total_appointments,
-                "overall_conversion_rate": total_conversion,
+                "total_spend": total_spend,
+                "total_revenue": total_revenue,
+                "overall_roi": round((total_revenue - total_spend) / total_spend, 2) if total_spend > 0 else 0,
+                "overall_conversion_rate": round(total_appointments / total_leads, 2) if total_leads > 0 else 0,
             }
         }
+
+    except Exception as e:
+        logger.error(f"Error fetching marketing stats: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail="Error obteniendo estadísticas de marketing.")
 
     except Exception as e:
         logger.error(f"Error fetching marketing stats: {e}")
@@ -3444,3 +3480,32 @@ async def health_check_integrations(
 
     status_code = 200 if result.get("status") == "ok" else 503
     return JSONResponse(content=result, status_code=status_code)
+
+@router.get("/marketing/automation-logs", tags=["Marketing Analytics"])
+async def get_automation_logs(
+    limit: int = Query(50, ge=1, le=200),
+    resolved_tenant_id: int = Depends(get_resolved_tenant_id),
+    user_data=Depends(verify_admin_token),
+):
+    """
+    Spec 08: Auditoría de logs de automatización (UI Transparente).
+    Muestra el historial de recordatorios y seguimientos enviados.
+    """
+    if user_data.role not in ['ceo', 'secretary']:
+        raise HTTPException(status_code=403, detail="Acceso denegado.")
+
+    try:
+        rows = await db.pool.fetch("""
+            SELECT l.id, l.patient_id, p.first_name || ' ' || COALESCE(p.last_name, '') as patient_name,
+                   l.trigger_type, l.status, l.created_at, l.error_details, l.meta
+            FROM automation_logs l
+            JOIN patients p ON l.patient_id = p.id
+            WHERE l.tenant_id = $1
+            ORDER BY l.created_at DESC
+            LIMIT $2
+        """, resolved_tenant_id, limit)
+
+        return [dict(r) for r in rows]
+    except Exception as e:
+        logger.error(f"Error fetching automation logs: {e}")
+        raise HTTPException(status_code=500, detail="Error obteniendo logs de automatización.")

@@ -123,3 +123,35 @@ class MetaAdsClient:
         except Exception as e:
             logger.error(f"❌ Error inesperado consultando Meta Graph API: {e}")
             raise
+
+    async def get_ads_insights(self, ad_account_id: str, date_preset: str = "last_30d") -> list:
+        """
+        Obtiene métricas de rendimiento (gasto, leads, etc.) a nivel de anuncio.
+        Requerido para el cálculo de ROI en el Dashboard.
+        """
+        if not self.access_token:
+            raise MetaAuthError("META_ADS_TOKEN no configurado.")
+        
+        if not ad_account_id:
+            raise ValueError("ad_account_id es requerido para consultar insights.")
+
+        # Asegurar prefijo 'act_' si no viene
+        account_id = ad_account_id if ad_account_id.startswith("act_") else f"act_{ad_account_id}"
+        
+        url = f"{GRAPH_API_BASE}/{account_id}/insights"
+        params = {
+            "fields": "ad_id,ad_name,campaign_id,campaign_name,spend,impressions,clicks",
+            "date_preset": date_preset,
+            "level": "ad",
+            "access_token": self.access_token,
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT * 2) as client:
+                response = await client.get(url, params=params)
+                response.raise_for_status()
+                data = response.json()
+                return data.get("data", [])
+        except Exception as e:
+            logger.error(f"❌ Error obteniendo insights de Meta para {account_id}: {e}")
+            return []

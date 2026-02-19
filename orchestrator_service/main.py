@@ -38,6 +38,7 @@ from admin_routes import router as admin_router
 from auth_routes import router as auth_router
 from routes import chat_webhooks, chat_api
 from email_service import email_service
+from services.automation_service import automation_service
 
 # --- CONFIGURACIÓN ---
 import logging
@@ -1370,7 +1371,13 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("🚀 Iniciando orquestador dental...")
     await db.connect()
-    logger.info("✅ Base de datos conectada")
+    logger.info(f"✅ Base de datos conectada. Version: {await db.pool.fetchval('SELECT version()')}")
+    
+    # Iniciar motor de automatización (Spec 03 / Misión 2)
+    try:
+        await automation_service.start()
+    except Exception as e:
+        logger.error(f"❌ Falló el inicio de AutomationService: {e}")
     
     yield
     
@@ -1378,6 +1385,9 @@ async def lifespan(app: FastAPI):
     logger.info("🔴 Cerrando orquestador dental...")
     await db.disconnect()
     logger.info("✅ Desconexión completada")
+    
+    # Detener motor de automatización
+    await automation_service.stop()
 
 # OpenAPI / Swagger: documentación de contratos API
 OPENAPI_TAGS = [

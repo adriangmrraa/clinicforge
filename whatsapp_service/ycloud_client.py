@@ -56,3 +56,26 @@ class YCloudClient:
         # The node "marcar_leido" in n8n calls typingIndicator
         logger.info("ycloud_typing_indicator", inbound_id=inbound_id, correlation_id=correlation_id)
         return await self._post(f"/whatsapp/inboundMessages/{inbound_id}/typingIndicator", {}, correlation_id)
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception_type(httpx.HTTPStatusError)
+    )
+    async def send_template(self, to: str, template_name: str, language_code: str, components: list, correlation_id: str):
+        """
+        Sends a WhatsApp template message (HSM).
+        Retry logic handles transient errors like rate limits (429).
+        """
+        payload = {
+            "from": self.business_number,
+            "to": to,
+            "type": "template",
+            "template": {
+                "name": template_name,
+                "language": {"code": language_code},
+                "components": components
+            }
+        }
+        logger.info("ycloud_send_template", to=to, template=template_name, correlation_id=correlation_id)
+        return await self._post("/whatsapp/messages/sendDirectly", payload, correlation_id)
