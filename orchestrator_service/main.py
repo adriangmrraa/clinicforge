@@ -36,7 +36,7 @@ import socketio
 from db import db
 from admin_routes import router as admin_router
 from auth_routes import router as auth_router
-from routes import chat_webhooks, chat_api
+from routes import chat_webhooks, chat_api, meta_auth, marketing
 from email_service import email_service
 from services.automation_service import automation_service
 
@@ -1482,6 +1482,8 @@ app.include_router(chat_api.router)
 app.include_router(admin_router)
 # Chatwoot Webhooks
 app.include_router(chat_webhooks.router)
+app.include_router(meta_auth.router)
+app.include_router(marketing.router)
 
 
 # OpenAPI: inyectar securitySchemes para que en Swagger UI se pueda usar Authorize (JWT + X-Admin-Token)

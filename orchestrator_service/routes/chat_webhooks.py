@@ -127,6 +127,37 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
                 provider=provider
             )
             
+            # --- Lead Attribution Logic (Meta Ads) - Spec 05 ---
+            if msg.referral:
+                try:
+                    patient_row = await db.ensure_patient_exists(
+                        phone_number=msg.external_user_id,
+                        tenant_id=tenant_id,
+                        first_name=msg.display_name or "Visitante"
+                    )
+                    if patient_row:
+                        ref_ad_id = msg.referral.get("ad_id")
+                        if ref_ad_id:
+                            # Atribuir solo si no tiene fuente previa (First Touch)
+                            await pool.execute("""
+                                UPDATE patients SET 
+                                    acquisition_source = 'META_ADS',
+                                    meta_ad_id = $1,
+                                    meta_ad_headline = $2,
+                                    meta_ad_body = $3,
+                                    updated_at = NOW()
+                                WHERE id = $4 AND tenant_id = $5
+                                  AND (acquisition_source IS NULL OR acquisition_source = 'ORGANIC')
+                            """, ref_ad_id, msg.referral.get("headline"), msg.referral.get("body"), patient_row["id"], tenant_id)
+                            
+                            # Enriquecimiento asíncrono
+                            try:
+                                from services.tasks import enrich_patient_attribution
+                                background_tasks.add_task(enrich_patient_attribution, patient_id=patient_row["id"], ad_id=ref_ad_id, tenant_id=tenant_id)
+                            except: pass
+                except Exception as attr_err:
+                    logger.error(f"⚠️ Error in webhook attribution: {attr_err}")
+
             # Deduplicación robusta (Spec 34)
             # 1. Contenido idéntico reciente (5s)
             # 2. ID de proveedor coincidente (evitar eco de mensajes salientes de la IA)

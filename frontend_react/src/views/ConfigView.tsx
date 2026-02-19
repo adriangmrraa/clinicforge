@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Settings, Globe, Loader2, CheckCircle2, Copy, Trash2, Edit2, Zap, MessageCircle, Key, User, Plus, Info, Save, Store, Link as LinkIcon, Shield, AlertTriangle, Clock, Database } from 'lucide-react';
+import { Settings, Globe, Loader2, CheckCircle2, Copy, Trash2, Edit2, Zap, MessageCircle, Key, User, Plus, Info, Database, AlertTriangle, Clock } from 'lucide-react';
 import api from '../api/axios';
 import { useTranslation } from '../context/LanguageContext';
 import PageHeader from '../components/PageHeader';
@@ -55,7 +55,7 @@ interface IntegrationConfig {
 export default function ConfigView() {
     const { t, setLanguage } = useTranslation();
     const { user } = useAuth();
-    const [activeTab, setActiveTab] = useState<'general' | 'ycloud' | 'chatwoot' | 'meta_ads' | 'others' | 'maintenance'>('general');
+    const [activeTab, setActiveTab] = useState<'general' | 'ycloud' | 'chatwoot' | 'others' | 'maintenance'>('general');
 
     // General Settings State
     const [settings, setSettings] = useState<ClinicSettings | null>(null);
@@ -535,65 +535,6 @@ export default function ConfigView() {
         </div>
     );
 
-    const renderMetaAdsTab = () => (
-        <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <div className="bg-white border border-gray-200 rounded-3xl p-10 shadow-xl shadow-indigo-500/5 relative overflow-hidden text-center group">
-                <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-50 rounded-full blur-3xl -mr-16 -mt-16 group-hover:bg-indigo-100 transition-colors duration-500"></div>
-                <div className="absolute bottom-0 left-0 w-32 h-32 bg-blue-50 rounded-full blur-3xl -ml-16 -mb-16 group-hover:bg-blue-100 transition-colors duration-500"></div>
-
-                <div className="relative z-10 space-y-6">
-                    <div className="mx-auto w-24 h-24 bg-indigo-50 rounded-3xl flex items-center justify-center mb-4 transform group-hover:rotate-6 transition-transform duration-300 shadow-inner">
-                        <Store size={48} className="text-indigo-600" />
-                    </div>
-
-                    <div className="space-y-2">
-                        <h2 className="text-3xl font-bold text-gray-900 tracking-tight">Meta Ads Integration</h2>
-                        <p className="text-lg text-gray-500 max-w-lg mx-auto leading-relaxed">
-                            Gestiona tus campañas de marketing directamente desde el panel de la clínica.
-                        </p>
-                    </div>
-
-                    <div className="bg-indigo-50/50 rounded-2xl p-6 border border-indigo-100/50 inline-block text-left max-w-md">
-                        <h4 className="flex items-center gap-2 font-semibold text-indigo-900 mb-2">
-                            <Zap size={18} /> Próximamente disponible
-                        </h4>
-                        <ul className="text-sm text-indigo-800/80 space-y-2">
-                            <li className="flex items-start gap-2">• Seguimiento de ROI automático por sede.</li>
-                            <li className="flex items-start gap-2">• Vinculación de leads directamente a la agenda.</li>
-                            <li className="flex items-start gap-2">• Reportes detallados de conversión clínica.</li>
-                        </ul>
-                    </div>
-
-                    <div className="pt-4 flex flex-col sm:flex-row gap-4 justify-center items-center">
-                        <button
-                            onClick={() => alert('Próximamente: Estamos trabajando en la conexión nativa con Meta Ads Business SDK.')}
-                            className="px-8 py-4 bg-gray-900 text-white rounded-2xl font-bold shadow-2xl hover:bg-black transition-all transform hover:-translate-y-1 active:scale-95 flex items-center gap-2 group/btn"
-                        >
-                            <LinkIcon size={20} className="group-hover/btn:rotate-12 transition-transform" />
-                            Conectar con Facebook Ads
-                        </button>
-                        <button className="px-6 py-4 text-gray-500 font-semibold hover:text-gray-900 transition-colors">
-                            Ver Documentación
-                        </button>
-                    </div>
-                </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                {[
-                    { icon: <Shield className="w-6 h-6 text-emerald-600" />, title: "Privacidad", desc: "Datos protegidos bajo HIPAA y GDPR." },
-                    { icon: <Zap className="w-6 h-6 text-yellow-600" />, title: "Automatización", desc: "Captura de leads en tiempo real." },
-                    { icon: <CheckCircle2 className="w-6 h-6 text-blue-600" />, title: "Sincronía", desc: "Agenda y Ads en perfecta armonía." }
-                ].map((item, i) => (
-                    <div key={i} className="bg-white border border-gray-100 p-6 rounded-2xl shadow-sm hover:shadow-md transition-shadow">
-                        <div className="mb-3">{item.icon}</div>
-                        <h4 className="font-bold text-gray-900 mb-1">{item.title}</h4>
-                        <p className="text-sm text-gray-500 leading-snug">{item.desc}</p>
-                    </div>
-                ))}
-            </div>
-        </div>
-    );
 
     const renderOthersTab = () => (
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
@@ -765,12 +706,6 @@ export default function ConfigView() {
                                 <MessageCircle size={18} /> Chatwoot (Meta)
                             </button>
                             <button
-                                onClick={() => setActiveTab('meta_ads')}
-                                className={`px-6 py-4 font-medium text-sm whitespace-nowrap border-b-2 transition-all flex items-center gap-2 ${activeTab === 'meta_ads' ? 'border-fuchsia-600 text-fuchsia-600 font-semibold' : 'border-transparent text-gray-500 hover:text-fuchsia-600 hover:border-fuchsia-200'}`}
-                            >
-                                <Store size={18} /> Meta Ads
-                            </button>
-                            <button
                                 onClick={() => setActiveTab('others')}
                                 className={`px-6 py-4 font-medium text-sm whitespace-nowrap border-b-2 transition-all flex items-center gap-2 ${activeTab === 'others' ? 'border-indigo-500 text-indigo-500 font-semibold' : 'border-transparent text-gray-500 hover:text-indigo-500 hover:border-indigo-200'}`}
                             >
@@ -793,7 +728,6 @@ export default function ConfigView() {
                     {activeTab === 'general' && renderGeneralTab()}
                     {activeTab === 'ycloud' && user?.role === 'ceo' && renderYCloudTab()}
                     {activeTab === 'chatwoot' && user?.role === 'ceo' && renderChatwootTab()}
-                    {activeTab === 'meta_ads' && user?.role === 'ceo' && renderMetaAdsTab()}
                     {activeTab === 'others' && user?.role === 'ceo' && renderOthersTab()}
                     {activeTab === 'maintenance' && user?.role === 'ceo' && renderMaintenanceTab()}
                 </div>

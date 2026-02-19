@@ -14,7 +14,7 @@ import ProfileView from './views/ProfileView';
 import ClinicsView from './views/ClinicsView';
 import ConfigView from './views/ConfigView';
 import MetaTemplatesView from './views/MetaTemplatesView';
-import { Logs } from './views/Logs';
+import MarketingHubView from './views/MarketingHubView';
 import { AuthProvider } from './context/AuthContext';
 import { LanguageProvider } from './context/LanguageContext';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -61,8 +61,13 @@ function App() {
                         <ConfigView />
                       </ProtectedRoute>
                     } />
+                    <Route path="marketing" element={
+                      <ProtectedRoute allowedRoles={['ceo']}>
+                        <MarketingHubView />
+                      </ProtectedRoute>
+                    } />
                     <Route path="templates" element={
-                      <ProtectedRoute allowedRoles={['ceo', 'operator']}>
+                      <ProtectedRoute allowedRoles={['ceo']}>
                         <MetaTemplatesView />
                       </ProtectedRoute>
                     } />
