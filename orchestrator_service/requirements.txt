@@ -27,3 +27,4 @@ python-jose[cryptography]
 python-multipart
 pyjwt
 email-validator
+pytz
