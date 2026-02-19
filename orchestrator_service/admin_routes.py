@@ -17,48 +17,13 @@ from analytics_service import analytics_service
 logger = logging.getLogger(__name__)
 
 # Configuración
-from core.credentials import get_tenant_credential, CREDENTIALS_FERNET_KEY
+from core.credentials import get_tenant_credential, CREDENTIALS_FERNET_KEY, encrypt_value, decrypt_value
 from core.auth import verify_admin_token, get_resolved_tenant_id, ADMIN_TOKEN
 
 INTERNAL_API_TOKEN = os.getenv("INTERNAL_API_TOKEN", "internal-secret-token")
 WHATSAPP_SERVICE_URL = os.getenv("WHATSAPP_SERVICE_URL", "http://whatsapp:8002")
 
-def _get_fernet():
-    """Fernet instance for encrypting credentials. Uses CREDENTIALS_FERNET_KEY (url-safe base64)."""
-    from cryptography.fernet import Fernet
-    key = CREDENTIALS_FERNET_KEY
-    if not key:
-        return None
-    if isinstance(key, str):
-        key = key.encode("utf-8")
-    try:
-        return Fernet(key)
-    except Exception as e:
-        logger.warning(f"Invalid CREDENTIALS_FERNET_KEY: {e}")
-        return None
-
-def _encrypt_credential(plain: str) -> Optional[str]:
-    """Encrypt a credential value with Fernet (AES-256). Returns base64 ciphertext or None if key not configured."""
-    f = _get_fernet()
-    if not f:
-        return None
-    try:
-        return f.encrypt(plain.encode("utf-8")).decode("ascii")
-    except Exception as e:
-        logger.error(f"Encryption failed: {e}")
-        return None
-
-def _decrypt_credential(cipher: str) -> Optional[str]:
-    """Decrypt a credential value with Fernet (AES-256). Returns plaintext or None if failed."""
-    f = _get_fernet()
-    if not f:
-        return None
-    try:
-        if not cipher: return None
-        return f.decrypt(cipher.encode("ascii")).decode("utf-8")
-    except Exception as e:
-        logger.error(f"Decryption failed: {e}")
-        return None
+# Usar encrypt_value y decrypt_value importados de core.credentials
 
 ARG_TZ = timezone(timedelta(hours=-3))
 
@@ -456,7 +421,7 @@ async def list_credentials(user_data = Depends(verify_admin_token)):
         if val:
             try:
                 # Intentar desencriptar para ver longitud real, si falla es texto plano
-                decrypted = _decrypt_credential(val) or val
+                decrypted = decrypt_value(val) or val
                 if len(decrypted) > 4:
                     masked = f"••••••••{decrypted[-4:]}"
             except:
@@ -480,7 +445,7 @@ async def create_credential(payload: CredentialPayload, user_data = Depends(veri
         raise HTTPException(status_code=403, detail="Acceso denegado.")
 
     # Encriptar valor
-    encrypted_val = _encrypt_credential(payload.value)
+    encrypted_val = encrypt_value(payload.value)
     if not encrypted_val:
         raise HTTPException(status_code=500, detail="Error en sistema de encriptación (Key no configurada).")
 
@@ -509,7 +474,7 @@ async def update_credential(cred_id: int, payload: CredentialPayload, user_data 
     
     new_val = existing['value']
     if payload.value and not payload.value.startswith("••••"):
-         encrypted = _encrypt_credential(payload.value)
+         encrypted = encrypt_value(payload.value)
          if encrypted:
              new_val = encrypted
 
@@ -581,7 +546,7 @@ async def get_integration_config(
         # API Token (Masked)
         token = data.get('CHATWOOT_API_TOKEN')
         if token:
-             decrypted = _decrypt_credential(token) or token
+             decrypted = decrypt_value(token) or token
              config['chatwoot_api_token'] = f"••••••••{decrypted[-4:]}" if len(decrypted) > 4 else "••••••••"
         
         # Account ID (Visible)
@@ -625,13 +590,13 @@ async def get_integration_config(
         # API Key (Masked)
         key = data.get('YCLOUD_API_KEY')
         if key:
-            decrypted = _decrypt_credential(key) or key
+            decrypted = decrypt_value(key) or key
             config['ycloud_api_key'] = f"••••••••{decrypted[-4:]}" if len(decrypted) > 4 else "••••••••"
             
         # Webhook Secret (Masked)
         secret = data.get('YCLOUD_WEBHOOK_SECRET')
         if secret:
-            decrypted = _decrypt_credential(secret) or secret
+            decrypted = decrypt_value(secret) or secret
             config['ycloud_webhook_secret'] = f"••••••••{decrypted[-4:]}" if len(decrypted) > 4 else "••••••••"
             
     else:
@@ -676,7 +641,7 @@ async def save_integration_config(provider: str, payload: IntegrationConfig, use
     for key, value, desc, encrypt in creds_to_save:
         final_val = value.strip()
         if encrypt:
-            encrypted = _encrypt_credential(final_val)
+            encrypted = encrypt_value(final_val)
             if not encrypted:
                  raise HTTPException(status_code=500, detail="Error de encriptación")
             final_val = encrypted
@@ -1241,7 +1206,7 @@ async def create_or_update_credential(
         target_tenant_id = None # Global
         
     # 2. Encriptación
-    encrypted_value = _encrypt_credential(payload.value)
+    encrypted_value = encrypt_value(payload.value)
     if not encrypted_value:
         raise HTTPException(status_code=503, detail="Error de encriptación. Verificar CREDENTIALS_FERNET_KEY.")
         
@@ -2870,7 +2835,7 @@ async def connect_sovereign_calendar(
     tenant_id = payload.tenant_id if (payload.tenant_id is not None and payload.tenant_id in allowed_ids) else resolved_tenant_id
     if tenant_id not in allowed_ids:
         raise HTTPException(status_code=403, detail="No tienes acceso a esta clínica.")
-    encrypted = _encrypt_credential(payload.access_token)
+    encrypted = encrypt_value(payload.access_token)
     if not encrypted:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
