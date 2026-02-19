@@ -516,6 +516,41 @@ class Database:
                 END IF;
             END $$;
             """,
+            # Parche 23: Soporte para Timezones en Tenants (HSM Scheduling)
+            """
+            DO $$ 
+            BEGIN 
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='tenants' AND column_name='timezone') THEN
+                    ALTER TABLE tenants ADD COLUMN timezone VARCHAR(100) DEFAULT 'America/Argentina/Buenos_Aires';
+                END IF;
+            END $$;
+            """,
+            # Parche 24: Tracking de Feedback en Citas
+            """
+            DO $$ 
+            BEGIN 
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='appointments' AND column_name='feedback_sent') THEN
+                    ALTER TABLE appointments ADD COLUMN feedback_sent BOOLEAN DEFAULT FALSE;
+                END IF;
+            END $$;
+            """,
+            # Parche 25: Tabla de Logs de Automatización (HSM Audit)
+            """
+            CREATE TABLE IF NOT EXISTS automation_logs (
+                id SERIAL PRIMARY KEY,
+                tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+                patient_id INTEGER REFERENCES patients(id) ON DELETE SET NULL,
+                trigger_type VARCHAR(50) NOT NULL,
+                target_id VARCHAR(100),
+                status VARCHAR(20) DEFAULT 'pending',
+                meta JSONB DEFAULT '{}',
+                error_details TEXT,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            );
+            CREATE INDEX IF NOT EXISTS idx_auto_logs_tenant ON automation_logs(tenant_id);
+            CREATE INDEX IF NOT EXISTS idx_auto_logs_trigger ON automation_logs(trigger_type);
+            CREATE INDEX IF NOT EXISTS idx_auto_logs_target ON automation_logs(target_id);
+            """,
         ]
 
         async with self.pool.acquire() as conn:
