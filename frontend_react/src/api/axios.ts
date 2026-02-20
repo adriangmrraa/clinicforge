@@ -21,7 +21,7 @@ export const getCurrentTenantId = (): string | null => {
   if (sessionTenant) return sessionTenant;
 
   // Default tenant for development (can be overridden by environment)
-  return getEnv('VITE_DEFAULT_TENANT_ID') || 'default';
+  return getEnv('VITE_DEFAULT_TENANT_ID') || '1';
 };
 
 // Set tenant ID for the session

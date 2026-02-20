@@ -68,7 +68,9 @@ async def meta_auth_callback(
     tenant_id = None
     if state and state.startswith("tenant_"):
         val = state.replace("tenant_", "")
-        if val != "default" and val != "undefined":
+        if val == "default" or val == "undefined":
+            tenant_id = 1 # Mapeo de seguridad para single-tenant
+        else:
             try:
                 tenant_id = int(val)
             except ValueError:
