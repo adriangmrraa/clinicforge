@@ -50,7 +50,7 @@ El sistema implementará el flujo de canje de 3 niveles para asegurar persistenc
 - El webhook de WhatsApp (YCloud) debe extraer el `referral` object.
 - Guardar `meta_ad_id`, `meta_campaign_id` y `meta_adset_id` en el registro del paciente/lead.
 - Reportar eventos de conversión (Cita agendada, Tratamiento pagado) de vuelta a Meta CAPI (opcional/fase 2).
-
+ 
 ## 4. Esquema de Datos (Adiciones)
 - **Table `credentials`**: Extender tipos para `META_USER_ACCESS_TOKEN`, `META_BUSINESS_ID`, `META_SELECTED_AD_ACCOUNT`.
 - **Table `automation_logs`**: Ya implementada, se usará para reportar estados de entrega de HSM.
