@@ -15,6 +15,7 @@ YCloud Webhook → whatsapp_service → orchestrator_service/main.py (/chat)
                                           ├── IA Contextual (Spec 06)
                                           └── routes/marketing.py
                                                 ├── GET /admin/marketing/stats (Spec 07)
+                                                ├── GET /admin/marketing/debug/stats (Diagnóstico M6)
                                                 ├── GET /admin/patients/phone/{phone}/context
                                                 └── GET /admin/health/integrations (Spec 12)
 ```
@@ -77,12 +78,20 @@ YCloud Webhook → whatsapp_service → orchestrator_service/main.py (/chat)
 - **Importante**: NO sobrescribe `meta_ad_headline` ni `meta_ad_body` (esos vienen del webhook referral y son la fuente primaria)
 - Degradación grácil: `MetaAuthError`, `MetaNotFoundError`, `MetaRateLimitError` se capturan sin propagar
 
-### 3.4. `services/meta_ads_service.py`
-
 #### Spec 04 — Meta Graph API Client
 - `MetaAdsClient.get_ad_details(ad_id)` → `{ad_id, ad_name, campaign_name, adset_name}`
+- **Estrategia Master Ad List (M6)**: `get_ads_with_insights` soporta `include_insights=False` para recuperar el listado maestro (ej. 16 ads) sin que Meta filtre por gasto=0.
+- **Filtros Expandidos**: `effective_status` incluye `ACTIVE`, `PAUSED`, `DELETED`, `ARCHIVED`, `IN_PROCESS`, `WITH_ISSUES`, `CAMPAIGN_PAUSED`, `ADSET_PAUSED`.
 - Excepciones tipadas: `MetaAuthError` (401), `MetaRateLimitError` (429), `MetaNotFoundError` (404)
 - Timeout configurable: `META_API_TIMEOUT` (default: 5s)
+
+### 3.6. `services/marketing_service.py` [NEW LOGIC M6]
+
+#### Reconciliación Master + Performance
+1. **Paso 1**: Obtiene el listado maestro de anuncios (sin insights).
+2. **Paso 2**: Obtiene datos de rendimiento para el rango seleccionado.
+3. **Paso 3**: Une (Join) ambas listas en el backend. 
+- **Resultado**: Visibilidad del 100% de los anuncios, incluso si tienen gasto 0 o si su campaña está pausada.
 
 ### 3.5. `core/log_sanitizer.py`
 

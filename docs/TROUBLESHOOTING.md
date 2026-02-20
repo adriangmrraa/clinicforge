@@ -46,6 +46,16 @@ ON CONFLICT (tenant_id, name) DO UPDATE SET value = EXCLUDED.value;
 **Causa**: La API de Meta requiere un `date_preset` específico para datos históricos extensos.
 **Solución**: El `MetaAdsClient` implementa `date_preset="maximum"` para el rango "lifetime".
 
+### 3.3. Anuncios faltantes en Marketing Hub (Creativos) [NEW M6]
+**Síntoma**: El sistema detecta 0 anuncios o faltan varios creativos que sí están en Ads Manager.
+**Causa**: Si se expande el campo `insights` en el listado inicial, Meta omite anuncios que tienen gasto 0 en el periodo, incluso si están activos.
+**Solución**: Usar la estrategia **Master Ad List**. Primero listar anuncios con `include_insights=False` y luego enriquecer el rendimiento en una etapa posterior de reconciliación en el backend.
+
+### 3.4. Estado "Archived" o campañas faltantes por pausa [NEW M6]
+**Síntoma**: No aparecen anuncios de campañas que están pausadas.
+**Causa**: El filtro `effective_status` por defecto no incluía estados heredados.
+**Solución**: Ampliar el filtro `effective_status` para incluir `CAMPAIGN_PAUSED`, `ADSET_PAUSED` y `WITH_ISSUES`.
+
 ## 4. UI & Layout (Mobile First)
 
 ### 4.1. Scroll bloqueado en dashboard

@@ -103,6 +103,7 @@ The attribution system uses a **First Touch** model:
 3. **Async Enrichment**: A background task calls Meta Graph API to enrich the ad data with campaign names, using Redis cache (48h TTL) to avoid rate limits
 4. **AI Context Injection**: The AI system prompt receives the ad context, enabling **personalized greetings** (e.g., "Vi que te interesa ortodoncia") and **urgency-aware triage** (prioritizing patients from "Urgencia 24h" ads).
 5. **Dashboard Aggregation**: `GET /admin/marketing/stats` aggregates leads and appointments per campaign/ad with conversion rates.
+6. **Master Ad List Strategy**: To handle Meta Graph API limitations, ClinicForge uses a two-step fetch (Ads + Insights) ensuring **100% ad visibility**, even for ads with 0 spend.
 
 > **Full technical documentation**: [`docs/meta_ads_backend.md`](docs/meta_ads_backend.md) | [`docs/meta_ads_database.md`](docs/meta_ads_database.md) | [`docs/meta_ads_frontend.md`](docs/meta_ads_frontend.md)
 
@@ -147,7 +148,7 @@ Operations Center shows ALL conversations in one unified view
 
 - **Unified Outgoing API**: A single endpoint `/admin/chat/send` handles everything. It automatically routes to **YCloud** (direct WhatsApp) or **Chatwoot** (IG/FB) based on the conversation provider.
 - **Robust Deduplication**: Logic to prevent "echo" messages and double-posting, using `provider_message_id` tracking for both Chatwoot and YCloud.
-- **Meta 24h Window Policy**: Continuous tracking of `last_user_message_at`. The system automatically blocks standard sessions after 24 hours of inactivity to comply with Meta's policy.
+- **Meta 24h Window Policy**: Continuous tracking of `last_user_message_at`. The system automatically **blocks standard messaging** after 24 hours of inactivity, protecting your Meta account and guiding operators to use HSM templates for re-engagement.
 - **Re-engagement Flow**: Visual "Lock" indicators and banners guide operators to **Meta Templates** when the 24h window is closed.
 - **Unified inbox**: All channels appear in the same Chats view with platform-specific badges and real-time updates via **Socket.IO**.
 - **Same AI brain**: The LangChain agent processes messages identically regardless of source channel, maintaining context across platforms.
@@ -257,7 +258,16 @@ ClinicForge uses a **Sovereign Microservices Architecture**, designed to scale w
 - **Context:** Last/upcoming appointment, treatment plan, human override and 24h window state.
 - **Ad Context Card:** When a patient came from a Meta Ad, a card shows the ad headline and body at the top of the conversation for staff awareness.
 - **Actions:** Human intervention, remove silence, unified messaging outlet; click on derivation notification opens the right conversation.
-- **Meta Templates View**: Dedicated section for managing re-engagement campaigns and approved platform templates (upcoming).
+- **Meta Templates View**: Dedicated section for managing re-engagement campaigns and approved platform templates (HSM).
+
+### 🤖 Automation Motor ("Maintenance Robot")
+
+ClinicForge features a proactive automation service (`automation_service.py`) that executes background tasks to improve patient engagement and retention:
+
+- **Appointment Reminders**: Sends a WhatsApp HSM **24 hours before** the appointment to reduce no-shows.
+- **Automated Feedback**: Sends a review request **45 minutes after** the appointment is marked as completed.
+- **Lead Recovery**: Proactively reaches out to Meta Ads leads **2 hours after** initial contact if no appointment was booked.
+- **Audit Feed**: All automated actions are logged in the `automation_logs` table and visible in the admin panel for complete transparency.
 
 ### 📊 Analytics (CEO + Marketing)
 
@@ -317,6 +327,8 @@ ClinicForge/
 │   │   └── log_sanitizer.py      # Sensitive data redaction in logs
 │   ├── services/
 │   │   ├── meta_ads_service.py   # Meta Graph API client (ad enrichment)
+│   │   ├── marketing_service.py  # ROI & Performance intelligence
+│   │   ├── automation_service.py # Background jobs & HSM triggers ("Maintenance Robot")
 │   │   └── tasks.py              # Background tasks (Redis cache + enrichment)
 │   ├── scripts/
 │   │   └── check_meta_health.py  # Meta Ads health check (CLI + API)

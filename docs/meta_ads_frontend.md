@@ -12,9 +12,13 @@
 **Integrado en**: `DashboardView.tsx`
 
 **Funcionalidad**:
-- Muestra KPIs de campañas Meta Ads: Leads, Citas, Tasa de Conversión
-- Lista de hasta 5 campañas con detalle de leads y citas
-- Consume `GET /admin/marketing/stats`
+- Muestra KPIs generales: Inversión, Retorno (Revenue), CPA (Costo por Adquisición).
+- Dos pestañas (**Campaigns** / **Creatives**):
+    - **Campaigns**: Rendimiento agrupado por campaña Meta.
+    - **Creatives**: Rendimiento granular por anuncio (Master Ad List).
+- Filtro de periodo integrado (sincronizado con Dashboard).
+- Soporte para rango "Lifetime" (Máximo historial).
+- Consume `GET /admin/marketing/stats`.
 
 **Estados**:
 | Estado | Render |
@@ -159,10 +163,12 @@ Todos los iconos usados provienen de `lucide-react`:
 
 ## 5. Notas de Diseño
 
-- **Colores**: Se usan paletas suaves (blue-50, blue-100, blue-600) para el branding de Meta Ads
-- **Responsive**: Grid de KPIs usa `grid-cols-3` que se adapta al contenedor padre
-- **Overflow**: Lista de campañas tiene `max-h-40 overflow-y-auto` para evitar overflow
-- **Truncado**: Textos largos usan `truncate` y `line-clamp-2` con `title` tooltip nativo
+- **Colores**: Se usan paletas suaves (blue-50, blue-100, blue-600) para el branding de Meta Ads.
+- **Responsive (Stacking Pattern)**: 
+    - En Desktop (MD+): Grillas laterales y tablas densas.
+    - En Mobile (< MD): Las tablas se transforman en "Cards Stacking", donde cada fila es una card con labels claros para facilitar la lectura táctil.
+- **i18n Universal**: Todas las llaves del Marketing Hub (`total_investment`, `leads`, `roi`, etc.) están localizadas en `es.json` y `en.json`.
+- **Truncado**: Textos largos usan `truncate` y `line-clamp-2` con `title` tooltip nativo.
 
 ---
 

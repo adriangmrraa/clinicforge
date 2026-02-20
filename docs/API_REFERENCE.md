@@ -583,6 +583,41 @@ Lista los últimos casos de urgencia detectados por el sistema de triaje IA.
 
 ---
 
+## Marketing Hub (Meta Ads)
+
+Endpoints para la gestión de publicidad en Meta y análisis de ROI. Requiere `Authorization: Bearer <JWT>` y `X-Admin-Token`.
+
+### Conexión y Auth
+`GET /admin/marketing/meta-auth/url` — Genera la URL de login con Meta (permisos de Ads).  
+`GET /admin/marketing/stats` — Métricas consolidadas (Spent, Leads, ROI) por campaña. Soporta `range` (ej: `last_30d`, `lifetime`).  
+`GET /admin/marketing/token-status` — Devuelve si el token de Meta está activo o expirado.  
+`GET /admin/marketing/meta-portfolios` — Lista Business Managers vinculados.  
+`GET /admin/marketing/meta-accounts` — Lista Ad Accounts de un portfolio.  
+`POST /admin/marketing/connect-meta-account` — Vincula una Ad Account física a la clínica actual.
+
+### Diagnóstico (Master Ad List)
+`GET /admin/marketing/debug/stats` — **Diagnóstico profundo.** Escanea la cuenta publicitaria sin filtros de rendimiento.  
+- Útil para verificar por qué anuncios con 0 gasto no aparecen en el Dashboard principal.
+- Devuelve JSON crudo con 100% de los anuncios encontrados.
+
+---
+
+## Automatizaciones y Handoffs
+
+Gestión de procesos automáticos y transición a humano.
+
+### Control de Chat
+`POST /admin/conversations/{conversation_id}/human-override` — Activa/Desactiva el bot por 24h para intervención manual.  
+`GET /admin/chat/urgencies` — Lista casos críticos detectados por el triaje IA.
+
+### Motor de Automatización ("Maintenance Robot")
+El servicio `automation_service.py` corre tareas en segundo plano para:
+1. **Recordatorios**: HSM de WhatsApp 24h antes de la cita.
+2. **Feedback**: Solicitud de reseña 45m después del turno.
+3. **Lead Recovery**: Reactivación de leads de Meta Ads tras 2h de inactividad.
+
+---
+
 ### Proxy de Medios (Spec 22)
 `GET /admin/chat/media/proxy`
 

@@ -120,6 +120,13 @@ El sistema de marketing integra datos de Meta Ads con la facturación real de la
 - **Ingresos (Revenue)**: Se suman los tratamientos completados (`billing`) de pacientes cuya `source` sea "Meta Ads" o provengan de un `ad_id` rastreado.
 - **ROI**: `((Revenue - Spend) / Spend) * 100`.
 
+### 7.1. Estrategia "Master Ad List" (Mission 6)
+Para resolver la limitación de la Meta Graph API que oculta anuncios con gasto 0 al solicitar `insights` expandidos, el sistema implementa un protocolo de dos pasos:
+
+1. **Fetch Maestro**: Se listan todos los anuncios filtrando por `effective_status` (incluyendo `CAMPAIGN_PAUSED`, `ADSET_PAUSED`, `WITH_ISSUES`).
+2. **Enriquecimiento**: Se obtienen los `insights` por separado y se reconcilian en memoria.
+3. **Visibilidad Total**: Esto garantiza que el 100% de los anuncios creados sean visibles en el Marketing Hub, permitiendo al CEO ver incluso campañas pausadas o sin rendimiento.
+
 ## 8. Motor de Automatización ("Maintenance Robot")
 
 El motor reside en `orchestrator_service/services/automation_service.py` y se encarga de tareas programadas y de mantenimiento.

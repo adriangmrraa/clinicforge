@@ -1,12 +1,5 @@
-# Especificación Técnica: Mission 3 - Meta Marketing Hub & ROI Forge
-
-Esta especificación detalla la implementación de un panel centralizado para gestionar campañas de Meta Ads, auditar métricas de rendimiento y configurar la atribución de leads directamente desde Dentalogic.
-
-## 1. Objetivos
-- **Visibilidad Total**: Dashboard para visualizar campañas, ad sets y anuncios con métricas de Meta (Spend, Clicks, CTR, ROI).
-- **Conectividad Simplificada**: Implementar "Meta Login" para que el CEO pueda conectar su cuenta publicitaria sin configurar variables de entorno manuales.
-- **Acceso Directo**: Integrar "Plantillas HSM" y "Marketing Hub" en el Sidebar principal.
-- **Atribución Inteligente**: Cruce automático entre mensajes entrantes de WhatsApp y metadatos de campaña para calcular el ROI real por anuncio.
+- **KPI Estrella**: ROI Real (Revenue / Spend) con soporte para moneda original de Meta.
+- **Resiliencia API**: Estrategia Master Ad List para garantizar visibilidad 100% de creativos.
 
 ## 2. Requerimientos de UI (Frontend)
 
@@ -56,9 +49,10 @@ El sistema implementará el flujo de canje de 3 niveles para asegurar persistenc
 - **Table `automation_logs`**: Ya implementada, se usará para reportar estados de entrega de HSM.
 
 ## 5. Diseño de Componentes
-- `MetaMarketingHub.tsx`: Vista principal de campañas.
-- `MetaConnectPopup.tsx`: Modal para el flujo de autenticación.
-- `CampaignMetricTable.tsx`: Tabla granular de rendimiento.
+- `MetaMarketingHub.tsx`: Vista principal de campañas y creativos con tabs.
+- `MetaConnectPopup.tsx`: Modal para el flujo de autenticación (deprecated por Wizard).
+- `MetaConnectionWizard.tsx`: Configuración guiada post-login.
+- `CampaignMetricTable.tsx`: Tabla granular con soporte responsive (Stacking).
 
 ## 7. Clarificaciones y Reglas de Negocio (Confirmadas)
 - **Relación 1:1**: Cada clínica (`tenant`) solo puede tener una única `Ad Account` vinculada.
@@ -70,9 +64,12 @@ El sistema implementará el flujo de canje de 3 niveles para asegurar persistenc
 - **Notificación Global de Expiración**: Se mostrará un banner persistente en la parte superior del sistema cuando el token esté a 7 días de expirar, con un botón de acción rápida para reconectar.
 - **Ventana Temporal**: El dashboard cargará por defecto los últimos **30 días**.
 
-## 8. Criterios de Aceptación Actualizados
 - [x] El CEO puede conectar su cuenta de Meta via popup.
 - [x] El Sidebar muestra los logos de Marketing y Plantillas (Solo para CEO).
+- [x] Doble pestaña: Campaigns y Creatives (Master Ad List).
+- [x] Soporte Lifetime (maximum date range).
+- [x] Adaptación Mobile (Stacking Pattern).
+- [x] Localización Universal (i18n).
 ## 9. Cuestionario de Blindaje (Clarify)
 
 Para asegurar la robustez del sistema, se requiere confirmación del usuario sobre los siguientes puntos antes de proceder al plan técnico final:

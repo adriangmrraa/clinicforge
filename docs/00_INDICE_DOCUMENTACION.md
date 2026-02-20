@@ -31,7 +31,7 @@ Este documento lista **todos** los archivos de la carpeta `docs/` con una breve 
 
 | Archivo | Contenido |
 |---------|-----------|
-| [API_REFERENCE.md](API_REFERENCE.md) | Referencia completa de la API: autenticación, auth, configuración, usuarios, sedes, pacientes, turnos, chat (YCloud + Chatwoot omnicanal), profesionales, calendario, tratamientos, estadísticas, analítica, health, chat IA. Incluye Swagger en `/docs`, ReDoc en `/redoc`. |
+| [API_REFERENCE.md](API_REFERENCE.md) | Referencia completa de la API: Auth, Pacientes, Turnos, Chat (Omnicanal), Marketing Hub (Meta Ads ROI), Automatizaciones (HSM), Agente IA. |
 | [AUDIT_CHATWOOT_2025-02-13.md](AUDIT_CHATWOOT_2025-02-13.md) | Auditoría de la integración Chatwoot: comparativa código vs spec version_estable_clinicas; drifts detectados y correcciones aplicadas (Vault agente, filtro canal, polling). |
 | [audit_26_calendario_hibrido_2026-02-10.md](audit_26_calendario_hibrido_2026-02-10.md) | Auditoría del calendario híbrido: verificación código vs especificación (contenido migrado a 01_architecture, 08_troubleshooting, SPECS_IMPLEMENTADOS_INDICE). |
 | [AUDIT_ESTADO_COMPLETO_POR_PAGINA.md](AUDIT_ESTADO_COMPLETO_POR_PAGINA.md) | Auditoría estado completo por página del frontend. |
