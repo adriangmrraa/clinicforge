@@ -16,6 +16,8 @@ class MarketingService:
         token = await get_tenant_credential(tenant_id, "META_USER_LONG_TOKEN")
         is_connected = bool(token)
         
+        logger.info(f"🔍 ROI Debug: Tenant={tenant_id}, TokenFound={is_connected}, Range={time_range}")
+        
         # Mapeo de time_range a intervalos de Postgres
         interval_map = {
             "last_30d": "30 days",
@@ -139,6 +141,8 @@ class MarketingService:
         
         token = await get_tenant_credential(tenant_id, "META_USER_LONG_TOKEN")
         ad_account_id = await get_tenant_credential(tenant_id, "META_AD_ACCOUNT_ID")
+        
+        logger.info(f"🔍 Campaigns Debug: Tenant={tenant_id}, TokenFound={bool(token)}, AdAccount={ad_account_id}, Range={time_range}")
         
         interval_map = {
             "last_30d": "30 days",
