@@ -312,6 +312,24 @@ async def debug_marketing_stats(
                 except Exception as e_c:
                     debug_info["direct_ads_list_raw"] = {"error": str(e_c)}
 
+                # 3.4 Varianza D: TODO (Sin filtro de estado)
+                try:
+                    async with httpx.AsyncClient() as h_client:
+                        url_all = f"https://graph.facebook.com/v21.0/{test_id}/ads"
+                        params_all = {
+                            "fields": "id,name,effective_status",
+                            "limit": 500,
+                            "access_token": client.access_token
+                        }
+                        r_all = await h_client.get(url_all, params=params_all)
+                        data_all = r_all.json()
+                        debug_info["absolute_all_ads_no_filter"] = {
+                            "count": len(data_all.get("data", [])),
+                            "statuses": list(set(a.get("effective_status") for a in data_all.get("data", [])))
+                        }
+                except Exception as e_all:
+                    debug_info["absolute_all_ads_no_filter"] = {"error": str(e_all)}
+
             # 4. Probar ID de cuenta del .env (Legacy)
             if env_ad_account_id:
                 test_id = env_ad_account_id if env_ad_account_id.startswith("act_") else f"act_{env_ad_account_id}"
