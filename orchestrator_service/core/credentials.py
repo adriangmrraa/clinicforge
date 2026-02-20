@@ -61,7 +61,13 @@ async def get_tenant_credential(tenant_id: int, name: str) -> Optional[str]:
         # Fallback a variable de entorno global (Nexus Resilience Protocol)
         import os
         env_val = os.getenv(name)
+        
+        # Fallback específico para tokens de Meta (Nexus Resilience)
+        if not env_val and name == "META_USER_LONG_TOKEN":
+            env_val = os.getenv("META_ADS_TOKEN")
+            
         return env_val.strip() if env_val else None
+
     
     # Intentar decriptar si es un valor encriptado (Fernet)
     return decrypt_value(str(row["value"]))
