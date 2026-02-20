@@ -227,6 +227,7 @@ async def debug_marketing_stats(
                 for a in accounts[:15]: 
                     aid = a.get("id")
                     spend = 0
+                    err_msg = None
                     try:
                         # Usar level="account" para detectar gasto incluso si no hay anuncios activos
                         ins = await client.get_ads_insights(aid, date_preset="maximum", level="account")
