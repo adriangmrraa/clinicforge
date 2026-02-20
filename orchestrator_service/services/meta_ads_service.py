@@ -141,6 +141,8 @@ class MetaAdsClient:
         # Definir campos según el nivel para evitar errores de API (#100)
         if level == "account":
             fields = "spend,impressions,clicks,account_currency,account_id,account_name"
+        elif level == "campaign":
+            fields = "campaign_id,campaign_name,spend,impressions,clicks,account_currency,effective_status"
         else:
             fields = "ad_id,ad_name,campaign_id,campaign_name,spend,impressions,clicks,account_currency,effective_status"
 
