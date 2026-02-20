@@ -208,16 +208,25 @@ async def debug_marketing_stats(
                     debug_info["db_account_deep_scan"] = {"error": str(e_deep)}
 
                 # 1.2 Campaign Scan (Nivel Campaña - Ver si recuperamos estructura)
+                # FORZAR ID DE DRA LAURA PARA DEBUG SI EL CONFIGURADO FALLA
+                target_id = test_id
+                if "962522549377170" in str(acc_list): # Si la cuenta existe en la lista, priorizarla para test
+                     target_id = "act_962522549377170"
+                
                 try:
-                    ins_camp = await client.get_ads_insights(test_id, date_preset="maximum", level="campaign")
+                    # Usar filtrado para incluir Deleted/Archived
+                    filtering = [{'field': 'campaign.effective_status', 'operator': 'IN', 'value': ['ACTIVE', 'PAUSED', 'DELETED', 'ARCHIVED', 'IN_PROCESS', 'WITH_ISSUES']}]
+                    
+                    ins_camp = await client.get_ads_insights(target_id, date_preset="maximum", level="campaign", filtering=filtering)
                     debug_info["db_account_campaign_scan"] = {
+                        "target_used": target_id,
                         "success": True,
                         "count": len(ins_camp),
-                        "raw_data": ins_camp[:5], # Solo mostrar las primeras 5 para no saturar
+                        "raw_data": ins_camp[:5], 
                         "total_spend": sum(float(i.get("spend", 0)) for i in ins_camp)
                     }
                 except Exception as e_camp:
-                    debug_info["db_account_campaign_scan"] = {"error": str(e_camp)}
+                    debug_info["db_account_campaign_scan"] = {"error": str(e_camp), "target_used": target_id}
 
             # 2. Probar ID de cuenta del .env (Legacy)
             if env_ad_account_id:

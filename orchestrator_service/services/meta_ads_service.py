@@ -155,10 +155,13 @@ class MetaAdsClient:
             "date_preset": date_preset,
             "level": level,
             "access_token": self.access_token,
+            "limit": 1000 # Aumentar límite para traer todo el historial
         }
         
         if filtering:
             params["filtering"] = json.dumps(filtering)
+            
+        logger.info(f"🔍 Meta Request: {url} | Level={level} | Preset={date_preset} | Filter={params.get('filtering')}")
 
         try:
             all_insights = []
