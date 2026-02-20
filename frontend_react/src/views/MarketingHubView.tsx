@@ -4,15 +4,27 @@ import api from '../api/axios';
 import PageHeader from '../components/PageHeader';
 import { useTranslation } from '../context/LanguageContext';
 import MarketingPerformanceCard from '../components/MarketingPerformanceCard';
+import MetaConnectionWizard from '../components/integrations/MetaConnectionWizard';
 import { getCurrentTenantId } from '../api/axios';
+import { useSearchParams } from 'react-router-dom';
 
 export default function MarketingHubView() {
     const { t } = useTranslation();
+    const [searchParams, setSearchParams] = useSearchParams();
     const [stats, setStats] = useState<any>(null);
     const [isMetaConnected, setIsMetaConnected] = useState(false);
+    const [isWizardOpen, setIsWizardOpen] = useState(false);
 
     useEffect(() => {
         loadStats();
+
+        // Detectar si venimos de un login exitoso de Meta
+        if (searchParams.get('success') === 'connected') {
+            setIsWizardOpen(true);
+            // Limpiar el parámetro de la URL
+            searchParams.delete('success');
+            setSearchParams(searchParams);
+        }
     }, []);
 
     const loadStats = async () => {
@@ -75,8 +87,8 @@ export default function MarketingHubView() {
                     <button
                         onClick={handleConnectMeta}
                         className={`w-full py-4 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all ${isMetaConnected
-                                ? "bg-gray-100 text-gray-900 hover:bg-gray-200"
-                                : "bg-gray-900 text-white hover:bg-black"
+                            ? "bg-gray-100 text-gray-900 hover:bg-gray-200"
+                            : "bg-gray-900 text-white hover:bg-black"
                             }`}
                     >
                         <ExternalLink size={18} /> {isMetaConnected ? 'Reconnect Meta Account' : 'Connect Meta Ads'}
@@ -138,6 +150,12 @@ export default function MarketingHubView() {
                     </table>
                 </div>
             </div>
+
+            <MetaConnectionWizard
+                isOpen={isWizardOpen}
+                onClose={() => setIsWizardOpen(false)}
+                onSuccess={loadStats}
+            />
         </div>
     );
 }

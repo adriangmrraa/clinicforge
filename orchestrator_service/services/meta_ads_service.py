@@ -140,7 +140,7 @@ class MetaAdsClient:
         
         url = f"{GRAPH_API_BASE}/{account_id}/insights"
         params = {
-            "fields": "ad_id,ad_name,campaign_id,campaign_name,spend,impressions,clicks",
+            "fields": "ad_id,ad_name,campaign_id,campaign_name,spend,impressions,clicks,account_currency",
             "date_preset": date_preset,
             "level": "ad",
             "access_token": self.access_token,
@@ -154,4 +154,49 @@ class MetaAdsClient:
                 return data.get("data", [])
         except Exception as e:
             logger.error(f"❌ Error obteniendo insights de Meta para {account_id}: {e}")
+            return []
+
+    async def get_portfolios(self) -> list:
+        """
+        Lista los Business Managers (Portafolios) a los que el usuario tiene acceso.
+        """
+        url = f"{GRAPH_API_BASE}/me/businesses"
+        params = {
+            "fields": "name,id",
+            "access_token": self.access_token,
+        }
+        try:
+            async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
+                response = await client.get(url, params=params)
+                response.raise_for_status()
+                return response.json().get("data", [])
+        except Exception as e:
+            logger.error(f"❌ Error obteniendo portafolios de Meta: {e}")
+            return []
+
+    async def get_ad_accounts(self, portfolio_id: Optional[str] = None) -> list:
+        """
+        Lista las cuentas de anuncios. Si se provee portfolio_id, filtra por ese BM.
+        """
+        if portfolio_id:
+            url = f"{GRAPH_API_BASE}/{portfolio_id}/client_ad_accounts"
+        else:
+            url = f"{GRAPH_API_BASE}/me/adaccounts"
+            
+        params = {
+            "fields": "name,id,currency",
+            "access_token": self.access_token,
+        }
+        try:
+            async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
+                response = await client.get(url, params=params)
+                # Si client_ad_accounts falla, intentar con owned_ad_accounts
+                if response.status_code != 200 and portfolio_id:
+                    url = f"{GRAPH_API_BASE}/{portfolio_id}/owned_ad_accounts"
+                    response = await client.get(url, params=params)
+                
+                response.raise_for_status()
+                return response.json().get("data", [])
+        except Exception as e:
+            logger.error(f"❌ Error obteniendo cuentas de anuncios de Meta: {e}")
             return []

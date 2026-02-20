@@ -42,11 +42,10 @@ class MarketingService:
             # En una fase real, esto vendría de una tabla 'meta_campaign_stats'
             total_spend = 1500.0  # Placeholder: USD/ARS 1500
             
-            # 5. Verificar conexión real
-            token = await db.pool.fetchval("""
-                SELECT decrypted_value FROM credentials 
-                WHERE tenant_id = $1 AND name = 'META_USER_LONG_TOKEN'
-            """, tenant_id)
+            # 5. Verificar conexión real y cuenta seleccionada
+            from core.credentials import get_tenant_credential
+            token = await get_tenant_credential(tenant_id, "META_USER_LONG_TOKEN")
+            ad_account_id = await get_tenant_credential(tenant_id, "META_AD_ACCOUNT_ID")
             
             cpa = total_spend / meta_leads if meta_leads > 0 else 0
 
@@ -56,7 +55,9 @@ class MarketingService:
                 "leads": meta_leads,
                 "patients_converted": converted_patients,
                 "cpa": cpa,
-                "is_connected": bool(token)
+                "is_connected": bool(token),
+                "ad_account_id": ad_account_id,
+                "currency": "ARS" # Default
             }
         except Exception as e:
             logger.error(f"Error calculating ROI stats: {e}")
