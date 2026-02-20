@@ -21,7 +21,7 @@ async def get_meta_auth_url(
     """
     Fase 1: Generar URL de OAuth para Meta Ads.
     """
-    if user_data["role"] != 'ceo':
+    if user_data.role != 'ceo':
         raise HTTPException(status_code=403, detail="Solo el CEO puede conectar Meta Ads.")
         
     app_id = os.getenv("META_APP_ID")
