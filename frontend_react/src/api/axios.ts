@@ -163,7 +163,11 @@ api.interceptors.response.use(
       console.warn('[API] ⚠️ Unauthorized - Limpiando token');
       localStorage.removeItem('ADMIN_TOKEN');
 
-      if (!window.location.pathname.includes('/login')) {
+      // No redirigir si estamos en una página pública legal (Spec Meta Review)
+      const publicRoutes = ['/privacy', '/terms', '/demo'];
+      const isPublicRoute = publicRoutes.some(route => window.location.pathname.startsWith(route));
+
+      if (!window.location.pathname.includes('/login') && !isPublicRoute) {
         window.location.href = '/login';
       }
     } else if (status === 403) {
