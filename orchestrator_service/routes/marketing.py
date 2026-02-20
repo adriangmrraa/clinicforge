@@ -33,8 +33,12 @@ async def get_marketing_stats(
     if user["role"] != "ceo":
         raise HTTPException(status_code=403, detail="Only CEOs can access marketing stats")
         
+    roi_info = await MarketingService.get_roi_stats(tenant_id)
     campaigns = await MarketingService.get_campaign_stats(tenant_id)
-    return {"campaigns": campaigns}
+    return {
+        "campaigns": campaigns,
+        "is_connected": roi_info.get("is_connected", False)
+    }
 
 @router.get("/clinics")
 async def get_clinics(

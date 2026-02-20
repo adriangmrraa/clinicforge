@@ -105,44 +105,54 @@ export default function MarketingHubView() {
                     </div>
                 </div>
 
-                <div className="overflow-x-auto">
-                    <table className="w-full text-left">
-                        <thead className="bg-gray-50 text-gray-500 text-xs uppercase tracking-wider">
+                <div className="overflow-x-auto max-h-[500px] overflow-y-auto scrollbar-thin scrollbar-thumb-gray-200">
+                    <table className="w-full text-left border-separate border-spacing-0">
+                        <thead className="bg-gray-50 text-gray-500 text-xs uppercase tracking-wider sticky top-0 z-10 shadow-sm">
                             <tr>
-                                <th className="px-6 py-4 font-semibold">Campaign / Ad</th>
-                                <th className="px-6 py-4 font-semibold">Spend</th>
-                                <th className="px-6 py-4 font-semibold">Leads</th>
-                                <th className="px-6 py-4 font-semibold">Appts</th>
-                                <th className="px-6 py-4 font-semibold text-indigo-600">ROI Real</th>
-                                <th className="px-6 py-4 font-semibold">Status</th>
+                                <th className="px-6 py-4 font-semibold border-b border-gray-100">Campaign / Ad</th>
+                                <th className="px-6 py-4 font-semibold border-b border-gray-100">Spend</th>
+                                <th className="px-6 py-4 font-semibold border-b border-gray-100">Leads</th>
+                                <th className="px-6 py-4 font-semibold border-b border-gray-100">Appts</th>
+                                <th className="px-6 py-4 font-semibold text-indigo-600 border-b border-gray-100">ROI Real</th>
+                                <th className="px-6 py-4 font-semibold border-b border-gray-100">Status</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
                             {stats?.campaigns?.map((c: any) => (
-                                <tr key={c.ad_id} className="hover:bg-gray-50/50 transition-colors">
+                                <tr key={c.ad_id} className="hover:bg-blue-50/30 transition-colors group">
                                     <td className="px-6 py-4">
-                                        <div className="font-medium text-gray-900">{c.ad_name}</div>
-                                        <div className="text-xs text-gray-400">{c.campaign_name}</div>
+                                        <div className="font-bold text-gray-900 group-hover:text-blue-700 transition-colors">{c.ad_name}</div>
+                                        <div className="text-xs text-gray-400 font-medium">{c.campaign_name}</div>
                                     </td>
-                                    <td className="px-6 py-4 font-medium">${c.spend}</td>
-                                    <td className="px-6 py-4">{c.leads}</td>
-                                    <td className="px-6 py-4 font-semibold text-green-600">{c.appointments}</td>
+                                    <td className="px-6 py-4 font-bold text-gray-700">
+                                        {stats.currency === 'ARS' ? 'ARS' : '$'} {c.spend.toLocaleString()}
+                                    </td>
+                                    <td className="px-6 py-4 font-medium text-gray-600">{c.leads}</td>
                                     <td className="px-6 py-4">
-                                        <span className={`px-2.5 py-1 rounded-lg font-bold ${c.roi >= 0 ? 'bg-indigo-50 text-indigo-700' : 'bg-rose-50 text-rose-700'}`}>
+                                        <span className="font-bold text-green-600 bg-green-50 px-2.5 py-1 rounded-lg">
+                                            {c.appointments}
+                                        </span>
+                                    </td>
+                                    <td className="px-6 py-4">
+                                        <span className={`px-2.5 py-1 rounded-lg font-bold border ${c.roi >= 0
+                                            ? 'bg-indigo-50 text-indigo-700 border-indigo-100'
+                                            : 'bg-rose-50 text-rose-700 border-rose-100'}`}>
                                             {c.roi > 0 ? '+' : ''}{Math.round(c.roi * 100)}%
                                         </span>
                                     </td>
                                     <td className="px-6 py-4">
-                                        <span className="flex items-center gap-1.5 text-green-600 text-sm font-medium">
-                                            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div> Active
+                                        <span className={`flex items-center gap-1.5 text-sm font-bold ${c.status === 'active' ? 'text-green-600' : 'text-gray-400'}`}>
+                                            <div className={`w-2 h-2 rounded-full ${c.status === 'active' ? 'bg-green-500 animate-pulse' : 'bg-gray-300'}`}></div>
+                                            {c.status === 'active' ? 'Active' : 'Paused/Other'}
                                         </span>
                                     </td>
                                 </tr>
                             ))}
                             {!stats?.campaigns?.length && (
                                 <tr>
-                                    <td colSpan={6} className="px-6 py-12 text-center text-gray-400 italic">
-                                        No active campaigns found for this period.
+                                    <td colSpan={6} className="px-6 py-20 text-center text-gray-400 italic">
+                                        <Megaphone className="w-10 h-10 mx-auto mb-4 opacity-20" />
+                                        No active campaigns found for this account.
                                     </td>
                                 </tr>
                             )}
