@@ -54,6 +54,7 @@ export default function MarketingHubView() {
     const loadStats = async () => {
         try {
             const { data } = await api.get(`/admin/marketing/stats?range=${timeRange}`);
+            console.log("[MarketingHub] Stats data loaded:", data);
             setStats(data);
             setIsMetaConnected(data?.is_connected || false);
         } catch (error) {
@@ -96,8 +97,8 @@ export default function MarketingHubView() {
                             key={range.id}
                             onClick={() => setTimeRange(range.id)}
                             className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${timeRange === range.id
-                                    ? 'bg-gray-900 text-white shadow-lg'
-                                    : 'text-gray-500 hover:bg-gray-50'
+                                ? 'bg-gray-900 text-white shadow-lg'
+                                : 'text-gray-500 hover:bg-gray-50'
                                 }`}
                         >
                             {range.label}

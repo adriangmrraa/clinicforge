@@ -38,12 +38,17 @@ async def get_marketing_stats(
     roi_info = await MarketingService.get_roi_stats(tenant_id, time_range=range)
     campaigns = await MarketingService.get_campaign_stats(tenant_id, time_range=range)
     
-    return {
+    response_data = {
         "roi": roi_info,
         "campaigns": campaigns,
         "is_connected": roi_info.get("is_connected", False),
         "currency": roi_info.get("currency", "ARS")
     }
+    
+    import logging
+    logging.getLogger(__name__).info(f"📊 Sending Metadata Stats to Frontend: Connected={response_data['is_connected']}")
+    
+    return response_data
 
 @router.get("/token-status")
 async def get_token_status(auth_data: tuple = Depends(get_current_user_and_tenant)):
