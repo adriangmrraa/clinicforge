@@ -10,6 +10,7 @@ router = APIRouter(prefix="/admin/marketing", tags=["Marketing Analytics"])
 
 @router.get("/stats/roi")
 async def get_marketing_roi(
+    range: str = "last_30d",
     auth_data: tuple = Depends(get_current_user_and_tenant)
 ):
     """
@@ -19,11 +20,12 @@ async def get_marketing_roi(
     if user["role"] != "ceo":
         raise HTTPException(status_code=403, detail="Only CEOs can access marketing ROI stats")
         
-    stats = await MarketingService.get_roi_stats(tenant_id)
+    stats = await MarketingService.get_roi_stats(tenant_id, time_range=range)
     return stats
 
 @router.get("/stats")
 async def get_marketing_stats(
+    range: str = "last_30d",
     auth_data: tuple = Depends(get_current_user_and_tenant)
 ):
     """
@@ -33,8 +35,8 @@ async def get_marketing_stats(
     if user["role"] != "ceo":
         raise HTTPException(status_code=403, detail="Only CEOs can access marketing stats")
         
-    roi_info = await MarketingService.get_roi_stats(tenant_id)
-    campaigns = await MarketingService.get_campaign_stats(tenant_id)
+    roi_info = await MarketingService.get_roi_stats(tenant_id, time_range=range)
+    campaigns = await MarketingService.get_campaign_stats(tenant_id, time_range=range)
     
     return {
         "roi": roi_info,

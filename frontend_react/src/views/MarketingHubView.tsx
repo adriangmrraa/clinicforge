@@ -14,6 +14,7 @@ export default function MarketingHubView() {
     const [stats, setStats] = useState<any>(null);
     const [isMetaConnected, setIsMetaConnected] = useState(false);
     const [isWizardOpen, setIsWizardOpen] = useState(false);
+    const [timeRange, setTimeRange] = useState('last_30d');
 
     useEffect(() => {
         loadStats();
@@ -48,11 +49,11 @@ export default function MarketingHubView() {
             newParams.delete('reconnect');
             setSearchParams(newParams);
         }
-    }, [searchParams]);
+    }, [searchParams, timeRange]);
 
     const loadStats = async () => {
         try {
-            const { data } = await api.get('/admin/marketing/stats');
+            const { data } = await api.get(`/admin/marketing/stats?range=${timeRange}`);
             setStats(data);
             setIsMetaConnected(data?.is_connected || false);
         } catch (error) {
@@ -77,11 +78,33 @@ export default function MarketingHubView() {
 
     return (
         <div className="p-6 max-w-7xl mx-auto space-y-8 animate-in fade-in duration-500">
-            <PageHeader
-                title={t('nav.marketing')}
-                subtitle="Control panel for Meta Ads campaigns and real ROI tracking."
-                icon={<Megaphone size={24} />}
-            />
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <PageHeader
+                    title={t('nav.marketing')}
+                    subtitle="Control panel for Meta Ads campaigns and real ROI tracking."
+                    icon={<Megaphone size={24} />}
+                />
+
+                <div className="flex items-center gap-3 bg-white p-1.5 rounded-2xl border border-gray-200 shadow-sm self-start">
+                    {[
+                        { id: 'last_30d', label: '30 Días' },
+                        { id: 'last_90d', label: '3 Meses' },
+                        { id: 'this_year', label: 'Este Año' },
+                        { id: 'lifetime', label: 'Todo' }
+                    ].map(range => (
+                        <button
+                            key={range.id}
+                            onClick={() => setTimeRange(range.id)}
+                            className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${timeRange === range.id
+                                    ? 'bg-gray-900 text-white shadow-lg'
+                                    : 'text-gray-500 hover:bg-gray-50'
+                                }`}
+                        >
+                            {range.label}
+                        </button>
+                    ))}
+                </div>
+            </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 {/* Real ROI Card - Main Metric */}
@@ -124,7 +147,7 @@ export default function MarketingHubView() {
                 <div className="p-6 border-b border-gray-100 flex justify-between items-center">
                     <h3 className="font-bold text-gray-900">Active Campaigns</h3>
                     <div className="flex gap-2">
-                        <span className="text-sm text-gray-500 mr-2">Default: Last 30 Days</span>
+                        <span className="text-sm text-gray-500 mr-2 capitalize">Period: {timeRange.replace('_', ' ')}</span>
                     </div>
                 </div>
 
