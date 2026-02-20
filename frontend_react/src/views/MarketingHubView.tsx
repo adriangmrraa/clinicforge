@@ -63,7 +63,7 @@ export default function MarketingHubView() {
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 {/* Real ROI Card - Main Metric */}
                 <div className="lg:col-span-2">
-                    <MarketingPerformanceCard />
+                    <MarketingPerformanceCard stats={stats?.roi} loading={!stats} />
                 </div>
 
                 {/* Connection Status Card */}

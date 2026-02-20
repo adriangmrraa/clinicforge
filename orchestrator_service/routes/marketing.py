@@ -35,10 +35,19 @@ async def get_marketing_stats(
         
     roi_info = await MarketingService.get_roi_stats(tenant_id)
     campaigns = await MarketingService.get_campaign_stats(tenant_id)
+    
     return {
+        "roi": roi_info,
         "campaigns": campaigns,
-        "is_connected": roi_info.get("is_connected", False)
+        "is_connected": roi_info.get("is_connected", False),
+        "currency": roi_info.get("currency", "ARS")
     }
+
+@router.get("/token-status")
+async def get_token_status(auth_data: tuple = Depends(get_current_user_and_tenant)):
+    _, tenant_id = auth_data
+    status = await MarketingService.get_token_status(tenant_id)
+    return status
 
 @router.get("/clinics")
 async def get_clinics(

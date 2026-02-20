@@ -6,6 +6,7 @@ import { useTranslation } from '../context/LanguageContext';
 import { io, Socket } from 'socket.io-client';
 import { BACKEND_URL } from '../api/axios';
 import { AlertCircle, X } from 'lucide-react';
+import MetaTokenBanner from './MetaTokenBanner';
 
 interface LayoutProps {
   children: ReactNode;
@@ -107,6 +108,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
       <main
         className={`flex-1 flex flex-col overflow-hidden transition-all duration-300 w-full min-w-0`}
       >
+        <MetaTokenBanner />
         {/* Top Header */}
         <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-4 lg:px-6 shadow-sm sticky top-0 z-30">
           <div className="flex items-center gap-3 lg:gap-4">

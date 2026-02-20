@@ -66,19 +66,16 @@ async def meta_auth_callback(
     tenant_id = None
     if state and state.startswith("tenant_"):
         val = state.replace("tenant_", "")
-        if val == "default":
-            # Fallback al primer tenant
-            tenant_id = await db.db.pool.fetchval("SELECT id FROM tenants ORDER BY id ASC LIMIT 1") or 1
-        else:
+        if val != "default":
             try:
                 tenant_id = int(val)
-            except:
-                # Fallback por si acaso
-                tenant_id = await db.db.pool.fetchval("SELECT id FROM tenants ORDER BY id ASC LIMIT 1") or 1
+            except ValueError:
+                logger.error(f"Invalid tenant_id in state: {val}")
     
-    # Si aún no hay tenant_id, usar el fallback global
+    # Blindaje: Si no hay tenant_id, NO procedemos para evitar guardar en el tenant equivocado
     if not tenant_id:
-        tenant_id = await db.db.pool.fetchval("SELECT id FROM tenants ORDER BY id ASC LIMIT 1") or 1
+        logger.error("🛑 Security alert: Meta OAuth callback without valid tenant_id in state.")
+        return RedirectResponse(url="https://dentalforge-frontend.gvdlcu.easypanel.host/marketing?error=missing_tenant")
 
     async with httpx.AsyncClient() as client:
         # 1. Obtener Short-Lived User Token (Intercambio de Code)
@@ -112,11 +109,19 @@ async def meta_auth_callback(
             logger.error(f"Error exchange long token: {long_token_res.text}")
             return RedirectResponse(url="https://dentalforge-frontend.gvdlcu.easypanel.host/marketing?error=token_exchange_failed")
 
-        long_token = long_token_res.json().get("access_token")
+        data = long_token_res.json()
+        long_token = data.get("access_token")
+        expires_in = data.get("expires_in") # En segundos, usualmente ~60 días
         
         # 3. Guardar el token de usuario (60 días) para este tenant
         if tenant_id:
             await save_tenant_credential(tenant_id, "META_USER_LONG_TOKEN", long_token, category="meta_ads")
+            
+            if expires_in:
+                from datetime import datetime, timedelta
+                expires_at = datetime.now() + timedelta(seconds=expires_in)
+                await save_tenant_credential(tenant_id, "META_TOKEN_EXPIRES_AT", expires_at.isoformat(), category="meta_ads")
+                
             logger.info(f"✅ Meta LongToken saved for tenant {tenant_id}")
             
         # 4. Redirigir al frontend con éxito

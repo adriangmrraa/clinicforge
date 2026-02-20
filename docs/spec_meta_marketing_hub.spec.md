@@ -60,15 +60,28 @@ El sistema implementará el flujo de canje de 3 niveles para asegurar persistenc
 - `MetaConnectPopup.tsx`: Modal para el flujo de autenticación.
 - `CampaignMetricTable.tsx`: Tabla granular de rendimiento.
 
-## 7. Clarificaciones y Reglas de Negocio
+## 7. Clarificaciones y Reglas de Negocio (Confirmadas)
 - **Relación 1:1**: Cada clínica (`tenant`) solo puede tener una única `Ad Account` vinculada.
 - **Acceso Restringido**: Las vistas de **Marketing Hub** y **Plantillas HSM** son exclusivas para el rol `CEO`.
-- **Atribución Inmortal**: Los datos de origen (`meta_ad_id`, etc.) en el paciente deben ser persistentes y no sobrescribirse, permitiendo ver el embudo completo desde Lead hasta Paciente.
+- **Atribución Dinámica (Last Click)**: Si un lead interactúa con múltiples anuncios, el sistema actualizará siempre al **último anuncio** de la interacción más reciente. Esto asegura que el ROI se asigne a la campaña que finalmente generó la conversión.
+- **Soberanía de Moneda**: El Dashboard mostrará los valores de inversión en la moneda original de la cuenta de Meta Ads (e.g., USD), independientemente de la moneda base de la clínica.
+- **Persistencia Aislada**: Los tokens de acceso se guardan de forma independiente por cada clínica (`tenant_id`), permitiendo que un CEO gestione múltiples cuentas publicitarias separadas.
+- **Mapeo de Tráfico Orgánico**: Leads sin metadatos de campaña se agruparán bajo la categoría "Orgánico/Directo" para visibilidad completa del funnel.
+- **Notificación Global de Expiración**: Se mostrará un banner persistente en la parte superior del sistema cuando el token esté a 7 días de expirar, con un botón de acción rápida para reconectar.
 - **Ventana Temporal**: El dashboard cargará por defecto los últimos **30 días**.
-- **Consolidación de Interfaz**: Se eliminará la pestaña de "Meta Ads" de la sección de Configuración para centralizar tanto la conexión (OAuth) como la visualización en el nuevo **Marketing Hub**.
 
 ## 8. Criterios de Aceptación Actualizados
 - [x] El CEO puede conectar su cuenta de Meta via popup.
 - [x] El Sidebar muestra los logos de Marketing y Plantillas (Solo para CEO).
-- [ ] Filtrado por Clínica en el Dashboard de Marketing.
-- [ ] Visualización del funnel: Lead proveniente de Ads -> Paciente con tratamiento.
+## 9. Cuestionario de Blindaje (Clarify)
+
+Para asegurar la robustez del sistema, se requiere confirmación del usuario sobre los siguientes puntos antes de proceder al plan técnico final:
+
+1. **Lógica de Atribución**: En caso de múltiples contactos de un mismo lead desde diferentes anuncios, ¿se mantiene el crédito al **primer** anuncio (First Click) o se actualiza al **último** (Last Click)? (La spec actual sugiere no sobrescribir, lo que implica "First Click").
+2. **Manejo Multimoneda**: ¿Qué sucede si la cuenta de Ad Ads está en USD pero las transacciones contables en Dentalogic están en ARS? ¿Se debe habilitar una tasa de conversión configurable?
+3. **Persistencia de Tokens**: Si el CEO gestiona múltiples clínicas, ¿los tokens de 60 días deben ser compartidos (una sola conexión para todas) o cada clínica debe conectarse de forma aislada?
+4. **Visualización de Tráfico Orgánico**: Leads que llegan vía WhatsApp sin metadatos de campaña, ¿deben aparecer en una fila especial "Orgánico/Directo" en el Hub?
+5. **Alertas de Renovación**: ¿Dónde es preferible mostrar el aviso de "Token próximo a expirar" (7 días de antelación)?
+
+---
+*Nota: Incorporar las respuestas en la sección de "Clarificaciones" una vez resueltas.*

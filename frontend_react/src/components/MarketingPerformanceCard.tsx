@@ -2,11 +2,22 @@ import React, { useState, useEffect } from 'react';
 import { TrendingUp, TrendingDown, DollarSign, Users, Award, Target } from 'lucide-react';
 import api from '../api/axios';
 
-export default function MarketingPerformanceCard() {
+interface MarketingPerformanceCardProps {
+    stats?: any;
+    loading?: boolean;
+}
+
+export default function MarketingPerformanceCard({ stats: externalStats, loading: externalLoading }: MarketingPerformanceCardProps) {
     const [stats, setStats] = useState<any>(null);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
+        if (externalStats) {
+            setStats(externalStats);
+            setLoading(externalLoading || false);
+            return;
+        }
+
         const fetchStats = async () => {
             try {
                 const { data } = await api.get('/admin/marketing/stats/roi');
@@ -18,7 +29,7 @@ export default function MarketingPerformanceCard() {
             }
         };
         fetchStats();
-    }, []);
+    }, [externalStats, externalLoading]);
 
     if (loading) return (
         <div className="bg-white border border-gray-200 rounded-3xl p-8 h-full flex items-center justify-center">

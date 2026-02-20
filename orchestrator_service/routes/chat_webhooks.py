@@ -138,7 +138,9 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
                     if patient_row:
                         ref_ad_id = msg.referral.get("ad_id")
                         if ref_ad_id:
-                            # Atribuir solo si no tiene fuente previa (First Touch)
+                            # --- ATRIBUCIÓN LAST CLICK ---
+                            # Se actualiza siempre con el anuncio más reciente (Spec Mission 3)
+                            # También guardamos la última fecha de interacción de marketing
                             await pool.execute("""
                                 UPDATE patients SET 
                                     acquisition_source = 'META_ADS',
@@ -147,7 +149,6 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
                                     meta_ad_body = $3,
                                     updated_at = NOW()
                                 WHERE id = $4 AND tenant_id = $5
-                                  AND (acquisition_source IS NULL OR acquisition_source = 'ORGANIC')
                             """, ref_ad_id, msg.referral.get("headline"), msg.referral.get("body"), patient_row["id"], tenant_id)
                             
                             # Enriquecimiento asíncrono
@@ -155,6 +156,15 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
                                 from services.tasks import enrich_patient_attribution
                                 background_tasks.add_task(enrich_patient_attribution, patient_id=patient_row["id"], ad_id=ref_ad_id, tenant_id=tenant_id)
                             except: pass
+                        else:
+                            # --- MARCADO DE TRÁFICO ORGÁNICO ---
+                            # Si no tiene fuente y llega por WhatsApp sin referral, es orgánico
+                            await pool.execute("""
+                                UPDATE patients SET 
+                                    acquisition_source = 'ORGANIC',
+                                    updated_at = NOW()
+                                WHERE id = $1 AND tenant_id = $2 AND acquisition_source IS NULL
+                            """, patient_row["id"], tenant_id)
                 except Exception as attr_err:
                     logger.error(f"⚠️ Error in webhook attribution: {attr_err}")
 

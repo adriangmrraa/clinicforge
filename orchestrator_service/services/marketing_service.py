@@ -84,8 +84,38 @@ class MarketingService:
                 "cpa": 0
             }
 
-    @staticmethod
-    async def get_campaign_stats(tenant_id: int) -> List[Dict[str, Any]]:
+    async def get_token_status(self, tenant_id: int) -> Dict[str, Any]:
+        """Verifica la salud del token de Meta y devuelve días para expirar."""
+        from core.credentials import get_tenant_credential
+        expires_at_str = await get_tenant_credential(tenant_id, "META_TOKEN_EXPIRES_AT")
+        token = await get_tenant_credential(tenant_id, "META_USER_LONG_TOKEN")
+        
+        if not token:
+            return {"needs_reconnect": True, "days_left": None}
+            
+        if not expires_at_str:
+            # Si no tenemos fecha (legacy or failed save), asumimos que falta poco si el token es viejo
+            # Por ahora, devolvemos un estado neutral pero seguro
+            return {"needs_reconnect": False, "days_left": None}
+            
+        try:
+            from datetime import datetime
+            expires_at = datetime.fromisoformat(expires_at_str)
+            now = datetime.now()
+            
+            delta = expires_at - now
+            days_left = delta.days
+            
+            return {
+                "needs_reconnect": days_left <= 0,
+                "days_left": max(0, days_left),
+                "expires_at": expires_at_str
+            }
+        except Exception as e:
+            logger.error(f"Error parsing token expiration: {e}")
+            return {"needs_reconnect": True, "days_left": 0}
+
+    async def get_campaign_stats(self, tenant_id: int) -> List[Dict[str, Any]]:
         """
         Retorna el rendimiento por campaña/anuncio, sincronizando con Meta si hay conexión.
         """
