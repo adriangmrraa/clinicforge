@@ -180,19 +180,23 @@ async def debug_marketing_stats(
             from services.meta_ads_service import MetaAdsClient
             client = MetaAdsClient(token_str)
             
-            # 1. Probar ID de cuenta del .env directamente ( Nexus Force )
-            if env_ad_account_id:
-                test_id = env_ad_account_id if env_ad_account_id.startswith("act_") else f"act_{env_ad_account_id}"
+            # 1. Probar ID de cuenta de la BASE DE DATOS directamente (Prioridad)
+            db_ad_account_id = tenant_conf.get("ad_account_id")
+            if db_ad_account_id:
+                test_id = db_ad_account_id if db_ad_account_id.startswith("act_") else f"act_{db_ad_account_id}"
                 try:
-                    ins_env = await client.get_ads_insights(test_id, date_preset="maximum")
-                    debug_info["env_account_test"] = {
+                    ins_db = await client.get_ads_insights(test_id, date_preset="maximum")
+                    debug_info["db_account_test"] = {
                         "id_used": test_id,
                         "success": True,
-                        "count": len(ins_env),
-                        "spend": sum(float(i.get("spend", 0)) for i in ins_env)
+                        "count": len(ins_db),
+                        "spend": sum(float(i.get("spend", 0)) for i in ins_db)
                     }
-                except Exception as e_env:
-                    debug_info["env_account_test"] = {"id_used": test_id, "error": str(e_env)}
+                except Exception as e_db:
+                    debug_info["db_account_test"] = {"id_used": test_id, "error": str(e_db)}
+
+            # 2. Probar ID de cuenta del .env (Legacy)
+            if env_ad_account_id:
 
             # 2. Listar TODAS las cuentas y su inversión total
             try:
