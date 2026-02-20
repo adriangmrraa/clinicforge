@@ -160,8 +160,9 @@ class MarketingService:
             }
             interval = interval_map.get(time_range, "30 days")
 
-            # 1. Obtener datos de Meta (Insights)
-            meta_ads = []
+            # 1. Obtener datos de Meta (Campaign-First Strategy)
+            meta_campaigns = []
+            account_total_spend = 0.0
             if token and ad_account_id:
                 try:
                     meta_client = MetaAdsClient(token)
@@ -174,8 +175,13 @@ class MarketingService:
                     }
                     meta_preset = meta_preset_map.get(time_range, "last_30d")
                     
-                    # Cambiar a level="campaign" para asegurar visibilidad histórica
-                    meta_ads = await meta_client.get_ads_insights(ad_account_id, date_preset=meta_preset, level="campaign")
+                    # 1.1 Obtener total cuenta para reconciliación (ROI Real)
+                    acc_ins = await meta_client.get_ads_insights(ad_account_id, date_preset=meta_preset, level="account")
+                    if acc_ins:
+                         account_total_spend = float(acc_ins[0].get('spend', 0))
+
+                    # 1.2 Obtener campañas con insights embebidos
+                    meta_campaigns = await meta_client.get_campaigns_with_insights(ad_account_id, date_preset=meta_preset)
                 except Exception as e:
                     logger.warning(f"⚠️ No se pudo obtener ads de Meta: {e}")
 
@@ -203,25 +209,27 @@ class MarketingService:
             attribution_map = {row['meta_ad_id']: row for row in local_stats}
 
             results = []
+            reported_spend = 0.0
             
-            # 3. Construir lista final priorizando Meta Ads (Campañas)
-            if meta_ads:
-                for camp in meta_ads:
-                    # Mapear Campaign ID a Ad ID para compatibilidad UI actual
-                    ad_id = camp.get('campaign_id') 
+            # 3. Construir lista final priorizando Meta Campaigns (Insights embebidos)
+            if meta_campaigns:
+                for camp in meta_campaigns:
+                    # Meta devuelve 'insights' como un objeto con 'data' (lista de 1 elemento usualmente)
+                    insights_data = camp.get('insights', {}).get('data', [])
+                    ins = insights_data[0] if insights_data else {}
                     
-                    # Intentar matching aproximado con atribución (Campaign vs Ad ID es tricky, 
-                    # idealmente en el futuro agregamos campaign_id a patients)
-                    local = attribution_map.get(ad_id, {})
+                    camp_id = camp.get('id')
+                    spend = float(ins.get('spend', 0))
+                    reported_spend += spend
                     
-                    spend = float(camp.get('spend', 0))
+                    # Ver atribución (Usamos Campaign ID como fallback de Ad ID en la UI)
+                    local = attribution_map.get(camp_id, {})
                     rev = float(local.get('revenue') or 0)
-                    
                     roi = (rev - spend) / spend if spend > 0 else 0
                     
                     results.append({
-                        "ad_id": ad_id,
-                        "ad_name": camp.get('campaign_name', 'Campaña sin nombre'),
+                        "ad_id": camp_id,
+                        "ad_name": camp.get('name', 'Campaña sin nombre'),
                         "campaign_name": "Agrupado por Campaña",
                         "spend": spend,
                         "leads": local.get('leads', 0),
@@ -230,15 +238,28 @@ class MarketingService:
                         "status": camp.get('effective_status', 'active').lower()
                     })
             
-            # 4. Incluir ads con atribución local pero sin spend en Meta para este periodo
-            # Nota: Cuando estamos en modo 'campaign', local stats (por ad_id) no matcharán con campaign_id.
-            # Esto es aceptable por ahora para visualizar costos.
-            meta_ids = {c.get('campaign_id') for c in meta_ads}
+            # 4. Reconciliación (Gasto Histórico/Otros)
+            # Si el gasto de la cuenta es mayor que el de las campañas reportadas (típico en cuentas con muchos borrados)
+            diff = account_total_spend - reported_spend
+            if diff > 1.0: # Margen de 1 unidad monetaria
+                results.append({
+                    "ad_id": "historical_other",
+                    "ad_name": "Gasto Histórico / Otros",
+                    "campaign_name": "Acumulado sin desglose",
+                    "spend": diff,
+                    "leads": 0,
+                    "appointments": 0,
+                    "roi": 0.0,
+                    "status": "archived"
+                })
+
+            # 5. Incluir atribución local huérfana (Ad IDs no encontrados en las campañas actuales)
+            meta_ids = {c.get('id') for c in meta_campaigns}
             for ad_id, local in attribution_map.items():
-                if ad_id not in meta_ids:
+                if ad_id not in meta_ids and ad_id != "historical_other":
                     results.append({
                         "ad_id": ad_id,
-                        "ad_name": "Anuncio Histórico",
+                        "ad_name": "Anuncio con Atribución",
                         "campaign_name": "Atribución Directa",
                         "spend": 0.0,
                         "leads": local.get('leads', 0),
@@ -248,7 +269,7 @@ class MarketingService:
                     })
 
             # Diagnostic logs
-            logger.info(f"[Marketing Sync] Tenant={tenant_id}, Range={time_range}, MetaAdsCount={len(meta_ads)}, LocalAttributionCount={len(local_stats)}")
+            logger.info(f"[Marketing Sync] Tenant={tenant_id}, Range={time_range}, MetaCampaignsCount={len(meta_campaigns)}, LocalAttributionCount={len(local_stats)}")
 
             return results
         except Exception as e:

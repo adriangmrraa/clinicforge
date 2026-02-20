@@ -253,3 +253,50 @@ class MetaAdsClient:
         except Exception as e:
             logger.error(f"❌ Error obteniendo cuentas de anuncios de Meta: {e}")
             return []
+    async def get_campaigns_with_insights(self, ad_account_id: str, date_preset: str = "maximum", filtering: list = None) -> list:
+        """
+        Estrategia 'Campaign-First': Lista campañas y expande el campo 'insights' para obtener 
+        métricas incluso de las borradas/archivadas que el endpoint de /insights omite.
+        """
+        if not self.access_token:
+            raise MetaAuthError("META_ADS_TOKEN no configurado.")
+        
+        account_id = ad_account_id if ad_account_id.startswith("act_") else f"act_{ad_account_id}"
+        
+        # Filtrado por defecto para incluir TODO
+        if filtering is None:
+            filtering = [{'field': 'effective_status', 'operator': 'IN', 'value': ['ACTIVE', 'PAUSED', 'DELETED', 'ARCHIVED']}]
+
+        url = f"{GRAPH_API_BASE}/{account_id}/campaigns"
+        
+        # IMPORTANTE: Pedimos 'insights' como expansión de campo
+        # Esto permite que campañas borradas/archivadas "arrastren" sus datos de gasto
+        expand_insights = f"insights.date_preset({date_preset}){{spend,impressions,clicks,account_currency,account_id}}"
+        
+        params = {
+            "fields": f"id,name,effective_status,{expand_insights}",
+            "filtering": json.dumps(filtering),
+            "access_token": self.access_token,
+            "limit": 100
+        }
+
+        logger.info(f"🚀 Campaign-First Request: {url} | Preset={date_preset}")
+
+        try:
+            all_campaigns = []
+            async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT * 2) as client:
+                current_url = url
+                while current_url:
+                    response = await client.get(current_url, params=params if current_url == url else None)
+                    response.raise_for_status()
+                    
+                    data = response.json()
+                    all_campaigns.extend(data.get("data", []))
+                    
+                    paging = data.get("paging", {})
+                    current_url = paging.get("next")
+            
+            return all_campaigns
+        except Exception as e:
+            logger.error(f"❌ Error en Campaign-First retrieval para {account_id}: {e}")
+            return []

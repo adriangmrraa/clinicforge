@@ -263,6 +263,17 @@ async def debug_marketing_stats(
                 except Exception as e_d:
                     debug_info["direct_campaign_list"] = {"error": str(e_d)}
 
+                # Probar Variación E: LA SOLUCIÓN FINAL (Campaign-First con insights expandidos)
+                try:
+                    final_scan = await client.get_campaigns_with_insights(target_id, date_preset="maximum")
+                    debug_info["final_campaign_first_solution"] = {
+                        "count": len(final_scan),
+                        "total_spend": sum(float(c.get('insights', {}).get('data', [{}])[0].get('spend', 0)) for c in final_scan),
+                        "items": [{"id": c.get('id'), "name": c.get('name'), "spend": c.get('insights', {}).get('data', [{}])[0].get('spend')} for c in final_scan[:5]]
+                    }
+                except Exception as e_final:
+                    debug_info["final_campaign_first_solution"] = {"error": str(e_final)}
+
             # 2. Probar ID de cuenta del .env (Legacy)
             if env_ad_account_id:
                 test_id = env_ad_account_id if env_ad_account_id.startswith("act_") else f"act_{env_ad_account_id}"
