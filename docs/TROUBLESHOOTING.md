@@ -33,3 +33,27 @@ ON CONFLICT (tenant_id, name) DO UPDATE SET value = EXCLUDED.value;
 **Síntoma**: El usuario ve su mensaje duplicado o el bot responde dos veces.
 **Causa**: El webhook de Chatwoot envía un evento `message_created` tanto para el mensaje del usuario como para el mensaje enviado por la API (echo).
 **Solución**: Implementar deduplicación por `provider_message_id`. Si el ID del evento coincide con un ID ya guardado en `platform_metadata`, se ignora.
+
+## 3. Marketing & ROI
+
+### 3.1. Meta Ads "DISCONNECTED" persistente
+**Síntoma**: El frontend muestra "DISCONNECTED" aunque el token sea válido.
+**Causa**: Sombra de rutas (Shadowing). Existía un endpoint duplicado en `admin_routes.py` que no devolvía el campo `is_connected`, bloqueando al de `marketing.py`.
+**Solución**: Eliminar el endpoint legacy en `admin_routes.py`. Asegurar que el frontend envíe el header `X-Tenant-ID` para que el backend resuelva las credenciales correctas.
+
+### 3.2. No se ven campañas históricas (9 meses+)
+**Síntoma**: El selector "Lifetime" no muestra datos antiguos.
+**Causa**: La API de Meta requiere un `date_preset` específico para datos históricos extensos.
+**Solución**: El `MetaAdsClient` implementa `date_preset="maximum"` para el rango "lifetime".
+
+## 4. UI & Layout (Mobile First)
+
+### 4.1. Scroll bloqueado en dashboard
+**Síntoma**: En mobile o pantallas con poco alto, no se puede hacer scroll para ver la lista de campañas.
+**Causa**: El contenedor principal (`Layout.tsx`) tenía un `overflow-hidden` rígido.
+**Solución**: Aplicar `overflow-y-auto` en el contenedor de contenido de `Layout.tsx` y asegurar que el `main` sea un flexbox de alto completo (`h-screen`).
+
+### 4.2. Datos solapados en móviles
+**Síntoma**: Los números de Inversión y ROI se pisan en pantallas pequeñas.
+**Causa**: Layout de grilla estático (`grid-cols-2`).
+**Solución**: Usar grillas responsivas (`grid-cols-1 sm:grid-cols-2`) y clases `break-words` para valores monetarios grandes.

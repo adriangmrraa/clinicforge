@@ -51,9 +51,9 @@ const MetaTemplatesView: React.FC = () => {
     }, []);
 
     const triggerLabels: Record<string, string> = {
-        'appointment_reminder': 'Recordatorio 24h',
-        'appointment_feedback': 'Feedback Post-Cita',
-        'lead_recovery': 'Recuperación de Lead'
+        'appointment_reminder': t('hsm.rules.triggers.appointment_reminder'),
+        'appointment_feedback': t('hsm.rules.triggers.appointment_feedback'),
+        'lead_recovery': t('hsm.rules.triggers.lead_recovery')
     };
 
     const statusColors: Record<string, string> = {
@@ -72,14 +72,14 @@ const MetaTemplatesView: React.FC = () => {
                         <Layout className="text-white" size={24} />
                     </div>
                     <div>
-                        <h1 className="text-xl font-bold text-gray-900">Automatizaciones & HSM</h1>
-                        <p className="text-xs text-gray-500 font-medium">WhatsApp Marketing & ROI Forge</p>
+                        <h1 className="text-xl font-bold text-gray-900">{t('hsm.title')}</h1>
+                        <p className="text-xs text-gray-500 font-medium">{t('hsm.subtitle')}</p>
                     </div>
                 </div>
                 <div className="flex items-center gap-4">
                     <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-gray-100 rounded-lg text-xs font-semibold text-gray-600 border border-gray-200">
                         <Globe size={14} className="text-gray-400" />
-                        {timezone}
+                        {t('hsm.timezone')}: {timezone.split('/').pop()?.replace('_', ' ')}
                     </div>
                     <button
                         onClick={fetchLogs}
@@ -102,9 +102,9 @@ const MetaTemplatesView: React.FC = () => {
                                 <ShieldCheck className="text-green-600" size={24} />
                             </div>
                             <div>
-                                <h3 className="font-bold text-gray-900">Motor Activo</h3>
-                                <p className="text-xs text-gray-500">Escaneando citas y leads cada 15 min.</p>
-                                <span className="mt-2 inline-block px-2 py-0.5 bg-green-50 text-green-600 text-[10px] font-bold rounded uppercase">Operacional</span>
+                                <h3 className="font-bold text-gray-900">{t('hsm.motor_active')}</h3>
+                                <p className="text-xs text-gray-500">{t('hsm.motor_desc')}</p>
+                                <span className="mt-2 inline-block px-2 py-0.5 bg-green-50 text-green-600 text-[10px] font-bold rounded uppercase">{t('hsm.motor_operational')}</span>
                             </div>
                         </div>
                         <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex items-start gap-4">
@@ -112,9 +112,9 @@ const MetaTemplatesView: React.FC = () => {
                                 <Send className="text-blue-600" size={24} />
                             </div>
                             <div>
-                                <h3 className="font-bold text-gray-900">HSM Enviados</h3>
+                                <h3 className="font-bold text-gray-900">{t('hsm.sent_count')}</h3>
                                 <p className="text-2xl font-black text-gray-900">{logs.filter(l => l.status === 'sent').length}</p>
-                                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-tighter">Últimas 24 horas</p>
+                                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-tighter">{t('hsm.last_24h')}</p>
                             </div>
                         </div>
                         <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex items-start gap-4">
@@ -122,9 +122,9 @@ const MetaTemplatesView: React.FC = () => {
                                 <Activity className="text-purple-600" size={24} />
                             </div>
                             <div>
-                                <h3 className="font-bold text-gray-900">Conversión</h3>
+                                <h3 className="font-bold text-gray-900">{t('hsm.conversion')}</h3>
                                 <p className="text-2xl font-black text-gray-900">85%</p>
-                                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-tighter">Tasa de Entrega</p>
+                                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-tighter">{t('hsm.delivery_rate')}</p>
                             </div>
                         </div>
                     </div>
@@ -135,19 +135,19 @@ const MetaTemplatesView: React.FC = () => {
                             <div className="px-6 py-4 border-b flex items-center justify-between bg-gray-50/50">
                                 <div className="flex items-center gap-2">
                                     <History size={18} className="text-gray-500" />
-                                    <h3 className="font-bold text-gray-900">Feed de Transparencia</h3>
+                                    <h3 className="font-bold text-gray-900">{t('hsm.transparency_feed')}</h3>
                                 </div>
-                                <span className="text-[10px] font-bold text-gray-400 uppercase">Tiempo Real</span>
+                                <span className="text-[10px] font-bold text-gray-400 uppercase">{t('hsm.real_time')}</span>
                             </div>
 
                             <div className="flex-1 overflow-x-auto">
                                 <table className="w-full text-left border-collapse">
                                     <thead>
                                         <tr className="bg-gray-50 text-[10px] uppercase tracking-widest text-gray-400 font-black">
-                                            <th className="px-6 py-3 border-b">Paciente</th>
-                                            <th className="px-6 py-3 border-b">Trigger</th>
-                                            <th className="px-6 py-3 border-b">Fecha/Hora</th>
-                                            <th className="px-6 py-3 border-b">Estado</th>
+                                            <th className="px-6 py-3 border-b">{t('hsm.table_patient')}</th>
+                                            <th className="px-6 py-3 border-b">{t('hsm.table_trigger')}</th>
+                                            <th className="px-6 py-3 border-b">{t('hsm.table_datetime')}</th>
+                                            <th className="px-6 py-3 border-b">{t('hsm.table_status')}</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-gray-50">
@@ -170,7 +170,7 @@ const MetaTemplatesView: React.FC = () => {
                                                     </td>
                                                     <td className="px-6 py-4">
                                                         <div className="text-xs text-gray-500 font-medium">
-                                                            {new Date(log.created_at).toLocaleString('es-AR', {
+                                                            {new Date(log.created_at).toLocaleString(undefined, {
                                                                 day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
                                                             })}
                                                         </div>
@@ -186,7 +186,7 @@ const MetaTemplatesView: React.FC = () => {
                                             <tr>
                                                 <td colSpan={4} className="px-6 py-12 text-center text-gray-400 flex flex-col items-center gap-2">
                                                     <AlertCircle size={32} />
-                                                    <p className="font-medium italic">No hay logs de automatización disponibles aún.</p>
+                                                    <p className="font-medium italic">{t('hsm.no_logs')}</p>
                                                 </td>
                                             </tr>
                                         )}
@@ -201,10 +201,10 @@ const MetaTemplatesView: React.FC = () => {
                             <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
                                 <div className="flex items-center gap-2 mb-4">
                                     <Globe size={18} className="text-blue-600" />
-                                    <h4 className="font-bold text-gray-900">Configuración Regional</h4>
+                                    <h4 className="font-bold text-gray-900">{t('hsm.regional_config')}</h4>
                                 </div>
                                 <p className="text-xs text-gray-500 mb-4 leading-relaxed">
-                                    Asegúrate de que la zona horaria coincida con la ubicación de tu clínica para que los recordatorios lleguen a tiempo.
+                                    {t('hsm.timezone_help')}
                                 </p>
                                 <select
                                     value={timezone}
@@ -217,7 +217,7 @@ const MetaTemplatesView: React.FC = () => {
                                     <option value="Europe/Madrid">Madrid (GMT+1)</option>
                                 </select>
                                 <p className="mt-2 text-[10px] text-blue-600 font-bold bg-blue-50 p-2 rounded-lg">
-                                    Actualmente el CEP puede solicitar cambios de zona horaria vía soporte.
+                                    {t('hsm.timezone_disclaimer')}
                                 </p>
                             </div>
 
@@ -228,28 +228,28 @@ const MetaTemplatesView: React.FC = () => {
                                 </div>
                                 <h4 className="font-bold text-lg mb-2 flex items-center gap-2">
                                     <Activity size={18} className="text-indigo-300" />
-                                    Reglas de Negocio
+                                    {t('hsm.business_rules')}
                                 </h4>
                                 <ul className="space-y-4 relative z-10">
                                     <li className="flex gap-3">
                                         <div className="bg-indigo-700 h-5 w-5 rounded-full flex items-center justify-center shrink-0 mt-0.5 text-[10px] font-black">1</div>
                                         <div className="text-xs">
-                                            <p className="font-bold text-indigo-100">Recordatorio 24h</p>
-                                            <p className="opacity-70">Envío automático exacto 24 horas antes de la cita.</p>
+                                            <p className="font-bold text-indigo-100">{t('hsm.rules.reminder_24h')}</p>
+                                            <p className="opacity-70">{t('hsm.rules.reminder_24h_desc')}</p>
                                         </div>
                                     </li>
                                     <li className="flex gap-3">
                                         <div className="bg-indigo-700 h-5 w-5 rounded-full flex items-center justify-center shrink-0 mt-0.5 text-[10px] font-black">2</div>
                                         <div className="text-xs">
-                                            <p className="font-bold text-indigo-100">Feedback Pacientes</p>
-                                            <p className="opacity-70">Mensaje de calidad 45 minutos después de marcar como 'Completada'.</p>
+                                            <p className="font-bold text-indigo-100">{t('hsm.rules.feedback')}</p>
+                                            <p className="opacity-70">{t('hsm.rules.feedback_desc')}</p>
                                         </div>
                                     </li>
                                     <li className="flex gap-3">
                                         <div className="bg-indigo-700 h-5 w-5 rounded-full flex items-center justify-center shrink-0 mt-0.5 text-[10px] font-black">3</div>
                                         <div className="text-xs">
-                                            <p className="font-bold text-indigo-100">Recuperación de Leads</p>
-                                            <p className="opacity-70">Si un lead de Meta no agenda en 2 horas, se envía incentivo.</p>
+                                            <p className="font-bold text-indigo-100">{t('hsm.rules.lead_recovery')}</p>
+                                            <p className="opacity-70">{t('hsm.rules.lead_recovery_desc')}</p>
                                         </div>
                                     </li>
                                 </ul>

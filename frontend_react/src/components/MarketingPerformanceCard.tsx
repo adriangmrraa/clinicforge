@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { TrendingUp, TrendingDown, DollarSign, Users, Award, Target } from 'lucide-react';
 import api from '../api/axios';
+import { useTranslation } from '../context/LanguageContext';
 
 interface MarketingPerformanceCardProps {
     stats?: any;
@@ -8,6 +9,7 @@ interface MarketingPerformanceCardProps {
 }
 
 export default function MarketingPerformanceCard({ stats: externalStats, loading: externalLoading }: MarketingPerformanceCardProps) {
+    const { t } = useTranslation();
     const [stats, setStats] = useState<any>(null);
     const [loading, setLoading] = useState(true);
 
@@ -48,7 +50,7 @@ export default function MarketingPerformanceCard({ stats: externalStats, loading
             <div className="relative z-10">
                 <div className="flex justify-between items-start mb-8">
                     <div>
-                        <h3 className="text-gray-500 font-medium text-xs sm:text-sm mb-1 uppercase tracking-wider">ROI Real de Marketing</h3>
+                        <h3 className="text-gray-500 font-medium text-xs sm:text-sm mb-1 uppercase tracking-wider">{t('marketing.roi_card_title')}</h3>
                         <p className="text-3xl sm:text-4xl font-black text-gray-900 leading-tight">
                             {roi >= 0 ? '+' : ''}{roi.toFixed(1)}%
                         </p>
@@ -61,13 +63,13 @@ export default function MarketingPerformanceCard({ stats: externalStats, loading
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-8 mb-8">
                     <div className="space-y-1">
                         <div className="flex items-center gap-1.5 text-gray-500 text-[10px] sm:text-xs font-bold uppercase tracking-widest">
-                            <DollarSign size={14} className="text-indigo-500" /> Inversión
+                            <DollarSign size={14} className="text-indigo-500" /> {t('marketing.investment')}
                         </div>
                         <p className="text-xl sm:text-2xl font-bold text-gray-800 break-words">{stats?.currency === 'USD' ? '$' : stats?.currency || ''}{investment.toLocaleString()}</p>
                     </div>
                     <div className="space-y-1">
                         <div className="flex items-center gap-1.5 text-gray-500 text-[10px] sm:text-xs font-bold uppercase tracking-widest">
-                            <Target size={14} className="text-emerald-500" /> Retorno (Ingresos)
+                            <Target size={14} className="text-emerald-500" /> {t('marketing.return')}
                         </div>
                         <p className="text-xl sm:text-2xl font-bold text-gray-800 break-words">{stats?.currency === 'USD' ? '$' : stats?.currency || ''}{revenue.toLocaleString()}</p>
                     </div>
@@ -84,7 +86,7 @@ export default function MarketingPerformanceCard({ stats: externalStats, loading
                     <p className="text-xs sm:text-sm font-bold text-gray-700">{stats?.leads || 0}</p>
                 </div>
                 <div className="text-center">
-                    <p className="text-gray-400 text-[10px] font-bold uppercase mb-1">Pacientes</p>
+                    <p className="text-gray-400 text-[10px] font-bold uppercase mb-1">{t('marketing.patients')}</p>
                     <p className="text-xs sm:text-sm font-bold text-gray-700">{stats?.patients_converted || 0}</p>
                 </div>
             </div>

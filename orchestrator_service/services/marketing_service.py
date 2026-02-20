@@ -212,7 +212,7 @@ class MarketingService:
                         "leads": local.get('leads', 0),
                         "appointments": local.get('appointments', 0),
                         "roi": roi,
-                        "status": "active"
+                        "status": ad.get('effective_status', 'active').lower()
                     })
             
             # 4. Incluir ads con atribución local pero sin spend en Meta para este periodo

@@ -12,11 +12,11 @@ YCloud Webhook → whatsapp_service → orchestrator_service/main.py (/chat)
                                          ├── Enriquecimiento Async (Spec 05)
                                          │     ├── Redis Cache (48h TTL)
                                          │     └── Meta Graph API
-                                         ├── IA Contextual (Spec 06)
-                                         └── admin_routes.py
-                                               ├── GET /admin/marketing/stats (Spec 07)
-                                               ├── GET /admin/patients/phone/{phone}/context
-                                               └── GET /admin/health/integrations (Spec 12)
+                                          ├── IA Contextual (Spec 06)
+                                          └── routes/marketing.py
+                                                ├── GET /admin/marketing/stats (Spec 07)
+                                                ├── GET /admin/patients/phone/{phone}/context
+                                                └── GET /admin/health/integrations (Spec 12)
 ```
 
 ---

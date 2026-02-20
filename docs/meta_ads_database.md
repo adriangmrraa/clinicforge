@@ -45,6 +45,19 @@ CREATE INDEX IF NOT EXISTS idx_patients_acquisition_source ON patients(acquisiti
 -- Parche 20: Soporte de Identidad Multi-plataforma (JSONB)
 ALTER TABLE patients ADD COLUMN IF NOT EXISTS external_ids JSONB DEFAULT '{}';
 CREATE INDEX IF NOT EXISTS idx_patients_external_ids ON patients USING GIN (external_ids);
+
+-- Parche 21: Motor de Automatización & Expiración Meta
+CREATE TABLE IF NOT EXISTS automation_logs (
+    id SERIAL PRIMARY KEY,
+    tenant_id INTEGER REFERENCES tenants(id),
+    patient_id INTEGER REFERENCES patients(id),
+    task_type VARCHAR(50), -- 'handoff_alert', 'appointment_reminder'
+    status VARCHAR(20), -- 'sent', 'failed'
+    details JSONB,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS timezone VARCHAR(50) DEFAULT 'America/Argentina/Buenos_Aires';
 ```
 
 ---
@@ -58,6 +71,20 @@ CREATE INDEX IF NOT EXISTS idx_patients_external_ids ON patients USING GIN (exte
 | `meta_ad_id` | `VARCHAR(255)` | `NULL` | Sí | Webhook referral (Spec 03) | ID del anuncio de Meta (ej. `23857123456`) |
 | `meta_ad_headline` | `TEXT` | `NULL` | Sí | Webhook referral (Spec 03) | Título del anuncio (ej. "¿Dolor de muelas?") |
 | `meta_ad_body` | `TEXT` | `NULL` | Sí | Webhook referral (Spec 03) | Cuerpo/descripción del anuncio |
+
+---
+
+## 2.1. Central de Credenciales (`credentials`) [MODIFIED]
+
+A partir de la Misión 3, la tabla `credentials` centraliza los activos de Meta por `tenant_id`:
+
+| Name | Valor | Descripción |
+|------|-------|-------------|
+| `META_ADS_TOKEN` | `String (Encrypted)` | Long-Lived Token de Meta. |
+| `META_AD_ACCOUNT_ID` | `String` | ID de la cuenta de anuncios seleccionada en el Wizard. |
+| `META_TOKEN_EXPIRES_AT` | `ISO Date String` | Fecha de expiración del token (usada para el Banner global). |
+| `META_TOKEN_STATUS` | `'ACTIVE' \| 'EXPIRED'` | Estado de salud de la conexión. |
+
 
 ---
 

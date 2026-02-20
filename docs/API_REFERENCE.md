@@ -31,7 +31,9 @@ Sustituye `localhost:8000` por la URL del Orchestrator en tu entorno (ej. en pro
 11. [Calendario y bloques](#calendario-y-bloques)
 12. [Tratamientos](#tratamientos-services)
 13. [Estadísticas y analíticas](#analítica-y-estadísticas)
-14. [Otros (health, chat IA)](#otros)
+14. [Marketing Hub (Meta Ads)](#marketing-hub-meta-ads)
+15. [Automatizaciones y Handoffs](#automatizaciones-y-handoffs)
+16. [Otros (health, chat IA)](#otros)
 
 ---
 

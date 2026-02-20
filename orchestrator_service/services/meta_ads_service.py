@@ -140,7 +140,7 @@ class MetaAdsClient:
         
         url = f"{GRAPH_API_BASE}/{account_id}/insights"
         params = {
-            "fields": "ad_id,ad_name,campaign_id,campaign_name,spend,impressions,clicks,account_currency",
+            "fields": "ad_id,ad_name,campaign_id,campaign_name,spend,impressions,clicks,account_currency,effective_status",
             "date_preset": date_preset,
             "level": "ad",
             "access_token": self.access_token,

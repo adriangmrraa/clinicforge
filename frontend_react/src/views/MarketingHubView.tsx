@@ -23,11 +23,11 @@ export default function MarketingHubView() {
         const error = searchParams.get('error');
         if (error) {
             const errorMessages: Record<string, string> = {
-                'missing_tenant': 'Error de seguridad: No se pudo identificar la clínica. Reintenta desde el panel.',
-                'auth_failed': 'La autenticación con Meta falló o fue cancelada.',
-                'token_exchange_failed': 'Error al canjear el token permanente. Reintenta la conexión.'
+                'missing_tenant': t('marketing.errors.missing_tenant'),
+                'auth_failed': t('marketing.errors.auth_failed'),
+                'token_exchange_failed': t('marketing.errors.token_exchange_failed')
             };
-            alert(errorMessages[error] || `Error en la conexión con Meta: ${error}`);
+            alert(errorMessages[error] || `${t('common.error')}: ${error}`);
             const newParams = new URLSearchParams(searchParams);
             newParams.delete('error');
             setSearchParams(newParams);
@@ -73,7 +73,7 @@ export default function MarketingHubView() {
             }
         } catch (error) {
             console.error("Error initiating Meta OAuth:", error);
-            alert("Error al iniciar la conexión con Meta Ads. Revisa la consola.");
+            alert(t('marketing.errors.init_failed'));
         }
     };
 
@@ -82,16 +82,16 @@ export default function MarketingHubView() {
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <PageHeader
                     title={t('nav.marketing')}
-                    subtitle="Control panel for Meta Ads campaigns and real ROI tracking."
+                    subtitle={t('marketing.subtitle')}
                     icon={<Megaphone size={24} />}
                 />
 
                 <div className="flex items-center gap-3 bg-white p-1.5 rounded-2xl border border-gray-200 shadow-sm self-start">
                     {[
-                        { id: 'last_30d', label: '30 Días' },
-                        { id: 'last_90d', label: '3 Meses' },
-                        { id: 'this_year', label: 'Este Año' },
-                        { id: 'lifetime', label: 'Todo' }
+                        { id: 'last_30d', label: t('marketing.range_30d') },
+                        { id: 'last_90d', label: t('marketing.range_90d') },
+                        { id: 'this_year', label: t('marketing.range_year') },
+                        { id: 'lifetime', label: t('marketing.range_all') }
                     ].map(range => (
                         <button
                             key={range.id}
@@ -118,16 +118,16 @@ export default function MarketingHubView() {
                     <div>
                         <div className="flex items-center justify-between mb-6">
                             <h3 className="font-bold text-gray-900 flex items-center gap-2">
-                                <RefreshCw size={18} className={isMetaConnected ? "text-blue-500" : "text-gray-400"} /> Meta Connection
+                                <RefreshCw size={18} className={isMetaConnected ? "text-blue-500" : "text-gray-400"} /> {t('marketing.meta_connection')}
                             </h3>
                             <span className={`px-3 py-1 text-xs font-bold rounded-full ${isMetaConnected ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                                {isMetaConnected ? 'ACTIVE' : 'DISCONNECTED'}
+                                {isMetaConnected ? t('marketing.connected_active') : t('marketing.connected_disconnected')}
                             </span>
                         </div>
                         <p className="text-sm text-gray-500 mb-6">
                             {isMetaConnected
-                                ? "Tu cuenta de anuncios está sincronizada y extrayendo datos reales."
-                                : "Conecta tu cuenta de Meta Ads para empezar a medir el ROI real de tus campañas."}
+                                ? t('marketing.connected_desc')
+                                : t('marketing.disconnected_desc')}
                         </p>
                     </div>
 
@@ -138,7 +138,7 @@ export default function MarketingHubView() {
                             : "bg-gray-900 text-white hover:bg-black"
                             }`}
                     >
-                        <ExternalLink size={18} /> {isMetaConnected ? 'Reconnect Meta Account' : 'Connect Meta Ads'}
+                        <ExternalLink size={18} /> {isMetaConnected ? t('marketing.reconnect') : t('marketing.connect')}
                     </button>
                 </div>
             </div>
@@ -146,9 +146,9 @@ export default function MarketingHubView() {
             {/* Campaign Table */}
             <div className="bg-white border border-gray-200 rounded-3xl shadow-sm overflow-hidden mb-12">
                 <div className="p-6 border-b border-gray-100 flex justify-between items-center">
-                    <h3 className="font-bold text-gray-900">Active Campaigns</h3>
+                    <h3 className="font-bold text-gray-900">{t('marketing.active_campaigns')}</h3>
                     <div className="flex gap-2">
-                        <span className="text-sm text-gray-500 mr-2 capitalize">Period: {timeRange.replace('_', ' ')}</span>
+                        <span className="text-sm text-gray-500 mr-2 capitalize">{t('marketing.period_label')}: {timeRange.replace('_', ' ')}</span>
                     </div>
                 </div>
 
@@ -156,12 +156,12 @@ export default function MarketingHubView() {
                     <table className="w-full text-left border-separate border-spacing-0">
                         <thead className="bg-gray-50 text-gray-500 text-xs uppercase tracking-wider sticky top-0 z-10 shadow-sm">
                             <tr>
-                                <th className="px-6 py-4 font-semibold border-b border-gray-100">Campaign / Ad</th>
-                                <th className="px-6 py-4 font-semibold border-b border-gray-100">Spend</th>
-                                <th className="px-6 py-4 font-semibold border-b border-gray-100">Leads</th>
-                                <th className="px-6 py-4 font-semibold border-b border-gray-100">Appts</th>
-                                <th className="px-6 py-4 font-semibold text-indigo-600 border-b border-gray-100">ROI Real</th>
-                                <th className="px-6 py-4 font-semibold border-b border-gray-100">Status</th>
+                                <th className="px-6 py-4 font-semibold border-b border-gray-100">{t('marketing.table_campaign_ad')}</th>
+                                <th className="px-6 py-4 font-semibold border-b border-gray-100">{t('marketing.table_spend')}</th>
+                                <th className="px-6 py-4 font-semibold border-b border-gray-100">{t('marketing.table_leads')}</th>
+                                <th className="px-6 py-4 font-semibold border-b border-gray-100">{t('marketing.table_appts')}</th>
+                                <th className="px-6 py-4 font-semibold text-indigo-600 border-b border-gray-100">{t('marketing.table_roi')}</th>
+                                <th className="px-6 py-4 font-semibold border-b border-gray-100">{t('marketing.table_status')}</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
@@ -188,9 +188,9 @@ export default function MarketingHubView() {
                                         </span>
                                     </td>
                                     <td className="px-6 py-4">
-                                        <span className={`flex items-center gap-1.5 text-sm font-bold ${c.status === 'active' ? 'text-green-600' : 'text-gray-400'}`}>
-                                            <div className={`w-2 h-2 rounded-full ${c.status === 'active' ? 'bg-green-500 animate-pulse' : 'bg-gray-300'}`}></div>
-                                            {c.status === 'active' ? 'Active' : 'Paused/Other'}
+                                        <span className={`flex items-center gap-1.5 text-sm font-bold ${c.status === 'active' ? 'text-green-600' : c.status === 'paused' ? 'text-amber-600' : 'text-gray-400'}`}>
+                                            <div className={`w-2 h-2 rounded-full ${c.status === 'active' ? 'bg-green-500 animate-pulse' : c.status === 'paused' ? 'bg-amber-500' : 'bg-gray-300'}`}></div>
+                                            <span className="capitalize">{c.status || 'Unknown'}</span>
                                         </span>
                                     </td>
                                 </tr>
@@ -199,7 +199,7 @@ export default function MarketingHubView() {
                                 <tr>
                                     <td colSpan={6} className="px-6 py-20 text-center text-gray-400 italic">
                                         <Megaphone className="w-10 h-10 mx-auto mb-4 opacity-20" />
-                                        No active campaigns found for this account.
+                                        {t('marketing.no_campaigns')}
                                     </td>
                                 </tr>
                             )}

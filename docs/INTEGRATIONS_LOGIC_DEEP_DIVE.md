@@ -105,3 +105,29 @@ Antes de invocar al Agente, la tarea `process_buffer_task`:
 | `YCLOUD_WEBHOOK_SECRET` | Secreto para validar firma | `whsec_...` |
 
 Sin `YCLOUD_WHATSAPP_NUMBER`, el servicio `buffer_task.py` fallará al intentar enviar respuestas.
+
+## 7. Meta Ads ROI Engine (Mission 3)
+
+El sistema de marketing integra datos de Meta Ads con la facturación real de la clínica para calcular el ROI real generado por los anuncios.
+
+### Arquitectura de Conexión
+1. **OAuth Flow**: El usuario conecta su cuenta de Facebook. El token se guarda en `credentials` (tenant-scoped).
+2. **Discovery**: El sistema explora las Ad Accounts disponibles (Owned y Client accounts).
+3. **Persistence**: El `ad_account_id` seleccionado se guarda en la configuración del tenant.
+
+### Algoritmo de Cálculo de ROI
+- **Gasto (Spend)**: Se obtiene vía Meta Insights API con `date_preset=maximum` (lifetime) o rangos específicos.
+- **Ingresos (Revenue)**: Se suman los tratamientos completados (`billing`) de pacientes cuya `source` sea "Meta Ads" o provengan de un `ad_id` rastreado.
+- **ROI**: `((Revenue - Spend) / Spend) * 100`.
+
+## 8. Motor de Automatización ("Maintenance Robot")
+
+El motor reside en `orchestrator_service/services/automation_service.py` y se encarga de tareas programadas y de mantenimiento.
+
+### Tareas Críticas
+- **Handoff Notifications**: Detecta cuando un usuario solicita atención humana y notifica via Socket.IO al panel de control.
+- **Recordatorios de Turnos**: (En desarrollo) Escanea citas próximas y dispara mensajes proactivos via YCloud.
+- **Sincronización de Sesiones**: Mantiene limpia la tabla de `chat_sessions` y estados de los canales.
+
+### Ejecución
+Se basa en el motor de `BackgroundTasks` de FastAPI y un loop infinito controlado en `main.py` (si se usa modo `standalone`) o triggers JIT ante eventos.
