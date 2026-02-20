@@ -15,16 +15,17 @@ GRAPH_API_VERSION = "v21.0"
 
 @router.get("/url")
 async def get_meta_auth_url(
+    state: Optional[str] = Query(None),
     user_data=Depends(verify_admin_token)
 ):
     """
     Fase 1: Generar URL de OAuth para Meta Ads.
     """
-    if user_data.role != 'ceo':
+    if user_data["role"] != 'ceo':
         raise HTTPException(status_code=403, detail="Solo el CEO puede conectar Meta Ads.")
         
     app_id = os.getenv("META_APP_ID")
-    redirect_uri = os.getenv("META_REDIRECT_URI") # Ej: https://tudominio.com/api/admin/marketing/meta-auth/callback
+    redirect_uri = os.getenv("META_REDIRECT_URI")
     
     if not app_id:
         raise HTTPException(status_code=500, detail="META_APP_ID no configurado en el servidor.")
@@ -46,12 +47,16 @@ async def get_meta_auth_url(
         f"scope={','.join(scopes)}&"
         f"response_type=code"
     )
+    
+    if state:
+        url += f"&state={state}"
+        
     return {"url": url}
 
 @router.get("/callback")
 async def meta_auth_callback(
     code: str,
-    tenant_id: Optional[int] = Query(None) # El tenant se puede pasar en el state si es necesario
+    state: Optional[str] = Query(None) # Usamos state para el tenant_id si se pasa desde el frontend
 ):
     """
     Fase 2 y 3: Canje de tokens (Short -> Long -> Permanent).
@@ -59,6 +64,14 @@ async def meta_auth_callback(
     app_id = os.getenv("META_APP_ID")
     app_secret = os.getenv("META_APP_SECRET")
     redirect_uri = os.getenv("META_REDIRECT_URI")
+    
+    # Extraer tenant_id del state (formato: "tenant_X")
+    tenant_id = None
+    if state and state.startswith("tenant_"):
+        try:
+            tenant_id = int(state.replace("tenant_", ""))
+        except:
+            pass
 
     async with httpx.AsyncClient() as client:
         # 1. Obtener Short-Lived User Token (Intercambio de Code)
@@ -73,7 +86,7 @@ async def meta_auth_callback(
         )
         if token_res.status_code != 200:
             logger.error(f"Error exchange code: {token_res.text}")
-            return RedirectResponse(url="/marketing?error=auth_failed")
+            return RedirectResponse(url="https://dentalforge-frontend.gvdlcu.easypanel.host/marketing?error=auth_failed")
             
         short_token = token_res.json().get("access_token")
 
@@ -87,16 +100,20 @@ async def meta_auth_callback(
                 "fb_exchange_token": short_token
             }
         )
+        
+        if long_token_res.status_code != 200:
+            logger.error(f"Error exchange long token: {long_token_res.text}")
+            return RedirectResponse(url="https://dentalforge-frontend.gvdlcu.easypanel.host/marketing?error=token_exchange_failed")
+
         long_token = long_token_res.json().get("access_token")
         
         # 3. Guardar el token de usuario (60 días) para este tenant
         if tenant_id:
             await save_tenant_credential(tenant_id, "META_USER_LONG_TOKEN", long_token, category="meta_ads")
+            logger.info(f"✅ Meta LongToken saved for tenant {tenant_id}")
             
-        # 4. Obtener tokens permanentes de páginas/whatsapp si aplica
-        # (Lógica extendida en servicios/meta_ads_service.py)
-        
-    return RedirectResponse(url="/marketing?success=connected")
+        # 4. Redirigir al frontend con éxito
+    return RedirectResponse(url="https://dentalforge-frontend.gvdlcu.easypanel.host/marketing?success=connected")
 
 @router.api_route("/deauth", methods=["GET", "POST"])
 async def meta_deauth_callback():

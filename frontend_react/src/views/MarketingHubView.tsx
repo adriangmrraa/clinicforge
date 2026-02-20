@@ -4,10 +4,12 @@ import api from '../api/axios';
 import PageHeader from '../components/PageHeader';
 import { useTranslation } from '../context/LanguageContext';
 import MarketingPerformanceCard from '../components/MarketingPerformanceCard';
+import { getCurrentTenantId } from '../api/axios';
 
 export default function MarketingHubView() {
     const { t } = useTranslation();
     const [stats, setStats] = useState<any>(null);
+    const [isMetaConnected, setIsMetaConnected] = useState(false);
 
     useEffect(() => {
         loadStats();
@@ -17,8 +19,24 @@ export default function MarketingHubView() {
         try {
             const { data } = await api.get('/admin/marketing/stats');
             setStats(data);
+            setIsMetaConnected(data?.is_connected || false);
         } catch (error) {
             console.error("Error loading marketing stats:", error);
+        }
+    };
+
+    const handleConnectMeta = async () => {
+        try {
+            const tenantId = getCurrentTenantId();
+            // Solicitamos la URL de OAuth al backend, pasando el tenant en el state para seguridad
+            const { data } = await api.get(`/admin/marketing/meta-auth/url?state=tenant_${tenantId}`);
+            if (data?.url) {
+                // Redirigir a la página de OAuth de Meta
+                window.location.href = data.url;
+            }
+        } catch (error) {
+            console.error("Error initiating Meta OAuth:", error);
+            alert("Error al iniciar la conexión con Meta Ads. Revisa la consola.");
         }
     };
 
@@ -41,20 +59,27 @@ export default function MarketingHubView() {
                     <div>
                         <div className="flex items-center justify-between mb-6">
                             <h3 className="font-bold text-gray-900 flex items-center gap-2">
-                                <RefreshCw size={18} className="text-blue-500" /> Meta Connection
+                                <RefreshCw size={18} className={isMetaConnected ? "text-blue-500" : "text-gray-400"} /> Meta Connection
                             </h3>
-                            <span className="px-3 py-1 bg-green-100 text-green-700 text-xs font-bold rounded-full">ACTIVE</span>
+                            <span className={`px-3 py-1 text-xs font-bold rounded-full ${isMetaConnected ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                {isMetaConnected ? 'ACTIVE' : 'DISCONNECTED'}
+                            </span>
                         </div>
                         <p className="text-sm text-gray-500 mb-6">
-                            Tu cuenta de anuncios está sincronizada.
+                            {isMetaConnected
+                                ? "Tu cuenta de anuncios está sincronizada y extrayendo datos reales."
+                                : "Conecta tu cuenta de Meta Ads para empezar a medir el ROI real de tus campañas."}
                         </p>
                     </div>
 
                     <button
-                        onClick={() => alert('Próximamente: Flujo OAuth de Meta Ads')}
-                        className="w-full py-4 bg-gray-900 text-white rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-black transition-all"
+                        onClick={handleConnectMeta}
+                        className={`w-full py-4 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all ${isMetaConnected
+                                ? "bg-gray-100 text-gray-900 hover:bg-gray-200"
+                                : "bg-gray-900 text-white hover:bg-black"
+                            }`}
                     >
-                        <ExternalLink size={18} /> Reconnect Meta Account
+                        <ExternalLink size={18} /> {isMetaConnected ? 'Reconnect Meta Account' : 'Connect Meta Ads'}
                     </button>
                 </div>
             </div>

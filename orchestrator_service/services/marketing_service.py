@@ -42,6 +42,12 @@ class MarketingService:
             # En una fase real, esto vendría de una tabla 'meta_campaign_stats'
             total_spend = 1500.0  # Placeholder: USD/ARS 1500
             
+            # 5. Verificar conexión real
+            token = await db.pool.fetchval("""
+                SELECT decrypted_value FROM credentials 
+                WHERE tenant_id = $1 AND name = 'META_USER_LONG_TOKEN'
+            """, tenant_id)
+            
             cpa = total_spend / meta_leads if meta_leads > 0 else 0
 
             return {
@@ -49,7 +55,8 @@ class MarketingService:
                 "total_revenue": float(total_revenue),
                 "leads": meta_leads,
                 "patients_converted": converted_patients,
-                "cpa": cpa
+                "cpa": cpa,
+                "is_connected": bool(token)
             }
         except Exception as e:
             logger.error(f"Error calculating ROI stats: {e}")
