@@ -7,6 +7,7 @@ CLINICASV1.0 - Integración Meta Ads & Dentalogic.
 """
 import os
 import logging
+import json
 from typing import Optional, Dict, Any
 
 import httpx

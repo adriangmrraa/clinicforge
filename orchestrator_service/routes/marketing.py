@@ -210,8 +210,11 @@ async def debug_marketing_stats(
                 # 1.2 Campaign Scan (Nivel Campaña - Ver si recuperamos estructura)
                 # FORZAR ID DE DRA LAURA PARA DEBUG SI EL CONFIGURADO FALLA
                 target_id = test_id
-                if "962522549377170" in str(acc_list): # Si la cuenta existe en la lista, priorizarla para test
-                     target_id = "act_962522549377170"
+                # Fix: acc_list might not be defined here if we are outside the loop or if it failed.
+                # Simplificación: Si el test_id original no es el de Laura, probamos también el de Laura.
+                known_good_id = "act_962522549377170"
+                if test_id != known_good_id:
+                     target_id = known_good_id
                 
                 try:
                     # Usar filtrado para incluir Deleted/Archived
