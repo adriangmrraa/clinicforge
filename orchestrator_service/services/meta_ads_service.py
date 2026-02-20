@@ -176,27 +176,42 @@ class MetaAdsClient:
 
     async def get_ad_accounts(self, portfolio_id: Optional[str] = None) -> list:
         """
-        Lista las cuentas de anuncios. Si se provee portfolio_id, filtra por ese BM.
+        Lista las cuentas de anuncios. Si se provee portfolio_id, intenta obtener 
+        tanto client_ad_accounts como owned_ad_accounts.
         """
-        if portfolio_id:
-            url = f"{GRAPH_API_BASE}/{portfolio_id}/client_ad_accounts"
-        else:
-            url = f"{GRAPH_API_BASE}/me/adaccounts"
-            
         params = {
             "fields": "name,id,currency",
             "access_token": self.access_token,
         }
+        all_accounts = []
+        
         try:
             async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
-                response = await client.get(url, params=params)
-                # Si client_ad_accounts falla, intentar con owned_ad_accounts
-                if response.status_code != 200 and portfolio_id:
-                    url = f"{GRAPH_API_BASE}/{portfolio_id}/owned_ad_accounts"
+                if portfolio_id:
+                    # 1. Intentar client_ad_accounts
+                    url_client = f"{GRAPH_API_BASE}/{portfolio_id}/client_ad_accounts"
+                    resp_client = await client.get(url_client, params=params)
+                    if resp_client.status_code == 200:
+                        all_accounts.extend(resp_client.json().get("data", []))
+                    
+                    # 2. Intentar owned_ad_accounts
+                    url_owned = f"{GRAPH_API_BASE}/{portfolio_id}/owned_ad_accounts"
+                    resp_owned = await client.get(url_owned, params=params)
+                    if resp_owned.status_code == 200:
+                        owned_data = resp_owned.json().get("data", [])
+                        # Evitar duplicados por ID
+                        existing_ids = {acc['id'] for acc in all_accounts}
+                        all_accounts.extend([acc for acc in owned_data if acc['id'] not in existing_ids])
+                else:
+                    # Listado general de cuentas del usuario
+                    url = f"{GRAPH_API_BASE}/me/adaccounts"
                     response = await client.get(url, params=params)
-                
-                response.raise_for_status()
-                return response.json().get("data", [])
+                    response.raise_for_status()
+                    all_accounts = response.json().get("data", [])
+
+            logger.info(f"📊 Meta Ads: Se encontraron {len(all_accounts)} cuentas para portfolio {portfolio_id or 'ME'}")
+            return all_accounts
+            
         except Exception as e:
             logger.error(f"❌ Error obteniendo cuentas de anuncios de Meta: {e}")
             return []

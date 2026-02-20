@@ -57,11 +57,14 @@ export default function MetaConnectionWizard({ isOpen, onClose, onSuccess }: Met
         }
     };
 
-    const loadAccounts = async (portfolioId: string) => {
+    const loadAccounts = async (portfolioId?: string) => {
         setLoading(true);
         setError(null);
         try {
-            const { data } = await api.get(`/admin/marketing/meta-accounts?portfolio_id=${portfolioId}`);
+            const url = portfolioId
+                ? `/admin/marketing/meta-accounts?portfolio_id=${portfolioId}`
+                : `/admin/marketing/meta-accounts`;
+            const { data } = await api.get(url);
             setAccounts(data.accounts || []);
             setStep(3);
         } catch (err: any) {
@@ -115,7 +118,7 @@ export default function MetaConnectionWizard({ isOpen, onClose, onSuccess }: Met
                     {[1, 2, 3].map((s) => (
                         <div key={s} className="flex items-center gap-2">
                             <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm transition-all ${step === s ? 'bg-blue-600 text-white' :
-                                    step > s ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-400'
+                                step > s ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-400'
                                 }`}>
                                 {step > s ? <CheckCircle2 size={16} /> : s}
                             </div>
@@ -192,7 +195,15 @@ export default function MetaConnectionWizard({ isOpen, onClose, onSuccess }: Met
                                             </button>
                                         ))}
                                         {portfolios.length === 0 && (
-                                            <p className="text-center text-gray-500 py-8">No se encontraron Business Managers.</p>
+                                            <div className="text-center py-8 space-y-4">
+                                                <p className="text-gray-500">No se encontraron Business Managers.</p>
+                                                <button
+                                                    onClick={() => loadAccounts()}
+                                                    className="w-full py-3 bg-blue-50 text-blue-600 rounded-xl font-bold hover:bg-blue-100 transition-all"
+                                                >
+                                                    Listar todas las cuentas de anuncios
+                                                </button>
+                                            </div>
                                         )}
                                     </div>
                                     <button onClick={() => setStep(1)} className="text-blue-600 text-sm font-bold hover:underline">← Volver</button>
@@ -218,6 +229,31 @@ export default function MetaConnectionWizard({ isOpen, onClose, onSuccess }: Met
                                                 {selectedAccount?.id === a.id && <CheckCircle2 className="text-blue-600" size={18} />}
                                             </button>
                                         ))}
+                                        {accounts.length === 0 && (
+                                            <div className="bg-amber-50 rounded-2xl p-6 border border-amber-100 text-center space-y-4">
+                                                <div className="w-12 h-12 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto">
+                                                    <Briefcase size={24} />
+                                                </div>
+                                                <div>
+                                                    <p className="font-bold text-amber-900">No hay cuentas disponibles</p>
+                                                    <p className="text-xs text-amber-700 mt-1">Asegúrate de haber seleccionado tus cuentas en el popup de Meta Ads (Facebook).</p>
+                                                </div>
+                                                <div className="flex flex-col gap-2">
+                                                    <button
+                                                        onClick={() => loadAccounts()}
+                                                        className="py-2.5 px-4 bg-white border border-amber-200 text-amber-800 rounded-xl text-xs font-bold hover:bg-amber-100 transition-all"
+                                                    >
+                                                        Buscar fuera del portafolio
+                                                    </button>
+                                                    <a
+                                                        href="/marketing?reconnect=true"
+                                                        className="text-xs text-blue-600 font-bold hover:underline"
+                                                    >
+                                                        Re-conectar eligiendo todas las cuentas
+                                                    </a>
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
                                     <div className="pt-6 flex gap-3">
                                         <button onClick={() => setStep(2)} className="flex-1 py-4 text-gray-500 font-bold hover:bg-gray-50 rounded-2xl transition-all">Atrás</button>
