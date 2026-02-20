@@ -30,14 +30,11 @@ async def get_meta_auth_url(
     if not app_id:
         raise HTTPException(status_code=500, detail="META_APP_ID no configurado en el servidor.")
 
-    # Scopes necesarios para Ads, WhatsApp y Páginas
+    # Scopes necesarios solo para Ads (WhatsApp se gestiona vía YCloud)
     scopes = [
         "ads_management", 
         "ads_read", 
-        "business_management", 
-        "pages_show_list", 
-        "pages_read_engagement", 
-        "whatsapp_business_management"
+        "business_management"
     ]
     
     url = (
