@@ -71,7 +71,8 @@ class MarketingService:
                         "last_30d": "last_30d",
                         "last_90d": "last_90d",
                         "this_year": "this_year",
-                        "lifetime": "maximum"
+                        "lifetime": "maximum",
+                        "all": "maximum"
                     }
                     meta_preset = meta_preset_map.get(time_range, "last_30d")
                     insights = await meta_client.get_ads_insights(ad_account_id, date_preset=meta_preset)
@@ -112,8 +113,6 @@ class MarketingService:
             return {"needs_reconnect": True, "days_left": None}
             
         if not expires_at_str:
-            # Si no tenemos fecha (legacy or failed save), asumimos que falta poco si el token es viejo
-            # Por ahora, devolvemos un estado neutral pero seguro
             return {"needs_reconnect": False, "days_left": None}
             
         try:
@@ -166,7 +165,8 @@ class MarketingService:
                         "last_30d": "last_30d",
                         "last_90d": "last_90d",
                         "this_year": "this_year",
-                        "lifetime": "maximum"
+                        "lifetime": "maximum",
+                        "all": "maximum"
                     }
                     meta_preset = meta_preset_map.get(time_range, "last_30d")
                     meta_ads = await meta_client.get_ads_insights(ad_account_id, date_preset=meta_preset)

@@ -14,7 +14,7 @@ export default function MarketingHubView() {
     const [stats, setStats] = useState<any>(null);
     const [isMetaConnected, setIsMetaConnected] = useState(false);
     const [isWizardOpen, setIsWizardOpen] = useState(false);
-    const [timeRange, setTimeRange] = useState('last_30d');
+    const [timeRange, setTimeRange] = useState('all');
 
     useEffect(() => {
         loadStats();
@@ -91,7 +91,7 @@ export default function MarketingHubView() {
                         { id: 'last_30d', label: t('marketing.range_30d') },
                         { id: 'last_90d', label: t('marketing.range_90d') },
                         { id: 'this_year', label: t('marketing.range_year') },
-                        { id: 'lifetime', label: t('marketing.range_all') }
+                        { id: 'all', label: t('marketing.range_all') }
                     ].map(range => (
                         <button
                             key={range.id}
@@ -110,7 +110,7 @@ export default function MarketingHubView() {
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 {/* Real ROI Card - Main Metric */}
                 <div className="lg:col-span-2">
-                    <MarketingPerformanceCard stats={stats?.roi} loading={!stats} />
+                    <MarketingPerformanceCard stats={stats?.roi} loading={!stats} timeRange={timeRange} />
                 </div>
 
                 {/* Connection Status Card */}
