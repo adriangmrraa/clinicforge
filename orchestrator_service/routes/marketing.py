@@ -209,21 +209,26 @@ async def debug_marketing_stats(
                     }
                 except Exception as e_env:
                     debug_info["env_account_test"] = {"id_used": test_id, "error": str(e_env)}
+            # 2. Listar TODAS las cuentas y su inversión total
             try:
                 accounts = await client.get_ad_accounts()
                 acc_list = []
                 for a in accounts[:15]: 
                     aid = a.get("id")
                     spend = 0
+                    err_msg = None
                     try:
                         ins = await client.get_ads_insights(aid, date_preset="maximum")
                         spend = sum(float(i.get("spend", 0)) for i in ins)
-                    except:
-                        pass
+                    except Exception as e:
+                        spend = -1
+                        err_msg = str(e)
+                    
                     acc_list.append({
                         "id": aid, 
                         "name": a.get("name"), 
                         "lifetime_spend": spend,
+                        "error": err_msg,
                         "match_env": aid.endswith(env_ad_account_id) if env_ad_account_id else False
                     })
                 debug_info["accessible_accounts"] = acc_list
