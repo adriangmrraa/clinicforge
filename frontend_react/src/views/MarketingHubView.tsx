@@ -18,14 +18,37 @@ export default function MarketingHubView() {
     useEffect(() => {
         loadStats();
 
+        // Manejo de errores de Meta OAuth
+        const error = searchParams.get('error');
+        if (error) {
+            const errorMessages: Record<string, string> = {
+                'missing_tenant': 'Error de seguridad: No se pudo identificar la clínica. Reintenta desde el panel.',
+                'auth_failed': 'La autenticación con Meta falló o fue cancelada.',
+                'token_exchange_failed': 'Error al canjear el token permanente. Reintenta la conexión.'
+            };
+            alert(errorMessages[error] || `Error en la conexión con Meta: ${error}`);
+            const newParams = new URLSearchParams(searchParams);
+            newParams.delete('error');
+            setSearchParams(newParams);
+        }
+
         // Detectar si venimos de un login exitoso de Meta
         if (searchParams.get('success') === 'connected') {
             setIsWizardOpen(true);
             // Limpiar el parámetro de la URL
-            searchParams.delete('success');
-            setSearchParams(searchParams);
+            const newParams = new URLSearchParams(searchParams);
+            newParams.delete('success');
+            setSearchParams(newParams);
         }
-    }, []);
+
+        // Detectar si queremos iniciar reconexión automática desde el banner
+        if (searchParams.get('reconnect') === 'true') {
+            handleConnectMeta();
+            const newParams = new URLSearchParams(searchParams);
+            newParams.delete('reconnect');
+            setSearchParams(newParams);
+        }
+    }, [searchParams]);
 
     const loadStats = async () => {
         try {

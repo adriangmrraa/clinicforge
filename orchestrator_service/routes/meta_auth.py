@@ -62,11 +62,13 @@ async def meta_auth_callback(
     app_secret = os.getenv("META_APP_SECRET")
     redirect_uri = os.getenv("META_REDIRECT_URI")
     
+    frontend_url = os.getenv("FRONTEND_URL", "https://dentalforge-frontend.gvdlcu.easypanel.host").rstrip("/")
+    
     # Extraer tenant_id del state (formato: "tenant_X")
     tenant_id = None
     if state and state.startswith("tenant_"):
         val = state.replace("tenant_", "")
-        if val != "default":
+        if val != "default" and val != "undefined":
             try:
                 tenant_id = int(val)
             except ValueError:
@@ -74,8 +76,8 @@ async def meta_auth_callback(
     
     # Blindaje: Si no hay tenant_id, NO procedemos para evitar guardar en el tenant equivocado
     if not tenant_id:
-        logger.error("🛑 Security alert: Meta OAuth callback without valid tenant_id in state.")
-        return RedirectResponse(url="https://dentalforge-frontend.gvdlcu.easypanel.host/marketing?error=missing_tenant")
+        logger.error(f"🛑 Security alert: Meta OAuth callback without valid tenant_id in state (state={state}).")
+        return RedirectResponse(url=f"{frontend_url}/marketing?error=missing_tenant")
 
     async with httpx.AsyncClient() as client:
         # 1. Obtener Short-Lived User Token (Intercambio de Code)
@@ -90,7 +92,7 @@ async def meta_auth_callback(
         )
         if token_res.status_code != 200:
             logger.error(f"Error exchange code: {token_res.text}")
-            return RedirectResponse(url="https://dentalforge-frontend.gvdlcu.easypanel.host/marketing?error=auth_failed")
+            return RedirectResponse(url=f"{frontend_url}/marketing?error=auth_failed")
             
         short_token = token_res.json().get("access_token")
 
@@ -107,7 +109,7 @@ async def meta_auth_callback(
         
         if long_token_res.status_code != 200:
             logger.error(f"Error exchange long token: {long_token_res.text}")
-            return RedirectResponse(url="https://dentalforge-frontend.gvdlcu.easypanel.host/marketing?error=token_exchange_failed")
+            return RedirectResponse(url=f"{frontend_url}/marketing?error=token_exchange_failed")
 
         data = long_token_res.json()
         long_token = data.get("access_token")
@@ -125,7 +127,7 @@ async def meta_auth_callback(
             logger.info(f"✅ Meta LongToken saved for tenant {tenant_id}")
             
         # 4. Redirigir al frontend con éxito
-    return RedirectResponse(url="https://dentalforge-frontend.gvdlcu.easypanel.host/marketing?success=connected")
+    return RedirectResponse(url=f"{frontend_url}/marketing?success=connected")
 
 @router.api_route("/deauth", methods=["GET", "POST"])
 async def meta_deauth_callback():

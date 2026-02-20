@@ -84,7 +84,8 @@ class MarketingService:
                 "cpa": 0
             }
 
-    async def get_token_status(self, tenant_id: int) -> Dict[str, Any]:
+    @staticmethod
+    async def get_token_status(tenant_id: int) -> Dict[str, Any]:
         """Verifica la salud del token de Meta y devuelve días para expirar."""
         from core.credentials import get_tenant_credential
         expires_at_str = await get_tenant_credential(tenant_id, "META_TOKEN_EXPIRES_AT")
@@ -115,7 +116,8 @@ class MarketingService:
             logger.error(f"Error parsing token expiration: {e}")
             return {"needs_reconnect": True, "days_left": 0}
 
-    async def get_campaign_stats(self, tenant_id: int) -> List[Dict[str, Any]]:
+    @staticmethod
+    async def get_campaign_stats(tenant_id: int) -> List[Dict[str, Any]]:
         """
         Retorna el rendimiento por campaña/anuncio, sincronizando con Meta si hay conexión.
         """
