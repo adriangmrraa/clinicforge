@@ -187,7 +187,7 @@ export default function MarketingHubView() {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
-                            {(activeTab === 'campaigns' ? stats?.campaigns : stats?.creatives)?.map((c: any) => (
+                            {(activeTab === 'campaigns' ? stats?.campaigns?.campaigns : stats?.campaigns?.creatives)?.map((c: any) => (
                                 <tr key={c.ad_id} className="hover:bg-blue-50/30 transition-colors group">
                                     <td className="px-6 py-4">
                                         <div className="font-bold text-gray-900 group-hover:text-blue-700 transition-colors">{c.ad_name}</div>
@@ -217,7 +217,7 @@ export default function MarketingHubView() {
                                     </td>
                                 </tr>
                             ))}
-                            {!(activeTab === 'campaigns' ? stats?.campaigns : stats?.creatives)?.length && (
+                            {!(activeTab === 'campaigns' ? stats?.campaigns?.campaigns : stats?.campaigns?.creatives)?.length && (
                                 <tr>
                                     <td colSpan={6} className="px-6 py-20 text-center text-gray-400 italic">
                                         <Megaphone className="w-10 h-10 mx-auto mb-4 opacity-20" />
