@@ -1,5 +1,7 @@
 from fastapi import APIRouter, Depends, Header, HTTPException
-from typing import Optional
+import httpx
+import json
+from typing import Optional, Dict, Any, List
 from services.marketing_service import MarketingService
 from services.meta_ads_service import MetaAdsClient
 from core.auth import get_current_user_and_tenant
