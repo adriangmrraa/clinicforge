@@ -231,7 +231,7 @@ class MarketingService:
                     })
 
             # Diagnostic logs
-            logger.info(f"📊 Marketing Sync: Tenant={tenant_id}, Range={time_range}, MetaAdsCount={len(meta_ads)}, LocalAttributionCount={len(local_stats)}")
+            logger.info(f"[Marketing Sync] Tenant={tenant_id}, Range={time_range}, MetaAdsCount={len(meta_ads)}, LocalAttributionCount={len(local_stats)}")
 
             return results
         except Exception as e:
