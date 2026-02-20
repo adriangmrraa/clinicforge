@@ -208,28 +208,58 @@ async def debug_marketing_stats(
                     debug_info["db_account_deep_scan"] = {"error": str(e_deep)}
 
                 # 1.2 Campaign Scan (Nivel Campaña - Ver si recuperamos estructura)
+                # 1.2 Campaign Scan (Nivel Campaña - Ver si recuperamos estructura)
                 # FORZAR ID DE DRA LAURA PARA DEBUG SI EL CONFIGURADO FALLA
                 target_id = test_id
-                # Fix: acc_list might not be defined here if we are outside the loop or if it failed.
                 # Simplificación: Si el test_id original no es el de Laura, probamos también el de Laura.
                 known_good_id = "act_962522549377170"
                 if test_id != known_good_id:
                      target_id = known_good_id
                 
+                # Probar Variación A: Filtro con prefijo (Actual)
                 try:
-                    # Usar filtrado para incluir Deleted/Archived
-                    filtering = [{'field': 'campaign.effective_status', 'operator': 'IN', 'value': ['ACTIVE', 'PAUSED', 'DELETED', 'ARCHIVED', 'IN_PROCESS', 'WITH_ISSUES']}]
-                    
-                    ins_camp = await client.get_ads_insights(target_id, date_preset="maximum", level="campaign", filtering=filtering)
-                    debug_info["db_account_campaign_scan"] = {
-                        "target_used": target_id,
-                        "success": True,
-                        "count": len(ins_camp),
-                        "raw_data": ins_camp[:5], 
-                        "total_spend": sum(float(i.get("spend", 0)) for i in ins_camp)
-                    }
-                except Exception as e_camp:
-                    debug_info["db_account_campaign_scan"] = {"error": str(e_camp), "target_used": target_id}
+                    filtering_a = [{'field': 'campaign.effective_status', 'operator': 'IN', 'value': ['ACTIVE', 'PAUSED', 'DELETED', 'ARCHIVED']}]
+                    ins_camp_a = await client.get_ads_insights(target_id, date_preset="maximum", level="campaign", filtering=filtering_a)
+                    debug_info["scan_campaign_with_prefix"] = {"count": len(ins_camp_a), "spend": sum(float(i.get("spend", 0)) for i in ins_camp_a)}
+                except Exception as e_a:
+                    debug_info["scan_campaign_with_prefix"] = {"error": str(e_a)}
+
+                # Probar Variación B: Filtro SIN prefijo
+                try:
+                    filtering_b = [{'field': 'effective_status', 'operator': 'IN', 'value': ['ACTIVE', 'PAUSED', 'DELETED', 'ARCHIVED']}]
+                    ins_camp_b = await client.get_ads_insights(target_id, date_preset="maximum", level="campaign", filtering=filtering_b)
+                    debug_info["scan_campaign_no_prefix"] = {"count": len(ins_camp_b), "spend": sum(float(i.get("spend", 0)) for i in ins_camp_b)}
+                except Exception as e_b:
+                    debug_info["scan_campaign_no_prefix"] = {"error": str(e_b)}
+
+                # Probar Variación C: SIN FILTRO (Solo activos por defecto)
+                try:
+                    ins_camp_c = await client.get_ads_insights(target_id, date_preset="maximum", level="campaign", filtering=[])
+                    debug_info["scan_campaign_no_filter"] = {"count": len(ins_camp_c), "spend": sum(float(i.get("spend", 0)) for i in ins_camp_c)}
+                except Exception as e_c:
+                    debug_info["scan_campaign_no_filter"] = {"error": str(e_c)}
+
+                # Probar Variación D: Listar campañas directamente (No insights)
+                try:
+                    async with httpx.AsyncClient() as h_client:
+                        # Usamos v21.0 hardcoded para bypass client si es necesario
+                        url_camp = f"https://graph.facebook.com/v21.0/{target_id}/campaigns"
+                        params_camp = {
+                            "fields": "id,name,effective_status",
+                            "limit": 50,
+                            "access_token": client.access_token
+                        }
+                        # Intentar ver si las borradas aparecen listándolas con filter
+                        params_camp["filtering"] = json.dumps([{'field': 'effective_status', 'operator': 'IN', 'value': ['ACTIVE', 'PAUSED', 'DELETED', 'ARCHIVED']}])
+                        r_camp = await h_client.get(url_camp, params=params_camp)
+                        data_camp = r_camp.json()
+                        debug_info["direct_campaign_list"] = {
+                            "status": r_camp.status_code,
+                            "count": len(data_camp.get("data", [])),
+                            "first_names": [c.get("name") for c in data_camp.get("data", [])[:5]]
+                        }
+                except Exception as e_d:
+                    debug_info["direct_campaign_list"] = {"error": str(e_d)}
 
             # 2. Probar ID de cuenta del .env (Legacy)
             if env_ad_account_id:
