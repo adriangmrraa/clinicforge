@@ -181,7 +181,8 @@ async def debug_marketing_stats(
             client = MetaAdsClient(token_str)
             
             # 1. Probar ID de cuenta de la BASE DE DATOS directamente (Prioridad)
-            db_ad_account_id = tenant_conf.get("ad_account_id")
+            from core.credentials import get_tenant_credential
+            db_ad_account_id = await get_tenant_credential(tenant_id, "META_AD_ACCOUNT_ID")
             if db_ad_account_id:
                 test_id = db_ad_account_id if db_ad_account_id.startswith("act_") else f"act_{db_ad_account_id}"
                 try:
