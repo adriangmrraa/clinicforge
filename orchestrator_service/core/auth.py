@@ -40,10 +40,19 @@ async def verify_admin_token(
     request.state.user = user_data
     return user_data
 
-async def get_resolved_tenant_id(user_data=Depends(verify_admin_token)) -> int:
+async def get_resolved_tenant_id(request: Request, user_data=Depends(verify_admin_token)) -> int:
     """
-    Resuelve el tenant_id real consultando la tabla professionals mediante el UUID del current_user.
+    Resuelve el tenant_id real:
+    1. Si viene el header X-Tenant-ID, lo usamos como pista (útil para CEOs multi-sede).
+    2. Si no, consultamos la tabla professionals mediante el UUID del current_user.
+    3. Fallback final: Primera clínica del sistema.
     """
+    # 1. Header Hint (Prioridad para CEOs)
+    header_tid = request.headers.get("X-Tenant-ID")
+    if header_tid and header_tid.isdigit():
+        return int(header_tid)
+
+    # 2. Professional Mapping
     try:
         tid = await db.pool.fetchval(
             "SELECT tenant_id FROM professionals WHERE user_id = $1",
@@ -54,7 +63,7 @@ async def get_resolved_tenant_id(user_data=Depends(verify_admin_token)) -> int:
     except Exception:
         pass
         
-    # Fallback CEO/secretary
+    # 3. Fallback CEO/secretary
     tenant_id = await db.pool.fetchval("SELECT id FROM tenants ORDER BY id ASC LIMIT 1") or 1
     return int(tenant_id)
 

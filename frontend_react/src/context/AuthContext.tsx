@@ -4,6 +4,7 @@ interface User {
     id: string;
     email: string;
     role: 'ceo' | 'professional' | 'secretary';
+    tenant_id?: number;
 }
 
 interface AuthContextType {
@@ -38,6 +39,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const login = (newToken: string, profile: User) => {
         localStorage.setItem('JWT_TOKEN', newToken);
         localStorage.setItem('USER_PROFILE', JSON.stringify(profile));
+
+        // Save tenant_id as a top-level key for axios/direct-access needs
+        const tid = profile.tenant_id?.toString() || '1';
+        localStorage.setItem('X-Tenant-ID', tid);
+
         setToken(newToken);
         setUser(profile);
     };
@@ -45,6 +51,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const logout = () => {
         localStorage.removeItem('JWT_TOKEN');
         localStorage.removeItem('USER_PROFILE');
+        localStorage.removeItem('X-Tenant-ID');
         setToken(null);
         setUser(null);
     };

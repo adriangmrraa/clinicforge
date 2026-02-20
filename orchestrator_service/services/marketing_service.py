@@ -136,100 +136,104 @@ class MarketingService:
         """
         Retorna el rendimiento por campaña/anuncio, sincronizando con Meta si hay conexión.
         """
-        from core.credentials import get_tenant_credential
-        from services.meta_ads_service import MetaAdsClient
-        
-        token = await get_tenant_credential(tenant_id, "META_USER_LONG_TOKEN")
-        ad_account_id = await get_tenant_credential(tenant_id, "META_AD_ACCOUNT_ID")
-        
-        logger.info(f"🔍 Campaigns Debug: Tenant={tenant_id}, TokenFound={bool(token)}, AdAccount={ad_account_id}, Range={time_range}")
-        
-        interval_map = {
-            "last_30d": "30 days",
-            "last_90d": "90 days",
-            "this_year": "1 year",
-            "lifetime": "100 years"
-        }
-        interval = interval_map.get(time_range, "30 days")
+        try:
+            from core.credentials import get_tenant_credential
+            from services.meta_ads_service import MetaAdsClient
+            
+            token = await get_tenant_credential(tenant_id, "META_USER_LONG_TOKEN")
+            ad_account_id = await get_tenant_credential(tenant_id, "META_AD_ACCOUNT_ID")
+            
+            logger.info(f"🔍 Campaigns Debug: Tenant={tenant_id}, TokenFound={bool(token)}, AdAccount={ad_account_id}, Range={time_range}")
+            
+            interval_map = {
+                "last_30d": "30 days",
+                "last_90d": "90 days",
+                "this_year": "1 year",
+                "lifetime": "100 years"
+            }
+            interval = interval_map.get(time_range, "30 days")
 
-        # 1. Obtener datos de Meta (Insights)
-        meta_ads = []
-        if token and ad_account_id:
-            try:
-                meta_client = MetaAdsClient(token)
-                meta_preset_map = {
-                    "last_30d": "last_30d",
-                    "last_90d": "last_90d",
-                    "this_year": "this_year",
-                    "lifetime": "maximum"
-                }
-                meta_preset = meta_preset_map.get(time_range, "last_30d")
-                meta_ads = await meta_client.get_ads_insights(ad_account_id, date_preset=meta_preset)
-            except Exception as e:
-                logger.warning(f"⚠️ No se pudo obtener ads de Meta: {e}")
+            # 1. Obtener datos de Meta (Insights)
+            meta_ads = []
+            if token and ad_account_id:
+                try:
+                    meta_client = MetaAdsClient(token)
+                    meta_preset_map = {
+                        "last_30d": "last_30d",
+                        "last_90d": "last_90d",
+                        "this_year": "this_year",
+                        "lifetime": "maximum"
+                    }
+                    meta_preset = meta_preset_map.get(time_range, "last_30d")
+                    meta_ads = await meta_client.get_ads_insights(ad_account_id, date_preset=meta_preset)
+                except Exception as e:
+                    logger.warning(f"⚠️ No se pudo obtener ads de Meta: {e}")
 
-        # 2. Obtener atribución local (Leads y Citas por ad_id) filtrado por periodo
-        local_stats = await db.pool.fetch(f"""
-            SELECT meta_ad_id,
-                   COUNT(id) as leads,
-                   COUNT(id) FILTER (WHERE EXISTS (
-                       SELECT 1 FROM appointments a 
-                       WHERE a.patient_id = patients.id AND a.status IN ('confirmed', 'completed')
-                       AND a.appointment_datetime >= NOW() - INTERVAL '{interval}'
-                   )) as appointments,
-                   (SELECT SUM(t.amount) 
-                    FROM accounting_transactions t 
-                    JOIN patients p2 ON t.patient_id = p2.id 
-                    WHERE p2.meta_ad_id = patients.meta_ad_id AND t.status = 'completed'
-                    AND t.created_at >= NOW() - INTERVAL '{interval}'
-                   ) as revenue
-            FROM patients
-            WHERE tenant_id = $1 AND acquisition_source = 'META_ADS' AND meta_ad_id IS NOT NULL
-            AND created_at >= NOW() - INTERVAL '{interval}'
-            GROUP BY meta_ad_id
-        """, tenant_id)
-        
-        attribution_map = {row['meta_ad_id']: row for row in local_stats}
+            # 2. Obtener atribución local (Leads y Citas por ad_id) filtrado por periodo
+            local_stats = await db.pool.fetch(f"""
+                SELECT meta_ad_id,
+                       COUNT(id) as leads,
+                       COUNT(id) FILTER (WHERE EXISTS (
+                           SELECT 1 FROM appointments a 
+                           WHERE a.patient_id = patients.id AND a.status IN ('confirmed', 'completed')
+                           AND a.appointment_datetime >= NOW() - INTERVAL '{interval}'
+                       )) as appointments,
+                       (SELECT SUM(t.amount) 
+                        FROM accounting_transactions t 
+                        JOIN patients p2 ON t.patient_id = p2.id 
+                        WHERE p2.meta_ad_id = patients.meta_ad_id AND t.status = 'completed'
+                        AND t.created_at >= NOW() - INTERVAL '{interval}'
+                       ) as revenue
+                FROM patients
+                WHERE tenant_id = $1 AND acquisition_source = 'META_ADS' AND meta_ad_id IS NOT NULL
+                AND created_at >= NOW() - INTERVAL '{interval}'
+                GROUP BY meta_ad_id
+            """, tenant_id)
+            
+            attribution_map = {row['meta_ad_id']: row for row in local_stats}
 
-        results = []
-        
-        # 3. Construir lista final priorizando Meta Ads
-        if meta_ads:
-            for ad in meta_ads:
-                ad_id = ad.get('ad_id')
-                local = attribution_map.get(ad_id, {})
-                spend = float(ad.get('spend', 0))
-                rev = float(local.get('revenue') or 0)
-                
-                roi = (rev - spend) / spend if spend > 0 else 0
-                
-                results.append({
-                    "ad_id": ad_id,
-                    "ad_name": ad.get('ad_name', 'Anuncio sin nombre'),
-                    "campaign_name": ad.get('campaign_name', 'Campaña de Meta'),
-                    "spend": spend,
-                    "leads": local.get('leads', 0),
-                    "appointments": local.get('appointments', 0),
-                    "roi": roi,
-                    "status": "active"
-                })
-        
-        # 4. Incluir ads con atribución local pero sin spend en Meta para este periodo
-        meta_ad_ids = {ad.get('ad_id') for ad in meta_ads}
-        for ad_id, local in attribution_map.items():
-            if ad_id not in meta_ad_ids:
-                results.append({
-                    "ad_id": ad_id,
-                    "ad_name": "Anuncio Histórico",
-                    "campaign_name": "Atribución Directa",
-                    "spend": 0.0,
-                    "leads": local.get('leads', 0),
-                    "appointments": local.get('appointments', 0),
-                    "roi": 0.0,
-                    "status": "inactive"
-                })
+            results = []
+            
+            # 3. Construir lista final priorizando Meta Ads
+            if meta_ads:
+                for ad in meta_ads:
+                    ad_id = ad.get('ad_id')
+                    local = attribution_map.get(ad_id, {})
+                    spend = float(ad.get('spend', 0))
+                    rev = float(local.get('revenue') or 0)
+                    
+                    roi = (rev - spend) / spend if spend > 0 else 0
+                    
+                    results.append({
+                        "ad_id": ad_id,
+                        "ad_name": ad.get('ad_name', 'Anuncio sin nombre'),
+                        "campaign_name": ad.get('campaign_name', 'Campaña de Meta'),
+                        "spend": spend,
+                        "leads": local.get('leads', 0),
+                        "appointments": local.get('appointments', 0),
+                        "roi": roi,
+                        "status": "active"
+                    })
+            
+            # 4. Incluir ads con atribución local pero sin spend en Meta para este periodo
+            meta_ad_ids = {ad.get('ad_id') for ad in meta_ads}
+            for ad_id, local in attribution_map.items():
+                if ad_id not in meta_ad_ids:
+                    results.append({
+                        "ad_id": ad_id,
+                        "ad_name": "Anuncio Histórico",
+                        "campaign_name": "Atribución Directa",
+                        "spend": 0.0,
+                        "leads": local.get('leads', 0),
+                        "appointments": local.get('appointments', 0),
+                        "roi": 0.0,
+                        "status": "inactive"
+                    })
 
-        # Diagnostic logs
-        logger.info(f"📊 Marketing Sync: Tenant={{tenant_id}}, Range={{time_range}}, MetaAdsCount={{len(meta_ads)}}, LocalAttributionCount={{len(local_stats)}}")
+            # Diagnostic logs
+            logger.info(f"📊 Marketing Sync: Tenant={tenant_id}, Range={time_range}, MetaAdsCount={len(meta_ads)}, LocalAttributionCount={len(local_stats)}")
 
-        return results
+            return results
+        except Exception as e:
+            logger.error(f"❌ Error fetching campaign stats for tenant {tenant_id}: {e}")
+            return []

@@ -12,15 +12,15 @@ const BASE_DELAY = 1000;
 
 // Get current tenant ID from storage or context
 export const getCurrentTenantId = (): string | null => {
-  // Try to get from localStorage first (for persistent sessions)
-  const storedTenant = localStorage.getItem('X-Tenant-ID');
+  // Try to get from localStorage (X-Tenant-ID is preferred, tenant_id is legacy/fallback)
+  const storedTenant = localStorage.getItem('X-Tenant-ID') || localStorage.getItem('tenant_id');
   if (storedTenant) return storedTenant;
 
   // Try to get from session storage
-  const sessionTenant = sessionStorage.getItem('X-Tenant-ID');
+  const sessionTenant = sessionStorage.getItem('X-Tenant-ID') || sessionStorage.getItem('tenant_id');
   if (sessionTenant) return sessionTenant;
 
-  // Default tenant for development (can be overridden by environment)
+  // Default tenant for development
   return getEnv('VITE_DEFAULT_TENANT_ID') || '1';
 };
 
