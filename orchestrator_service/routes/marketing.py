@@ -140,3 +140,44 @@ async def connect_meta_account(
     await save_tenant_credential(target_tenant_id, "META_AD_ACCOUNT_NAME", ad_account_name, category="meta_ads")
     
     return {"status": "success", "message": f"Cuenta {ad_account_name} vinculada a clínica {target_tenant_id}"}
+@router.get("/debug/stats")
+async def debug_marketing_stats(
+    range: str = "last_30d",
+    auth_data: tuple = Depends(get_current_user_and_tenant)
+):
+    """
+    Endpoint de diagnóstico para verificar credenciales y visibilidad de Meta Ads.
+    """
+    user, tenant_id = auth_data
+    if user["role"] != "ceo":
+        raise HTTPException(status_code=403, detail="Unauthorized")
+        
+    from core.credentials import get_tenant_credential
+    token = await get_tenant_credential(tenant_id, "META_USER_LONG_TOKEN")
+    ad_account_id = await get_tenant_credential(tenant_id, "META_AD_ACCOUNT_ID")
+    
+    debug_info = {
+        "tenant_id": tenant_id,
+        "token_found": bool(token),
+        "token_preview": f"{token[:15]}..." if token else None,
+        "ad_account_id": ad_account_id,
+        "range_requested": range
+    }
+    
+    if token and ad_account_id:
+        try:
+            from services.meta_ads_service import MetaAdsClient
+            client = MetaAdsClient(token)
+            
+            # Probar insights básicos
+            insights = await client.get_ads_insights(ad_account_id, date_preset="last_30d")
+            debug_info["meta_api_status"] = "OK"
+            debug_info["insights_count"] = len(insights)
+            if insights:
+                debug_info["sample_ad"] = insights[0].get("ad_name")
+                debug_info["sample_spend"] = insights[0].get("spend")
+        except Exception as e:
+            debug_info["meta_api_status"] = "ERROR"
+            debug_info["error_detail"] = str(e)
+            
+    return debug_info
