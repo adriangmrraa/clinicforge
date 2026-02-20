@@ -98,24 +98,25 @@ async def meta_auth_callback(
         
     return RedirectResponse(url="/marketing?success=connected")
 
-@router.post("/deauth")
+@router.api_route("/deauth", methods=["GET", "POST"])
 async def meta_deauth_callback():
     """
     Callback cuando un usuario revoca el acceso desde Facebook.
-    Meta enviará un POST aquí.
+    Aceptamos GET y POST para evitar errores de validación de Meta.
     """
-    logger.info("Meta Ads authorization revoked by user.")
-    return {"status": "success", "message": "Authorization revocation received."}
+    logger.info("Meta Ads authorization revoked request received.")
+    return {"status": "success", "message": "Authorization revocation endpoint reachable."}
 
-@router.post("/data-deletion")
+@router.api_route("/data-deletion", methods=["GET", "POST"])
 async def meta_data_deletion_callback():
     """
     Callback para cumplimiento de borrado de datos de Meta (GDPR/Compliance).
+    Aceptamos GET y POST para satisfacer el validador de Meta.
     """
     import time
     confirmation_code = f"DEL_{int(time.time())}"
     logger.info(f"Meta Data Deletion request received. Code: {confirmation_code}")
     return {
-        "url": "https://dentalforge-frontend.gvdlcu.easypanel.host/marketing",
+        "url": "https://dentalforge-frontend.gvdlcu.easypanel.host/privacy",
         "confirmation_code": confirmation_code
     }
