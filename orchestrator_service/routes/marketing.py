@@ -274,24 +274,43 @@ async def debug_marketing_stats(
                 except Exception as e_final:
                     debug_info["final_campaign_first_solution"] = {"error": str(e_final)}
 
-            # 3. Probar Recuperación de Creativos (Anuncios)
-            try:
-                ads_raw = await client.get_ads_with_insights(test_id, date_preset=range)
-                debug_info["creatives_scan"] = {
-                    "count": len(ads_raw),
-                    "total_spend": sum(float(ad.get('insights', {}).get('data', [{}])[0].get('spend', 0)) for ad in ads_raw),
-                    "sample": [
-                        {
-                            "id": ad.get("id"),
-                            "name": ad.get("name"),
-                            "status": ad.get("effective_status"),
-                            "campaign": ad.get("campaign", {}).get("name"),
-                            "spend": ad.get('insights', {}).get('data', [{}])[0].get('spend')
-                        } for ad in ads_raw[:20]
-                    ]
-                }
-            except Exception as e_ads:
-                debug_info["creatives_scan"] = {"error": str(e_ads)}
+                # 3.1 Varianza A: Creativos con Filtro Expandido (Actual) y date_preset solicitado
+                try:
+                    ads_a = await client.get_ads_with_insights(test_id, date_preset=range)
+                    debug_info["ads_scan_cur_range_filtered"] = {"count": len(ads_a), "spend": sum(float(ad.get('insights', {}).get('data', [{}])[0].get('spend', 0)) for ad in ads_a)}
+                except Exception as e_a:
+                    debug_info["ads_scan_cur_range_filtered"] = {"error": str(e_a)}
+
+                # 3.2 Varianza B: Creativos SIN FILTRO y date_preset=maximum
+                try:
+                    ads_b = await client.get_ads_with_insights(test_id, date_preset="maximum", filtering=[])
+                    debug_info["ads_scan_max_no_filter"] = {
+                        "count": len(ads_b), 
+                        "spend": sum(float(ad.get('insights', {}).get('data', [{}])[0].get('spend', 0)) for ad in ads_b),
+                        "sample": [ad.get("name") for ad in ads_b[:5]]
+                    }
+                except Exception as e_b:
+                    debug_info["ads_scan_max_no_filter"] = {"error": str(e_b)}
+
+                # 3.3 Varianza C: Listar anuncios directamente (bypass helper)
+                try:
+                    async with httpx.AsyncClient() as h_client:
+                        url_ads = f"https://graph.facebook.com/v21.0/{test_id}/ads"
+                        params_ads = {
+                            "fields": "id,name,effective_status,campaign{id,name}",
+                            "limit": 100,
+                            "access_token": client.access_token,
+                            "filtering": json.dumps([{'field': 'effective_status', 'operator': 'IN', 'value': ['ACTIVE', 'PAUSED', 'DELETED', 'ARCHIVED', 'CAMPAIGN_PAUSED', 'ADSET_PAUSED']}])
+                        }
+                        r_ads = await h_client.get(url_ads, params=params_ads)
+                        data_ads = r_ads.json()
+                        debug_info["direct_ads_list_raw"] = {
+                            "status": r_ads.status_code,
+                            "count": len(data_ads.get("data", [])),
+                            "items": [a.get("name") for a in data_ads.get("data", [])[:10]]
+                        }
+                except Exception as e_c:
+                    debug_info["direct_ads_list_raw"] = {"error": str(e_c)}
 
             # 4. Probar ID de cuenta del .env (Legacy)
             if env_ad_account_id:
