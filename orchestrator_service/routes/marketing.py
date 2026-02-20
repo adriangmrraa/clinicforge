@@ -196,6 +196,17 @@ async def debug_marketing_stats(
                 except Exception as e_db:
                     debug_info["db_account_test"] = {"id_used": test_id, "error": str(e_db)}
 
+                # 1.1 Deep Scan (Nivel Cuenta - Ver si hay gasto global)
+                try:
+                    ins_deep = await client.get_ads_insights(test_id, date_preset="maximum", level="account")
+                    debug_info["db_account_deep_scan"] = {
+                        "success": True,
+                        "raw_data": ins_deep,
+                        "total_spend": sum(float(i.get("spend", 0)) for i in ins_deep)
+                    }
+                except Exception as e_deep:
+                    debug_info["db_account_deep_scan"] = {"error": str(e_deep)}
+
             # 2. Probar ID de cuenta del .env (Legacy)
             if env_ad_account_id:
                 test_id = env_ad_account_id if env_ad_account_id.startswith("act_") else f"act_{env_ad_account_id}"

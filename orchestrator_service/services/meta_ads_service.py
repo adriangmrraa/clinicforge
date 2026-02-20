@@ -124,10 +124,10 @@ class MetaAdsClient:
             logger.error(f"❌ Error inesperado consultando Meta Graph API: {e}")
             raise
 
-    async def get_ads_insights(self, ad_account_id: str, date_preset: str = "last_30d") -> list:
+    async def get_ads_insights(self, ad_account_id: str, date_preset: str = "last_30d", level: str = "ad") -> list:
         """
-        Obtiene métricas de rendimiento (gasto, leads, etc.) a nivel de anuncio.
-        Requerido para el cálculo de ROI en el Dashboard.
+        Obtiene métricas de rendimiento (gasto, leads, etc.) a nivel de anuncio (default)
+        o cuenta/campaña si se especifica 'level'.
         """
         if not self.access_token:
             raise MetaAuthError("META_ADS_TOKEN no configurado.")
@@ -142,7 +142,7 @@ class MetaAdsClient:
         params = {
             "fields": "ad_id,ad_name,campaign_id,campaign_name,spend,impressions,clicks,account_currency,effective_status",
             "date_preset": date_preset,
-            "level": "ad",
+            "level": level,
             "access_token": self.access_token,
         }
 
