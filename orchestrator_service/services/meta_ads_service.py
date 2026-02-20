@@ -138,13 +138,16 @@ class MetaAdsClient:
         # Asegurar prefijo 'act_' si no viene
         account_id = ad_account_id if ad_account_id.startswith("act_") else f"act_{ad_account_id}"
         
-        # Definir campos según el nivel para evitar errores de API (#100)
         if level == "account":
             fields = "spend,impressions,clicks,account_currency,account_id,account_name"
+            filtering = [] # Nivel cuenta no soporta status filtering
         elif level == "campaign":
             fields = "campaign_id,campaign_name,spend,impressions,clicks,account_currency,effective_status"
+            # Incluir campañas borradas/archivadas para cuadrar con el gasto histórico
+            filtering = [{'field': 'campaign.effective_status', 'operator': 'IN', 'value': ['ACTIVE', 'PAUSED', 'DELETED', 'ARCHIVED', 'IN_PROCESS', 'WITH_ISSUES']}]
         else:
             fields = "ad_id,ad_name,campaign_id,campaign_name,spend,impressions,clicks,account_currency,effective_status"
+            filtering = [{'field': 'ad.effective_status', 'operator': 'IN', 'value': ['ACTIVE', 'PAUSED', 'DELETED', 'ARCHIVED', 'IN_PROCESS', 'WITH_ISSUES']}]
 
         url = f"{GRAPH_API_BASE}/{account_id}/insights"
         params = {
@@ -153,6 +156,9 @@ class MetaAdsClient:
             "level": level,
             "access_token": self.access_token,
         }
+        
+        if filtering:
+            params["filtering"] = json.dumps(filtering)
 
         try:
             all_insights = []
