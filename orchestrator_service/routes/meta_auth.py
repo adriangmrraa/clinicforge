@@ -25,7 +25,7 @@ async def get_meta_auth_url(
         raise HTTPException(status_code=403, detail="Solo el CEO puede conectar Meta Ads.")
         
     app_id = os.getenv("META_APP_ID")
-    redirect_uri = os.getenv("META_REDIRECT_URI")
+    redirect_uri = os.getenv("META_REDIRECT_URI") or "https://dentalforge-orchestrator.gvdlcu.easypanel.host/api/admin/marketing/meta-auth/callback"
     
     if not app_id:
         raise HTTPException(status_code=500, detail="META_APP_ID no configurado en el servidor.")
@@ -60,7 +60,7 @@ async def meta_auth_callback(
     """
     app_id = os.getenv("META_APP_ID")
     app_secret = os.getenv("META_APP_SECRET")
-    redirect_uri = os.getenv("META_REDIRECT_URI")
+    redirect_uri = os.getenv("META_REDIRECT_URI") or "https://dentalforge-orchestrator.gvdlcu.easypanel.host/api/admin/marketing/meta-auth/callback"
     
     # Extraer tenant_id del state (formato: "tenant_X")
     tenant_id = None
