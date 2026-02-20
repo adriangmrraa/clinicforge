@@ -15,6 +15,7 @@ import ClinicsView from './views/ClinicsView';
 import ConfigView from './views/ConfigView';
 import MetaTemplatesView from './views/MetaTemplatesView';
 import MarketingHubView from './views/MarketingHubView';
+import PrivacyTermsView from './views/PrivacyTermsView';
 import { AuthProvider } from './context/AuthContext';
 import { LanguageProvider } from './context/LanguageContext';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -27,6 +28,8 @@ function App() {
           <Routes>
             <Route path="/login" element={<LoginView />} />
             <Route path="/demo" element={<LandingView />} />
+            <Route path="/privacy" element={<PrivacyTermsView />} />
+            <Route path="/terms" element={<PrivacyTermsView />} />
 
             <Route path="/*" element={
               <ProtectedRoute>
