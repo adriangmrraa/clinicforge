@@ -181,9 +181,34 @@ class MarketingService:
                     if acc_ins:
                          account_total_spend = float(acc_ins[0].get('spend', 0))
 
-                    # 1.2 Obtener campañas y anuncios con insights embebidos
+                    # 1. Recuperar Datos desde Meta (Campañas y Maestro de Anuncios)
+                    # Estrategia: Pedimos el maestro de anuncios sin insights para asegurar que NADA se filtre por gasto=0
                     meta_campaigns = await meta_client.get_campaigns_with_insights(ad_account_id, date_preset=meta_preset)
-                    meta_ads_raw = await meta_client.get_ads_with_insights(ad_account_id, date_preset=meta_preset)
+                    
+                    # Maestro de anuncios (Lista completa de 16+ anuncios)
+                    meta_ads_master = await meta_client.get_ads_with_insights(ad_account_id, include_insights=False)
+                    
+                    # Datos de rendimiento (Solo anuncios con gasto en el periodo)
+                    meta_ads_with_spend = await meta_client.get_ads_with_insights(ad_account_id, date_preset=meta_preset, include_insights=True)
+                    
+                    # Mapear gasto por ID de anuncio
+                    spend_map = {}
+                    for ad in meta_ads_with_spend:
+                        insights_data = ad.get('insights', {}).get('data', [])
+                        if insights_data:
+                            spend_map[ad.get('id')] = insights_data[0]
+                    
+                    # Re-construir meta_ads_raw inyectando gasto al maestro
+                    meta_ads_raw = []
+                    for ad in meta_ads_master:
+                        ad_id = ad.get('id')
+                        # Si tiene gasto, se lo inyectamos
+                        if ad_id in spend_map:
+                            ad['insights'] = {'data': [spend_map[ad_id]]}
+                        else:
+                            ad['insights'] = {'data': []}
+                        meta_ads_raw.append(ad)
+
                 except Exception as e:
                     logger.warning(f"⚠️ No se pudo obtener ads de Meta: {e}")
 

@@ -125,7 +125,7 @@ class MetaAdsClient:
             logger.error(f"❌ Error inesperado consultando Meta Graph API: {e}")
             raise
 
-    async def get_ads_insights(self, ad_account_id: str, date_preset: str = "last_30d", level: str = "ad", filtering: list = None) -> list:
+    async def get_ads_insights(self, ad_account_id: str, date_preset: str = "maximum", level: str = "ad", filtering: Optional[list] = None) -> list:
         """
         Obtiene métricas de rendimiento (gasto, leads, etc.) a nivel de anuncio (default)
         o cuenta/campaña si se especifica 'level'.
@@ -309,9 +309,9 @@ class MetaAdsClient:
             logger.error(f"❌ Error en Campaign-First retrieval para {account_id}: {e}")
             return []
 
-    async def get_ads_with_insights(self, ad_account_id: str, date_preset: str = "maximum", filtering: list = None) -> list:
+    async def get_ads_with_insights(self, ad_account_id: str, date_preset: str = "maximum", filtering: Optional[list] = None, include_insights: bool = True) -> list:
         """
-        Versión a nivel de Anuncio (Creativo): Lista anuncios y expande 'insights'.
+        Versión a nivel de Anuncio (Creativo): Lista anuncios y opcionalmente expande 'insights'.
         Incluye el nombre de la campaña padre para facilitar el desglose en UI.
         """
         if not self.access_token:
@@ -327,16 +327,19 @@ class MetaAdsClient:
 
         url = f"{GRAPH_API_BASE}/{account_id}/ads"
         
-        expand_insights = f"insights.date_preset({date_preset}){{spend,impressions,clicks,account_currency,account_id}}"
+        fields = "id,name,effective_status,campaign{id,name}"
+        if include_insights:
+            expand_insights = f"insights.date_preset({date_preset}){{spend,impressions,clicks,account_currency,account_id}}"
+            fields += f",{expand_insights}"
         
         params = {
-            "fields": f"id,name,effective_status,campaign{{id,name}},{expand_insights}",
+            "fields": fields,
             "filtering": json.dumps(filtering),
             "access_token": self.access_token,
             "limit": 100
         }
 
-        logger.info(f"🎨 Ads-Insights Request: {url} | Preset={date_preset}")
+        logger.info(f"🎨 Ads Fetch: {url} | Insights={include_insights} | Preset={date_preset}")
 
         try:
             all_ads = []
