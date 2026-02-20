@@ -12,6 +12,10 @@ class MarketingService:
         """
         Calcula el ROI real cruzando datos de atribución con transacciones contables.
         """
+        from core.credentials import get_tenant_credential
+        token = await get_tenant_credential(tenant_id, "META_USER_LONG_TOKEN")
+        is_connected = bool(token)
+        
         try:
             # 1. Obtener leads atribuidos a Meta Ads
             meta_leads = await db.pool.fetchval("""
@@ -20,7 +24,6 @@ class MarketingService:
             """, tenant_id) or 0
 
             # 2. Obtener pacientes convertidos (que tienen al menos un turno confirmado/completado)
-            # o que tienen transacciones contables.
             converted_patients = await db.pool.fetchval("""
                 SELECT COUNT(DISTINCT p.id) 
                 FROM patients p
@@ -38,18 +41,14 @@ class MarketingService:
                 AND t.status = 'completed'
             """, tenant_id) or 0
 
-            # 4. Inversión (Spend) - Mockeado por ahora o recuperado de Meta API si estuviera sync
-            # En una fase real, esto vendría de una tabla 'meta_campaign_stats'
-            # 5. Obtener Inversión Real desde Meta
-            from core.credentials import get_tenant_credential
+            # 4. Inversión (Spend) - Sincronizada con Meta si hay conexión
             from services.meta_ads_service import MetaAdsClient
-            token = await get_tenant_credential(tenant_id, "META_USER_LONG_TOKEN")
             ad_account_id = await get_tenant_credential(tenant_id, "META_AD_ACCOUNT_ID")
             
             total_spend = 0.0
             currency = "ARS"
             
-            if token and ad_account_id:
+            if is_connected and ad_account_id:
                 try:
                     meta_client = MetaAdsClient(token)
                     insights = await meta_client.get_ads_insights(ad_account_id)
@@ -58,9 +57,7 @@ class MarketingService:
                         currency = insights[0].get('account_currency', 'ARS')
                 except Exception as e:
                     logger.warning(f"⚠️ No se pudo sincronizar spend real de Meta: {e}")
-                    total_spend = 1500.0 # Fallback demo
-            else:
-                total_spend = 1500.0 # Fallback demo
+                    total_spend = 0.0
             
             cpa = total_spend / meta_leads if meta_leads > 0 else 0
 
@@ -70,18 +67,20 @@ class MarketingService:
                 "leads": meta_leads,
                 "patients_converted": converted_patients,
                 "cpa": cpa,
-                "is_connected": bool(token),
+                "is_connected": is_connected,
                 "ad_account_id": ad_account_id,
                 "currency": currency
             }
         except Exception as e:
-            logger.error(f"Error calculating ROI stats: {e}")
+            logger.error(f"❌ Error calculating ROI stats for tenant {tenant_id}: {e}")
             return {
                 "total_spend": 0,
                 "total_revenue": 0,
                 "leads": 0,
                 "patients_converted": 0,
-                "cpa": 0
+                "cpa": 0,
+                "is_connected": is_connected,
+                "error": str(e)
             }
 
     @staticmethod
