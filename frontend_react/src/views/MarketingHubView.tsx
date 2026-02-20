@@ -15,6 +15,7 @@ export default function MarketingHubView() {
     const [isMetaConnected, setIsMetaConnected] = useState(false);
     const [isWizardOpen, setIsWizardOpen] = useState(false);
     const [timeRange, setTimeRange] = useState('all');
+    const [activeTab, setActiveTab] = useState<'campaigns' | 'ads'>('campaigns');
 
     useEffect(() => {
         loadStats();
@@ -143,11 +144,30 @@ export default function MarketingHubView() {
                 </div>
             </div>
 
-            {/* Campaign Table */}
+            {/* Campaign/Ad Table with Tabs */}
             <div className="bg-white border border-gray-200 rounded-3xl shadow-sm overflow-hidden mb-12">
-                <div className="p-6 border-b border-gray-100 flex justify-between items-center">
-                    <h3 className="font-bold text-gray-900">{t('marketing.active_campaigns')}</h3>
-                    <div className="flex gap-2">
+                <div className="p-6 border-b border-gray-100 flex flex-col sm:flex-row justify-between items-center gap-4">
+                    <div className="flex bg-gray-100 p-1 rounded-xl">
+                        <button
+                            onClick={() => setActiveTab('campaigns')}
+                            className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'campaigns'
+                                ? 'bg-white text-gray-900 shadow-sm'
+                                : 'text-gray-500 hover:text-gray-700'
+                                }`}
+                        >
+                            {t('marketing.tabs.campaigns')}
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('ads')}
+                            className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'ads'
+                                ? 'bg-white text-gray-900 shadow-sm'
+                                : 'text-gray-500 hover:text-gray-700'
+                                }`}
+                        >
+                            {t('marketing.tabs.creatives')}
+                        </button>
+                    </div>
+                    <div className="flex items-center gap-2">
                         <span className="text-sm text-gray-500 mr-2 capitalize">{t('marketing.period_label')}: {timeRange.replace('_', ' ')}</span>
                     </div>
                 </div>
@@ -156,7 +176,9 @@ export default function MarketingHubView() {
                     <table className="w-full text-left border-separate border-spacing-0">
                         <thead className="bg-gray-50 text-gray-500 text-xs uppercase tracking-wider sticky top-0 z-10 shadow-sm">
                             <tr>
-                                <th className="px-6 py-4 font-semibold border-b border-gray-100">{t('marketing.table_campaign_ad')}</th>
+                                <th className="px-6 py-4 font-semibold border-b border-gray-100">
+                                    {activeTab === 'campaigns' ? t('marketing.table_campaign_ad') : t('marketing.table_ad')}
+                                </th>
                                 <th className="px-6 py-4 font-semibold border-b border-gray-100">{t('marketing.table_spend')}</th>
                                 <th className="px-6 py-4 font-semibold border-b border-gray-100">{t('marketing.table_leads')}</th>
                                 <th className="px-6 py-4 font-semibold border-b border-gray-100">{t('marketing.table_appts')}</th>
@@ -165,14 +187,14 @@ export default function MarketingHubView() {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
-                            {stats?.campaigns?.map((c: any) => (
+                            {(activeTab === 'campaigns' ? stats?.campaigns : stats?.creatives)?.map((c: any) => (
                                 <tr key={c.ad_id} className="hover:bg-blue-50/30 transition-colors group">
                                     <td className="px-6 py-4">
                                         <div className="font-bold text-gray-900 group-hover:text-blue-700 transition-colors">{c.ad_name}</div>
                                         <div className="text-xs text-gray-400 font-medium">{c.campaign_name}</div>
                                     </td>
                                     <td className="px-6 py-4 font-bold text-gray-700">
-                                        {stats.currency === 'ARS' ? 'ARS' : '$'} {c.spend.toLocaleString()}
+                                        {stats.currency === 'ARS' ? 'ARS' : '$'} {Number(c.spend || 0).toLocaleString()}
                                     </td>
                                     <td className="px-6 py-4 font-medium text-gray-600">{c.leads}</td>
                                     <td className="px-6 py-4">
@@ -188,18 +210,18 @@ export default function MarketingHubView() {
                                         </span>
                                     </td>
                                     <td className="px-6 py-4">
-                                        <span className={`flex items-center gap-1.5 text-sm font-bold ${c.status === 'active' ? 'text-green-600' : c.status === 'paused' ? 'text-amber-600' : 'text-gray-400'}`}>
-                                            <div className={`w-2 h-2 rounded-full ${c.status === 'active' ? 'bg-green-500 animate-pulse' : c.status === 'paused' ? 'bg-amber-500' : 'bg-gray-300'}`}></div>
+                                        <span className={`flex items-center gap-1.5 text-sm font-bold ${c.status === 'active' ? 'text-green-600' : (c.status === 'paused' || c.status === 'archived') ? 'text-amber-600' : 'text-gray-400'}`}>
+                                            <div className={`w-2 h-2 rounded-full ${c.status === 'active' ? 'bg-green-500 animate-pulse' : (c.status === 'paused' || c.status === 'archived') ? 'bg-amber-500' : 'bg-gray-300'}`}></div>
                                             <span className="capitalize">{c.status || 'Unknown'}</span>
                                         </span>
                                     </td>
                                 </tr>
                             ))}
-                            {!stats?.campaigns?.length && (
+                            {!(activeTab === 'campaigns' ? stats?.campaigns : stats?.creatives)?.length && (
                                 <tr>
                                     <td colSpan={6} className="px-6 py-20 text-center text-gray-400 italic">
                                         <Megaphone className="w-10 h-10 mx-auto mb-4 opacity-20" />
-                                        {t('marketing.no_campaigns')}
+                                        {t('marketing.no_data')}
                                     </td>
                                 </tr>
                             )}

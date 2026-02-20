@@ -300,3 +300,48 @@ class MetaAdsClient:
         except Exception as e:
             logger.error(f"❌ Error en Campaign-First retrieval para {account_id}: {e}")
             return []
+
+    async def get_ads_with_insights(self, ad_account_id: str, date_preset: str = "maximum", filtering: list = None) -> list:
+        """
+        Versión a nivel de Anuncio (Creativo): Lista anuncios y expande 'insights'.
+        Incluye el nombre de la campaña padre para facilitar el desglose en UI.
+        """
+        if not self.access_token:
+            raise MetaAuthError("META_ADS_TOKEN no configurado.")
+        
+        account_id = ad_account_id if ad_account_id.startswith("act_") else f"act_{ad_account_id}"
+        
+        if filtering is None:
+            filtering = [{'field': 'effective_status', 'operator': 'IN', 'value': ['ACTIVE', 'PAUSED', 'DELETED', 'ARCHIVED']}]
+
+        url = f"{GRAPH_API_BASE}/{account_id}/ads"
+        
+        expand_insights = f"insights.date_preset({date_preset}){{spend,impressions,clicks,account_currency,account_id}}"
+        
+        params = {
+            "fields": f"id,name,effective_status,campaign{{id,name}},{expand_insights}",
+            "filtering": json.dumps(filtering),
+            "access_token": self.access_token,
+            "limit": 100
+        }
+
+        logger.info(f"🎨 Ads-Insights Request: {url} | Preset={date_preset}")
+
+        try:
+            all_ads = []
+            async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT * 2) as client:
+                current_url = url
+                while current_url:
+                    response = await client.get(current_url, params=params if current_url == url else None)
+                    response.raise_for_status()
+                    
+                    data = response.json()
+                    all_ads.extend(data.get("data", []))
+                    
+                    paging = data.get("paging", {})
+                    current_url = paging.get("next")
+            
+            return all_ads
+        except Exception as e:
+            logger.error(f"❌ Error en Ads retrieval para {account_id}: {e}")
+            return []
