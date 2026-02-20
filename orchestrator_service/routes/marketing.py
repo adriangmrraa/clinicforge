@@ -49,7 +49,7 @@ async def get_clinics(
         raise HTTPException(status_code=403, detail="Solo el CEO puede gestionar clínicas.")
     
     # Por ahora listamos todos los tenants (multi-tenant simple)
-    clinics = await db.pool.fetch("SELECT id, name FROM tenants ORDER BY id")
+    clinics = await db.pool.fetch("SELECT id, clinic_name as name FROM tenants ORDER BY id")
     
     results = []
     for c in clinics:
