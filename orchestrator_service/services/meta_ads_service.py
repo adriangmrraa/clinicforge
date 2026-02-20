@@ -152,7 +152,16 @@ class MetaAdsClient:
                 current_url = url
                 while current_url:
                     response = await client.get(current_url, params=params if current_url == url else None)
-                    response.raise_for_status()
+                    
+                    if response.status_code != 200:
+                        error_data = response.json() if response.headers.get("content-type", "").startswith("application/json") else {"error": {"message": response.text}}
+                        error_msg = error_data.get("error", {}).get("message", "Unknown error")
+                        error_code = error_data.get("error", {}).get("code", "N/A")
+                        error_subcode = error_data.get("error", {}).get("error_subcode", "N/A")
+                        
+                        logger.error(f"❌ Meta API Error fetching insights for {account_id}: Code={error_code}, Subcode={error_subcode}, Msg='{error_msg}'")
+                        return []
+
                     data = response.json()
                     all_insights.extend(data.get("data", []))
                     
