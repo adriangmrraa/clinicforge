@@ -85,11 +85,10 @@ class AutomationService:
 
         appointments = await db.pool.fetch("""
             SELECT a.id, a.patient_id, a.appointment_datetime, p.phone_number, p.first_name, 
-                   t.name as treatment_name, pr.first_name as prof_name
+                   a.appointment_type as treatment_name, pr.first_name as prof_name
             FROM appointments a
             JOIN patients p ON a.patient_id = p.id
             JOIN professionals pr ON a.professional_id = pr.id
-            LEFT JOIN treatment_types t ON a.treatment_type_id = t.id
             LEFT JOIN automation_logs l ON l.target_id = a.id::text AND l.trigger_type = 'appointment_reminder'
             WHERE a.tenant_id = $1 
               AND a.status = 'scheduled'

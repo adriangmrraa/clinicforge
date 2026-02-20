@@ -65,10 +65,20 @@ async def meta_auth_callback(
     # Extraer tenant_id del state (formato: "tenant_X")
     tenant_id = None
     if state and state.startswith("tenant_"):
-        try:
-            tenant_id = int(state.replace("tenant_", ""))
-        except:
-            pass
+        val = state.replace("tenant_", "")
+        if val == "default":
+            # Fallback al primer tenant
+            tenant_id = await db.db.pool.fetchval("SELECT id FROM tenants ORDER BY id ASC LIMIT 1") or 1
+        else:
+            try:
+                tenant_id = int(val)
+            except:
+                # Fallback por si acaso
+                tenant_id = await db.db.pool.fetchval("SELECT id FROM tenants ORDER BY id ASC LIMIT 1") or 1
+    
+    # Si aún no hay tenant_id, usar el fallback global
+    if not tenant_id:
+        tenant_id = await db.db.pool.fetchval("SELECT id FROM tenants ORDER BY id ASC LIMIT 1") or 1
 
     async with httpx.AsyncClient() as client:
         # 1. Obtener Short-Lived User Token (Intercambio de Code)
