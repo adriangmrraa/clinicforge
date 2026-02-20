@@ -144,7 +144,7 @@ export default function MarketingHubView() {
             </div>
 
             {/* Campaign Table */}
-            <div className="bg-white border border-gray-200 rounded-3xl shadow-sm overflow-hidden">
+            <div className="bg-white border border-gray-200 rounded-3xl shadow-sm overflow-hidden mb-12">
                 <div className="p-6 border-b border-gray-100 flex justify-between items-center">
                     <h3 className="font-bold text-gray-900">Active Campaigns</h3>
                     <div className="flex gap-2">
@@ -152,7 +152,7 @@ export default function MarketingHubView() {
                     </div>
                 </div>
 
-                <div className="overflow-x-auto max-h-[500px] overflow-y-auto scrollbar-thin scrollbar-thumb-gray-200">
+                <div className="overflow-x-auto max-h-[800px] overflow-y-auto scrollbar-thin scrollbar-thumb-gray-200">
                     <table className="w-full text-left border-separate border-spacing-0">
                         <thead className="bg-gray-50 text-gray-500 text-xs uppercase tracking-wider sticky top-0 z-10 shadow-sm">
                             <tr>
@@ -207,6 +207,8 @@ export default function MarketingHubView() {
                     </table>
                 </div>
             </div>
+
+            <div className="h-20" /> {/* Spacer for extra breathing room at the bottom */}
 
             <MetaConnectionWizard
                 isOpen={isWizardOpen}
