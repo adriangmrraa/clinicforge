@@ -48,44 +48,44 @@ export default function MarketingPerformanceCard({ stats: externalStats, loading
             <div className="relative z-10">
                 <div className="flex justify-between items-start mb-8">
                     <div>
-                        <h3 className="text-gray-500 font-medium text-sm mb-1 uppercase tracking-wider">ROI Real de Marketing</h3>
-                        <p className="text-4xl font-black text-gray-900 leading-tight">
+                        <h3 className="text-gray-500 font-medium text-xs sm:text-sm mb-1 uppercase tracking-wider">ROI Real de Marketing</h3>
+                        <p className="text-3xl sm:text-4xl font-black text-gray-900 leading-tight">
                             {roi >= 0 ? '+' : ''}{roi.toFixed(1)}%
                         </p>
                     </div>
-                    <div className={`p-3 rounded-2xl ${roi >= 0 ? 'bg-green-100 text-green-600' : 'bg-rose-100 text-rose-600'}`}>
-                        {roi >= 0 ? <TrendingUp size={24} /> : <TrendingDown size={24} />}
+                    <div className={`p-2 sm:p-3 rounded-2xl ${roi >= 0 ? 'bg-green-100 text-green-600' : 'bg-rose-100 text-rose-600'}`}>
+                        {roi >= 0 ? <TrendingUp size={20} className="sm:w-6 sm:h-6" /> : <TrendingDown size={20} className="sm:w-6 sm:h-6" />}
                     </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-8 mb-8">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-8 mb-8">
                     <div className="space-y-1">
-                        <div className="flex items-center gap-1.5 text-gray-500 text-xs font-bold uppercase tracking-widest">
+                        <div className="flex items-center gap-1.5 text-gray-500 text-[10px] sm:text-xs font-bold uppercase tracking-widest">
                             <DollarSign size={14} className="text-indigo-500" /> Inversión
                         </div>
-                        <p className="text-2xl font-bold text-gray-800">{stats?.currency === 'USD' ? '$' : stats?.currency || ''}{investment.toLocaleString()}</p>
+                        <p className="text-xl sm:text-2xl font-bold text-gray-800 break-words">{stats?.currency === 'USD' ? '$' : stats?.currency || ''}{investment.toLocaleString()}</p>
                     </div>
                     <div className="space-y-1">
-                        <div className="flex items-center gap-1.5 text-gray-500 text-xs font-bold uppercase tracking-widest">
+                        <div className="flex items-center gap-1.5 text-gray-500 text-[10px] sm:text-xs font-bold uppercase tracking-widest">
                             <Target size={14} className="text-emerald-500" /> Retorno (Ingresos)
                         </div>
-                        <p className="text-2xl font-bold text-gray-800">{stats?.currency === 'USD' ? '$' : stats?.currency || ''}{revenue.toLocaleString()}</p>
+                        <p className="text-xl sm:text-2xl font-bold text-gray-800 break-words">{stats?.currency === 'USD' ? '$' : stats?.currency || ''}{revenue.toLocaleString()}</p>
                     </div>
                 </div>
             </div>
 
-            <div className="relative z-10 grid grid-cols-3 gap-4 pt-6 border-t border-gray-100">
+            <div className="relative z-10 grid grid-cols-3 gap-2 sm:gap-4 pt-6 border-t border-gray-100">
                 <div className="text-center">
                     <p className="text-gray-400 text-[10px] font-bold uppercase mb-1">CPA</p>
-                    <p className="text-sm font-bold text-gray-700">{stats?.currency === 'USD' ? '$' : stats?.currency || ''}{stats?.cpa?.toFixed(2) || '0.00'}</p>
+                    <p className="text-xs sm:text-sm font-bold text-gray-700">{stats?.currency === 'USD' ? '$' : stats?.currency || ''}{stats?.cpa?.toFixed(2) || '0.00'}</p>
                 </div>
                 <div className="text-center">
                     <p className="text-gray-400 text-[10px] font-bold uppercase mb-1">Leads</p>
-                    <p className="text-sm font-bold text-gray-700">{stats?.leads || 0}</p>
+                    <p className="text-xs sm:text-sm font-bold text-gray-700">{stats?.leads || 0}</p>
                 </div>
                 <div className="text-center">
                     <p className="text-gray-400 text-[10px] font-bold uppercase mb-1">Pacientes</p>
-                    <p className="text-sm font-bold text-gray-700">{stats?.patients_converted || 0}</p>
+                    <p className="text-xs sm:text-sm font-bold text-gray-700">{stats?.patients_converted || 0}</p>
                 </div>
             </div>
         </div>

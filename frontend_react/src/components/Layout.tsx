@@ -106,7 +106,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
 
       {/* Main Content */}
       <main
-        className={`flex-1 flex flex-col transition-all duration-300 w-full min-w-0 min-h-screen`}
+        className={`flex-1 flex flex-col transition-all duration-300 w-full min-w-0 h-screen overflow-hidden`}
       >
         <MetaTokenBanner />
         {/* Top Header */}
@@ -149,7 +149,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
         </header>
 
         {/* Page Content */}
-        <div className="flex-1 min-h-0 bg-transparent">
+        <div className="flex-1 min-h-0 bg-transparent overflow-y-auto scroll-smooth">
           {children}
         </div>
       </main>
