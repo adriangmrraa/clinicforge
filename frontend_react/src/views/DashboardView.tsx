@@ -43,8 +43,8 @@ interface UrgencyRecord {
 const KPICard = ({ title, value, icon: Icon, color, trend }: any) => (
   <div className="bg-white/80 backdrop-blur-md border border-white/20 rounded-2xl p-6 shadow-sm hover:shadow-md transition-all duration-300 group">
     <div className="flex justify-between items-start mb-4">
-      <div className={`p - 3 rounded - xl ${color} bg - opacity - 10 group - hover: scale - 110 transition - transform`}>
-        <Icon className={`w - 6 h - 6 ${color.replace('bg-', 'text-')} `} />
+      <div className={`p-3 rounded-xl ${color} bg-opacity-10 group-hover:scale-110 transition-transform`}>
+        <Icon className={`w-6 h-6 ${color.replace('bg-', 'text-')}`} />
       </div>
       {trend && (
         <span className="flex items-center gap-1 text-xs font-medium text-green-600 bg-green-50 px-2 py-1 rounded-full">
@@ -64,7 +64,7 @@ const UrgencyBadge = ({ level }: { level: UrgencyRecord['urgency_level'] }) => {
     NORMAL: 'bg-green-100 text-green-700 border-green-200'
   };
   return (
-    <span className={`px - 2 py - 1 rounded - full text - [10px] font - bold border ${styles[level]} `}>
+    <span className={`px-2 py-1 rounded-full text-[10px] font-bold border ${styles[level]}`}>
       {level}
     </span>
   );
@@ -101,7 +101,7 @@ export default function DashboardView() {
       try {
         setLoading(true);
         const [statsRes, urgenciesRes] = await Promise.all([
-          api.get(`/ admin / stats / summary ? range = ${range} `),
+          api.get(`/admin/stats/summary?range=${range}`),
           api.get('/admin/chat/urgencies')
         ]);
 
@@ -141,7 +141,7 @@ export default function DashboardView() {
             <div className="flex gap-2">
               <button
                 onClick={() => setTimeRange('weekly')}
-                className={`px - 3 sm: px - 4 py - 2 rounded - xl shadow - sm border text - xs sm: text - sm font - medium transition - colors ${timeRange === 'weekly'
+                className={`px-3 sm:px-4 py-2 rounded-xl shadow-sm border text-xs sm:text-sm font-medium transition-colors ${timeRange === 'weekly'
                   ? 'bg-slate-800 text-white border-slate-800'
                   : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
                   } `}
@@ -150,7 +150,7 @@ export default function DashboardView() {
               </button>
               <button
                 onClick={() => setTimeRange('monthly')}
-                className={`px - 3 sm: px - 4 py - 2 rounded - xl shadow - sm border text - xs sm: text - sm font - medium transition - colors ${timeRange === 'monthly'
+                className={`px-3 sm:px-4 py-2 rounded-xl shadow-sm border text-xs sm:text-sm font-medium transition-colors ${timeRange === 'monthly'
                   ? 'bg-slate-800 text-white border-slate-800'
                   : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
                   } `}
@@ -159,7 +159,7 @@ export default function DashboardView() {
               </button>
               <button
                 onClick={() => setTimeRange('yearly')}
-                className={`px - 3 sm: px - 4 py - 2 rounded - xl shadow - sm border text - xs sm: text - sm font - medium transition - colors ${timeRange === 'yearly'
+                className={`px-3 sm:px-4 py-2 rounded-xl shadow-sm border text-xs sm:text-sm font-medium transition-colors ${timeRange === 'yearly'
                   ? 'bg-slate-800 text-white border-slate-800'
                   : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
                   } `}
@@ -168,7 +168,7 @@ export default function DashboardView() {
               </button>
               <button
                 onClick={() => setTimeRange('all')}
-                className={`px - 3 sm: px - 4 py - 2 rounded - xl shadow - sm border text - xs sm: text - sm font - medium transition - colors ${timeRange === 'all'
+                className={`px-3 sm:px-4 py-2 rounded-xl shadow-sm border text-xs sm:text-sm font-medium transition-colors ${timeRange === 'all'
                   ? 'bg-slate-800 text-white border-slate-800'
                   : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
                   } `}
@@ -207,14 +207,14 @@ export default function DashboardView() {
           />
           <KPICard
             title={t('dashboard.revenue_confirmed')}
-            value={`$${(stats as any)?.total_revenue?.toLocaleString() || 0} `}
+            value={`$${(stats as any)?.total_revenue?.toLocaleString() || 0}`}
             icon={DollarSign}
             color="bg-emerald-500"
             trend={(stats as any)?.total_revenue_trend}
           />
           <KPICard
             title={t('dashboard.revenue_estimated')}
-            value={`$${(stats as any)?.estimated_revenue?.toLocaleString() || 0} `}
+            value={`$${(stats as any)?.estimated_revenue?.toLocaleString() || 0}`}
             icon={TrendingUp}
             color="bg-amber-500"
             trend="+15%"
