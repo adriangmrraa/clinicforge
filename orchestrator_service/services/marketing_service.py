@@ -260,7 +260,7 @@ class MarketingService:
                         "leads": local.get('leads', 0),
                         "appointments": local.get('appointments', 0),
                         "roi": roi,
-                        "status": ad.get('effective_status', 'active').lower()
+                        "status": ad.get('effective_status', 'active').replace('_', ' ').lower()
                     })
 
             # 5. Reconciliación (Gasto Histórico/Otros)

@@ -78,18 +78,18 @@ export default function MarketingPerformanceCard({ stats: externalStats, loading
                 </div>
             </div>
 
-            <div className="relative z-10 grid grid-cols-3 gap-2 sm:gap-4 pt-6 border-t border-gray-100">
+            <div className="relative z-10 grid grid-cols-3 gap-1 sm:gap-4 pt-6 border-t border-gray-100">
                 <div className="text-center">
-                    <p className="text-gray-400 text-[10px] font-bold uppercase mb-1">CPA</p>
-                    <p className="text-xs sm:text-sm font-bold text-gray-700">{stats?.currency === 'USD' ? '$' : stats?.currency || ''}{stats?.cpa?.toFixed(2) || '0.00'}</p>
+                    <p className="text-gray-400 text-[9px] sm:text-[10px] font-bold uppercase mb-1">CPA</p>
+                    <p className="text-[10px] sm:text-sm font-bold text-gray-700">{stats?.currency === 'USD' ? '$' : stats?.currency || ''}{stats?.cpa > 999 ? Math.round(stats.cpa).toLocaleString() : stats?.cpa?.toFixed(2) || '0.00'}</p>
+                </div>
+                <div className="text-center border-x border-gray-50 px-1">
+                    <p className="text-gray-400 text-[9px] sm:text-[10px] font-bold uppercase mb-1">Leads</p>
+                    <p className="text-[10px] sm:text-sm font-bold text-gray-700">{stats?.leads || 0}</p>
                 </div>
                 <div className="text-center">
-                    <p className="text-gray-400 text-[10px] font-bold uppercase mb-1">Leads</p>
-                    <p className="text-xs sm:text-sm font-bold text-gray-700">{stats?.leads || 0}</p>
-                </div>
-                <div className="text-center">
-                    <p className="text-gray-400 text-[10px] font-bold uppercase mb-1">{t('marketing.patients')}</p>
-                    <p className="text-xs sm:text-sm font-bold text-gray-700">{stats?.patients_converted || 0}</p>
+                    <p className="text-gray-400 text-[9px] sm:text-[10px] font-bold uppercase mb-1 truncate px-1">{t('marketing.patients')}</p>
+                    <p className="text-[10px] sm:text-sm font-bold text-gray-700">{stats?.patients_converted || 0}</p>
                 </div>
             </div>
         </div>

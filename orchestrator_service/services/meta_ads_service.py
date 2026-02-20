@@ -144,13 +144,19 @@ class MetaAdsClient:
             # Nivel cuenta no soporta status filtering
         elif level == "campaign":
             fields = "campaign_id,campaign_name,spend,impressions,clicks,account_currency,effective_status"
-            # Incluir campañas borradas/archivadas para cuadrar con el gasto histórico
+            # Incluir campañas borradas/archivadas/pausadas
             if filtering is None:
-                 filtering = [{'field': 'campaign.effective_status', 'operator': 'IN', 'value': ['ACTIVE', 'PAUSED', 'DELETED', 'ARCHIVED', 'IN_PROCESS', 'WITH_ISSUES']}]
+                 filtering = [{'field': 'campaign.effective_status', 'operator': 'IN', 'value': [
+                     'ACTIVE', 'PAUSED', 'DELETED', 'ARCHIVED', 'IN_PROCESS', 'WITH_ISSUES', 
+                     'CAMPAIGN_PAUSED', 'ADSET_PAUSED'
+                 ]}]
         else:
             fields = "ad_id,ad_name,campaign_id,campaign_name,spend,impressions,clicks,account_currency,effective_status"
             if filtering is None:
-                filtering = [{'field': 'ad.effective_status', 'operator': 'IN', 'value': ['ACTIVE', 'PAUSED', 'DELETED', 'ARCHIVED', 'IN_PROCESS', 'WITH_ISSUES']}]
+                filtering = [{'field': 'ad.effective_status', 'operator': 'IN', 'value': [
+                    'ACTIVE', 'PAUSED', 'DELETED', 'ARCHIVED', 'IN_PROCESS', 'WITH_ISSUES', 
+                    'CAMPAIGN_PAUSED', 'ADSET_PAUSED'
+                ]}]
 
         url = f"{GRAPH_API_BASE}/{account_id}/insights"
         params = {
@@ -263,9 +269,11 @@ class MetaAdsClient:
         
         account_id = ad_account_id if ad_account_id.startswith("act_") else f"act_{ad_account_id}"
         
-        # Filtrado por defecto para incluir TODO
         if filtering is None:
-            filtering = [{'field': 'effective_status', 'operator': 'IN', 'value': ['ACTIVE', 'PAUSED', 'DELETED', 'ARCHIVED']}]
+            filtering = [{'field': 'effective_status', 'operator': 'IN', 'value': [
+                'ACTIVE', 'PAUSED', 'DELETED', 'ARCHIVED', 'IN_PROCESS', 'WITH_ISSUES', 
+                'CAMPAIGN_PAUSED', 'ADSET_PAUSED'
+            ]}]
 
         url = f"{GRAPH_API_BASE}/{account_id}/campaigns"
         
@@ -312,7 +320,10 @@ class MetaAdsClient:
         account_id = ad_account_id if ad_account_id.startswith("act_") else f"act_{ad_account_id}"
         
         if filtering is None:
-            filtering = [{'field': 'effective_status', 'operator': 'IN', 'value': ['ACTIVE', 'PAUSED', 'DELETED', 'ARCHIVED']}]
+            filtering = [{'field': 'effective_status', 'operator': 'IN', 'value': [
+                'ACTIVE', 'PAUSED', 'DELETED', 'ARCHIVED', 'IN_PROCESS', 'WITH_ISSUES', 
+                'CAMPAIGN_PAUSED', 'ADSET_PAUSED'
+            ]}]
 
         url = f"{GRAPH_API_BASE}/{account_id}/ads"
         

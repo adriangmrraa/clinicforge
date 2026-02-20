@@ -274,7 +274,26 @@ async def debug_marketing_stats(
                 except Exception as e_final:
                     debug_info["final_campaign_first_solution"] = {"error": str(e_final)}
 
-            # 2. Probar ID de cuenta del .env (Legacy)
+            # 3. Probar Recuperación de Creativos (Anuncios)
+            try:
+                ads_raw = await client.get_ads_with_insights(test_id, date_preset=range)
+                debug_info["creatives_scan"] = {
+                    "count": len(ads_raw),
+                    "total_spend": sum(float(ad.get('insights', {}).get('data', [{}])[0].get('spend', 0)) for ad in ads_raw),
+                    "sample": [
+                        {
+                            "id": ad.get("id"),
+                            "name": ad.get("name"),
+                            "status": ad.get("effective_status"),
+                            "campaign": ad.get("campaign", {}).get("name"),
+                            "spend": ad.get('insights', {}).get('data', [{}])[0].get('spend')
+                        } for ad in ads_raw[:20]
+                    ]
+                }
+            except Exception as e_ads:
+                debug_info["creatives_scan"] = {"error": str(e_ads)}
+
+            # 4. Probar ID de cuenta del .env (Legacy)
             if env_ad_account_id:
                 test_id = env_ad_account_id if env_ad_account_id.startswith("act_") else f"act_{env_ad_account_id}"
                 try:
@@ -287,7 +306,7 @@ async def debug_marketing_stats(
                     }
                 except Exception as e_env:
                     debug_info["env_account_test"] = {"id_used": test_id, "error": str(e_env)}
-            # 2. Listar TODAS las cuentas y su inversión total
+            # 5. Listar TODAS las cuentas y su inversión total
             try:
                 accounts = await client.get_ad_accounts()
                 acc_list = []
@@ -296,7 +315,6 @@ async def debug_marketing_stats(
                     spend = 0
                     err_msg = None
                     try:
-                        # Usar level="account" para detectar gasto incluso si no hay anuncios activos
                         ins = await client.get_ads_insights(aid, date_preset="maximum", level="account")
                         spend = sum(float(i.get("spend", 0)) for i in ins)
                     except Exception as e:
@@ -316,6 +334,18 @@ async def debug_marketing_stats(
 
             db_ad_account_id = await get_tenant_credential(tenant_id, "META_AD_ACCOUNT_ID")
             debug_info["db_configured_ad_account_id"] = db_ad_account_id
+
+        # Comparativa con el servicio real
+        try:
+            real_service_stats = await MarketingService.get_campaign_stats(tenant_id, time_range=range)
+            debug_info["real_service_summary"] = {
+                "campaigns_count": len(real_service_stats.get("campaigns", [])),
+                "creatives_count": len(real_service_stats.get("creatives", [])),
+                "account_total_spend": real_service_stats.get("account_total_spend")
+            }
+        except Exception as e_service:
+            debug_info["real_service_error"] = str(e_service)
+
     except Exception as e:
         debug_info["general_error"] = str(e)
             

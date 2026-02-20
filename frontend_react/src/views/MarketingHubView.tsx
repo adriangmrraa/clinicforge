@@ -87,7 +87,7 @@ export default function MarketingHubView() {
                     icon={<Megaphone size={24} />}
                 />
 
-                <div className="flex items-center gap-3 bg-white p-1.5 rounded-2xl border border-gray-200 shadow-sm self-start">
+                <div className="flex flex-wrap items-center gap-3 bg-white p-1.5 rounded-2xl border border-gray-200 shadow-sm">
                     {[
                         { id: 'last_30d', label: t('marketing.range_30d') },
                         { id: 'last_90d', label: t('marketing.range_90d') },
@@ -97,7 +97,7 @@ export default function MarketingHubView() {
                         <button
                             key={range.id}
                             onClick={() => setTimeRange(range.id)}
-                            className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${timeRange === range.id
+                            className={`flex-1 sm:flex-none px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all ${timeRange === range.id
                                 ? 'bg-gray-900 text-white shadow-lg'
                                 : 'text-gray-500 hover:bg-gray-50'
                                 }`}
@@ -172,11 +172,12 @@ export default function MarketingHubView() {
                     </div>
                 </div>
 
-                <div className="overflow-x-auto max-h-[800px] overflow-y-auto scrollbar-thin scrollbar-thumb-gray-200">
-                    <table className="w-full text-left border-separate border-spacing-0">
+                <div className="overflow-x-auto">
+                    {/* Desktop Table View */}
+                    <table className="hidden lg:table w-full text-left border-separate border-spacing-0">
                         <thead className="bg-gray-50 text-gray-500 text-xs uppercase tracking-wider sticky top-0 z-10 shadow-sm">
                             <tr>
-                                <th className="px-6 py-4 font-semibold border-b border-gray-100">
+                                <th className="px-6 py-4 font-semibold border-b border-gray-100 w-1/3">
                                     {activeTab === 'campaigns' ? t('marketing.table_campaign_ad') : t('marketing.table_ad')}
                                 </th>
                                 <th className="px-6 py-4 font-semibold border-b border-gray-100">{t('marketing.table_spend')}</th>
@@ -217,16 +218,55 @@ export default function MarketingHubView() {
                                     </td>
                                 </tr>
                             ))}
-                            {!(activeTab === 'campaigns' ? stats?.campaigns?.campaigns : stats?.campaigns?.creatives)?.length && (
-                                <tr>
-                                    <td colSpan={6} className="px-6 py-20 text-center text-gray-400 italic">
-                                        <Megaphone className="w-10 h-10 mx-auto mb-4 opacity-20" />
-                                        {t('marketing.no_data')}
-                                    </td>
-                                </tr>
-                            )}
                         </tbody>
                     </table>
+
+                    {/* Mobile Cards View (Stacking Pattern) */}
+                    <div className="lg:hidden divide-y divide-gray-100">
+                        {(activeTab === 'campaigns' ? stats?.campaigns?.campaigns : stats?.campaigns?.creatives)?.map((c: any) => (
+                            <div key={c.ad_id} className="p-5 space-y-4 hover:bg-gray-50 transition-colors">
+                                <div className="flex justify-between items-start">
+                                    <div className="flex-1 min-w-0 pr-4">
+                                        <div className="font-black text-gray-900 leading-tight mb-1">{c.ad_name}</div>
+                                        <div className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">{c.campaign_name}</div>
+                                    </div>
+                                    <span className={`flex items-center gap-1 text-[10px] font-black uppercase px-2 py-1 rounded-full border ${c.status === 'active' ? 'bg-green-50 text-green-600 border-green-100' : 'bg-gray-100 text-gray-500 border-gray-200'}`}>
+                                        <div className={`w-1.5 h-1.5 rounded-full ${c.status === 'active' ? 'bg-green-500' : 'bg-gray-300'}`}></div>
+                                        {c.status}
+                                    </span>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-4 pt-2">
+                                    <div>
+                                        <div className="text-[10px] text-gray-400 font-bold uppercase mb-1">{t('marketing.table_spend')}</div>
+                                        <div className="font-black text-gray-800">{stats.currency === 'ARS' ? 'ARS' : '$'}{Number(c.spend || 0).toLocaleString()}</div>
+                                    </div>
+                                    <div>
+                                        <div className="text-[10px] text-indigo-400 font-bold uppercase mb-1">{t('marketing.table_roi')}</div>
+                                        <div className={`font-black ${c.roi >= 0 ? 'text-indigo-600' : 'text-rose-600'}`}>
+                                            {c.roi > 0 ? '+' : ''}{Math.round(c.roi * 100)}%
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <div className="text-[10px] text-gray-400 font-bold uppercase mb-1">{t('marketing.table_leads')}</div>
+                                        <div className="font-bold text-gray-700">{c.leads}</div>
+                                    </div>
+                                    <div>
+                                        <div className="text-[10px] text-green-500 font-bold uppercase mb-1">{t('marketing.table_appts')}</div>
+                                        <div className="font-black text-green-600">{c.appointments}</div>
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* Empty State */}
+                    {!(activeTab === 'campaigns' ? stats?.campaigns?.campaigns : stats?.campaigns?.creatives)?.length && (
+                        <div className="px-6 py-20 text-center text-gray-400 italic">
+                            <Megaphone className="w-10 h-10 mx-auto mb-4 opacity-20" />
+                            {t('marketing.no_data')}
+                        </div>
+                    )}
                 </div>
             </div>
 
