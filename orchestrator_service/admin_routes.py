@@ -1333,77 +1333,144 @@ async def send_chat_message(
 
 @router.get("/stats/summary", tags=["Estadísticas"])
 async def get_dashboard_stats(
-    range: str = 'weekly',
+    range: str = 'all',
     user_data=Depends(verify_admin_token),
     tenant_id: int = Depends(get_resolved_tenant_id),
 ):
     """Devuelve métricas avanzadas filtradas por rango temporal. Aislado por tenant_id (Regla de Oro)."""
     try:
-        days = 7 if range == 'weekly' else 30
+        # Normalizar el mapeo de intervalos para Postgres
+        interval_map = {
+            'weekly': "INTERVAL '7 days'",
+            'monthly': "INTERVAL '30 days'",
+            'yearly': "INTERVAL '1 year'",
+            'all': "INTERVAL '100 years'"
+        }
+        interval_expr = interval_map.get(range, "INTERVAL '100 years'")
         
-        # 1. IA Conversations (Hilos únicos de pacientes en el rango seleccionado)
-        ia_conversations = await db.pool.fetchval("""
-            SELECT COUNT(DISTINCT m.from_number) 
-            FROM chat_messages m
-            JOIN patients p ON m.from_number = p.phone_number
-            WHERE p.tenant_id = $1 AND m.created_at >= CURRENT_DATE - INTERVAL '1 day' * $2
-        """, tenant_id, days) or 0
+        # 1. IA Conversations (Unificado de chat_conversations para todos los canales e hilos)
+        ia_conversations = await db.pool.fetchval(f"""
+            SELECT COUNT(*) FROM chat_conversations
+            WHERE tenant_id = $1 AND created_at >= CURRENT_DATE - {interval_expr}
+        """, tenant_id) or 0
         
         # 2. IA Appointments (Turnos de IA en el rango seleccionado)
-        ia_appointments = await db.pool.fetchval("""
+        ia_count = await db.pool.fetchval(f"""
             SELECT COUNT(*) FROM appointments 
-            WHERE tenant_id = $1 AND source = 'ai' AND appointment_datetime >= CURRENT_DATE - INTERVAL '1 day' * $2
-        """, tenant_id, days) or 0
+            WHERE tenant_id = $1 AND source = 'ai' AND appointment_datetime >= CURRENT_DATE - {interval_expr}
+        """, tenant_id) or 0
         
         # 3. Urgencias activas (Total acumulado de urgencias detectadas en el rango)
-        active_urgencies = await db.pool.fetchval("""
+        active_urgencies = await db.pool.fetchval(f"""
             SELECT COUNT(*) FROM appointments 
             WHERE tenant_id = $1 AND urgency_level IN ('high', 'emergency') 
             AND status NOT IN ('cancelled', 'completed')
-            AND appointment_datetime >= CURRENT_DATE - INTERVAL '1 day' * $2
-        """, tenant_id, days) or 0
+            AND appointment_datetime >= CURRENT_DATE - {interval_expr}
+        """, tenant_id) or 0
         
-        # 4. Ingresos Totales (Basado en el rango seleccionado)
-        total_revenue = await db.pool.fetchval("""
+        # 4. Revenue Dual (Real vs Estimado)
+        # 4a. Real Revenue (Pagos confirmados)
+        confirmed_revenue = await db.pool.fetchval(f"""
             SELECT COALESCE(SUM(at.amount), 0) 
             FROM accounting_transactions at
-            JOIN appointments a ON at.appointment_id = a.id
             WHERE at.tenant_id = $1 
             AND at.transaction_type = 'payment' 
             AND at.status = 'completed'
-            AND a.status IN ('completed', 'attended')
-            AND a.appointment_datetime >= CURRENT_DATE - INTERVAL '1 day' * $2
-        """, tenant_id, days) or 0
+            AND at.created_at >= CURRENT_DATE - {interval_expr}
+        """, tenant_id) or 0
 
-        # 5. Datos de crecimiento (Últimos N días) — parámetro $2 para evitar inyección
-        growth_rows = await db.pool.fetch("""
-            SELECT 
-                DATE(appointment_datetime) as date,
-                COUNT(*) FILTER (WHERE source = 'ai') as ia_referrals,
-                COUNT(*) FILTER (WHERE status IN ('completed', 'attended')) as completed_appointments
-            FROM appointments
-            WHERE tenant_id = $1 AND appointment_datetime >= CURRENT_DATE - INTERVAL '1 day' * $2
-            GROUP BY DATE(appointment_datetime)
-            ORDER BY DATE(appointment_datetime) ASC
-        """, tenant_id, days)
+        # 4b. Estimated Revenue (Valor de agenda IA - Basado en precios de tratamientos)
+        # Si un turno no tiene tipo de tratamiento, usamos un falback de 100? No, mejor 0 o valor por defecto de la clínica.
+        # Buscamos el precio base asignado a cada tipo de tratamiento.
+        estimated_revenue = await db.pool.fetchval(f"""
+            SELECT COALESCE(SUM(tt.base_price), 0)
+            FROM appointments a
+            JOIN treatment_types tt ON a.appointment_type = tt.code AND tt.tenant_id = a.tenant_id
+            WHERE a.tenant_id = $1 AND a.source = 'ai'
+            AND a.status NOT IN ('cancelled')
+            AND a.appointment_datetime >= CURRENT_DATE - {interval_expr}
+        """, tenant_id) or 0
         
-        growth_data = [
-            {
-                "date": row['date'].strftime('%Y-%m-%d') if hasattr(row['date'], 'strftime') else str(row['date']),
+        # 5. Datos de crecimiento (Agrupación Inteligente: DÍA para Weekly/Monthly, MES para Anual/All)
+        if range in ('yearly', 'all'):
+            growth_rows = await db.pool.fetch(f"""
+                SELECT 
+                    DATE_TRUNC('month', appointment_datetime) as period,
+                    COUNT(*) FILTER (WHERE source = 'ai') as ia_referrals,
+                    COUNT(*) FILTER (WHERE status IN ('completed', 'attended')) as completed_appointments
+                FROM appointments
+                WHERE tenant_id = $1 AND appointment_datetime >= CURRENT_DATE - {interval_expr}
+                GROUP BY period
+                ORDER BY period ASC
+            """, tenant_id)
+        else:
+            growth_rows = await db.pool.fetch(f"""
+                SELECT 
+                    DATE(appointment_datetime) as period,
+                    COUNT(*) FILTER (WHERE source = 'ai') as ia_referrals,
+                    COUNT(*) FILTER (WHERE status IN ('completed', 'attended')) as completed_appointments
+                FROM appointments
+                WHERE tenant_id = $1 AND appointment_datetime >= CURRENT_DATE - {interval_expr}
+                GROUP BY period
+                ORDER BY period ASC
+            """, tenant_id)
+        
+        growth_data = []
+        for row in growth_rows:
+            p = row['period']
+            date_str = p.strftime('%Y-%m') if range in ('yearly', 'all') else p.strftime('%Y-%m-%d')
+            growth_data.append({
+                "date": date_str,
                 "ia_referrals": row['ia_referrals'],
                 "completed_appointments": row['completed_appointments']
-            } for row in growth_rows
-        ]
+            })
 
-        # Rellenar si no hay datos para evitar que Recharts falle
         if not growth_data:
             growth_data = [{"date": date.today().isoformat(), "ia_referrals": 0, "completed_appointments": 0}]
 
+        # 6. Calcular Rangos Previos para Tendencias (Crecimiento Real)
+        prev_interval_expr = interval_expr # El mismo intervalo pero desplazado
+        
+        # Consultas Previas
+        prev_ia_conversations = await db.pool.fetchval(f"""
+            SELECT COUNT(*) FROM chat_conversations
+            WHERE tenant_id = $1 
+            AND created_at < CURRENT_DATE - {interval_expr}
+            AND created_at >= CURRENT_DATE - {interval_expr} * 2
+        """, tenant_id) or 0
+        
+        prev_ia_count = await db.pool.fetchval(f"""
+            SELECT COUNT(*) FROM appointments 
+            WHERE tenant_id = $1 AND source = 'ai' 
+            AND appointment_datetime < CURRENT_DATE - {interval_expr}
+            AND appointment_datetime >= CURRENT_DATE - {interval_expr} * 2
+        """, tenant_id) or 0
+        
+        prev_confirmed_revenue = await db.pool.fetchval(f"""
+            SELECT COALESCE(SUM(at.amount), 0) 
+            FROM accounting_transactions at
+            WHERE at.tenant_id = $1 
+            AND at.transaction_type = 'payment' 
+            AND at.status = 'completed'
+            AND at.created_at < CURRENT_DATE - {interval_expr}
+            AND at.created_at >= CURRENT_DATE - {interval_expr} * 2
+        """, tenant_id) or 0
+
+        def calc_trend(current, previous):
+            if previous == 0:
+                return "+100%" if current > 0 else "0%"
+            change = ((current - previous) / previous) * 100
+            return f"{'+' if change >= 0 else ''}{change:.1f}%"
+
         return {
             "ia_conversations": ia_conversations,
-            "ia_appointments": ia_appointments,
+            "ia_conversations_trend": calc_trend(ia_conversations, prev_ia_conversations),
+            "ia_appointments": ia_count,
+            "ia_appointments_trend": calc_trend(ia_count, prev_ia_count),
             "active_urgencies": active_urgencies,
-            "total_revenue": float(total_revenue),
+            "total_revenue": float(confirmed_revenue),
+            "total_revenue_trend": calc_trend(float(confirmed_revenue), float(prev_confirmed_revenue)),
+            "estimated_revenue": float(estimated_revenue),
             "growth_data": growth_data
         }
     except Exception as e:

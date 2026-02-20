@@ -6,9 +6,10 @@ import { useTranslation } from '../context/LanguageContext';
 interface MarketingPerformanceCardProps {
     stats?: any;
     loading?: boolean;
+    timeRange?: string;
 }
 
-export default function MarketingPerformanceCard({ stats: externalStats, loading: externalLoading }: MarketingPerformanceCardProps) {
+export default function MarketingPerformanceCard({ stats: externalStats, loading: externalLoading, timeRange = 'last_30d' }: MarketingPerformanceCardProps) {
     const { t } = useTranslation();
     const [stats, setStats] = useState<any>(null);
     const [loading, setLoading] = useState(true);
@@ -22,7 +23,8 @@ export default function MarketingPerformanceCard({ stats: externalStats, loading
 
         const fetchStats = async () => {
             try {
-                const { data } = await api.get('/admin/marketing/stats/roi');
+                setLoading(true);
+                const { data } = await api.get(`/admin/marketing/stats/roi?range=${timeRange}`);
                 setStats(data);
             } catch (error) {
                 console.error("Error fetching ROI stats:", error);
@@ -31,7 +33,7 @@ export default function MarketingPerformanceCard({ stats: externalStats, loading
             }
         };
         fetchStats();
-    }, [externalStats, externalLoading]);
+    }, [externalStats, externalLoading, timeRange]);
 
     if (loading) return (
         <div className="bg-white border border-gray-200 rounded-3xl p-8 h-full flex items-center justify-center">

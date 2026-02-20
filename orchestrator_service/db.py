@@ -551,6 +551,15 @@ class Database:
             CREATE INDEX IF NOT EXISTS idx_auto_logs_trigger ON automation_logs(trigger_type);
             CREATE INDEX IF NOT EXISTS idx_auto_logs_target ON automation_logs(target_id);
             """,
+            # Parche 26: Asegurar base_price en treatment_types para Revenue Estimado
+            """
+            DO $$ 
+            BEGIN 
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='treatment_types' AND column_name='base_price') THEN
+                    ALTER TABLE treatment_types ADD COLUMN base_price DECIMAL(12,2) DEFAULT 0;
+                END IF;
+            END $$;
+            """,
         ]
 
         async with self.pool.acquire() as conn:

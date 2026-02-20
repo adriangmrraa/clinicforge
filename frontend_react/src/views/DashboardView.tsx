@@ -1,15 +1,7 @@
+```
 import { useEffect, useState, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
-import {
-  MessageSquare,
-  CalendarCheck,
-  Activity,
-  DollarSign,
-  TrendingUp,
-  Clock,
-  ArrowUpRight,
-  User
-} from 'lucide-react';
+import { MessageSquare, Calendar, Activity, DollarSign, TrendingUp, TrendingDown, Target, Zap, Clock, ArrowUpRight, User } from 'lucide-react';
 import {
   XAxis,
   YAxis,
@@ -52,8 +44,8 @@ interface UrgencyRecord {
 const KPICard = ({ title, value, icon: Icon, color, trend }: any) => (
   <div className="bg-white/80 backdrop-blur-md border border-white/20 rounded-2xl p-6 shadow-sm hover:shadow-md transition-all duration-300 group">
     <div className="flex justify-between items-start mb-4">
-      <div className={`p-3 rounded-xl ${color} bg-opacity-10 group-hover:scale-110 transition-transform`}>
-        <Icon className={`w-6 h-6 ${color.replace('bg-', 'text-')}`} />
+      <div className={`p - 3 rounded - xl ${ color } bg - opacity - 10 group - hover: scale - 110 transition - transform`}>
+        <Icon className={`w - 6 h - 6 ${ color.replace('bg-', 'text-') } `} />
       </div>
       {trend && (
         <span className="flex items-center gap-1 text-xs font-medium text-green-600 bg-green-50 px-2 py-1 rounded-full">
@@ -73,7 +65,7 @@ const UrgencyBadge = ({ level }: { level: UrgencyRecord['urgency_level'] }) => {
     NORMAL: 'bg-green-100 text-green-700 border-green-200'
   };
   return (
-    <span className={`px-2 py-1 rounded-full text-[10px] font-bold border ${styles[level]}`}>
+    <span className={`px - 2 py - 1 rounded - full text - [10px] font - bold border ${ styles[level] } `}>
       {level}
     </span>
   );
@@ -88,7 +80,7 @@ export default function DashboardView() {
   const [stats, setStats] = useState<AnalyticsStats | null>(null);
   const [urgencies, setUrgencies] = useState<UrgencyRecord[]>([]);
   const [loading, setLoading] = useState(true);
-  const [timeRange, setTimeRange] = useState<'weekly' | 'monthly'>('weekly');
+  const [timeRange, setTimeRange] = useState<'weekly' | 'monthly' | 'yearly' | 'all'>('all');
   const socketRef = useRef<Socket | null>(null);
 
   useEffect(() => {
@@ -101,7 +93,7 @@ export default function DashboardView() {
         if (!prev) return prev;
         return {
           ...prev,
-          ia_appointments: prev.ia_appointments + 1
+          ia_appointments: (prev.ia_appointments || 0) + 1
         };
       });
     });
@@ -110,7 +102,7 @@ export default function DashboardView() {
       try {
         setLoading(true);
         const [statsRes, urgenciesRes] = await Promise.all([
-          api.get(`/admin/stats/summary?range=${range}`),
+          api.get(`/ admin / stats / summary ? range = ${ range } `),
           api.get('/admin/chat/urgencies')
         ]);
 
@@ -150,21 +142,43 @@ export default function DashboardView() {
             <div className="flex gap-2">
               <button
                 onClick={() => setTimeRange('weekly')}
-                className={`px-4 py-2 rounded-xl shadow-sm border text-sm font-medium transition-colors ${timeRange === 'weekly'
-                  ? 'bg-slate-800 text-white border-slate-800'
-                  : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-                  }`}
+                className={`px - 3 sm: px - 4 py - 2 rounded - xl shadow - sm border text - xs sm: text - sm font - medium transition - colors ${
+  timeRange === 'weekly'
+  ? 'bg-slate-800 text-white border-slate-800'
+  : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+} `}
               >
                 {t('dashboard.weekly')}
               </button>
               <button
                 onClick={() => setTimeRange('monthly')}
-                className={`px-4 py-2 rounded-xl shadow-sm border text-sm font-medium transition-colors ${timeRange === 'monthly'
-                  ? 'bg-slate-800 text-white border-slate-800'
-                  : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-                  }`}
+                className={`px - 3 sm: px - 4 py - 2 rounded - xl shadow - sm border text - xs sm: text - sm font - medium transition - colors ${
+  timeRange === 'monthly'
+  ? 'bg-slate-800 text-white border-slate-800'
+  : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+} `}
               >
                 {t('dashboard.monthly')}
+              </button>
+              <button
+                onClick={() => setTimeRange('yearly')}
+                className={`px - 3 sm: px - 4 py - 2 rounded - xl shadow - sm border text - xs sm: text - sm font - medium transition - colors ${
+  timeRange === 'yearly'
+  ? 'bg-slate-800 text-white border-slate-800'
+  : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+} `}
+              >
+                {t('dashboard.this_year')}
+              </button>
+              <button
+                onClick={() => setTimeRange('all')}
+                className={`px - 3 sm: px - 4 py - 2 rounded - xl shadow - sm border text - xs sm: text - sm font - medium transition - colors ${
+  timeRange === 'all'
+  ? 'bg-slate-800 text-white border-slate-800'
+  : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+} `}
+              >
+                {t('dashboard.all')}
               </button>
             </div>
           }
@@ -178,17 +192,17 @@ export default function DashboardView() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <KPICard
             title={t('dashboard.conversations')}
-            value={stats?.ia_conversations}
+            value={stats?.ia_conversations?.toLocaleString() || '0'}
             icon={MessageSquare}
             color="bg-blue-500"
-            trend="+12%"
+            trend={(stats as any)?.ia_conversations_trend}
           />
           <KPICard
-            title={t('dashboard.ia_appointments')}
-            value={stats?.ia_appointments}
-            icon={CalendarCheck}
-            color="bg-emerald-500"
-            trend="+5%"
+            title={t('dashboard.appointments')}
+            value={stats?.ia_appointments?.toLocaleString() || '0'}
+            icon={Calendar}
+            color="bg-indigo-500"
+            trend={(stats as any)?.ia_appointments_trend}
           />
           <KPICard
             title={t('dashboard.urgencies')}
@@ -197,11 +211,18 @@ export default function DashboardView() {
             color="bg-rose-500"
           />
           <KPICard
-            title={t('dashboard.revenue')}
-            value={`$${stats?.total_revenue?.toLocaleString()}`}
+            title={t('dashboard.revenue_confirmed')}
+            value={`$${ (stats as any)?.total_revenue?.toLocaleString() || 0 } `}
             icon={DollarSign}
+            color="bg-emerald-500"
+            trend={(stats as any)?.total_revenue_trend}
+          />
+          <KPICard
+            title={t('dashboard.revenue_estimated')}
+            value={`$${ (stats as any)?.estimated_revenue?.toLocaleString() || 0 } `}
+            icon={TrendingUp}
             color="bg-amber-500"
-            trend="+8%"
+            trend="+15%"
           />
         </div>
 
@@ -245,7 +266,7 @@ export default function DashboardView() {
 
         {/* Spec 09: MARKETING PERFORMANCE */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <MarketingPerformanceCard />
+          <MarketingPerformanceCard timeRange={timeRange === 'all' ? 'lifetime' : timeRange === 'yearly' ? 'this_year' : timeRange === 'monthly' ? 'last_30d' : 'weekly'} />
         </div>
 
         {/* BOTTOM ROW: RECENT URGENCIES TABLE */}

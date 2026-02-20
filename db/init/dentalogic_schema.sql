@@ -432,6 +432,9 @@ CREATE TABLE IF NOT EXISTS treatment_types (
     requires_multiple_sessions BOOLEAN DEFAULT FALSE,
     session_gap_days INTEGER DEFAULT 0,
     
+    -- Precios (Analytics)
+    base_price DECIMAL(12,2) DEFAULT 0,
+    
     -- Estado
     is_active BOOLEAN DEFAULT TRUE,
     is_available_for_booking BOOLEAN DEFAULT TRUE,
