@@ -23,7 +23,9 @@ class MarketingService:
             "last_30d": "30 days",
             "last_90d": "90 days",
             "this_year": "1 year",
-            "lifetime": "100 years"
+            "yearly": "1 year",
+            "lifetime": "100 years",
+            "all": "100 years"
         }
         interval = interval_map.get(time_range, "30 days")
 
@@ -149,7 +151,9 @@ class MarketingService:
                 "last_30d": "30 days",
                 "last_90d": "90 days",
                 "this_year": "1 year",
-                "lifetime": "100 years"
+                "yearly": "1 year",
+                "lifetime": "100 years",
+                "all": "100 years"
             }
             interval = interval_map.get(time_range, "30 days")
 
