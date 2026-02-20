@@ -197,8 +197,17 @@ async def debug_marketing_stats(
 
             # 2. Probar ID de cuenta del .env (Legacy)
             if env_ad_account_id:
-
-            # 2. Listar TODAS las cuentas y su inversión total
+                test_id = env_ad_account_id if env_ad_account_id.startswith("act_") else f"act_{env_ad_account_id}"
+                try:
+                    ins_env = await client.get_ads_insights(test_id, date_preset="maximum")
+                    debug_info["env_account_test"] = {
+                        "id_used": test_id,
+                        "success": True,
+                        "count": len(ins_env),
+                        "spend": sum(float(i.get("spend", 0)) for i in ins_env)
+                    }
+                except Exception as e_env:
+                    debug_info["env_account_test"] = {"id_used": test_id, "error": str(e_env)}
             try:
                 accounts = await client.get_ad_accounts()
                 acc_list = []
