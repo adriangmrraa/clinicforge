@@ -255,6 +255,27 @@ export default function MetaConnectionWizard({ isOpen, onClose, onSuccess }: Met
                                             </div>
                                         )}
                                     </div>
+                                    <div className="pt-6 border-t border-gray-100 mt-4">
+                                        <div className="text-xs font-bold text-gray-500 mb-2 uppercase tracking-wide">¿No ves tu cuenta?</div>
+                                        <div className="flex gap-2">
+                                            <input
+                                                type="text"
+                                                placeholder="Pegar ID manual (ej. 120218...)"
+                                                className="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500 transition-all font-mono"
+                                                onChange={(e) => {
+                                                    const val = e.target.value.trim();
+                                                    if (val) {
+                                                        setSelectedAccount({ id: val, name: "Cuenta Manual (" + val.slice(-4) + ")", currency: "UNK" });
+                                                    } else {
+                                                        setSelectedAccount(null);
+                                                    }
+                                                }}
+                                            />
+                                        </div>
+                                        <p className="text-[10px] text-gray-400 mt-2">
+                                            Si tienes permisos pero Meta no lista la cuenta, pega el ID directamente aquí.
+                                        </p>
+                                    </div>
                                     <div className="pt-6 flex gap-3">
                                         <button onClick={() => setStep(2)} className="flex-1 py-4 text-gray-500 font-bold hover:bg-gray-50 rounded-2xl transition-all">Atrás</button>
                                         <button
