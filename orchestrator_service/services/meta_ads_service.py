@@ -125,7 +125,7 @@ class MetaAdsClient:
             logger.error(f"❌ Error inesperado consultando Meta Graph API: {e}")
             raise
 
-    async def get_ads_insights(self, ad_account_id: str, date_preset: str = "last_30d", level: str = "ad") -> list:
+    async def get_ads_insights(self, ad_account_id: str, date_preset: str = "last_30d", level: str = "ad", filtering: list = None) -> list:
         """
         Obtiene métricas de rendimiento (gasto, leads, etc.) a nivel de anuncio (default)
         o cuenta/campaña si se especifica 'level'.
@@ -141,14 +141,16 @@ class MetaAdsClient:
         
         if level == "account":
             fields = "spend,impressions,clicks,account_currency,account_id,account_name"
-            filtering = [] # Nivel cuenta no soporta status filtering
+            # Nivel cuenta no soporta status filtering
         elif level == "campaign":
             fields = "campaign_id,campaign_name,spend,impressions,clicks,account_currency,effective_status"
             # Incluir campañas borradas/archivadas para cuadrar con el gasto histórico
-            filtering = [{'field': 'campaign.effective_status', 'operator': 'IN', 'value': ['ACTIVE', 'PAUSED', 'DELETED', 'ARCHIVED', 'IN_PROCESS', 'WITH_ISSUES']}]
+            if filtering is None:
+                 filtering = [{'field': 'campaign.effective_status', 'operator': 'IN', 'value': ['ACTIVE', 'PAUSED', 'DELETED', 'ARCHIVED', 'IN_PROCESS', 'WITH_ISSUES']}]
         else:
             fields = "ad_id,ad_name,campaign_id,campaign_name,spend,impressions,clicks,account_currency,effective_status"
-            filtering = [{'field': 'ad.effective_status', 'operator': 'IN', 'value': ['ACTIVE', 'PAUSED', 'DELETED', 'ARCHIVED', 'IN_PROCESS', 'WITH_ISSUES']}]
+            if filtering is None:
+                filtering = [{'field': 'ad.effective_status', 'operator': 'IN', 'value': ['ACTIVE', 'PAUSED', 'DELETED', 'ARCHIVED', 'IN_PROCESS', 'WITH_ISSUES']}]
 
         url = f"{GRAPH_API_BASE}/{account_id}/insights"
         params = {
