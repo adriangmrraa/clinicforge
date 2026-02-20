@@ -207,6 +207,18 @@ async def debug_marketing_stats(
                 except Exception as e_deep:
                     debug_info["db_account_deep_scan"] = {"error": str(e_deep)}
 
+                # 1.2 Campaign Scan (Nivel Campaña - Ver si recuperamos estructura)
+                try:
+                    ins_camp = await client.get_ads_insights(test_id, date_preset="maximum", level="campaign")
+                    debug_info["db_account_campaign_scan"] = {
+                        "success": True,
+                        "count": len(ins_camp),
+                        "raw_data": ins_camp[:5], # Solo mostrar las primeras 5 para no saturar
+                        "total_spend": sum(float(i.get("spend", 0)) for i in ins_camp)
+                    }
+                except Exception as e_camp:
+                    debug_info["db_account_campaign_scan"] = {"error": str(e_camp)}
+
             # 2. Probar ID de cuenta del .env (Legacy)
             if env_ad_account_id:
                 test_id = env_ad_account_id if env_ad_account_id.startswith("act_") else f"act_{env_ad_account_id}"
