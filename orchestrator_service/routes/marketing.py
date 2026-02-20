@@ -143,25 +143,29 @@ async def connect_meta_account(
 @router.get("/debug/stats")
 async def debug_marketing_stats(
     range: str = "last_30d",
-    auth_data: tuple = Depends(get_current_user_and_tenant)
+    secret_token: Optional[str] = None
 ):
     """
     Endpoint de diagnóstico para verificar credenciales y visibilidad de Meta Ads.
+    Bypass de auth con token estáticos para pruebas rápidas en navegador.
     """
-    user, tenant_id = auth_data
-    if user["role"] != "ceo":
-        raise HTTPException(status_code=403, detail="Unauthorized")
-        
-    from core.credentials import get_tenant_credential
+    from core.auth import ADMIN_TOKEN
+    if secret_token != ADMIN_TOKEN:
+        raise HTTPException(status_code=403, detail="Permiso denegado: secret_token inválido.")
+    
+    tenant_id = 1 # Hardcoded para diagnóstico inicial
+    
+    from core.credentials import get_tenant_credential, CREDENTIALS_FERNET_KEY
     token = await get_tenant_credential(tenant_id, "META_USER_LONG_TOKEN")
     ad_account_id = await get_tenant_credential(tenant_id, "META_AD_ACCOUNT_ID")
     
     debug_info = {
         "tenant_id": tenant_id,
+        "encryption_key_configured": bool(CREDENTIALS_FERNET_KEY),
         "token_found": bool(token),
+        "is_encrypted_format": token.startswith("gAAAA") if token else False,
         "token_preview": f"{token[:15]}..." if token else None,
         "ad_account_id": ad_account_id,
-        "range_requested": range
     }
     
     if token and ad_account_id:
@@ -174,10 +178,11 @@ async def debug_marketing_stats(
             debug_info["meta_api_status"] = "OK"
             debug_info["insights_count"] = len(insights)
             if insights:
+                debug_info["currency"] = insights[0].get("account_currency")
                 debug_info["sample_ad"] = insights[0].get("ad_name")
-                debug_info["sample_spend"] = insights[0].get("spend")
         except Exception as e:
             debug_info["meta_api_status"] = "ERROR"
             debug_info["error_detail"] = str(e)
             
     return debug_info
+
