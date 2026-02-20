@@ -75,7 +75,11 @@ class MarketingService:
                         "all": "maximum"
                     }
                     meta_preset = meta_preset_map.get(time_range, "last_30d")
-                    insights = await meta_client.get_ads_insights(ad_account_id, date_preset=meta_preset)
+                    
+                    # Usar level="account" para asegurar que obtenemos el gasto total histórico
+                    # incluso si los anuncios individuales han sido borrados o archivados.
+                    insights = await meta_client.get_ads_insights(ad_account_id, date_preset=meta_preset, level="account")
+                    
                     total_spend = sum(float(item.get('spend', 0)) for item in insights)
                     if insights:
                         currency = insights[0].get('account_currency', 'ARS')
