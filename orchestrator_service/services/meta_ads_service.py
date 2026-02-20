@@ -147,11 +147,20 @@ class MetaAdsClient:
         }
 
         try:
+            all_insights = []
             async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT * 2) as client:
-                response = await client.get(url, params=params)
-                response.raise_for_status()
-                data = response.json()
-                return data.get("data", [])
+                current_url = url
+                while current_url:
+                    response = await client.get(current_url, params=params if current_url == url else None)
+                    response.raise_for_status()
+                    data = response.json()
+                    all_insights.extend(data.get("data", []))
+                    
+                    # Pagination
+                    paging = data.get("paging", {})
+                    current_url = paging.get("next")
+                    
+                return all_insights
         except Exception as e:
             logger.error(f"❌ Error obteniendo insights de Meta para {account_id}: {e}")
             return []
