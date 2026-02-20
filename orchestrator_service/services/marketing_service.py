@@ -173,7 +173,9 @@ class MarketingService:
                         "all": "maximum"
                     }
                     meta_preset = meta_preset_map.get(time_range, "last_30d")
-                    meta_ads = await meta_client.get_ads_insights(ad_account_id, date_preset=meta_preset)
+                    
+                    # Cambiar a level="campaign" para asegurar visibilidad histórica
+                    meta_ads = await meta_client.get_ads_insights(ad_account_id, date_preset=meta_preset, level="campaign")
                 except Exception as e:
                     logger.warning(f"⚠️ No se pudo obtener ads de Meta: {e}")
 
@@ -202,31 +204,38 @@ class MarketingService:
 
             results = []
             
-            # 3. Construir lista final priorizando Meta Ads
+            # 3. Construir lista final priorizando Meta Ads (Campañas)
             if meta_ads:
-                for ad in meta_ads:
-                    ad_id = ad.get('ad_id')
+                for camp in meta_ads:
+                    # Mapear Campaign ID a Ad ID para compatibilidad UI actual
+                    ad_id = camp.get('campaign_id') 
+                    
+                    # Intentar matching aproximado con atribución (Campaign vs Ad ID es tricky, 
+                    # idealmente en el futuro agregamos campaign_id a patients)
                     local = attribution_map.get(ad_id, {})
-                    spend = float(ad.get('spend', 0))
+                    
+                    spend = float(camp.get('spend', 0))
                     rev = float(local.get('revenue') or 0)
                     
                     roi = (rev - spend) / spend if spend > 0 else 0
                     
                     results.append({
                         "ad_id": ad_id,
-                        "ad_name": ad.get('ad_name', 'Anuncio sin nombre'),
-                        "campaign_name": ad.get('campaign_name', 'Campaña de Meta'),
+                        "ad_name": camp.get('campaign_name', 'Campaña sin nombre'),
+                        "campaign_name": "Agrupado por Campaña",
                         "spend": spend,
                         "leads": local.get('leads', 0),
                         "appointments": local.get('appointments', 0),
                         "roi": roi,
-                        "status": ad.get('effective_status', 'active').lower()
+                        "status": camp.get('effective_status', 'active').lower()
                     })
             
             # 4. Incluir ads con atribución local pero sin spend en Meta para este periodo
-            meta_ad_ids = {ad.get('ad_id') for ad in meta_ads}
+            # Nota: Cuando estamos en modo 'campaign', local stats (por ad_id) no matcharán con campaign_id.
+            # Esto es aceptable por ahora para visualizar costos.
+            meta_ids = {c.get('campaign_id') for c in meta_ads}
             for ad_id, local in attribution_map.items():
-                if ad_id not in meta_ad_ids:
+                if ad_id not in meta_ids:
                     results.append({
                         "ad_id": ad_id,
                         "ad_name": "Anuncio Histórico",
