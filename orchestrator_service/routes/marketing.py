@@ -146,14 +146,15 @@ async def debug_marketing_stats(
     secret: Optional[str] = None
 ):
     """
-    Endpoint de diagnóstico ultra-permisivo para mantenimiento.
+    Endpoint de diagnóstico ultra-profundo para resolver el 'Zero Data'.
     """
     from core.auth import ADMIN_TOKEN
     import os
     
     env_admin_token = os.getenv("ADMIN_TOKEN")
     
-    debug_info = {
+    # Debug Info Dict (Any type for lints)
+    debug_info: Dict[str, Any] = {
         "server_status": "online",
         "env_admin_token_set": bool(env_admin_token),
         "received_secret": secret,
@@ -161,48 +162,67 @@ async def debug_marketing_stats(
     }
 
     from core.credentials import CREDENTIALS_FERNET_KEY, get_tenant_credential
-    
     debug_info["fernet_key_configured"] = bool(CREDENTIALS_FERNET_KEY)
     
     try:
         tenant_id = 1
         raw_token = await get_tenant_credential(tenant_id, "META_USER_LONG_TOKEN")
+        env_ad_account_id = os.getenv("META_AD_ACCOUNT_ID")
         
         debug_info["token_found"] = bool(raw_token)
+        debug_info["env_ad_account_id"] = env_ad_account_id
         
         if raw_token:
-            debug_info["is_encrypted"] = str(raw_token).startswith("gAAAA")
-            debug_info["token_preview"] = f"{str(raw_token)[:15]}..."
+            token_str = str(raw_token)
+            debug_info["is_encrypted"] = token_str.startswith("gAAAA")
+            debug_info["token_preview"] = f"{token_str[:15]}..."
             
             from services.meta_ads_service import MetaAdsClient
-            client = MetaAdsClient(str(raw_token))
+            client = MetaAdsClient(token_str)
             
-            # Listar cuentas
+            # 1. Probar ID de cuenta del .env directamente ( Nexus Force )
+            if env_ad_account_id:
+                test_id = env_ad_account_id if env_ad_account_id.startswith("act_") else f"act_{env_ad_account_id}"
+                try:
+                    ins_env = await client.get_ads_insights(test_id, date_preset="maximum")
+                    debug_info["env_account_test"] = {
+                        "id_used": test_id,
+                        "success": True,
+                        "count": len(ins_env),
+                        "spend": sum(float(i.get("spend", 0)) for i in ins_env)
+                    }
+                except Exception as e_env:
+                    debug_info["env_account_test"] = {"id_used": test_id, "error": str(e_env)}
+
+            # 2. Listar TODAS las cuentas y su inversión total
             try:
                 accounts = await client.get_ad_accounts()
-                debug_info["accessible_accounts"] = [
-                    {"id": a.get("id"), "name": a.get("name")} for a in accounts
-                ]
+                acc_list = []
+                for a in accounts[:15]: 
+                    aid = a.get("id")
+                    spend = 0
+                    try:
+                        ins = await client.get_ads_insights(aid, date_preset="maximum")
+                        spend = sum(float(i.get("spend", 0)) for i in ins)
+                    except:
+                        pass
+                    acc_list.append({
+                        "id": aid, 
+                        "name": a.get("name"), 
+                        "lifetime_spend": spend,
+                        "match_env": aid.endswith(env_ad_account_id) if env_ad_account_id else False
+                    })
+                debug_info["accessible_accounts"] = acc_list
             except Exception as e_acc:
                 debug_info["accounts_error"] = str(e_acc)
 
-            ad_account_id = await get_tenant_credential(tenant_id, "META_AD_ACCOUNT_ID")
-            debug_info["configured_ad_account_id"] = ad_account_id
-            
-            if ad_account_id:
-                try:
-                    insights = await client.get_ads_insights(ad_account_id, date_preset="maximum")
-                    debug_info["lifetime_insights"] = {
-                        "count": len(insights),
-                        "spend": sum(float(i.get("spend", 0)) for i in insights)
-                    }
-                except Exception as api_e:
-                    debug_info["meta_status"] = "API_ERROR"
-                    debug_info["api_error"] = str(api_e)
+            db_ad_account_id = await get_tenant_credential(tenant_id, "META_AD_ACCOUNT_ID")
+            debug_info["db_configured_ad_account_id"] = db_ad_account_id
     except Exception as e:
         debug_info["general_error"] = str(e)
             
     return debug_info
+
 
 
 
