@@ -1,14 +1,16 @@
 # SECURITY AUDIT REPORT: ClinicForge Sovereign OS
+> **Versión del Protocolo:** Nexus v8.0 | **Última actualización:** 2026-02-21
 
 Este reporte resume la auditoría de seguridad realizada sobre los componentes de Backend, Frontend y Base de Datos del proyecto CLINICASV1.0.
 
 ## 🛡️ Fortalezas Arquitectónicas
 
-### 1. Sistema de Triple Capa (Nexus v7.6)
+### 1. Sistema de Triple Capa + Capa 4 (Nexus v8.0)
 El sistema implementa una defensa en profundidad para todas las rutas administrativas:
 - **Capa 1: Infraestructura (X-Admin-Token)**: Filtra peticiones que no provengan del cliente oficial.
-- **Capa 2: Identidad (JWT)**: Valida la sesión y autenticidad del usuario (CEO, Prof, Sec).
+- **Capa 2: Identidad (JWT + HttpOnly Cookie)**: Valida la sesión y autenticidad del usuario (CEO, Prof, Sec). ✅ **Migrado a HttpOnly Cookie** (anti-XSS, Nexus v8.0).
 - **Capa 3: Soberanía (Tenant Isolation)**: Resuelve el `tenant_id` en el servidor y filtra todas las consultas a la base de datos por clínica.
+- **Capa 4: Multi-Sede CEO (v8.0)**: El CEO puede operar sobre múltiples sedes mediante `get_allowed_tenant_ids`. Lectura por `ANY(allowed_ids)`, mutaciones protegidas por guard 403.
 
 ### 2. Bóveda de Credenciales (Credential Vault)
 - **Encryption-at-Rest**: Las llaves sensibles (Google, Chatwoot, Meta) se almacenan encriptadas con **Fernet** (AES-128).
@@ -17,37 +19,60 @@ El sistema implementa una defensa en profundidad para todas las rutas administra
 ### 3. Sanitización de Logs
 - Se ha implementado un `SensitiveDataFilter` que detecta y redacta automáticamente tokens, contraseñas y claves de API antes de que lleguen a la consola o archivos de log.
 
+### 4. Security Headers Middleware ✅ [Nexus v8.0]
+- `HSTS`, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `CSP` dinámico en todas las respuestas.
+
+### 5. AI Guardrails ✅ [Nexus v8.0]
+- `detect_prompt_injection` y `sanitize_input` invocados mandatoriamente antes de cualquier procesamiento de mensaje del Agente.
+- `SafeHTML` con DOMPurify en el Frontend para neutralizar XSS en contenido de chat.
+
 ---
 
 ## 🚩 Hallazgos y Vulnerabilidades Identificadas
 
-### 1. Riesgo de XSS en Token Storage [CRÍTICO]
-**Descripción**: El JWT y el `X-Admin-Token` se almacenan en `localStorage`.
-**Impacto**: Si un atacante logra inyectar un script malicioso (XSS), puede extraer ambas llaves y suplantar al CEO de forma remota.
-**Recomendación**: Migrar el `JWT_TOKEN` a una **cookie HttpOnly** para mitigar la extracción vía JS.
+### 1. ~~Riesgo de XSS en Token Storage~~ [RESUELTO ✅]
+**Descripción original**: El JWT y el `X-Admin-Token` se almacenaban en `localStorage`.
+> **Resolución (Nexus v8.0):** JWT migrado a **HttpOnly Cookie**. El `X-Admin-Token` permanece en `localStorage` por diseño (token de infraestructura, no de sesión).
 
-### 2. Fragilidad en Patrones SQL [BAJO]
-**Descripción**: Algunas consultas en `marketing_service.py` y `admin_routes.py` usan f-strings para inyectar intervalos temporales.
-**Impacto**: Actualmente seguro por el uso de *whitelist mapping*, pero representa un patrón peligroso que podría derivar en Inyección SQL si se extiende a otros campos.
-**Recomendación**: Refactorizar para usar parámetros nativos (`$1`, `$2`) en todas las interpolaciones sin excepción.
+### 2. ~~Fragilidad en Patrones SQL~~ [RESUELTO ✅]
+**Descripción original**: Algunas consultas en `marketing_service.py` usaban f-strings para inyectar intervalos temporales.
+> **Resolución (Nexus v8.0):** `marketing_service.py` usa `timedelta` nativo en lugar de f-strings para intervalos. Todas las queries usan exclusivamente parámetros `$1`, `$2`, etc.
 
-### 3. Fallback en Credenciales [MEDIO]
+### 3. Fallback en Credenciales [MEDIO] [EN PROGRESO]
 **Descripción**: `get_tenant_credential` cae en variables de entorno globales si no encuentra el valor en la base de datos.
 **Impacto**: Facilita el desarrollo pero introduce ambigüedad en producción. Si una variable de entorno se filtra, afecta a todos los tenants que no tengan una llave específica.
 **Recomendación**: Desactivar el fallback a `os.getenv` en entornos de producción para llaves críticas de proveedores (YCloud/Meta).
+
+### 4. ~~Aislamiento Multi-Tenant en 5 Endpoints Críticos~~ [RESUELTO ✅]
+**Descripción original**: Audit global (2026-02-21) detectó 5 endpoints sin filtro `tenant_id`: `search_patients_by_symptoms`, `get_patient_insurance_status`, `update_appointment_status`, `delete_appointment`, `update_professional`.
+> **Resolución (Nexus v8.0 — 2026-02-21):** Se parcharon los 5 endpoints en `admin_routes.py`:
+> - `GET /patients/search-semantic`: CEO = `ANY(allowed_ids)`, Staff = `tenant_id` único.
+> - `GET /patients/{id}/insurance-status`: `AND tenant_id = $2` en WHERE.
+> - `PUT/PATCH /appointments/{id}/status`: `AND tenant_id = $3` + guard 404 si `UPDATE 0`.
+> - `DELETE /appointments/{id}`: SELECT y DELETE con `AND tenant_id = $2`.
+> - `PUT /professionals/{id}`: Guard 403 con `allowed_ids` check antes de UPDATE.
+> Spec de referencia: `orchestrator_service/specs/2026-02-21_nexus-v8-isolation-hardening.spec.md`
 
 ---
 
 ## 🚀 Plan de Hardening (Endurecimiento)
 
+### ✅ Completado
+
+- [x] Implementar `cookie-based auth` para el frontend (HttpOnly Cookie).
+- [x] Eliminar f-strings de los servicios de Marketing y Dashboards (`timedelta` nativo).
+- [x] Implementar Security Headers Middleware (`HSTS`, `CSP`, `XFO`, `XCTO`).
+- [x] Implementar AI Guardrails (`detect_prompt_injection`, `SafeHTML` + DOMPurify).
+- [x] Parchear 5 endpoints críticos con aislamiento `tenant_id` completo.
+
+### ⏳ Pendiente
+
 1. **Backend**:
-   - [ ] Implementar `cookie-based auth` para el frontend.
-   - [ ] Eliminar f-strings de los servicios de Marketing y Dashboards.
-   - [ ] Forzar error si `ADMIN_TOKEN` o `CREDENTIALS_FERNET_KEY` mantienen valores por defecto.
+   - [ ] Forzar error si `ADMIN_TOKEN` o `CREDENTIALS_FERNET_KEY` mantienen valores por defecto en producción.
+   - [ ] Desactivar fallback `os.getenv` en producción para llaves de proveedores.
 
 2. **Frontend**:
    - [ ] Limpiar `console.log` de URLs en producción (pueden contener PII).
-   - [ ] Implementar una Content Security Policy (CSP) estricta.
 
 3. **Base de Datos**:
-   - [ ] Auditoría de acceso a PII: Registrar quién accede a tablas de pacientes/DNI.
+   - [ ] Completar `ReadAuditLogger` para tablas de pacientes/DNI (acceso a PII).
