@@ -1682,54 +1682,77 @@ async def update_clinic_settings(
 
 # ==================== ENDPOINTS BÚSQUEDA SEMÁNTICA ====================
 
-@router.get("/patients/search-semantic", dependencies=[Depends(verify_admin_token)], tags=["Pacientes"], summary="Búsqueda semántica de pacientes por síntomas")
+@router.get("/patients/search-semantic", tags=["Pacientes"], summary="Búsqueda semántica de pacientes por síntomas")
 async def search_patients_by_symptoms(
     query: str,
-    limit: int = 20
+    limit: int = 20,
+    user_data=Depends(verify_admin_token),
+    allowed_ids: List[int] = Depends(get_allowed_tenant_ids),
+    tenant_id: int = Depends(get_resolved_tenant_id),
 ):
     """
-    Búsqueda semántica de pacientes por síntomas mencionados en chats IA.
-    Busca coincidencias de texto en la tabla chat_messages relacionadas con síntomas.
-    
-    Args:
-        query: Texto a buscar (ej: "dolor de muela", "gingivitis")
-        limit: Número máximo de resultados
-        
-    Returns:
-        Lista de pacientes con matches semánticos
+    Búsqueda semántica de pacientes por síntomas. Aislado por tenant_id (Regla de Oro).
+    - CEO: retorna pacientes de todas sus sedes (allowed_ids).
+    - Staff/Profesional: retorna pacientes solo de su sede activa.
     """
     try:
-        # Buscar mensajes de chat que contengan el query (case-insensitive)
-        chat_matches = await db.pool.fetch("""
-            SELECT DISTINCT patient_id
-            FROM chat_messages
-            WHERE content ILIKE $1
-            ORDER BY created_at DESC
-            LIMIT $2
-        """, f"%{query}%", limit)
-        
+        is_ceo = user_data.role == 'ceo'
+
+        if is_ceo:
+            # CEO: buscar en chat_messages sin filtro de sede (los patient_ids luego se filtran)
+            chat_matches = await db.pool.fetch("""
+                SELECT DISTINCT patient_id
+                FROM chat_messages
+                WHERE content ILIKE $1
+                LIMIT $2
+            """, f"%{query}%", limit)
+        else:
+            # Staff: filtrar chat_messages por tenant_id de la sede activa
+            chat_matches = await db.pool.fetch("""
+                SELECT DISTINCT cm.patient_id
+                FROM chat_messages cm
+                JOIN patients p ON cm.patient_id = p.id
+                WHERE cm.content ILIKE $1
+                  AND p.tenant_id = $2
+                LIMIT $3
+            """, f"%{query}%", tenant_id, limit)
+
         patient_ids = [row['patient_id'] for row in chat_matches if row['patient_id'] is not None]
-        
+
         if not patient_ids:
             return []
-            
-        # Obtener datos de pacientes
-        patients = await db.pool.fetch("""
-            SELECT id, first_name, last_name, phone_number, email, insurance_provider, dni, created_at
-            FROM patients
-            WHERE id = ANY($1::int[])
-            AND status = 'active'
-        """, patient_ids)
-        
+
+        if is_ceo:
+            # CEO: filtrar por sus sedes permitidas
+            patients = await db.pool.fetch("""
+                SELECT id, first_name, last_name, phone_number, email, insurance_provider, dni, created_at
+                FROM patients
+                WHERE id = ANY($1::int[])
+                  AND tenant_id = ANY($2::int[])
+                  AND status = 'active'
+            """, patient_ids, allowed_ids)
+        else:
+            # Staff: filtrar por su sede activa
+            patients = await db.pool.fetch("""
+                SELECT id, first_name, last_name, phone_number, email, insurance_provider, dni, created_at
+                FROM patients
+                WHERE id = ANY($1::int[])
+                  AND tenant_id = $2
+                  AND status = 'active'
+            """, patient_ids, tenant_id)
+
         return [dict(row) for row in patients]
-        
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error en búsqueda semántica: {str(e)}")
 
 # ==================== ENDPOINTS SEGURO / OBRAS SOCIALES ====================
 
 @router.get("/patients/{patient_id}/insurance-status", dependencies=[Depends(verify_admin_token)], tags=["Pacientes"], summary="Verificar estado de obra social del paciente")
-async def get_patient_insurance_status(patient_id: int):
+async def get_patient_insurance_status(
+    patient_id: int,
+    tenant_id: int = Depends(get_resolved_tenant_id),
+):
     """
     Verifica el estado de la credencial de obra social de un paciente.
     
@@ -1743,11 +1766,11 @@ async def get_patient_insurance_status(patient_id: int):
     try:
         # Obtener datos del paciente y su obra social
         patient = await db.pool.fetchrow("""
-            SELECT id, first_name, last_name, phone_number, insurance_provider, 
+            SELECT id, first_name, last_name, phone_number, insurance_provider,
                    insurance_id, insurance_valid_until, status
             FROM patients
-            WHERE id = $1 AND status = 'active'
-        """, patient_id)
+            WHERE id = $1 AND tenant_id = $2 AND status = 'active'
+        """, patient_id, tenant_id)
         
         if not patient:
             raise HTTPException(status_code=404, detail="Paciente no encontrado")
@@ -2063,13 +2086,19 @@ async def create_professional(
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.put("/professionals/{id}", dependencies=[Depends(verify_admin_token)], tags=["Profesionales"], summary="Actualizar datos de un profesional")
-async def update_professional(id: int, payload: ProfessionalUpdate):
+async def update_professional(
+    id: int,
+    payload: ProfessionalUpdate,
+    allowed_ids: List[int] = Depends(get_allowed_tenant_ids),
+):
     """Actualizar datos de un profesional por su ID numérico."""
     try:
-        # Verificar existencia
-        exists = await db.pool.fetchval("SELECT 1 FROM professionals WHERE id = $1", id)
-        if not exists:
+        # Verificar existencia Y ownership multi-tenant (Regla de Oro)
+        prof_row = await db.pool.fetchrow("SELECT tenant_id FROM professionals WHERE id = $1", id)
+        if not prof_row:
             raise HTTPException(status_code=404, detail="Profesional no encontrado")
+        if prof_row['tenant_id'] not in allowed_ids:
+            raise HTTPException(status_code=403, detail="No tienes acceso a esta sede")
 
         # Actualizar datos básicos, disponibilidad y google_calendar_id
         current_wh = payload.working_hours
@@ -2435,9 +2464,19 @@ async def create_appointment_manual(
 
 @router.put("/appointments/{id}/status", dependencies=[Depends(verify_admin_token)], tags=["Turnos"], summary="Actualizar el estado de un turno (confirmed, cancelled, etc.)")
 @router.patch("/appointments/{id}/status", dependencies=[Depends(verify_admin_token)], tags=["Turnos"], summary="Actualizar el estado de un turno (vía PATCH)")
-async def update_appointment_status(id: str, payload: StatusUpdate, request: Request):
-    """Cambiar estado: confirmed, cancelled, attended, no_show."""
-    await db.pool.execute("UPDATE appointments SET status = $1 WHERE id = $2", payload.status, id)
+async def update_appointment_status(
+    id: str,
+    payload: StatusUpdate,
+    request: Request,
+    tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    """Cambiar estado: confirmed, cancelled, attended, no_show. Aislado por tenant_id (Regla de Oro)."""
+    result = await db.pool.execute(
+        "UPDATE appointments SET status = $1 WHERE id = $2 AND tenant_id = $3",
+        payload.status, id, tenant_id
+    )
+    if result == "UPDATE 0":
+        raise HTTPException(status_code=404, detail="Turno no encontrado o sin acceso")
     
     # Obtener datos actualizados del turno para emitir evento
     appointment_data = await db.pool.fetchrow("""
@@ -2593,14 +2632,14 @@ async def update_appointment(id: str, apt: AppointmentCreate, request: Request, 
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.delete("/appointments/{id}", dependencies=[Depends(verify_admin_token)], tags=["Turnos"], summary="Eliminar físicamente un turno de la agenda")
-async def delete_appointment(id: str, request: Request):
-    """Eliminar turno físicamente de la base de datos y de GCal."""
+async def delete_appointment(id: str, request: Request, tenant_id: int = Depends(get_resolved_tenant_id)):
+    """Eliminar turno físicamente de la base de datos y de GCal. Aislado por tenant_id (Regla de Oro)."""
     try:
-        # 1. Obtener datos antes de borrar
+        # 1. Obtener datos antes de borrar — verificar ownership
         apt = await db.pool.fetchrow("""
-            SELECT google_calendar_event_id, professional_id 
-            FROM appointments WHERE id = $1
-        """, id)
+            SELECT google_calendar_event_id, professional_id
+            FROM appointments WHERE id = $1 AND tenant_id = $2
+        """, id, tenant_id)
         
         if not apt:
              raise HTTPException(status_code=404, detail="Turno no encontrado")
@@ -2617,8 +2656,8 @@ async def delete_appointment(id: str, request: Request):
             except Exception as ge:
                 logger.error(f"Error borrando de GCal: {ge}")
 
-        # 3. Borrar de la base de datos
-        await db.pool.execute("DELETE FROM appointments WHERE id = $1", id)
+        # 3. Borrar de la base de datos — con doble verificación de tenant_id
+        await db.pool.execute("DELETE FROM appointments WHERE id = $1 AND tenant_id = $2", id, tenant_id)
         
         # 4. Notificar a la UI
         await emit_appointment_event("APPOINTMENT_DELETED", id, request)
