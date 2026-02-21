@@ -147,8 +147,10 @@ export default function AgendaView() {
   const socketRef = useRef<Socket | null>(null);
   const eventsRef = useRef<Appointment[]>([]);
   const [isBackgroundSyncing, setIsBackgroundSyncing] = useState(false);
-  // Evita que datesSet dispare fetchData cuando el calendario re-renderiza por cambio de eventos
-  const lastFetchedRange = useRef<{ start: string; end: string } | null>(null);
+  // Debounce para datesSet: evita fetches duplicados en renders rápidos del calendario
+  const datesSetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Flag para evitar fetches concurrentes desde datesSet mientras ya hay uno en curso
+  const isFetchingRef = useRef(false);
 
   const [formData, setFormData] = useState({
     patient_id: '',
@@ -213,7 +215,13 @@ export default function AgendaView() {
   }, []);
 
   // Fetch all data
-  const fetchData = useCallback(async (isBackground: boolean = false) => {
+  // explicitStart/explicitEnd: fechas pasadas directamente desde datesSet para evitar leer
+  // calendarRef en el momento incorrecto (puede tener la vista anterior).
+  const fetchData = useCallback(async (
+    isBackground: boolean = false,
+    explicitStart?: Date,
+    explicitEnd?: Date
+  ) => {
     try {
       if (!isBackground) setLoading(true);
       else setIsBackgroundSyncing(true);
@@ -221,11 +229,14 @@ export default function AgendaView() {
       // Fetch settings first if needed or concurrently
       fetchClinicSettings();
 
-      // Get current calendar date range
+      // Prioridad: fechas explícitas → calendarRef → fallback mobile
       let startDate: Date;
       let endDate: Date;
 
-      if (calendarRef.current) {
+      if (explicitStart && explicitEnd) {
+        startDate = explicitStart;
+        endDate = explicitEnd;
+      } else if (calendarRef.current) {
         const calendarApi = calendarRef.current.getApi();
         startDate = calendarApi.view.activeStart;
         endDate = calendarApi.view.activeEnd;
@@ -273,6 +284,7 @@ export default function AgendaView() {
     } finally {
       if (!isBackground) setLoading(false);
       else setIsBackgroundSyncing(false);
+      isFetchingRef.current = false;
     }
   }, [fetchGoogleBlocks, selectedProfessionalId, user?.role, user?.email]);
 
@@ -349,10 +361,10 @@ export default function AgendaView() {
     });
 
     return () => {
-      // Cleanup WebSocket connection
       if (socketRef.current) {
         socketRef.current.disconnect();
       }
+      if (datesSetTimerRef.current) clearTimeout(datesSetTimerRef.current);
     };
   }, [fetchData]);
 
@@ -705,16 +717,16 @@ export default function AgendaView() {
                   }}
                   events={calendarEvents}
                   datesSet={(dateInfo) => {
-                    // Solo refetch cuando el usuario navega a un rango distinto (semana anterior/siguiente)
-                    const start = dateInfo.startStr;
-                    const end = dateInfo.endStr;
-                    if (
-                      lastFetchedRange.current?.start !== start ||
-                      lastFetchedRange.current?.end !== end
-                    ) {
-                      lastFetchedRange.current = { start, end };
-                      fetchData();
-                    }
+                    // Debounce: esperar 150ms antes de hacer fetch para evitar llamadas
+                    // duplicadas cuando FullCalendar re-renderiza internamente al recibir eventos.
+                    // Las fechas se pasan explícitamente para evitar leer calendarRef desactualizado.
+                    if (datesSetTimerRef.current) clearTimeout(datesSetTimerRef.current);
+                    datesSetTimerRef.current = setTimeout(() => {
+                      if (!isFetchingRef.current) {
+                        isFetchingRef.current = true;
+                        fetchData(false, dateInfo.start, dateInfo.end);
+                      }
+                    }, 150);
                   }}
                   dateClick={handleDateClick}
                   eventClick={handleEventClick}
