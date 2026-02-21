@@ -13,6 +13,7 @@ class EmailService:
         self.smtp_user = os.getenv("SMTP_USER", "")
         self.smtp_pass = os.getenv("SMTP_PASS", "")
         self.smtp_sender = os.getenv("SMTP_SENDER", "")
+        self.clinic_name = os.getenv("CLINIC_NAME", "Sistema de Gestión")
 
     def send_handoff_email(self, to_email: str, patient_name: str, phone: str, reason: str, chat_history_preview: str = ""):
         """
@@ -58,7 +59,7 @@ class EmailService:
                     </a>
                     
                     <p style="margin-top: 20px; font-size: 12px; color: #999;">
-                        Este es un mensaje automático del sistema Dentalogic.
+                        Este es un mensaje automático del sistema {self.clinic_name}.
                     </p>
                 </div>
             </body>

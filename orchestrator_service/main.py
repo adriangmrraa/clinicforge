@@ -1438,10 +1438,11 @@ OPENAPI_TAGS = [
     {"name": "Chat IA", "description": "Asistente clínico inteligente. Incluye Nexus AI Guardrails (anti-injection)."},
 ]
 
+_CLINIC_NAME = os.getenv("CLINIC_NAME", "ClinicForge")
 app = FastAPI(
-    title="Dentalogic API (Nexus v8.0 Hardened)",
+    title=f"{_CLINIC_NAME} API (Nexus v8.0 Hardened)",
     description=(
-        "API del **Orchestrator** de Dentalogic: Gestión multi-tenant con blindaje proactivo. "
+        f"API del **Orchestrator** de {_CLINIC_NAME}: Gestión multi-tenant con blindaje proactivo. "
         "Seguridad: **JWT (Identidad) + X-Admin-Token (Infraestructura)**. "
         "Capas: HSTS, CSP Dinámico, Anti-Clickjacking y Nexus AI Guardrails. "
         "Contratos: **Swagger UI** (`/docs`) | **ReDoc** (`/redoc`) | **OpenAPI JSON** (`/openapi.json`)."

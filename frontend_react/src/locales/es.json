@@ -41,6 +41,7 @@
   "config": {
     "title": "Configuración",
     "subtitle": "Opciones generales de la plataforma (sede actual)",
+    "main_subtitle": "Gestión centralizada de la clínica y canales de comunicación.",
     "language_label": "Idioma de la plataforma",
     "language_help": "El idioma elegido se aplicará a toda la interfaz (menús, títulos, botones) cuando esté activa la traducción completa.",
     "current_clinic": "Sede actual",
@@ -49,10 +50,51 @@
     "load_error": "No se pudo cargar la configuración.",
     "language_es": "Español",
     "language_en": "English",
-    "language_fr": "Français"
+    "language_fr": "Français",
+    "webhook_title_ycloud": "Webhook para WhatsApp (YCloud)",
+    "webhook_hint_ycloud": "Configura este Webhook en tu consola de YCloud para recibir mensajes.",
+    "webhook_title_chatwoot": "Webhook para Chatwoot (Meta)",
+    "webhook_hint_chatwoot": "Usa esta URL en la configuración de \"Inbox\" de Chatwoot para recibir mensajes de Instagram y Facebook.",
+    "copy_url": "Copiar URL",
+    "configure_credential": "Configurar Credencial",
+    "field_tenant": "Sede (Tenant)",
+    "global_all_tenants": "Global (Todas las Sedes)",
+    "save_config": "Guardar Configuración",
+    "active_credentials": "Credenciales Activas",
+    "col_tenant": "Sede",
+    "col_status": "Estado",
+    "col_actions": "Acciones",
+    "status_active": "Activo",
+    "no_whatsapp_configured": "No hay servicios de WhatsApp configurados.",
+    "no_chatwoot_configured": "No hay servicios de Meta/Chatwoot configurados.",
+    "other_integrations": "Otras Integraciones",
+    "other_integrations_hint": "Gestión de claves para OpenAI, bases de datos y otros servicios.",
+    "no_other_credentials": "No hay otras credenciales registradas.",
+    "media_maintenance": "Mantenimiento de Medios",
+    "media_hint": "Gestiona el almacenamiento de archivos multimedia del chat. Los archivos eliminados no podrán recuperarse.",
+    "cleanup_title": "Limpieza de Archivos",
+    "cleanup_hint": "Elimina fotos, videos y audios antiguos.",
+    "field_age": "Antigüedad:",
+    "option_1month": "1 mes",
+    "option_3months": "3 meses",
+    "option_6months": "6 meses",
+    "option_1year": "1 año",
+    "run_cleanup": "Ejecutar Limpieza Ahora",
+    "smart_storage_title": "Almacenamiento Inteligente",
+    "smart_storage_hint": "El sistema utiliza URLs directas de Chatwoot/YCloud siempre que es posible. Solo los archivos subidos manualmente o descargados por backup ocupan espacio local.",
+    "modal_edit_credential": "Editar Credencial",
+    "modal_new_credential": "Nueva Credencial",
+    "field_name_identifier": "Nombre Identificador",
+    "field_value": "Valor (Token/Key)",
+    "field_category": "Categoría",
+    "field_scope": "Alcance",
+    "scope_global": "Global",
+    "scope_tenant": "Por Sede",
+    "field_assign_tenant": "Asignar a Sede",
+    "select_placeholder": "Seleccionar..."
   },
   "login": {
-    "title": "Dentalogic",
+    "title": "Dental Clinic",
     "welcome": "Bienvenido de nuevo",
     "request_access": "Solicitud de acceso a la plataforma",
     "email": "Correo electrónico",
@@ -621,5 +663,65 @@
         "lead_recovery": "Recuperación de Lead"
       }
     }
+  },
+  "login_extra": {
+    "demo_ready": "Cuenta demo lista. Un clic y entrás a la plataforma.",
+    "sign_in_link": "Iniciar sesión con mi cuenta"
+  },
+  "legal": {
+    "center_title": "Centro Legal de {appName}",
+    "center_subtitle": "Transparencia y seguridad en el manejo de tus datos.",
+    "back_button": "Volver al Inicio",
+    "footer": "© 2026 {appName}. Todos los derechos reservados."
+  },
+  "privacy": {
+    "title": "Política de Privacidad",
+    "last_updated": "Última actualización: 19 de febrero de 2026",
+    "s1_title": "1. Recopilación de Información",
+    "s1_body": "{appName} recopila información necesaria para la gestión de clínicas dentales, incluyendo nombres de pacientes, historiales de agendamiento y datos de contacto. Cuando conectas tu cuenta de Meta Ads, recopilamos estadísticas de rendimiento (clics, gasto, impresiones) para calcular tu ROI.",
+    "s2_title": "2. Uso de Datos de Meta",
+    "s2_intro": "Los datos obtenidos a través de los APIs de Meta se utilizan exclusivamente para:",
+    "s2_item1": "Visualizar el rendimiento de tus campañas en nuestro dashboard.",
+    "s2_item2": "Atribuir mensajes entrantes de WhatsApp a anuncios específicos de Meta.",
+    "s2_item3": "Generar reportes de retorno de inversión (ROI) para el propietario de la clínica.",
+    "s3_title": "3. Protección de Datos",
+    "s3_body": "Utilizamos cifrado AES-256 para proteger todos los tokens de acceso y credenciales sensibles. Nunca compartimos tus datos con terceros sin tu consentimiento explícito."
+  },
+  "terms": {
+    "title": "Condiciones del Servicio",
+    "intro": "Al utilizar {appName}, aceptas los siguientes términos:",
+    "s1_title": "1. Uso del Software",
+    "s1_body": "{appName} es una plataforma para la gestión administrativa de clínicas. El usuario es responsable de la veracidad de los datos ingresados y del cumplimiento de las normativas de salud locales.",
+    "s2_title": "2. Integraciones de Terceros",
+    "s2_body": "La integración con Meta Ads y WhatsApp depende de los términos y condiciones de Meta Platforms, Inc. No nos hacemos responsables por interrupciones de servicio causadas por plataformas externas.",
+    "s3_title": "3. Terminación",
+    "s3_body": "Puedes revocar el acceso a tus datos en cualquier momento a través del panel de configuración de Meta o dentro de nuestra plataforma en la sección de Marketing."
+  },
+  "chat_extra": {
+    "no_messages_yet": "No hay mensajes aún en esta conversación",
+    "messages_appear_here": "Los mensajes nuevos aparecerán aquí automáticamente.",
+    "lead_no_appointments": "Lead (Sin turnos)",
+    "contact_not_patient": "Este contacto aún no es paciente registrado.",
+    "attention_required_handoff": "Atención requerida: derivación a humano solicitada",
+    "manual_mode_active_banner": "Modo manual activo"
+  },
+  "patient_extra": {
+    "meta_campaign": "Campaña:",
+    "meta_ad": "Anuncio:"
+  },
+  "landing": {
+    "platform_label": "Plataforma para clínicas dentales",
+    "headline": "Agenda, pacientes e IA en una sola app",
+    "subheadline": "Probá la plataforma en un clic. Sin tarjeta. Acceso inmediato a la demo.",
+    "cta_try_app": "Probar app",
+    "cta_disclaimer": "Te logueamos automáticamente en la cuenta demo (sin exponer credenciales en la interfaz)",
+    "demo_title": "Qué incluye la demo",
+    "feature_agenda": "Agenda por sede y profesional, sincronizable con Google Calendar.",
+    "feature_ai": "Agente IA por WhatsApp: turnos, triaje y derivación a humano.",
+    "feature_analytics": "Analíticas para CEO y profesionales.",
+    "demo_credentials_title": "Credenciales de prueba",
+    "cta_whatsapp": "Probar Agente IA por WhatsApp",
+    "cta_login": "Iniciar sesión con mi cuenta",
+    "credentials_password": "Contraseña:"
   }
 }

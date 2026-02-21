@@ -1196,7 +1196,7 @@ export default function ChatsView() {
               {(selectedSession?.last_derivhumano_at || selectedChatwoot?.last_derivhumano_at) ? (
                 <div className="bg-orange-50 border-b border-orange-200 px-4 py-2 flex items-center gap-2">
                   <AlertCircle size={16} className="text-orange-600" />
-                  <span className="text-sm text-orange-800 font-medium">Attention required: Human handoff requested</span>
+                  <span className="text-sm text-orange-800 font-medium">{t('chat_extra.attention_required_handoff')}</span>
                 </div>
               ) : null}
 
@@ -1216,7 +1216,7 @@ export default function ChatsView() {
                   <div className="bg-blue-50 border-b border-blue-200 px-4 py-2 flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <Pause size={16} className="text-blue-600 fill-current" />
-                      <span className="text-sm text-blue-800 font-bold">✋ Manual mode active</span>
+                      <span className="text-sm text-blue-800 font-bold">✋ {t('chat_extra.manual_mode_active_banner')}</span>
                     </div>
                     <button
                       onClick={() => selectedSession ? handleToggleHumanMode() : handleToggleChatwootLock()}
@@ -1309,8 +1309,8 @@ export default function ChatsView() {
                     return (
                       <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-gray-400">
                         <MessageCircle size={48} className="mb-2 opacity-20" />
-                        <p className="text-sm font-medium">No hay mensajes aún en esta conversación</p>
-                        <p className="text-xs opacity-70">Los mensajes nuevos aparecerán aquí automáticamente.</p>
+                          <p className="text-sm font-medium">{t('chat_extra.no_messages_yet')}</p>
+                        <p className="text-xs opacity-70">{t('chat_extra.messages_appear_here')}</p>
                       </div>
                     );
                   }
@@ -1502,10 +1502,10 @@ export default function ChatsView() {
                           </>
                         ) : (
                           <>
-                            <h4 className="text-xs font-medium text-amber-700 mb-2">Lead (Sin turnos)</h4>
+                            <h4 className="text-xs font-medium text-amber-700 mb-2">{t('chat_extra.lead_no_appointments')}</h4>
                             <p className="font-medium">{displayName}</p>
                             <p className="text-sm text-gray-500">{displayPhone}</p>
-                            <p className="text-xs text-amber-700 mt-2">Este contacto aún no es paciente registrado.</p>
+                            <p className="text-xs text-amber-700 mt-2">{t('chat_extra.contact_not_patient')}</p>
                           </>
                         )}
                       </div>

@@ -113,3 +113,5 @@ easypanel-*.json
 *.bak
 *.tmp
 .vagrant/
+result.txt
+orchestrator_service/result.txt

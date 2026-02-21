@@ -1,15 +1,17 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { Shield, MessageCircle, LogIn, Sparkles, Calendar, BarChart3, Zap, ChevronDown } from 'lucide-react';
+import { useTranslation } from '../context/LanguageContext';
 
-const WHATSAPP_NUMBER = '5493435256815';
-const WHATSAPP_PREDEFINED_MESSAGE = 'Hola, quisiera consultar por turnos para limpieza dental.';
-const WHATSAPP_URL = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(WHATSAPP_PREDEFINED_MESSAGE)}`;
+const DEMO_WHATSAPP = import.meta.env.VITE_DEMO_WHATSAPP || '5493435256815';
+const DEMO_MESSAGE = 'Hola, quisiera consultar por turnos.';
+const WHATSAPP_URL = `https://wa.me/${DEMO_WHATSAPP}?text=${encodeURIComponent(DEMO_MESSAGE)}`;
 
 export default function LandingView() {
+  const { t } = useTranslation();
+
   return (
     <div className="landing-root min-h-screen min-h-[100dvh] flex flex-col bg-gradient-to-b from-slate-50 via-white to-medical-50/20">
-      {/* Safe area + padding móvil */}
       <main className="flex-1 flex flex-col items-center justify-center w-full px-4 py-8 sm:p-6 md:p-8 pb-12 sm:pb-16">
         <div className="w-full max-w-md sm:max-w-lg mx-auto space-y-6 sm:space-y-8">
           {/* Hero */}
@@ -18,65 +20,65 @@ export default function LandingView() {
               <Shield size={28} className="sm:w-8 sm:h-8" strokeWidth={2} />
             </div>
             <p className="text-xs sm:text-sm font-semibold text-medical-600 uppercase tracking-widest mb-2">
-              Plataforma para clínicas dentales
+              {t('landing.platform_label')}
             </p>
             <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900 tracking-tight leading-tight">
-              Agenda, pacientes e IA en una sola app
+              {t('landing.headline')}
             </h1>
             <p className="mt-3 sm:mt-4 text-sm sm:text-base text-gray-600 max-w-sm mx-auto leading-relaxed">
-              Probá la plataforma en un clic. Sin tarjeta. Acceso inmediato a la demo.
+              {t('landing.subheadline')}
             </p>
           </header>
 
-          {/* CTA principal — arriba del pliegue en móvil */}
+          {/* CTA principal */}
           <div className="space-y-3 sm:space-y-4">
             <Link
               to="/login?demo=1"
               className="landing-cta-primary flex items-center justify-center gap-3 w-full rounded-2xl py-4 sm:py-5 text-base sm:text-lg font-bold text-white bg-medical-600 hover:bg-medical-700 active:scale-[0.98] transition-all shadow-xl shadow-medical-600/25 hover:shadow-medical-600/30 min-h-[52px] sm:min-h-[56px] touch-manipulation"
             >
               <Zap size={22} className="shrink-0" />
-              Probar app
+              {t('landing.cta_try_app')}
             </Link>
             <p className="text-center text-xs text-gray-500 px-2">
-              Te logueamos automáticamente en la cuenta demo (sin exponer credenciales en la interfaz)
+              {t('landing.cta_disclaimer')}
             </p>
           </div>
 
-          {/* Card glass: beneficios + credenciales */}
+          {/* Card: beneficios + credenciales */}
           <section className="landing-glass rounded-2xl sm:rounded-3xl border border-gray-200/80 shadow-card overflow-hidden">
             <div className="p-4 sm:p-6 space-y-4 sm:space-y-5">
               <h2 className="text-base sm:text-lg font-semibold text-gray-800 flex items-center gap-2">
                 <Sparkles className="text-medical-600 shrink-0" size={20} />
-                Qué incluye la demo
+                {t('landing.demo_title')}
               </h2>
               <ul className="space-y-2.5 sm:space-y-3 text-gray-700 text-sm sm:text-base">
                 <li className="flex items-start gap-3">
                   <span className="flex items-center justify-center w-8 h-8 rounded-xl bg-medical-50 text-medical-600 shrink-0">
                     <Calendar size={16} />
                   </span>
-                  <span>Agenda por sede y profesional, sincronizable con Google Calendar.</span>
+                  <span>{t('landing.feature_agenda')}</span>
                 </li>
                 <li className="flex items-start gap-3">
                   <span className="flex items-center justify-center w-8 h-8 rounded-xl bg-medical-50 text-medical-600 shrink-0">
                     <MessageCircle size={16} />
                   </span>
-                  <span>Agente IA por WhatsApp: turnos, triaje y derivación a humano.</span>
+                  <span>{t('landing.feature_ai')}</span>
                 </li>
                 <li className="flex items-start gap-3">
                   <span className="flex items-center justify-center w-8 h-8 rounded-xl bg-medical-50 text-medical-600 shrink-0">
                     <BarChart3 size={16} />
                   </span>
-                  <span>Analíticas para CEO y profesionales.</span>
+                  <span>{t('landing.feature_analytics')}</span>
                 </li>
               </ul>
               <details className="group">
                 <summary className="flex items-center justify-between gap-2 py-2 cursor-pointer list-none text-sm font-medium text-gray-600 hover:text-gray-800 select-none touch-manipulation min-h-[44px]">
-                  <span>Credenciales de prueba</span>
+                  <span>{t('landing.demo_credentials_title')}</span>
                   <ChevronDown size={18} className="shrink-0 transition-transform group-open:rotate-180 text-medical-600" />
                 </summary>
                 <div className="mt-2 pt-3 border-t border-gray-100 rounded-xl bg-gray-50/80 px-4 py-3 text-sm text-gray-700 font-mono">
                   <p><span className="text-gray-500">Email:</span> [REDACTED]</p>
-                  <p className="mt-1"><span className="text-gray-500">Contraseña:</span> [REDACTED]</p>
+                  <p className="mt-1"><span className="text-gray-500">{t('landing.credentials_password')}</span> [REDACTED]</p>
                 </div>
               </details>
             </div>
@@ -91,7 +93,7 @@ export default function LandingView() {
               className="flex items-center justify-center gap-3 w-full rounded-2xl py-3.5 sm:py-4 text-sm sm:text-base font-semibold border-2 border-medical-600 text-medical-600 bg-white hover:bg-medical-50 active:scale-[0.98] transition-all min-h-[48px] touch-manipulation"
             >
               <MessageCircle size={20} className="shrink-0" />
-              Probar Agente IA por WhatsApp
+              {t('landing.cta_whatsapp')}
             </a>
             <div className="pt-2">
               <Link
@@ -99,7 +101,7 @@ export default function LandingView() {
                 className="flex items-center justify-center gap-2 w-full rounded-xl py-3 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 transition-colors min-h-[44px] touch-manipulation"
               >
                 <LogIn size={18} />
-                Iniciar sesión con mi cuenta
+                {t('landing.cta_login')}
               </Link>
             </div>
           </div>

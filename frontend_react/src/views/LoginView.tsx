@@ -153,12 +153,12 @@ const LoginView: React.FC = () => {
         <form onSubmit={isRegistering ? handleRegister : isDemo ? handleDemoLogin : handleLogin} className="auth-form">
           {isDemo && !isRegistering && (
             <div className="input-group mb-6">
-              <p className="text-sm text-gray-300 mb-4">Cuenta demo lista. Un clic y entrás a la plataforma.</p>
+              <p className="text-sm text-gray-300 mb-4">{t('login_extra.demo_ready')}</p>
               <button type="submit" className="btn-primary auth-btn w-full" disabled={loading}>
                 {loading ? t('login.processing') : 'Entrar a la demo'}
               </button>
               <div className="mt-4 text-center">
-                <Link to="/login" className="text-sm text-cyan-300 hover:text-white">Iniciar sesión con mi cuenta</Link>
+                <Link to="/login" className="text-sm text-cyan-300 hover:text-white">{t('login_extra.sign_in_link')}</Link>
               </div>
             </div>
           )}

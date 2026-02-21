@@ -290,13 +290,13 @@ export default function ConfigView() {
             <div className="bg-green-50 border border-green-200 rounded-2xl p-6 shadow-sm">
                 <div className="flex items-center gap-2 mb-2 text-green-800">
                     <Zap className="w-5 h-5" />
-                    <h3 className="font-semibold">Webhook para WhatsApp (YCloud)</h3>
+                    <h3 className="font-semibold">{t('config.webhook_title_ycloud')}</h3>
                 </div>
-                <p className="text-sm text-green-700 mb-4">Configura este Webhook en tu consola de YCloud para recibir mensajes.</p>
+                <p className="text-sm text-green-700 mb-4">{t('config.webhook_hint_ycloud')}</p>
                 <div className="flex flex-col sm:flex-row gap-2">
                     <input readOnly value={intConfig.ycloud_webhook_url || 'Cargando...'} className="flex-1 px-3 py-2 bg-white rounded-lg border border-green-200 text-sm font-mono text-gray-600 focus:outline-none" />
                     <button onClick={() => copyToClipboard(intConfig.ycloud_webhook_url || '')} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition flex items-center justify-center gap-2 font-medium">
-                        <Copy size={16} /> <span className="sm:hidden">Copiar URL</span>
+                        <Copy size={16} /> <span className="sm:hidden">{t('config.copy_url')}</span>
                     </button>
                 </div>
             </div>
@@ -306,18 +306,18 @@ export default function ConfigView() {
                 <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
                     <h2 className="text-lg font-semibold text-gray-900 mb-6 flex items-center gap-2">
                         <MessageCircle className="text-green-600" size={20} />
-                        Configurar Credencial
+                        {t('config.configure_credential')}
                     </h2>
 
                     <div className="space-y-4">
                         <div>
-                            <label className="text-sm font-medium text-gray-700 mb-1 block">Sede (Tenant)</label>
+                            <label className="text-sm font-medium text-gray-700 mb-1 block">{t('config.field_tenant')}</label>
                             <select
                                 className="w-full px-4 py-2 bg-gray-50 border border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500 outline-none transition-all"
                                 value={intConfig.tenant_id === null ? '' : intConfig.tenant_id}
                                 onChange={(e) => setIntConfig({ ...intConfig, tenant_id: e.target.value ? Number(e.target.value) : null })}
                             >
-                                <option value="">Global (Todas las Sedes)</option>
+                                <option value="">{t('config.global_all_tenants')}</option>
                                 {tenants.map(t => <option key={t.id} value={t.id}>{t.clinic_name}</option>)}
                             </select>
                         </div>
@@ -349,21 +349,21 @@ export default function ConfigView() {
                             disabled={saving}
                             className="w-full py-3 bg-green-600 hover:bg-green-700 text-white rounded-xl font-semibold shadow-lg shadow-green-600/20 transition-all flex justify-center items-center gap-2 mt-4"
                         >
-                            {saving ? <Loader2 className="animate-spin" /> : <><CheckCircle2 size={18} /> Guardar Configuración</>}
+                            {saving ? <Loader2 className="animate-spin" /> : <><CheckCircle2 size={18} /> {t('config.save_config')}</>}
                         </button>
                     </div>
                 </div>
 
                 {/* 3. Table */}
                 <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm flex flex-col min-h-[400px]">
-                    <h2 className="text-lg font-semibold text-gray-900 mb-4">Credenciales Activas</h2>
+                    <h2 className="text-lg font-semibold text-gray-900 mb-4">{t('config.active_credentials')}</h2>
                     <div className="overflow-x-auto flex-1">
                         <table className="w-full text-left text-sm">
                             <thead className="bg-gray-50 text-gray-500 uppercase text-xs tracking-wider">
                                 <tr>
-                                    <th className="px-4 py-3 rounded-l-lg font-semibold">Sede</th>
-                                    <th className="px-4 py-3 font-semibold">Estado</th>
-                                    <th className="px-4 py-3 rounded-r-lg text-right font-semibold">Acciones</th>
+                                    <th className="px-4 py-3 rounded-l-lg font-semibold">{t('config.col_tenant')}</th>
+                                    <th className="px-4 py-3 font-semibold">{t('config.col_status')}</th>
+                                    <th className="px-4 py-3 rounded-r-lg text-right font-semibold">{t('config.col_actions')}</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100">
@@ -372,7 +372,7 @@ export default function ConfigView() {
                                         <td className="px-4 py-4 font-medium text-gray-900">{getTenantName(c.tenant_id)}</td>
                                         <td className="px-4 py-4">
                                             <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-green-100 text-green-700 text-xs font-medium">
-                                                <CheckCircle2 size={12} /> Activo
+                                                <CheckCircle2 size={12} /> {t('config.status_active')}
                                             </span>
                                         </td>
                                         <td className="px-4 py-4 text-right">
@@ -396,7 +396,7 @@ export default function ConfigView() {
                                     </tr>
                                 ))}
                                 {credentials.filter(c => c.category === 'ycloud').length === 0 && (
-                                    <tr><td colSpan={3} className="px-4 py-12 text-center text-gray-400 italic">No hay servicios de WhatsApp configurados.</td></tr>
+                                    <tr><td colSpan={3} className="px-4 py-12 text-center text-gray-400 italic">{t('config.no_whatsapp_configured')}</td></tr>
                                 )}
                             </tbody>
                         </table>
@@ -412,13 +412,13 @@ export default function ConfigView() {
             <div className="bg-blue-50 border border-blue-200 rounded-2xl p-6 shadow-sm">
                 <div className="flex items-center gap-2 mb-2 text-blue-800">
                     <MessageCircle className="w-5 h-5" />
-                    <h3 className="font-semibold">Webhook para Chatwoot (Meta)</h3>
+                    <h3 className="font-semibold">{t('config.webhook_title_chatwoot')}</h3>
                 </div>
-                <p className="text-sm text-blue-700 mb-4">Usa esta URL en la configuración de "Inbox" de Chatwoot para recibir mensajes de Instagram y Facebook.</p>
+                <p className="text-sm text-blue-700 mb-4">{t('config.webhook_hint_chatwoot')}</p>
                 <div className="flex flex-col sm:flex-row gap-2">
                     <input readOnly value={intConfig.full_webhook_url || 'Cargando...'} className="flex-1 px-3 py-2 bg-white rounded-lg border border-blue-200 text-sm font-mono text-gray-600 focus:outline-none" />
                     <button onClick={() => copyToClipboard(intConfig.full_webhook_url || '')} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition flex items-center justify-center gap-2 font-medium">
-                        <Copy size={16} /> <span className="sm:hidden">Copiar URL</span>
+                        <Copy size={16} /> <span className="sm:hidden">{t('config.copy_url')}</span>
                     </button>
                 </div>
             </div>
@@ -428,18 +428,18 @@ export default function ConfigView() {
                 <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
                     <h2 className="text-lg font-semibold text-gray-900 mb-6 flex items-center gap-2">
                         <User className="text-blue-600" size={20} />
-                        Configurar Credencial
+                        {t('config.configure_credential')}
                     </h2>
 
                     <div className="space-y-4">
                         <div>
-                            <label className="text-sm font-medium text-gray-700 mb-1 block">Sede (Tenant)</label>
+                            <label className="text-sm font-medium text-gray-700 mb-1 block">{t('config.field_tenant')}</label>
                             <select
                                 className="w-full px-4 py-2 bg-gray-50 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all"
                                 value={intConfig.tenant_id === null ? '' : intConfig.tenant_id}
                                 onChange={(e) => setIntConfig({ ...intConfig, tenant_id: e.target.value ? Number(e.target.value) : null })}
                             >
-                                <option value="">Global (Todas las Sedes)</option>
+                                <option value="">{t('config.global_all_tenants')}</option>
                                 {tenants.map(t => <option key={t.id} value={t.id}>{t.clinic_name}</option>)}
                             </select>
                         </div>
@@ -482,21 +482,21 @@ export default function ConfigView() {
                             disabled={saving}
                             className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-semibold shadow-lg shadow-blue-600/20 transition-all flex justify-center items-center gap-2 mt-4"
                         >
-                            {saving ? <Loader2 className="animate-spin" /> : <><CheckCircle2 size={18} /> Guardar Configuración</>}
+                            {saving ? <Loader2 className="animate-spin" /> : <><CheckCircle2 size={18} /> {t('config.save_config')}</>}
                         </button>
                     </div>
                 </div>
 
                 {/* 3. Table */}
                 <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm flex flex-col min-h-[400px]">
-                    <h2 className="text-lg font-semibold text-gray-900 mb-4">Credenciales Activas</h2>
+                    <h2 className="text-lg font-semibold text-gray-900 mb-4">{t('config.active_credentials')}</h2>
                     <div className="overflow-x-auto flex-1">
                         <table className="w-full text-left text-sm">
                             <thead className="bg-gray-50 text-gray-500 uppercase text-xs tracking-wider">
                                 <tr>
-                                    <th className="px-4 py-3 rounded-l-lg font-semibold">Sede</th>
+                                    <th className="px-4 py-3 rounded-l-lg font-semibold">{t('config.col_tenant')}</th>
                                     <th className="px-4 py-3 font-semibold">Account ID</th>
-                                    <th className="px-4 py-3 rounded-r-lg text-right font-semibold">Acciones</th>
+                                    <th className="px-4 py-3 rounded-r-lg text-right font-semibold">{t('config.col_actions')}</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100">
@@ -525,7 +525,7 @@ export default function ConfigView() {
                                     </tr>
                                 ))}
                                 {credentials.filter(c => c.category === 'chatwoot').length === 0 && (
-                                    <tr><td colSpan={3} className="px-4 py-12 text-center text-gray-400 italic">No hay servicios de Meta/Chatwoot configurados.</td></tr>
+                                    <tr><td colSpan={3} className="px-4 py-12 text-center text-gray-400 italic">{t('config.no_chatwoot_configured')}</td></tr>
                                 )}
                             </tbody>
                         </table>
@@ -540,8 +540,8 @@ export default function ConfigView() {
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
             <div className="flex justify-between items-center bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
                 <div>
-                    <h2 className="text-lg font-semibold text-gray-900">Otras Integraciones</h2>
-                    <p className="text-sm text-gray-500">Gestión de claves para OpenAI, TiendaNube, Bases de Datos, etc.</p>
+                    <h2 className="text-lg font-semibold text-gray-900">{t('config.other_integrations')}</h2>
+                    <p className="text-sm text-gray-500">{t('config.other_integrations_hint')}</p>
                 </div>
                 <button
                     onClick={() => { setEditingCred(null); setCredForm({ name: '', value: '', category: 'openai', description: '', scope: 'global', tenant_id: null }); setIsCredModalOpen(true); }}
@@ -581,7 +581,7 @@ export default function ConfigView() {
                 ))}
                 {credentials.filter(c => !['ycloud', 'chatwoot'].includes(c.category)).length === 0 && (
                     <div className="col-span-full py-12 text-center text-gray-400 bg-gray-50 rounded-2xl border border-dashed border-gray-200">
-                        No hay otras credenciales registradas.
+                        {t('config.no_other_credentials')}
                     </div>
                 )}
             </div>
@@ -593,10 +593,10 @@ export default function ConfigView() {
             <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
                 <div className="flex items-center gap-2 mb-4">
                     <Database size={20} className="text-gray-600" />
-                    <h2 className="text-lg font-semibold text-gray-800">Mantenimiento de Medios</h2>
+                    <h2 className="text-lg font-semibold text-gray-800">{t('config.media_maintenance')}</h2>
                 </div>
                 <p className="text-sm text-gray-500 mb-6">
-                    Gestiona el almacenamiento de archivos multimedia del chat. Los archivos eliminados no podrán recuperarse.
+                    {t('config.media_hint')}
                 </p>
 
                 <div className="space-y-6">
@@ -604,21 +604,21 @@ export default function ConfigView() {
                         <div className="flex items-center justify-between">
                             <div>
                                 <h4 className="font-medium text-gray-900 flex items-center gap-2">
-                                    <Clock size={16} className="text-gray-500" /> Limpieza de Archivos
+                                    <Clock size={16} className="text-gray-500" /> {t('config.cleanup_title')}
                                 </h4>
-                                <p className="text-xs text-gray-500">Elimina fotos, videos y audios antiguos.</p>
+                                <p className="text-xs text-gray-500">{t('config.cleanup_hint')}</p>
                             </div>
                             <div className="flex items-center gap-2">
-                                <span className="text-sm font-medium text-gray-700">Antigüedad:</span>
+                                <span className="text-sm font-medium text-gray-700">{t('config.field_age')}</span>
                                 <select
                                     className="px-3 py-1.5 bg-white border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500"
                                     defaultValue="180"
                                     id="cleanup-days-select"
                                 >
-                                    <option value="30">1 mes</option>
-                                    <option value="90">3 meses</option>
-                                    <option value="180">6 meses</option>
-                                    <option value="365">1 año</option>
+                                    <option value="30">{t('config.option_1month')}</option>
+                                    <option value="90">{t('config.option_3months')}</option>
+                                    <option value="180">{t('config.option_6months')}</option>
+                                    <option value="365">{t('config.option_1year')}</option>
                                 </select>
                             </div>
                         </div>
@@ -631,7 +631,7 @@ export default function ConfigView() {
                                 disabled={saving}
                                 className="px-6 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-medium shadow-md transition-all flex items-center gap-2"
                             >
-                                {saving ? <Loader2 className="animate-spin" size={18} /> : <><Trash2 size={18} /> Ejecutar Limpieza Ahora</>}
+                                {saving ? <Loader2 className="animate-spin" size={18} /> : <><Trash2 size={18} /> {t('config.run_cleanup')}</>}
                             </button>
                         </div>
                     </div>
@@ -640,10 +640,9 @@ export default function ConfigView() {
                         <div className="flex gap-3">
                             <Info size={20} className="text-blue-600 shrink-0" />
                             <div>
-                                <h4 className="text-sm font-semibold text-blue-900">Almacenamiento Inteligente</h4>
+                                <h4 className="text-sm font-semibold text-blue-900">{t('config.smart_storage_title')}</h4>
                                 <p className="text-xs text-blue-800 leading-relaxed mt-1">
-                                    El sistema utiliza URLs directas de Chatwoot/YCloud siempre que es posible.
-                                    Solo los archivos subidos manualmente o descargados por backup ocupan espacio local.
+                                    {t('config.smart_storage_hint')}
                                 </p>
                             </div>
                         </div>
@@ -667,7 +666,7 @@ export default function ConfigView() {
             <div className="flex-none p-6 pb-0 max-w-6xl mx-auto w-full">
                 <PageHeader
                     title={t('config.title')}
-                    subtitle="Gestión centralizada de la clínica y canales de comunicación."
+                    subtitle={t('config.main_subtitle')}
                     icon={<Settings size={22} />}
                 />
 
@@ -734,10 +733,10 @@ export default function ConfigView() {
             </div>
 
             {/* Others Generic Credential Modal */}
-            <Modal isOpen={isCredModalOpen} onClose={() => setIsCredModalOpen(false)} title={editingCred ? 'Editar Credencial' : 'Nueva Credencial'}>
+            <Modal isOpen={isCredModalOpen} onClose={() => setIsCredModalOpen(false)} title={editingCred ? t('config.modal_edit_credential') : t('config.modal_new_credential')}>
                 <form onSubmit={handleSaveGenericCredential} className="space-y-4">
                     <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Nombre Identificador</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">{t('config.field_name_identifier')}</label>
                         <input
                             required
                             className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
@@ -747,7 +746,7 @@ export default function ConfigView() {
                         />
                     </div>
                     <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Valor (Token/Key)</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">{t('config.field_value')}</label>
                         <input
                             required
                             type="password"
@@ -758,7 +757,7 @@ export default function ConfigView() {
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Categoría</label>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">{t('config.field_category')}</label>
                             <select
                                 className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none bg-white"
                                 value={credForm.category}
@@ -772,34 +771,34 @@ export default function ConfigView() {
                             </select>
                         </div>
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Alcance</label>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">{t('config.field_scope')}</label>
                             <select
                                 className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none bg-white"
                                 value={credForm.scope}
                                 onChange={e => setCredForm({ ...credForm, scope: e.target.value as 'global' | 'tenant' })}
                             >
-                                <option value="global">Global</option>
-                                <option value="tenant">Por Sede</option>
+                                <option value="global">{t('config.scope_global')}</option>
+                                <option value="tenant">{t('config.scope_tenant')}</option>
                             </select>
                         </div>
                     </div>
                     {credForm.scope === 'tenant' && (
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Asignar a Sede</label>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">{t('config.field_assign_tenant')}</label>
                             <select
                                 required
                                 className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none bg-white"
                                 value={credForm.tenant_id?.toString() || ''}
                                 onChange={e => setCredForm({ ...credForm, tenant_id: parseInt(e.target.value) })}
                             >
-                                <option value="">Seleccionar...</option>
+                                <option value="">{t('config.select_placeholder')}</option>
                                 {tenants.map(t => <option key={t.id} value={t.id}>{t.clinic_name}</option>)}
                             </select>
                         </div>
                     )}
                     <div className="flex justify-end gap-3 pt-4">
-                        <button type="button" onClick={() => setIsCredModalOpen(false)} className="px-4 py-2 text-gray-600 bg-gray-100 rounded-xl">Cancelar</button>
-                        <button type="submit" className="px-6 py-2 bg-indigo-600 text-white rounded-xl">Guardar</button>
+                        <button type="button" onClick={() => setIsCredModalOpen(false)} className="px-4 py-2 text-gray-600 bg-gray-100 rounded-xl">{t('common.cancel')}</button>
+                        <button type="submit" className="px-6 py-2 bg-indigo-600 text-white rounded-xl">{t('common.save')}</button>
                     </div>
                 </form>
             </Modal>

@@ -13,41 +13,42 @@ Este proyecto se configura completamente mediante variables de entorno. En despl
 
 ## 2. Orchestrator Service (8000)
 
-### 2.1 Identidad y Branding (Whitelabel)
+### 2.1 Identidad y Branding (Whitelabel — Fallback)
 
 | Variable | Descripción | Ejemplo | Requerida |
 | :--- | :--- | :--- | :--- |
-| `STORE_NAME` | Nombre de la clínica (legacy/fallback) | `Dentalogic` | ❌ |
-| `BOT_PHONE_NUMBER` | Número de WhatsApp del bot (fallback cuando no viene `to_number` en la petición) | `+5493756123456` | ❌ |
-| `CLINIC_NAME` | Nombre de clínica usado como fallback si la sede no tiene `clinic_name` en BD | `Clínica Dental` | ❌ |
-| `CLINIC_LOCATION` | Ubicación (usado en respuestas de configuración; opcional) | `República de Francia 2899, Mercedes, Buenos Aires` | ❌ |
-| `STORE_LOCATION` | Ciudad/País | `Paraná, Entre Ríos, Argentina` | ❌ |
-| `STORE_WEBSITE` | URL de la clínica | `https://www.odontolea.com` | ❌ |
-| `STORE_DESCRIPTION` | Especialidad clínica | `Salud Bucal e Implantología` | ❌ |
-| `STORE_CATALOG_KNOWLEDGE` | Categorías/marcas principales (para inyectar en prompt) | `Puntas Grishko, Bloch, Capezio...` | ❌ |
-| `SHIPPING_PARTNERS` | Empresas de envío (comma-separated) | `Andreani, Correo Argentino` | ❌ |
+| `BOT_PHONE_NUMBER` | Número de WhatsApp del bot (fallback si la petición no trae `to_number`) | `+5493756123456` | ❌ |
+| `CLINIC_NAME` | Nombre de clínica (fallback si la sede no tiene `clinic_name` en BD) | `Clínica Dental` | ❌ |
+| `CLINIC_LOCATION` | Ubicación de la clínica (usado en respuestas del agente) | `República de Francia 2899, Mercedes, BA` | ❌ |
+| `STORE_WEBSITE` | URL de la clínica (usada en el prompt del agente) | `https://www.miclinica.com` | ❌ |
+| `STORE_DESCRIPTION` | Especialidad clínica (usada en el prompt) | `Salud Bucal e Implantología` | ❌ |
 
-**Multi-tenant (Dentalogic):** En este proyecto, el **número del bot** y el **nombre de la clínica** por sede son la fuente de verdad en la base de datos: `tenants.bot_phone_number` y `tenants.clinic_name`. Se configuran en **Sedes (Clinics)** en el panel. Las variables `BOT_PHONE_NUMBER` y `CLINIC_NAME` (y `CLINIC_LOCATION`) se usan solo como **respaldo** cuando no hay valor en BD o cuando la petición no trae `to_number` (ej. pruebas manuales). No es obligatorio definirlas si todas las sedes tienen ya sus datos cargados en la plataforma. `CLINIC_PHONE` no se utiliza en el orquestador y puede omitirse.
-   
-### 2.2 Integración Tienda Nube
+> **Regla Multi-tenant:** La fuente de verdad son `tenants.bot_phone_number` y `tenants.clinic_name` en base de datos. Estas variables solo actúan como fallback en pruebas manuales. No es obligatorio definirlas si todas las sedes tienen sus datos en la plataforma.
 
-| Variable | Descripción | Ejemplo | Requerida |
+### 2.2 Cifrado (Arquitectura)
+
+El proyecto usa dos mecanismos de cifrado complementarios, ninguno requiere `ENCRYPTION_KEY`:
+
+| Qué cifra | Algoritmo | Variable requerida | Dónde |
 | :--- | :--- | :--- | :--- |
-| `TIENDANUBE_STORE_ID` | ID numérico de la tienda en TN | `123456` | ✅ |
-| `TIENDANUBE_ACCESS_TOKEN` | Token de API de Tienda Nube | `t_1234567890...` | ✅ |
+| Contraseñas de usuarios (`users.password_hash`) | **bcrypt** (passlib) | — (no requiere config) | `auth_service.py` |
+| API keys y tokens (`credentials.value`) | **Fernet** (AES-128-CBC) | `CREDENTIALS_FERNET_KEY` ✅ | `core/credentials.py` |
+
+> `ENCRYPTION_KEY` **no existe en este proyecto**. Las contraseñas se hashean con bcrypt (irreversible). Los tokens/API-keys se cifran con Fernet (reversible, para usarlos en runtime).
 
 ### 2.3 Handoff / Derivación a Humanos
 
 | Variable | Descripción | Ejemplo | Requerida |
 | :--- | :--- | :--- | :--- |
-| `HANDOFF_EMAIL` | Mail que recibe alertas de derivación | `soporte@tienda.com` | ✅ (si handoff activo) |
+| `NOTIFICATIONS_EMAIL` | Email destino para alertas de derivación humana del agente. Si no se define, se usa un fallback de desarrollo. | `soporte@clinica.com` | ✅ (en producción) |
 | `SMTP_HOST` | Host del servidor SMTP | `smtp.gmail.com` | ✅ (si handoff activo) |
 | `SMTP_PORT` | Puerto del servidor SMTP | `465` | ✅ (si handoff activo) |
-| `SMTP_USER` / `SMTP_USERNAME` | Usuario SMTP | `noreply@tienda.com` | ✅ (si handoff activo) |
+| `SMTP_USER` / `SMTP_USERNAME` | Usuario SMTP | `noreply@clinica.com` | ✅ (si handoff activo) |
 | `SMTP_PASS` / `SMTP_PASSWORD` | Contraseña SMTP | (password de app) | ✅ (si handoff activo) |
+| `SMTP_SENDER` | Dirección "From" del email enviado (puede ser distinta del usuario SMTP) | `no-reply@clinica.com` | ✅ (si handoff activo) |
 | `SMTP_SECURITY` | Tipo de seguridad SMTP | `SSL` o `STARTTLS` | ✅ (si handoff activo) |
 
-### 2.4 Seguridad y RBAC (Nexus v7.6)
+### 2.4 Seguridad y RBAC (Nexus v7.6 — Hardened)
 
 | Variable | Descripción | Ejemplo | Requerida |
 | :--- | :--- | :--- | :--- |
@@ -57,14 +58,49 @@ Este proyecto se configura completamente mediante variables de entorno. En despl
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | Duración del token de sesión | `43200` (30 días) | `30` |
 | `PLATFORM_URL` | URL del frontend (para links de activación) | `https://ui.clinic.com` | `http://localhost:3000` |
 | `CORS_ALLOWED_ORIGINS` | Origins CORS permitidos (comma-separated) | `http://localhost:3000,https://domain.com` | `*` |
-| `CREDENTIALS_FERNET_KEY` | Clave Fernet (base64) para cifrar tokens en `credentials` | Salida de `Fernet.generate_key().decode()` | ✅ (si se usa connect-sovereign) |
+| `CREDENTIALS_FERNET_KEY` | Clave Fernet (base64) para cifrar API-keys y tokens en la tabla `credentials`. Diferente de `ENCRYPTION_KEY`. | Salida de `Fernet.generate_key().decode()` | ✅ (si se usa connect-sovereign o gestión de credenciales) |
 | `CSP_EXTRA_DOMAINS` | Dominios adicionales para Content-Security-Policy connect-src (comma-separated) | `*.trusted.com,api.other.net` | ❌ |
 | `LOG_LEVEL` | Nivel de logging (activa sanitización de PII en INFO/DEBUG) | `INFO` | `INFO` |
-| `GOOGLE_CREDENTIALS` | JSON completo de credenciales de Google (Service Account o OAuth) para integración con Google Calendar | Contenido del archivo JSON descargado de Google Cloud Console | ❌ (solo si la clínica usa `calendar_provider: google` y se consulta disponibilidad vía GCal) |
+| `MEDIA_PROXY_SECRET` | Secreto HMAC para firmar URLs de medios (`/admin/chat/media/proxy`). Si no se define, se genera un valor aleatorio por sesión (las URLs firmadas se invalidan al reiniciar). | `$(openssl rand -hex 32)` | ✅ (en producción) |
+| `API_VERSION` | Versión visible en el Swagger UI y en `/openapi.json` | `1.0.0` | ❌ (default `1.0.0`) |
+| `ENVIRONMENT` | Entorno de ejecución (`development`, `staging`, `production`). Visible en `/admin/config/deployment`. | `production` | ❌ |
+| `CLINIC_HOURS_START` | Hora de apertura de la clínica (fallback global). Usado en el prompt del agente y en cálculo de slots. | `08:00` | ❌ |
+| `CLINIC_HOURS_END` | Hora de cierre de la clínica (fallback global). | `19:00` | ❌ |
+| `WHATSAPP_SERVICE_PORT` | Puerto interno del WhatsApp Service (para mostrar en `/admin/config/deployment`). | `8002` | ❌ (default `8002`) |
 
-**Generar clave Fernet:** En la raíz del proyecto, con Python en el PATH: `py -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` (Windows). En Linux/macOS: `python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`. Guardar la salida en `CREDENTIALS_FERNET_KEY`.
+### 2.5 Meta Ads (Integración Facebook / Instagram)
 
-### 2.5 Chatwoot (omnicanal, opcional)
+Requeridas solo si se activa la integración con Meta Ads desde el módulo de Marketing.
+
+| Variable | Descripción | Ejemplo | Requerida |
+| :--- | :--- | :--- | :--- |
+| `META_APP_ID` | App ID de la aplicación Facebook (OAuth flow para conectar cuentas de anuncios) | `123456789012345` | ✅ (si Meta Ads activo) |
+| `META_APP_SECRET` | App Secret de la aplicación Facebook | `abcdef1234567890abcdef1234567890` | ✅ (si Meta Ads activo) |
+| `META_REDIRECT_URI` | URI de redirección OAuth autorizada en el panel de Meta Developers | `https://api.clinica.com/auth/meta/callback` | ✅ (si Meta Ads activo) |
+| `META_ADS_TOKEN` | Token de acceso de larga duración a la API de Meta Ads (fallback global; los tokens por tenant se guardan en `credentials`) | `EAABwzLixnjYBAO...` | ❌ (preferir vault de credentials) |
+| `META_AD_ACCOUNT_ID` | ID de la cuenta publicitaria de Meta (fallback global; preferir vault de credentials) | `act_123456789` | ❌ (preferir vault de credentials) |
+| `META_GRAPH_API_VERSION` | Versión de la API de Meta Graph a utilizar | `v21.0` | ❌ (default `v21.0`) |
+| `META_API_TIMEOUT` | Timeout en segundos para llamadas a la API de Meta | `5.0` | ❌ (default `5.0`) |
+
+> **Nota:** Los tokens de Meta Ads por tenant (cuando cada clínica tiene su propia cuenta publicitaria) se almacenan cifrados en la tabla `credentials` con `category = 'meta_ads'`. Las variables `META_ADS_TOKEN` y `META_AD_ACCOUNT_ID` solo actúan como fallback global para instalaciones de un solo tenant.
+
+### 2.6 Google Calendar
+
+| Variable | Descripción | Ejemplo | Requerida |
+| :--- | :--- | :--- | :--- |
+| `GOOGLE_CREDENTIALS` | JSON completo de credenciales OAuth de Google (Service Account o OAuth 2.0) para integración con Google Calendar | Contenido del JSON descargado de Google Cloud Console | ❌ (solo si `calendar_provider: google`) |
+| `GOOGLE_CALENDAR_CREDENTIALS_JSON` | Alternativa a `GOOGLE_CREDENTIALS` — ruta o contenido JSON del archivo de credenciales OAuth. Usado por `google_calendar_service.py`. | `/app/google-credentials.json` o JSON inline | ❌ (solo si `calendar_provider: google`) |
+| `GOOGLE_CALENDAR_TOKEN_JSON` | Token de acceso OAuth persistido tras el primer flujo de autorización. Contiene `access_token` y `refresh_token`. | JSON inline (generado automáticamente en primer login) | ❌ (auto-generado en primer uso) |
+
+> **Nota Google Calendar:** Si la clínica usa `calendar_provider: local` (por defecto), estas variables no son necesarias. Solo se requieren al activar `calendar_provider: google` para una sede desde el panel de Sedes.
+
+**Generar clave Fernet:** Con Python en el PATH:
+- Windows: `py -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`
+- Linux/macOS: `python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`
+
+Guardar la salida en `CREDENTIALS_FERNET_KEY`.
+
+### 2.7 Chatwoot (omnicanal, opcional)
 
 | Variable | Descripción | Ejemplo | Requerida |
 | :--- | :--- | :--- | :--- |
@@ -86,9 +122,9 @@ Las credenciales por tenant (WEBHOOK_ACCESS_TOKEN, CHATWOOT_API_TOKEN, CHATWOOT_
 
 | Variable | Descripción | Ejemplo | Requerida |
 | :--- | :--- | :--- | :--- |
-| `ORCHESTRATOR_URL` | URL del Orchestrator (para admin panel) | (auto-detecta) | ❌ |
 | `VITE_ADMIN_TOKEN` | Token de administrador (inyectado en build) | `admin-secret-token` | ✅ |
-| `VITE_API_BASE_URL` | URL base para la API del orquestador | (auto-detecta) | ❌ |
+| `VITE_API_BASE_URL` | URL base para la API del orquestador | `https://api.clinica.com` | ❌ (auto-detecta en prod) |
+| `VITE_DEMO_WHATSAPP` | Número de WhatsApp para el botón de demo en `/demo` (sin `+`, sin espacios) | `5493756123456` | ❌ (tiene fallback) |
 
 ## 5. Ejemplo de .env (Desarrollo Local)
 
@@ -101,25 +137,52 @@ POSTGRES_DSN=postgres://postgres:password@localhost:5432/nexus_db
 
 # --- Auth & Platform ---
 JWT_SECRET_KEY=mi-llave-maestra-dental
-PLATFORM_URL=https://dentalogic-frontend.ugwrjq.easypanel.host
+PLATFORM_URL=http://localhost:3000
 ACCESS_TOKEN_EXPIRE_MINUTES=43200
-ADMIN_TOKEN=admin-dev-token
-# Opcional: para POST /admin/calendar/connect-sovereign (token Auth0 cifrado)
-# CREDENTIALS_FERNET_KEY=<generar con: py -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())">
+ADMIN_TOKEN=admin-dev-token-CAMBIAR-EN-PRODUCCION
 
-# --- Orchestrator ---
-STORE_NAME=Dentalogic
+# --- Cifrado Fernet (para tabla credentials — API keys y tokens) ---
+# Generar con: py -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+CREDENTIALS_FERNET_KEY=<fernet-key-generada>
+
+# --- Seguridad de Medios ---
+# Generar con: python -c "import secrets; print(secrets.token_hex(32))"
+MEDIA_PROXY_SECRET=<hex-aleatorio-32-bytes>
+
+# --- Orchestrator (Identidad / Whitelabel) ---
+CLINIC_NAME=Clínica Demo
 BOT_PHONE_NUMBER=+5493756123456
+CLINIC_LOCATION=Buenos Aires, Argentina
+CLINIC_HOURS_START=08:00
+CLINIC_HOURS_END=19:00
 CORS_ALLOWED_ORIGINS=http://localhost:3000
+ENVIRONMENT=development
+API_VERSION=1.0.0
 
-# --- WhatsApp ---
+# --- Handoff / Notificaciones Email ---
+NOTIFICATIONS_EMAIL=admin@miclinica.com
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=noreply@miclinica.com
+SMTP_PASS=password-de-app
+SMTP_SENDER=no-reply@miclinica.com
+
+# --- Meta Ads (solo si se usa integración) ---
+META_APP_ID=<facebook-app-id>
+META_APP_SECRET=<facebook-app-secret>
+META_REDIRECT_URI=http://localhost:8000/auth/meta/callback
+META_GRAPH_API_VERSION=v21.0
+META_API_TIMEOUT=5.0
+
+# --- WhatsApp (YCloud) ---
 YCLOUD_API_KEY=yc_api_xxxxx
 YCLOUD_WEBHOOK_SECRET=yc_webhook_xxxxx
 ORCHESTRATOR_SERVICE_URL=http://orchestrator_service:8000
 
 # --- Frontend (Build Time) ---
 VITE_ADMIN_TOKEN=admin-dev-token
-VITE_API_URL=http://localhost:8000
+VITE_API_BASE_URL=http://localhost:8000
+VITE_DEMO_WHATSAPP=5493435256815
 ```
 
 ---

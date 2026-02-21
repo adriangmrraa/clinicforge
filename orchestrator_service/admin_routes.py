@@ -406,98 +406,6 @@ class CredentialPayload(BaseModel):
     scope: str = "global"  # global | tenant
     tenant_id: Optional[int] = None
 
-# ==================== ENDPOINTS CREDENTIALS MANAGEMENT ====================
-
-@router.get("/credentials", tags=["Credenciales"], summary="Listar todas las credenciales")
-async def list_credentials(user_data = Depends(verify_admin_token)):
-    """Lista todas las credenciales (globales y por tenant). Solo CEO."""
-    if user_data.role != 'ceo':
-        raise HTTPException(status_code=403, detail="Acceso denegado. Solo CEO.")
-    
-    rows = await db.fetch("SELECT * FROM credentials ORDER BY created_at DESC")
-    results = []
-    for r in rows:
-        val = r['value']
-        # Enmascarar valor para seguridad en UI
-        masked = "••••••••"
-        if val:
-            try:
-                # Intentar desencriptar para ver longitud real, si falla es texto plano
-                decrypted = decrypt_value(val) or val
-                if len(decrypted) > 4:
-                    masked = f"••••••••{decrypted[-4:]}"
-            except:
-                pass
-
-        results.append({
-            "id": r['id'],
-            "name": r['name'],
-            "value": masked, # Frontend espera string enmascarado
-            "category": r['category'],
-            "description": r['description'],
-            "scope": r['scope'],
-            "tenant_id": r['tenant_id']
-        })
-    return results
-
-@router.post("/credentials", tags=["Credenciales"], summary="Crear una nueva credencial cifrada")
-async def create_credential(payload: CredentialPayload, user_data = Depends(verify_admin_token)):
-    """Crea una nueva credencial encriptada. Solo CEO."""
-    if user_data.role != 'ceo':
-        raise HTTPException(status_code=403, detail="Acceso denegado.")
-
-    # Encriptar valor
-    encrypted_val = encrypt_value(payload.value)
-    if not encrypted_val:
-        raise HTTPException(status_code=500, detail="Error en sistema de encriptación (Key no configurada).")
-
-    await db.execute("""
-        INSERT INTO credentials (name, value, category, description, scope, tenant_id, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
-    """, payload.name, encrypted_val, payload.category, payload.description, payload.scope, payload.tenant_id)
-    
-    return {"message": "Credencial guardada exitosamente."}
-
-@router.put("/credentials/{cred_id}", tags=["Credenciales"], summary="Actualizar una credencial existente")
-async def update_credential(cred_id: int, payload: CredentialPayload, user_data = Depends(verify_admin_token)):
-    """Actualiza una credencial existente. Solo CEO."""
-    if user_data.role != 'ceo':
-        raise HTTPException(status_code=403, detail="Acceso denegado.")
-
-    # Verificar existencia
-    existing = await db.fetch_row("SELECT * FROM credentials WHERE id = $1", cred_id)
-    if not existing:
-        raise HTTPException(status_code=404, detail="Credencial no encontrada.")
-
-    # Si viene value, encriptarlo. Si viene vacío/masked, mantener el anterior?
-    # El frontend manda masked "••••••••" si no se tocó.
-    # Si el usuario edita, mandará el valor nuevo.
-    # Lógica: Si value == "••••••••" (o similar), ignorar update de value.
-    
-    new_val = existing['value']
-    if payload.value and not payload.value.startswith("••••"):
-         encrypted = encrypt_value(payload.value)
-         if encrypted:
-             new_val = encrypted
-
-    await db.execute("""
-        UPDATE credentials 
-        SET name=$1, value=$2, category=$3, description=$4, scope=$5, tenant_id=$6, updated_at=NOW()
-        WHERE id = $7
-    """, payload.name, new_val, payload.category, payload.description, payload.scope, payload.tenant_id, cred_id)
-
-    return {"message": "Credencial actualizada."}
-
-@router.delete("/credentials/{cred_id}", tags=["Credenciales"], summary="Eliminar una credencial")
-async def delete_credential(cred_id: int, user_data = Depends(verify_admin_token)):
-    """Elimina una credencial. Solo CEO."""
-    if user_data.role != 'ceo':
-        raise HTTPException(status_code=403, detail="Acceso denegado.")
-    
-    await db.execute("DELETE FROM credentials WHERE id = $1", cred_id)
-    return {"message": "Credencial eliminada."}
-
-
 # ==================== INTEGRATIONS WIZARD ENDPOINTS (Spec 16) ====================
 
 class IntegrationConfig(BaseModel):
@@ -1283,6 +1191,64 @@ async def delete_credential(
     except Exception as e:
         logger.error(f"Error deleting credential: {e}")
         raise HTTPException(status_code=500, detail="Error al eliminar credencial")
+
+
+@router.put("/credentials/{cred_id}", dependencies=[Depends(verify_admin_token)], tags=["Credenciales"])
+async def update_credential(
+    cred_id: int,
+    payload: CredentialPayload,
+    resolved_tenant_id: int = Depends(get_resolved_tenant_id),
+    allowed_ids: List[int] = Depends(get_allowed_tenant_ids),
+    user_data=Depends(verify_admin_token)
+):
+    """
+    Actualiza una credencial existente.
+    - Verifica ownership antes de modificar.
+    - Si el valor llega enmascarado (••••), conserva el valor encriptado anterior.
+    - Solo CEO puede editar credenciales globales.
+    """
+    try:
+        existing = await db.pool.fetchrow(
+            "SELECT id, scope, tenant_id, value FROM credentials WHERE id = $1", cred_id
+        )
+        if not existing:
+            raise HTTPException(status_code=404, detail="Credencial no encontrada.")
+
+        if existing['scope'] == 'global' and user_data.role != 'ceo':
+            raise HTTPException(status_code=403, detail="Solo CEO puede editar credenciales globales.")
+
+        if existing['scope'] == 'tenant' and existing['tenant_id'] not in allowed_ids:
+            raise HTTPException(status_code=403, detail="No tienes acceso a esta credencial.")
+
+        if payload.scope == 'global' and user_data.role != 'ceo':
+            raise HTTPException(status_code=403, detail="Solo CEO puede asignar scope global.")
+
+        target_tenant_id = payload.tenant_id
+        if payload.scope == 'tenant' and target_tenant_id is None:
+            target_tenant_id = resolved_tenant_id
+
+        # Conservar valor encriptado anterior si el frontend envía el valor enmascarado
+        if payload.value and not payload.value.startswith("••••"):
+            new_value = encrypt_value(payload.value)
+            if not new_value:
+                raise HTTPException(status_code=503, detail="Error de encriptación. Verificar CREDENTIALS_FERNET_KEY.")
+        else:
+            new_value = existing['value']
+
+        await db.pool.execute("""
+            UPDATE credentials
+            SET name = $1, value = $2, category = $3, description = $4, scope = $5, tenant_id = $6, updated_at = NOW()
+            WHERE id = $7
+        """, payload.name, new_value, payload.category, payload.description, payload.scope, target_tenant_id, cred_id)
+
+        logger.info(f"Credential updated: id={cred_id} name={payload.name} scope={payload.scope} by {user_data.email}")
+        return {"status": "ok", "action": "updated"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating credential {cred_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/chat/send", dependencies=[Depends(verify_admin_token)], tags=["Chat"])

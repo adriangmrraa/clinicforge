@@ -9,7 +9,14 @@ from auth_service import auth_service
 logger = logging.getLogger(__name__)
 
 # Configuración
-ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "admin-secret-token")
+ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "")
+if not ADMIN_TOKEN:
+    import logging as _logging
+    _logging.getLogger(__name__).critical(
+        "🚨 SECURITY CRITICAL: ADMIN_TOKEN no está definido en las variables de entorno. "
+        "Todas las peticiones admin serán rechazadas con 401. "
+        "Define ADMIN_TOKEN en el entorno del orchestrator."
+    )
 
 async def verify_admin_token(
     request: Request,

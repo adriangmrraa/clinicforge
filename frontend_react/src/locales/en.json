@@ -41,6 +41,7 @@
   "config": {
     "title": "Settings",
     "subtitle": "Platform options (current location)",
+    "main_subtitle": "Centralized management of the clinic and communication channels.",
     "language_label": "Platform language",
     "language_help": "The selected language will apply to the entire interface (menus, titles, buttons).",
     "current_clinic": "Current location",
@@ -49,10 +50,51 @@
     "load_error": "Could not load settings.",
     "language_es": "Español",
     "language_en": "English",
-    "language_fr": "Français"
+    "language_fr": "Français",
+    "webhook_title_ycloud": "Webhook for WhatsApp (YCloud)",
+    "webhook_hint_ycloud": "Set up this Webhook in your YCloud console to receive messages.",
+    "webhook_title_chatwoot": "Webhook for Chatwoot (Meta)",
+    "webhook_hint_chatwoot": "Use this URL in the Chatwoot \"Inbox\" settings to receive Instagram and Facebook messages.",
+    "copy_url": "Copy URL",
+    "configure_credential": "Configure Credential",
+    "field_tenant": "Location (Tenant)",
+    "global_all_tenants": "Global (All Locations)",
+    "save_config": "Save Settings",
+    "active_credentials": "Active Credentials",
+    "col_tenant": "Location",
+    "col_status": "Status",
+    "col_actions": "Actions",
+    "status_active": "Active",
+    "no_whatsapp_configured": "No WhatsApp services configured.",
+    "no_chatwoot_configured": "No Meta/Chatwoot services configured.",
+    "other_integrations": "Other Integrations",
+    "other_integrations_hint": "Manage API keys for OpenAI, databases and other services.",
+    "no_other_credentials": "No other credentials registered.",
+    "media_maintenance": "Media Maintenance",
+    "media_hint": "Manage chat multimedia storage. Deleted files cannot be recovered.",
+    "cleanup_title": "File Cleanup",
+    "cleanup_hint": "Delete old photos, videos and audios.",
+    "field_age": "Older than:",
+    "option_1month": "1 month",
+    "option_3months": "3 months",
+    "option_6months": "6 months",
+    "option_1year": "1 year",
+    "run_cleanup": "Run Cleanup Now",
+    "smart_storage_title": "Smart Storage",
+    "smart_storage_hint": "The system uses direct Chatwoot/YCloud URLs whenever possible. Only manually uploaded or backup-downloaded files take up local space.",
+    "modal_edit_credential": "Edit Credential",
+    "modal_new_credential": "New Credential",
+    "field_name_identifier": "Identifier Name",
+    "field_value": "Value (Token/Key)",
+    "field_category": "Category",
+    "field_scope": "Scope",
+    "scope_global": "Global",
+    "scope_tenant": "Per Location",
+    "field_assign_tenant": "Assign to Location",
+    "select_placeholder": "Select..."
   },
   "login": {
-    "title": "Dentalogic",
+    "title": "Dental Clinic",
     "welcome": "Welcome back",
     "request_access": "Request platform access",
     "email": "Email",
@@ -626,5 +668,65 @@
         "lead_recovery": "Lead Recovery"
       }
     }
+  },
+  "login_extra": {
+    "demo_ready": "Demo account ready. One click and you're in.",
+    "sign_in_link": "Sign in with my account"
+  },
+  "legal": {
+    "center_title": "{appName} Legal Center",
+    "center_subtitle": "Transparency and security in how we handle your data.",
+    "back_button": "Back to Home",
+    "footer": "© 2026 {appName}. All rights reserved."
+  },
+  "privacy": {
+    "title": "Privacy Policy",
+    "last_updated": "Last updated: February 19, 2026",
+    "s1_title": "1. Information Collection",
+    "s1_body": "{appName} collects information necessary for dental clinic management, including patient names, scheduling histories and contact details. When you connect your Meta Ads account, we collect performance statistics (clicks, spend, impressions) to calculate your ROI.",
+    "s2_title": "2. Use of Meta Data",
+    "s2_intro": "Data obtained through Meta APIs is used exclusively to:",
+    "s2_item1": "Display your campaign performance in our dashboard.",
+    "s2_item2": "Attribute incoming WhatsApp messages to specific Meta ads.",
+    "s2_item3": "Generate return on investment (ROI) reports for the clinic owner.",
+    "s3_title": "3. Data Protection",
+    "s3_body": "We use AES-256 encryption to protect all access tokens and sensitive credentials. We never share your data with third parties without your explicit consent."
+  },
+  "terms": {
+    "title": "Terms of Service",
+    "intro": "By using {appName}, you agree to the following terms:",
+    "s1_title": "1. Software Use",
+    "s1_body": "{appName} is a platform for administrative management of clinics. The user is responsible for the accuracy of the data entered and compliance with local health regulations.",
+    "s2_title": "2. Third-Party Integrations",
+    "s2_body": "Integration with Meta Ads and WhatsApp depends on the terms and conditions of Meta Platforms, Inc. We are not responsible for service interruptions caused by external platforms.",
+    "s3_title": "3. Termination",
+    "s3_body": "You can revoke access to your data at any time through the Meta settings panel or within our platform in the Marketing section."
+  },
+  "chat_extra": {
+    "no_messages_yet": "No messages yet in this conversation",
+    "messages_appear_here": "New messages will appear here automatically.",
+    "lead_no_appointments": "Lead (No appointments)",
+    "contact_not_patient": "This contact is not yet a registered patient.",
+    "attention_required_handoff": "Attention required: human handoff requested",
+    "manual_mode_active_banner": "Manual mode active"
+  },
+  "patient_extra": {
+    "meta_campaign": "Campaign:",
+    "meta_ad": "Ad:"
+  },
+  "landing": {
+    "platform_label": "Platform for dental clinics",
+    "headline": "Scheduling, patients and AI in one app",
+    "subheadline": "Try the platform in one click. No credit card. Instant demo access.",
+    "cta_try_app": "Try the app",
+    "cta_disclaimer": "We log you in automatically to the demo account (no credentials exposed in the interface)",
+    "demo_title": "What the demo includes",
+    "feature_agenda": "Scheduling by clinic and professional, syncable with Google Calendar.",
+    "feature_ai": "AI Agent via WhatsApp: appointments, triage and human handoff.",
+    "feature_analytics": "Analytics for CEO and professionals.",
+    "demo_credentials_title": "Demo credentials",
+    "cta_whatsapp": "Try AI Agent via WhatsApp",
+    "cta_login": "Sign in with my account",
+    "credentials_password": "Password:"
   }
 }

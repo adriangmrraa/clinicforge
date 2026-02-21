@@ -33,8 +33,18 @@ router = APIRouter(tags=["Chat"])
 
 from admin_routes import get_resolved_tenant_id
 
-# Clave secreta para firmar URLs (usar variable de entorno en producción)
-MEDIA_PROXY_SECRET = os.getenv("MEDIA_PROXY_SECRET", "dentalogic-media-proxy-secret-2026")
+# Clave secreta para firmar URLs de medios. Debe definirse en producción via MEDIA_PROXY_SECRET.
+# Si no está definida, se genera un valor aleatorio por sesión (invalida URLs firmadas al reiniciar).
+_raw_secret = os.getenv("MEDIA_PROXY_SECRET", "")
+if not _raw_secret:
+    import uuid as _uuid
+    _raw_secret = _uuid.uuid4().hex
+    logger.warning(
+        "⚠️ MEDIA_PROXY_SECRET no definida. Se usará un secreto temporal aleatorio. "
+        "Las URLs de medios firmadas se invalidarán al reiniciar el servidor. "
+        "Define MEDIA_PROXY_SECRET en las variables de entorno del orchestrator."
+    )
+MEDIA_PROXY_SECRET = _raw_secret
 MEDIA_URL_TTL = 3600  # 1 hora de validez
 
 def generate_signed_url(url: str, tenant_id: int) -> str:

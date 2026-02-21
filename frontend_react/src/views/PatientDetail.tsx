@@ -201,10 +201,10 @@ export default function PatientDetail() {
             {/* Tooltip */}
             <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 w-64 bg-gray-900 text-white text-xs rounded-lg p-3 shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-50">
               {patient.meta_campaign_id && (
-                <p className="mb-1"><span className="text-gray-400">Campaña:</span> {patient.meta_campaign_id}</p>
+                <p className="mb-1"><span className="text-gray-400">{t('patient_extra.meta_campaign')}</span> {patient.meta_campaign_id}</p>
               )}
               {patient.meta_ad_headline && (
-                <p className="truncate"><span className="text-gray-400">Anuncio:</span> {patient.meta_ad_headline}</p>
+                <p className="truncate"><span className="text-gray-400">{t('patient_extra.meta_ad')}</span> {patient.meta_ad_headline}</p>
               )}
               {!patient.meta_campaign_id && !patient.meta_ad_headline && (
                 <p className="text-gray-400">ID: {patient.meta_ad_id || 'N/A'}</p>
