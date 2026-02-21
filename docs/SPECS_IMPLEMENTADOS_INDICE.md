@@ -10,7 +10,7 @@ Este documento registra las especificaciones (`.spec.md`) que existían en el pr
 
 | Especificación original | Estado | Dónde está documentado ahora |
 |-------------------------|--------|-------------------------------|
-| **14_google_calendar_sync_fix.spec.md** | Implementado | `01_architecture.md` (cerebro híbrido, JIT), `08_troubleshooting_history.md` (sección Calendario e IA). |
+| **14_google_calendar_sync_fix.spec.md** | Implementado | `01_architecture.md` (cerebro híbrido, JIT), `archive/08_troubleshooting_history.md` (sección Calendario e IA). |
 | **15_agenda_inteligente_2_0.spec.md** | Implementado | `README.md` (Agenda), `12_resumen_funcional_no_tecnico.md`, `01_architecture.md`. |
 | **15_ceo_professionals_analytics.spec.md** | Implementado | `README.md` (Analíticas CEO), `API_REFERENCE.md` (GET /admin/analytics/professionals/summary, GET /admin/professionals/{id}/analytics). |
 | **16_sovereign_glass_architecture.spec.md** | Implementado | Estilo UI en componentes; `README.md` (Landing / Demo), `AGENTS.md`. |
@@ -23,10 +23,10 @@ Este documento registra las especificaciones (`.spec.md`) que existían en el pr
 | **23_registro_con_sede_y_datos_profesional.spec.md** | Implementado | `README.md` (Guía rápida), `API_REFERENCE.md` (POST /auth/register con tenant_id, specialty, etc.). |
 | **24_modal_datos_profesional_acordeon.spec.md** | Implementado | Vista Aprobaciones / Personal Activo (UserApprovalView, modales). |
 | **25_idioma_plataforma_y_agente.spec.md** | Implementado | `README.md` (Idiomas e internacionalización), `01_architecture.md`, Configuración y agente en es/en/fr. |
-| **26_calendario_hibrido_clinica_profesional.spec.md** | Implementado | `01_architecture.md` (cerebro híbrido, tools), `08_troubleshooting_history.md` (sección "Calendario e IA: La IA no puede ver disponibilidad"), `API_REFERENCE.md` (Turnos, Calendario). |
+| **26_calendario_hibrido_clinica_profesional.spec.md** | Implementado | `01_architecture.md` (cerebro híbrido, tools), `archive/08_troubleshooting_history.md` (sección "Calendario e IA: La IA no puede ver disponibilidad"), `API_REFERENCE.md` (Turnos, Calendario). |
 | **27_staff_scroll_aislamiento.spec.md** | Implementado | `AGENTS.md` (Aislamiento de Scroll), UserApprovalView con `flex-1 min-h-0 overflow-y-auto`. |
 | **28_landing_demo_publica.spec.md** | Implementado | `README.md` (Landing / Demo pública), rutas `/demo`, `/login?demo=1`, LandingView. |
-| **29_seguridad_owasp_auditoria.spec.md** | Implementado / migrado | **`29_seguridad_owasp_auditoria.md`** (mismo contenido; documento permanente de seguridad y OWASP). |
+| **29_seguridad_owasp_auditoria.spec.md** | Implementado / migrado | **`archive/29_seguridad_owasp_auditoria.md`** (mismo contenido; documento permanente de seguridad y OWASP). |
 | **version_estable_clinicas (Chatwoot omnicanal)** | Implementado | Spec en `Version Estable/docs/specs/version_estable_clinicas.spec.md`. En CLINICASV1.0: `docs/AUDIT_CHATWOOT_2025-02-13.md` (auditoría y correcciones), `API_REFERENCE.md` (sección Chat omnicanal), tablas `chat_conversations` y `credentials`, webhook `/admin/chatwoot/webhook`, API `/admin/chats/summary`, `/admin/chats/{id}/messages`, `/admin/whatsapp/send`, `/admin/conversations/{id}/human-override`, ConfigView (URL webhook), ChatsView (filtro canal Todos/WhatsApp/Instagram/Facebook, Vault agente por tenant). |
 | **spec_13_unified_clinical_context.spec.md** | Implementado | `13_lead_patient_workflow.md` (identidad y visibilidad), `API_REFERENCE.md` (soporte platform IDs). |
 | **spec_14_multichannel_ui.spec.md** | Implementado | `meta_ads_frontend.md` (sección 6 - Patrones de UI), `ChatsView.tsx` (lógica de estilos dinámicos). |
@@ -45,8 +45,8 @@ Cualquier criterio de aceptación o detalle técnico de los specs anteriores que
 - **Arquitectura y flujos:** `01_architecture.md`, `13_lead_patient_workflow.md`
 - **API:** `API_REFERENCE.md`, Swagger en `/docs` del Orchestrator
 - **Chatwoot / Version Estable:** `AUDIT_CHATWOOT_2025-02-13.md` (auditoría y drifts corregidos), `REFERENCIA_VERSION_ESTABLE_CHATWOOT.md` (enlaces a spec y plan en Version Estable)
-- **Seguridad:** `29_seguridad_owasp_auditoria.md`, `AGENTS.md`
-- **Problemas conocidos y soluciones:** `08_troubleshooting_history.md`
+- **Seguridad:** `archive/29_seguridad_owasp_auditoria.md`, `AGENTS.md`
+- **Problemas conocidos y soluciones:** `archive/08_troubleshooting_history.md`
 - **Despliegue y variables:** `02_environment_variables.md`, `03_deployment_guide.md`
 
 ---

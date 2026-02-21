@@ -9,7 +9,16 @@ from pydantic import BaseModel
 logger = logging.getLogger("auth_service")
 
 # --- SETTINGS ---
-SECRET_KEY = os.getenv("INTERNAL_SECRET_KEY", "nexus-super-secret-key-v7.6")
+# Priorizar JWT_SECRET_KEY (Doc Standard) sobre INTERNAL_SECRET_KEY (Legacy)
+SECRET_KEY = os.getenv("JWT_SECRET_KEY")
+if not SECRET_KEY:
+    SECRET_KEY = os.getenv("INTERNAL_SECRET_KEY")
+    if SECRET_KEY:
+        logger.warning("⚠️ Using legacy INTERNAL_SECRET_KEY. Please migrate to JWT_SECRET_KEY.")
+    else:
+        SECRET_KEY = "nexus-super-secret-key-v7.6"
+        logger.error("🛑 NO SECRET KEY DEFINED! Using insecure default. Set JWT_SECRET_KEY immediately.")
+
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 1 week
 

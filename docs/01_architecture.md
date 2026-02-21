@@ -197,8 +197,8 @@ El sistema utiliza un **Robot de Mantenimiento** integrado en `orchestrator_serv
 
 Dentalogic implementa una arquitectura de **Seguridad de Triple Capa**:
 
-1.  **Capa de Identidad (JWT)**: Gestión de sesiones de usuario con tokens firmados (HS256). Define el rol (`ceo`, `professional`, `secretary`) y el `tenant_id`.
-2.  **Capa de Infraestructura (X-Admin-Token)**: Las rutas administrativas críticas requieren un token estático (`INTERNAL_SECRET_KEY`) para prevenir accesos no autorizados incluso si la sesión del usuario es válida.
+1.  **Capa de Identidad (JWT)**: Gestión de sesiones de usuario con tokens firmados (HS256). Utiliza `JWT_SECRET_KEY` para la firma. Define el rol (`ceo`, `professional`, `secretary`) y el `tenant_id`.
+2.  **Capa de Infraestructura (X-Admin-Token)**: Las rutas administrativas críticas requieren un token estático (`ADMIN_TOKEN`) para prevenir accesos no autorizados incluso si la sesión del usuario es válida.
 3.  **Capa de Gatekeeper (Aprobación)**: Todo registro nuevo entra en estado `pending`. Solo un usuario con rol `ceo` puede activar cuentas desde el panel de control.
 
 ## 5. Flujo de una Urgencia

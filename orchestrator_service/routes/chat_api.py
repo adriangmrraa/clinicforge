@@ -27,7 +27,7 @@ from core.credentials import (
 from db import get_pool
 
 logger = logging.getLogger(__name__)
-router = APIRouter()
+router = APIRouter(tags=["Chat"])
 
 
 from admin_routes import get_resolved_tenant_id
@@ -73,7 +73,7 @@ def verify_signed_url(url: str, tenant_id: int, signature: str, expires: int) ->
 
 
 
-@router.get("/admin/chats/summary")
+@router.get("/admin/chats/summary", summary="Obtener resumen de conversaciones omnicanal")
 async def chats_summary(
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
@@ -168,7 +168,7 @@ async def chats_summary(
     return out
 
 
-@router.put("/admin/chats/{conversation_id}/read")
+@router.put("/admin/chats/{conversation_id}/read", summary="Marcar una conversación como leída")
 async def mark_conversation_read(
     conversation_id: str,
     tenant_id: int = Depends(get_resolved_tenant_id),
@@ -182,7 +182,7 @@ async def mark_conversation_read(
     """, uuid.UUID(conversation_id), tenant_id)
     return {"status": "ok", "conversation_id": conversation_id}
 
-@router.get("/admin/chats/{conversation_id}/messages")
+@router.get("/admin/chats/{conversation_id}/messages", summary="Listar mensajes de una conversación")
 async def chat_messages(
     conversation_id: uuid.UUID,
     limit: int = Query(30, ge=1, le=100),
@@ -280,8 +280,8 @@ async def chat_messages(
     return messages
 
 
-@router.post("/admin/chat/send")
-@router.post("/admin/whatsapp/send")
+@router.post("/admin/chat/send", summary="Enviar mensaje manual desde el chat (Omnicanal)")
+@router.post("/admin/whatsapp/send", summary="Enviar mensaje de WhatsApp (Alias)")
 async def unified_send_message(
     body: dict,
     tenant_id: int = Depends(get_resolved_tenant_id),
@@ -436,7 +436,7 @@ async def unified_send_message(
         raise HTTPException(status_code=500, detail=f"Failed to send message: {str(e)}")
 
 
-@router.post("/admin/conversations/{conversation_id}/human-override")
+@router.post("/admin/conversations/{conversation_id}/human-override", summary="Activar/Desactivar intervención humana (Pausa IA)")
 async def human_override(
     conversation_id: uuid.UUID,
     body: dict,
@@ -499,7 +499,7 @@ async def human_override(
         logger.error(f"❌ {error_details}")
         # Retornamos 500 pero con el detalle del error para que el frontend lo muestre en el popup
         raise HTTPException(status_code=500, detail=error_details)
-@router.get("/admin/chat/media/proxy")
+@router.get("/admin/chat/media/proxy", summary="Proxy seguro para previsualización de multimedia")
 async def media_proxy(
     url: str = Query(..., description="Original media URL"),
     tenant_id: int = Query(..., description="Tenant ID"),
@@ -592,7 +592,7 @@ async def media_proxy(
     return StreamingResponse(stream_content(), headers=headers)
 
 
-@router.post("/admin/chat/upload")
+@router.post("/admin/chat/upload", summary="Subir archivo multimedia para el chat")
 async def chat_upload(
     file: UploadFile = File(...),
     tenant_id: int = Query(..., description="Tenant ID target"),

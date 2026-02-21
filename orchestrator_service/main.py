@@ -1801,7 +1801,7 @@ async def chat_endpoint(req: ChatRequest, background_tasks: BackgroundTasks):
         )
 
 # --- MEDIA SERVING ENDPOINT (Spec 20) ---
-@app.get("/media/{tenant_id}/{filename}")
+@app.get("/media/{tenant_id}/{filename}", tags=["Health"], summary="Servir archivos multimedia locales")
 async def serve_local_media(tenant_id: int, filename: str):
     """
     Sirve archivos de media descargados localmente (Spec 19 + Spec 20).

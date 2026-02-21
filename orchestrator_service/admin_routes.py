@@ -198,7 +198,7 @@ class StatusUpdate(BaseModel):
 
 # --- RUTAS DE ADMINISTRACIÓN DE USUARIOS ---
 
-@router.get("/users/pending", tags=["Usuarios"])
+@router.get("/users/pending", tags=["Usuarios"], summary="Listar usuarios pendientes de aprobación")
 async def get_pending_users(user_data = Depends(verify_admin_token)):
     """ Retorna la lista de usuarios con estado 'pending' (Solo CEO/Secretary) """
     if user_data.role not in ['ceo', 'secretary']:
@@ -212,7 +212,7 @@ async def get_pending_users(user_data = Depends(verify_admin_token)):
     """)
     return [dict(u) for u in users]
 
-@router.get("/users", tags=["Usuarios"])
+@router.get("/users", tags=["Usuarios"], summary="Listar todos los usuarios del sistema")
 async def get_all_users(user_data = Depends(verify_admin_token)):
     """ Retorna la lista de todos los usuarios de la clínica (Solo CEO/Secretary) """
     if user_data.role not in ['ceo', 'secretary']:
@@ -225,7 +225,7 @@ async def get_all_users(user_data = Depends(verify_admin_token)):
     """)
     return [dict(u) for u in users]
 
-@router.post("/users/{user_id}/status", tags=["Usuarios"])
+@router.post("/users/{user_id}/status", tags=["Usuarios"], summary="Aprobar o suspender un usuario")
 async def update_user_status(user_id: str, payload: StatusUpdate, user_data = Depends(verify_admin_token)):
     """ Actualiza el estado de un usuario (Aprobación/Suspensión) - Solo CEO.
     Al aprobar (active): si es professional/secretary y no tiene fila en professionals, se crea una para la primera sede. """
@@ -406,7 +406,7 @@ class CredentialPayload(BaseModel):
 
 # ==================== ENDPOINTS CREDENTIALS MANAGEMENT ====================
 
-@router.get("/credentials", tags=["Credenciales"])
+@router.get("/credentials", tags=["Credenciales"], summary="Listar todas las credenciales")
 async def list_credentials(user_data = Depends(verify_admin_token)):
     """Lista todas las credenciales (globales y por tenant). Solo CEO."""
     if user_data.role != 'ceo':
@@ -438,7 +438,7 @@ async def list_credentials(user_data = Depends(verify_admin_token)):
         })
     return results
 
-@router.post("/credentials", tags=["Credenciales"])
+@router.post("/credentials", tags=["Credenciales"], summary="Crear una nueva credencial cifrada")
 async def create_credential(payload: CredentialPayload, user_data = Depends(verify_admin_token)):
     """Crea una nueva credencial encriptada. Solo CEO."""
     if user_data.role != 'ceo':
@@ -456,7 +456,7 @@ async def create_credential(payload: CredentialPayload, user_data = Depends(veri
     
     return {"message": "Credencial guardada exitosamente."}
 
-@router.put("/credentials/{cred_id}", tags=["Credenciales"])
+@router.put("/credentials/{cred_id}", tags=["Credenciales"], summary="Actualizar una credencial existente")
 async def update_credential(cred_id: int, payload: CredentialPayload, user_data = Depends(verify_admin_token)):
     """Actualiza una credencial existente. Solo CEO."""
     if user_data.role != 'ceo':
@@ -486,7 +486,7 @@ async def update_credential(cred_id: int, payload: CredentialPayload, user_data 
 
     return {"message": "Credencial actualizada."}
 
-@router.delete("/credentials/{cred_id}", tags=["Credenciales"])
+@router.delete("/credentials/{cred_id}", tags=["Credenciales"], summary="Eliminar una credencial")
 async def delete_credential(cred_id: int, user_data = Depends(verify_admin_token)):
     """Elimina una credencial. Solo CEO."""
     if user_data.role != 'ceo':
@@ -1331,7 +1331,7 @@ async def send_chat_message(
 
 # ==================== ENDPOINTS DASHBOARD ====================
 
-@router.get("/stats/summary", tags=["Estadísticas"])
+@router.get("/stats/summary", tags=["Estadísticas"], summary="Obtener resumen de métricas del dashboard")
 async def get_dashboard_stats(
     range: str = 'all',
     user_data=Depends(verify_admin_token),
@@ -1480,7 +1480,7 @@ async def get_dashboard_stats(
 # --- CLÍNICAS (TENANTS) - CEO ONLY ---
 # Tratamos "Tenant" como "Clínica". config (JSONB) incluye calendar_provider: 'local' | 'google'.
 
-@router.get("/tenants", tags=["Sedes"])
+@router.get("/tenants", tags=["Sedes"], summary="Listar todas las sedes (clínicas)")
 async def get_tenants(user_data=Depends(verify_admin_token)):
     """Lista todas las clínicas (tenants). Solo CEO. Incluye config (JSONB) con calendar_provider."""
     if user_data.role != 'ceo':
@@ -1490,7 +1490,7 @@ async def get_tenants(user_data=Depends(verify_admin_token)):
     )
     return [dict(r) for r in rows]
 
-@router.post("/tenants", tags=["Sedes"])
+@router.post("/tenants", tags=["Sedes"], summary="Crear una nueva sede")
 async def create_tenant(data: Dict[str, Any], user_data=Depends(verify_admin_token)):
     """Crea una nueva clínica. config.calendar_provider obligatorio: 'local' o 'google'."""
     if user_data.role != 'ceo':
@@ -1515,7 +1515,7 @@ async def create_tenant(data: Dict[str, Any], user_data=Depends(verify_admin_tok
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-@router.put("/tenants/{tenant_id}", tags=["Sedes"])
+@router.put("/tenants/{tenant_id}", tags=["Sedes"], summary="Actualizar datos de una sede")
 async def update_tenant(tenant_id: int, data: Dict[str, Any], user_data=Depends(verify_admin_token)):
     """Actualiza datos de una clínica. Incluye config.calendar_provider si se envía."""
     if user_data.role != 'ceo':
@@ -1545,7 +1545,7 @@ async def update_tenant(tenant_id: int, data: Dict[str, Any], user_data=Depends(
     logger.info(f"Tenant {tenant_id} updated: calendar_provider={data.get('calendar_provider')} (persisted)")
     return {"status": "updated"}
 
-@router.delete("/tenants/{tenant_id}", tags=["Sedes"])
+@router.delete("/tenants/{tenant_id}", tags=["Sedes"], summary="Eliminar una sede")
 async def delete_tenant(tenant_id: int, user_data=Depends(verify_admin_token)):
     """Elimina una clínica. Solo CEO."""
     if user_data.role != 'ceo':
@@ -1553,7 +1553,7 @@ async def delete_tenant(tenant_id: int, user_data=Depends(verify_admin_token)):
     await db.pool.execute("DELETE FROM tenants WHERE id = $1", tenant_id)
     return {"status": "deleted"}
 
-@router.get("/chat/urgencies", dependencies=[Depends(verify_admin_token)], tags=["Chat"])
+@router.get("/chat/urgencies", dependencies=[Depends(verify_admin_token)], tags=["Chat"], summary="Listar urgencias recientes detectadas")
 async def get_recent_urgencies(limit: int = 10, tenant_id: int = Depends(get_resolved_tenant_id)):
     """Retorna los últimos casos de urgencia. Aislado por tenant_id (Regla de Oro)."""
     try:
@@ -1586,7 +1586,7 @@ async def get_recent_urgencies(limit: int = 10, tenant_id: int = Depends(get_res
         logger.error(f"Error fetching urgencies: {e}")
         return []
 
-@router.get("/config/deployment", dependencies=[Depends(verify_admin_token)], tags=["Configuración"])
+@router.get("/config/deployment", dependencies=[Depends(verify_admin_token)], tags=["Configuración"], summary="Obtener configuración de despliegue")
 async def get_deployment_config(request: Request):
     """Retorna configuración dinámica de despliegue (Webhooks, URLs)."""
     # Detectamos la URL base actual si no está forzada en ENV
@@ -1601,7 +1601,7 @@ async def get_deployment_config(request: Request):
         "environment": os.getenv("ENVIRONMENT", "development")
     }
 
-@router.get("/settings/clinic", dependencies=[Depends(verify_admin_token)], tags=["Configuración"])
+@router.get("/settings/clinic", dependencies=[Depends(verify_admin_token)], tags=["Configuración"], summary="Obtener configuración operativa de la clínica")
 async def get_clinic_settings(resolved_tenant_id: int = Depends(get_resolved_tenant_id)):
     """Retorna la configuración operativa de la clínica (nombre, horarios, ui_language) desde el tenant."""
     try:
@@ -1644,7 +1644,7 @@ class ClinicSettingsUpdate(BaseModel):
     ui_language: Optional[str] = None  # "es" | "en" | "fr"
 
 
-@router.patch("/settings/clinic", dependencies=[Depends(verify_admin_token)], tags=["Configuración"])
+@router.patch("/settings/clinic", dependencies=[Depends(verify_admin_token)], tags=["Configuración"], summary="Actualizar configuración operativa de la clínica")
 async def update_clinic_settings(
     payload: ClinicSettingsUpdate,
     resolved_tenant_id: int = Depends(get_resolved_tenant_id),
@@ -1670,7 +1670,7 @@ async def update_clinic_settings(
 
 # ==================== ENDPOINTS BÚSQUEDA SEMÁNTICA ====================
 
-@router.get("/patients/search-semantic", dependencies=[Depends(verify_admin_token)], tags=["Pacientes"])
+@router.get("/patients/search-semantic", dependencies=[Depends(verify_admin_token)], tags=["Pacientes"], summary="Búsqueda semántica de pacientes por síntomas")
 async def search_patients_by_symptoms(
     query: str,
     limit: int = 20
@@ -1716,7 +1716,7 @@ async def search_patients_by_symptoms(
 
 # ==================== ENDPOINTS SEGURO / OBRAS SOCIALES ====================
 
-@router.get("/patients/{patient_id}/insurance-status", dependencies=[Depends(verify_admin_token)], tags=["Pacientes"])
+@router.get("/patients/{patient_id}/insurance-status", dependencies=[Depends(verify_admin_token)], tags=["Pacientes"], summary="Verificar estado de obra social del paciente")
 async def get_patient_insurance_status(patient_id: int):
     """
     Verifica el estado de la credencial de obra social de un paciente.
@@ -1811,7 +1811,7 @@ async def get_patient_insurance_status(patient_id: int):
 
 # ==================== ENDPOINTS PACIENTES ====================
 
-@router.post("/patients", dependencies=[Depends(verify_admin_token)], tags=["Pacientes"])
+@router.post("/patients", dependencies=[Depends(verify_admin_token)], tags=["Pacientes"], summary="Crear un nuevo paciente")
 async def create_patient(
     p: PatientCreate,
     tenant_id: int = Depends(get_resolved_tenant_id),
@@ -1841,7 +1841,7 @@ async def create_patient(
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.get("/patients", dependencies=[Depends(verify_admin_token)], tags=["Pacientes"])
+@router.get("/patients", dependencies=[Depends(verify_admin_token)], tags=["Pacientes"], summary="Listar pacientes con turnos asociados")
 async def list_patients(
     search: str = None,
     limit: int = 50,
@@ -1873,7 +1873,7 @@ async def list_patients(
     rows = await db.pool.fetch(query, *params)
     return [dict(row) for row in rows]
 
-@router.post("/professionals", dependencies=[Depends(verify_admin_token)], tags=["Profesionales"])
+@router.post("/professionals", dependencies=[Depends(verify_admin_token)], tags=["Profesionales"], summary="Crear un nuevo profesional de la salud")
 async def create_professional(
     professional: ProfessionalCreate,
     resolved_tenant_id: int = Depends(get_resolved_tenant_id),
@@ -2050,7 +2050,7 @@ async def create_professional(
         logger.exception("Error creating professional")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.put("/professionals/{id}", dependencies=[Depends(verify_admin_token)], tags=["Profesionales"])
+@router.put("/professionals/{id}", dependencies=[Depends(verify_admin_token)], tags=["Profesionales"], summary="Actualizar datos de un profesional")
 async def update_professional(id: int, payload: ProfessionalUpdate):
     """Actualizar datos de un profesional por su ID numérico."""
     try:
@@ -2151,7 +2151,7 @@ async def update_professional(id: int, payload: ProfessionalUpdate):
         logger.error(f"Error updating professional {id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/patients/{id}", dependencies=[Depends(verify_admin_token)], tags=["Pacientes"])
+@router.get("/patients/{id}", dependencies=[Depends(verify_admin_token)], tags=["Pacientes"], summary="Obtener detalle de un paciente específico")
 async def get_patient(id: int, tenant_id: int = Depends(get_resolved_tenant_id)):
     """Obtener un paciente por ID. Aislado por tenant_id (Regla de Oro)."""
     row = await db.pool.fetchrow("""
@@ -2163,7 +2163,7 @@ async def get_patient(id: int, tenant_id: int = Depends(get_resolved_tenant_id))
         raise HTTPException(status_code=404, detail="Paciente no encontrado")
     return dict(row)
 
-@router.put("/patients/{id}", dependencies=[Depends(verify_admin_token)], tags=["Pacientes"])
+@router.put("/patients/{id}", dependencies=[Depends(verify_admin_token)], tags=["Pacientes"], summary="Actualizar datos de un paciente")
 async def update_patient(id: int, p: PatientCreate, tenant_id: int = Depends(get_resolved_tenant_id)):
     """Actualizar datos de un paciente. Aislado por tenant_id (Regla de Oro)."""
     try:
@@ -2183,7 +2183,7 @@ async def update_patient(id: int, p: PatientCreate, tenant_id: int = Depends(get
         logger.error(f"Error updating patient {id}: {e}")
         raise HTTPException(status_code=400, detail=str(e))
 
-@router.delete("/patients/{id}", dependencies=[Depends(verify_admin_token)], tags=["Pacientes"])
+@router.delete("/patients/{id}", dependencies=[Depends(verify_admin_token)], tags=["Pacientes"], summary="Eliminar (soft-delete) un paciente")
 async def delete_patient(id: int, tenant_id: int = Depends(get_resolved_tenant_id)):
     """Marcar paciente como eliminado. Aislado por tenant_id (Regla de Oro)."""
     try:
@@ -2200,7 +2200,7 @@ async def delete_patient(id: int, tenant_id: int = Depends(get_resolved_tenant_i
         logger.error(f"Error deleting patient {id}: {e}")
         raise HTTPException(status_code=400, detail=str(e))
 
-@router.get("/patients/{id}/records", dependencies=[Depends(verify_admin_token)], tags=["Pacientes"])
+@router.get("/patients/{id}/records", dependencies=[Depends(verify_admin_token)], tags=["Pacientes"], summary="Obtener historia clínica del paciente")
 async def get_clinical_records(id: int, tenant_id: int = Depends(get_resolved_tenant_id)):
     """Obtener historia clínica de un paciente. Aislado por tenant_id (Regla de Oro)."""
     rows = await db.pool.fetch("""
@@ -2212,7 +2212,7 @@ async def get_clinical_records(id: int, tenant_id: int = Depends(get_resolved_te
     """, id, tenant_id)
     return [dict(row) for row in rows]
 
-@router.post("/patients/{id}/records", dependencies=[Depends(verify_admin_token)], tags=["Pacientes"])
+@router.post("/patients/{id}/records", dependencies=[Depends(verify_admin_token)], tags=["Pacientes"], summary="Agregar nota a la historia clínica")
 async def add_clinical_note(id: int, note: ClinicalNote, tenant_id: int = Depends(get_resolved_tenant_id)):
     """Agregar una evolución/nota a la historia clínica. Aislado por tenant_id (Regla de Oro)."""
     patient = await db.pool.fetchrow("SELECT id FROM patients WHERE id = $1 AND tenant_id = $2", id, tenant_id)
@@ -2226,7 +2226,7 @@ async def add_clinical_note(id: int, note: ClinicalNote, tenant_id: int = Depend
 
 # ==================== ENDPOINTS TURNOS (AGENDA) ====================
 
-@router.get("/appointments", dependencies=[Depends(verify_admin_token)], tags=["Turnos"])
+@router.get("/appointments", dependencies=[Depends(verify_admin_token)], tags=["Turnos"], summary="Listar turnos en un rango de fechas")
 async def list_appointments(
     start_date: str,
     end_date: str,
@@ -2256,7 +2256,7 @@ async def list_appointments(
 
 # ==================== ENDPOINT COLISION DETECTION ====================
 
-@router.get("/appointments/check-collisions", dependencies=[Depends(verify_admin_token)], tags=["Turnos"])
+@router.get("/appointments/check-collisions", dependencies=[Depends(verify_admin_token)], tags=["Turnos"], summary="Verificar colisiones de horario para un turno")
 async def check_collisions(
     professional_id: int,
     datetime_str: str,
@@ -2296,7 +2296,7 @@ async def check_collisions(
         "conflicting_blocks": [dict(row) for row in gcal_blocks]
     }
 
-@router.post("/appointments", dependencies=[Depends(verify_admin_token)], tags=["Turnos"])
+@router.post("/appointments", dependencies=[Depends(verify_admin_token)], tags=["Turnos"], summary="Agendar un turno manualmente")
 async def create_appointment_manual(
     apt: AppointmentCreate,
     request: Request,
@@ -2421,8 +2421,8 @@ async def create_appointment_manual(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error creando turno: {str(e)}")
 
-@router.put("/appointments/{id}/status", dependencies=[Depends(verify_admin_token)], tags=["Turnos"])
-@router.patch("/appointments/{id}/status", dependencies=[Depends(verify_admin_token)], tags=["Turnos"])
+@router.put("/appointments/{id}/status", dependencies=[Depends(verify_admin_token)], tags=["Turnos"], summary="Actualizar el estado de un turno (confirmed, cancelled, etc.)")
+@router.patch("/appointments/{id}/status", dependencies=[Depends(verify_admin_token)], tags=["Turnos"], summary="Actualizar el estado de un turno (vía PATCH)")
 async def update_appointment_status(id: str, payload: StatusUpdate, request: Request):
     """Cambiar estado: confirmed, cancelled, attended, no_show."""
     await db.pool.execute("UPDATE appointments SET status = $1 WHERE id = $2", payload.status, id)
@@ -2468,7 +2468,7 @@ async def update_appointment_status(id: str, payload: StatusUpdate, request: Req
     
     return {"status": "updated", "appointment_id": str(id), "new_status": payload.status}
 
-@router.put("/appointments/{id}", dependencies=[Depends(verify_admin_token)], tags=["Turnos"])
+@router.put("/appointments/{id}", dependencies=[Depends(verify_admin_token)], tags=["Turnos"], summary="Actualizar datos completos de un turno")
 async def update_appointment(id: str, apt: AppointmentCreate, request: Request, tenant_id: int = Depends(get_resolved_tenant_id)):
     """Actualizar datos de un turno (fecha, profesional, tipo, notas)."""
     try:
@@ -2580,7 +2580,7 @@ async def update_appointment(id: str, apt: AppointmentCreate, request: Request, 
         logger.error(f"Error updating appointment: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.delete("/appointments/{id}", dependencies=[Depends(verify_admin_token)], tags=["Turnos"])
+@router.delete("/appointments/{id}", dependencies=[Depends(verify_admin_token)], tags=["Turnos"], summary="Eliminar físicamente un turno de la agenda")
 async def delete_appointment(id: str, request: Request):
     """Eliminar turno físicamente de la base de datos y de GCal."""
     try:
@@ -2625,7 +2625,7 @@ class NextSlotsResponse(BaseModel):
     professional_id: int
     professional_name: str
 
-@router.get("/appointments/next-slots", response_model=List[NextSlotsResponse], dependencies=[Depends(verify_admin_token)], tags=["Turnos"])
+@router.get("/appointments/next-slots", response_model=List[NextSlotsResponse], dependencies=[Depends(verify_admin_token)], tags=["Turnos"], summary="Consultar próximos huecos disponibles para turnos")
 async def get_next_available_slots(
     days_ahead: int = 3,
     slot_duration_minutes: int = 20,
@@ -2723,7 +2723,7 @@ async def get_next_available_slots(
 
 # ==================== ENDPOINTS PROFESIONALES ====================
 
-@router.get("/professionals", dependencies=[Depends(verify_admin_token)], tags=["Profesionales"])
+@router.get("/professionals", dependencies=[Depends(verify_admin_token)], tags=["Profesionales"], summary="Listar profesionales activos y aprobados")
 async def list_professionals(
     resolved_tenant_id: int = Depends(get_resolved_tenant_id),
     allowed_ids: List[int] = Depends(get_allowed_tenant_ids),
@@ -2806,7 +2806,7 @@ async def list_professionals(
         return []
 
 
-@router.get("/professionals/by-user/{user_id}", dependencies=[Depends(verify_admin_token)], tags=["Profesionales"])
+@router.get("/professionals/by-user/{user_id}", dependencies=[Depends(verify_admin_token)], tags=["Profesionales"], summary="Obtener sedes de un profesional por su user_id")
 async def get_professionals_by_user(
     user_id: str,
     allowed_ids: List[int] = Depends(get_allowed_tenant_ids),
@@ -2856,7 +2856,7 @@ async def get_professionals_by_user(
             return []
 
 
-@router.get("/professionals/{id}/analytics", dependencies=[Depends(verify_admin_token)], tags=["Profesionales"])
+@router.get("/professionals/{id}/analytics", dependencies=[Depends(verify_admin_token)], tags=["Profesionales"], summary="Obtener analíticas detalladas de un profesional")
 async def get_professional_analytics(
     id: int,
     tenant_id: int,
@@ -2888,7 +2888,7 @@ async def get_professional_analytics(
 
 # ==================== ENDPOINTS GOOGLE CALENDAR ====================
 
-@router.post("/calendar/connect-sovereign", dependencies=[Depends(verify_admin_token)], tags=["Calendario"])
+@router.post("/calendar/connect-sovereign", dependencies=[Depends(verify_admin_token)], tags=["Calendario"], summary="Conectar calendario de Google vía Auth0 (Soberano)")
 async def connect_sovereign_calendar(
     payload: ConnectSovereignPayload,
     user_data=Depends(verify_admin_token),
@@ -2951,7 +2951,7 @@ async def connect_sovereign_calendar(
         raise HTTPException(status_code=500, detail="Error al guardar el token o actualizar la clínica.")
 
 
-@router.get("/calendar/blocks", dependencies=[Depends(verify_admin_token)], tags=["Calendario"])
+@router.get("/calendar/blocks", dependencies=[Depends(verify_admin_token)], tags=["Calendario"], summary="Listar bloqueos manuales o de GCalendar")
 async def get_calendar_blocks(
     start_date: str,
     end_date: str,
@@ -2983,7 +2983,7 @@ async def get_calendar_blocks(
         return []
 
 
-@router.post("/calendar/blocks", dependencies=[Depends(verify_admin_token)], tags=["Calendario"])
+@router.post("/calendar/blocks", dependencies=[Depends(verify_admin_token)], tags=["Calendario"], summary="Crear un nuevo bloqueo en el calendario")
 async def create_calendar_block(
     block: GCalendarBlockCreate,
     tenant_id: int = Depends(get_resolved_tenant_id),
@@ -3003,15 +3003,15 @@ async def create_calendar_block(
         return {"id": str(uuid.uuid4()), "status": "simulated", "message": str(e)}
 
 
-@router.delete("/calendar/blocks/{block_id}", dependencies=[Depends(verify_admin_token)], tags=["Calendario"])
+@router.delete("/calendar/blocks/{block_id}", dependencies=[Depends(verify_admin_token)], tags=["Calendario"], summary="Eliminar un bloqueo del calendario")
 async def delete_calendar_block(block_id: str, tenant_id: int = Depends(get_resolved_tenant_id)):
     """Eliminar un bloque de calendario. Aislado por tenant_id (Regla de Oro)."""
     await db.pool.execute("DELETE FROM google_calendar_blocks WHERE id = $1 AND tenant_id = $2", block_id, tenant_id)
     return {"status": "deleted"}
 
 
-@router.post("/sync/calendar", dependencies=[Depends(verify_admin_token)], tags=["Calendario"])
-@router.post("/calendar/sync", dependencies=[Depends(verify_admin_token)], tags=["Calendario"])
+@router.post("/sync/calendar", dependencies=[Depends(verify_admin_token)], tags=["Calendario"], summary="Disparar sincronización manual de GCalendar (Alias)")
+@router.post("/calendar/sync", dependencies=[Depends(verify_admin_token)], tags=["Calendario"], summary="Disparar sincronización manual de GCalendar")
 async def trigger_sync(tenant_id: int = Depends(get_resolved_tenant_id)):
     """
     Sincronización con Google Calendar para profesionales activos del tenant.
@@ -3143,7 +3143,7 @@ class TreatmentTypeUpdate(BaseModel):
     internal_notes: Optional[str] = None
 
 
-@router.get("/treatment-types", dependencies=[Depends(verify_admin_token)], tags=["Tratamientos"])
+@router.get("/treatment-types", dependencies=[Depends(verify_admin_token)], tags=["Tratamientos"], summary="Listar tipos de tratamientos ofrecidos")
 async def list_treatment_types(tenant_id: int = Depends(get_resolved_tenant_id)):
     """Listar tipos de tratamiento de la clínica. Aislado por tenant_id (Regla de Oro)."""
     rows = await db.pool.fetch("""
@@ -3158,7 +3158,7 @@ async def list_treatment_types(tenant_id: int = Depends(get_resolved_tenant_id))
     return [dict(row) for row in rows]
 
 
-@router.get("/treatment-types/{code}", dependencies=[Depends(verify_admin_token)], tags=["Tratamientos"])
+@router.get("/treatment-types/{code}", dependencies=[Depends(verify_admin_token)], tags=["Tratamientos"], summary="Obtener detalle de un tratamiento por su código")
 async def get_treatment_type(code: str, tenant_id: int = Depends(get_resolved_tenant_id)):
     """Obtener un tipo de tratamiento. Aislado por tenant_id (Regla de Oro)."""
     row = await db.pool.fetchrow("""
@@ -3174,7 +3174,7 @@ async def get_treatment_type(code: str, tenant_id: int = Depends(get_resolved_te
     return dict(row)
 
 
-@router.post("/treatment-types", dependencies=[Depends(verify_admin_token)], tags=["Tratamientos"])
+@router.post("/treatment-types", dependencies=[Depends(verify_admin_token)], tags=["Tratamientos"], summary="Crear un nuevo tipo de tratamiento")
 async def create_treatment_type(treatment: TreatmentTypeCreate, tenant_id: int = Depends(get_resolved_tenant_id)):
     """Crear un nuevo tipo de tratamiento. Aislado por tenant_id (Regla de Oro)."""
     try:
@@ -3198,7 +3198,7 @@ async def create_treatment_type(treatment: TreatmentTypeCreate, tenant_id: int =
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.put("/treatment-types/{code}", dependencies=[Depends(verify_admin_token)], tags=["Tratamientos"])
+@router.put("/treatment-types/{code}", dependencies=[Depends(verify_admin_token)], tags=["Tratamientos"], summary="Actualizar datos de un tipo de tratamiento")
 async def update_treatment_type(code: str, treatment: TreatmentTypeUpdate, tenant_id: int = Depends(get_resolved_tenant_id)):
     """Actualizar tipo de tratamiento. Aislado por tenant_id (Regla de Oro)."""
     result = await db.pool.execute("""
@@ -3219,7 +3219,7 @@ async def update_treatment_type(code: str, treatment: TreatmentTypeUpdate, tenan
     return {"status": "updated", "code": code}
 
 
-@router.delete("/treatment-types/{code}", dependencies=[Depends(verify_admin_token)], tags=["Tratamientos"])
+@router.delete("/treatment-types/{code}", dependencies=[Depends(verify_admin_token)], tags=["Tratamientos"], summary="Eliminar o desactivar un tipo de tratamiento")
 async def delete_treatment_type(code: str, tenant_id: int = Depends(get_resolved_tenant_id)):
     """Eliminar o desactivar tipo de tratamiento. Aislado por tenant_id (Regla de Oro)."""
     has_appointments = await db.pool.fetchval(
@@ -3238,7 +3238,7 @@ async def delete_treatment_type(code: str, tenant_id: int = Depends(get_resolved
     return {"status": "deleted", "code": code}
 
 
-@router.get("/treatment-types/{code}/duration", dependencies=[Depends(verify_admin_token)], tags=["Tratamientos"])
+@router.get("/treatment-types/{code}/duration", dependencies=[Depends(verify_admin_token)], tags=["Tratamientos"], summary="Obtener duración estimada según nivel de urgencia")
 async def get_treatment_duration(code: str, urgency_level: str = "normal", tenant_id: int = Depends(get_resolved_tenant_id)):
     """
     Obtener duración calculada para un tratamiento según urgencia.
@@ -3291,7 +3291,7 @@ async def get_treatment_duration(code: str, urgency_level: str = "normal", tenan
 
 # ==================== ENDPOINTS ANALYTICS ====================
 
-@router.get("/analytics/professionals/summary", tags=["Analítica"])
+@router.get("/analytics/professionals/summary", tags=["Analítica"], summary="Obtener reporte analítico de profesionales para el CEO")
 async def get_professionals_analytics(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
@@ -3331,7 +3331,7 @@ async def get_professionals_analytics(
 # Spec 12: HEALTH CHECK — INTEGRACIONES
 # =============================================
 
-@router.get("/health/integrations", tags=["Health Check"])
+@router.get("/health/integrations", tags=["Mantenimiento"], summary="Health-Check de integraciones externas (Facebook/Meta Ads)")
 async def health_check_integrations(
     user_data=Depends(verify_admin_token),
 ):
@@ -3348,7 +3348,7 @@ async def health_check_integrations(
     status_code = 200 if result.get("status") == "ok" else 503
     return JSONResponse(content=result, status_code=status_code)
 
-@router.get("/marketing/automation-logs", tags=["Marketing Analytics"])
+@router.get("/marketing/automation-logs", tags=["Marketing Analytics"], summary="Consultar logs de automatización de marketing")
 async def get_automation_logs(
     limit: int = Query(50, ge=1, le=200),
     resolved_tenant_id: int = Depends(get_resolved_tenant_id),
