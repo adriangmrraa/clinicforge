@@ -14,11 +14,13 @@ WhatsApp Service (8002)
   - Deduplicación (Redis)
   - Transcripción (Whisper)
         |
-        | POST /chat
+        | POST /chat (with JWT + X-Admin-Token)
         v
 Orchestrator Service (8000)
+  - Security Middleware (Headers: HSTS, CSP, XFO)
+  - AI Guardrails (Prompt Security & Sanitization)
   - LangChain Agent (Asistente Dental)
-  - Vision Service (GPT-4o)  <-- NUEVO
+  - Vision Service (GPT-4o)
   - Tools Clínicas (Agenda, Triaje)
   - Memoria Histórica (Postgres)
   - Lockout (24h)
@@ -60,7 +62,12 @@ AgendaView / Odontograma
 
 **Tecnología:** FastAPI + LangChain + OpenAI + PostgreSQL
 
-**Función:** Procesamiento de lenguaje natural, clasificación de urgencias, gestión de agenda y **Buffer Unificado**.
+**Función**: Procesamiento de lenguaje natural, clasificación de urgencias, gestión de agenda y **Buffer Unificado**.
+
+**Capas de Seguridad (Hito Security v2.0):**
+- **Security Middleware**: Inyecta headers `Strict-Transport-Security`, `Content-Security-Policy`, `X-Frame-Options` y `X-Content-Type-Options`.
+- **AI Guardrails Layer**: Escaneo preventivo de `prompt_injection` y sanitización de entrada antes de invocar al LLM.
+- **Role Isolation**: Los profesionales solo ven sus citas; el CEO tiene visibilidad total por sede.
 
 **NUEVO: Relay Service (Spec 24/25):**
 - **Buffer Unificado:** Agrupa mensajes de WhatsApp y Chatwoot.

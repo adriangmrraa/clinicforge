@@ -10,8 +10,9 @@
 
 ## 1. Qué es el proyecto
 
-- **Nombre:** Dentalogic (Nexus v7.6 / Platinum).
+- **Nombre:** Dentalogic (Nexus v8.0 / Platinum Security Hardened).
 - **Tipo:** Plataforma de gestión clínica dental **multi-tenant** (multi-sede), con asistente IA por WhatsApp para turnos, triaje y derivación a humano.
+- **Seguridad Proactiva (v8.0)**: Middleware de headers (HSTS, CSP, XFO), AI Guardrails (Prompt Injection Detection), sanitización XSS (SafeHTML) y X-Admin-Token obligatorio.
 - **Usuarios:** Clínicas (una o varias sedes), CEOs, secretarias, profesionales. Pacientes interactúan por WhatsApp con el agente.
 - **Pilares:** Backend (Orchestrator FastAPI + LangChain), Frontend (React + Vite + Tailwind), WhatsApp Service (YCloud + Whisper), PostgreSQL, Redis. Opcional: integración **Chatwoot** (WhatsApp/Instagram/Facebook en la misma bandeja de Chats; webhook, filtro por canal, credenciales por tenant en tabla `credentials`).
 
@@ -48,6 +49,9 @@ orchestrator_service/
   routes/chat_api.py   # GET /admin/chats/summary, /admin/chats/{id}/messages, POST /admin/whatsapp/send, human-override, config
   services/relay.py    # Buffer inteligente (10s texto/audio, 20s imagen); enqueue_buffer_and_schedule_task
   services/buffer_task.py  # process_buffer_task: invoca agente por tenant, envía respuesta por Chatwoot
+  core/security_middleware.py # Nexus Security Middleware (HSTS, CSP, XFO)
+  core/prompt_security.py    # AI Guardrails: detect_prompt_injection, sanitize_input
+  core/log_sanitizer.py      # Redacción de PII y tokens en logs
 
 frontend_react/src/
   App.tsx              # Rutas; LanguageProvider y AuthProvider envuelven todo
@@ -57,6 +61,7 @@ frontend_react/src/
   api/axios.ts         # Cliente HTTP; inyecta Authorization, X-Admin-Token
   views/              # Una vista por pantalla (LoginView, AgendaView, ChatsView, etc.)
   components/         # Layout, Sidebar, AppointmentForm, MobileAgenda, AnalyticsFilters, etc.
+    common/SafeHTML.tsx # Componente de renderizado seguro (XSS Prevention)
   locales/
     es.json, en.json, fr.json  # Traducciones; todas las vistas usan t('clave')
 ```
@@ -67,6 +72,8 @@ frontend_react/src/
 
 - **Backend – Soberanía:** Todas las consultas (SELECT/INSERT/UPDATE/DELETE) deben filtrar por `tenant_id`. El aislamiento por sede es inviolable.
 - **Backend – Auth:** Rutas admin usan `verify_admin_token` (valida JWT + X-Admin-Token + rol). No usar `get_current_user` solo en rutas que requieran rol CEO.
+- **Backend – Security Hardening (v8.0)**: Todo input del usuario al LLM debe pasar por `detect_prompt_injection`. No deshabilitar el middleware de headers.
+- **Frontend – XSS Prevention**: Prohibido usar `dangerouslySetInnerHTML`. Usar `<SafeHTML html={...} />` para contenido dinámico.
 - **Frontend – Rutas:** Rutas con hijos deben usar `path="/*"`. `/profesionales` redirige a `/aprobaciones`; la gestión de profesionales es desde Personal Activo (UserApprovalView).
 - **Frontend – Scroll:** Aislamiento de scroll: contenedor global `h-screen overflow-hidden`; vistas con `flex-1 min-h-0 overflow-y-auto` para no romper layout.
 - **Frontend – i18n:** Cualquier texto visible debe usar `useTranslation()` y `t('namespace.key')`. Añadir claves en `es.json`, `en.json` y `fr.json`.

@@ -26,6 +26,18 @@ Estos documentos explican el funcionamiento actual, la arquitectura y los proces
 
 ---
 
+## 🔒 Auditoría y Seguridad (Compliance v8.0)
+
+Documentos sobre el endurecimiento del sistema y reportes de seguridad.
+
+| # | Archivo | Contenido |
+|---|---------|-----------|
+| 32 | [32_SECURITY_AUDIT_REPORT.md](32_SECURITY_AUDIT_REPORT.md) | Reporte de Seguridad Actualizado (Misión 8). |
+| -- | [Auditoría de Seguridad Deep dive.md](Auditoría%20de%20Seguridad%20Deep%20dive.md) | Análisis profundo de vectores de ataque y mitigaciones. |
+| -- | [spec_security_proactive_hardening.spec.md](spec_security_proactive_hardening.spec.md) | Especificación técnica del blindaje de prompts e infraestructura. |
+
+---
+
 ## 🛠️ Lógica Interna y Deep Dives (Arquitectura Detallada)
 
 Documentación técnica profunda sobre módulos específicos.

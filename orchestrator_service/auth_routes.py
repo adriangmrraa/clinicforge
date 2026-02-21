@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends, Request, status
+from fastapi import APIRouter, HTTPException, Depends, Request, status, Response
 from pydantic import BaseModel, EmailStr
 from typing import Optional
 import uuid
@@ -185,8 +185,8 @@ async def register(payload: UserRegister):
         raise HTTPException(status_code=500, detail="Error interno durante el registro.")
 
 @router.post("/login", response_model=TokenResponse)
-async def login(payload: UserLogin):
-    """ Authenticates user and returns JWT. Checks for 'active' status. """
+async def login(payload: UserLogin, response: Response):
+    """ Authenticates user and returns JWT. Checks for 'active' status. Sets HttpOnly cookie. """
     user = await db.fetchrow("SELECT * FROM users WHERE email = $1", payload.email)
     
     if not user:
@@ -218,6 +218,16 @@ async def login(payload: UserLogin):
         "tenant_id": tenant_id,
     }
     token = auth_service.create_access_token(token_data)
+
+    # Set HttpOnly Cookie (Nexus Security Protocol v7.6)
+    response.set_cookie(
+        key="access_token",
+        value=token,
+        httponly=True,
+        secure=True, # Production-ready (HTTPS expected)
+        samesite="lax",
+        max_age=86400 * 7 # 7 days
+    )
     
     return {
         "access_token": token,
@@ -232,16 +242,23 @@ async def login(payload: UserLogin):
 
 @router.get("/me")
 async def get_me(request: Request):
-    """ Returns the current authenticated user data. """
+    """ Returns the current authenticated user data. Supports cookies. """
+    token = None
     auth_header = request.headers.get("Authorization")
-    if not auth_header or not auth_header.startswith("Bearer "):
+    
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header.split(" ")[1]
+    else:
+        # Fallback to Cookie (HttpOnly)
+        token = request.cookies.get("access_token")
+
+    if not token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
     
-    token = auth_header.split(" ")[1]
     token_data = auth_service.decode_token(token)
     
     if not token_data:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token")
         
     return token_data
 

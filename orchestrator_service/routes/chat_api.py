@@ -24,6 +24,7 @@ from core.credentials import (
     YCLOUD_API_KEY,
     get_tenant_credential,
 )
+from core.auth import verify_ceo_token, verify_staff_token
 from db import get_pool
 
 logger = logging.getLogger(__name__)
@@ -285,6 +286,7 @@ async def chat_messages(
 async def unified_send_message(
     body: dict,
     tenant_id: int = Depends(get_resolved_tenant_id),
+    user_data = Depends(verify_staff_token)
 ) -> dict:
     """
     Endpoint unificado (Spec 18) para enviar mensajes a WhatsApp, Instagram y Facebook.
@@ -441,6 +443,7 @@ async def human_override(
     conversation_id: uuid.UUID,
     body: dict,
     tenant_id: int = Depends(get_resolved_tenant_id),
+    user_data = Depends(verify_staff_token)
 ) -> dict:
     enabled = body.get("enabled", False)
     logger.info(f"🔄 HUMAN_OVERRIDE Request: conv={conversation_id}, enabled={enabled}, tenant={tenant_id}")
@@ -596,11 +599,15 @@ async def media_proxy(
 async def chat_upload(
     file: UploadFile = File(...),
     tenant_id: int = Query(..., description="Tenant ID target"),
+    user_data = Depends(verify_staff_token),
+    resolved_tenant_id: int = Depends(get_resolved_tenant_id)
 ):
     """
     Sube un archivo de media localmente para ser enviado en el chat (Spec 19).
     Límite de 20MB.
     """
+    # Usar el tenant resuelto para evitar escalada de privilegios
+    target_tenant_id = resolved_tenant_id
     import mimetypes
     import os
     import uuid

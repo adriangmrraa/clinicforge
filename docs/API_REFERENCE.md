@@ -46,6 +46,13 @@ Todas las rutas bajo **`/admin/*`** exigen:
 | **`Authorization`** | Sí | `Bearer <JWT>`. El JWT se obtiene con `POST /auth/login`. |
 | **`X-Admin-Token`** | Sí (si está configurado en servidor) | Token estático de infraestructura. El frontend lo inyecta desde `VITE_ADMIN_TOKEN`. Sin este header, el backend responde **401** aunque el JWT sea válido. |
 
+### Security Headers (Automático)
+Todas las respuestas del Orchestrator incluyen headers de endurecimiento:
+- `Strict-Transport-Security` (HSTS): 1 año.
+- `X-Frame-Options: DENY`: Previene Clickjacking.
+- `X-Content-Type-Options: nosniff`: Previene MIME sniffing.
+- `Content-Security-Policy`: Política dinámica que bloquea scripts externos no autorizados.
+
 Rutas **públicas** (sin estos headers): `GET /auth/clinics`, `POST /auth/register`, `POST /auth/login`, `GET /health`.
 
 ---
@@ -681,4 +688,6 @@ En rutas de listado administrativas suelen soportarse:
 | **403** | Sin permiso para el recurso (ej. tenant no permitido para el usuario). |
 | **404** | Recurso no encontrado (paciente, turno, sede, etc.). |
 | **422** | Error de validación (body o query params incorrectos). |
+| **422 (AI)** | **DNI_MALFORMED**: El DNI enviado no contiene números. |
+| **422 (AI)** | **NAME_TOO_SHORT**: El nombre o apellido enviado tiene menos de 2 caracteres. |
 | **500** | Error interno del servidor. |

@@ -64,14 +64,14 @@ const api: AxiosInstance = axios.create({
     'Content-Type': 'application/json',
   },
   timeout: 30000,
+  withCredentials: true, // Nexus Security: Permitir HttpOnly Cookies
 });
 
 // Request interceptor: agregar token y X-Tenant-ID
 api.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
-    // 1. Get tokens from localStorage
+    // 1. Get Infrastructure token from localStorage
     let adminToken = localStorage.getItem('ADMIN_TOKEN');
-    const jwtToken = localStorage.getItem('JWT_TOKEN');
 
     // Self-healing: clear polluted storage from previous versions
     if (adminToken === 'RUNTIME_REPLACE') {
@@ -93,7 +93,7 @@ api.interceptors.request.use(
     }
 
     if (config.headers) {
-      // Layer 1: Infrastructure Security
+      // Layer 1: Infrastructure Security (Static)
       if (adminToken && adminToken !== 'RUNTIME_REPLACE') {
         config.headers['X-Admin-Token'] = adminToken;
       } else if (adminToken === 'RUNTIME_REPLACE') {
@@ -102,9 +102,8 @@ api.interceptors.request.use(
       }
 
       // Layer 2: Identity Security (Nexus v7.6)
-      if (jwtToken && jwtToken !== 'RUNTIME_REPLACE') {
-        config.headers['Authorization'] = `Bearer ${jwtToken}`;
-      }
+      // El JWT se envía automáticamente vía Cookies HttpOnly gracias a withCredentials: true.
+      // Se mantiene compatibilidad por si se necesita forzar una cabecera, pero no se inyecta desde localStorage.
     }
 
     // 2. Get and set X-Tenant-ID header

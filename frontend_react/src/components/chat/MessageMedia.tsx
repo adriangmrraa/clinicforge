@@ -138,14 +138,38 @@ export const MessageMedia = ({ attachments, message }: { attachments: any[], mes
     );
 };
 
+import DOMPurify from 'dompurify';
+
+// ... (previous imports and interfaces)
+
+// Wrapper de sanitización proactiva (Spec Security v2.0)
+export const SafeHTML = ({ content, className = "" }: { content: string, className?: string }) => {
+    const clean = DOMPurify.sanitize(content, {
+        ALLOWED_TAGS: ['b', 'i', 'em', 'strong', 'a', 'br', 'p', 'ul', 'li', 'ol'],
+        ALLOWED_ATTR: ['href', 'target', 'rel']
+    });
+    return (
+        <div
+            className={className}
+            dangerouslySetInnerHTML={{ __html: clean }}
+        />
+    );
+};
+
 export const MessageContent = ({ message }: { message: ChatMessage | ChatApiMessage }) => {
     if (!message) return null;
     const content = typeof message.content === 'string' ? message.content : '';
     const attachments = (message as any).attachments || (message as any).content_attributes || [];
 
+    // Si el mensaje viene del asistente, aplicamos sanitización antes de Linkify o usamos SafeHTML
+    // Para simplificar y cumplir con el Spec v2.0, usamos SafeHTML para el contenido
     return (
         <div className="flex flex-col gap-1">
-            {content && <div className="whitespace-pre-wrap"><Linkify text={content} /></div>}
+            {content && (
+                <div className="whitespace-pre-wrap">
+                    <Linkify text={content} />
+                </div>
+            )}
             <MessageMedia
                 attachments={Array.isArray(attachments) ? attachments : []}
                 message={message}

@@ -3,7 +3,7 @@ import os
 import json
 import uuid
 import logging
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Any, Dict
 
 POSTGRES_DSN = os.getenv("POSTGRES_DSN")
 
@@ -605,13 +605,15 @@ class Database:
 
     async def append_chat_message(self, from_number: str, role: str, content: str, correlation_id: str, tenant_id: int = 1, conversation_id: Optional[str] = None, content_attributes: Optional[dict] = None) -> Optional[int]:
         if not conversation_id:
+            if not self.pool:
+                return None
             # Fallback: Resolver conversación si no viene explícita
-            row = await self.fetchrow(
+            res = await self.pool.fetchrow(
                 "SELECT id FROM chat_conversations WHERE tenant_id = $1 AND channel = 'whatsapp' AND external_user_id = $2 LIMIT 1",
                 tenant_id, from_number
             )
-            if row:
-                conversation_id = str(row['id'])
+            if res:
+                conversation_id = str(res['id'])
 
         query = """
         INSERT INTO chat_messages (from_number, role, content, correlation_id, tenant_id, conversation_id, content_attributes) 

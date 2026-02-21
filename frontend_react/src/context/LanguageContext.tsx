@@ -48,8 +48,8 @@ export const LanguageProvider: React.FC<{ children: ReactNode }> = ({ children }
   }, []);
 
   useEffect(() => {
-    const token = localStorage.getItem('JWT_TOKEN');
-    if (!token) {
+    const userProfile = localStorage.getItem('USER_PROFILE');
+    if (!userProfile) {
       setIsLoading(false);
       return;
     }
@@ -62,7 +62,7 @@ export const LanguageProvider: React.FC<{ children: ReactNode }> = ({ children }
           localStorage.setItem(STORAGE_KEY, lang);
         }
       })
-      .catch(() => {})
+      .catch(() => { })
       .finally(() => setIsLoading(false));
   }, []);
 

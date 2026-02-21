@@ -127,7 +127,25 @@ Para resolver la limitación de la Meta Graph API que oculta anuncios con gasto 
 2. **Enriquecimiento**: Se obtienen los `insights` por separado y se reconcilian en memoria.
 3. **Visibilidad Total**: Esto garantiza que el 100% de los anuncios creados sean visibles en el Marketing Hub, permitiendo al CEO ver incluso campañas pausadas o sin rendimiento.
 
-## 8. Motor de Automatización ("Maintenance Robot")
+## 8. AI Guardrails & Prompt Security (Spec 27)
+
+Para proteger al Agente de ataques de inyección y garantizar la integridad de los datos clínicos, se ha implementado una capa de defensa híbrida.
+
+### 8.1. Blacklist Layer (`core/prompt_security.py`)
+Antes de que el mensaje llegue al Agente LangChain, se escanea en busca de patrones maliciosos:
+- **Injection Detection**: Bloquea frases como "ignore previous instructions", "system prompt", "dan mode", etc.
+- **Respuesta de Bloqueo**: Si se detecta un ataque, el sistema retorna un estado `security_blocked` inmediato sin consumir tokens de LLM.
+
+### 8.2. Sanitización de Entrada
+Se aplica una limpieza estricta para eliminar secuencias de control, caracteres invisibles y etiquetas que puedan confundir al parseador de herramientas (JSON/Python).
+
+### 8.3. Validación Técnica de Herramientas (Gatekeepers)
+Las herramientas de agendamiento (`book_appointment`) actúan como filtros finales:
+- **DNI**: Debe contener números. Si es inválido, retorna `DNI_MALFORMED`.
+- **Nombres**: Deben tener longitud mínima. Si es inválido, retorna `NAME_TOO_SHORT`.
+- **Feedback Cooperativo**: Estos errores técnicos se pasan al Agente IA para que este pueda explicarle amablemente al paciente qué corregir.
+
+## 9. Motor de Automatización ("Maintenance Robot")
 
 El motor reside en `orchestrator_service/services/automation_service.py` y se encarga de tareas programadas y de mantenimiento.
 

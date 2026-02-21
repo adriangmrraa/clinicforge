@@ -57,7 +57,9 @@ Este proyecto se configura completamente mediante variables de entorno. En despl
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | Duración del token de sesión | `43200` (30 días) | `30` |
 | `PLATFORM_URL` | URL del frontend (para links de activación) | `https://ui.clinic.com` | `http://localhost:3000` |
 | `CORS_ALLOWED_ORIGINS` | Origins CORS permitidos (comma-separated) | `http://localhost:3000,https://domain.com` | `*` |
-| `CREDENTIALS_FERNET_KEY` | Clave Fernet (base64) para cifrar tokens en `credentials` (ej. Auth0 en connect-sovereign) | Salida de `Fernet.generate_key().decode()` | ✅ (si se usa connect-sovereign) |
+| `CREDENTIALS_FERNET_KEY` | Clave Fernet (base64) para cifrar tokens en `credentials` | Salida de `Fernet.generate_key().decode()` | ✅ (si se usa connect-sovereign) |
+| `CSP_EXTRA_DOMAINS` | Dominios adicionales para Content-Security-Policy connect-src (comma-separated) | `*.trusted.com,api.other.net` | ❌ |
+| `LOG_LEVEL` | Nivel de logging (activa sanitización de PII en INFO/DEBUG) | `INFO` | `INFO` |
 | `GOOGLE_CREDENTIALS` | JSON completo de credenciales de Google (Service Account o OAuth) para integración con Google Calendar | Contenido del archivo JSON descargado de Google Cloud Console | ❌ (solo si la clínica usa `calendar_provider: google` y se consulta disponibilidad vía GCal) |
 
 **Generar clave Fernet:** En la raíz del proyecto, con Python en el PATH: `py -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` (Windows). En Linux/macOS: `python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`. Guardar la salida en `CREDENTIALS_FERNET_KEY`.

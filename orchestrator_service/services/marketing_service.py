@@ -31,31 +31,31 @@ class MarketingService:
 
         try:
             # 1. Obtener leads atribuidos a Meta Ads en el periodo
-            meta_leads = await db.pool.fetchval(f"""
+            meta_leads = await db.pool.fetchval("""
                 SELECT COUNT(*) FROM patients 
                 WHERE tenant_id = $1 AND acquisition_source = 'META_ADS'
-                AND created_at >= NOW() - INTERVAL '{interval}'
-            """, tenant_id) or 0
+                AND created_at >= NOW() - $2::interval
+            """, tenant_id, interval) or 0
 
             # 2. Obtener pacientes convertidos en el periodo
-            converted_patients = await db.pool.fetchval(f"""
+            converted_patients = await db.pool.fetchval("""
                 SELECT COUNT(DISTINCT p.id) 
                 FROM patients p
                 JOIN appointments a ON p.id = a.patient_id
                 WHERE p.tenant_id = $1 AND p.acquisition_source = 'META_ADS'
                 AND a.status IN ('confirmed', 'completed')
-                AND a.appointment_datetime >= NOW() - INTERVAL '{interval}'
-            """, tenant_id) or 0
+                AND a.appointment_datetime >= NOW() - $2::interval
+            """, tenant_id, interval) or 0
 
             # 3. Calcular Ingresos Reales en el periodo
-            total_revenue = await db.pool.fetchval(f"""
+            total_revenue = await db.pool.fetchval("""
                 SELECT SUM(amount) 
                 FROM accounting_transactions t
                 JOIN patients p ON t.patient_id = p.id
                 WHERE p.tenant_id = $1 AND p.acquisition_source = 'META_ADS'
                 AND t.status = 'completed'
-                AND t.created_at >= NOW() - INTERVAL '{interval}'
-            """, tenant_id) or 0
+                AND t.created_at >= NOW() - $2::interval
+            """, tenant_id, interval) or 0
 
             # 4. Inversión (Spend) - Sincronizada con Meta si hay conexión
             from services.meta_ads_service import MetaAdsClient
@@ -137,7 +137,6 @@ class MarketingService:
             return {"needs_reconnect": True, "days_left": 0}
 
     @staticmethod
-    @staticmethod
     async def get_campaign_stats(tenant_id: int, time_range: str = "last_30d") -> Dict[str, Any]:
         """
         Retorna el rendimiento por campaña/anuncio, sincronizando con Meta si hay conexión.
@@ -213,25 +212,25 @@ class MarketingService:
                     logger.warning(f"⚠️ No se pudo obtener ads de Meta: {e}")
 
             # 2. Obtener atribución local (Leads y Citas)
-            local_stats = await db.pool.fetch(f"""
+            local_stats = await db.pool.fetch("""
                 SELECT meta_ad_id,
                        COUNT(id) as leads,
                        COUNT(id) FILTER (WHERE EXISTS (
                            SELECT 1 FROM appointments a 
                            WHERE a.patient_id = patients.id AND a.status IN ('confirmed', 'completed')
-                           AND a.appointment_datetime >= NOW() - INTERVAL '{interval}'
+                           AND a.appointment_datetime >= NOW() - $2::interval
                        )) as appointments,
                        (SELECT SUM(t.amount) 
                         FROM accounting_transactions t 
                         JOIN patients p2 ON t.patient_id = p2.id 
                         WHERE p2.meta_ad_id = patients.meta_ad_id AND t.status = 'completed'
-                        AND t.created_at >= NOW() - INTERVAL '{interval}'
+                        AND t.created_at >= NOW() - $2::interval
                        ) as revenue
                 FROM patients
                 WHERE tenant_id = $1 AND acquisition_source = 'META_ADS' AND meta_ad_id IS NOT NULL
-                AND created_at >= NOW() - INTERVAL '{interval}'
+                AND created_at >= NOW() - $2::interval
                 GROUP BY meta_ad_id
-            """, tenant_id)
+            """, tenant_id, interval)
             
             attribution_map = {row['meta_ad_id']: row for row in local_stats}
 

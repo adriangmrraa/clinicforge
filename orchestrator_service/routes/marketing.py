@@ -4,7 +4,7 @@ import json
 from typing import Optional, Dict, Any, List
 from services.marketing_service import MarketingService
 from services.meta_ads_service import MetaAdsClient
-from core.auth import get_current_user_and_tenant
+from core.auth import get_ceo_user_and_tenant
 from core.credentials import get_tenant_credential, save_tenant_credential
 from db import db
 
@@ -13,29 +13,24 @@ router = APIRouter(prefix="/admin/marketing", tags=["Marketing Analytics"])
 @router.get("/stats/roi")
 async def get_marketing_roi(
     range: str = "last_30d",
-    auth_data: tuple = Depends(get_current_user_and_tenant)
+    auth_data: tuple = Depends(get_ceo_user_and_tenant)
 ):
     """
     Retorna métricas consolidadas de ROI Real.
     """
     user, tenant_id = auth_data
-    if user["role"] != "ceo":
-        raise HTTPException(status_code=403, detail="Only CEOs can access marketing ROI stats")
-        
     stats = await MarketingService.get_roi_stats(tenant_id, time_range=range)
     return stats
 
 @router.get("/stats")
 async def get_marketing_stats(
     range: str = "last_30d",
-    auth_data: tuple = Depends(get_current_user_and_tenant)
+    auth_data: tuple = Depends(get_ceo_user_and_tenant)
 ):
     """
     Retorna el listado de campañas y sus métricas de conversión.
     """
     user, tenant_id = auth_data
-    if user["role"] != "ceo":
-        raise HTTPException(status_code=403, detail="Only CEOs can access marketing stats")
         
     roi_info = await MarketingService.get_roi_stats(tenant_id, time_range=range)
     campaigns = await MarketingService.get_campaign_stats(tenant_id, time_range=range)
@@ -53,14 +48,14 @@ async def get_marketing_stats(
     return response_data
 
 @router.get("/token-status")
-async def get_token_status(auth_data: tuple = Depends(get_current_user_and_tenant)):
+async def get_token_status(auth_data: tuple = Depends(get_ceo_user_and_tenant)):
     _, tenant_id = auth_data
     status = await MarketingService.get_token_status(tenant_id)
     return status
 
 @router.get("/clinics")
 async def get_clinics(
-    auth_data: tuple = Depends(get_current_user_and_tenant)
+    auth_data: tuple = Depends(get_ceo_user_and_tenant)
 ):
     """
     Lista las clínicas disponibles para el CEO.
@@ -86,7 +81,7 @@ async def get_clinics(
 
 @router.get("/meta-portfolios")
 async def get_meta_portfolios(
-    auth_data: tuple = Depends(get_current_user_and_tenant)
+    auth_data: tuple = Depends(get_ceo_user_and_tenant)
 ):
     """
     Lista portafolios (BMs) del token conectado.
@@ -103,7 +98,7 @@ async def get_meta_portfolios(
 @router.get("/meta-accounts")
 async def get_meta_accounts(
     portfolio_id: Optional[str] = None,
-    auth_data: tuple = Depends(get_current_user_and_tenant)
+    auth_data: tuple = Depends(get_ceo_user_and_tenant)
 ):
     """
     Lista cuentas de anuncios por portafolio.
@@ -120,7 +115,7 @@ async def get_meta_accounts(
 @router.post("/connect")
 async def connect_meta_account(
     data: dict,
-    auth_data: tuple = Depends(get_current_user_and_tenant)
+    auth_data: tuple = Depends(get_ceo_user_and_tenant)
 ):
     """
     Vincula una cuenta de anuncios a una clínica.

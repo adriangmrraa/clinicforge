@@ -72,8 +72,7 @@ async def send_to_whatsapp_task(phone: str, message: str, business_number: str):
         logger.error(f"❌ WhatsApp background send CRITICAL failed for {normalized}: {str(e)}")
 
 # --- Dependencias de Seguridad (Triple Capa Nexus v7.6) ---
-# Movido a core/auth.py
-
+from core.auth import verify_admin_token, verify_ceo_token, get_resolved_tenant_id
 
 
 async def get_allowed_tenant_ids(user_data=Depends(verify_admin_token)) -> List[int]:
@@ -103,6 +102,7 @@ async def get_allowed_tenant_ids(user_data=Depends(verify_admin_token)) -> List[
 @router.get("/patients/phone/{phone}/context", tags=["Pacientes"])
 async def get_patient_clinical_context(
     phone: str,
+    request: Request,
     tenant_id_override: Optional[int] = None,
     user_data=Depends(verify_admin_token),
     resolved_tenant_id: int = Depends(get_resolved_tenant_id),
@@ -145,15 +145,19 @@ async def get_patient_clinical_context(
             AND status != 'deleted'
         """, tenant_id, phone)
 
-    if not patient:
-        # Si no existe, es un lead puro sin registro previo
-        return {
-            "patient": None,
-            "last_appointment": None,
-            "upcoming_appointment": None,
-            "treatment_plan": None,
-            "is_guest": True
-        }
+    if patient:
+        from core.auth import log_pii_access
+        await log_pii_access(request, user_data, patient['id'], action="read_clinical_context")
+        return patient
+    
+    # Si no existe, es un lead puro sin registro previo
+    return {
+        "patient": None,
+        "last_appointment": None,
+        "upcoming_appointment": None,
+        "treatment_plan": None,
+        "is_guest": True
+    }
 
     # 2. Última cita (pasada) - Mapeo a 'date' para el frontend
     last_apt = await db.pool.fetchrow("""
@@ -226,11 +230,9 @@ async def get_all_users(user_data = Depends(verify_admin_token)):
     return [dict(u) for u in users]
 
 @router.post("/users/{user_id}/status", tags=["Usuarios"], summary="Aprobar o suspender un usuario")
-async def update_user_status(user_id: str, payload: StatusUpdate, user_data = Depends(verify_admin_token)):
+async def update_user_status(user_id: str, payload: StatusUpdate, user_data = Depends(verify_ceo_token)):
     """ Actualiza el estado de un usuario (Aprobación/Suspensión) - Solo CEO.
     Al aprobar (active): si es professional/secretary y no tiene fila en professionals, se crea una para la primera sede. """
-    if user_data.role != 'ceo':
-        raise HTTPException(status_code=403, detail="Solo el CEO puede cambiar el estado de los usuarios.")
 
     target_user = await db.fetchrow(
         "SELECT id, email, role, COALESCE(first_name, '') as first_name, COALESCE(last_name, '') as last_name FROM users WHERE id = $1",
@@ -687,6 +689,8 @@ async def get_chat_tenants(allowed_ids: List[int] = Depends(get_allowed_tenant_i
 @router.get("/chat/sessions", dependencies=[Depends(verify_admin_token)], tags=["Chat"])
 async def get_chat_sessions(
     tenant_id: int,
+    request: Request,
+    user_data = Depends(verify_admin_token),
     allowed_ids: List[int] = Depends(get_allowed_tenant_ids),
 ):
     """
@@ -834,6 +838,9 @@ async def get_chat_sessions(
             "is_window_open": is_window_open,
             "last_user_message_time": last_user_msg.isoformat() if last_user_msg else None,
         })
+    if sessions:
+        from core.auth import log_pii_access
+        await log_pii_access(request, user_data, f"Tenant:{tenant_id}", action="list_chat_sessions")
     return sessions
 
 
@@ -841,8 +848,10 @@ async def get_chat_sessions(
 async def get_chat_messages(
     phone: str,
     tenant_id: int,
+    request: Request,
     limit: int = 50,
     offset: int = 0,
+    user_data = Depends(verify_admin_token),
     allowed_ids: List[int] = Depends(get_allowed_tenant_ids),
 ):
     """Historial de mensajes para un número en la clínica indicada. Aislado por tenant_id."""
@@ -899,6 +908,9 @@ async def get_chat_messages(
         })
     
     logger.info(f"📤 Devueltos {len(messages)} mensajes para {phone} (attachments check: {[len(m.get('attachments', []) or []) for m in messages]})")
+    if messages:
+        from core.auth import log_pii_access
+        await log_pii_access(request, user_data, f"Phone:{phone}", action="read_chat_messages")
     return messages
 
 

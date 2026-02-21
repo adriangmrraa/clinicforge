@@ -20,49 +20,51 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     const [user, setUser] = useState<User | null>(null);
-    const [token, setToken] = useState<string | null>(localStorage.getItem('JWT_TOKEN'));
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
-        const savedUser = localStorage.getItem('USER_PROFILE');
-        if (savedUser && token) {
-            try {
-                setUser(JSON.parse(savedUser));
-            } catch (e) {
-                console.error("Error parsing user profile:", e);
-                logout();
+        const initializeAuth = async () => {
+            const savedUser = localStorage.getItem('USER_PROFILE');
+            // Nota: El token ya no se lee de localStorage (HttpOnly Cookie)
+            if (savedUser) {
+                try {
+                    setUser(JSON.parse(savedUser));
+                } catch (e) {
+                    console.error("Error parsing user profile:", e);
+                    logout();
+                }
             }
-        }
-        setIsLoading(false);
-    }, [token]);
+            setIsLoading(false);
+        };
+        initializeAuth();
+    }, []);
 
-    const login = (newToken: string, profile: User) => {
-        localStorage.setItem('JWT_TOKEN', newToken);
+    const login = (_newToken: string, profile: User) => {
+        // El token viene en la respuesta pero se guarda automáticamente en la Cookie HttpOnly
         localStorage.setItem('USER_PROFILE', JSON.stringify(profile));
 
         // Save tenant_id as a top-level key for axios/direct-access needs
         const tid = profile.tenant_id?.toString() || '1';
         localStorage.setItem('X-Tenant-ID', tid);
 
-        setToken(newToken);
         setUser(profile);
     };
 
     const logout = () => {
-        localStorage.removeItem('JWT_TOKEN');
         localStorage.removeItem('USER_PROFILE');
         localStorage.removeItem('X-Tenant-ID');
-        setToken(null);
         setUser(null);
+        // El backend debería tener una ruta para borrar la cookie, 
+        // pero por ahora limpiamos el estado local.
     };
 
     return (
         <AuthContext.Provider value={{
             user,
-            token,
+            token: null, // El token ya no es accesible por JS
             login,
             logout,
-            isAuthenticated: !!token,
+            isAuthenticated: !!user,
             isLoading
         }}>
             {children}

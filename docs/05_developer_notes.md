@@ -72,9 +72,27 @@ patch_sql = """
 ### 12.2 Omega Protocol Prime
 En despliegues iniciales, el sistema auto-activa al primer `ceo` registrado para evitar bloqueos.
 
-### 12.3 Headers de Seguridad
--   `Authorization: Bearer <JWT_TOKEN>` (Identidad)
--   `X-Admin-Token: <INTERNAL_ADMIN_TOKEN>` (Infraestructura)
+### 12.3 Headers de Seguridad (Middleware)
+Dentalogic inyecta automáticamente cabeceras de seguridad en todas las respuestas:
+-   `Strict-Transport-Security`: Forzar HTTPS (max-age 6 meses).
+-   `Content-Security-Policy`: Dinámico basado en `CORS_ALLOWED_ORIGINS` y `CSP_EXTRA_DOMAINS`.
+-   `X-Frame-Options: DENY`: Protección contra Clickjacking.
+-   `X-Content-Type-Options: nosniff`: Protección contra MIME-sniffing.
+
+### 12.4 AI Guardrails (Seguridad de Prompts)
+Antes de invocar al LLM, la entrada se procesa en `core/prompt_security.py`:
+-   `detect_prompt_injection(text)`: Bloquea intentos de ignorar instrucciones o revelar el system prompt.
+-   `sanitize_input(text)`: Elimina caracteres que rompen el formato (ej. backticks triples).
+
+### 12.5 Sanitización Frontend (DOMPurify)
+Para renderizar HTML dinámico o mensajes que puedan contener tags:
+```tsx
+import { SafeHTML } from './components/common/SafeHTML';
+
+// Uso:
+<SafeHTML html={message.content} />
+```
+*Nunca usar dangerouslySetInnerHTML directamente sin sanitización previa.*
 
 ---
 

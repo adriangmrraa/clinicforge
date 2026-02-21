@@ -21,6 +21,11 @@ El bot actúa como la primera línea de atención de la clínica de la Dra. Laur
 - ❌ NO recetar medicamentos.
 - ❌ NO ser frío o robótico.
 
+### 1.4 Seguridad y Blindaje (v8.0)
+- **AI Guardrails**: El orquestador filtra preventivamente intentos de "Jailbreaking" antes de que el agente procese el mensaje.
+- **Whitelist Perimetral**: El agente solo tiene acceso a las tools registradas y al contexto del tenant actual. No puede acceder a datos de otras sedes.
+- **Sanitización Determinista**: Se eliminan caracteres de control y formatos que puedan inducir al agente a ignorar instrucciones.
+
 ---
 
 ## 2. Reglas Clínicas (Business Rules)

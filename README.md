@@ -35,9 +35,14 @@ ClinicForge is more than a chatbot: it is a **Digital Clinical Coordinator + Mar
 | **Marketing teams** | Measure real conversion (click → WhatsApp → appointment) per campaign, per ad, per audience. Stop guessing; start optimizing. |
 | **Multilingual teams** | UI in **Spanish**, **English**, and **French**. The WhatsApp assistant auto-detects patient language. |
 
-### 🛡️ Sovereign Data (Tenant-First)
+### 🛡️ Sovereign Data & Security (Nexus v8.0)
 
-Your data, your clinic, your keys. Every query is filtered by `tenant_id`. Identity is resolved from JWT and database (never from client-supplied tenant). Admin routes require **JWT + X-Admin-Token** so that a stolen token alone cannot access the API.
+ClinicForge implementa un protocolo de **Endurecimiento Proactivo** para proteger la integridad clínica:
+- **Aislamiento de Datos**: Cada query está filtrada por `tenant_id`. La identidad se resuelve desde el JWT y la base de datos (nunca desde parámetros del cliente).
+- **Security Headers**: Middleware nativo para HSTS, CSP dinámico, X-Frame-Options (Anti-Clickjacking) y X-Content-Type-Options.
+- **AI Guardrails**: Capa de protección híbrida que detecta y bloquea intentos de Prompt Injection antes de que lleguen al modelo.
+- **Sanitización XSS**: Uso obligatorio de `DOMPurify` en el frontend para renderizar contenido dinámico de forma segura.
+- **Auth de Infraestructura**: Las rutas administrativas requieren **JWT + X-Admin-Token** para prevenir accesos no autorizados incluso con tokens comprometidos.
 
 ---
 
