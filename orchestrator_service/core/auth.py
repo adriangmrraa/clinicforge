@@ -23,18 +23,24 @@ async def verify_admin_token(
     """
     # Capa 1: Infraestructura (Strict en Producción)
     if x_admin_token != ADMIN_TOKEN:
-        logger.warning(f"❌ 401: X-Admin-Token mismatch. IP: {request.client.host if request.client else 'unknown'}")
-        raise HTTPException(status_code=401, detail="Token de infraestructura (X-Admin-Token) inválido.")
+        logger.warning(f"❌ 401: X-Admin-Token mismatch or missing. IP: {request.client.host if request.client else 'unknown'}")
+        if not x_admin_token:
+             logger.error("🛡️ SECURITY ALERT: X-Admin-Token is missing in request headers.")
+        raise HTTPException(status_code=401, detail="Token de infraestructura (X-Admin-Token) inválido o inexistente.")
 
     # Capa 2: Identidad (JWT)
     token = None
     if authorization and authorization.startswith("Bearer "):
         token = authorization.split(" ")[1]
+        logger.debug("🔑 Identity: Using Bearer token fallback.")
     else:
         # Fallback a Cookie HttpOnly para mitigar XSS
         token = request.cookies.get("access_token")
+        if token:
+            logger.debug("🍪 Identity: Using access_token cookie.")
 
     if not token:
+        logger.warning(f"❌ 401: JWT Token missing (No Bearer and No Cookie). IP: {request.client.host if request.client else 'unknown'}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, 
             detail="Sesión no válida. Token JWT requerido (Bearer o Cookie)."
@@ -43,6 +49,7 @@ async def verify_admin_token(
     user_data = auth_service.decode_token(token)
     
     if not user_data:
+        logger.warning(f"❌ 401: Invalid or expired JWT. IP: {request.client.host if request.client else 'unknown'}")
         raise HTTPException(status_code=401, detail="Token de sesión expirado o inválido.")
     
     if user_data.role not in ['ceo', 'secretary', 'professional']:

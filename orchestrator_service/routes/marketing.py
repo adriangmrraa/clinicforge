@@ -62,7 +62,7 @@ async def get_clinics(
     En una arquitectura SaaS real, esto vendría de una relación user_tenants.
     """
     user, _ = auth_data
-    if user["role"] != "ceo":
+    if user.role != "ceo":
         raise HTTPException(status_code=403, detail="Solo el CEO puede gestionar clínicas.")
     
     # Por ahora listamos todos los tenants (multi-tenant simple)
@@ -137,6 +137,7 @@ async def connect_meta_account(
     await save_tenant_credential(target_tenant_id, "META_AD_ACCOUNT_NAME", ad_account_name, category="meta_ads")
     
     return {"status": "success", "message": f"Cuenta {ad_account_name} vinculada a clínica {target_tenant_id}"}
+
 @router.get("/debug/stats")
 async def debug_marketing_stats(
     range: str = "last_30d",
@@ -212,4 +213,4 @@ async def debug_marketing_stats(
     except Exception as e:
         debug_info["general_error"] = str(e)
             
-
+    return debug_info

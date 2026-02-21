@@ -103,7 +103,11 @@ api.interceptors.request.use(
 
       // Layer 2: Identity Security (Nexus v7.6)
       // El JWT se envía automáticamente vía Cookies HttpOnly gracias a withCredentials: true.
-      // Se mantiene compatibilidad por si se necesita forzar una cabecera, pero no se inyecta desde localStorage.
+      // Se RESTAURA fallback a cabecera Bearer para entornos donde las cookies sean bloqueadas o el backend sea strict.
+      const jwtToken = localStorage.getItem('access_token');
+      if (jwtToken) {
+        config.headers['Authorization'] = `Bearer ${jwtToken}`;
+      }
     }
 
     // 2. Get and set X-Tenant-ID header

@@ -18,16 +18,16 @@ class MarketingService:
         
         logger.info(f"🔍 ROI Debug: Tenant={tenant_id}, TokenFound={is_connected}, Range={time_range}")
         
-        # Mapeo de time_range a intervalos de Postgres
+        # Mapeo de time_range a intervalos compatibles con asyncpg (timedelta)
         interval_map = {
-            "last_30d": "30 days",
-            "last_90d": "90 days",
-            "this_year": "1 year",
-            "yearly": "1 year",
-            "lifetime": "100 years",
-            "all": "100 years"
+            "last_30d": timedelta(days=30),
+            "last_90d": timedelta(days=90),
+            "this_year": timedelta(days=365),
+            "yearly": timedelta(days=365),
+            "lifetime": timedelta(days=36500), # 100 years
+            "all": timedelta(days=36500)
         }
-        interval = interval_map.get(time_range, "30 days")
+        interval = interval_map.get(time_range, timedelta(days=30))
 
         try:
             # 1. Obtener leads atribuidos a Meta Ads en el periodo
@@ -150,15 +150,16 @@ class MarketingService:
             
             logger.info(f"🔍 Campaigns Debug: Tenant={tenant_id}, TokenFound={bool(token)}, AdAccount={ad_account_id}, Range={time_range}")
             
+            # Mapeo de time_range a intervalos compatibles con asyncpg (timedelta)
             interval_map = {
-                "last_30d": "30 days",
-                "last_90d": "90 days",
-                "this_year": "1 year",
-                "yearly": "1 year",
-                "lifetime": "100 years",
-                "all": "100 years"
+                "last_30d": timedelta(days=30),
+                "last_90d": timedelta(days=90),
+                "this_year": timedelta(days=365),
+                "yearly": timedelta(days=365),
+                "lifetime": timedelta(days=36500), # 100 years
+                "all": timedelta(days=36500)
             }
-            interval = interval_map.get(time_range, "30 days")
+            interval = interval_map.get(time_range, timedelta(days=30))
 
             # 1. Obtener datos de Meta (Campaign-First + Ads Strategy)
             meta_campaigns = []
