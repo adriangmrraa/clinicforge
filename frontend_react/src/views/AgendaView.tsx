@@ -147,10 +147,8 @@ export default function AgendaView() {
   const socketRef = useRef<Socket | null>(null);
   const eventsRef = useRef<Appointment[]>([]);
   const [isBackgroundSyncing, setIsBackgroundSyncing] = useState(false);
-  // Debounce para datesSet: evita fetches duplicados en renders rápidos del calendario
+  // Debounce para datesSet: previene llamadas duplicadas durante renders internos del calendario
   const datesSetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Flag para evitar fetches concurrentes desde datesSet mientras ya hay uno en curso
-  const isFetchingRef = useRef(false);
 
   const [formData, setFormData] = useState({
     patient_id: '',
@@ -284,7 +282,6 @@ export default function AgendaView() {
     } finally {
       if (!isBackground) setLoading(false);
       else setIsBackgroundSyncing(false);
-      isFetchingRef.current = false;
     }
   }, [fetchGoogleBlocks, selectedProfessionalId, user?.role, user?.email]);
 
@@ -361,9 +358,7 @@ export default function AgendaView() {
     });
 
     return () => {
-      if (socketRef.current) {
-        socketRef.current.disconnect();
-      }
+      if (socketRef.current) socketRef.current.disconnect();
       if (datesSetTimerRef.current) clearTimeout(datesSetTimerRef.current);
     };
   }, [fetchData]);
@@ -586,8 +581,8 @@ export default function AgendaView() {
             />
           </div>
         ) : (
-          <div className="flex-1 min-h-0 px-4 lg:px-6 pb-4 lg:pb-6 overflow-hidden">
-            <div className="h-[calc(100vh-180px)] bg-white/60 backdrop-blur-lg md:backdrop-blur-2xl border border-white/40 shadow-2xl rounded-2xl md:rounded-3xl p-2 sm:p-4 overflow-y-auto">
+          <div className="flex-1 min-h-0 px-4 lg:px-6 pb-4 lg:pb-6">
+            <div className="h-[calc(100vh-140px)] bg-white/60 backdrop-blur-lg md:backdrop-blur-2xl border border-white/40 shadow-2xl rounded-2xl md:rounded-3xl p-2 sm:p-4 overflow-y-auto">
               {/* Calendar */}
 
               {/* Custom FullCalendar Styles for Spacious TimeGrid */}
@@ -710,23 +705,21 @@ export default function AgendaView() {
                       ? 'timeGridDay,dayGridMonth'
                       : (window.innerWidth < 1024 ? 'timeGridWeek,dayGridMonth' : 'resourceTimeGridDay,timeGridWeek,dayGridMonth'),
                   }}
-                  height="100%"
+                  height="auto"
+                  contentHeight="auto"
                   selectAllow={(selectInfo) => {
                     const now = new Date();
                     return selectInfo.start >= now;
                   }}
                   events={calendarEvents}
                   datesSet={(dateInfo) => {
-                    // Debounce: esperar 150ms antes de hacer fetch para evitar llamadas
-                    // duplicadas cuando FullCalendar re-renderiza internamente al recibir eventos.
-                    // Las fechas se pasan explícitamente para evitar leer calendarRef desactualizado.
+                    // Debounce 200ms: evita que renders internos de FullCalendar disparen
+                    // fetchData múltiples veces. Las fechas se pasan explícitamente para
+                    // garantizar que el fetch usa el rango correcto de la vista activa.
                     if (datesSetTimerRef.current) clearTimeout(datesSetTimerRef.current);
                     datesSetTimerRef.current = setTimeout(() => {
-                      if (!isFetchingRef.current) {
-                        isFetchingRef.current = true;
-                        fetchData(false, dateInfo.start, dateInfo.end);
-                      }
-                    }, 150);
+                      fetchData(false, dateInfo.start, dateInfo.end);
+                    }, 200);
                   }}
                   dateClick={handleDateClick}
                   eventClick={handleEventClick}
