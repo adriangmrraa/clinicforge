@@ -147,6 +147,8 @@ export default function AgendaView() {
   const socketRef = useRef<Socket | null>(null);
   const eventsRef = useRef<Appointment[]>([]);
   const [isBackgroundSyncing, setIsBackgroundSyncing] = useState(false);
+  // Evita que datesSet dispare fetchData cuando el calendario re-renderiza por cambio de eventos
+  const lastFetchedRange = useRef<{ start: string; end: string } | null>(null);
 
   const [formData, setFormData] = useState({
     patient_id: '',
@@ -264,37 +266,8 @@ export default function AgendaView() {
       setAppointments(newAppointments);
       eventsRef.current = newAppointments;
       setGoogleBlocks(blocksRes || []);
-
-      // Force calendar refetch if calendar instance exists
-      if (calendarRef.current) {
-        const calendarApi = calendarRef.current.getApi();
-        calendarApi.removeAllEvents();
-
-        // Add appointment events
-        const appointmentEvents = newAppointments.map((apt: Appointment) => ({
-          id: apt.id,
-          title: `${apt.patient_name} - ${apt.appointment_type}`,
-          start: apt.appointment_datetime,
-          end: apt.end_datetime || undefined,
-          backgroundColor: getSourceColor(apt.source),
-          borderColor: getSourceColor(apt.source),
-          extendedProps: { ...apt, eventType: 'appointment' },
-        }));
-
-        // Add Google Calendar block events
-        const blockEvents = (blocksRes || []).map((block: GoogleCalendarBlock) => ({
-          id: block.id,
-          title: `🔒 ${block.title}`,
-          start: block.start_datetime,
-          end: block.end_datetime,
-          allDay: block.all_day || false,
-          backgroundColor: SOURCE_COLORS.gcalendar.hex,
-          borderColor: SOURCE_COLORS.gcalendar.hex,
-          extendedProps: { ...block, eventType: 'gcalendar_block' },
-        }));
-
-        calendarApi.addEventSource([...appointmentEvents, ...blockEvents]);
-      }
+      // Los eventos se pasan via prop `events={calendarEvents}` — no manipular el calendario directamente
+      // para evitar el loop datesSet → fetchData → re-render → datesSet
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
@@ -601,8 +574,8 @@ export default function AgendaView() {
             />
           </div>
         ) : (
-          <div className="flex-1 min-h-0 px-4 lg:px-6 pb-4 lg:pb-6">
-            <div className="h-[calc(100vh-140px)] bg-white/60 backdrop-blur-lg md:backdrop-blur-2xl border border-white/40 shadow-2xl rounded-2xl md:rounded-3xl p-2 sm:p-4 overflow-y-auto">
+          <div className="flex-1 min-h-0 px-4 lg:px-6 pb-4 lg:pb-6 overflow-hidden">
+            <div className="h-[calc(100vh-180px)] bg-white/60 backdrop-blur-lg md:backdrop-blur-2xl border border-white/40 shadow-2xl rounded-2xl md:rounded-3xl p-2 sm:p-4 overflow-y-auto">
               {/* Calendar */}
 
               {/* Custom FullCalendar Styles for Spacious TimeGrid */}
@@ -725,14 +698,24 @@ export default function AgendaView() {
                       ? 'timeGridDay,dayGridMonth'
                       : (window.innerWidth < 1024 ? 'timeGridWeek,dayGridMonth' : 'resourceTimeGridDay,timeGridWeek,dayGridMonth'),
                   }}
-                  height="auto"
-                  contentHeight="auto"
+                  height="100%"
                   selectAllow={(selectInfo) => {
                     const now = new Date();
                     return selectInfo.start >= now;
                   }}
                   events={calendarEvents}
-                  datesSet={() => fetchData()}
+                  datesSet={(dateInfo) => {
+                    // Solo refetch cuando el usuario navega a un rango distinto (semana anterior/siguiente)
+                    const start = dateInfo.startStr;
+                    const end = dateInfo.endStr;
+                    if (
+                      lastFetchedRange.current?.start !== start ||
+                      lastFetchedRange.current?.end !== end
+                    ) {
+                      lastFetchedRange.current = { start, end };
+                      fetchData();
+                    }
+                  }}
                   dateClick={handleDateClick}
                   eventClick={handleEventClick}
                   slotEventOverlap={false}
