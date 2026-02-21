@@ -305,14 +305,16 @@ export default function AgendaView() {
 
     initializeAgenda();
 
-    // Setup WebSocket connection con auth para que el backend valide la identidad
+    // Setup WebSocket connection con auth informativo (el backend no rechaza en handshake;
+    // la seguridad de datos está en los endpoints REST que requieren JWT)
     const jwtToken = localStorage.getItem('access_token');
     const adminToken = localStorage.getItem('ADMIN_TOKEN');
     socketRef.current = io(BACKEND_URL, {
       transports: ['websocket', 'polling'],
       reconnection: true,
-      reconnectionAttempts: 5,
-      reconnectionDelay: 1000,
+      reconnectionAttempts: 3,
+      reconnectionDelay: 5000,   // 5s entre intentos — evita loops cada segundo
+      reconnectionDelayMax: 15000,
       auth: {
         token: jwtToken || '',
         adminToken: adminToken || '',
