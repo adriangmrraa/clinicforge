@@ -305,12 +305,18 @@ export default function AgendaView() {
 
     initializeAgenda();
 
-    // Setup WebSocket connection
+    // Setup WebSocket connection con auth para que el backend valide la identidad
+    const jwtToken = localStorage.getItem('access_token');
+    const adminToken = localStorage.getItem('ADMIN_TOKEN');
     socketRef.current = io(BACKEND_URL, {
       transports: ['websocket', 'polling'],
       reconnection: true,
       reconnectionAttempts: 5,
       reconnectionDelay: 1000,
+      auth: {
+        token: jwtToken || '',
+        adminToken: adminToken || '',
+      },
     });
 
     // Connection status handlers

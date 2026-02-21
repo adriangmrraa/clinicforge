@@ -116,8 +116,10 @@ api.interceptors.request.use(
       config.headers['X-Tenant-ID'] = tenantId;
     }
 
-    // Log request
-    console.log(`[API] ${config.method?.toUpperCase()} ${config.url} [Tenant: ${tenantId}]`);
+    // Log solo en desarrollo — evitar exponer estructura de API en producción
+    if (import.meta.env.DEV) {
+      console.log(`[API] ${config.method?.toUpperCase()} ${config.url} [Tenant: ${tenantId}]`);
+    }
 
     // Agregar retry count metadata
     (config as any).metadata = { retryCount: 0 };
@@ -133,7 +135,9 @@ api.interceptors.request.use(
 // Response interceptor con exponential backoff y retry automático
 api.interceptors.response.use(
   (response) => {
-    console.log(`[API] ✅ ${response.config.method?.toUpperCase()} ${response.config.url} - ${response.status}`);
+    if (import.meta.env.DEV) {
+      console.log(`[API] ✅ ${response.config.method?.toUpperCase()} ${response.config.url} - ${response.status}`);
+    }
     return response;
   },
   async (error: AxiosError) => {
@@ -163,8 +167,10 @@ api.interceptors.response.use(
 
     // Manejo específico de errores
     if (status === 401) {
-      console.warn('[API] ⚠️ Unauthorized - Limpiando token');
+      console.warn('[API] ⚠️ Unauthorized - Limpiando sesión completa');
+      // Limpiar AMBOS tokens para evitar estado de auth inconsistente (JWT stale + admin token)
       localStorage.removeItem('ADMIN_TOKEN');
+      localStorage.removeItem('access_token');
 
       // No redirigir si estamos en una página pública legal (Spec Meta Review)
       const publicRoutes = ['/privacy', '/terms', '/demo'];

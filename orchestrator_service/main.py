@@ -1557,8 +1557,32 @@ app.state.to_json_safe = to_json_safe
 
 # Socket.IO event handlers
 @sio.event
-async def connect(sid, environ):
-    logger.info(f"🔌 Client connected: {sid}")
+async def connect(sid, environ, auth):
+    """
+    Valida identidad antes de aceptar la conexión WebSocket.
+    Requiere JWT válido O X-Admin-Token válido para acceder a eventos de turnos.
+    """
+    from core.auth import ADMIN_TOKEN
+    from auth_service import auth_service
+
+    # Obtener tokens del payload auth del cliente
+    client_jwt = (auth or {}).get('token', '')
+    client_admin = (auth or {}).get('adminToken', '')
+
+    # Capa 1: validar X-Admin-Token (infraestructura)
+    admin_ok = client_admin and client_admin == ADMIN_TOKEN
+
+    # Capa 2: validar JWT (identidad)
+    jwt_ok = False
+    if client_jwt:
+        user_data = auth_service.decode_token(client_jwt)
+        jwt_ok = user_data is not None and user_data.role in ['ceo', 'secretary', 'professional']
+
+    if not admin_ok and not jwt_ok:
+        logger.warning(f"🛡️ Socket.IO: conexión rechazada — sin auth válido. sid={sid}")
+        return False  # Rechaza la conexión
+
+    logger.info(f"🔌 Client connected: {sid} (auth_ok)")
 
 @sio.event
 async def disconnect(sid):
