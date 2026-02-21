@@ -147,8 +147,14 @@ export default function AgendaView() {
   const socketRef = useRef<Socket | null>(null);
   const eventsRef = useRef<Appointment[]>([]);
   const [isBackgroundSyncing, setIsBackgroundSyncing] = useState(false);
-  // Debounce para datesSet: previene llamadas duplicadas durante renders internos del calendario
+  // Debounce para datesSet
   const datesSetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Guardián de rango: solo hace fetch si el rango de fechas o el filtro de profesional cambió realmente
+  const lastFetchedRangeRef = useRef<{ startISO: string; endISO: string; professionalId: string } | null>(null);
+  // Ref estable a fetchData para usarlo en socket handlers sin re-suscribir en cada cambio
+  const fetchDataRef = useRef<typeof fetchData | null>(null);
+  // Guard para saltar el efecto de filtro en el primer render (el init ya hace el fetch)
+  const filterInitialRenderRef = useRef(true);
 
   const [formData, setFormData] = useState({
     patient_id: '',
@@ -285,83 +291,52 @@ export default function AgendaView() {
     }
   }, [fetchGoogleBlocks, selectedProfessionalId, user?.role, user?.email]);
 
-  // Setup WebSocket connection and listeners
+  // Mantener ref estable para que los handlers de socket siempre llamen la versión más reciente
+  useEffect(() => {
+    fetchDataRef.current = fetchData;
+  }, [fetchData]);
+
+  // === EFECTO 1: Inicialización — corre UNA SOLA VEZ al montar ===
   useEffect(() => {
     const initializeAgenda = async () => {
-      // 1. First, run auto-sync if user has permissions
       if (user?.role === 'ceo' || user?.role === 'secretary' || user?.role === 'professional') {
         try {
           await api.post('/admin/calendar/sync');
-          // Delay to ensure backend DB write completes
           await new Promise(resolve => setTimeout(resolve, 800));
-        } catch (error) {
-          // Continue with data fetch even if sync fails
-        }
+        } catch (_) { /* continúa aunque falle el sync */ }
       }
-
-      // 2. Now fetch all data (includes synced GCal blocks)
-      await fetchData();
+      await fetchDataRef.current?.();
     };
-
     initializeAgenda();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Intencionalmente vacío: solo al montar
 
-    // Setup WebSocket connection con auth informativo (el backend no rechaza en handshake;
-    // la seguridad de datos está en los endpoints REST que requieren JWT)
+  // === EFECTO 2: Socket.IO — corre UNA SOLA VEZ, sin depender de fetchData ===
+  useEffect(() => {
     const jwtToken = localStorage.getItem('access_token');
     const adminToken = localStorage.getItem('ADMIN_TOKEN');
     socketRef.current = io(BACKEND_URL, {
       transports: ['websocket', 'polling'],
       reconnection: true,
       reconnectionAttempts: 3,
-      reconnectionDelay: 5000,   // 5s entre intentos — evita loops cada segundo
+      reconnectionDelay: 5000,
       reconnectionDelayMax: 15000,
-      auth: {
-        token: jwtToken || '',
-        adminToken: adminToken || '',
-      },
+      auth: { token: jwtToken || '', adminToken: adminToken || '' },
     });
 
-    // Connection status handlers
-    socketRef.current.on('connect', () => {
-    });
-
-    socketRef.current.on('disconnect', () => {
-    });
-
-    socketRef.current.on('connect_error', () => {
-    });
-
-    // Listen for NEW_APPOINTMENT events - Real-time omnipresent sync
-    socketRef.current.on('NEW_APPOINTMENT', () => {
-
-      // Trigger complete re-fetch from sources (DB + GCal blocks)
-      fetchData(true);
-    });
-
-    // Listen for APPOINTMENT_UPDATED events - Real-time updates
-    socketRef.current.on('APPOINTMENT_UPDATED', () => {
-
-      // Trigger complete re-fetch for consistency
-      fetchData(true);
-    });
-
-    // Listen for APPOINTMENT_DELETED events
+    // fetchDataRef siempre apunta a la versión más reciente de fetchData (sin re-suscribir)
+    socketRef.current.on('NEW_APPOINTMENT', () => fetchDataRef.current?.(true));
+    socketRef.current.on('APPOINTMENT_UPDATED', () => fetchDataRef.current?.(true));
     socketRef.current.on('APPOINTMENT_DELETED', (deletedAppointmentId: string) => {
-
       setAppointments(prevAppointments => {
         const updated = prevAppointments.filter(apt => apt.id !== deletedAppointmentId);
         eventsRef.current = updated;
         return updated;
       });
-
-
-      // Remove event from calendar
       if (calendarRef.current) {
         const calendarApi = calendarRef.current.getApi();
         const existingEvent = calendarApi.getEventById(deletedAppointmentId);
-        if (existingEvent) {
-          existingEvent.remove();
-        }
+        if (existingEvent) existingEvent.remove();
       }
     });
 
@@ -369,7 +344,8 @@ export default function AgendaView() {
       if (socketRef.current) socketRef.current.disconnect();
       if (datesSetTimerRef.current) clearTimeout(datesSetTimerRef.current);
     };
-  }, [fetchData]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Intencionalmente vacío: socket se conecta una sola vez
 
   // FIX 2: Memoized filtered appointments and blocks
   const filteredAppointments = useMemo(() => {
@@ -392,10 +368,24 @@ export default function AgendaView() {
     }
   }, [user?.role, user?.email, professionals]);
 
-  // Refetch when professional filter changes (CEO/secretary change dropdown)
+  // === EFECTO 3: Cambio de filtro de profesional — invalida el guardián de rango y re-fetchea ===
   useEffect(() => {
-    fetchData();
-  }, [selectedProfessionalId]);
+    // Saltar el primer render: el init ya hace el fetch inicial
+    if (filterInitialRenderRef.current) {
+      filterInitialRenderRef.current = false;
+      return;
+    }
+    // Invalidar caché de rango para que datesSet no bloquee el siguiente fetch
+    lastFetchedRangeRef.current = null;
+    // Fetchear el rango actual del calendario con el nuevo filtro
+    if (calendarRef.current) {
+      const calApi = calendarRef.current.getApi();
+      fetchData(false, calApi.view.activeStart, calApi.view.activeEnd);
+    } else {
+      fetchData();
+    }
+  // fetchData está en deps porque aquí es una acción explícita del usuario (no loop)
+  }, [selectedProfessionalId, fetchData]);
 
   // FIX: Refetch on mobile when selectedDate changes to ensure data is available
   useEffect(() => {
@@ -721,11 +711,24 @@ export default function AgendaView() {
                   }}
                   events={calendarEvents}
                   datesSet={(dateInfo) => {
-                    // Debounce 200ms: evita que renders internos de FullCalendar disparen
-                    // fetchData múltiples veces. Las fechas se pasan explícitamente para
-                    // garantizar que el fetch usa el rango correcto de la vista activa.
+                    // Guardián de rango: solo fetchea si el usuario realmente navegó (cambio de vista
+                    // o flechas). FullCalendar dispara datesSet también en re-renders internos con
+                    // el mismo rango — este guard los ignora silenciosamente.
                     if (datesSetTimerRef.current) clearTimeout(datesSetTimerRef.current);
                     datesSetTimerRef.current = setTimeout(() => {
+                      const newStart = dateInfo.start.toISOString();
+                      const newEnd = dateInfo.end.toISOString();
+                      const last = lastFetchedRangeRef.current;
+                      const sameRange = last &&
+                        last.startISO === newStart &&
+                        last.endISO === newEnd &&
+                        last.professionalId === selectedProfessionalId;
+                      if (sameRange) return; // Re-render interno — no hacer fetch
+                      lastFetchedRangeRef.current = {
+                        startISO: newStart,
+                        endISO: newEnd,
+                        professionalId: selectedProfessionalId,
+                      };
                       fetchData(false, dateInfo.start, dateInfo.end);
                     }, 200);
                   }}
