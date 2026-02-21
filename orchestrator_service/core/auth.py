@@ -131,3 +131,14 @@ async def log_pii_access(request: Request, user_data, patient_id: Any, action: s
     Registra auditoría de acceso a datos sensibles (Nexus Protocol v7.6).
     """
     logger.info(f"🛡️ AUDIT: User {user_data.email} ({user_data.role}) accessed PII for Patient {patient_id}. Action: {action}. IP: {request.client.host if request.client else 'unknown'}")
+
+async def get_ceo_user_and_tenant(
+    user_data=Depends(verify_ceo_token),
+    tenant_id: int = Depends(get_resolved_tenant_id)
+) -> Tuple[Any, int]:
+    """
+    Dependencia combinada para rutas que requieren rol de CEO y un tenant_id resuelto.
+    Usado principalmente en módulos de Marketing y Analítica Global.
+    Retorna (user_data, tenant_id).
+    """
+    return user_data, tenant_id
