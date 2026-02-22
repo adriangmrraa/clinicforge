@@ -1,6 +1,6 @@
 # Troubleshooting Guide
 
-Este documento recopila problemas comunes, errores conocidos y sus soluciones para el despliegue y mantenimiento de Dentalogic.
+Este documento recopila problemas comunes, errores conocidos y sus soluciones para el despliegue y mantenimiento de ClinicForge.
 
 ## 1. YCloud (WhatsApp)
 
@@ -62,6 +62,14 @@ ON CONFLICT (tenant_id, name) DO UPDATE SET value = EXCLUDED.value;
 **Síntoma**: En mobile o pantallas con poco alto, no se puede hacer scroll para ver la lista de campañas.
 **Causa**: El contenedor principal (`Layout.tsx`) tenía un `overflow-hidden` rígido.
 **Solución**: Aplicar `overflow-y-auto` en el contenedor de contenido de `Layout.tsx` y asegurar que el `main` sea un flexbox de alto completo (`h-screen`).
+
+### 4.3. Indicador de "Reconectando..." persistente [NEW v8.1]
+**Síntoma**: El sistema muestra "Reconectando..." permanentemente o el icono de Wifi está en naranja.
+**Causa**: El servidor de Socket.IO no es accesible o hay un firewall bloqueando WebSockets.
+**Validación**:
+1. Verificar que `BACKEND_URL` en el frontend apunte al dominio correcto del Orchestrator.
+2. Confirmar que el puerto del orchestrator esté expuesto en la configuración de EasyPanel.
+3. El frontend reintentará infinitamente con backoff exponencial. Si el internet vuelve y sigue en naranja, refrescar la página (`F5`).
 
 ### 4.2. Datos solapados en móviles
 **Síntoma**: Los números de Inversión y ROI se pisan en pantallas pequeñas.

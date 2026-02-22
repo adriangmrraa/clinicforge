@@ -1,4 +1,4 @@
-# API Reference - Dentalogic
+# API Reference - ClinicForge
 
 Referencia de los endpoints del **Orchestrator** (FastAPI). Base URL típica: `http://localhost:8000` en desarrollo o la URL del servicio en producción.
 
@@ -12,7 +12,7 @@ En la misma base del Orchestrator están disponibles:
 | **[/redoc](http://localhost:8000/redoc)** | **ReDoc**: documentación en formato lectura. |
 | **[/openapi.json](http://localhost:8000/openapi.json)** | Esquema OpenAPI 3.x en JSON para importar en Postman, Insomnia o herramientas de generación de clientes. |
 
-Sustituye `localhost:8000` por la URL del Orchestrator en tu entorno (ej. en producción: `https://dentalogic-orchestrator.ugwrjq.easypanel.host`).
+Sustituye `localhost:8000` por la URL del Orchestrator en tu entorno (ej. en producción: `https://clinicforge-orchestrator.ugwrjq.easypanel.host`).
 
 ---
 
@@ -45,6 +45,7 @@ Todas las rutas bajo **`/admin/*`** exigen:
 |--------|-------------|-------------|
 | **`Authorization`** | Sí | `Bearer <JWT>`. El JWT se obtiene con `POST /auth/login`. |
 | **`X-Admin-Token`** | Sí (si está configurado en servidor) | Token estático de infraestructura. El frontend lo inyecta desde `VITE_ADMIN_TOKEN`. Sin este header, el backend responde **401** aunque el JWT sea válido. |
+| **`MEDIA_PROXY_SECRET`** | Sí (Backend) | Secreto persistente para la firma de URLs de medios. Garantiza que los archivos enviados no expiren al reiniciar el servidor. |
 
 ### Security Headers (Automático)
 Todas las respuestas del Orchestrator incluyen headers de endurecimiento:
@@ -635,6 +636,27 @@ Sirve archivos de medios (imágenes/audio) de forma segura, resolviendo URLs fir
 - `tenant_id`: ID del tenant para validación de acceso.
 
 **Response:** Stream de bytes del archivo con el Content-Type correcto.
+
+> [!TIP]
+> **Persistencia**: ClinicForge v8.1 utiliza un `MEDIA_PROXY_SECRET` persistente. Esto asegura que los audios e imágenes históricos en el chat sigan siendo accesibles permanentemente.
+
+---
+
+## Tiempo Real (Socket.IO)
+
+El sistema utiliza Socket.IO para notificaciones asíncronas y sincronización de estado.
+
+### Eventos Críticos
+- `HUMAN_HANDOFF`: Notificación de intervención manual requerida.
+- `NEW_APPOINTMENT`: Sincronización de agenda.
+- `connect` / `disconnect`: Monitoreo de estado de red.
+
+### Estabilidad (Hardenning v8.1)
+El frontend implementa **Exponential Backoff** para las reconexiones:
+- **Reintentos**: Infinitos.
+- **Delay Inicial**: 1000ms.
+- **Delay Máximo**: 5000ms.
+- **UX**: Visualización en tiempo real del estado de conexión (Chip en Layout).
 
 ---
 
