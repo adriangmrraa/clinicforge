@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { useTranslation } from '../context/LanguageContext';
 import { io, Socket } from 'socket.io-client';
 import { BACKEND_URL } from '../api/axios';
-import { AlertCircle, X } from 'lucide-react';
+import { AlertCircle, X, Wifi, WifiOff } from 'lucide-react';
 import MetaTokenBanner from './MetaTokenBanner';
 
 interface LayoutProps {
@@ -19,6 +19,8 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const socketRef = useRef<Socket | null>(null);
+  const [isConnected, setIsConnected] = useState(true); // Default true to avoid flash
+  const [isReconnecting, setIsReconnecting] = useState(false);
 
   // Notification State
   const [notification, setNotification] = useState<{
@@ -34,8 +36,34 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
     // Conectar socket si no existe
     if (!socketRef.current) {
       // Connect to root namespace (matching ChatsView.tsx logic)
-      socketRef.current = io(BACKEND_URL);
+      socketRef.current = io(BACKEND_URL, {
+        reconnection: true,
+        reconnectionAttempts: Infinity,
+        reconnectionDelay: 1000,
+        reconnectionDelayMax: 5000,
+        randomizationFactor: 0.5
+      });
     }
+
+    const socket = socketRef.current;
+
+    const onConnect = () => {
+      setIsConnected(true);
+      setIsReconnecting(false);
+    };
+
+    const onDisconnect = () => {
+      setIsConnected(false);
+    };
+
+    const onReconnectAttempt = () => {
+      setIsReconnecting(true);
+    };
+
+    socket.on('connect', onConnect);
+    socket.on('disconnect', onDisconnect);
+    socket.on('reconnect_attempt', onReconnectAttempt);
+    socket.on('reconnect', onConnect);
 
     // Listener
     // Listener
@@ -61,14 +89,14 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
       } catch (e) { }
     };
 
-    socketRef.current.on('HUMAN_HANDOFF', handleHandoff);
+    socket.on('HUMAN_HANDOFF', handleHandoff);
 
     return () => {
-      socketRef.current?.off('HUMAN_HANDOFF', handleHandoff);
-      // No desconectamos el socket aquí porque Layout se monta/desmonta poco, 
-      // pero si navegamos fuera de app (logout), el socket debería morir.
-      // Ojo: ChatsView también crea socket. Idealmente debería ser un Context.
-      // Por ahora para cumplir el requerimiento rápido, duplicamos la conexión (low cost).
+      socket.off('connect', onConnect);
+      socket.off('disconnect', onDisconnect);
+      socket.off('reconnect_attempt', onReconnectAttempt);
+      socket.off('reconnect', onConnect);
+      socket.off('HUMAN_HANDOFF', handleHandoff);
     };
   }, [user]);
 
@@ -129,6 +157,17 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
           </div>
 
           <div className="flex items-center gap-2 lg:gap-4">
+            {/* Connection Status Chip */}
+            <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] lg:text-xs font-medium transition-colors ${isReconnecting ? 'bg-orange-100 text-orange-700 animate-pulse' :
+                isConnected ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+              }`}>
+              {isReconnecting ? <WifiOff size={12} /> : <Wifi size={12} />}
+              <span className="hidden xs:inline">
+                {isReconnecting ? t('layout.status_reconnecting') :
+                  isConnected ? t('layout.status_connected') : 'Offline'}
+              </span>
+            </div>
+
             {/* Tenant Selector - Hidden on small mobile */}
             <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-gray-100 rounded-lg text-sm">
               <span className="text-gray-500">{t('layout.branch')}:</span>

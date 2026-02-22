@@ -16,8 +16,10 @@
     "close_menu": "Cerrar menú",
     "expand": "Expandir",
     "collapse": "Contraer",
-    "app_name": "Dental Clinic",
-    "credentials": "Credenciales"
+    "app_name": "Nombre de Clínica",
+    "credentials": "Credenciales",
+    "status_connected": "Conectado",
+    "status_reconnecting": "Reconectando..."
   },
   "common": {
     "save": "Guardar",
