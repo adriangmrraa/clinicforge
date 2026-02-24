@@ -32,6 +32,71 @@ import glob
 
 router = APIRouter(prefix="/admin", tags=["Dental Admin"])
 
+# ============================================
+# DEBUG ENDPOINTS - Para diagnóstico en producción
+# ============================================
+
+@router.get("/debug/auth-test")
+async def debug_auth_test(request: Request, x_admin_token: str = Header(None)):
+    """
+    Endpoint de debug para verificar problemas de autenticación 401.
+    Público - no requiere auth.
+    """
+    headers = dict(request.headers)
+    
+    # Obtener X-Admin-Token de headers (case-insensitive)
+    received_admin_token = None
+    for key, value in headers.items():
+        if key.lower() == 'x-admin-token':
+            received_admin_token = value
+            break
+    
+    debug_info = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "received_admin_token_present": received_admin_token is not None,
+        "received_admin_token_preview": received_admin_token[:10] + "..." if received_admin_token else None,
+        "expected_admin_token_defined": bool(ADMIN_TOKEN),
+        "expected_admin_token_length": len(ADMIN_TOKEN) if ADMIN_TOKEN else 0,
+        "tokens_match": received_admin_token == ADMIN_TOKEN if received_admin_token and ADMIN_TOKEN else False,
+        "client_ip": request.client.host if request.client else "unknown",
+        "user_agent": headers.get('User-Agent', 'unknown')[:100],
+        "cors_origin": headers.get('Origin', 'none'),
+        "authorization_header_present": 'Authorization' in headers,
+        "cookie_header_present": 'Cookie' in headers,
+    }
+    
+    logger.info(f"DEBUG_AUTH_TEST: {debug_info}")
+    
+    return debug_info
+
+
+@router.get("/debug/health")
+async def debug_health():
+    """
+    Health check público.
+    """
+    return {
+        "status": "healthy",
+        "service": "orchestrator",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "version": os.getenv("API_VERSION", "1.0.0"),
+    }
+
+
+@router.get("/debug/env-safe")
+async def debug_env_safe():
+    """
+    Variables de entorno seguras (sin exponer valores sensibles).
+    """
+    return {
+        "ADMIN_TOKEN_defined": bool(ADMIN_TOKEN),
+        "ADMIN_TOKEN_length": len(ADMIN_TOKEN) if ADMIN_TOKEN else 0,
+        "CORS_ALLOWED_ORIGINS": os.getenv("CORS_ALLOWED_ORIGINS", "not_set"),
+        "LOG_LEVEL": os.getenv("LOG_LEVEL", "INFO"),
+        "backend_version": os.getenv("API_VERSION", "1.0.0"),
+        "environment": os.getenv("NODE_ENV", "production"),
+    }
+
 def normalize_phone(phone: str) -> str:
     """Asegura que el número tenga el formato +123456789 (E.164)"""
     clean = re.sub(r'\D', '', phone)
