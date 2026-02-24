@@ -17,10 +17,10 @@ Estos documentos explican el funcionamiento actual, la arquitectura y los proces
 | 04 | [04_agent_logic_and_persona.md](04_agent_logic_and_persona.md) | Lógica, persona y reglas de conversación del agente IA. |
 | 05 | [05_developer_notes.md](05_developer_notes.md) | Notas técnicas para desarrolladores. |
 | 06 | [06_ai_prompt_template.md](06_ai_prompt_template.md) | Plantilla de prompt base para el agente. |
-| 07 | [07_workflow_guide.md](07_workflow_guide.md) | Ciclo de tareas, Git y flujo de trabajo SDD. |
+| 07 | [07_workflow_guide.md](07_workflow_guide.md) | **Ciclo de tareas, Git y flujo de trabajo SDD v3.0 (Actualizado Feb 2026).** |
 | 12 | [12_resumen_funcional_no_tecnico.md](12_resumen_funcional_no_tecnico.md) | Resumen funcional en lenguaje para humanos. |
 | 13 | [13_lead_patient_workflow.md](13_lead_patient_workflow.md) | Protocolo de conversión de contactos a pacientes. |
-| 32 | [32_SECURITY_AUDIT_REPORT.md](32_SECURITY_AUDIT_REPORT.md) | **Reporte de Seguridad Actualizado (Misión 8).** |
+| 32 | [32_SECURITY_AUDIT_REPORT.md](32_SECURITY_AUDIT_REPORT.md) | **Reporte de Seguridad Actualizado (Misión 8 + Feb 2026).** |
 | -- | [API_REFERENCE.md](API_REFERENCE.md) | Referencia completa de endpoints de la API. |
 | -- | [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | Guía activa de problemas comunes y soluciones. |
 
