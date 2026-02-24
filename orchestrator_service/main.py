@@ -1886,7 +1886,6 @@ async def health():
     """Estado del servicio. Público; usado por orquestadores y monitoreo."""
     return {"status": "ok", "service": "dental-orchestrator"}
 
-if __name__ == "__main__":
 # ============================================
 # DEBUG ENDPOINT - Para diagnosticar problemas de auth
 # ============================================
@@ -1962,6 +1961,7 @@ async def debug_health():
         "version": os.getenv("API_VERSION", "1.0.0"),
     }
 
+if __name__ == "__main__":
     import uvicorn
     # Use socket_app instead of app to support Socket.IO
     uvicorn.run(socket_app, host="0.0.0.0", port=8000)
