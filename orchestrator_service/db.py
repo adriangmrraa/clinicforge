@@ -837,3 +837,253 @@ def get_pool():
     if db.pool is None:
         raise RuntimeError("Database pool not initialized. Call await db.connect() first.")
     return db.pool
+
+
+# ==================== META ADS ATTRIBUTION FUNCTIONS ====================
+
+async def update_patient_attribution_from_referral(patient_id: int, tenant_id: int, referral: dict) -> bool:
+    """
+    Updates patient attribution from Meta Ads referral object.
+    
+    Args:
+        patient_id: Patient ID to update
+        tenant_id: Tenant ID for multi-tenant isolation
+        referral: Referral object from WhatsApp webhook
+    
+    Returns:
+        bool: True if attribution was updated, False otherwise
+    """
+    if not referral:
+        return False
+    
+    # Extract attribution data from referral object
+    # WhatsApp referral structure: https://developers.facebook.com/docs/whatsapp/cloud-api/webhooks/components#referral-object
+    ad_id = referral.get("ad_id")
+    if not ad_id:
+        return False
+    
+    # Build attribution update
+    attribution_update = {
+        "acquisition_source": "META_ADS",
+        "meta_ad_id": ad_id,
+        "meta_ad_name": referral.get("ad_name"),
+        "meta_ad_headline": referral.get("headline"),
+        "meta_ad_body": referral.get("body"),
+        "meta_adset_id": referral.get("adset_id"),
+        "meta_adset_name": referral.get("adset_name"),
+        "meta_campaign_id": referral.get("campaign_id"),
+        "meta_campaign_name": referral.get("campaign_name"),
+        "updated_at": "NOW()"
+    }
+    
+    # Filter out None values
+    attribution_update = {k: v for k, v in attribution_update.items() if v is not None}
+    
+    if not attribution_update:
+        return False
+    
+    # Build dynamic SQL update
+    set_clauses = []
+    params = []
+    param_index = 1
+    
+    for key, value in attribution_update.items():
+        if key == "updated_at":
+            set_clauses.append(f"{key} = NOW()")
+        else:
+            set_clauses.append(f"{key} = ${param_index}")
+            params.append(value)
+            param_index += 1
+    
+    # Add patient_id and tenant_id as final parameters
+    params.extend([patient_id, tenant_id])
+    
+    query = f"""
+        UPDATE patients 
+        SET {', '.join(set_clauses)}
+        WHERE id = ${param_index} AND tenant_id = ${param_index + 1}
+    """
+    
+    try:
+        pool = get_pool()
+        async with pool.acquire() as conn:
+            result = await conn.execute(query, *params)
+            updated = result.split()[1]  # Get "UPDATE X" count
+            
+            if updated == "1":
+                logger.info(f"✅ Patient {patient_id} attribution updated from Meta Ads referral: {ad_id}")
+                return True
+            else:
+                logger.warning(f"⚠️ Patient {patient_id} not found or not updated")
+                return False
+                
+    except Exception as e:
+        logger.error(f"❌ Error updating patient attribution: {e}")
+        return False
+
+
+async def update_patient_attribution_from_meta_webhook(patient_id: int, tenant_id: int, meta_data: dict) -> bool:
+    """
+    Updates patient attribution from Meta Lead Forms webhook data.
+    
+    Args:
+        patient_id: Patient ID to update
+        tenant_id: Tenant ID for multi-tenant isolation
+        meta_data: Meta Ads data from lead form webhook
+    
+    Returns:
+        bool: True if attribution was updated, False otherwise
+    """
+    if not meta_data:
+        return False
+    
+    # Build attribution update from Meta webhook data
+    attribution_update = {
+        "acquisition_source": "META_ADS",
+        "meta_ad_id": meta_data.get("ad_id"),
+        "meta_ad_name": meta_data.get("ad_name"),
+        "meta_ad_headline": meta_data.get("headline"),
+        "meta_ad_body": meta_data.get("body"),
+        "meta_adset_id": meta_data.get("adset_id"),
+        "meta_adset_name": meta_data.get("adset_name"),
+        "meta_campaign_id": meta_data.get("campaign_id"),
+        "meta_campaign_name": meta_data.get("campaign_name"),
+        "updated_at": "NOW()"
+    }
+    
+    # Filter out None values
+    attribution_update = {k: v for k, v in attribution_update.items() if v is not None}
+    
+    if not attribution_update:
+        return False
+    
+    # Build dynamic SQL update
+    set_clauses = []
+    params = []
+    param_index = 1
+    
+    for key, value in attribution_update.items():
+        if key == "updated_at":
+            set_clauses.append(f"{key} = NOW()")
+        else:
+            set_clauses.append(f"{key} = ${param_index}")
+            params.append(value)
+            param_index += 1
+    
+    # Add patient_id and tenant_id as final parameters
+    params.extend([patient_id, tenant_id])
+    
+    query = f"""
+        UPDATE patients 
+        SET {', '.join(set_clauses)}
+        WHERE id = ${param_index} AND tenant_id = ${param_index + 1}
+    """
+    
+    try:
+        pool = get_pool()
+        async with pool.acquire() as conn:
+            result = await conn.execute(query, *params)
+            updated = result.split()[1]  # Get "UPDATE X" count
+            
+            if updated == "1":
+                logger.info(f"✅ Patient {patient_id} attribution updated from Meta webhook")
+                return True
+            else:
+                logger.warning(f"⚠️ Patient {patient_id} not found or not updated")
+                return False
+                
+    except Exception as e:
+        logger.error(f"❌ Error updating patient attribution from webhook: {e}")
+        return False
+
+
+async def get_patient_attribution_stats(tenant_id: int, time_range: str = "last_30d") -> dict:
+    """
+    Returns Meta Ads attribution statistics for a tenant.
+    
+    Args:
+        tenant_id: Tenant ID for multi-tenant isolation
+        time_range: Time range for stats (last_30d, last_7d, all)
+    
+    Returns:
+        dict: Attribution statistics
+    """
+    # Build time filter
+    time_filters = {
+        "last_7d": "AND created_at >= NOW() - INTERVAL '7 days'",
+        "last_30d": "AND created_at >= NOW() - INTERVAL '30 days'",
+        "all": ""
+    }
+    time_filter = time_filters.get(time_range, "")
+    
+    query = f"""
+        SELECT 
+            acquisition_source,
+            COUNT(*) as total_patients,
+            COUNT(DISTINCT meta_campaign_id) as unique_campaigns,
+            COUNT(DISTINCT meta_ad_id) as unique_ads,
+            COUNT(DISTINCT meta_adset_id) as unique_adsets
+        FROM patients
+        WHERE tenant_id = $1 {time_filter}
+        GROUP BY acquisition_source
+        ORDER BY total_patients DESC
+    """
+    
+    try:
+        pool = get_pool()
+        async with pool.acquire() as conn:
+            rows = await conn.fetch(query, tenant_id)
+            
+            stats = {
+                "total_patients": 0,
+                "meta_ads_patients": 0,
+                "organic_patients": 0,
+                "unique_campaigns": 0,
+                "unique_ads": 0,
+                "unique_adsets": 0,
+                "breakdown": []
+            }
+            
+            for row in rows:
+                stats["total_patients"] += row["total_patients"]
+                
+                if row["acquisition_source"] == "META_ADS":
+                    stats["meta_ads_patients"] = row["total_patients"]
+                    stats["unique_campaigns"] = row["unique_campaigns"]
+                    stats["unique_ads"] = row["unique_ads"]
+                    stats["unique_adsets"] = row["unique_adsets"]
+                elif row["acquisition_source"] == "ORGANIC":
+                    stats["organic_patients"] = row["total_patients"]
+                
+                stats["breakdown"].append({
+                    "source": row["acquisition_source"],
+                    "count": row["total_patients"],
+                    "unique_campaigns": row["unique_campaigns"],
+                    "unique_ads": row["unique_ads"],
+                    "unique_adsets": row["unique_adsets"]
+                })
+            
+            # Calculate percentages
+            if stats["total_patients"] > 0:
+                stats["meta_ads_percentage"] = round((stats["meta_ads_patients"] / stats["total_patients"]) * 100, 1)
+                stats["organic_percentage"] = round((stats["organic_patients"] / stats["total_patients"]) * 100, 1)
+            else:
+                stats["meta_ads_percentage"] = 0
+                stats["organic_percentage"] = 0
+            
+            return stats
+            
+    except Exception as e:
+        logger.error(f"❌ Error getting patient attribution stats: {e}")
+        return {
+            "total_patients": 0,
+            "meta_ads_patients": 0,
+            "organic_patients": 0,
+            "meta_ads_percentage": 0,
+            "organic_percentage": 0,
+            "unique_campaigns": 0,
+            "unique_ads": 0,
+            "unique_adsets": 0,
+            "breakdown": [],
+            "error": str(e)
+        }

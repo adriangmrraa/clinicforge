@@ -627,8 +627,23 @@
       "missing_tenant": "Error de seguridad: No se pudo identificar la clínica. Reintenta desde el panel.",
       "auth_failed": "La autenticación con Meta falló o fue cancelada.",
       "token_exchange_failed": "Error al canjear el token permanente. Reintenta la conexión.",
-      "init_failed": "Error al iniciar la conexión con Meta Ads. Revisa la consola."
-    }
+      "init_failed": "Error al iniciar la conexión con Meta Ads. Revisa la consola.",
+      "no_url_to_copy": "No hay URL disponible para copiar",
+      "copy_failed": "Error al copiar al portapapeles"
+    },
+    "webhook_configuration": "Configuración de Webhooks",
+    "webhook_description": "Configura estos webhooks en Meta Developers para atribución automática de leads",
+    "webhook_meta_url": "Webhook Meta Lead Forms",
+    "webhook_ycloud_url": "Webhook YCloud (WhatsApp)",
+    "webhook_verify_token": "Token de Verificación",
+    "copy_url": "Copiar URL",
+    "copy_token": "Copiar Token",
+    "loading_url": "Cargando URL...",
+    "loading_token": "Cargando token...",
+    "url_copied": "URL copiada al portapapeles",
+    "webhook_meta_instructions": "Configurar en Meta Developers → Webhooks → Leadgen",
+    "webhook_ycloud_instructions": "Ya configurado en YCloud para WhatsApp",
+    "webhook_token_instructions": "Usar como Verify Token en Meta Developers"
   },
   "hsm": {
     "title": "Automatizaciones & HSM",

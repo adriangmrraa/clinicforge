@@ -115,13 +115,15 @@ async def enrich_patient_attribution(
 
         # Soberanía: siempre WHERE id=$id AND tenant_id=$tenant_id (Spec 05 §6)
         # NOTA: No sobrescribir meta_ad_headline/meta_ad_body que vienen del referral del webhook.
-        # El enrichment solo enriquece meta_campaign_id con el nombre legible de la campaña.
+        # El enrichment enriquece todos los campos con nombres legibles.
         await pool.execute("""
             UPDATE patients 
-            SET meta_campaign_id = COALESCE($1, meta_campaign_id),
+            SET meta_campaign_name = COALESCE($1, meta_campaign_name),
+                meta_ad_name = COALESCE($2, meta_ad_name),
+                meta_adset_name = COALESCE($3, meta_adset_name),
                 updated_at = NOW()
-            WHERE id = $2 AND tenant_id = $3
-        """, campaign_name, patient_id, tenant_id)
+            WHERE id = $4 AND tenant_id = $5
+        """, campaign_name, ad_name, adset_name, patient_id, tenant_id)
 
         logger.info(
             f"✅ Paciente {patient_id} enriquecido: "

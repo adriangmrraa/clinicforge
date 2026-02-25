@@ -140,16 +140,26 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
                         if ref_ad_id:
                             # --- ATRIBUCIÓN LAST CLICK ---
                             # Se actualiza siempre con el anuncio más reciente (Spec Mission 3)
-                            # También guardamos la última fecha de interacción de marketing
-                            await pool.execute("""
-                                UPDATE patients SET 
-                                    acquisition_source = 'META_ADS',
-                                    meta_ad_id = $1,
-                                    meta_ad_headline = $2,
-                                    meta_ad_body = $3,
-                                    updated_at = NOW()
-                                WHERE id = $4 AND tenant_id = $5
-                            """, ref_ad_id, msg.referral.get("headline"), msg.referral.get("body"), patient_row["id"], tenant_id)
+                            # Usamos la nueva función completa de atribución
+                            try:
+                                from db import update_patient_attribution_from_referral
+                                await update_patient_attribution_from_referral(
+                                    patient_id=patient_row["id"],
+                                    tenant_id=tenant_id,
+                                    referral=msg.referral
+                                )
+                            except Exception as attr_func_err:
+                                logger.error(f"⚠️ Error usando función attribution: {attr_func_err}")
+                                # Fallback a query directa
+                                await pool.execute("""
+                                    UPDATE patients SET 
+                                        acquisition_source = 'META_ADS',
+                                        meta_ad_id = $1,
+                                        meta_ad_headline = $2,
+                                        meta_ad_body = $3,
+                                        updated_at = NOW()
+                                    WHERE id = $4 AND tenant_id = $5
+                                """, ref_ad_id, msg.referral.get("headline"), msg.referral.get("body"), patient_row["id"], tenant_id)
                             
                             # Enriquecimiento asíncrono
                             try:

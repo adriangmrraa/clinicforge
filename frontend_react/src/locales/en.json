@@ -630,8 +630,23 @@
       "missing_tenant": "Security Error: Clinic could not be identified. Retry from panel.",
       "auth_failed": "Meta authentication failed or was cancelled.",
       "token_exchange_failed": "Error exchanging permanent token. Retry connection.",
-      "init_failed": "Error initiating Meta Ads connection. Check console."
-    }
+      "init_failed": "Error initiating Meta Ads connection. Check console.",
+      "no_url_to_copy": "No URL available to copy",
+      "copy_failed": "Error copying to clipboard"
+    },
+    "webhook_configuration": "Webhook Configuration",
+    "webhook_description": "Configure these webhooks in Meta Developers for automatic lead attribution",
+    "webhook_meta_url": "Meta Lead Forms Webhook",
+    "webhook_ycloud_url": "YCloud (WhatsApp) Webhook",
+    "webhook_verify_token": "Verification Token",
+    "copy_url": "Copy URL",
+    "copy_token": "Copy Token",
+    "loading_url": "Loading URL...",
+    "loading_token": "Loading token...",
+    "url_copied": "URL copied to clipboard",
+    "webhook_meta_instructions": "Configure in Meta Developers → Webhooks → Leadgen",
+    "webhook_ycloud_instructions": "Already configured in YCloud for WhatsApp",
+    "webhook_token_instructions": "Use as Verify Token in Meta Developers"
   },
   "hsm": {
     "title": "Automations & HSM",

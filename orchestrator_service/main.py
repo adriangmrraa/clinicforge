@@ -1886,6 +1886,81 @@ async def health():
     """Estado del servicio. Público; usado por orquestadores y monitoreo."""
     return {"status": "ok", "service": "dental-orchestrator"}
 
+# ============================================
+# DEBUG ENDPOINT - Para diagnosticar problemas de auth
+# ============================================
+
+@app.get("/api/debug/auth")
+async def debug_auth(request: Request, x_admin_token: str = None):
+    """
+    Endpoint público para debug de autenticación.
+    Devuelve información sobre headers recibidos y validación de tokens.
+    """
+    from core.auth import ADMIN_TOKEN
+    
+    headers = dict(request.headers)
+    
+    # Obtener X-Admin-Token de headers (case-insensitive)
+    received_admin_token = None
+    for key, value in headers.items():
+        if key.lower() == 'x-admin-token':
+            received_admin_token = value
+            break
+    
+    # También verificar el parámetro (para testing manual)
+    if x_admin_token and not received_admin_token:
+        received_admin_token = x_admin_token
+    
+    # Información de debug
+    debug_info = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "request_headers": {k: v[:50] + "..." if len(v) > 50 else v for k, v in headers.items()},
+        "received_admin_token": received_admin_token[:10] + "..." if received_admin_token else None,
+        "expected_admin_token": ADMIN_TOKEN[:10] + "..." if ADMIN_TOKEN else None,
+        "tokens_match": received_admin_token == ADMIN_TOKEN if received_admin_token and ADMIN_TOKEN else False,
+        "admin_token_present": received_admin_token is not None,
+        "admin_token_expected": ADMIN_TOKEN is not None,
+        "client_ip": request.client.host if request.client else "unknown",
+        "user_agent": headers.get('User-Agent', 'unknown')[:100],
+        "cors_origin": headers.get('Origin', 'none'),
+        "cookies_present": 'Cookie' in headers,
+        "authorization_present": 'Authorization' in headers,
+    }
+    
+    logger.info(f"DEBUG_AUTH: {debug_info}")
+    
+    return debug_info
+
+
+@app.get("/api/debug/env")
+async def debug_env():
+    """
+    Endpoint público para debug de variables de entorno (sin info sensible).
+    """
+    env_info = {
+        "ADMIN_TOKEN_defined": bool(os.getenv("ADMIN_TOKEN")),
+        "ADMIN_TOKEN_length": len(os.getenv("ADMIN_TOKEN", "")),
+        "CORS_ALLOWED_ORIGINS": os.getenv("CORS_ALLOWED_ORIGINS", "not_set"),
+        "LOG_LEVEL": os.getenv("LOG_LEVEL", "INFO"),
+        "NODE_ENV": os.getenv("NODE_ENV", "not_set"),
+        "backend_version": os.getenv("API_VERSION", "1.0.0"),
+    }
+    
+    return env_info
+
+
+@app.get("/api/debug/health")
+async def debug_health():
+    """
+    Endpoint de health check público.
+    """
+    return {
+        "status": "healthy",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "service": "orchestrator",
+        "version": os.getenv("API_VERSION", "1.0.0"),
+    }
+
 if __name__ == "__main__":
     import uvicorn
     # Use socket_app instead of app to support Socket.IO
