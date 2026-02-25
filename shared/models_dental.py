@@ -56,16 +56,14 @@ class PatientCreate(BaseModel):
     medical_history: Optional[PatientMedicalHistory] = None
     preferred_schedule: Optional[str] = None
     notes: Optional[str] = None
-    # Meta Ads
+    # Meta Ads Attribution (Complete)
     acquisition_source: Optional[str] = "ORGANIC"
     meta_campaign_id: Optional[str] = None
+    meta_campaign_name: Optional[str] = None
+    meta_adset_id: Optional[str] = None
+    meta_adset_name: Optional[str] = None
     meta_ad_id: Optional[str] = None
-    meta_ad_headline: Optional[str] = None
-    meta_ad_body: Optional[str] = None
-    # Meta Ads
-    acquisition_source: Optional[str] = "ORGANIC"
-    meta_campaign_id: Optional[str] = None
-    meta_ad_id: Optional[str] = None
+    meta_ad_name: Optional[str] = None
     meta_ad_headline: Optional[str] = None
     meta_ad_body: Optional[str] = None
 
@@ -84,10 +82,14 @@ class PatientUpdate(BaseModel):
     medical_history: Optional[PatientMedicalHistory] = None
     preferred_schedule: Optional[str] = None
     notes: Optional[str] = None
-    # Meta Ads
+    # Meta Ads Attribution (Complete)
     acquisition_source: Optional[str] = None
     meta_campaign_id: Optional[str] = None
+    meta_campaign_name: Optional[str] = None
+    meta_adset_id: Optional[str] = None
+    meta_adset_name: Optional[str] = None
     meta_ad_id: Optional[str] = None
+    meta_ad_name: Optional[str] = None
     meta_ad_headline: Optional[str] = None
     meta_ad_body: Optional[str] = None
     status: Optional[Literal["active", "inactive", "archived"]] = None
@@ -108,10 +110,14 @@ class PatientResponse(BaseModel):
     insurance_provider: Optional[str] = None
     insurance_id: Optional[str] = None
     insurance_valid_until: Optional[date] = None
-    # Meta Ads
+    # Meta Ads Attribution (Complete)
     acquisition_source: Optional[str] = None
     meta_campaign_id: Optional[str] = None
+    meta_campaign_name: Optional[str] = None
+    meta_adset_id: Optional[str] = None
+    meta_adset_name: Optional[str] = None
     meta_ad_id: Optional[str] = None
+    meta_ad_name: Optional[str] = None
     meta_ad_headline: Optional[str] = None
     meta_ad_body: Optional[str] = None
     medical_history: Dict[str, Any] = {}
