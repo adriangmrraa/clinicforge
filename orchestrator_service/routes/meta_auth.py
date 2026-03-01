@@ -62,7 +62,7 @@ async def meta_auth_callback(
     app_secret = os.getenv("META_APP_SECRET")
     redirect_uri = os.getenv("META_REDIRECT_URI")
     
-    frontend_url = os.getenv("FRONTEND_URL", "https://dentalforge-frontend.gvdlcu.easypanel.host").rstrip("/")
+    frontend_url = os.getenv("FRONTEND_URL", "").rstrip("/")
     
     # Extraer tenant_id del state (formato: "tenant_X")
     tenant_id = None
@@ -153,6 +153,6 @@ async def meta_data_deletion_callback():
     confirmation_code = f"DEL_{int(time.time())}"
     logger.info(f"Meta Data Deletion request received. Code: {confirmation_code}")
     return {
-        "url": "https://dentalforge-frontend.gvdlcu.easypanel.host/privacy",
+        "url": f"{frontend_url}/privacy" if frontend_url else "https://example.com/privacy",
         "confirmation_code": confirmation_code
     }

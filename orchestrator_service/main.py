@@ -1516,6 +1516,22 @@ app.include_router(chat_webhooks.router)
 app.include_router(meta_auth.router)
 app.include_router(marketing.router)
 
+# Import and include leads router
+try:
+    from routes.leads import router as leads_router
+    app.include_router(leads_router)
+    logger.info("✅ Leads router registered successfully")
+except ImportError as e:
+    logger.warning(f"⚠️ Could not import leads router: {e}")
+
+# Import and include metrics router
+try:
+    from routes.metrics import router as metrics_router
+    app.include_router(metrics_router)
+    logger.info("✅ Metrics router registered successfully")
+except ImportError as e:
+    logger.warning(f"⚠️ Could not import metrics router: {e}")
+
 
 # OpenAPI: inyectar securitySchemes para que en Swagger UI se pueda usar Authorize (JWT + X-Admin-Token)
 _original_openapi = app.openapi
@@ -1659,40 +1675,88 @@ async def chat_endpoint(req: ChatRequest, background_tasks: BackgroundTasks):
     try:
         existing_patient = await db.ensure_patient_exists(req.final_phone, tenant_id, req.final_name)
 
-        # --- Lógica de Atribución Meta Ads (First Touch) ---
+        # --- Lógica de Atribución Meta Ads (First Touch + Last Touch) ---
         if req.referral and existing_patient:
             try:
-                # Solo atribuir si no tiene fuente previa o es orgánica
-                current_source = existing_patient.get("acquisition_source")
-                if not current_source or current_source == "ORGANIC":
-                    ref_source = req.referral.get("source_type") or "META_ADS"
-                    ref_ad_id = req.referral.get("ad_id")
-                    ref_headline = req.referral.get("headline")
-                    ref_body = req.referral.get("body")
+                ref_source = req.referral.get("source_type") or "META_ADS"
+                ref_ad_id = req.referral.get("ad_id")
+                ref_headline = req.referral.get("headline")
+                ref_body = req.referral.get("body")
+                ref_campaign_id = req.referral.get("campaign_id")
+                ref_adset_id = req.referral.get("adset_id")
+                
+                if ref_ad_id:
+                    # 1. LAST TOUCH: Siempre actualizar (última interacción)
+                    await db.pool.execute("""
+                        UPDATE patients 
+                        SET last_touch_source = $1, 
+                            last_touch_ad_id = $2,
+                            last_touch_campaign_id = $3,
+                            last_touch_timestamp = NOW(),
+                            updated_at = NOW()
+                        WHERE id = $4 AND tenant_id = $5
+                    """, ref_source, ref_ad_id, ref_campaign_id, existing_patient["id"], tenant_id)
                     
-                    if ref_ad_id:
+                    # Registrar en historial de atribución
+                    await db.pool.execute("""
+                        INSERT INTO patient_attribution_history (
+                            patient_id, tenant_id, attribution_type, source,
+                            ad_id, campaign_id, adset_id, headline, body,
+                            event_description
+                        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                    """, 
+                        existing_patient["id"], tenant_id, 'last_touch', ref_source,
+                        ref_ad_id, ref_campaign_id, ref_adset_id, ref_headline, ref_body,
+                        f"WhatsApp referral from Meta Ad"
+                    )
+                    
+                    # 2. FIRST TOUCH: Solo si no tiene fuente previa o es orgánica
+                    current_first_source = existing_patient.get("first_touch_source")
+                    if not current_first_source or current_first_source == "ORGANIC":
                         await db.pool.execute("""
                             UPDATE patients 
-                            SET acquisition_source = $1, 
-                                meta_ad_id = $2, 
-                                meta_ad_headline = $3, 
-                                meta_ad_body = $4,
+                            SET first_touch_source = $1, 
+                                first_touch_ad_id = $2, 
+                                first_touch_ad_headline = $3, 
+                                first_touch_ad_body = $4,
+                                first_touch_campaign_id = $5,
+                                first_touch_adset_id = $6,
                                 updated_at = NOW()
-                            WHERE id = $5 AND tenant_id = $6
-                        """, ref_source, ref_ad_id, ref_headline, ref_body, existing_patient["id"], tenant_id)
-                        logger.info(f"🎯 Atribución Meta Ads registrada para paciente {existing_patient['id']}: ad_id={ref_ad_id}")
-                        # Disparar enriquecimiento asíncrono (Spec 05)
-                        try:
-                            from services.tasks import enrich_patient_attribution
-                            background_tasks.add_task(
-                                enrich_patient_attribution,
-                                patient_id=existing_patient["id"],
-                                ad_id=ref_ad_id,
-                                tenant_id=tenant_id,
-                            )
-                            logger.info(f"📡 Enriquecimiento Meta Ads encolado para paciente {existing_patient['id']}")
-                        except ImportError:
-                            logger.debug("services.tasks no disponible para enriquecimiento")
+                            WHERE id = $7 AND tenant_id = $8
+                        """, ref_source, ref_ad_id, ref_headline, ref_body, 
+                           ref_campaign_id, ref_adset_id, existing_patient["id"], tenant_id)
+                        
+                        # Registrar first touch en historial
+                        await db.pool.execute("""
+                            INSERT INTO patient_attribution_history (
+                                patient_id, tenant_id, attribution_type, source,
+                                ad_id, campaign_id, adset_id, headline, body,
+                                event_description
+                            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                        """, 
+                            existing_patient["id"], tenant_id, 'first_touch', ref_source,
+                            ref_ad_id, ref_campaign_id, ref_adset_id, ref_headline, ref_body,
+                            f"First WhatsApp referral from Meta Ad"
+                        )
+                        
+                        logger.info(f"🎯 First+Last Touch atribuidos para paciente {existing_patient['id']}: ad_id={ref_ad_id}")
+                    else:
+                        logger.info(f"🎯 Last Touch atribuido para paciente {existing_patient['id']}: ad_id={ref_ad_id}")
+                    
+                    # 3. Disparar enriquecimiento asíncrono para obtener nombres
+                    try:
+                        from services.tasks import enrich_patient_attribution
+                        background_tasks.add_task(
+                            enrich_patient_attribution,
+                            patient_id=existing_patient["id"],
+                            ad_id=ref_ad_id,
+                            tenant_id=tenant_id,
+                            is_last_touch=True  # Nuevo parámetro
+                        )
+                        logger.info(f"📡 Enriquecimiento Meta Ads encolado para paciente {existing_patient['id']}")
+                    except ImportError:
+                        logger.debug("services.tasks no disponible para enriquecimiento")
+                        
             except Exception as attr_err:
                 logger.error(f"⚠️ Error en atribución Meta Ads: {attr_err}")
         # ---------------------------------------------------

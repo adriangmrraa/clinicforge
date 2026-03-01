@@ -77,22 +77,64 @@ async def receive_meta_webhook(
     
     # Detect payload type and process in background
     if isinstance(body, dict) and "entry" in body:
-        # Standard Meta webhook format
-        background_tasks.add_task(
-            process_standard_meta_lead,
-            body,
-            tenant_id or await get_resolved_tenant_id(request)
-        )
-        return {"status": "processing", "type": "meta_standard"}
+        # Standard Meta webhook format - process as lead form
+        try:
+            from services.meta_leads_service import MetaLeadsService
+            background_tasks.add_task(
+                MetaLeadsService.process_lead_form_webhook,
+                body,
+                tenant_id or await get_resolved_tenant_id(request)
+            )
+            return {"status": "processing", "type": "meta_standard_lead_form"}
+        except ImportError:
+            # Fallback to original processing
+            background_tasks.add_task(
+                process_standard_meta_lead,
+                body,
+                tenant_id or await get_resolved_tenant_id(request)
+            )
+            return {"status": "processing", "type": "meta_standard"}
     
     else:
-        # Custom flattened payload (n8n/LeadsBridge format)
-        background_tasks.add_task(
-            process_flattened_lead,
-            body,
-            tenant_id or await get_resolved_tenant_id(request)
-        )
-        return {"status": "processing", "type": "meta_custom"}
+        # Check if this is a lead form (has leadgen_id or form fields)
+        is_lead_form = False
+        
+        # Check for lead form indicators
+        if isinstance(body, dict):
+            lead_indicators = ["leadgen_id", "form_id", "full_name", "email", "phone_number"]
+            if any(indicator in body for indicator in lead_indicators):
+                is_lead_form = True
+            # Check nested structure
+            elif "body" in body and isinstance(body["body"], dict):
+                if any(indicator in body["body"] for indicator in lead_indicators):
+                    is_lead_form = True
+        
+        if is_lead_form:
+            # Process as lead form using new service
+            try:
+                from services.meta_leads_service import MetaLeadsService
+                background_tasks.add_task(
+                    MetaLeadsService.process_lead_form_webhook,
+                    body,
+                    tenant_id or await get_resolved_tenant_id(request)
+                )
+                return {"status": "processing", "type": "meta_custom_lead_form"}
+            except ImportError:
+                # Fallback to original processing
+                background_tasks.add_task(
+                    process_flattened_lead,
+                    body,
+                    tenant_id or await get_resolved_tenant_id(request)
+                )
+                return {"status": "processing", "type": "meta_custom"}
+        else:
+            # Original WhatsApp referral processing
+            background_tasks.add_task(
+                process_flattened_lead,
+                body,
+                tenant_id or await get_resolved_tenant_id(request)
+            )
+            return {"status": "processing", "type": "meta_custom"}
 
 
 async def process_standard_meta_lead(payload: Dict[str, Any], tenant_id: int):

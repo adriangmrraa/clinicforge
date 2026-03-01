@@ -12,7 +12,7 @@ En la misma base del Orchestrator están disponibles:
 | **[/redoc](http://localhost:8000/redoc)** | **ReDoc**: documentación en formato lectura. |
 | **[/openapi.json](http://localhost:8000/openapi.json)** | Esquema OpenAPI 3.x en JSON para importar en Postman, Insomnia o herramientas de generación de clientes. |
 
-Sustituye `localhost:8000` por la URL del Orchestrator en tu entorno (ej. en producción: `https://clinicforge-orchestrator.ugwrjq.easypanel.host`).
+Sustituye `localhost:8000` por la URL del Orchestrator en tu entorno (ej. en producción: `https://your-orchestrator-domain.com`).
 
 ---
 

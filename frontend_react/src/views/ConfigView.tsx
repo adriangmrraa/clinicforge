@@ -55,7 +55,7 @@ interface IntegrationConfig {
 export default function ConfigView() {
     const { t, setLanguage } = useTranslation();
     const { user } = useAuth();
-    const [activeTab, setActiveTab] = useState<'general' | 'ycloud' | 'chatwoot' | 'others' | 'maintenance'>('general');
+    const [activeTab, setActiveTab] = useState<'general' | 'ycloud' | 'chatwoot' | 'others' | 'maintenance' | 'leads'>('general');
 
     // General Settings State
     const [settings, setSettings] = useState<ClinicSettings | null>(null);
@@ -716,6 +716,12 @@ export default function ConfigView() {
                             >
                                 <Database size={18} /> Mantenimiento
                             </button>
+                            <button
+                                onClick={() => setActiveTab('leads')}
+                                className={`px-6 py-4 font-medium text-sm whitespace-nowrap border-b-2 transition-all flex items-center gap-2 ${activeTab === 'leads' ? 'border-blue-600 text-blue-600 font-semibold' : 'border-transparent text-gray-500 hover:text-blue-600 hover:border-blue-200'}`}
+                            >
+                                <MessageSquare size={18} /> Leads Forms
+                            </button>
                         </>
                     )}
                 </div>
@@ -729,6 +735,7 @@ export default function ConfigView() {
                     {activeTab === 'chatwoot' && user?.role === 'ceo' && renderChatwootTab()}
                     {activeTab === 'others' && user?.role === 'ceo' && renderOthersTab()}
                     {activeTab === 'maintenance' && user?.role === 'ceo' && renderMaintenanceTab()}
+                    {activeTab === 'leads' && user?.role === 'ceo' && renderLeadsTab()}
                 </div>
             </div>
 
@@ -804,4 +811,23 @@ export default function ConfigView() {
             </Modal>
         </div>
     );
+
+    // Render Leads Forms Tab
+    function renderLeadsTab() {
+        try {
+            const LeadsFormsTab = require('../components/integrations/LeadsFormsTab').default;
+            return <LeadsFormsTab />;
+        } catch (error) {
+            console.error('Error loading LeadsFormsTab:', error);
+            return (
+                <div className="bg-red-50 border border-red-200 rounded-xl p-6">
+                    <div className="flex items-center gap-3 mb-4">
+                        <AlertCircle className="w-6 h-6 text-red-500" />
+                        <h3 className="text-lg font-bold text-red-800">Error loading Leads Forms</h3>
+                    </div>
+                    <p className="text-red-700">The Leads Forms component could not be loaded. Please check the console for details.</p>
+                </div>
+            );
+        }
+    }
 }

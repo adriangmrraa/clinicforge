@@ -1,0 +1,141 @@
+{
+  "page_title": "Gestión de Leads",
+  "page_subtitle": "Administra y sigue los leads de formularios Meta Ads",
+  "lead_detail": "Detalle del Lead",
+  
+  "title": "Leads Forms",
+  "subtitle": "Configuración de webhooks para formularios Meta Ads",
+  "integration": "Integración Meta Ads",
+  
+  "info": "Los leads de formularios Meta Ads se reciben automáticamente y se atribuyen a las campañas correspondientes",
+  "info_detail": "Cada lead incluye información completa del formulario y atribución precisa al anuncio y campaña",
+  
+  "webhook_configuration": "Configuración de Webhook",
+  "webhook_description": "Configura esta URL en Meta Ads para recibir leads automáticamente",
+  "webhook_url": "URL del Webhook",
+  "webhook_url_instructions": "Copia y pega esta URL en la configuración de webhooks de Meta Ads",
+  "verify_token": "Token de Verificación",
+  "verify_token_instructions": "Usa este token para verificar el webhook en Meta Ads",
+  "loading_url": "Cargando URL...",
+  "loading_token": "Cargando token...",
+  
+  "configuration_steps": "Pasos de Configuración",
+  "step_1": "Ve a Meta Ads Manager → Configuración → Webhooks",
+  "step_2": "Haz clic en 'Crear suscripción'",
+  "step_3": "Selecciona 'Leadgen' como tipo de objeto",
+  "step_4": "Pega la URL del webhook y el token de verificación",
+  "step_5": "Guarda y verifica la conexión",
+  
+  "open_meta_config": "Abrir Configuración de Meta",
+  "refresh_config": "Refrescar Configuración",
+  "view_leads": "Ver Leads",
+  "view_leads_description": "Explora todos los leads recibidos",
+  "marketing_hub": "Marketing Hub",
+  "marketing_hub_description": "Analiza el rendimiento de tus campañas",
+  "automatic_attribution": "Atribución Automática",
+  "automatic_attribution_description": "Cada lead se atribuye automáticamente a su campaña y anuncio",
+  "attribution_feature_1": "Tracking por campaña, adset y anuncio",
+  "attribution_feature_2": "Conversión automática a pacientes",
+  "attribution_feature_3": "Métricas de ROI en tiempo real",
+  
+  "stats": {
+    "total": "Total Leads",
+    "converted": "Convertidos",
+    "conversion_rate": "Tasa de Conversión",
+    "active": "Activos"
+  },
+  
+  "errors": {
+    "load_config": "Error cargando configuración del webhook"
+  },
+  
+  "filters": "Filtros",
+  "export": "Exportar",
+  "filter_leads": "Filtrar Leads",
+  "status": "Estado",
+  "date_from": "Desde",
+  "date_to": "Hasta",
+  "campaign": "Campaña",
+  "all_campaigns": "Todas las campañas",
+  "search_placeholder": "Buscar por nombre, teléfono o email...",
+  "search": "Buscar",
+  
+  "leads_list": "Lista de Leads",
+  "showing": "Mostrando",
+  "of": "de",
+  "leads": "leads",
+  "page": "Página",
+  "items_per_page": "Items por página",
+  
+  "lead": "Lead",
+  "contact": "Contacto",
+  "date": "Fecha",
+  "actions": "Acciones",
+  "view_details": "Ver detalles",
+  "change_status": "Cambiar estado",
+  "convert_to_patient": "Convertir a paciente",
+  "view": "Ver",
+  "edit_status": "Editar estado",
+  
+  "no_leads": "No hay leads",
+  "no_leads_description": "Aún no has recibido leads de formularios Meta Ads",
+  "configure_webhook": "Configurar Webhook",
+  
+  "unnamed": "Sin nombre",
+  "no_campaign": "Sin campaña",
+  "unnamed_lead": "Lead sin nombre",
+  "lead_id": "ID del Lead",
+  "contact_information": "Información de Contacto",
+  "full_name": "Nombre completo",
+  "phone_number": "Teléfono",
+  "email": "Email",
+  "not_provided": "No proporcionado",
+  "medical_interest": "Interés médico",
+  "preferred_specialty": "Especialidad preferida",
+  "insurance_provider": "Obra social",
+  "preferred_appointment": "Turno preferido",
+  
+  "meta_ads_attribution": "Atribución Meta Ads",
+  "unknown_campaign": "Campaña desconocida",
+  "unknown_ad": "Anuncio desconocido",
+  "adset": "Conjunto de anuncios",
+  "page": "Página",
+  "form_id": "ID del Formulario",
+  "custom_questions": "Preguntas personalizadas",
+  
+  "notes": "Notas",
+  "add_note": "Agregar nota",
+  "no_notes": "No hay notas",
+  "unknown_user": "Usuario desconocido",
+  
+  "status_history": "Historial de Estados",
+  "no_status_history": "No hay historial de estados",
+  "no_reason_provided": "Sin razón proporcionada",
+  
+  "timeline": "Línea de tiempo",
+  "lead_created": "Lead creado",
+  "last_updated": "Última actualización",
+  "converted_to_patient": "Convertido a paciente",
+  "patient": "Paciente",
+  
+  "quick_actions": "Acciones rápidas",
+  "call_lead": "Llamar al lead",
+  
+  "update_status": "Actualizar Estado",
+  "new_status": "Nuevo estado",
+  "current_status": "Estado actual",
+  "reason_for_change": "Razón del cambio",
+  "reason_placeholder": "Ej: Llamé al lead, está interesado en implantes...",
+  "update": "Actualizar",
+  
+  "note_content": "Contenido de la nota",
+  "note_placeholder": "Escribe tus notas aquí...",
+  
+  "convert_to_patient": "Convertir a Paciente",
+  "conversion_warning_title": "¡Atención!",
+  "conversion_warning_description": "Esta acción vinculará permanentemente este lead con un paciente existente en el sistema. La atribución de Meta Ads se transferirá al paciente.",
+  "patient_id": "ID del Paciente",
+  "patient_id_placeholder": "UUID del paciente",
+  "patient_id_help": "Ingresa el ID del paciente existente en el sistema",
+  "convert": "Convertir"
+}

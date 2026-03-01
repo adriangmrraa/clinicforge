@@ -36,6 +36,7 @@ async def enrich_patient_attribution(
     patient_id: int,
     ad_id: str,
     tenant_id: int,
+    is_last_touch: bool = False,
 ) -> None:
     """
     Tarea de enriquecimiento asíncrono. Diseñada para ejecutarse como
@@ -45,6 +46,7 @@ async def enrich_patient_attribution(
         patient_id: ID del paciente en BD.
         ad_id: ID del anuncio de Meta a enriquecer.
         tenant_id: ID del tenant (soberanía multi-tenant).
+        is_last_touch: Si es True, actualiza campos de last_touch; si es False, actualiza first_touch
     """
     if not ad_id:
         logger.debug("enrich_patient_attribution: ad_id vacío, omitiendo.")
@@ -113,22 +115,62 @@ async def enrich_patient_attribution(
             logger.warning("enrich_patient_attribution: pool de BD no disponible")
             return
 
-        # Soberanía: siempre WHERE id=$id AND tenant_id=$tenant_id (Spec 05 §6)
-        # NOTA: No sobrescribir meta_ad_headline/meta_ad_body que vienen del referral del webhook.
-        # El enrichment enriquece todos los campos con nombres legibles.
-        await pool.execute("""
-            UPDATE patients 
-            SET meta_campaign_name = COALESCE($1, meta_campaign_name),
-                meta_ad_name = COALESCE($2, meta_ad_name),
-                meta_adset_name = COALESCE($3, meta_adset_name),
-                updated_at = NOW()
-            WHERE id = $4 AND tenant_id = $5
-        """, campaign_name, ad_name, adset_name, patient_id, tenant_id)
-
-        logger.info(
-            f"✅ Paciente {patient_id} enriquecido: "
-            f"campaign={campaign_name}, ad_name={ad_name}, adset={adset_name}"
-        )
+        # Determinar qué campos actualizar según el tipo de touch
+        if is_last_touch:
+            # Actualizar campos de last_touch
+            await pool.execute("""
+                UPDATE patients 
+                SET last_touch_ad_name = COALESCE($1, last_touch_ad_name),
+                    last_touch_campaign_name = COALESCE($2, last_touch_campaign_name),
+                    updated_at = NOW()
+                WHERE id = $3 AND tenant_id = $4
+            """, ad_name, campaign_name, patient_id, tenant_id)
+            
+            # Registrar en historial
+            await pool.execute("""
+                INSERT INTO patient_attribution_history (
+                    patient_id, tenant_id, attribution_type, source,
+                    ad_id, ad_name, campaign_id, campaign_name, adset_name,
+                    event_description
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            """, 
+                patient_id, tenant_id, 'last_touch', 'META_ADS',
+                ad_id, ad_name, ad_details.get("campaign_id"), campaign_name, adset_name,
+                f"Enriched last-touch attribution via Meta API"
+            )
+            
+            logger.info(
+                f"✅ Paciente {patient_id} last-touch enriquecido: "
+                f"campaign={campaign_name}, ad_name={ad_name}"
+            )
+        else:
+            # Actualizar campos de first_touch (compatibilidad hacia atrás)
+            await pool.execute("""
+                UPDATE patients 
+                SET first_touch_campaign_name = COALESCE($1, first_touch_campaign_name),
+                    first_touch_ad_name = COALESCE($2, first_touch_ad_name),
+                    first_touch_adset_name = COALESCE($3, first_touch_adset_name),
+                    updated_at = NOW()
+                WHERE id = $4 AND tenant_id = $5
+            """, campaign_name, ad_name, adset_name, patient_id, tenant_id)
+            
+            # Registrar en historial
+            await pool.execute("""
+                INSERT INTO patient_attribution_history (
+                    patient_id, tenant_id, attribution_type, source,
+                    ad_id, ad_name, campaign_id, campaign_name, adset_name,
+                    event_description
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            """, 
+                patient_id, tenant_id, 'first_touch', 'META_ADS',
+                ad_id, ad_name, ad_details.get("campaign_id"), campaign_name, adset_name,
+                f"Enriched first-touch attribution via Meta API"
+            )
+            
+            logger.info(
+                f"✅ Paciente {patient_id} first-touch enriquecido: "
+                f"campaign={campaign_name}, ad_name={ad_name}, adset={adset_name}"
+            )
 
     except Exception as db_err:
         logger.error(f"❌ Error actualizando paciente {patient_id} con datos enriquecidos: {db_err}")
