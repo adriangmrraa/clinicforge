@@ -156,3 +156,47 @@ async def get_ceo_user_and_tenant(
     Retorna (user_data, tenant_id).
     """
     return user_data, tenant_id
+
+
+async def verify_infra_token_only(
+    request: Request,
+    x_admin_token: str = Header(None),
+):
+    """
+    Middleware simplificado que solo valida el token de infraestructura (x-admin-token).
+    Para uso en producción cuando el frontend no maneja JWT.
+    """
+    # Validar Token de Infraestructura
+    if x_admin_token != ADMIN_TOKEN:
+        logger.warning(f"❌ 401: X-Admin-Token mismatch or missing. IP: {request.client.host if request.client else 'unknown'}")
+        if not x_admin_token:
+            logger.error("🛡️ SECURITY ALERT: X-Admin-Token is missing in request headers.")
+        raise HTTPException(status_code=401, detail="Token de infraestructura (X-Admin-Token) inválido o inexistente.")
+    
+    # Para compatibilidad, crear un user_data básico
+    from pydantic import BaseModel
+    
+    class SimpleUserData(BaseModel):
+        user_id: str = "infra-user"
+        email: str = "infra@system"
+        role: str = "ceo"
+        tenant_id: int = 1
+    
+    user_data = SimpleUserData()
+    
+    # Obtener tenant_id del header si está presente
+    header_tid = request.headers.get("X-Tenant-ID")
+    if header_tid and header_tid.isdigit():
+        user_data.tenant_id = int(header_tid)
+    
+    request.state.user = user_data
+    return user_data
+
+
+async def get_ceo_infra_only(
+    user_data=Depends(verify_infra_token_only),
+):
+    """
+    Dependencia para rutas CEO que solo usan token de infraestructura.
+    """
+    return user_data, user_data.tenant_id

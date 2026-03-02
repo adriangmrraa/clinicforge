@@ -8,7 +8,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from core.auth import get_ceo_user_and_tenant
+from core.auth import get_ceo_infra_only as get_ceo_user_and_tenant
 from services.metrics_service import MetricsService, AttributionType, MetricPeriod
 
 logger = logging.getLogger(__name__)

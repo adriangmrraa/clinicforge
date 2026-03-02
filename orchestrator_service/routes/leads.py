@@ -9,7 +9,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from core.auth import get_ceo_user_and_tenant, get_current_user
+from core.auth import get_ceo_infra_only as get_ceo_user_and_tenant, get_current_user
 from services.meta_leads_service import MetaLeadsService
 
 logger = logging.getLogger(__name__)
