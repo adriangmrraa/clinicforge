@@ -4,7 +4,7 @@ import json
 from typing import Optional, Dict, Any, List
 from services.marketing_service import MarketingService
 from services.meta_ads_service import MetaAdsClient
-from core.auth import get_ceo_infra_only as get_ceo_user_and_tenant
+from core.auth import get_ceo_user_and_tenant
 from core.credentials import get_tenant_credential, save_tenant_credential
 from db import db
 
