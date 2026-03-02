@@ -1036,6 +1036,13 @@ async def _get_page_details_with_fallback(client, lead_data):
         except Exception as e:
             logger.error(f"Error getting leads summary: {e}")
             raise
+
+    async def add_note_to_lead(
+        self,
+        lead_id: int,
+        tenant_id: int,
+        content: str,
+        user_id: Optional[str] = None
     ) -> str:
         """Add note to lead"""
         
