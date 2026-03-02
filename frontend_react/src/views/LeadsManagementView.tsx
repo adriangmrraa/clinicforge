@@ -440,7 +440,7 @@ export default function LeadsManagementView() {
                     className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium"
                     style={{ backgroundColor: `${getStatusColor(status.status).split(' ')[0]}20` }}
                   >
-                    <span className={getStatusColor                    <span className={getStatusColor(status.status).split(' ')[1]}>
+                    <span className={getStatusColor(status.status).split(' ')[1]}>
                       {getStatusLabel(status.status)}: {status.count}
                     </span>
                   </div>
