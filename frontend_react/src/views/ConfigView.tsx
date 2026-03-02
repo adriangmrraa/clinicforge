@@ -1,10 +1,13 @@
-import React, { useState, useEffect } from 'react';
-import { Settings, Globe, Loader2, CheckCircle2, Copy, Trash2, Edit2, Zap, MessageCircle, Key, User, Plus, Info, Database, AlertTriangle, Clock, MessageSquare } from 'lucide-react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
+import { Settings, Globe, Loader2, CheckCircle2, Copy, Trash2, Edit2, Zap, MessageCircle, Key, User, Plus, Info, Database, AlertTriangle, Clock, MessageSquare, AlertCircle } from 'lucide-react';
 import api from '../api/axios';
 import { useTranslation } from '../context/LanguageContext';
 import PageHeader from '../components/PageHeader';
 import { useAuth } from '../context/AuthContext';
 import { Modal } from '../components/Modal';
+
+// Lazy load the LeadsFormsTab component
+const LeadsFormsTab = lazy(() => import('../components/integrations/LeadsFormsTab'));
 
 type UiLanguage = 'es' | 'en' | 'fr';
 
@@ -814,20 +817,15 @@ export default function ConfigView() {
 
     // Render Leads Forms Tab
     function renderLeadsTab() {
-        try {
-            const LeadsFormsTab = require('../components/integrations/LeadsFormsTab').default;
-            return <LeadsFormsTab />;
-        } catch (error) {
-            console.error('Error loading LeadsFormsTab:', error);
-            return (
-                <div className="bg-red-50 border border-red-200 rounded-xl p-6">
-                    <div className="flex items-center gap-3 mb-4">
-                        <AlertCircle className="w-6 h-6 text-red-500" />
-                        <h3 className="text-lg font-bold text-red-800">Error loading Leads Forms</h3>
-                    </div>
-                    <p className="text-red-700">The Leads Forms component could not be loaded. Please check the console for details.</p>
+        return (
+            <Suspense fallback={
+                <div className="flex items-center justify-center p-12">
+                    <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
+                    <span className="ml-3 text-gray-600">Loading Leads Forms...</span>
                 </div>
-            );
-        }
+            }>
+                <LeadsFormsTab />
+            </Suspense>
+        );
     }
 }

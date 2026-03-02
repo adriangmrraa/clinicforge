@@ -44,6 +44,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle, onCloseMo
     { id: 'treatments', labelKey: 'nav.treatments' as const, icon: <Clock size={20} />, path: '/tratamientos', roles: ['ceo', 'secretary'] },
     { id: 'profile', labelKey: 'nav.profile' as const, icon: <User size={20} />, path: '/perfil', roles: ['ceo', 'professional', 'secretary'] },
     { id: 'marketing', labelKey: 'nav.marketing' as const, icon: <Megaphone size={20} />, path: '/marketing', roles: ['ceo'] },
+    { id: 'leads', labelKey: 'nav.leads' as const, icon: <Users size={20} />, path: '/leads', roles: ['ceo'] },
     { id: 'templates', labelKey: 'nav.hsm' as const, icon: <Layout size={20} />, path: '/templates', roles: ['ceo'] },
     { id: 'settings', labelKey: 'nav.settings' as const, icon: <Settings size={20} />, path: '/configuracion', roles: ['ceo'] },
 
