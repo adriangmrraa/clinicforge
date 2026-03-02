@@ -90,17 +90,8 @@ export default function MarketingHubView() {
     const copyToClipboard = async (type: string) => {
         let textToCopy = '';
         
-        switch (type) {
-            case 'webhook_meta':
-                textToCopy = deploymentConfig?.webhook_meta_url || '';
-                break;
-            case 'webhook_ycloud':
-                textToCopy = deploymentConfig?.webhook_ycloud_url || '';
-                break;
-            case 'verify_token':
-                textToCopy = deploymentConfig?.meta_webhook_verify_token || '';
-                break;
-        }
+        // Esta función ahora solo maneja otros tipos de copia
+        // Los webhooks se manejan en la pestaña Leads Forms de Settings
         
         if (!textToCopy) {
             alert(t('marketing.errors.no_url_to_copy'));
@@ -179,86 +170,6 @@ export default function MarketingHubView() {
                     >
                         <ExternalLink size={18} /> {isMetaConnected ? t('marketing.reconnect') : t('marketing.connect')}
                     </button>
-                </div>
-            </div>
-
-            {/* Webhook Configuration Section */}
-            <div className="bg-white border border-gray-200 rounded-3xl shadow-sm overflow-hidden mb-6">
-                <div className="p-6 border-b border-gray-100">
-                    <h3 className="font-bold text-gray-900 flex items-center gap-2 mb-2">
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                        </svg>
-                        {t('marketing.webhook_configuration')}
-                    </h3>
-                    <p className="text-sm text-gray-500 mb-4">
-                        {t('marketing.webhook_description')}
-                    </p>
-                    
-                    <div className="space-y-4">
-                        {/* Meta Webhook URL */}
-                        <div className="bg-gray-50 p-4 rounded-xl">
-                            <div className="flex items-center justify-between mb-2">
-                                <span className="text-sm font-medium text-gray-700">
-                                    {t('marketing.webhook_meta_url')}
-                                </span>
-                                <button
-                                    onClick={() => copyToClipboard('webhook_meta')}
-                                    className="text-sm text-blue-600 hover:text-blue-800 font-medium"
-                                >
-                                    {t('marketing.copy_url')}
-                                </button>
-                            </div>
-                            <div className="bg-white border border-gray-300 rounded-lg p-3 font-mono text-sm text-gray-800 overflow-x-auto">
-                                {deploymentConfig?.webhook_meta_url || t('marketing.loading_url')}
-                            </div>
-                            <p className="text-xs text-gray-500 mt-2">
-                                {t('marketing.webhook_meta_instructions')}
-                            </p>
-                        </div>
-                        
-                        {/* YCloud Webhook URL */}
-                        <div className="bg-gray-50 p-4 rounded-xl">
-                            <div className="flex items-center justify-between mb-2">
-                                <span className="text-sm font-medium text-gray-700">
-                                    {t('marketing.webhook_ycloud_url')}
-                                </span>
-                                <button
-                                    onClick={() => copyToClipboard('webhook_ycloud')}
-                                    className="text-sm text-blue-600 hover:text-blue-800 font-medium"
-                                >
-                                    {t('marketing.copy_url')}
-                                </button>
-                            </div>
-                            <div className="bg-white border border-gray-300 rounded-lg p-3 font-mono text-sm text-gray-800 overflow-x-auto">
-                                {deploymentConfig?.webhook_ycloud_url || t('marketing.loading_url')}
-                            </div>
-                            <p className="text-xs text-gray-500 mt-2">
-                                {t('marketing.webhook_ycloud_instructions')}
-                            </p>
-                        </div>
-                        
-                        {/* Verification Token */}
-                        <div className="bg-gray-50 p-4 rounded-xl">
-                            <div className="flex items-center justify-between mb-2">
-                                <span className="text-sm font-medium text-gray-700">
-                                    {t('marketing.webhook_verify_token')}
-                                </span>
-                                <button
-                                    onClick={() => copyToClipboard('verify_token')}
-                                    className="text-sm text-blue-600 hover:text-blue-800 font-medium"
-                                >
-                                    {t('marketing.copy_token')}
-                                </button>
-                            </div>
-                            <div className="bg-white border border-gray-300 rounded-lg p-3 font-mono text-sm text-gray-800 overflow-x-auto">
-                                {deploymentConfig?.meta_webhook_verify_token || t('marketing.loading_token')}
-                            </div>
-                            <p className="text-xs text-gray-500 mt-2">
-                                {t('marketing.webhook_token_instructions')}
-                            </p>
-                        </div>
-                    </div>
                 </div>
             </div>
 
