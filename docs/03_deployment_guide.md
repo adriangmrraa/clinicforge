@@ -94,6 +94,14 @@ https://wa.tudominio.com/webhook
    - SMTP_PASS=...
    - ADMIN_TOKEN=...
    - CORS_ALLOWED_ORIGINS=...
+   - GOOGLE_CLIENT_ID=... (para Google Ads OAuth)
+   - GOOGLE_CLIENT_SECRET=... (para Google Ads OAuth)
+   - GOOGLE_REDIRECT_URI=... (ej: https://admin.tudominio.com/admin/auth/google/ads/callback)
+   - GOOGLE_LOGIN_REDIRECT_URI=... (ej: https://admin.tudominio.com/admin/auth/google/login/callback)
+   - GOOGLE_DEVELOPER_TOKEN=... (Google Ads API Developer Token)
+   - GOOGLE_ADS_API_VERSION=v16
+   - FRONTEND_URL=... (ej: https://admin.tudominio.com)
+   - PLATFORM_URL=... (ej: https://api.tudominio.com)
 8. Deploy
 ```
 
@@ -359,6 +367,56 @@ Service → Console (SSH)
    - SMTP_PASS=(contraseña de aplicación, no contraseña normal)
 3. Revisar logs en system_events table:
    SELECT * FROM system_events WHERE event_type='smtp_failed';
+```
+
+### Error: Google Ads OAuth falla (redirect_uri_mismatch)
+
+**Causa:** Redirect URI no coincide exactamente con Google Cloud Console
+
+**Solución:**
+```
+1. Verificar GOOGLE_REDIRECT_URI y GOOGLE_LOGIN_REDIRECT_URI
+2. En Google Cloud Console → Credentials → OAuth 2.0 Client IDs:
+   - Añadir exactamente las mismas URIs (incluyendo http/https)
+   - Ejemplo: https://admin.tudominio.com/admin/auth/google/ads/callback
+3. Verificar que no haya trailing slashes o diferencias de puerto
+```
+
+### Error: Google Ads API no funciona (DEVELOPER_TOKEN_NOT_APPROVED)
+
+**Causa:** Developer Token no aprobado o en modo test
+
+**Solución:**
+```
+1. Solicitar Developer Token en https://ads.google.com/aw/apicenter
+2. Esperar 2-5 días hábiles para aprobación
+3. Verificar que el token sea para "Standard Access" no "Test Access"
+4. Configurar GOOGLE_DEVELOPER_TOKEN con el token aprobado
+```
+
+### Error: Google Ads metrics no se muestran (PERMISSION_DENIED)
+
+**Causa:** Cuenta de Google no tiene acceso a Google Ads o scopes incorrectos
+
+**Solución:**
+```
+1. Verificar que la cuenta de Google usada tenga acceso a Google Ads
+2. En Google Cloud Console → OAuth consent screen:
+   - Añadir scopes: https://www.googleapis.com/auth/adwords
+   - Añadir scopes: https://www.googleapis.com/auth/userinfo.email
+3. Re-autorizar la aplicación desde Marketing Hub
+```
+
+### Error: Marketing Hub muestra "Demo Data" permanentemente
+
+**Causa:** Google Ads API no está configurado correctamente
+
+**Solución:**
+```
+1. Verificar todas las variables de entorno de Google
+2. Probar conexión: GET /admin/marketing/google/connection-status
+3. Verificar logs del orchestrator_service para errores de API
+4. Asegurarse de que GOOGLE_DEVELOPER_TOKEN esté aprobado
 ```
 
 ## 9. Performance y Escalabilidad

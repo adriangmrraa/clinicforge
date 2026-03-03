@@ -158,3 +158,40 @@ sequenceDiagram
 ### Sanitización de Logs
 - ✅ `SensitiveDataFilter` instalado en root logger
 - ✅ Filtra `msg` y `args` de cada `LogRecord`
+
+---
+
+## 7. Comparación con Google Ads Integration (NUEVO - Marzo 2026)
+
+### Arquitectura Similaridades
+| Aspecto | Meta Ads | Google Ads |
+|---------|----------|------------|
+| **OAuth Flow** | Meta Graph API OAuth | Google OAuth 2.0 |
+| **Token Management** | Long-lived user token | Access + Refresh tokens |
+| **Multi-tenant** | Tenant isolation completo | Tenant isolation completo |
+| **API Client** | `MetaAdsClient` async | `GoogleAdsService` async |
+| **Metrics** | Spend, Leads, ROI | Impressions, Clicks, Cost, ROAS |
+| **Dashboard** | MarketingHubView tab | MarketingHubView tab |
+
+### Diferencias Clave
+| Aspecto | Meta Ads | Google Ads |
+|---------|----------|------------|
+| **Lead Attribution** | First-touch + Last-touch | Campaign-level attribution |
+| **Data Source** | WhatsApp referrals + Form leads | Google Ads API direct |
+| **Token Expiry** | ~60 días | 1 hora (auto-refresh) |
+| **API Approval** | App Review (instant) | Developer Token (2-5 días) |
+| **Cost Model** | CPM/CPC | CPC/CPM/CPV |
+| **Conversion Tracking** | Custom (leads → patients) | Google Ads conversions |
+
+### Integración Combinada
+- **Dashboard Unificado**: MarketingHubView con 3 tabs (Meta, Google, Combinado)
+- **ROI Calculation**: Métricas combinadas en `/admin/marketing/combined-stats`
+- **Platform Status**: Estado de conexión en `/admin/marketing/platform-status`
+- **Multi-platform Campaigns**: Campañas de ambas plataformas en una vista
+
+### Recomendaciones de Uso
+1. **Meta Ads**: Ideal para leads de WhatsApp y formularios Meta
+2. **Google Ads**: Ideal para búsqueda brand, display remarketing, video YouTube
+3. **Combinado**: Para análisis de ROI cross-platform y optimización de mix
+
+**Documentación completa:** Ver [google_ads_integration.md](google_ads_integration.md)

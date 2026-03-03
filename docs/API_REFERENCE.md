@@ -591,17 +591,42 @@ Lista los últimos casos de urgencia detectados por el sistema de triaje IA.
 
 ---
 
-## Marketing Hub (Meta Ads)
+## Marketing Hub (Meta Ads + Google Ads)
 
-Endpoints para la gestión de publicidad en Meta y análisis de ROI. Requiere `Authorization: Bearer <JWT>` y `X-Admin-Token`.
+Endpoints para la gestión de publicidad en Meta Ads, Google Ads y análisis de ROI combinado. Requiere `Authorization: Bearer <JWT>` y `X-Admin-Token`.
 
-### Conexión y Auth
+### Meta Ads - Conexión y Auth
 `GET /admin/marketing/meta-auth/url` — Genera la URL de login con Meta (permisos de Ads).  
 `GET /admin/marketing/stats` — Métricas consolidadas (Spent, Leads, ROI) por campaña. Soporta `range` (ej: `last_30d`, `lifetime`).  
 `GET /admin/marketing/token-status` — Devuelve si el token de Meta está activo o expirado.  
 `GET /admin/marketing/meta-portfolios` — Lista Business Managers vinculados.  
 `GET /admin/marketing/meta-accounts` — Lista Ad Accounts de un portfolio.  
 `POST /admin/marketing/connect-meta-account` — Vincula una Ad Account física a la clínica actual.
+
+### Google Ads - Conexión y Auth
+`GET /admin/auth/google/ads/url` — Genera URL de autorización OAuth 2.0 para Google Ads.  
+`GET /admin/auth/google/ads/callback` — Callback handler para OAuth (usado por Google).  
+`GET /admin/auth/google/login/url` — URL para Google Login (futuro).  
+`GET /admin/auth/google/login/callback` — Callback para Google Login.  
+`POST /admin/auth/google/ads/disconnect` — Desconecta Google Ads OAuth.  
+`GET /admin/auth/google/ads/refresh` — Refresca manualmente el token de acceso.  
+`GET /admin/auth/google/ads/test-connection` — Prueba conexión con Google Ads API.  
+`GET /admin/auth/google/ads/debug/token` — Debug endpoint para ver estado del token.
+
+### Google Ads - API y Métricas
+`GET /admin/marketing/google/campaigns` — Obtiene campañas de Google Ads con métricas. Parámetro: `time_range`.  
+`GET /admin/marketing/google/metrics` — Métricas agregadas de Google Ads (impressions, clicks, cost, conversions).  
+`GET /admin/marketing/google/customers` — Cuentas de cliente de Google Ads accesibles.  
+`POST /admin/marketing/google/sync` — Dispara sincronización manual de datos.  
+`GET /admin/marketing/google/stats` — Estadísticas completas (campañas + métricas).  
+`GET /admin/marketing/google/connection-status` — Estado de conexión con Google Ads API.  
+`GET /admin/marketing/google/combined-stats` — Estadísticas combinadas Meta + Google.  
+`GET /admin/marketing/google/debug/config` — Debug endpoint para configuración.
+
+### Marketing Combinado (Meta + Google)
+`GET /admin/marketing/combined-stats` — Estadísticas combinadas de todas las plataformas.  
+`GET /admin/marketing/multi-platform-campaigns` — Campañas de todas las plataformas (Meta + Google).  
+`GET /admin/marketing/platform-status` — Estado de conexión para todas las plataformas.
 
 ### Diagnóstico (Master Ad List)
 `GET /admin/marketing/debug/stats` — **Diagnóstico profundo.** Escanea la cuenta publicitaria sin filtros de rendimiento.  

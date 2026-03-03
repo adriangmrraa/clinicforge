@@ -170,10 +170,70 @@ Para optimizar el rendimiento en conversaciones extensas, Dentalogic utiliza un 
 
 **Vistas Principales:**
 - **Landing (LandingView):** Página pública en `/demo` para campañas y leads: hero, beneficios, credenciales de prueba (colapsables), CTA "Probar app" (→ `/login?demo=1`), "Probar Agente IA" (WhatsApp con mensaje predefinido), "Iniciar sesión con mi cuenta" (→ `/login`). Diseño móvil-first y orientado a conversión; estética alineada con la plataforma (medical, glass, botones).
+- **Marketing Hub (MarketingHubView):** Dashboard combinado para Meta Ads y Google Ads. Tres tabs: Meta Ads (conexión OAuth, métricas de campañas, ROI), Google Ads (conexión OAuth 2.0, métricas de Google Ads, ROAS), y Combinado (estadísticas unificadas de ambas plataformas). Incluye wizard de conexión paso a paso, sincronización manual de datos, y demo data fallback.
 - **Agenda Inteligente:** Calendario interactivo con sincronización de Google Calendar; leyenda de origen (IA, Manual, GCal) y tooltips traducidos. **Filtro por profesional** en vistas semanal y mensual (CEO y secretaria pueden elegir profesional); **profesionales solo ven su propio calendario** (una columna en vista día, sin selector de profesional). Actualización en tiempo real vía Socket.IO.
 - **Perfil 360° del Paciente:** Acceso a historias clínicas, antecedentes y notas de evolución.
 - **Monitor de Triaje:** Alertas inmediatas cuando la IA detecta una urgencia grave.
 - **Modales IA-Aware:** Los modales de edición (especialmente en Personal Activo / Profesionales) están sincronizados con la lógica de la IA, permitiendo configurar `working_hours` que el agente respeta estrictamente durante la reserva de turnos.
+
+### D. Marketing Hub - Sistema de Publicidad y ROI
+
+**Tecnología:** FastAPI + Google OAuth 2.0 + Meta Graph API + PostgreSQL + React
+
+**Función:** Gestión unificada de campañas publicitarias, tracking de ROI y análisis combinado Meta Ads + Google Ads.
+
+**Componentes:**
+
+#### Backend (Orchestrator Service):
+1. **Meta Ads Service:**
+   - Conexión OAuth con Meta Graph API
+   - Atribución automática de leads a campañas
+   - Métricas de ROI (spend, leads, appointments, revenue)
+   - Enriquecimiento automático con Meta API
+
+2. **Google Ads Service (NUEVO):**
+   - Conexión OAuth 2.0 con Google Ads API
+   - Gestión de tokens (access, refresh, expiration)
+   - Métricas de Google Ads (impressions, clicks, cost, conversions, ROAS)
+   - Demo data fallback para desarrollo
+
+3. **Marketing Service Combinado:**
+   - Estadísticas unificadas Meta + Google
+   - Cálculo de ROI cross-platform
+   - Dashboard combinado con métricas agregadas
+
+4. **API Endpoints:**
+   - `/admin/auth/google/` - 8 endpoints OAuth Google
+   - `/admin/marketing/google/` - 8 endpoints API Google Ads
+   - `/admin/marketing/combined-stats` - Estadísticas combinadas
+   - `/admin/marketing/platform-status` - Estado de conexión
+
+#### Base de Datos:
+- **Tablas Meta:** `meta_ads_campaigns`, `meta_ads_metrics`, `meta_form_leads`
+- **Tablas Google (NUEVAS):** `google_oauth_tokens`, `google_ads_accounts`, `google_ads_metrics_cache`
+- **Tablas Comunes:** `lead_status_history`, `lead_notes`, `credentials` (almacena tokens)
+
+#### Frontend (React):
+1. **MarketingHubView:** Dashboard con 3 tabs (Meta Ads, Google Ads, Combinado)
+2. **GoogleConnectionWizard:** Wizard paso a paso para conexión Google Ads
+3. **MetaConnectionWizard:** Wizard para conexión Meta Ads
+4. **API Client:** `google_ads.ts` - TypeScript client para Google Ads API
+5. **Traducciones:** Español e inglés completos para Google Ads
+
+**Flujo de Trabajo:**
+1. CEO navega a Marketing Hub
+2. Selecciona tab "Google Ads" o "Meta Ads"
+3. Click "Conectar" para iniciar OAuth flow
+4. Autoriza acceso en ventana de Google/Meta
+5. Dashboard muestra métricas en tiempo real
+6. Tab "Combinado" muestra estadísticas unificadas
+
+**Características Clave:**
+- ✅ **Multi-tenant isolation** - Cada clínica ve solo sus datos
+- ✅ **Demo data fallback** - Funciona sin credenciales reales
+- ✅ **Auto-refresh tokens** - Tokens se renuevan automáticamente
+- ✅ **Error handling robusto** - UX elegante incluso con errores de API
+- ✅ **TypeScript 100% tipado** - Código seguro y mantenible
 
 ## 3. Base de Datos (PostgreSQL)
 
@@ -192,7 +252,15 @@ Para optimizar el rendimiento en conversaciones extensas, Dentalogic utiliza un 
 | **tenants** | Sedes/clínicas; `config` (JSONB) con `ui_language`, `calendar_provider`, etc. |
 | **chat_messages** | Mensajes de chat por conversación; incluye `tenant_id` para aislamiento por sede; para Chatwoot: `conversation_id`, `content_attributes`, `platform_metadata`. |
 | **chat_conversations** | Conversaciones omnicanal (Chatwoot/YCloud): tenant_id, channel, provider, external_user_id, human_override_until, etc. |
-| **credentials** | Credenciales por tenant (Vault): OPENAI_API_KEY, WEBHOOK_ACCESS_TOKEN, CHATWOOT_*, YCLOUD_*, etc. |
+| **credentials** | Credenciales por tenant (Vault): OPENAI_API_KEY, WEBHOOK_ACCESS_TOKEN, CHATWOOT_*, YCLOUD_*, META_*, GOOGLE_*, etc. |
+| **meta_ads_campaigns** | Campañas de Meta Ads con atribución. |
+| **meta_ads_metrics** | Métricas de performance de Meta Ads. |
+| **meta_form_leads** | Leads de formularios Meta con atribución completa. |
+| **lead_status_history** | Historial de estados de leads. |
+| **lead_notes** | Notas sobre leads. |
+| **google_oauth_tokens** | **(NUEVA)** Tokens OAuth 2.0 de Google para Ads y Login. |
+| **google_ads_accounts** | **(NUEVA)** Cuentas de Google Ads accesibles por tenant. |
+| **google_ads_metrics_cache** | **(NUEVA)** Cache de métricas de Google Ads para performance. |
 
 ### 3.2 Maintenance Robot (Self-Healing)
 El sistema utiliza un **Robot de Mantenimiento** integrado en `orchestrator_service/db.py` que garantiza la integridad del esquema en cada arranque:

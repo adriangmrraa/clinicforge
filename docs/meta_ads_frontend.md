@@ -204,3 +204,92 @@ La función `getPlatformConfig(channel)` en `ChatsView.tsx` mapea:
 
 ### 7.2. Redirección Post-Conexión
 El Backend usa la variable de entorno `FRONTEND_URL` para construir la URL de retorno. En desarrollo debe ser `http://localhost:3000/`.
+
+---
+
+## 8. Integración con Google Ads (NUEVO - Marzo 2026)
+
+### 8.1. MarketingHubView Actualizado
+**Ubicación**: `frontend_react/src/views/MarketingHubView.tsx`
+**Nueva funcionalidad**: Dashboard combinado con 3 tabs:
+1. **Meta Ads** - Funcionalidad existente
+2. **Google Ads** - Nueva integración completa
+3. **Combinado** - Estadísticas unificadas de ambas plataformas
+
+**Características**:
+- ✅ **Tabs platform-specific** con iconos distintivos (Megaphone, Globe, BarChart3)
+- ✅ **Banners de conexión dinámicos** por plataforma (colores diferentes)
+- ✅ **Time range selector** sincronizado entre todas las tabs
+- ✅ **Auto-refresh** de datos al cambiar entre plataformas
+
+### 8.2. GoogleConnectionWizard
+**Ubicación**: `frontend_react/src/components/integrations/GoogleConnectionWizard.tsx`
+**Diseño**: Consistente con MetaConnectionWizard (mismo UX/UI)
+**Flujo**: 4 steps:
+1. **Welcome** - Beneficios y estado de configuración
+2. **Configure** - Configuración manual (si es necesario)
+3. **Authorize** - Ventana OAuth de Google
+4. **Complete** - Confirmación de conexión exitosa
+
+### 8.3. API Client para Google Ads
+**Ubicación**: `frontend_react/src/api/google_ads.ts`
+**Características**:
+- ✅ **11 métodos API** bien tipados
+- ✅ **Formateo de currency** (micros → ARS/USD)
+- ✅ **Demo data fallback** cuando API no disponible
+- ✅ **Error handling robusto** con mensajes amigables
+
+### 8.4. Tipos TypeScript
+**Ubicación**: `frontend_react/src/types/google_ads.ts`
+**Cobertura**: 15+ interfaces para Google Ads API
+- `GoogleCampaign`, `GoogleMetrics`, `GoogleCustomer`
+- `GoogleConnectionStatus`, `CombinedStats`
+- `MultiPlatformCampaign`, `PlatformStatus`
+
+### 8.5. Traducciones
+**Archivos actualizados**:
+- `frontend_react/src/locales/es.json` - 150+ strings nuevos
+- `frontend_react/src/locales/en.json` - 150+ strings nuevos
+**Categorías**: wizard, métricas, errores, tablas, botones
+
+### 8.6. Comparación UX Meta vs Google
+| Aspecto | Meta Ads | Google Ads |
+|---------|----------|------------|
+| **Wizard Steps** | 3 steps | 4 steps |
+| **OAuth Window** | Popup Meta | Popup Google |
+| **Connection Banner** | Verde (Meta) | Azul (Google) |
+| **Metrics Display** | Leads, Appointments, ROI | Impressions, Clicks, ROAS |
+| **Demo Data** | Sí | Sí |
+| **Manual Sync** | No | Sí (botón "Sincronizar") |
+
+### 8.7. Flujo de Usuario Unificado
+1. **Navegar** a Marketing Hub (`/marketing`)
+2. **Seleccionar** tab "Google Ads" o "Meta Ads"
+3. **Conectar** cuenta (wizard paso a paso)
+4. **Ver métricas** en dashboard en tiempo real
+5. **Comparar** plataformas en tab "Combinado"
+
+### 8.8. Estados de Conexión
+```typescript
+type ConnectionStatus = {
+  meta: {
+    connected: boolean;
+    has_token: boolean;
+    has_account: boolean;
+  };
+  google: {
+    connected: boolean;
+    has_token: boolean;
+    has_developer_token: boolean;
+    email?: string;
+  };
+};
+```
+
+### 8.9. Recomendaciones de Implementación
+1. **Meta Ads primero**: Conectar Meta Ads para leads de WhatsApp
+2. **Google Ads después**: Conectar Google Ads para campañas de búsqueda
+3. **Dashboard combinado**: Usar tab "Combinado" para análisis ROI cross-platform
+4. **Demo mode**: Probar sin credenciales reales (datos de demostración)
+
+**Documentación completa**: Ver [google_ads_integration.md](google_ads_integration.md)

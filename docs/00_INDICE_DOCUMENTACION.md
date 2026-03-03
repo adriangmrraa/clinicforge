@@ -48,6 +48,9 @@ Documentación técnica profunda sobre módulos específicos.
 | [meta_ads_backend.md](meta_ads_backend.md) | Backend de Meta Ads: Atribución, enriquecimiento y API. |
 | [meta_ads_database.md](meta_ads_database.md) | Estructura de base de datos para Marketing ROI. |
 | [meta_ads_frontend.md](meta_ads_frontend.md) | Componentes y estado de la UI de Marketing Hub. |
+| [google_ads_integration.md](google_ads_integration.md) | **NUEVO:** Integración completa de Google Ads: OAuth, API, dashboard combinado. |
+| [leads_forms_system.md](leads_forms_system.md) | Sistema de Leads Forms Meta con atribución automática. |
+| [metrics_and_roi_calculation.md](metrics_and_roi_calculation.md) | Cálculo de ROI y métricas combinadas Meta + Google. |
 | [CONTEXTO_AGENTE_IA.md](CONTEXTO_AGENTE_IA.md) | Guía de navegación para el Agente Antigravity. |
 | [riesgos_entendimiento_agente_agendar.md](riesgos_entendimiento_agente_agendar.md) | Análisis de fallos lógicos en el flujo de agenda. |
 | [TRANSFORMACION_AGNOSTICA_NICHO.md](TRANSFORMACION_AGNOSTICA_NICHO.md) | Estrategia de generalización de la plataforma. |
