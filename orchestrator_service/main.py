@@ -1516,6 +1516,21 @@ app.include_router(chat_webhooks.router)
 app.include_router(meta_auth.router)
 app.include_router(marketing.router)
 
+# Import and include Google OAuth and Ads routers
+try:
+    from routes.google_auth import router as google_auth_router
+    app.include_router(google_auth_router)
+    logger.info("✅ Google Auth router registered successfully")
+except ImportError as e:
+    logger.warning(f"⚠️ Could not import Google Auth router: {e}")
+
+try:
+    from routes.google_ads_routes import router as google_ads_router
+    app.include_router(google_ads_router)
+    logger.info("✅ Google Ads router registered successfully")
+except ImportError as e:
+    logger.warning(f"⚠️ Could not import Google Ads router: {e}")
+
 # Import and include leads router
 try:
     from routes.leads import router as leads_router

@@ -344,3 +344,160 @@ class MarketingService:
         except Exception as e:
             logger.error(f"❌ Error fetching marketing detail for tenant {tenant_id}: {e}")
             return {"campaigns": [], "creatives": [], "account_total_spend": 0}
+
+    @staticmethod
+    async def get_combined_marketing_stats(tenant_id: int, time_range: str = "last_30d") -> Dict[str, Any]:
+        """
+        Get combined marketing stats from all platforms (Meta + Google)
+        
+        Args:
+            tenant_id: Tenant ID
+            time_range: Time range for metrics
+            
+        Returns:
+            Combined marketing stats
+        """
+        try:
+            # Get Meta stats
+            meta_stats = await MarketingService.get_roi_stats(tenant_id, time_range)
+            
+            # Get Google stats if available
+            google_stats = {}
+            try:
+                from services.marketing.google_ads_service import GoogleAdsService
+                google_stats = await GoogleAdsService.get_metrics(tenant_id, time_range)
+            except ImportError:
+                logger.warning("Google Ads service not available")
+            except Exception as e:
+                logger.warning(f"Failed to get Google stats: {e}")
+            
+            # Calculate combined metrics
+            total_spend = meta_stats.get("total_spend", 0) + google_stats.get("cost", 0)
+            total_revenue = meta_stats.get("total_revenue", 0) + google_stats.get("conversions_value", 0)
+            total_leads = meta_stats.get("leads", 0) + google_stats.get("conversions", 0)
+            
+            # Calculate combined ROI
+            combined_roi = (total_revenue / total_spend * 100) if total_spend > 0 else 0
+            
+            return {
+                "meta": {
+                    "is_connected": meta_stats.get("is_connected", False),
+                    "spend": meta_stats.get("total_spend", 0),
+                    "revenue": meta_stats.get("total_revenue", 0),
+                    "leads": meta_stats.get("leads", 0),
+                    "patients_converted": meta_stats.get("patients_converted", 0),
+                    "cpa": meta_stats.get("cpa", 0),
+                    "currency": meta_stats.get("currency", "ARS")
+                },
+                "google": {
+                    "is_connected": google_stats.get("is_connected", False),
+                    "spend": google_stats.get("cost", 0),
+                    "revenue": google_stats.get("conversions_value", 0),
+                    "leads": google_stats.get("conversions", 0),
+                    "impressions": google_stats.get("impressions", 0),
+                    "clicks": google_stats.get("clicks", 0),
+                    "ctr": google_stats.get("ctr", 0),
+                    "currency": google_stats.get("currency", "ARS"),
+                    "is_demo": google_stats.get("is_demo", False)
+                },
+                "combined": {
+                    "total_spend": total_spend,
+                    "total_revenue": total_revenue,
+                    "total_leads": total_leads,
+                    "roi_percentage": round(combined_roi, 2),
+                    "platforms": []
+                },
+                "time_range": time_range
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to get combined marketing stats: {e}")
+            return {
+                "meta": {"is_connected": False},
+                "google": {"is_connected": False},
+                "combined": {"platforms": []},
+                "time_range": time_range
+            }
+
+    @staticmethod
+    async def get_multi_platform_campaigns(tenant_id: int, time_range: str = "last_30d") -> Dict[str, Any]:
+        """
+        Get campaigns from all platforms (Meta + Google)
+        
+        Args:
+            tenant_id: Tenant ID
+            time_range: Time range for metrics
+            
+        Returns:
+            Campaigns from all platforms
+        """
+        try:
+            # Get Meta campaigns
+            meta_campaigns = await MarketingService.get_campaign_stats(tenant_id, time_range)
+            
+            # Get Google campaigns if available
+            google_campaigns = []
+            try:
+                from services.marketing.google_ads_service import GoogleAdsService
+                google_campaigns = await GoogleAdsService.get_campaigns(tenant_id, time_range)
+            except ImportError:
+                logger.warning("Google Ads service not available")
+            except Exception as e:
+                logger.warning(f"Failed to get Google campaigns: {e}")
+            
+            # Format campaigns consistently
+            formatted_meta_campaigns = []
+            if "campaigns" in meta_campaigns:
+                for campaign in meta_campaigns["campaigns"]:
+                    formatted_meta_campaigns.append({
+                        "id": campaign.get("ad_id", ""),
+                        "name": campaign.get("campaign_name", ""),
+                        "platform": "meta",
+                        "status": campaign.get("status", ""),
+                        "spend": campaign.get("spend", 0),
+                        "leads": campaign.get("leads", 0),
+                        "appointments": campaign.get("appointments", 0),
+                        "roi": campaign.get("roi", 0),
+                        "impressions": campaign.get("impressions", 0),
+                        "clicks": campaign.get("clicks", 0),
+                        "ctr": campaign.get("ctr", 0)
+                    })
+            
+            formatted_google_campaigns = []
+            for campaign in google_campaigns:
+                formatted_google_campaigns.append({
+                    "id": campaign.get("id", ""),
+                    "name": campaign.get("name", ""),
+                    "platform": "google",
+                    "status": campaign.get("status", ""),
+                    "spend": campaign.get("cost", 0) / 1000000 if campaign.get("cost") else 0,  # Convert micros
+                    "leads": campaign.get("conversions", 0),
+                    "appointments": 0,  # Google doesn't have appointments metric
+                    "roi": campaign.get("roas", 0),
+                    "impressions": campaign.get("impressions", 0),
+                    "clicks": campaign.get("clicks", 0),
+                    "ctr": campaign.get("ctr", 0),
+                    "conversion_rate": campaign.get("conversion_rate", 0),
+                    "cpc": campaign.get("cpc", 0)
+                })
+            
+            # Combine all campaigns
+            all_campaigns = formatted_meta_campaigns + formatted_google_campaigns
+            
+            return {
+                "campaigns": all_campaigns,
+                "meta_count": len(formatted_meta_campaigns),
+                "google_count": len(formatted_google_campaigns),
+                "total_count": len(all_campaigns),
+                "time_range": time_range
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to get multi-platform campaigns: {e}")
+            return {
+                "campaigns": [],
+                "meta_count": 0,
+                "google_count": 0,
+                "total_count": 0,
+                "time_range": time_range
+            }

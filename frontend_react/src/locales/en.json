@@ -650,6 +650,171 @@
     "webhook_ycloud_instructions": "Already configured in YCloud for WhatsApp",
     "webhook_token_instructions": "Use as Verify Token in Meta Developers"
   },
+  "marketing_google": {
+    "title": "Google Ads",
+    "subtitle": "Control panel for Google Ads campaigns and ROI tracking",
+    "connection": "Google Connection",
+    "connected_active": "ACTIVE",
+    "connected_disconnected": "DISCONNECTED",
+    "connected_desc": "Your Google Ads account is synced and fetching real data.",
+    "disconnected_desc": "Connect your Google Ads account to start measuring ROI of your campaigns.",
+    "reconnect": "Reconnect Google Account",
+    "connect": "Connect Google Ads",
+    "active_campaigns": "Active Campaigns",
+    "campaign_type": "Campaign Type",
+    "budget": "Budget",
+    "impressions": "Impressions",
+    "clicks": "Clicks",
+    "cost": "Cost",
+    "conversions": "Conversions",
+    "conversions_value": "Conversions Value",
+    "ctr": "CTR",
+    "cpc": "CPC",
+    "conversion_rate": "Conversion Rate",
+    "roas": "ROAS",
+    "start_date": "Start Date",
+    "end_date": "End Date",
+    "currency": "Currency",
+    "status": {
+      "enabled": "Active",
+      "paused": "Paused",
+      "removed": "Removed",
+      "archived": "Archived"
+    },
+    "type": {
+      "search": "Search",
+      "display": "Display",
+      "video": "Video",
+      "shopping": "Shopping",
+      "performance_max": "Performance Max"
+    },
+    "table_campaign": "Campaign",
+    "table_type": "Type",
+    "table_status": "Status",
+    "table_budget": "Budget",
+    "table_impressions": "Impressions",
+    "table_clicks": "Clicks",
+    "table_cost": "Cost",
+    "table_conversions": "Conversions",
+    "table_ctr": "CTR",
+    "table_cpc": "CPC",
+    "table_roas": "ROAS",
+    "no_campaigns": "No active Google Ads campaigns found.",
+    "no_data": "No Google Ads data found for selected filters.",
+    "metrics_card_title": "Google Ads Metrics",
+    "campaign_count": "Total Campaigns",
+    "demo_data_notice": "⚠️ Showing demo data. Connect Google Ads to see real data.",
+    "errors": {
+      "no_auth_url": "Could not get Google authorization URL",
+      "auth_failed": "Google authentication failed or was cancelled.",
+      "token_exchange_failed": "Error exchanging Google token. Retry connection.",
+      "init_failed": "Error initiating Google Ads connection. Check console.",
+      "config_missing": "Google configuration incomplete. Contact administrator.",
+      "developer_token_missing": "Google Ads Developer Token not configured.",
+      "api_error": "Google Ads API error."
+    },
+    "wizard": {
+      "title": "Connect Google Ads",
+      "welcome": {
+        "title": "Connect Google Ads",
+        "description": "Connect your Google Ads account to track campaigns, measure ROI and analyze performance alongside Meta Ads.",
+        "benefits": {
+          "title": "Benefits of connecting Google Ads",
+          "campaign_tracking": "Real-time Google Ads campaign tracking",
+          "roi_analytics": "ROI and conversion metrics analysis",
+          "combined_dashboard": "Combined dashboard with Meta Ads",
+          "automatic_sync": "Automatic data synchronization"
+        },
+        "config_status": "Configuration Status",
+        "connect_button": "Connect Google Ads",
+        "configure_manually": "Configure Manually"
+      },
+      "configure": {
+        "title": "Manual Configuration",
+        "description": "Configure Google Ads credentials manually on the server.",
+        "requirements": {
+          "title": "Prerequisites",
+          "google_cloud_project": "Google Cloud Console project",
+          "enable_apis": "Enable APIs: Google Ads API and OAuth 2.0",
+          "oauth_credentials": "Create OAuth 2.0 credentials (Client ID and Secret)",
+          "developer_token": "Request Google Ads API Developer Token",
+          "configure_redirect": "Configure Redirect URIs in Google Cloud"
+        },
+        "variables": {
+          "title": "Required Environment Variables",
+          "client_id_desc": "Google Cloud OAuth 2.0 Client ID",
+          "client_secret_desc": "Google Cloud OAuth 2.0 Client Secret",
+          "developer_token_desc": "Google Ads API Developer Token (may take 2-5 days)"
+        },
+        "test_connection": "Test Connection"
+      },
+      "authorize": {
+        "title": "Authorize Google Ads",
+        "description": "A window will open to authorize access to your Google Ads account.",
+        "instructions": {
+          "title": "Instructions",
+          "open_window": "A new window will open with Google authorization page",
+          "select_account": "Select Google account with Google Ads access",
+          "grant_permissions": "Grant requested permissions",
+          "wait_redirect": "Wait for automatic redirect"
+        },
+        "note": "If window doesn't open, check if your browser is blocking popups.",
+        "open_again": "Open Again",
+        "check_connection": "Check Connection"
+      },
+      "complete": {
+        "title": "Connection Successful!",
+        "description": "Your Google Ads account has been successfully connected.",
+        "connection_details": "Connection Details",
+        "next_steps": "Next Steps",
+        "steps": {
+          "view_dashboard": "Review combined dashboard with Google and Meta metrics",
+          "configure_sync": "Configure automatic data synchronization",
+          "setup_alerts": "Set up alerts for important metrics"
+        },
+        "finish_button": "Finish",
+        "view_dashboard": "View Dashboard"
+      },
+      "error": {
+        "title": "Connection Error",
+        "description": "Could not connect to Google Ads.",
+        "troubleshooting": {
+          "title": "Troubleshooting",
+          "check_credentials": "Verify Google credentials are correctly configured",
+          "verify_redirect": "Verify Redirect URIs match exactly",
+          "check_permissions": "Ensure you have sufficient permissions in Google Ads",
+          "contact_support": "Contact technical support if issue persists"
+        },
+        "config_status": "Configuration Status",
+        "retry_button": "Retry",
+        "configure_manually": "Configure Manually"
+      }
+    },
+    "sync": {
+      "title": "Sync Data",
+      "description": "Manually sync Google Ads data",
+      "button": "Sync Now",
+      "success": "Sync completed successfully",
+      "error": "Error syncing data",
+      "last_sync": "Last sync",
+      "never": "Never"
+    },
+    "platform_tabs": {
+      "meta": "Meta Ads",
+      "google": "Google Ads",
+      "combined": "Combined"
+    },
+    "combined_stats": {
+      "title": "Combined Statistics",
+      "description": "Combined metrics from Meta Ads and Google Ads",
+      "total_impressions": "Total Impressions",
+      "total_clicks": "Total Clicks",
+      "total_cost": "Total Cost",
+      "total_conversions": "Total Conversions",
+      "total_revenue": "Total Revenue",
+      "platform_distribution": "Platform Distribution"
+    }
+  },
   "hsm": {
     "title": "Automations & HSM",
     "subtitle": "WhatsApp Marketing & ROI Forge",
