@@ -1047,4 +1047,20 @@ async def _get_page_details_with_fallback(client, lead_data):
         """Add note to lead"""
         
         query = """
-            INSERT INTO lead_notes (lead_id, tenant_id, content,
+            INSERT INTO lead_notes (lead_id, tenant_id, content, created_by)
+            VALUES ($1, $2, $3, $4)
+            RETURNING id
+        """
+
+        try:
+            result = await db.pool.fetchrow(
+                query,
+                uuid.UUID(str(lead_id)),
+                tenant_id,
+                content,
+                uuid.UUID(user_id) if user_id else None
+            )
+            return str(result["id"]) if result else None
+        except Exception as e:
+            logger.error(f"Error adding note to lead: {e}")
+            raise
