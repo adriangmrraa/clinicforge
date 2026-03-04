@@ -560,6 +560,97 @@ class Database:
                 END IF;
             END $$;
             """,
+            # Parche 27: Meta Form Leads System (tablas para gestión de leads de Meta Lead Forms)
+            """
+            CREATE TABLE IF NOT EXISTS meta_form_leads (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+                form_id VARCHAR(255),
+                page_id VARCHAR(255),
+                ad_id VARCHAR(255),
+                adset_id VARCHAR(255),
+                campaign_id VARCHAR(255),
+                ad_name TEXT,
+                adset_name TEXT,
+                campaign_name TEXT,
+                page_name TEXT,
+                full_name TEXT,
+                email VARCHAR(255),
+                phone_number VARCHAR(50),
+                custom_questions JSONB DEFAULT '{}',
+                status VARCHAR(50) DEFAULT 'new' CHECK (status IN ('new', 'contacted', 'consultation_scheduled', 'treatment_planned', 'converted', 'not_interested', 'spam')),
+                assigned_to UUID REFERENCES users(id),
+                notes TEXT,
+                medical_interest TEXT,
+                preferred_specialty TEXT,
+                insurance_provider TEXT,
+                preferred_date DATE,
+                preferred_time TIME,
+                lead_source VARCHAR(100) DEFAULT 'meta_form',
+                attribution_data JSONB DEFAULT '{}',
+                webhook_payload JSONB DEFAULT '{}',
+                converted_to_patient_id UUID REFERENCES patients(id),
+                converted_at TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_meta_form_leads_tenant_status ON meta_form_leads(tenant_id, status);
+            CREATE INDEX IF NOT EXISTS idx_meta_form_leads_campaign ON meta_form_leads(campaign_id);
+            CREATE INDEX IF NOT EXISTS idx_meta_form_leads_ad ON meta_form_leads(ad_id);
+            CREATE INDEX IF NOT EXISTS idx_meta_form_leads_created ON meta_form_leads(created_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_meta_form_leads_assigned ON meta_form_leads(assigned_to);
+            CREATE INDEX IF NOT EXISTS idx_meta_form_leads_phone ON meta_form_leads(phone_number);
+            """,
+            # Parche 27b: lead_status_history (historial de cambios de estado de un lead)
+            """
+            CREATE TABLE IF NOT EXISTS lead_status_history (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                lead_id UUID NOT NULL REFERENCES meta_form_leads(id) ON DELETE CASCADE,
+                tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+                old_status VARCHAR(50),
+                new_status VARCHAR(50) NOT NULL,
+                changed_by UUID REFERENCES users(id),
+                change_reason TEXT,
+                notes TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_lead_status_history_lead ON lead_status_history(lead_id);
+            CREATE INDEX IF NOT EXISTS idx_lead_status_history_tenant ON lead_status_history(tenant_id);
+            CREATE INDEX IF NOT EXISTS idx_lead_status_history_created ON lead_status_history(created_at DESC);
+            """,
+            # Parche 27c: lead_notes (notas internas sobre un lead)
+            """
+            CREATE TABLE IF NOT EXISTS lead_notes (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                lead_id UUID NOT NULL REFERENCES meta_form_leads(id) ON DELETE CASCADE,
+                tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+                content TEXT NOT NULL,
+                created_by UUID REFERENCES users(id),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_lead_notes_lead ON lead_notes(lead_id);
+            CREATE INDEX IF NOT EXISTS idx_lead_notes_tenant ON lead_notes(tenant_id);
+            CREATE INDEX IF NOT EXISTS idx_lead_notes_created ON lead_notes(created_at DESC);
+            """,
+            # Parche 27d: Columnas Meta Ads adicionales en patients (meta_adset_id, meta_adset_name, etc.)
+            """
+            DO $$
+            BEGIN
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='patients' AND column_name='meta_adset_id') THEN
+                    ALTER TABLE patients ADD COLUMN meta_adset_id VARCHAR(255);
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='patients' AND column_name='meta_adset_name') THEN
+                    ALTER TABLE patients ADD COLUMN meta_adset_name TEXT;
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='patients' AND column_name='meta_ad_name') THEN
+                    ALTER TABLE patients ADD COLUMN meta_ad_name TEXT;
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='patients' AND column_name='meta_campaign_name') THEN
+                    ALTER TABLE patients ADD COLUMN meta_campaign_name TEXT;
+                END IF;
+            END $$;
+            """,
         ]
 
         async with self.pool.acquire() as conn:
