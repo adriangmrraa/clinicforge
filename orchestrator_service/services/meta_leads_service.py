@@ -514,8 +514,8 @@ class MetaLeadsService:
             SELECT 
                 mfl.*,
                 u.email as assigned_email,
-                u.full_name as assigned_name,
-                p.full_name as patient_name
+                CONCAT(u.first_name, ' ', u.last_name) as assigned_name,
+                CONCAT(p.first_name, ' ', p.last_name) as patient_name
             FROM meta_form_leads mfl
             LEFT JOIN users u ON mfl.assigned_to = u.id
             LEFT JOIN patients p ON mfl.converted_to_patient_id = p.id
@@ -617,8 +617,8 @@ class MetaLeadsService:
             SELECT 
                 mfl.*,
                 u.email as assigned_email,
-                u.full_name as assigned_name,
-                p.full_name as patient_name,
+                CONCAT(u.first_name, ' ', u.last_name) as assigned_name,
+                CONCAT(p.first_name, ' ', p.last_name) as patient_name,
                 p.id as patient_id
             FROM meta_form_leads mfl
             LEFT JOIN users u ON mfl.assigned_to = u.id
@@ -652,7 +652,7 @@ class MetaLeadsService:
         
         # Get notes
         notes_query = """
-            SELECT ln.*, u.email as created_by_email, u.full_name as created_by_name
+            SELECT ln.*, u.email as created_by_email, CONCAT(u.first_name, ' ', u.last_name) as created_by_name
             FROM lead_notes ln
             LEFT JOIN users u ON ln.created_by = u.id
             WHERE ln.lead_id = $1 
