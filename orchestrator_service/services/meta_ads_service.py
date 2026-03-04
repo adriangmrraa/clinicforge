@@ -150,7 +150,7 @@ class MetaAdsClient:
                      'ACTIVE', 'PAUSED', 'DELETED', 'ARCHIVED', 'IN_PROCESS', 'WITH_ISSUES', 
                      'CAMPAIGN_PAUSED', 'ADSET_PAUSED'
                  ]}]
-        else:
+        else: # level == "ad"
             fields = "ad_id,ad_name,campaign_id,campaign_name,spend,impressions,clicks,account_currency"
             if filtering is None:
                 filtering = [{'field': 'ad.effective_status', 'operator': 'IN', 'value': [
