@@ -125,7 +125,7 @@ class MetaAdsClient:
             logger.error(f"❌ Error inesperado consultando Meta Graph API: {e}")
             raise
 
-    async def get_ads_insights(self, ad_account_id: str, date_preset: str = "maximum", level: str = "ad", filtering: Optional[list] = None, time_range: Optional[dict] = None) -> list:
+    async def get_ads_insights(self, ad_account_id: str, date_preset: str = "maximum", level: str = "ad", filtering: Optional[list] = None) -> list:
         """
         Obtiene métricas de rendimiento (gasto, leads, etc.) a nivel de anuncio (default)
         o cuenta/campaña si se especifica 'level'.
@@ -161,21 +161,16 @@ class MetaAdsClient:
         url = f"{GRAPH_API_BASE}/{account_id}/insights"
         params = {
             "fields": fields,
+            "date_preset": date_preset,
             "level": level,
             "access_token": self.access_token,
             "limit": 1000 # Aumentar límite para traer todo el historial
         }
         
-        # Usar time_range si está disponible (más preciso), de lo contrario usar date_preset
-        if time_range and "since" in time_range and "until" in time_range:
-            params["time_range"] = json.dumps({"since": time_range["since"], "until": time_range["until"]})
-            logger.info(f"🔍 Meta Request: {url} | Level={level} | TimeRange={time_range} | Filter={params.get('filtering', 'None')}")
-        else:
-            params["date_preset"] = date_preset
-            logger.info(f"🔍 Meta Request: {url} | Level={level} | Preset={date_preset} | Filter={params.get('filtering', 'None')}")
-        
         if filtering:
             params["filtering"] = json.dumps(filtering)
+            
+        logger.info(f"🔍 Meta Request: {url} | Level={level} | Preset={date_preset} | Filter={params.get('filtering')}")
 
         try:
             all_insights = []
@@ -264,7 +259,7 @@ class MetaAdsClient:
         except Exception as e:
             logger.error(f"❌ Error obteniendo cuentas de anuncios de Meta: {e}")
             return []
-    async def get_campaigns_with_insights(self, ad_account_id: str, date_preset: str = "maximum", filtering: list = None, time_range: Optional[dict] = None) -> list:
+    async def get_campaigns_with_insights(self, ad_account_id: str, date_preset: str = "maximum", filtering: list = None) -> list:
         """
         Estrategia 'Campaign-First': Lista campañas y expande el campo 'insights' para obtener 
         métricas incluso de las borradas/archivadas que el endpoint de /insights omite.

@@ -168,39 +168,16 @@ class MarketingService:
             if token and ad_account_id:
                 try:
                     meta_client = MetaAdsClient(token)
-                    
-                    # Calcular fechas para time_range (más preciso que date_preset)
-                    from datetime import datetime, timedelta
-                    now = datetime.now()
-                    
-                    if time_range == "last_30d":
-                        since_date = (now - timedelta(days=30)).strftime("%Y-%m-%d")
-                        until_date = now.strftime("%Y-%m-%d")
-                        meta_preset = "last_30d"
-                        time_range_param = {"since": since_date, "until": until_date}
-                    elif time_range == "last_90d":
-                        since_date = (now - timedelta(days=90)).strftime("%Y-%m-%d")
-                        until_date = now.strftime("%Y-%m-%d")
-                        meta_preset = "last_90d"
-                        time_range_param = {"since": since_date, "until": until_date}
-                    elif time_range == "this_year":
-                        since_date = datetime(now.year, 1, 1).strftime("%Y-%m-%d")
-                        until_date = now.strftime("%Y-%m-%d")
-                        meta_preset = "this_year"
-                        time_range_param = {"since": since_date, "until": until_date}
-                    else:  # lifetime, all
-                        meta_preset = "maximum"
-                        time_range_param = None
-                    
-                    logger.info(f"📅 Time Range Config: {time_range}, Meta Preset: {meta_preset}, Since: {since_date if time_range_param else 'N/A'}, Until: {until_date if time_range_param else 'N/A'}")
+                    meta_preset = {
+                        "last_30d": "last_30d",
+                        "last_90d": "last_90d",
+                        "this_year": "this_year",
+                        "lifetime": "maximum",
+                        "all": "maximum"
+                    }.get(time_range, "last_30d")
                     
                     # 1.1 Obtener total cuenta para reconciliación (ROI Real)
-                    acc_ins = await meta_client.get_ads_insights(
-                        ad_account_id, 
-                        date_preset=meta_preset, 
-                        level="account",
-                        time_range=time_range_param
-                    )
+                    acc_ins = await meta_client.get_ads_insights(ad_account_id, date_preset=meta_preset, level="account")
                     if acc_ins:
                          account_total_spend = float(acc_ins[0].get('spend', 0))
 
@@ -222,15 +199,13 @@ class MarketingService:
                     meta_campaigns = await meta_client.get_ads_insights(
                         ad_account_id, 
                         date_preset=meta_preset, 
-                        level="campaign",
-                        time_range=time_range_param
+                        level="campaign"
                     )
                     
                     meta_ads_raw = await meta_client.get_ads_insights(
                         ad_account_id, 
                         date_preset=meta_preset, 
-                        level="ad",
-                        time_range=time_range_param
+                        level="ad"
                     )
                     
                     logger.info(f"📊 Meta API Stats: {len(meta_campaigns)} campaigns, {len(meta_ads_raw)} ads for preset {meta_preset} (range: {time_range})")
