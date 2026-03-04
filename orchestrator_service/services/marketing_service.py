@@ -148,8 +148,6 @@ class MarketingService:
             token = await get_tenant_credential(tenant_id, "META_USER_LONG_TOKEN")
             ad_account_id = await get_tenant_credential(tenant_id, "META_AD_ACCOUNT_ID")
             
-            logger.info(f"🔍 Campaigns Debug: Tenant={tenant_id}, TokenFound={bool(token)}, AdAccount={ad_account_id}, Range={time_range}, Interval={interval}")
-            
             # Mapeo de time_range a intervalos compatibles con asyncpg (timedelta)
             interval_map = {
                 "last_30d": timedelta(days=30),
@@ -160,6 +158,8 @@ class MarketingService:
                 "all": timedelta(days=36500)
             }
             interval = interval_map.get(time_range, timedelta(days=30))
+            
+            logger.info(f"🔍 Campaigns Debug: Tenant={tenant_id}, TokenFound={bool(token)}, AdAccount={ad_account_id}, Range={time_range}")
 
             # 1. Obtener datos de Meta (Campaign-First + Ads Strategy)
             meta_campaigns = []
