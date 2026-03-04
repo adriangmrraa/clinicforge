@@ -579,7 +579,7 @@ class Database:
                 phone_number VARCHAR(50),
                 custom_questions JSONB DEFAULT '{}',
                 status VARCHAR(50) DEFAULT 'new' CHECK (status IN ('new', 'contacted', 'consultation_scheduled', 'treatment_planned', 'converted', 'not_interested', 'spam')),
-                assigned_to UUID REFERENCES users(id),
+                assigned_to UUID,
                 notes TEXT,
                 medical_interest TEXT,
                 preferred_specialty TEXT,
@@ -589,7 +589,7 @@ class Database:
                 lead_source VARCHAR(100) DEFAULT 'meta_form',
                 attribution_data JSONB DEFAULT '{}',
                 webhook_payload JSONB DEFAULT '{}',
-                converted_to_patient_id UUID REFERENCES patients(id),
+                converted_to_patient_id INTEGER,
                 converted_at TIMESTAMP,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -609,7 +609,7 @@ class Database:
                 tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
                 old_status VARCHAR(50),
                 new_status VARCHAR(50) NOT NULL,
-                changed_by UUID REFERENCES users(id),
+                changed_by UUID,
                 change_reason TEXT,
                 notes TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -625,7 +625,7 @@ class Database:
                 lead_id UUID NOT NULL REFERENCES meta_form_leads(id) ON DELETE CASCADE,
                 tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
                 content TEXT NOT NULL,
-                created_by UUID REFERENCES users(id),
+                created_by UUID,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
