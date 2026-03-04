@@ -181,9 +181,21 @@ class MarketingService:
                     if acc_ins:
                          account_total_spend = float(acc_ins[0].get('spend', 0))
 
-                    # 1. Recuperar Datos desde Meta (Campañas y Maestro de Anuncios)
-                    # Estrategia: Pedimos listado a nivel de insights por campaña y anuncio, 
-                    # esto coincide directamente con cómo se consulta el Total de la Cuenta.
+                    # 1. Recuperar Metadatos y Rendimiento desde Meta
+                    # 1.1 Metadatos (Nombres y Estados)
+                    master_campaigns = await meta_client.get_campaigns_with_insights(
+                        ad_account_id, date_preset=meta_preset
+                    )
+                    master_ads = await meta_client.get_ads_with_insights(
+                        ad_account_id, include_insights=False
+                    )
+                    
+                    # 1.2 Mapas de status
+                    camp_status_map = {c.get('id'): c.get('effective_status', 'active') for c in master_campaigns}
+                    ad_status_map = {a.get('id'): a.get('effective_status', 'active') for a in master_ads}
+                    ad_campaign_map = {a.get('id'): a.get('campaign', {}).get('name', '—') for a in master_ads}
+
+                    # 1.3 Rendimiento exacto por fecha combinando /insights
                     meta_campaigns = await meta_client.get_ads_insights(
                         ad_account_id, 
                         date_preset=meta_preset, 
@@ -262,6 +274,8 @@ class MarketingService:
                     rev = float(local.get('revenue') or 0)
                     roi = (rev - spend) / spend if spend > 0 else 0
                     
+                    real_status = camp_status_map.get(camp_id, 'active')
+                    
                     campaign_results.append({
                         "ad_id": camp_id,
                         "ad_name": camp.get('campaign_name', 'Campaña sin nombre'),
@@ -271,7 +285,7 @@ class MarketingService:
                         "appointments": local.get('appointments', 0),
                         "patients_converted": local.get('appointments', 0),
                         "roi": roi,
-                        "status": camp.get('campaign.effective_status', 'active').lower()
+                        "status": real_status.lower()
                     })
             
             # 4. Procesar Creativos (Anuncios)
@@ -286,16 +300,19 @@ class MarketingService:
                     rev = float(local.get('revenue') or 0)
                     roi = (rev - spend) / spend if spend > 0 else 0
                     
+                    real_status = ad_status_map.get(ad_id, 'active').replace('_', ' ')
+                    real_campaign = ad_campaign_map.get(ad_id) or ad.get('campaign_name', '—')
+                    
                     creative_results.append({
                         "ad_id": ad_id,
                         "ad_name": ad.get('ad_name', 'Anuncio sin nombre'),
-                        "campaign_name": ad.get('campaign_name', '—'),
+                        "campaign_name": real_campaign,
                         "spend": spend,
                         "leads": local.get('leads', 0),
                         "appointments": local.get('appointments', 0),
                         "patients_converted": local.get('appointments', 0),
                         "roi": roi,
-                        "status": ad.get('ad.effective_status', 'active').replace('_', ' ').lower()
+                        "status": real_status.lower()
                     })
 
             # 5. Reconciliación (Gasto Histórico/Otros)
