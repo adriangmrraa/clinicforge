@@ -440,51 +440,6 @@ class MetaLeadsService:
             logger.warning(f"⚠️ Could not enrich lead with Meta data: {e}")
             logger.info("Los leads se guardarán con IDs pero sin nombres descriptivos")
 
-async def _get_ad_details_with_fallback(client, lead_data):
-    """Obtiene detalles del ad con fallback"""
-    try:
-        ad_details = await client.get_ad_details(lead_data["ad_id"])
-        if ad_details:
-            lead_data["ad_name"] = ad_details.get("name", f"Ad {lead_data['ad_id'][:8]}")
-            # Asegurar IDs si no estaban
-            if not lead_data.get("adset_id") and ad_details.get("adset_id"):
-                lead_data["adset_id"] = ad_details["adset_id"]
-            if not lead_data.get("campaign_id") and ad_details.get("campaign_id"):
-                lead_data["campaign_id"] = ad_details["campaign_id"]
-    except Exception as e:
-        lead_data["ad_name"] = f"Ad {lead_data['ad_id'][:8]}"
-        logger.warning(f"Could not get ad details: {e}")
-
-async def _get_campaign_details_with_fallback(client, lead_data):
-    """Obtiene detalles de campaña con fallback"""
-    try:
-        campaign_details = await client.get_campaign_details(lead_data["campaign_id"])
-        if campaign_details:
-            lead_data["campaign_name"] = campaign_details.get("name", f"Campaign {lead_data['campaign_id'][:8]}")
-    except Exception as e:
-        lead_data["campaign_name"] = f"Campaign {lead_data['campaign_id'][:8]}"
-        logger.warning(f"Could not get campaign details: {e}")
-
-async def _get_adset_details_with_fallback(client, lead_data):
-    """Obtiene detalles de adset con fallback"""
-    try:
-        adset_details = await client.get_adset_details(lead_data["adset_id"])
-        if adset_details:
-            lead_data["adset_name"] = adset_details.get("name", f"Adset {lead_data['adset_id'][:8]}")
-    except Exception as e:
-        lead_data["adset_name"] = f"Adset {lead_data['adset_id'][:8]}"
-        logger.warning(f"Could not get adset details: {e}")
-
-async def _get_page_details_with_fallback(client, lead_data):
-    """Obtiene detalles de página con fallback"""
-    try:
-        page_details = await client.get_page_details(lead_data["page_id"])
-        if page_details:
-            lead_data["page_name"] = page_details.get("name", f"Page {lead_data['page_id'][:8]}")
-    except Exception as e:
-        lead_data["page_name"] = f"Page {lead_data['page_id'][:8]}"
-        logger.warning(f"Could not get page details: {e}")
-    
     @staticmethod
     async def _save_lead(lead_data: Dict[str, Any], tenant_id: int) -> str:
         """Save lead to database"""
@@ -1064,3 +1019,49 @@ async def _get_page_details_with_fallback(client, lead_data):
         except Exception as e:
             logger.error(f"Error adding note to lead: {e}")
             raise
+
+async def _get_ad_details_with_fallback(client, lead_data):
+    """Obtiene detalles del ad con fallback"""
+    try:
+        ad_details = await client.get_ad_details(lead_data["ad_id"])
+        if ad_details:
+            lead_data["ad_name"] = ad_details.get("name", f"Ad {lead_data['ad_id'][:8]}")
+            # Asegurar IDs si no estaban
+            if not lead_data.get("adset_id") and ad_details.get("adset_id"):
+                lead_data["adset_id"] = ad_details["adset_id"]
+            if not lead_data.get("campaign_id") and ad_details.get("campaign_id"):
+                lead_data["campaign_id"] = ad_details["campaign_id"]
+    except Exception as e:
+        lead_data["ad_name"] = f"Ad {lead_data['ad_id'][:8]}"
+        logger.warning(f"Could not get ad details: {e}")
+
+async def _get_campaign_details_with_fallback(client, lead_data):
+    """Obtiene detalles de campaña con fallback"""
+    try:
+        campaign_details = await client.get_campaign_details(lead_data["campaign_id"])
+        if campaign_details:
+            lead_data["campaign_name"] = campaign_details.get("name", f"Campaign {lead_data['campaign_id'][:8]}")
+    except Exception as e:
+        lead_data["campaign_name"] = f"Campaign {lead_data['campaign_id'][:8]}"
+        logger.warning(f"Could not get campaign details: {e}")
+
+async def _get_adset_details_with_fallback(client, lead_data):
+    """Obtiene detalles de adset con fallback"""
+    try:
+        adset_details = await client.get_adset_details(lead_data["adset_id"])
+        if adset_details:
+            lead_data["adset_name"] = adset_details.get("name", f"Adset {lead_data['adset_id'][:8]}")
+    except Exception as e:
+        lead_data["adset_name"] = f"Adset {lead_data['adset_id'][:8]}"
+        logger.warning(f"Could not get adset details: {e}")
+
+async def _get_page_details_with_fallback(client, lead_data):
+    """Obtiene detalles de página con fallback"""
+    try:
+        page_details = await client.get_page_details(lead_data["page_id"])
+        if page_details:
+            lead_data["page_name"] = page_details.get("name", f"Page {lead_data['page_id'][:8]}")
+    except Exception as e:
+        lead_data["page_name"] = f"Page {lead_data['page_id'][:8]}"
+        logger.warning(f"Could not get page details: {e}")
+    
