@@ -143,7 +143,7 @@ class MetaAdsClient:
             fields = "spend,impressions,clicks,account_currency,account_id,account_name"
             # Nivel cuenta no soporta status filtering
         elif level == "campaign":
-            fields = "campaign_id,campaign_name,spend,impressions,clicks,account_currency,effective_status"
+            fields = "campaign_id,campaign_name,spend,impressions,clicks,account_currency"
             # Incluir campañas borradas/archivadas/pausadas
             if filtering is None:
                  filtering = [{'field': 'campaign.effective_status', 'operator': 'IN', 'value': [
@@ -151,7 +151,7 @@ class MetaAdsClient:
                      'CAMPAIGN_PAUSED', 'ADSET_PAUSED'
                  ]}]
         else:
-            fields = "ad_id,ad_name,campaign_id,campaign_name,spend,impressions,clicks,account_currency,effective_status"
+            fields = "ad_id,ad_name,campaign_id,campaign_name,spend,impressions,clicks,account_currency"
             if filtering is None:
                 filtering = [{'field': 'ad.effective_status', 'operator': 'IN', 'value': [
                     'ACTIVE', 'PAUSED', 'DELETED', 'ARCHIVED', 'IN_PROCESS', 'WITH_ISSUES', 

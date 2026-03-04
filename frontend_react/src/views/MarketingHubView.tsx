@@ -19,7 +19,7 @@ export default function MarketingHubView() {
 
     // State for all platforms
     const [activePlatform, setActivePlatform] = useState<Platform>('meta');
-    const [timeRange, setTimeRange] = useState<TimeRange>('last_30d');
+    const [timeRange, setTimeRange] = useState<TimeRange>('all');
 
     // Meta state
     const [metaStats, setMetaStats] = useState<any>(null);
@@ -388,8 +388,8 @@ export default function MarketingHubView() {
                                     <button
                                         onClick={() => setActiveTab('campaigns')}
                                         className={`py-3 px-1 border-b-2 font-medium text-sm transition-colors ${activeTab === 'campaigns'
-                                                ? 'border-blue-500 text-blue-600'
-                                                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                                            ? 'border-blue-500 text-blue-600'
+                                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                                             }`}
                                     >
                                         📢 {t('marketing.tabs.campaigns')}
@@ -397,8 +397,8 @@ export default function MarketingHubView() {
                                     <button
                                         onClick={() => setActiveTab('ads')}
                                         className={`py-3 px-1 border-b-2 font-medium text-sm transition-colors ${activeTab === 'ads'
-                                                ? 'border-blue-500 text-blue-600'
-                                                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                                            ? 'border-blue-500 text-blue-600'
+                                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                                             }`}
                                     >
                                         🎨 {t('marketing.tabs.creatives')}
@@ -411,7 +411,7 @@ export default function MarketingHubView() {
                                 {activeTab === 'campaigns' ? (
                                     <>
                                         <p className="text-xs text-gray-400 mb-3">{t('marketing.sorted_by_leads')}</p>
-                                        {metaStats?.campaigns?.length > 0 ? (
+                                        {metaStats?.campaigns?.campaigns?.length > 0 ? (
                                             <div className="overflow-x-auto">
                                                 <table className="min-w-full divide-y divide-gray-200">
                                                     <thead className="bg-gray-50">
@@ -426,7 +426,7 @@ export default function MarketingHubView() {
                                                         </tr>
                                                     </thead>
                                                     <tbody className="divide-y divide-gray-200">
-                                                        {[...metaStats.campaigns]
+                                                        {[...(metaStats?.campaigns?.campaigns || [])]
                                                             .sort((a: any, b: any) => (b.leads || 0) - (a.leads || 0))
                                                             .map((campaign: any, index: number) => (
                                                                 <tr key={index} className="hover:bg-gray-50">
@@ -454,8 +454,8 @@ export default function MarketingHubView() {
                                                                     </td>
                                                                     <td className="px-3 py-4 whitespace-nowrap">
                                                                         <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${campaign.status === 'active' ? 'bg-green-100 text-green-800' :
-                                                                                campaign.status === 'paused' ? 'bg-yellow-100 text-yellow-800' :
-                                                                                    'bg-gray-100 text-gray-800'
+                                                                            campaign.status === 'paused' ? 'bg-yellow-100 text-yellow-800' :
+                                                                                'bg-gray-100 text-gray-800'
                                                                             }`}>
                                                                             {campaign.status === 'active' ? 'Activo' :
                                                                                 campaign.status === 'paused' ? 'Pausado' :
@@ -474,7 +474,7 @@ export default function MarketingHubView() {
                                 ) : (
                                     <>
                                         <p className="text-xs text-gray-400 mb-3">{t('marketing.sorted_by_leads')}</p>
-                                        {metaStats?.ads?.length > 0 ? (
+                                        {metaStats?.campaigns?.creatives?.length > 0 ? (
                                             <div className="overflow-x-auto">
                                                 <table className="min-w-full divide-y divide-gray-200">
                                                     <thead className="bg-gray-50">
@@ -489,7 +489,7 @@ export default function MarketingHubView() {
                                                         </tr>
                                                     </thead>
                                                     <tbody className="divide-y divide-gray-200">
-                                                        {[...metaStats.ads]
+                                                        {[...(metaStats?.campaigns?.creatives || [])]
                                                             .sort((a: any, b: any) => (b.leads || 0) - (a.leads || 0))
                                                             .map((ad: any, index: number) => (
                                                                 <tr key={index} className="hover:bg-gray-50">
@@ -519,8 +519,8 @@ export default function MarketingHubView() {
                                                                     </td>
                                                                     <td className="px-3 py-4 whitespace-nowrap">
                                                                         <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${ad.status === 'active' ? 'bg-green-100 text-green-800' :
-                                                                                ad.status === 'paused' ? 'bg-yellow-100 text-yellow-800' :
-                                                                                    'bg-gray-100 text-gray-800'
+                                                                            ad.status === 'paused' ? 'bg-yellow-100 text-yellow-800' :
+                                                                                'bg-gray-100 text-gray-800'
                                                                             }`}>
                                                                             {ad.status === 'active' ? 'Activo' :
                                                                                 ad.status === 'paused' ? 'Pausado' :

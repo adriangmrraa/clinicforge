@@ -620,6 +620,7 @@
     "table_roi": "ROI Real",
     "table_status": "Estado",
     "table_patients": "Pacientes",
+    "table_campaign_name": "Campaña",
     "sorted_by_leads": "Ordenado por cantidad de leads",
     "no_campaigns": "No se encontraron campañas activas para esta cuenta.",
     "no_data": "No se encontraron datos para los filtros seleccionados.",
