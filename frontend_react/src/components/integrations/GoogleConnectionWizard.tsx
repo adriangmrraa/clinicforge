@@ -147,34 +147,34 @@ const GoogleConnectionWizard: React.FC<GoogleConnectionWizardProps> = ({
                 <Globe className="h-6 w-6 text-blue-600" />
               </div>
               <h3 className="mt-4 text-lg font-semibold text-gray-900">
-                {t('marketing.google.wizard.welcome.title')}
+                {t('marketing_google.wizard.welcome.title')}
               </h3>
               <p className="mt-2 text-sm text-gray-600">
-                {t('marketing.google.wizard.welcome.description')}
+                {t('marketing_google.wizard.welcome.description')}
               </p>
             </div>
 
             <div className="space-y-4">
               <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
                 <h4 className="font-medium text-gray-900">
-                  {t('marketing.google.wizard.welcome.benefits.title')}
+                  {t('marketing_google.wizard.welcome.benefits.title')}
                 </h4>
                 <ul className="mt-2 space-y-2 text-sm text-gray-600">
                   <li className="flex items-start">
                     <CheckCircle className="mr-2 h-4 w-4 text-green-500 mt-0.5" />
-                    {t('marketing.google.wizard.welcome.benefits.campaign_tracking')}
+                    {t('marketing_google.wizard.welcome.benefits.campaign_tracking')}
                   </li>
                   <li className="flex items-start">
                     <CheckCircle className="mr-2 h-4 w-4 text-green-500 mt-0.5" />
-                    {t('marketing.google.wizard.welcome.benefits.roi_analytics')}
+                    {t('marketing_google.wizard.welcome.benefits.roi_analytics')}
                   </li>
                   <li className="flex items-start">
                     <CheckCircle className="mr-2 h-4 w-4 text-green-500 mt-0.5" />
-                    {t('marketing.google.wizard.welcome.benefits.combined_dashboard')}
+                    {t('marketing_google.wizard.welcome.benefits.combined_dashboard')}
                   </li>
                   <li className="flex items-start">
                     <CheckCircle className="mr-2 h-4 w-4 text-green-500 mt-0.5" />
-                    {t('marketing.google.wizard.welcome.benefits.automatic_sync')}
+                    {t('marketing_google.wizard.welcome.benefits.automatic_sync')}
                   </li>
                 </ul>
               </div>
@@ -182,7 +182,7 @@ const GoogleConnectionWizard: React.FC<GoogleConnectionWizardProps> = ({
               {configStatus && (
                 <div className="rounded-lg border border-gray-200 bg-blue-50 p-4">
                   <h4 className="font-medium text-gray-900">
-                    {t('marketing.google.wizard.welcome.config_status')}
+                    {t('marketing_google.wizard.welcome.config_status')}
                   </h4>
                   <div className="mt-2 space-y-1 text-sm">
                     <div className="flex justify-between">
@@ -215,7 +215,7 @@ const GoogleConnectionWizard: React.FC<GoogleConnectionWizardProps> = ({
                     {t('common.connecting')}
                   </>
                 ) : (
-                  t('marketing.google.wizard.welcome.connect_button')
+                  t('marketing_google.wizard.welcome.connect_button')
                 )}
               </button>
               <button
@@ -223,7 +223,7 @@ const GoogleConnectionWizard: React.FC<GoogleConnectionWizardProps> = ({
                 onClick={handleConfigureManually}
                 className="rounded-md bg-white px-4 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50"
               >
-                {t('marketing.google.wizard.welcome.configure_manually')}
+                {t('marketing_google.wizard.welcome.configure_manually')}
               </button>
             </div>
           </div>
@@ -237,30 +237,30 @@ const GoogleConnectionWizard: React.FC<GoogleConnectionWizardProps> = ({
                 <AlertCircle className="h-6 w-6 text-yellow-600" />
               </div>
               <h3 className="mt-4 text-lg font-semibold text-gray-900">
-                {t('marketing.google.wizard.configure.title')}
+                {t('marketing_google.wizard.configure.title')}
               </h3>
               <p className="mt-2 text-sm text-gray-600">
-                {t('marketing.google.wizard.configure.description')}
+                {t('marketing_google.wizard.configure.description')}
               </p>
             </div>
 
             <div className="space-y-4">
               <div className="rounded-lg border border-gray-200 bg-yellow-50 p-4">
                 <h4 className="font-medium text-gray-900">
-                  {t('marketing.google.wizard.configure.requirements.title')}
+                  {t('marketing_google.wizard.configure.requirements.title')}
                 </h4>
                 <ol className="mt-2 list-decimal space-y-2 pl-5 text-sm text-gray-600">
-                  <li>{t('marketing.google.wizard.configure.requirements.google_cloud_project')}</li>
-                  <li>{t('marketing.google.wizard.configure.requirements.enable_apis')}</li>
-                  <li>{t('marketing.google.wizard.configure.requirements.oauth_credentials')}</li>
-                  <li>{t('marketing.google.wizard.configure.requirements.developer_token')}</li>
-                  <li>{t('marketing.google.wizard.configure.requirements.configure_redirect')}</li>
+                  <li>{t('marketing_google.wizard.configure.requirements.google_cloud_project')}</li>
+                  <li>{t('marketing_google.wizard.configure.requirements.enable_apis')}</li>
+                  <li>{t('marketing_google.wizard.configure.requirements.oauth_credentials')}</li>
+                  <li>{t('marketing_google.wizard.configure.requirements.developer_token')}</li>
+                  <li>{t('marketing_google.wizard.configure.requirements.configure_redirect')}</li>
                 </ol>
               </div>
 
               <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
                 <h4 className="font-medium text-gray-900">
-                  {t('marketing.google.wizard.configure.variables.title')}
+                  {t('marketing_google.wizard.configure.variables.title')}
                 </h4>
                 <div className="mt-2 space-y-2">
                   <div className="text-sm">
@@ -268,7 +268,7 @@ const GoogleConnectionWizard: React.FC<GoogleConnectionWizardProps> = ({
                       GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
                     </code>
                     <p className="mt-1 text-gray-600">
-                      {t('marketing.google.wizard.configure.variables.client_id_desc')}
+                      {t('marketing_google.wizard.configure.variables.client_id_desc')}
                     </p>
                   </div>
                   <div className="text-sm">
@@ -276,7 +276,7 @@ const GoogleConnectionWizard: React.FC<GoogleConnectionWizardProps> = ({
                       GOOGLE_CLIENT_SECRET=your-client-secret
                     </code>
                     <p className="mt-1 text-gray-600">
-                      {t('marketing.google.wizard.configure.variables.client_secret_desc')}
+                      {t('marketing_google.wizard.configure.variables.client_secret_desc')}
                     </p>
                   </div>
                   <div className="text-sm">
@@ -284,7 +284,7 @@ const GoogleConnectionWizard: React.FC<GoogleConnectionWizardProps> = ({
                       GOOGLE_DEVELOPER_TOKEN=your-developer-token
                     </code>
                     <p className="mt-1 text-gray-600">
-                      {t('marketing.google.wizard.configure.variables.developer_token_desc')}
+                      {t('marketing_google.wizard.configure.variables.developer_token_desc')}
                     </p>
                   </div>
                 </div>
@@ -304,7 +304,7 @@ const GoogleConnectionWizard: React.FC<GoogleConnectionWizardProps> = ({
                     {t('common.testing')}
                   </>
                 ) : (
-                  t('marketing.google.wizard.configure.test_connection')
+                  t('marketing_google.wizard.configure.test_connection')
                 )}
               </button>
               <button
@@ -326,23 +326,23 @@ const GoogleConnectionWizard: React.FC<GoogleConnectionWizardProps> = ({
                 <RefreshCw className="h-6 w-6 animate-spin text-blue-600" />
               </div>
               <h3 className="mt-4 text-lg font-semibold text-gray-900">
-                {t('marketing.google.wizard.authorize.title')}
+                {t('marketing_google.wizard.authorize.title')}
               </h3>
               <p className="mt-2 text-sm text-gray-600">
-                {t('marketing.google.wizard.authorize.description')}
+                {t('marketing_google.wizard.authorize.description')}
               </p>
             </div>
 
             <div className="space-y-4">
               <div className="rounded-lg border border-gray-200 bg-blue-50 p-4">
                 <h4 className="font-medium text-gray-900">
-                  {t('marketing.google.wizard.authorize.instructions.title')}
+                  {t('marketing_google.wizard.authorize.instructions.title')}
                 </h4>
                 <ol className="mt-2 list-decimal space-y-2 pl-5 text-sm text-gray-600">
-                  <li>{t('marketing.google.wizard.authorize.instructions.open_window')}</li>
-                  <li>{t('marketing.google.wizard.authorize.instructions.select_account')}</li>
-                  <li>{t('marketing.google.wizard.authorize.instructions.grant_permissions')}</li>
-                  <li>{t('marketing.google.wizard.authorize.instructions.wait_redirect')}</li>
+                  <li>{t('marketing_google.wizard.authorize.instructions.open_window')}</li>
+                  <li>{t('marketing_google.wizard.authorize.instructions.select_account')}</li>
+                  <li>{t('marketing_google.wizard.authorize.instructions.grant_permissions')}</li>
+                  <li>{t('marketing_google.wizard.authorize.instructions.wait_redirect')}</li>
                 </ol>
               </div>
 
@@ -350,7 +350,7 @@ const GoogleConnectionWizard: React.FC<GoogleConnectionWizardProps> = ({
                 <div className="flex items-center">
                   <AlertCircle className="mr-2 h-4 w-4 text-yellow-600" />
                   <p className="text-sm text-gray-600">
-                    {t('marketing.google.wizard.authorize.note')}
+                    {t('marketing_google.wizard.authorize.note')}
                   </p>
                 </div>
               </div>
@@ -371,7 +371,7 @@ const GoogleConnectionWizard: React.FC<GoogleConnectionWizardProps> = ({
                 ) : (
                   <>
                     <ExternalLink className="mr-2 h-4 w-4 inline" />
-                    {t('marketing.google.wizard.authorize.open_again')}
+                    {t('marketing_google.wizard.authorize.open_again')}
                   </>
                 )}
               </button>
@@ -380,7 +380,7 @@ const GoogleConnectionWizard: React.FC<GoogleConnectionWizardProps> = ({
                 onClick={handleTestConnection}
                 className="rounded-md bg-white px-4 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50"
               >
-                {t('marketing.google.wizard.authorize.check_connection')}
+                {t('marketing_google.wizard.authorize.check_connection')}
               </button>
             </div>
           </div>
@@ -394,10 +394,10 @@ const GoogleConnectionWizard: React.FC<GoogleConnectionWizardProps> = ({
                 <CheckCircle className="h-6 w-6 text-green-600" />
               </div>
               <h3 className="mt-4 text-lg font-semibold text-gray-900">
-                {t('marketing.google.wizard.complete.title')}
+                {t('marketing_google.wizard.complete.title')}
               </h3>
               <p className="mt-2 text-sm text-gray-600">
-                {t('marketing.google.wizard.complete.description')}
+                {t('marketing_google.wizard.complete.description')}
               </p>
             </div>
 
@@ -405,7 +405,7 @@ const GoogleConnectionWizard: React.FC<GoogleConnectionWizardProps> = ({
               <div className="space-y-4">
                 <div className="rounded-lg border border-gray-200 bg-green-50 p-4">
                   <h4 className="font-medium text-gray-900">
-                    {t('marketing.google.wizard.complete.connection_details')}
+                    {t('marketing_google.wizard.complete.connection_details')}
                   </h4>
                   <div className="mt-2 space-y-2 text-sm">
                     {connectionStatus.email && (
@@ -437,20 +437,20 @@ const GoogleConnectionWizard: React.FC<GoogleConnectionWizardProps> = ({
 
                 <div className="rounded-lg border border-gray-200 bg-blue-50 p-4">
                   <h4 className="font-medium text-gray-900">
-                    {t('marketing.google.wizard.complete.next_steps')}
+                    {t('marketing_google.wizard.complete.next_steps')}
                   </h4>
                   <ul className="mt-2 space-y-2 text-sm text-gray-600">
                     <li className="flex items-start">
                       <CheckCircle className="mr-2 h-4 w-4 text-green-500 mt-0.5" />
-                      {t('marketing.google.wizard.complete.steps.view_dashboard')}
+                      {t('marketing_google.wizard.complete.steps.view_dashboard')}
                     </li>
                     <li className="flex items-start">
                       <CheckCircle className="mr-2 h-4 w-4 text-green-500 mt-0.5" />
-                      {t('marketing.google.wizard.complete.steps.configure_sync')}
+                      {t('marketing_google.wizard.complete.steps.configure_sync')}
                     </li>
                     <li className="flex items-start">
                       <CheckCircle className="mr-2 h-4 w-4 text-green-500 mt-0.5" />
-                      {t('marketing.google.wizard.complete.steps.setup_alerts')}
+                      {t('marketing_google.wizard.complete.steps.setup_alerts')}
                     </li>
                   </ul>
                 </div>
@@ -463,14 +463,14 @@ const GoogleConnectionWizard: React.FC<GoogleConnectionWizardProps> = ({
                 onClick={handleComplete}
                 className="flex-1 rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
               >
-                {t('marketing.google.wizard.complete.finish_button')}
+                {t('marketing_google.wizard.complete.finish_button')}
               </button>
               <button
                 type="button"
                 onClick={() => window.location.href = '/marketing?platform=google'}
                 className="rounded-md bg-white px-4 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50"
               >
-                {t('marketing.google.wizard.complete.view_dashboard')}
+                {t('marketing_google.wizard.complete.view_dashboard')}
               </button>
             </div>
           </div>
@@ -484,30 +484,30 @@ const GoogleConnectionWizard: React.FC<GoogleConnectionWizardProps> = ({
                 <AlertCircle className="h-6 w-6 text-red-600" />
               </div>
               <h3 className="mt-4 text-lg font-semibold text-gray-900">
-                {t('marketing.google.wizard.error.title')}
+                {t('marketing_google.wizard.error.title')}
               </h3>
               <p className="mt-2 text-sm text-gray-600">
-                {connectionError || t('marketing.google.wizard.error.description')}
+                {connectionError || t('marketing_google.wizard.error.description')}
               </p>
             </div>
 
             <div className="space-y-4">
               <div className="rounded-lg border border-gray-200 bg-red-50 p-4">
                 <h4 className="font-medium text-gray-900">
-                  {t('marketing.google.wizard.error.troubleshooting.title')}
+                  {t('marketing_google.wizard.error.troubleshooting.title')}
                 </h4>
                 <ul className="mt-2 space-y-2 text-sm text-gray-600">
-                  <li>{t('marketing.google.wizard.error.troubleshooting.check_credentials')}</li>
-                  <li>{t('marketing.google.wizard.error.troubleshooting.verify_redirect')}</li>
-                  <li>{t('marketing.google.wizard.error.troubleshooting.check_permissions')}</li>
-                  <li>{t('marketing.google.wizard.error.troubleshooting.contact_support')}</li>
+                  <li>{t('marketing_google.wizard.error.troubleshooting.check_credentials')}</li>
+                  <li>{t('marketing_google.wizard.error.troubleshooting.verify_redirect')}</li>
+                  <li>{t('marketing_google.wizard.error.troubleshooting.check_permissions')}</li>
+                  <li>{t('marketing_google.wizard.error.troubleshooting.contact_support')}</li>
                 </ul>
               </div>
 
               {configStatus && (
                 <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
                   <h4 className="font-medium text-gray-900">
-                    {t('marketing.google.wizard.error.config_status')}
+                    {t('marketing_google.wizard.error.config_status')}
                   </h4>
                   <div className="mt-2 space-y-1 text-sm">
                     <div className="flex justify-between">
@@ -533,14 +533,14 @@ const GoogleConnectionWizard: React.FC<GoogleConnectionWizardProps> = ({
                 onClick={handleRetry}
                 className="flex-1 rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
               >
-                {t('marketing.google.wizard.error.retry_button')}
+                {t('marketing_google.wizard.error.retry_button')}
               </button>
               <button
                 type="button"
                 onClick={handleConfigureManually}
                 className="rounded-md bg-white px-4 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50"
               >
-                {t('marketing.google.wizard.error.configure_manually')}
+                {t('marketing_google.wizard.error.configure_manually')}
               </button>
             </div>
           </div>
@@ -570,7 +570,7 @@ const GoogleConnectionWizard: React.FC<GoogleConnectionWizardProps> = ({
 
           <div className="mb-4">
             <h2 className="text-xl font-bold text-gray-900">
-              {t('marketing.google.wizard.title')}
+              {t('marketing_google.wizard.title')}
             </h2>
             <div className="mt-2 flex items-center space-x-2">
               <div className="flex-1 h-2 rounded-full bg-gray-200">
