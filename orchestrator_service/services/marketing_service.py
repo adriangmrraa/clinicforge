@@ -279,7 +279,7 @@ class MarketingService:
                     campaign_results.append({
                         "ad_id": camp_id,
                         "ad_name": camp.get('campaign_name', 'Campaña sin nombre'),
-                        "campaign_name": "Agrupado por Campaña",
+                        "campaign_name": camp.get('campaign_name', 'Campaña sin nombre'),  # Usar el nombre real, no texto fijo
                         "spend": spend,
                         "leads": local.get('leads', 0),
                         "appointments": local.get('appointments', 0),
