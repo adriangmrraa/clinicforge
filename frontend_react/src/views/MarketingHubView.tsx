@@ -380,74 +380,164 @@ export default function MarketingHubView() {
                             />
                         )}
 
-                        {/* Meta campaigns table would go here */}
-                        <div className="rounded-lg border border-gray-200 bg-white p-4">
-                            <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                                {t('marketing.active_campaigns')}
-                            </h3>
-                            {metaStats?.campaigns?.length > 0 ? (
-                                <div className="overflow-x-auto">
-                                    <table className="min-w-full divide-y divide-gray-200">
-                                        <thead>
-                                            <tr>
-                                                <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                                    {t('marketing.table_campaign_ad')}
-                                                </th>
-                                                <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                                    {t('marketing.table_spend')}
-                                                </th>
-                                                <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                                    {t('marketing.table_leads')}
-                                                </th>
-                                                <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                                    {t('marketing.table_appts')}
-                                                </th>
-                                                <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                                    {t('marketing.table_roi')}
-                                                </th>
-                                                <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                                    {t('marketing.table_status')}
-                                                </th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-gray-200">
-                                            {metaStats.campaigns.slice(0, 5).map((campaign: any, index: number) => (
-                                                <tr key={index}>
-                                                    <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900">
-                                                        {campaign.campaign_name || campaign.ad_name}
-                                                    </td>
-                                                    <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900">
-                                                        ${campaign.spend?.toLocaleString('es-AR', { minimumFractionDigits: 2 }) || '0.00'}
-                                                    </td>
-                                                    <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900">
-                                                        {campaign.leads || 0}
-                                                    </td>
-                                                    <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900">
-                                                        {campaign.appointments || 0}
-                                                    </td>
-                                                    <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900">
-                                                        {campaign.roi ? `${campaign.roi.toFixed(2)}%` : '0.00%'}
-                                                    </td>
-                                                    <td className="px-3 py-4 whitespace-nowrap">
-                                                        <span className={`inline-flex rounded-full px-2 text-xs font-semibold leading-5 ${campaign.status === 'active' ? 'bg-green-100 text-green-800' :
-                                                                campaign.status === 'paused' ? 'bg-yellow-100 text-yellow-800' :
-                                                                    'bg-gray-100 text-gray-800'
-                                                            }`}>
-                                                            {campaign.status === 'active' ? 'Activo' :
-                                                                campaign.status === 'paused' ? 'Pausado' :
-                                                                    campaign.status || 'Desconocido'}
-                                                        </span>
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            ) : (
-                                <p className="text-gray-500 text-center py-4">
-                                    {t('marketing.no_campaigns')}
-                                </p>
-                            )}
+                        {/* Sub-tabs: Campañas / Creativos */}
+                        <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
+                            {/* Tab bar */}
+                            <div className="border-b border-gray-200 px-4">
+                                <nav className="-mb-px flex space-x-6">
+                                    <button
+                                        onClick={() => setActiveTab('campaigns')}
+                                        className={`py-3 px-1 border-b-2 font-medium text-sm transition-colors ${activeTab === 'campaigns'
+                                                ? 'border-blue-500 text-blue-600'
+                                                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                                            }`}
+                                    >
+                                        📢 {t('marketing.tabs.campaigns')}
+                                    </button>
+                                    <button
+                                        onClick={() => setActiveTab('ads')}
+                                        className={`py-3 px-1 border-b-2 font-medium text-sm transition-colors ${activeTab === 'ads'
+                                                ? 'border-blue-500 text-blue-600'
+                                                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                                            }`}
+                                    >
+                                        🎨 {t('marketing.tabs.creatives')}
+                                    </button>
+                                </nav>
+                            </div>
+
+                            {/* Tab content */}
+                            <div className="p-4">
+                                {activeTab === 'campaigns' ? (
+                                    <>
+                                        <p className="text-xs text-gray-400 mb-3">{t('marketing.sorted_by_leads')}</p>
+                                        {metaStats?.campaigns?.length > 0 ? (
+                                            <div className="overflow-x-auto">
+                                                <table className="min-w-full divide-y divide-gray-200">
+                                                    <thead className="bg-gray-50">
+                                                        <tr>
+                                                            <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('marketing.table_campaign_ad')}</th>
+                                                            <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">{t('marketing.table_spend')}</th>
+                                                            <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">{t('marketing.table_leads')}</th>
+                                                            <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">{t('marketing.table_patients')}</th>
+                                                            <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">{t('marketing.table_appts')}</th>
+                                                            <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">{t('marketing.table_roi')}</th>
+                                                            <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('marketing.table_status')}</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className="divide-y divide-gray-200">
+                                                        {[...metaStats.campaigns]
+                                                            .sort((a: any, b: any) => (b.leads || 0) - (a.leads || 0))
+                                                            .map((campaign: any, index: number) => (
+                                                                <tr key={index} className="hover:bg-gray-50">
+                                                                    <td className="px-3 py-4 text-sm font-medium text-gray-900 max-w-xs">
+                                                                        <div className="truncate">{campaign.campaign_name || campaign.ad_name || '—'}</div>
+                                                                    </td>
+                                                                    <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-700 text-right">
+                                                                        ${campaign.spend?.toLocaleString('es-AR', { minimumFractionDigits: 2 }) || '0.00'}
+                                                                    </td>
+                                                                    <td className="px-3 py-4 whitespace-nowrap text-right">
+                                                                        <span className={`inline-flex items-center justify-center min-w-[2rem] px-2 py-0.5 rounded-full text-xs font-bold ${(campaign.leads || 0) > 0 ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-500'
+                                                                            }`}>
+                                                                            {campaign.leads || 0}
+                                                                        </span>
+                                                                    </td>
+                                                                    <td className="px-3 py-4 whitespace-nowrap text-right">
+                                                                        <span className={`inline-flex items-center justify-center min-w-[2rem] px-2 py-0.5 rounded-full text-xs font-bold ${(campaign.patients_converted || 0) > 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-500'
+                                                                            }`}>
+                                                                            {campaign.patients_converted || 0}
+                                                                        </span>
+                                                                    </td>
+                                                                    <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-700 text-right">{campaign.appointments || 0}</td>
+                                                                    <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-700 text-right">
+                                                                        {campaign.roi ? `${campaign.roi.toFixed(2)}%` : '0.00%'}
+                                                                    </td>
+                                                                    <td className="px-3 py-4 whitespace-nowrap">
+                                                                        <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${campaign.status === 'active' ? 'bg-green-100 text-green-800' :
+                                                                                campaign.status === 'paused' ? 'bg-yellow-100 text-yellow-800' :
+                                                                                    'bg-gray-100 text-gray-800'
+                                                                            }`}>
+                                                                            {campaign.status === 'active' ? 'Activo' :
+                                                                                campaign.status === 'paused' ? 'Pausado' :
+                                                                                    campaign.status || 'Desconocido'}
+                                                                        </span>
+                                                                    </td>
+                                                                </tr>
+                                                            ))}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        ) : (
+                                            <p className="text-gray-500 text-center py-8">{t('marketing.no_campaigns')}</p>
+                                        )}
+                                    </>
+                                ) : (
+                                    <>
+                                        <p className="text-xs text-gray-400 mb-3">{t('marketing.sorted_by_leads')}</p>
+                                        {metaStats?.ads?.length > 0 ? (
+                                            <div className="overflow-x-auto">
+                                                <table className="min-w-full divide-y divide-gray-200">
+                                                    <thead className="bg-gray-50">
+                                                        <tr>
+                                                            <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('marketing.table_ad')}</th>
+                                                            <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('marketing.table_campaign_name')}</th>
+                                                            <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">{t('marketing.table_spend')}</th>
+                                                            <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">{t('marketing.table_leads')}</th>
+                                                            <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">{t('marketing.table_patients')}</th>
+                                                            <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">{t('marketing.table_roi')}</th>
+                                                            <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('marketing.table_status')}</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className="divide-y divide-gray-200">
+                                                        {[...metaStats.ads]
+                                                            .sort((a: any, b: any) => (b.leads || 0) - (a.leads || 0))
+                                                            .map((ad: any, index: number) => (
+                                                                <tr key={index} className="hover:bg-gray-50">
+                                                                    <td className="px-3 py-4 text-sm font-medium text-gray-900 max-w-[200px]">
+                                                                        <div className="truncate">{ad.ad_name || '—'}</div>
+                                                                    </td>
+                                                                    <td className="px-3 py-4 text-sm text-gray-500 max-w-[160px]">
+                                                                        <div className="truncate">{ad.campaign_name || '—'}</div>
+                                                                    </td>
+                                                                    <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-700 text-right">
+                                                                        ${ad.spend?.toLocaleString('es-AR', { minimumFractionDigits: 2 }) || '0.00'}
+                                                                    </td>
+                                                                    <td className="px-3 py-4 whitespace-nowrap text-right">
+                                                                        <span className={`inline-flex items-center justify-center min-w-[2rem] px-2 py-0.5 rounded-full text-xs font-bold ${(ad.leads || 0) > 0 ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-500'
+                                                                            }`}>
+                                                                            {ad.leads || 0}
+                                                                        </span>
+                                                                    </td>
+                                                                    <td className="px-3 py-4 whitespace-nowrap text-right">
+                                                                        <span className={`inline-flex items-center justify-center min-w-[2rem] px-2 py-0.5 rounded-full text-xs font-bold ${(ad.patients_converted || 0) > 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-500'
+                                                                            }`}>
+                                                                            {ad.patients_converted || 0}
+                                                                        </span>
+                                                                    </td>
+                                                                    <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-700 text-right">
+                                                                        {ad.roi ? `${ad.roi.toFixed(2)}%` : '0.00%'}
+                                                                    </td>
+                                                                    <td className="px-3 py-4 whitespace-nowrap">
+                                                                        <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${ad.status === 'active' ? 'bg-green-100 text-green-800' :
+                                                                                ad.status === 'paused' ? 'bg-yellow-100 text-yellow-800' :
+                                                                                    'bg-gray-100 text-gray-800'
+                                                                            }`}>
+                                                                            {ad.status === 'active' ? 'Activo' :
+                                                                                ad.status === 'paused' ? 'Pausado' :
+                                                                                    ad.status || 'Desconocido'}
+                                                                        </span>
+                                                                    </td>
+                                                                </tr>
+                                                            ))}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        ) : (
+                                            <p className="text-gray-500 text-center py-8">{t('marketing.no_data')}</p>
+                                        )}
+                                    </>
+                                )}
+                            </div>
                         </div>
                     </div>
                 );
@@ -746,8 +836,8 @@ export default function MarketingHubView() {
                             <button
                                 onClick={() => setActivePlatform('meta')}
                                 className={`py-2 px-1 border-b-2 font-medium text-sm ${activePlatform === 'meta'
-                                        ? 'border-blue-500 text-blue-600'
-                                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                                    ? 'border-blue-500 text-blue-600'
+                                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                                     }`}
                             >
                                 <div className="flex items-center">
@@ -758,8 +848,8 @@ export default function MarketingHubView() {
                             <button
                                 onClick={() => setActivePlatform('google')}
                                 className={`py-2 px-1 border-b-2 font-medium text-sm ${activePlatform === 'google'
-                                        ? 'border-blue-500 text-blue-600'
-                                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                                    ? 'border-blue-500 text-blue-600'
+                                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                                     }`}
                             >
                                 <div className="flex items-center">
@@ -770,8 +860,8 @@ export default function MarketingHubView() {
                             <button
                                 onClick={() => setActivePlatform('combined')}
                                 className={`py-2 px-1 border-b-2 font-medium text-sm ${activePlatform === 'combined'
-                                        ? 'border-blue-500 text-blue-600'
-                                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                                    ? 'border-blue-500 text-blue-600'
+                                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                                     }`}
                             >
                                 <div className="flex items-center">
@@ -789,8 +879,8 @@ export default function MarketingHubView() {
                         <button
                             onClick={() => setTimeRange('last_30d')}
                             className={`px-3 py-1 text-sm rounded-md ${timeRange === 'last_30d'
-                                    ? 'bg-blue-100 text-blue-700 font-medium'
-                                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                ? 'bg-blue-100 text-blue-700 font-medium'
+                                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                                 }`}
                         >
                             {t('marketing.range_30d')}
@@ -798,8 +888,8 @@ export default function MarketingHubView() {
                         <button
                             onClick={() => setTimeRange('last_90d')}
                             className={`px-3 py-1 text-sm rounded-md ${timeRange === 'last_90d'
-                                    ? 'bg-blue-100 text-blue-700 font-medium'
-                                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                ? 'bg-blue-100 text-blue-700 font-medium'
+                                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                                 }`}
                         >
                             {t('marketing.range_90d')}
@@ -807,8 +897,8 @@ export default function MarketingHubView() {
                         <button
                             onClick={() => setTimeRange('this_year')}
                             className={`px-3 py-1 text-sm rounded-md ${timeRange === 'this_year'
-                                    ? 'bg-blue-100 text-blue-700 font-medium'
-                                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                ? 'bg-blue-100 text-blue-700 font-medium'
+                                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                                 }`}
                         >
                             {t('marketing.range_year')}
@@ -816,8 +906,8 @@ export default function MarketingHubView() {
                         <button
                             onClick={() => setTimeRange('all')}
                             className={`px-3 py-1 text-sm rounded-md ${timeRange === 'all'
-                                    ? 'bg-blue-100 text-blue-700 font-medium'
-                                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                ? 'bg-blue-100 text-blue-700 font-medium'
+                                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                                 }`}
                         >
                             {t('marketing.range_all')}

@@ -212,8 +212,8 @@ class MarketingService:
                 except Exception as e:
                     logger.warning(f"⚠️ No se pudo obtener ads de Meta: {e}")
 
-            # 2. Obtener atribución local (Leads y Citas)
-            local_stats = await db.pool.fetch("""
+            # 2. Obtener atribución local (Leads y Citas) a nivel Anuncio
+            local_ad_stats = await db.pool.fetch("""
                 SELECT meta_ad_id,
                        COUNT(id) as leads,
                        COUNT(id) FILTER (WHERE EXISTS (
@@ -233,7 +233,30 @@ class MarketingService:
                 GROUP BY meta_ad_id
             """, tenant_id, interval)
             
-            attribution_map = {row['meta_ad_id']: row for row in local_stats}
+            ad_attribution_map = {row['meta_ad_id']: row for row in local_ad_stats}
+
+            # 2.1 Obtener atribución local (Leads y Citas) a nivel Campaña
+            local_campaign_stats = await db.pool.fetch("""
+                SELECT meta_campaign_id,
+                       COUNT(id) as leads,
+                       COUNT(id) FILTER (WHERE EXISTS (
+                           SELECT 1 FROM appointments a 
+                           WHERE a.patient_id = patients.id AND a.status IN ('confirmed', 'completed')
+                           AND a.appointment_datetime >= NOW() - $2::interval
+                       )) as appointments,
+                       (SELECT SUM(t.amount) 
+                        FROM accounting_transactions t 
+                        JOIN patients p2 ON t.patient_id = p2.id 
+                        WHERE p2.meta_campaign_id = patients.meta_campaign_id AND t.status = 'completed'
+                        AND t.created_at >= NOW() - $2::interval
+                       ) as revenue
+                FROM patients
+                WHERE tenant_id = $1 AND acquisition_source = 'META_ADS' AND meta_campaign_id IS NOT NULL
+                AND created_at >= NOW() - $2::interval
+                GROUP BY meta_campaign_id
+            """, tenant_id, interval)
+            
+            campaign_attribution_map = {row['meta_campaign_id']: row for row in local_campaign_stats}
 
             campaign_results = []
             creative_results = []
@@ -249,7 +272,7 @@ class MarketingService:
                     spend = float(ins.get('spend', 0))
                     reported_camp_spend += spend
                     
-                    local = attribution_map.get(camp_id, {})
+                    local = campaign_attribution_map.get(camp_id, {})
                     rev = float(local.get('revenue') or 0)
                     roi = (rev - spend) / spend if spend > 0 else 0
                     
@@ -260,6 +283,7 @@ class MarketingService:
                         "spend": spend,
                         "leads": local.get('leads', 0),
                         "appointments": local.get('appointments', 0),
+                        "patients_converted": local.get('appointments', 0),
                         "roi": roi,
                         "status": camp.get('effective_status', 'active').lower()
                     })
@@ -273,7 +297,7 @@ class MarketingService:
                     spend = float(ins.get('spend', 0))
                     reported_ad_spend += spend
                     
-                    local = attribution_map.get(ad_id, {})
+                    local = ad_attribution_map.get(ad_id, {})
                     rev = float(local.get('revenue') or 0)
                     roi = (rev - spend) / spend if spend > 0 else 0
                     
@@ -284,6 +308,7 @@ class MarketingService:
                         "spend": spend,
                         "leads": local.get('leads', 0),
                         "appointments": local.get('appointments', 0),
+                        "patients_converted": local.get('appointments', 0),
                         "roi": roi,
                         "status": ad.get('effective_status', 'active').replace('_', ' ').lower()
                     })
@@ -313,26 +338,31 @@ class MarketingService:
             meta_camp_ids = {c.get('id') for c in meta_campaigns}
             meta_ad_ids = {a.get('id') for a in meta_ads_raw}
             
-            for ad_id, local in attribution_map.items():
-                if ad_id != "historical_other":
-                    if ad_id not in meta_camp_ids:
-                        campaign_results.append({
-                            "ad_id": ad_id,
-                            "ad_name": "Anuncio con Atribución",
-                            "campaign_name": "Atribución Directa",
-                            "spend": 0.0,
-                            "leads": local.get('leads', 0), "appointments": local.get('appointments', 0),
-                            "roi": 0.0, "status": "inactive"
-                        })
-                    if ad_id not in meta_ad_ids:
-                        creative_results.append({
-                            "ad_id": ad_id,
-                            "ad_name": "Anuncio Histórico",
-                            "campaign_name": "Atribución Directa",
-                            "spend": 0.0,
-                            "leads": local.get('leads', 0), "appointments": local.get('appointments', 0),
-                            "roi": 0.0, "status": "inactive"
-                        })
+            for camp_id, local in campaign_attribution_map.items():
+                if camp_id != "historical_other" and camp_id not in meta_camp_ids:
+                    campaign_results.append({
+                        "ad_id": camp_id,
+                        "ad_name": "Campaña con Atribución",
+                        "campaign_name": "Atribución Directa",
+                        "spend": 0.0,
+                        "leads": local.get('leads', 0), 
+                        "appointments": local.get('appointments', 0),
+                        "patients_converted": local.get('appointments', 0),
+                        "roi": 0.0, "status": "inactive"
+                    })
+
+            for ad_id, local in ad_attribution_map.items():
+                if ad_id != "historical_other" and ad_id not in meta_ad_ids:
+                    creative_results.append({
+                        "ad_id": ad_id,
+                        "ad_name": "Anuncio Histórico",
+                        "campaign_name": "Atribución Directa",
+                        "spend": 0.0,
+                        "leads": local.get('leads', 0), 
+                        "appointments": local.get('appointments', 0),
+                        "patients_converted": local.get('appointments', 0),
+                        "roi": 0.0, "status": "inactive"
+                    })
 
             logger.info(f"[Marketing Sync] Tenant={tenant_id}, Range={time_range}, Campaigns={len(campaign_results)}, Creatives={len(creative_results)}")
 

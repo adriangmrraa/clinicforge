@@ -619,6 +619,8 @@
     "table_appts": "Citas",
     "table_roi": "ROI Real",
     "table_status": "Estado",
+    "table_patients": "Pacientes",
+    "sorted_by_leads": "Ordenado por cantidad de leads",
     "no_campaigns": "No se encontraron campañas activas para esta cuenta.",
     "no_data": "No se encontraron datos para los filtros seleccionados.",
     "roi_card_title": "ROI Real de Marketing",
