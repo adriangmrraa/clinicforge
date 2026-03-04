@@ -16,24 +16,24 @@ type TimeRange = 'last_30d' | 'last_90d' | 'this_year' | 'lifetime' | 'all';
 export default function MarketingHubView() {
     const { t } = useTranslation();
     const [searchParams, setSearchParams] = useSearchParams();
-    
+
     // State for all platforms
     const [activePlatform, setActivePlatform] = useState<Platform>('meta');
     const [timeRange, setTimeRange] = useState<TimeRange>('last_30d');
-    
+
     // Meta state
     const [metaStats, setMetaStats] = useState<any>(null);
     const [isMetaConnected, setIsMetaConnected] = useState(false);
     const [isMetaWizardOpen, setIsMetaWizardOpen] = useState(false);
-    
+
     // Google state
     const [googleStats, setGoogleStats] = useState<any>(null);
     const [isGoogleConnected, setIsGoogleConnected] = useState(false);
     const [isGoogleWizardOpen, setIsGoogleWizardOpen] = useState(false);
-    
+
     // Combined state
     const [combinedStats, setCombinedStats] = useState<any>(null);
-    
+
     // UI state
     const [activeTab, setActiveTab] = useState<'campaigns' | 'ads'>('campaigns');
     const [deploymentConfig, setDeploymentConfig] = useState<any>(null);
@@ -92,13 +92,13 @@ export default function MarketingHubView() {
         try {
             // Load Meta stats
             await loadMetaStats();
-            
+
             // Load Google stats
             await loadGoogleStats();
-            
+
             // Load combined stats
             await loadCombinedStats();
-            
+
             // Load deployment config
             try {
                 const configResponse = await api.get('/admin/config/deployment');
@@ -316,12 +316,12 @@ export default function MarketingHubView() {
             }
         } else if (activePlatform === 'combined') {
             const hasAnyConnection = isMetaConnected || isGoogleConnected;
-            
+
             if (hasAnyConnection) {
                 const connectedPlatforms = [];
                 if (isMetaConnected) connectedPlatforms.push('Meta Ads');
                 if (isGoogleConnected) connectedPlatforms.push('Google Ads');
-                
+
                 return (
                     <div className="mb-6 rounded-lg bg-purple-50 p-4 border border-purple-200">
                         <div className="flex items-center">
@@ -334,7 +334,7 @@ export default function MarketingHubView() {
                                 </h3>
                                 <div className="mt-1 text-sm text-purple-700">
                                     <p>
-                                        {t('marketing_google.combined_stats.description')} - 
+                                        {t('marketing_google.combined_stats.description')} -
                                         Conectado a: {connectedPlatforms.join(', ')}
                                     </p>
                                 </div>
@@ -379,7 +379,7 @@ export default function MarketingHubView() {
                                 timeRange={timeRange}
                             />
                         )}
-                        
+
                         {/* Meta campaigns table would go here */}
                         <div className="rounded-lg border border-gray-200 bg-white p-4">
                             <h3 className="text-lg font-semibold text-gray-900 mb-4">
@@ -429,14 +429,13 @@ export default function MarketingHubView() {
                                                         {campaign.roi ? `${campaign.roi.toFixed(2)}%` : '0.00%'}
                                                     </td>
                                                     <td className="px-3 py-4 whitespace-nowrap">
-                                                        <span className={`inline-flex rounded-full px-2 text-xs font-semibold leading-5 ${
-                                                            campaign.status === 'active' ? 'bg-green-100 text-green-800' :
-                                                            campaign.status === 'paused' ? 'bg-yellow-100 text-yellow-800' :
-                                                            'bg-gray-100 text-gray-800'
-                                                        }`}>
+                                                        <span className={`inline-flex rounded-full px-2 text-xs font-semibold leading-5 ${campaign.status === 'active' ? 'bg-green-100 text-green-800' :
+                                                                campaign.status === 'paused' ? 'bg-yellow-100 text-yellow-800' :
+                                                                    'bg-gray-100 text-gray-800'
+                                                            }`}>
                                                             {campaign.status === 'active' ? 'Activo' :
-                                                             campaign.status === 'paused' ? 'Pausado' :
-                                                             campaign.status || 'Desconocido'}
+                                                                campaign.status === 'paused' ? 'Pausado' :
+                                                                    campaign.status || 'Desconocido'}
                                                         </span>
                                                     </td>
                                                 </tr>
@@ -671,9 +670,8 @@ export default function MarketingHubView() {
                                                 </div>
                                             </td>
                                             <td className="px-3 py-4 whitespace-nowrap">
-                                                <span className={`inline-flex rounded-full px-2 text-xs font-semibold leading-5 ${
-                                                    isMetaConnected ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
-                                                }`}>
+                                                <span className={`inline-flex rounded-full px-2 text-xs font-semibold leading-5 ${isMetaConnected ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+                                                    }`}>
                                                     {isMetaConnected ? 'Conectado' : 'Desconectado'}
                                                 </span>
                                             </td>
@@ -684,7 +682,7 @@ export default function MarketingHubView() {
                                                 ${metaStats?.roi?.total_revenue?.toLocaleString('es-AR', { minimumFractionDigits: 2 }) || '0.00'}
                                             </td>
                                             <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900">
-                                                {metaStats?.roi?.total_spend > 0 
+                                                {metaStats?.roi?.total_spend > 0
                                                     ? `${((metaStats.roi.total_revenue / metaStats.roi.total_spend) * 100).toFixed(2)}%`
                                                     : '0.00%'}
                                             </td>
@@ -697,9 +695,8 @@ export default function MarketingHubView() {
                                                 </div>
                                             </td>
                                             <td className="px-3 py-4 whitespace-nowrap">
-                                                <span className={`inline-flex rounded-full px-2 text-xs font-semibold leading-5 ${
-                                                    isGoogleConnected ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
-                                                }`}>
+                                                <span className={`inline-flex rounded-full px-2 text-xs font-semibold leading-5 ${isGoogleConnected ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+                                                    }`}>
                                                     {isGoogleConnected ? 'Conectado' : 'Desconectado'}
                                                 </span>
                                             </td>
@@ -728,17 +725,17 @@ export default function MarketingHubView() {
     return (
         <div className="min-h-screen bg-gray-50">
             <PageHeader
-                title={activePlatform === 'combined' 
+                title={activePlatform === 'combined'
                     ? t('marketing_google.combined_stats.title')
                     : activePlatform === 'google'
-                    ? t('marketing_google.title')
-                    : t('nav.marketing')}
+                        ? t('marketing_google.title')
+                        : t('nav.marketing')}
                 subtitle={activePlatform === 'combined'
                     ? t('marketing_google.combined_stats.description')
                     : activePlatform === 'google'
-                    ? t('marketing_google.subtitle')
-                    : t('marketing.subtitle')}
-                icon={activePlatform === 'combined' ? BarChart3 : activePlatform === 'google' ? Globe : Megaphone}
+                        ? t('marketing_google.subtitle')
+                        : t('marketing.subtitle')}
+                icon={activePlatform === 'combined' ? <BarChart3 className="w-6 h-6" /> : activePlatform === 'google' ? <Globe className="w-6 h-6" /> : <Megaphone className="w-6 h-6" />}
             />
 
             <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6">
@@ -748,11 +745,10 @@ export default function MarketingHubView() {
                         <nav className="-mb-px flex space-x-8">
                             <button
                                 onClick={() => setActivePlatform('meta')}
-                                className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                                    activePlatform === 'meta'
+                                className={`py-2 px-1 border-b-2 font-medium text-sm ${activePlatform === 'meta'
                                         ? 'border-blue-500 text-blue-600'
                                         : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                                }`}
+                                    }`}
                             >
                                 <div className="flex items-center">
                                     <Megaphone className="h-4 w-4 mr-2" />
@@ -761,11 +757,10 @@ export default function MarketingHubView() {
                             </button>
                             <button
                                 onClick={() => setActivePlatform('google')}
-                                className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                                    activePlatform === 'google'
+                                className={`py-2 px-1 border-b-2 font-medium text-sm ${activePlatform === 'google'
                                         ? 'border-blue-500 text-blue-600'
                                         : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                                }`}
+                                    }`}
                             >
                                 <div className="flex items-center">
                                     <Globe className="h-4 w-4 mr-2" />
@@ -774,11 +769,10 @@ export default function MarketingHubView() {
                             </button>
                             <button
                                 onClick={() => setActivePlatform('combined')}
-                                className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                                    activePlatform === 'combined'
+                                className={`py-2 px-1 border-b-2 font-medium text-sm ${activePlatform === 'combined'
                                         ? 'border-blue-500 text-blue-600'
                                         : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                                }`}
+                                    }`}
                             >
                                 <div className="flex items-center">
                                     <BarChart3 className="h-4 w-4 mr-2" />
@@ -794,46 +788,42 @@ export default function MarketingHubView() {
                     <div className="flex space-x-2">
                         <button
                             onClick={() => setTimeRange('last_30d')}
-                            className={`px-3 py-1 text-sm rounded-md ${
-                                timeRange === 'last_30d'
+                            className={`px-3 py-1 text-sm rounded-md ${timeRange === 'last_30d'
                                     ? 'bg-blue-100 text-blue-700 font-medium'
                                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                            }`}
+                                }`}
                         >
                             {t('marketing.range_30d')}
                         </button>
                         <button
                             onClick={() => setTimeRange('last_90d')}
-                            className={`px-3 py-1 text-sm rounded-md ${
-                                timeRange === 'last_90d'
+                            className={`px-3 py-1 text-sm rounded-md ${timeRange === 'last_90d'
                                     ? 'bg-blue-100 text-blue-700 font-medium'
                                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                            }`}
+                                }`}
                         >
                             {t('marketing.range_90d')}
                         </button>
                         <button
                             onClick={() => setTimeRange('this_year')}
-                            className={`px-3 py-1 text-sm rounded-md ${
-                                timeRange === 'this_year'
+                            className={`px-3 py-1 text-sm rounded-md ${timeRange === 'this_year'
                                     ? 'bg-blue-100 text-blue-700 font-medium'
                                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                            }`}
+                                }`}
                         >
                             {t('marketing.range_year')}
                         </button>
                         <button
                             onClick={() => setTimeRange('all')}
-                            className={`px-3 py-1 text-sm rounded-md ${
-                                timeRange === 'all'
+                            className={`px-3 py-1 text-sm rounded-md ${timeRange === 'all'
                                     ? 'bg-blue-100 text-blue-700 font-medium'
                                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                            }`}
+                                }`}
                         >
                             {t('marketing.range_all')}
                         </button>
                     </div>
-                    
+
                     <button
                         onClick={loadAllStats}
                         disabled={isLoading}
