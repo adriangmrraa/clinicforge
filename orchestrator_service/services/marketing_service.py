@@ -182,32 +182,19 @@ class MarketingService:
                          account_total_spend = float(acc_ins[0].get('spend', 0))
 
                     # 1. Recuperar Datos desde Meta (Campañas y Maestro de Anuncios)
-                    # Estrategia: Pedimos el maestro de anuncios sin insights para asegurar que NADA se filtre por gasto=0
-                    meta_campaigns = await meta_client.get_campaigns_with_insights(ad_account_id, date_preset=meta_preset)
+                    # Estrategia: Pedimos listado a nivel de insights por campaña y anuncio, 
+                    # esto coincide directamente con cómo se consulta el Total de la Cuenta.
+                    meta_campaigns = await meta_client.get_ads_insights(
+                        ad_account_id, 
+                        date_preset=meta_preset, 
+                        level="campaign"
+                    )
                     
-                    # Maestro de anuncios (Lista completa de 16+ anuncios)
-                    meta_ads_master = await meta_client.get_ads_with_insights(ad_account_id, include_insights=False)
-                    
-                    # Datos de rendimiento (Solo anuncios con gasto en el periodo)
-                    meta_ads_with_spend = await meta_client.get_ads_with_insights(ad_account_id, date_preset=meta_preset, include_insights=True)
-                    
-                    # Mapear gasto por ID de anuncio
-                    spend_map = {}
-                    for ad in meta_ads_with_spend:
-                        insights_data = ad.get('insights', {}).get('data', [])
-                        if insights_data:
-                            spend_map[ad.get('id')] = insights_data[0]
-                    
-                    # Re-construir meta_ads_raw inyectando gasto al maestro
-                    meta_ads_raw = []
-                    for ad in meta_ads_master:
-                        ad_id = ad.get('id')
-                        # Si tiene gasto, se lo inyectamos
-                        if ad_id in spend_map:
-                            ad['insights'] = {'data': [spend_map[ad_id]]}
-                        else:
-                            ad['insights'] = {'data': []}
-                        meta_ads_raw.append(ad)
+                    meta_ads_raw = await meta_client.get_ads_insights(
+                        ad_account_id, 
+                        date_preset=meta_preset, 
+                        level="ad"
+                    )
 
                 except Exception as e:
                     logger.warning(f"⚠️ No se pudo obtener ads de Meta: {e}")
@@ -266,10 +253,9 @@ class MarketingService:
             # 3. Procesar Campañas
             if meta_campaigns:
                 for camp in meta_campaigns:
-                    insights_data = camp.get('insights', {}).get('data', [])
-                    ins = insights_data[0] if insights_data else {}
-                    camp_id = camp.get('id')
-                    spend = float(ins.get('spend', 0))
+                    camp_id = camp.get('campaign_id')
+                    if not camp_id: continue
+                    spend = float(camp.get('spend', 0))
                     reported_camp_spend += spend
                     
                     local = campaign_attribution_map.get(camp_id, {})
@@ -278,23 +264,22 @@ class MarketingService:
                     
                     campaign_results.append({
                         "ad_id": camp_id,
-                        "ad_name": camp.get('name', 'Campaña sin nombre'),
+                        "ad_name": camp.get('campaign_name', 'Campaña sin nombre'),
                         "campaign_name": "Agrupado por Campaña",
                         "spend": spend,
                         "leads": local.get('leads', 0),
                         "appointments": local.get('appointments', 0),
                         "patients_converted": local.get('appointments', 0),
                         "roi": roi,
-                        "status": camp.get('effective_status', 'active').lower()
+                        "status": camp.get('campaign.effective_status', 'active').lower()
                     })
             
             # 4. Procesar Creativos (Anuncios)
             if meta_ads_raw:
                 for ad in meta_ads_raw:
-                    insights_data = ad.get('insights', {}).get('data', [])
-                    ins = insights_data[0] if insights_data else {}
-                    ad_id = ad.get('id')
-                    spend = float(ins.get('spend', 0))
+                    ad_id = ad.get('ad_id')
+                    if not ad_id: continue
+                    spend = float(ad.get('spend', 0))
                     reported_ad_spend += spend
                     
                     local = ad_attribution_map.get(ad_id, {})
@@ -303,14 +288,14 @@ class MarketingService:
                     
                     creative_results.append({
                         "ad_id": ad_id,
-                        "ad_name": ad.get('name', 'Anuncio sin nombre'),
-                        "campaign_name": ad.get('campaign', {}).get('name', 'Sin campaña'),
+                        "ad_name": ad.get('ad_name', 'Anuncio sin nombre'),
+                        "campaign_name": ad.get('campaign_name', '—'),
                         "spend": spend,
                         "leads": local.get('leads', 0),
                         "appointments": local.get('appointments', 0),
                         "patients_converted": local.get('appointments', 0),
                         "roi": roi,
-                        "status": ad.get('effective_status', 'active').replace('_', ' ').lower()
+                        "status": ad.get('ad.effective_status', 'active').replace('_', ' ').lower()
                     })
 
             # 5. Reconciliación (Gasto Histórico/Otros)
