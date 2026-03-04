@@ -148,7 +148,7 @@ class MarketingService:
             token = await get_tenant_credential(tenant_id, "META_USER_LONG_TOKEN")
             ad_account_id = await get_tenant_credential(tenant_id, "META_AD_ACCOUNT_ID")
             
-            logger.info(f"🔍 Campaigns Debug: Tenant={tenant_id}, TokenFound={bool(token)}, AdAccount={ad_account_id}, Range={time_range}")
+            logger.info(f"🔍 Campaigns Debug: Tenant={tenant_id}, TokenFound={bool(token)}, AdAccount={ad_account_id}, Range={time_range}, Interval={interval}")
             
             # Mapeo de time_range a intervalos compatibles con asyncpg (timedelta)
             interval_map = {
@@ -207,6 +207,8 @@ class MarketingService:
                         date_preset=meta_preset, 
                         level="ad"
                     )
+                    
+                    logger.info(f"📊 Meta API Stats: {len(meta_campaigns)} campaigns, {len(meta_ads_raw)} ads for preset {meta_preset} (range: {time_range})")
 
                 except Exception as e:
                     logger.warning(f"⚠️ No se pudo obtener ads de Meta: {e}")
@@ -233,6 +235,7 @@ class MarketingService:
             """, tenant_id, interval)
             
             ad_attribution_map = {row['meta_ad_id']: row for row in local_ad_stats}
+            logger.info(f"📊 Local Ad Stats: Found {len(ad_attribution_map)} ads with attribution for range {time_range}")
 
             # 2.1 Obtener atribución local (Leads y Citas) a nivel Campaña
             local_campaign_stats = await db.pool.fetch("""
@@ -256,6 +259,7 @@ class MarketingService:
             """, tenant_id, interval)
             
             campaign_attribution_map = {row['meta_campaign_id']: row for row in local_campaign_stats}
+            logger.info(f"📊 Local Campaign Stats: Found {len(campaign_attribution_map)} campaigns with attribution for range {time_range}")
 
             campaign_results = []
             creative_results = []
