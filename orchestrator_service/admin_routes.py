@@ -7,8 +7,8 @@ import logging
 import re
 from datetime import datetime, timedelta, date, timezone
 from typing import List, Optional, Dict, Any
-from fastapi import APIRouter, HTTPException, Query, Header, Depends, Request, status, BackgroundTasks
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi import APIRouter, HTTPException, Query, Header, Depends, Request, status, BackgroundTasks, UploadFile, File, Form
+from fastapi.responses import JSONResponse, StreamingResponse, FileResponse
 from pydantic import BaseModel
 from db import db
 from gcal_service import gcal_service
@@ -377,6 +377,26 @@ class GCalendarBlockCreate(BaseModel):
 class ClinicalNote(BaseModel):
     content: str
     odontogram_data: Optional[Dict] = None
+
+# Modelos para Ficha Médica - Documentos
+class OdontogramUpdate(BaseModel):
+    odontogram_data: Dict[str, Any]
+
+class PatientDocumentCreate(BaseModel):
+    document_type: str = "clinical"
+    filename: str
+
+class PatientDocument(BaseModel):
+    id: int
+    tenant_id: int
+    patient_id: int
+    filename: str
+    file_path: str
+    file_size: Optional[int]
+    mime_type: Optional[str]
+    document_type: str
+    uploaded_by: Optional[int]
+    created_at: datetime
 
 class ProfessionalCreate(BaseModel):
     name: str
@@ -2276,7 +2296,7 @@ async def delete_patient(id: int, tenant_id: int = Depends(get_resolved_tenant_i
 async def get_clinical_records(id: int, tenant_id: int = Depends(get_resolved_tenant_id)):
     """Obtener historia clínica de un paciente. Aislado por tenant_id (Regla de Oro)."""
     rows = await db.pool.fetch("""
-        SELECT cr.id, cr.appointment_id, cr.diagnosis, cr.treatment_plan, cr.created_at 
+        SELECT cr.id, cr.appointment_id, cr.diagnosis, cr.treatment_plan, cr.odontogram_data, cr.created_at 
         FROM clinical_records cr
         JOIN patients p ON cr.patient_id = p.id
         WHERE cr.patient_id = $1 AND p.tenant_id = $2
@@ -2290,11 +2310,255 @@ async def add_clinical_note(id: int, note: ClinicalNote, tenant_id: int = Depend
     patient = await db.pool.fetchrow("SELECT id FROM patients WHERE id = $1 AND tenant_id = $2", id, tenant_id)
     if not patient:
         raise HTTPException(status_code=404, detail="Paciente no encontrado")
+    
+    # Incluir odontogram_data si está presente
+    odontogram_json = json.dumps(note.odontogram_data) if note.odontogram_data else '{}'
+    
     await db.pool.execute("""
-        INSERT INTO clinical_records (id, tenant_id, patient_id, diagnosis, odontogram, created_at)
-        VALUES ($1, $2, $3, $4, $5, NOW())
-    """, str(uuid.uuid4()), tenant_id, id, note.content, json.dumps(note.odontogram_data) if note.odontogram_data else '{}')
+        INSERT INTO clinical_records (id, tenant_id, patient_id, diagnosis, treatment_plan, odontogram_data, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6, NOW())
+    """, str(uuid.uuid4()), tenant_id, id, note.content, '{}', odontogram_json)
     return {"status": "ok"}
+
+# ==================== ENDPOINTS ODONTOGRAMA Y DOCUMENTOS (FICHA MÉDICA) ====================
+
+@router.put("/patients/{patient_id}/records/{record_id}/odontogram", 
+           dependencies=[Depends(verify_admin_token)], 
+           tags=["Pacientes"], 
+           summary="Actualizar odontograma en registro clínico")
+async def update_odontogram(
+    patient_id: int,
+    record_id: int,
+    odontogram_data: OdontogramUpdate,
+    tenant_id: int = Depends(get_resolved_tenant_id)
+):
+    """
+    Actualiza el odontograma de un registro clínico específico.
+    Aislado por tenant_id (Regla de Oro).
+    """
+    # Verificar que el registro pertenece al paciente y tenant
+    record = await db.pool.fetchrow("""
+        SELECT cr.id FROM clinical_records cr
+        JOIN patients p ON cr.patient_id = p.id
+        WHERE cr.id = $1 AND cr.patient_id = $2 AND p.tenant_id = $3
+    """, record_id, patient_id, tenant_id)
+    
+    if not record:
+        raise HTTPException(status_code=404, detail="Registro clínico no encontrado")
+    
+    # Actualizar odontograma - Asegurar filtro tenant_id
+    await db.pool.execute("""
+        UPDATE clinical_records cr
+        SET odontogram_data = $1
+        FROM patients p
+        WHERE cr.id = $2 
+        AND cr.patient_id = p.id 
+        AND p.tenant_id = $3
+    """, json.dumps(odontogram_data.odontogram_data), record_id, tenant_id)
+    
+    return {"status": "ok", "message": "Odontograma actualizado"}
+
+@router.get("/patients/{patient_id}/records/{record_id}/odontogram", 
+           dependencies=[Depends(verify_admin_token)], 
+           tags=["Pacientes"], 
+           summary="Obtener odontograma de registro clínico")
+async def get_odontogram(
+    patient_id: int,
+    record_id: int,
+    tenant_id: int = Depends(get_resolved_tenant_id)
+):
+    """
+    Obtiene el odontograma de un registro clínico específico.
+    Aislado por tenant_id (Regla de Oro).
+    """
+    record = await db.pool.fetchrow("""
+        SELECT cr.odontogram_data FROM clinical_records cr
+        JOIN patients p ON cr.patient_id = p.id
+        WHERE cr.id = $1 AND cr.patient_id = $2 AND p.tenant_id = $3
+    """, record_id, patient_id, tenant_id)
+    
+    if not record:
+        raise HTTPException(status_code=404, detail="Registro clínico no encontrado")
+    
+    return {"odontogram_data": record["odontogram_data"] or {}}
+
+@router.post("/patients/{id}/documents", 
+            dependencies=[Depends(verify_admin_token)], 
+            tags=["Pacientes"], 
+            summary="Subir documento para paciente")
+async def upload_patient_document(
+    id: int,
+    file: UploadFile = File(...),
+    document_type: str = Form("clinical"),
+    tenant_id: int = Depends(get_resolved_tenant_id),
+    user_data: dict = Depends(verify_admin_token)
+):
+    """
+    Sube un documento para un paciente específico.
+    Aislado por tenant_id (Regla de Oro).
+    """
+    # Verificar que el paciente existe y pertenece al tenant
+    patient = await db.pool.fetchrow("""
+        SELECT id FROM patients WHERE id = $1 AND tenant_id = $2
+    """, id, tenant_id)
+    
+    if not patient:
+        raise HTTPException(status_code=404, detail="Paciente no encontrado")
+    
+    # Validar tipo de archivo
+    allowed_mime_types = ["application/pdf", "image/jpeg", "image/png", "image/gif", 
+                         "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"]
+    
+    if file.content_type not in allowed_mime_types:
+        raise HTTPException(status_code=400, detail="Tipo de archivo no permitido")
+    
+    # Validar tamaño (10MB máximo)
+    file_size = 0
+    content = await file.read()
+    file_size = len(content)
+    await file.seek(0)
+    
+    if file_size > 10 * 1024 * 1024:  # 10MB
+        raise HTTPException(status_code=400, detail="Archivo demasiado grande (máximo 10MB)")
+    
+    # Crear directorio seguro
+    import os
+    from pathlib import Path
+    
+    upload_dir = Path(f"/app/uploads/patients/{tenant_id}/{id}")
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Generar nombre de archivo seguro
+    import uuid
+    safe_filename = f"{uuid.uuid4()}_{file.filename.replace(' ', '_')}"
+    file_path = upload_dir / safe_filename
+    
+    # Guardar archivo
+    with open(file_path, "wb") as f:
+        f.write(content)
+    
+    # Guardar en base de datos
+    doc_id = await db.pool.fetchval("""
+        INSERT INTO patient_documents 
+        (tenant_id, patient_id, filename, file_path, file_size, mime_type, document_type, uploaded_by)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        RETURNING id
+    """, tenant_id, id, file.filename, str(file_path), file_size, file.content_type, 
+       document_type, user_data.get("id"))
+    
+    return {
+        "id": doc_id,
+        "filename": file.filename,
+        "file_path": str(file_path),
+        "file_size": file_size,
+        "mime_type": file.content_type,
+        "document_type": document_type,
+        "uploaded_by": user_data.get("id"),
+        "proxy_url": f"/admin/patients/{id}/documents/{doc_id}/proxy"
+    }
+
+@router.get("/patients/{id}/documents", 
+           dependencies=[Depends(verify_admin_token)], 
+           tags=["Pacientes"], 
+           summary="Listar documentos del paciente")
+async def list_patient_documents(
+    id: int,
+    tenant_id: int = Depends(get_resolved_tenant_id)
+):
+    """
+    Lista todos los documentos de un paciente.
+    Aislado por tenant_id (Regla de Oro).
+    """
+    # Verificar que el paciente existe y pertenece al tenant
+    patient = await db.pool.fetchrow("""
+        SELECT id FROM patients WHERE id = $1 AND tenant_id = $2
+    """, id, tenant_id)
+    
+    if not patient:
+        raise HTTPException(status_code=404, detail="Paciente no encontrado")
+    
+    documents = await db.pool.fetch("""
+        SELECT id, filename, file_path, file_size, mime_type, document_type, 
+               uploaded_by, created_at
+        FROM patient_documents
+        WHERE patient_id = $1 AND tenant_id = $2
+        ORDER BY created_at DESC
+    """, id, tenant_id)
+    
+    return [dict(doc) for doc in documents]
+
+@router.get("/patients/{patient_id}/documents/{doc_id}/proxy", 
+           dependencies=[Depends(verify_admin_token)], 
+           tags=["Pacientes"], 
+           summary="Proxy seguro para descargar documento")
+async def download_patient_document_proxy(
+    patient_id: int,
+    doc_id: int,
+    tenant_id: int = Depends(get_resolved_tenant_id)
+):
+    """
+    Proxy seguro para descargar documentos de pacientes.
+    Aislado por tenant_id (Regla de Oro).
+    """
+    # Verificar que el documento existe y pertenece al paciente/tenant
+    document = await db.pool.fetchrow("""
+        SELECT file_path, mime_type, filename
+        FROM patient_documents
+        WHERE id = $1 AND patient_id = $2 AND tenant_id = $3
+    """, doc_id, patient_id, tenant_id)
+    
+    if not document:
+        raise HTTPException(status_code=404, detail="Documento no encontrado")
+    
+    file_path = document["file_path"]
+    
+    # Verificar que el archivo existe
+    import os
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="Archivo no encontrado en el servidor")
+    
+    # Servir archivo
+    return FileResponse(
+        path=file_path,
+        media_type=document["mime_type"] or "application/octet-stream",
+        filename=document["filename"]
+    )
+
+@router.delete("/patients/{patient_id}/documents/{doc_id}", 
+              dependencies=[Depends(verify_admin_token)], 
+              tags=["Pacientes"], 
+              summary="Eliminar documento del paciente")
+async def delete_patient_document(
+    patient_id: int,
+    doc_id: int,
+    tenant_id: int = Depends(get_resolved_tenant_id)
+):
+    """
+    Elimina un documento de un paciente.
+    Aislado por tenant_id (Regla de Oro).
+    """
+    # Verificar que el documento existe y pertenece al paciente/tenant
+    document = await db.pool.fetchrow("""
+        SELECT file_path FROM patient_documents
+        WHERE id = $1 AND patient_id = $2 AND tenant_id = $3
+    """, doc_id, patient_id, tenant_id)
+    
+    if not document:
+        raise HTTPException(status_code=404, detail="Documento no encontrado")
+    
+    # Eliminar archivo físico
+    import os
+    file_path = document["file_path"]
+    if os.path.exists(file_path):
+        os.remove(file_path)
+    
+    # Eliminar registro de base de datos
+    await db.pool.execute("""
+        DELETE FROM patient_documents
+        WHERE id = $1 AND patient_id = $2 AND tenant_id = $3
+    """, doc_id, patient_id, tenant_id)
+    
+    return {"status": "ok", "message": "Documento eliminado"}
 
 # ==================== ENDPOINTS TURNOS (AGENDA) ====================
 

@@ -651,6 +651,38 @@ class Database:
                 END IF;
             END $$;
             """,
+            # Parche 23: Columna odontogram_data en clinical_records (JSONB) para Ficha Médica
+            """
+            DO $$ 
+            BEGIN 
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='clinical_records' AND column_name='odontogram_data') THEN
+                    ALTER TABLE clinical_records ADD COLUMN odontogram_data JSONB DEFAULT '{}';
+                END IF;
+            END $$;
+            """,
+            # Parche 24: Tabla patient_documents (multi-tenant) para gestión de documentos clínicos
+            """
+            DO $$
+            BEGIN
+                IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='patient_documents') THEN
+                    CREATE TABLE patient_documents (
+                        id SERIAL PRIMARY KEY,
+                        tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+                        patient_id INTEGER NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
+                        filename VARCHAR(255) NOT NULL,
+                        file_path VARCHAR(500) NOT NULL,
+                        file_size INTEGER,
+                        mime_type VARCHAR(100),
+                        document_type VARCHAR(50) DEFAULT 'clinical', -- clinical, prescription, xray, consent, lab
+                        uploaded_by INTEGER REFERENCES users(id),
+                        created_at TIMESTAMPTZ DEFAULT NOW(),
+                        UNIQUE(tenant_id, patient_id, filename)
+                    );
+                    CREATE INDEX idx_patient_documents_tenant ON patient_documents(tenant_id);
+                    CREATE INDEX idx_patient_documents_patient ON patient_documents(patient_id);
+                END IF;
+            END $$;
+            """,
         ]
 
         async with self.pool.acquire() as conn:
