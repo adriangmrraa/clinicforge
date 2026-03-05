@@ -112,7 +112,7 @@ Cuando integres un agente de un proyecto legacy o una configuración compleja (c
 1.  **Wizard Alignment**: Asegurate de que los campos `agent_tone`, `business_rules` y `synonym_dictionary` del Wizard lleguen como `wizard_overrides` al `agent_service`.
 2.  **Tool Parity**: Verificá que el modal "Configurar Herramientas" en el Frontend muestre los defaults del sistema si no hay customización.
 3.  **Prompt Merge**: Verificá en `agent_service/main.py` que el prompt final sea la unión de: `template.build_system_prompt()` + `request.context.system_prompt` + `injected_content` (RAG y Tools).
-4.  **Token Flow**: Confirmá que el `tiendanube_access_token` se obtenga del Vault y se pase limpio al `agent_service` sin fallbacks legacy.
+4.  **Token Flow**: Confirmá que el `meta_user_long_token` se obtenga del Vault y se pase limpio al `agent_service` sin fallbacks legacy.
 
 ---
 

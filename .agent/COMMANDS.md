@@ -97,15 +97,12 @@ Las skills se activan cuando tu **mensaje o tarea** coincide con los triggers. E
 |-------|-------------------|-----|
 | **Omnichannel_Chat_Operator** | `chats`, `whatsapp`, `meta`, `mensajes`, `human override` | Mensajería, handoff, YCloud. |
 | **Meta_Integration_Diplomat** | `oauth`, `facebook`, `instagram`, `waba`, `pages` | OAuth Meta, activos de negocio. |
-| **TiendaNube_Commerce_Bridge** | `tiendanube`, `products`, `orders`, `e-commerce` | Catálogo, órdenes, OAuth Tienda Nube. |
 
 ### IA y onboarding
 
 | Skill | Triggers típicos | Uso |
 |-------|-------------------|-----|
 | **Agent_Configuration_Architect** | `agents`, `prompts`, `tools`, `templates`, `wizard` | Configuración de agentes IA. |
-| **Magic_Onboarding_Orchestrator** | `magic`, `wizard`, `onboarding`, `hacer magia` | Proceso “Hacer Magia”, assets. |
-| **Business_Forge_Engineer** | `forge`, `canvas`, `visuals`, `assets`, `fusion` | Assets post-magia, Fusion Engine. |
 | **Skill_Forge_Master** | `crear skill`, `skill architect`, `nueva skill` | Definir y crear nuevas skills. |
 | **Prompt_Architect** | system prompts, plantillas de agentes, RAG, identidad | Ingeniería de prompts (ej. Dra. Laura Delgado). |
 | **Spec_Architect** | “crea una especificación”, “planifica esta feature”, `/specify` | Generar y validar `.spec.md` (SDD v2.0). |

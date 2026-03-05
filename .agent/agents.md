@@ -128,6 +128,5 @@ Cada clínica posee sus propias credenciales de IA encriptadas en la base de dat
 | **[Sovereign Code Auditor](file:///C:/Users/Asus/Downloads/Clinica Dental/.agent/skills/Sovereign_Auditor/SKILL.md)** | `Antes de hacer commit, o cuando pida revisar seguridad o aislamiento.` | Experto en ciberseguridad y cumplimiento del Protocolo de Soberanía Nexus. |
 | **[Spec Architect](file:///C:/Users/Asus/Downloads/Clinica Dental/.agent/skills/Spec_Architect/SKILL.md)** | `Cuando el usuario diga 'crea una especificación', 'planifica esta feature' o use el comando '/specify'.` | Genera y valida archivos de especificación (.spec.md) siguiendo el estándar SDD v2.0. |
 | **[Template Transplant Specialist](file:///C:/Users/Asus/Downloads/Clinica Dental/.agent/skills/Template_Transplant_Specialist/SKILL.md)** | `N/A` | Extrae y distribuye instrucciones de un system prompt legacy en las capas correctas (Wizard, Tool Config, Sistema Interno). |
-| **[TiendaNube Commerce Bridge](file:///C:/Users/Asus/Downloads/Clinica Dental/.agent/skills/TiendaNube_Commerce_Bridge/SKILL.md)** | `tiendanube, tienda nube, e-commerce, products, orders, oauth, catalog, store` | Especialista en integración con Tienda Nube: OAuth, sincronización de catálogo, órdenes y gestión de productos. |
 
 ---

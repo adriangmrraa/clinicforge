@@ -11,7 +11,7 @@ auto-invoke: true
 ## 1. Concepto: The Sovereign Vault
 
 ### Filosofía
-**NO usar variables de entorno para secretos de tenant**. Cada tienda (tenant) proporciona sus propias credenciales API, garantizando:
+**NO usar variables de entorno para secretos de tenant**. Cada clínica (tenant) proporciona sus propias credenciales API, garantizando:
 - **Soberanía de Datos**: El tenant controla sus propias keys
 - **Aislamiento Total**: Las credenciales de Tenant 1 son invisibles para Tenant 2
 - **Rotación Independiente**: Cada tenant puede rotar sus keys sin afectar a otros
@@ -38,7 +38,7 @@ API Calls (OpenAI, Meta, Google, SMTP)
 CREATE TABLE credentials (
     id SERIAL PRIMARY KEY,
     tenant_id INTEGER REFERENCES tenants(id),
-    category VARCHAR(100) NOT NULL,  -- 'openai', 'google', 'smtp', 'tiendanube', 'whatsapp_cloud'
+    category VARCHAR(100) NOT NULL,  -- 'openai', 'google', 'smtp', 'meta_ads', 'whatsapp_cloud'
     name VARCHAR(100) NOT NULL,      -- 'API_KEY', 'user_id', 'host'
     value TEXT NOT NULL,              -- Encrypted con AES-256
     scope VARCHAR(50) DEFAULT 'tenant',  -- 'global', 'tenant'
@@ -67,10 +67,6 @@ SUPPORTED_CATEGORIES = {
     "smtp": {
         "fields": ["host", "port", "user", "pass"],
         "special_handling": "json_stringify"
-    },
-    "tiendanube": {
-        "fields": ["access_token", "user_id"],
-        "oauth": True
     },
     "whatsapp_cloud": {
         "fields": ["access_token", "phone_number_id", "waba_id"],
@@ -322,7 +318,7 @@ async def call_openai_api(tenant_id: int, prompt: str):
 smtp_config = {
     "host": "smtp.gmail.com",
     "port": "587",
-    "user": "noreply@tienda.com",
+    "user": "noreply@clinica.com",
     "pass": "app_specific_password"
 }
 

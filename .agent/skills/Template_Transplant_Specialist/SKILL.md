@@ -15,7 +15,7 @@ Esta skill te permite **extraer system prompts de proyectos legacy** y distribui
 
 ## Cuándo Usar Esta Skill
 
-- Tienes un system prompt legacy de otro proyecto (ej: Pointe Coach, E-commerce Bot)
+- Tienes un system prompt legacy de otro proyecto (ej: Dra. Laura Delgado, Dentalogic)
 - Necesitas integrarlo en Dentalogic manteniendo su esencia
 - Quieres asegurar que las instrucciones estén en los lugares correctos
 
@@ -172,9 +172,9 @@ response_guides = {
 2. **Tool Modal**: Abrí "Configurar Herramientas" y verificá que las instrucciones aparezcan
 3. **Chat Test**: Probá el agente con consultas típicas del dominio
 
-## Ejemplo Completo: Pointe Coach
+## Ejemplo Completo: Dra. Laura Delgado
 
-Ver `docs/plantilla pointe coach example.md` para referencia completa.
+Ver `docs/plantilla_laura_delgado.md` para referencia completa.
 
 ### Extractos Clave
 
