@@ -4,14 +4,14 @@
 
 **Para comenzar una nueva conversación con una IA de código (ej. Cursor):** Usá el **prompt listo para copiar/pegar** en [docs/PROMPT_CONTEXTO_IA_COMPLETO.md](PROMPT_CONTEXTO_IA_COMPLETO.md). Copiá el bloque de ese archivo y pegarlo como **primer mensaje** del chat nuevo; así la IA carga reglas, workflows y checklist desde el inicio.
 
-**Última actualización:** 2026-02 (Chatwoot omnicanal: webhook, lista unificada YCloud+Chatwoot, filtro canal, Vault agente por tenant; landing demo, agenda fixes, buffer)
+**Última actualización:** 2026-03 (Nuevo proceso de admisión: campos obligatorios para pacientes nuevos, sistema de anamnesis automatizado, identidad Dra. María Laura Delgado, odontograma y documentos en frontend)
 
 ---
 
 ## 1. Qué es el proyecto
 
-- **Nombre:** Dentalogic (Nexus v8.0 / Platinum Security Hardened).
-- **Tipo:** Plataforma de gestión clínica dental **multi-tenant** (multi-sede), con asistente IA por WhatsApp para turnos, triaje y derivación a humano.
+- **Nombre:** ClinicForge (antes Dentalogic) - Plataforma de la Dra. María Laura Delgado
+- **Tipo:** Plataforma de gestión clínica dental **multi-tenant** (multi-sede), con secretaria virtual IA por WhatsApp para turnos, triaje, anamnesis y derivación a humano.
 - **Seguridad Proactiva (v8.0)**: Middleware de headers (HSTS, CSP, XFO), AI Guardrails (Prompt Injection Detection), sanitización XSS (SafeHTML) y X-Admin-Token obligatorio.
 - **Usuarios:** Clínicas (una o varias sedes), CEOs, secretarias, profesionales. Pacientes interactúan por WhatsApp con el agente.
 - **Pilares:** Backend (Orchestrator FastAPI + LangChain), Frontend (React + Vite + Tailwind), WhatsApp Service (YCloud + Whisper), PostgreSQL, Redis. Opcional: integración **Chatwoot** (WhatsApp/Instagram/Facebook en la misma bandeja de Chats; webhook, filtro por canal, credenciales por tenant en tabla `credentials`).
@@ -97,9 +97,22 @@ frontend_react/src/
 - **Chat IA:** `POST /chat` (mensaje entrante; contexto `current_customer_phone`, `current_tenant_id`; tools con filtro por tenant).
 - **Chat omnicanal (Chatwoot):** `GET /admin/integrations/chatwoot/config`, `GET /admin/chats/summary` (query `channel`: whatsapp|instagram|facebook), `GET /admin/chats/{id}/messages`, `POST /admin/whatsapp/send`, `POST /admin/conversations/{id}/human-override`; webhook público `POST /admin/chatwoot/webhook?access_token=...`. Credenciales por tenant en tabla `credentials`; agente usa `get_agent_executable_for_tenant(tenant_id)` (Vault OPENAI_API_KEY). Ver `docs/API_REFERENCE.md` (sección Chat omnicanal) y `docs/AUDIT_CHATWOOT_2025-02-13.md`.
 
-**Tools del agente (nombres exactos):** `check_availability`, `book_appointment`, `triage_urgency`, `derivhumano`, `cancel_appointment`, `reschedule_appointment`, `list_services`. Todos reciben/respetan `tenant_id`.
+**Tools del agente (nombres exactos):** `check_availability`, `book_appointment`, `triage_urgency`, `derivhumano`, `cancel_appointment`, `reschedule_appointment`, `list_services`, `save_patient_anamnesis`. Todos reciben/respetan `tenant_id`.
 
-**Flujo del agente (datos que necesita):** Saludo mencionando la clínica → definir **siempre un servicio** (máx. 3 si se listan) → usar duración del servicio para disponibilidad y agendar → **consultar disponibilidad** (local o Google según sede) y **elegir profesional** (preguntar preferencia o "cualquiera disponible") → con servicio, profesional (opcional), día/hora y datos del paciente, ejecutar `book_appointment`. Detalle en `README.md` (sección "Flujo del agente de IA") y `docs/04_agent_logic_and_persona.md` (sección 3.1).
+**Flujo del agente (datos que necesita):** 
+1. **Saludo**: Presentarse como "secretaria virtual de la Dra. María Laura Delgado"
+2. **Definir servicio**: Siempre un servicio (máx. 3 si se listan) usando `list_services`
+3. **Consultar disponibilidad**: Usar `check_availability` (local o Google según sede)
+4. **Elegir profesional**: Preguntar preferencia o "cualquiera disponible"
+5. **Agendar turno**: Con servicio, profesional (opcional), día/hora ejecutar `book_appointment`
+6. **Anamnesis obligatoria**: Para pacientes nuevos, hacer preguntas de salud y usar `save_patient_anamnesis`
+
+**Nuevo proceso de admisión para pacientes nuevos (OBLIGATORIO):**
+- **Campos requeridos**: Nombre, Apellido, DNI, Fecha nacimiento (DD/MM/AAAA), Email válido, Ciudad/Barrio, Cómo nos conoció (Instagram, Google, Referido, Otro)
+- **Eliminado**: `insurance_provider` (clínica atiende de forma particular)
+- **Anamnesis**: Después de agendar, recolectar: enfermedades base, medicación, alergias, cirugías previas, hábito de fumar, embarazo/lactancia, experiencias negativas, miedos específicos
+
+Detalle en `README.md` (sección "Flujo del agente de IA") y `docs/04_agent_logic_and_persona.md` (sección 3.1).
 
 ---
 
