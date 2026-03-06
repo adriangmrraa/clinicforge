@@ -41,6 +41,14 @@ Todos los componentes trabajan juntos para que no se pierda ninguna información
 *   **Odontograma Digital:** En la ficha del paciente, la Dra. puede registrar el estado dental completo con un odontograma interactivo
 *   **Documentos Clínicos:** Subir y organizar radiografías, estudios y documentos del paciente
 *   **Detección de Alertas:** Si la Dra. anota que un paciente es diabético en el Frontend, la próxima vez que ese paciente hable con la IA, ella lo sabrá y podrá ser más cuidadosa o dar avisos específicos.
+
+## 6. Sistema Automatizado de Seguimiento y Recordatorios
+La clínica ahora cuenta con un sistema que trabaja automáticamente para mejorar la atención:
+
+*   **Recordatorios de Turnos:** Todos los días a las 10:00 AM, el sistema envía automáticamente recordatorios a los pacientes que tienen turno al día siguiente. El mensaje es personalizado con su nombre y hora del turno.
+*   **Seguimiento Post-Atención:** Todos los días a las 11:00 AM, el sistema contacta a los pacientes que fueron atendidos ayer para preguntarles cómo se sienten después del tratamiento. Esto es especialmente importante para cirugías y tratamientos complejos.
+*   **Detección Automática de Problemas:** Si un paciente responde al seguimiento reportando dolor, inflamación o cualquier molestia, la IA evalúa inmediatamente la gravedad usando las 6 reglas maxilofaciales de urgencia. Si detecta una emergencia, activa el protocolo de atención inmediata.
+*   **Auditoría Completa:** El sistema lleva registro de todos los recordatorios y seguimientos enviados, quién respondió y qué síntomas reportaron.
  
 ## 5. Registro y Aprobación de Personal
 Cuando alguien nuevo pide acceso a la plataforma (desde la pantalla de login), el formulario pide **a qué sede/clínica se une** y, si es profesional o secretaría, su especialidad, teléfono y matrícula. Esa solicitud queda pendiente hasta que un CEO la apruebe. Una vez aprobada, la persona ya aparece en **Personal Activo** y puede editar su perfil (horarios, datos de contacto) desde la misma pantalla de Aprobaciones, sin necesidad de una página aparte de "Profesionales".

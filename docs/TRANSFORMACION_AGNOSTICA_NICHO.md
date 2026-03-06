@@ -27,6 +27,7 @@ En resumen: **una base común (auth, tenants, chat, mensajería, métricas, UI s
 | **Frontend base** | React, Vite, Tailwind, AuthContext, LanguageContext, Layout, Sidebar, rutas protegidas, i18n (es/en/fr). |
 | **Chat y mensajería** | Flujo WhatsApp (webhook, buffer/debounce, transcripción audio), historial en BD, tenant por conversación. |
 | **Patrones de API** | Rutas admin bajo `verify_admin_token`, filtro por tenant_id, estructura de respuestas. |
+| **Jobs programados** | Sistema de scheduling (recordatorios, seguimientos), ejecución diaria, endpoints de administración. |
 | **Workflows y agentes** | .agent/workflows (autonomy, specify, bug_fix, update-docs), skills, protocolo SDD. |
 
 ---

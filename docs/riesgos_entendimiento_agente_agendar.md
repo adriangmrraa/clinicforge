@@ -45,7 +45,32 @@ Lista de situaciones donde lo que dice el usuario puede no alinearse con lo que 
 
 ---
 
-## 4. Nuevos campos obligatorios para pacientes nuevos
+## 4. Sistema de Seguimiento Post-Atención
+
+### 4.1 Detección de respuestas a seguimientos
+
+| Situación | Riesgo | Estado actual |
+|-----------|--------|----------------|
+| Paciente responde "todo bien" a seguimiento | Agente debe detectar contexto de seguimiento y evaluar síntomas | ✅ Buffer task detecta metadata `is_followup` |
+| Paciente reporta dolor/inflamación | Agente debe activar `triage_urgency` inmediatamente | ✅ Contexto especial inyectado en prompt |
+| Paciente responde con audio/imagen | Sistema debe procesar multimedia y mantener contexto | ✅ Mismo flujo que mensajes regulares |
+| Múltiples mensajes en conversación | Contexto debe persistir durante toda la interacción | ✅ Historial completo en chat_messages |
+
+### 4.2 Evaluación de triage automático
+
+| Síntoma reportado | Regla aplicada | Nivel de urgencia |
+|-------------------|----------------|-------------------|
+| Dolor intenso que no cede | Regla 1 - Dolor intenso | Emergency/High |
+| Inflamación importante en cara | Regla 2 - Inflamación facial | Emergency/High |
+| Sangrado abundante | Regla 3 - Sangrado no controlado | Emergency/High |
+| Traumatismo reciente | Regla 4 - Traumatismo facial | Emergency/High |
+| Fiebre + dolor dental | Regla 5 - Fiebre asociada | Emergency/High |
+| Prótesis se cayó | Regla 6 - Pérdida de prótesis | Emergency/High |
+| Dolor leve/manejable | No cumple criterios de emergencia | Normal/Low |
+
+---
+
+## 5. Nuevos campos obligatorios para pacientes nuevos
 
 ### 4.1 Fecha de nacimiento (`birth_date` - formato DD/MM/AAAA)
 

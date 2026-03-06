@@ -37,7 +37,7 @@ Eres un agente de IA que trabaja en el proyecto **Dentalogic** (plataforma de ge
    - **Frontend:** Rutas con hijos usan `path="/*"`. Cualquier texto visible debe usar `useTranslation()` y `t('namespace.key')`; añadir la clave en `frontend_react/src/locales/es.json`, `en.json` y `fr.json`.
    - **Frontend – Scroll:** Layout global con `h-screen` y `overflow-hidden`; vistas con `flex-1 min-h-0 overflow-y-auto` para aislamiento de scroll.
    - **Base de datos:** NO ejecutar comandos SQL (psql) directamente. Si hace falta un cambio de esquema, añade un parche idempotente en `orchestrator_service/db.py` (bloques `DO $$ ... END $$`) y propón el comando al usuario si debe ejecutar algo manualmente.
-   - **Nombres de tools del agente (exactos):** `check_availability`, `book_appointment`, `triage_urgency`, `derivhumano`, `cancel_appointment`, `reschedule_appointment`, `list_services`. Todos respetan `tenant_id`.
+   - **Nombres de tools del agente (exactos):** `check_availability`, `book_appointment`, `triage_urgency`, `derivhumano`, `cancel_appointment`, `reschedule_appointment`, `list_services`, `save_patient_anamnesis`. Todos respetan `tenant_id`.
 
 3) WORKFLOWS (cuándo y cómo usarlos):
    - Los workflows están en **.agent/workflows/**.
