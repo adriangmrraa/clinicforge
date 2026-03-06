@@ -2314,7 +2314,27 @@ async def get_clinical_records(id: int, tenant_id: int = Depends(get_resolved_te
         WHERE cr.patient_id = $1 AND p.tenant_id = $2
         ORDER BY cr.created_at DESC
     """, id, tenant_id)
-    return [dict(row) for row in rows]
+    
+    records = []
+    for row in rows:
+        record_dict = dict(row)
+        
+        # Parse JSONB string outputs back into native Python dictionaries so React receives JSON hierarchy
+        if isinstance(record_dict.get('odontogram_data'), str):
+            try:
+                record_dict['odontogram_data'] = json.loads(record_dict['odontogram_data'])
+            except:
+                record_dict['odontogram_data'] = {}
+                
+        if isinstance(record_dict.get('treatment_plan'), str):
+            try:
+                record_dict['treatment_plan'] = json.loads(record_dict['treatment_plan'])
+            except:
+                record_dict['treatment_plan'] = {}
+                
+        records.append(record_dict)
+        
+    return records
 
 @router.post("/patients/{id}/records", dependencies=[Depends(verify_admin_token)], tags=["Pacientes"], summary="Agregar nota a la historia clínica")
 async def add_clinical_note(id: int, note: ClinicalNote, tenant_id: int = Depends(get_resolved_tenant_id)):
@@ -2340,7 +2360,7 @@ async def add_clinical_note(id: int, note: ClinicalNote, tenant_id: int = Depend
            summary="Actualizar odontograma en registro clínico")
 async def update_odontogram(
     patient_id: int,
-    record_id: int,
+    record_id: str,
     odontogram_data: OdontogramUpdate,
     tenant_id: int = Depends(get_resolved_tenant_id)
 ):
@@ -2376,7 +2396,7 @@ async def update_odontogram(
            summary="Obtener odontograma de registro clínico")
 async def get_odontogram(
     patient_id: int,
-    record_id: int,
+    record_id: str,
     tenant_id: int = Depends(get_resolved_tenant_id)
 ):
     """
