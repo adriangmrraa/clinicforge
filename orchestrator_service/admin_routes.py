@@ -355,6 +355,8 @@ class PatientCreate(BaseModel):
     email: Optional[str] = None
     dni: Optional[str] = None
     insurance: Optional[str] = None # Obra Social
+    city: Optional[str] = None
+    birth_date: Optional[date] = None
 
 class AppointmentCreate(BaseModel):
     patient_id: Optional[int] = None
@@ -1905,8 +1907,8 @@ async def create_patient(
     """Crear un paciente nuevo en la sede actual. Aislado por tenant_id (Regla de Oro)."""
     try:
         row = await db.pool.fetchrow("""
-            INSERT INTO patients (tenant_id, first_name, last_name, phone_number, email, dni, insurance_provider, status, created_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, 'active', NOW())
+            INSERT INTO patients (tenant_id, first_name, last_name, phone_number, email, dni, insurance_provider, city, birth_date, status, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'active', NOW())
             RETURNING id
         """,
             tenant_id,
@@ -1916,6 +1918,8 @@ async def create_patient(
             (p.email or "").strip() or None,
             (p.dni or "").strip() or None,
             (p.insurance or "").strip() or None,
+            (p.city or "").strip() or None,
+            p.birth_date,
         )
         return {"id": row["id"]}
     except asyncpg.UniqueViolationError as e:
@@ -1939,7 +1943,7 @@ async def list_patients(
     """
     query = """
         SELECT p.id, p.first_name, p.last_name, p.phone_number, p.email,
-               p.insurance_provider as obra_social, p.dni, p.created_at, p.status
+               p.insurance_provider as obra_social, p.dni, p.city, p.birth_date, p.created_at, p.status
         FROM patients p
         WHERE p.tenant_id = $1 AND p.status != 'deleted'
           AND EXISTS (
@@ -2260,12 +2264,20 @@ async def update_patient(id: int, p: PatientCreate, tenant_id: int = Depends(get
     """Actualizar datos de un paciente. Aislado por tenant_id (Regla de Oro)."""
     try:
         result = await db.pool.execute("""
-            UPDATE patients SET
-                first_name = $1, last_name = $2, phone_number = $3, 
-                email = $4, dni = $5, insurance_provider = $6,
+            UPDATE patients
+            SET first_name = COALESCE($1, first_name),
+                last_name = COALESCE($2, last_name),
+                phone_number = COALESCE($3, phone_number),
+                email = $4,
+                dni = $5,
+                insurance_provider = $6,
+                city = $7,
+                birth_date = $8,
                 updated_at = NOW()
-            WHERE id = $7 AND tenant_id = $8
-        """, p.first_name, p.last_name, p.phone_number, p.email, p.dni, p.insurance, id, tenant_id)
+            WHERE id = $9 AND tenant_id = $10
+        """,
+            p.first_name, p.last_name, p.phone_number, p.email, p.dni, p.insurance, p.city, p.birth_date, id, tenant_id
+        )
         if result == "UPDATE 0":
             raise HTTPException(status_code=404, detail="Paciente no encontrado")
         return {"id": id, "status": "updated"}
