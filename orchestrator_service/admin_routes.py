@@ -2251,7 +2251,7 @@ async def update_professional(
 async def get_patient(id: int, tenant_id: int = Depends(get_resolved_tenant_id)):
     """Obtener un paciente por ID. Aislado por tenant_id (Regla de Oro)."""
     row = await db.pool.fetchrow("""
-        SELECT id, first_name, last_name, phone_number, email, insurance_provider as obra_social, dni, birth_date, created_at, status, notes
+        SELECT id, first_name, last_name, phone_number, email, insurance_provider as obra_social, dni, birth_date, city, first_touch_source as acquisition_source, meta_adset_id, meta_adset_name, meta_ad_name, meta_campaign_name, created_at, status, notes
         FROM patients 
         WHERE id = $1 AND tenant_id = $2
     """, id, tenant_id)
