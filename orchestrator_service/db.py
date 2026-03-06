@@ -721,14 +721,34 @@ class Database:
                 CREATE INDEX IF NOT EXISTS idx_appointments_followup_date ON appointments(followup_sent_at);
             END $$;
             """,
-            # Parche 28: Campo city para pacientes (admisión completa)
+            # Parche 28: Campo city, birth_date, first_touch_source y email para pacientes (admisión completa)
             """
             DO $$ 
             BEGIN 
+                -- 1. City
                 IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='patients' AND column_name='city') THEN
                     ALTER TABLE patients ADD COLUMN city VARCHAR(100);
                 END IF;
+                -- 2. first_touch_source
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='patients' AND column_name='first_touch_source') THEN
+                    ALTER TABLE patients ADD COLUMN first_touch_source VARCHAR(50) DEFAULT 'ORGANIC';
+                END IF;
+                -- 3. birth_date
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='patients' AND column_name='birth_date') THEN
+                    ALTER TABLE patients ADD COLUMN birth_date DATE;
+                END IF;
+                -- 4. email
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='patients' AND column_name='email') THEN
+                    ALTER TABLE patients ADD COLUMN email VARCHAR(255);
+                END IF;
             END $$;
+            
+            CREATE INDEX IF NOT EXISTS idx_patients_city ON patients(city);
+            
+            COMMENT ON COLUMN patients.city IS 'Ciudad/Barrio del paciente para registro de admisión';
+            COMMENT ON COLUMN patients.first_touch_source IS 'Fuente de adquisición del paciente: ORGANIC, INSTAGRAM, GOOGLE, REFERRED, OTHER';
+            COMMENT ON COLUMN patients.birth_date IS 'Fecha de nacimiento del paciente (formato DD/MM/AAAA)';
+            COMMENT ON COLUMN patients.email IS 'Email del paciente para comunicación';
             """,
         ]
 
