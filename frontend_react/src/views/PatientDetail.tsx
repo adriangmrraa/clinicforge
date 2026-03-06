@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, User, Phone, Mail, Calendar, AlertTriangle,
   FileText, Plus, Activity, Heart, Pill, Stethoscope, Megaphone,
-  ClipboardList, History, Folder
+  ClipboardList, History, Folder, X
 } from 'lucide-react';
 import api from '../api/axios';
 import { useTranslation } from '../context/LanguageContext';
@@ -58,7 +58,8 @@ type TabType = 'summary' | 'history' | 'documents';
 export default function PatientDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
+  const dateLocale = language === 'es' ? 'es-AR' : language === 'fr' ? 'fr-FR' : 'en-US';
   const [patient, setPatient] = useState<Patient | null>(null);
   const [records, setRecords] = useState<ClinicalRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -154,15 +155,23 @@ export default function PatientDetail() {
   };
 
   const getRecordTypeLabel = (type: string) => {
-    const keyMap: Record<string, string> = { initial: 'initial_consult', evolution: 'evolution', procedure: 'procedure', prescription: 'prescription' };
-    return t('patient_detail.' + (keyMap[type] || type)) || type;
+    if (!type) return '';
+    const keyMap: Record<string, string> = {
+      initial: 'initial_consult',
+      evolution: 'evolution',
+      procedure: 'procedure',
+      prescription: 'prescription'
+    };
+    const key = keyMap[type] || type;
+    const translation = t('patient_detail.' + key);
+    return translation === 'patient_detail.' + key ? type : translation;
   };
 
   // Formatear fecha de nacimiento
   const formatBirthDate = (dateStr: string) => {
     try {
       const date = new Date(dateStr);
-      return date.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+      return date.toLocaleDateString(dateLocale, { day: '2-digit', month: '2-digit', year: 'numeric' });
     } catch {
       return dateStr;
     }
@@ -241,7 +250,7 @@ export default function PatientDetail() {
               <div>
                 <h3 className="text-lg font-semibold text-gray-800">{t('patient_detail.tabs.history')}</h3>
                 <p className="text-sm text-gray-500">
-                  {t('patient_detail.records_count').replace('{{count}}', String(records.length))}
+                  {t('patient_detail.records_count', { count: records.length })}
                 </p>
               </div>
               <button
@@ -279,7 +288,7 @@ export default function PatientDetail() {
                               {getRecordTypeLabel(record.record_type)}
                             </span>
                             <span className="ml-2 text-sm text-gray-500">
-                              {new Date(record.created_at).toLocaleString()}
+                              {new Date(record.created_at).toLocaleString(dateLocale)}
                             </span>
                           </div>
                         </div>
@@ -304,18 +313,18 @@ export default function PatientDetail() {
                         </div>
                       )}
 
-                      {record.treatment_plan && (
+                      {record.treatment_plan && record.treatment_plan !== '{}' && (
                         <div>
                           <p className="text-xs font-medium text-gray-500">{t('patient_detail.treatment_plan')}</p>
                           <div className="text-sm">
                             {typeof record.treatment_plan === 'string'
-                              ? record.treatment_plan
-                              : JSON.stringify(record.treatment_plan, null, 2)}
+                              ? (record.treatment_plan === '{}' ? null : record.treatment_plan)
+                              : (Object.keys(record.treatment_plan).length > 0 ? JSON.stringify(record.treatment_plan, null, 2) : null)}
                           </div>
                         </div>
                       )}
 
-                      {record.notes && (
+                      {record.notes && record.notes.trim() !== '' && record.notes !== '{}' && (
                         <div>
                           <p className="text-xs font-medium text-gray-500">{t('patient_detail.notes')}</p>
                           <p className="text-sm text-gray-600">{record.notes}</p>
@@ -326,19 +335,19 @@ export default function PatientDetail() {
                         <div className="flex gap-4 pt-3 border-t">
                           {record.vital_signs.blood_pressure && (
                             <div className="text-xs">
-                              <span className="text-gray-400">PA: </span>
+                              <span className="text-gray-400">{t('patient_detail.blood_pressure_short') || 'PA'}: </span>
                               <span>{record.vital_signs.blood_pressure}</span>
                             </div>
                           )}
                           {record.vital_signs.heart_rate && (
                             <div className="text-xs">
-                              <span className="text-gray-400">FC: </span>
+                              <span className="text-gray-400">{t('patient_detail.heart_rate_short') || 'FC'}: </span>
                               <span>{record.vital_signs.heart_rate} ppm</span>
                             </div>
                           )}
                           {record.vital_signs.temperature && (
                             <div className="text-xs">
-                              <span className="text-gray-400">T°: </span>
+                              <span className="text-gray-400">{t('patient_detail.temperature_short') || 'T°'}: </span>
                               <span>{record.vital_signs.temperature}°C</span>
                             </div>
                           )}
@@ -411,7 +420,7 @@ export default function PatientDetail() {
                     </>
                   )}
                 </div>
-                
+
                 {/* Datos Demográficos - Nuevos campos de admisión */}
                 <div className="flex flex-wrap items-center gap-2 mt-2 text-xs text-gray-500">
                   {patient.city && (
@@ -481,9 +490,9 @@ export default function PatientDetail() {
           </div>
         </div>
 
-        {/* Sistema de Pestañas */}
+        {/* Sistema de Pestañas con Scroll Isolation Horizontal */}
         <div className="border-t">
-          <div className="flex">
+          <div className="flex overflow-x-auto hide-scrollbar">
             <button
               onClick={() => setActiveTab('summary')}
               className={`flex-1 py-3 px-4 text-sm font-medium transition-colors ${activeTab === 'summary'
@@ -531,140 +540,146 @@ export default function PatientDetail() {
         </div>
       </div>
 
-      {/* Modal para agregar nota (mantenido del código original) */}
+      {/* Modal para agregar nota (Adaptación Mobile) */}
       {showNoteForm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center p-4 border-b sticky top-0 bg-white">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50">
+          <div className="bg-white w-full sm:max-w-2xl sm:mx-4 sm:rounded-lg rounded-t-xl sm:rounded-t-lg h-[90vh] sm:h-auto sm:max-h-[90vh] flex flex-col">
+            {/* Header del Modal */}
+            <div className="flex justify-between items-center p-4 border-b shrink-0">
               <h2 className="text-xl font-bold">{t('patient_detail.new_evolution')}</h2>
               <button
                 onClick={() => setShowNoteForm(false)}
-                className="text-gray-500 hover:text-gray-700"
+                className="text-gray-500 hover:text-gray-700 bg-gray-100 p-1 rounded-full"
               >
-                ✕
+                <X size={20} />
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="p-4">
-              <div className="grid grid-cols-2 gap-4 mb-4">
-                <div>
+            {/* Scrollable Form Area */}
+            <div className="flex-1 overflow-y-auto p-4">
+              <form id="note-form" onSubmit={handleSubmit}>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      {t('patient_detail.record_type')}
+                    </label>
+                    <select
+                      value={formData.record_type}
+                      onChange={(e) => setFormData({ ...formData, record_type: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary h-11"
+                    >
+                      <option value="initial">{t('patient_detail.initial_consult')}</option>
+                      <option value="evolution">{t('patient_detail.evolution')}</option>
+                      <option value="procedure">{t('patient_detail.procedure')}</option>
+                      <option value="prescription">{t('patient_detail.prescription')}</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="mb-4">
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    {t('patient_detail.record_type')}
+                    {t('patient_detail.chief_complaint_label')}
                   </label>
-                  <select
-                    value={formData.record_type}
-                    onChange={(e) => setFormData({ ...formData, record_type: e.target.value })}
+                  <input
+                    type="text"
+                    value={formData.chief_complaint}
+                    onChange={(e) => setFormData({ ...formData, chief_complaint: e.target.value })}
+                    placeholder={t('patient_detail.placeholder_complaint')}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary h-11"
+                  />
+                </div>
+
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    {t('patient_detail.diagnosis')}
+                  </label>
+                  <textarea
+                    value={formData.diagnosis}
+                    onChange={(e) => setFormData({ ...formData, diagnosis: e.target.value })}
+                    rows={2}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-                  >
-                    <option value="initial">{t('patient_detail.initial_consult')}</option>
-                    <option value="evolution">{t('patient_detail.evolution')}</option>
-                    <option value="procedure">{t('patient_detail.procedure')}</option>
-                    <option value="prescription">{t('patient_detail.prescription')}</option>
-                  </select>
+                  />
                 </div>
-              </div>
 
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  {t('patient_detail.chief_complaint_label')}
-                </label>
-                <input
-                  type="text"
-                  value={formData.chief_complaint}
-                  onChange={(e) => setFormData({ ...formData, chief_complaint: e.target.value })}
-                  placeholder={t('patient_detail.placeholder_complaint')}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-                />
-              </div>
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    {t('patient_detail.treatment_plan')}
+                  </label>
+                  <textarea
+                    value={formData.treatment_plan}
+                    onChange={(e) => setFormData({ ...formData, treatment_plan: e.target.value })}
+                    rows={2}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                  />
+                </div>
 
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  {t('patient_detail.diagnosis')}
-                </label>
-                <textarea
-                  value={formData.diagnosis}
-                  onChange={(e) => setFormData({ ...formData, diagnosis: e.target.value })}
-                  rows={2}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-                />
-              </div>
-
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  {t('patient_detail.treatment_plan')}
-                </label>
-                <textarea
-                  value={formData.treatment_plan}
-                  onChange={(e) => setFormData({ ...formData, treatment_plan: e.target.value })}
-                  rows={2}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-                />
-              </div>
-
-              <div className="mb-4 p-4 bg-gray-50 rounded-lg">
-                <h3 className="text-sm font-medium text-gray-700 mb-2">{t('patient_detail.vital_signs')}</h3>
-                <div className="grid grid-cols-3 gap-4">
-                  <div>
-                    <label className="block text-xs text-gray-500 mb-1">{t('patient_detail.blood_pressure')}</label>
-                    <input
-                      type="text"
-                      placeholder={t('patient_detail.placeholder_bp')}
-                      value={formData.blood_pressure}
-                      onChange={(e) => setFormData({ ...formData, blood_pressure: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-gray-500 mb-1">{t('patient_detail.heart_rate')}</label>
-                    <input
-                      type="text"
-                      placeholder={t('patient_detail.placeholder_hr')}
-                      value={formData.heart_rate}
-                      onChange={(e) => setFormData({ ...formData, heart_rate: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-gray-500 mb-1">{t('patient_detail.temperature')}</label>
-                    <input
-                      type="text"
-                      placeholder={t('patient_detail.placeholder_temp')}
-                      value={formData.temperature}
-                      onChange={(e) => setFormData({ ...formData, temperature: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                    />
+                <div className="mb-4 p-4 bg-gray-50 rounded-lg border border-gray-100">
+                  <h3 className="text-sm font-medium text-gray-700 mb-3">{t('patient_detail.vital_signs')}</h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1">{t('patient_detail.blood_pressure')}</label>
+                      <input
+                        type="text"
+                        placeholder={t('patient_detail.placeholder_bp')}
+                        value={formData.blood_pressure}
+                        onChange={(e) => setFormData({ ...formData, blood_pressure: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm h-11"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">{t('patient_detail.heart_rate')}</label>
+                      <input
+                        type="text"
+                        placeholder={t('patient_detail.placeholder_hr')}
+                        value={formData.heart_rate}
+                        onChange={(e) => setFormData({ ...formData, heart_rate: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1">{t('patient_detail.temperature')}</label>
+                      <input
+                        type="text"
+                        placeholder={t('patient_detail.placeholder_temp')}
+                        value={formData.temperature}
+                        onChange={(e) => setFormData({ ...formData, temperature: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm h-11"
+                      />
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  {t('patient_detail.additional_notes')}
-                </label>
-                <textarea
-                  value={formData.notes}
-                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                  rows={3}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-                />
-              </div>
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    {t('patient_detail.additional_notes')}
+                  </label>
+                  <textarea
+                    value={formData.notes}
+                    onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                    rows={3}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                  />
+                </div>
+              </form>
+            </div>
 
-              <div className="flex justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={() => setShowNoteForm(false)}
-                  className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
-                >
-                  {t('common.cancel')}
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 text-white bg-primary rounded-lg hover:bg-primary-dark"
-                >
-                  {t('patient_detail.save_record')}
-                </button>
-              </div>
-            </form>
+            {/* Sticky Bottom Actions */}
+            <div className="flex flex-col sm:flex-row justify-end gap-3 p-4 bg-white border-t shrink-0">
+              <button
+                type="button"
+                onClick={() => setShowNoteForm(false)}
+                className="w-full sm:w-auto px-4 py-3 sm:py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 font-medium"
+              >
+                {t('common.cancel')}
+              </button>
+              <button
+                type="submit"
+                form="note-form"
+                className="w-full sm:w-auto px-4 py-3 sm:py-2 text-white bg-primary rounded-lg hover:bg-primary-dark font-medium"
+              >
+                {t('patient_detail.save_record')}
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -67,9 +67,16 @@ export const LanguageProvider: React.FC<{ children: ReactNode }> = ({ children }
   }, []);
 
   const t = useCallback(
-    (key: string): string => {
-      const value = getNested(translations[language], key);
-      return value ?? key;
+    (key: string, data?: Record<string, any>): string => {
+      let value = getNested(translations[language], key);
+      if (!value) return key;
+
+      if (data) {
+        Object.entries(data).forEach(([k, v]) => {
+          value = (value as string).replace(new RegExp(`{{${k}}}`, 'g'), String(v));
+        });
+      }
+      return value as string;
     },
     [language]
   );

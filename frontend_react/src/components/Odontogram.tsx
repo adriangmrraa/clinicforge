@@ -101,10 +101,10 @@ export default function Odontogram({ patientId, recordId, initialData, onSave, r
 
   const handleStateChange = (state: string) => {
     if (readOnly || !selectedTooth) return;
-    
+
     setSelectedState(state);
-    setTeeth(prev => prev.map(tooth => 
-      tooth.id === selectedTooth 
+    setTeeth(prev => prev.map(tooth =>
+      tooth.id === selectedTooth
         ? { ...tooth, state: state as ToothState['state'] }
         : tooth
     ));
@@ -112,7 +112,7 @@ export default function Odontogram({ patientId, recordId, initialData, onSave, r
 
   const handleSave = async () => {
     if (readOnly) return;
-    
+
     setSaving(true);
     setError(null);
     setSuccess(null);
@@ -154,7 +154,7 @@ export default function Odontogram({ patientId, recordId, initialData, onSave, r
 
   const handleReset = () => {
     if (readOnly) return;
-    
+
     const resetTeeth: ToothState[] = [];
     for (let i = 1; i <= TOOTH_COUNT; i++) {
       resetTeeth.push({
@@ -172,7 +172,7 @@ export default function Odontogram({ patientId, recordId, initialData, onSave, r
   const getToothDisplay = (toothId: number) => {
     const tooth = teeth.find(t => t.id === toothId);
     if (!tooth) return '1';
-    
+
     // Sistema FDI (Fédération Dentaire Internationale)
     if (toothId <= 16) {
       // Superior derecho: 11-18
@@ -215,19 +215,19 @@ export default function Odontogram({ patientId, recordId, initialData, onSave, r
   };
 
   return (
-    <div className="bg-white rounded-lg shadow p-6">
-      <div className="flex justify-between items-center mb-6">
+    <div className="bg-white rounded-lg shadow p-4 sm:p-6 w-full max-w-full overflow-hidden">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
         <div>
           <h3 className="text-lg font-semibold text-gray-800">{t('odontogram.title')}</h3>
           <p className="text-sm text-gray-500">{t('odontogram.subtitle')}</p>
         </div>
-        
+
         {!readOnly && (
-          <div className="flex gap-2">
+          <div className="flex items-center gap-2 w-full sm:w-auto self-end sm:self-auto">
             <button
               onClick={handleReset}
               disabled={saving}
-              className="flex items-center gap-2 px-3 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex-1 sm:flex-none justify-center flex items-center gap-2 px-3 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
             >
               <RotateCcw size={16} />
               {t('odontogram.reset')}
@@ -235,7 +235,7 @@ export default function Odontogram({ patientId, recordId, initialData, onSave, r
             <button
               onClick={handleSave}
               disabled={saving}
-              className="flex items-center gap-2 px-4 py-2 text-white bg-primary rounded-lg hover:bg-primary-dark disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex-1 sm:flex-none justify-center flex items-center gap-2 px-4 py-2 text-white bg-primary rounded-lg hover:bg-primary-dark disabled:opacity-50 disabled:cursor-not-allowed text-sm"
             >
               <Save size={16} />
               {saving ? t('odontogram.saving') : t('odontogram.save')}
@@ -269,7 +269,7 @@ export default function Odontogram({ patientId, recordId, initialData, onSave, r
               {t('odontogram.selecting_tooth')} {getToothDisplay(selectedTooth)}
             </span>
           </div>
-          
+
           <div className="grid grid-cols-4 sm:grid-cols-8 gap-2">
             {availableStates.map(state => (
               <button
@@ -277,8 +277,8 @@ export default function Odontogram({ patientId, recordId, initialData, onSave, r
                 onClick={() => handleStateChange(state.id)}
                 className={`
                   px-3 py-2 text-sm rounded-lg border transition-colors
-                  ${selectedState === state.id 
-                    ? `${STATE_COLORS[state.id]} border-2 border-primary` 
+                  ${selectedState === state.id
+                    ? `${STATE_COLORS[state.id]} border-2 border-primary`
                     : 'bg-white border-gray-200 hover:bg-gray-50'
                   }
                 `}
@@ -293,24 +293,34 @@ export default function Odontogram({ patientId, recordId, initialData, onSave, r
         </div>
       )}
 
-      {/* Odontograma visual */}
-      <div className="mb-8">
+      {/* Odontograma visual con Scroll Horizontal Nativo para Mobile */}
+      <div className="mb-8 w-full">
         {/* Arco superior */}
-        <div className="mb-2">
+        <div className="mb-4">
           <div className="text-center text-sm font-medium text-gray-600 mb-2">{t('odontogram.upper_arch')}</div>
-          <div className="flex flex-wrap justify-center gap-2">
-            {UPPER_TEETH.map(toothId => renderTooth(toothId))}
+          <div className="relative w-full rounded-xl overflow-hidden bg-white border border-gray-100">
+            <div className="flex flex-nowrap overflow-x-auto hide-scrollbar gap-2 p-2">
+              {UPPER_TEETH.map(toothId => renderTooth(toothId))}
+            </div>
+            {/* Sombras difuminadas en los bordes para indicar swipe */}
+            <div className="absolute top-0 right-0 bottom-0 w-8 bg-gradient-to-l from-white to-transparent pointer-events-none md:hidden"></div>
+            <div className="absolute top-0 left-0 bottom-0 w-8 bg-gradient-to-r from-white to-transparent pointer-events-none md:hidden"></div>
           </div>
         </div>
 
         {/* Separador */}
-        <div className="h-px bg-gray-200 my-4"></div>
+        <div className="h-px bg-gray-200 my-4 hidden sm:block"></div>
 
         {/* Arco inferior */}
-        <div className="mt-2">
+        <div className="mt-4">
           <div className="text-center text-sm font-medium text-gray-600 mb-2">{t('odontogram.lower_arch')}</div>
-          <div className="flex flex-wrap justify-center gap-2">
-            {LOWER_TEETH.map(toothId => renderTooth(toothId))}
+          <div className="relative w-full rounded-xl overflow-hidden bg-white border border-gray-100">
+            <div className="flex flex-nowrap overflow-x-auto hide-scrollbar gap-2 p-2">
+              {LOWER_TEETH.map(toothId => renderTooth(toothId))}
+            </div>
+            {/* Sombras difuminadas en los bordes para indicar swipe */}
+            <div className="absolute top-0 right-0 bottom-0 w-8 bg-gradient-to-l from-white to-transparent pointer-events-none md:hidden"></div>
+            <div className="absolute top-0 left-0 bottom-0 w-8 bg-gradient-to-r from-white to-transparent pointer-events-none md:hidden"></div>
           </div>
         </div>
       </div>

@@ -242,7 +242,7 @@ export default function DocumentGallery({ patientId, readOnly = false }: Documen
           <div className="mb-8">
             <div
               className={`
-                border-2 border-dashed rounded-lg p-8 text-center transition-colors
+                border-2 border-dashed rounded-lg p-4 sm:p-8 text-center transition-colors
                 ${dragActive ? 'border-primary bg-primary/5' : 'border-gray-300 hover:border-primary'}
                 ${selectedFile ? 'bg-green-50 border-green-300' : ''}
               `}
@@ -253,9 +253,9 @@ export default function DocumentGallery({ patientId, readOnly = false }: Documen
             >
               {selectedFile ? (
                 <div className="space-y-4">
-                  <div className="flex items-center justify-center gap-3">
+                  <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
                     {getFileIcon(selectedFile.type)}
-                    <div className="text-left">
+                    <div className="text-center sm:text-left break-all">
                       <p className="font-medium text-gray-800">{selectedFile.name}</p>
                       <p className="text-sm text-gray-500">
                         {formatFileSize(selectedFile.size)} • {selectedFile.type}
@@ -411,30 +411,32 @@ export default function DocumentGallery({ patientId, readOnly = false }: Documen
         )}
       </div>
 
-      {/* Modal de preview */}
+      {/* Modal de preview con Adaptación Mobile */}
       {previewUrl && (
-        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg max-w-4xl max-h-[90vh] overflow-hidden">
-            <div className="flex justify-between items-center p-4 border-b">
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-end sm:items-center justify-center z-50">
+          <div className="bg-white w-full sm:max-w-4xl h-[90vh] sm:h-auto sm:max-h-[90vh] rounded-t-xl sm:rounded-lg overflow-hidden flex flex-col">
+            <div className="flex justify-between items-center p-4 border-b shrink-0 bg-white">
               <h3 className="font-semibold text-gray-800">{t('document_gallery.preview_title')}</h3>
               <button
                 onClick={() => setPreviewUrl(null)}
-                className="p-1 hover:bg-gray-100 rounded"
+                className="p-1 hover:bg-gray-100 rounded-full bg-gray-50"
               >
                 <X size={20} />
               </button>
             </div>
-            <div className="p-4">
+
+            <div className="flex-1 overflow-auto bg-gray-50 p-4 flex items-center justify-center">
               <img
                 src={previewUrl}
                 alt="Preview"
-                className="max-w-full max-h-[70vh] mx-auto"
+                className="max-w-full max-h-full object-contain mx-auto"
               />
             </div>
-            <div className="p-4 border-t flex justify-end gap-3">
+
+            <div className="p-4 border-t flex flex-col sm:flex-row justify-end gap-3 bg-white shrink-0">
               <button
                 onClick={() => setPreviewUrl(null)}
-                className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
+                className="w-full sm:w-auto px-4 py-3 sm:py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 font-medium"
               >
                 {t('common.close')}
               </button>
@@ -443,9 +445,9 @@ export default function DocumentGallery({ patientId, readOnly = false }: Documen
                 download
                 target="_blank"
                 rel="noopener noreferrer"
-                className="px-4 py-2 text-white bg-primary rounded-lg hover:bg-primary-dark"
+                className="w-full sm:w-auto flex justify-center items-center px-4 py-3 sm:py-2 text-white bg-primary rounded-lg hover:bg-primary-dark font-medium"
               >
-                <Download size={16} className="inline mr-2" />
+                <Download size={16} className="mr-2" />
                 {t('document_gallery.download')}
               </a>
             </div>
