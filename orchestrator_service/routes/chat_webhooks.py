@@ -283,6 +283,80 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
                         from services.vision_service import process_vision_task
                         background_tasks.add_task(process_vision_task, message_id=msg_id, image_url=m_item.url, tenant_id=tenant_id)
                     except: logger.warning("vision_service not available")
+                
+                # --- AUTO-GUARDADO EN FICHA MÉDICA (Instagram/Facebook Media) ---
+                # Solo para imágenes y documentos, no para audio/video
+                if m_item.type in [MediaType.IMAGE, MediaType.DOCUMENT] and not msg.is_agent:
+                    try:
+                        # Intentar identificar al paciente por external_user_id (ID de Instagram/Facebook)
+                        # Para redes sociales, el external_user_id es el ID de usuario de la plataforma
+                        patient_row = await pool.fetchrow("""
+                            SELECT id FROM patients 
+                            WHERE tenant_id = $1 AND (
+                                phone_number = $2 OR 
+                                meta_user_id = $2 OR
+                                instagram_user_id = $2 OR
+                                facebook_user_id = $2
+                            )
+                            LIMIT 1
+                        """, tenant_id, msg.external_user_id)
+                        
+                        if not patient_row:
+                            logger.info(f"⚠️ No se encontró paciente para external_user_id: {msg.external_user_id} (canal: {msg.original_channel})")
+                            continue
+                        
+                        # Descargar el archivo si no es local
+                        local_url = m_item.url
+                        if not m_item.url.startswith("/media/"):
+                            try:
+                                from services.media_downloader import download_media
+                                media_type_str = "image" if m_item.type == MediaType.IMAGE else "document"
+                                local_url = await download_media(m_item.url, tenant_id, media_type_str)
+                            except Exception as download_err:
+                                logger.error(f"❌ Error descargando media de {msg.original_channel}: {download_err}")
+                                continue
+                        
+                        # Determinar tipo de documento para clasificación
+                        doc_type = "instagram_image" if msg.original_channel == "instagram" and m_item.type == MediaType.IMAGE else \
+                                  "instagram_document" if msg.original_channel == "instagram" and m_item.type == MediaType.DOCUMENT else \
+                                  "facebook_image" if msg.original_channel == "facebook" and m_item.type == MediaType.IMAGE else \
+                                  "facebook_document"
+                        
+                        file_name = m_item.file_name or f"{doc_type}_{uuid.uuid4().hex[:8]}"
+                        
+                        # Extraer extensión del archivo si está disponible
+                        if m_item.mime_type:
+                            import mimetypes
+                            ext = mimetypes.guess_extension(m_item.mime_type) or ""
+                            if ext and not file_name.lower().endswith(ext.lower()):
+                                file_name = f"{file_name}{ext}"
+                        
+                        # Insertar en patient_documents
+                        await pool.execute("""
+                            INSERT INTO patient_documents (
+                                patient_id, tenant_id, file_path, 
+                                document_type, file_name, mime_type,
+                                source, source_details, uploaded_at
+                            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+                        """, 
+                            patient_row["id"], tenant_id, local_url,
+                            doc_type, file_name, m_item.mime_type,
+                            msg.original_channel, json.dumps({
+                                "provider": provider,
+                                "external_user_id": msg.external_user_id,
+                                "display_name": msg.display_name,
+                                "media_type": m_item.type.value,
+                                "file_size": m_item.meta.get("file_size"),
+                                "conversation_id": str(conv_id),
+                                "message_id": msg_id
+                            })
+                        )
+                        
+                        logger.info(f"📁 Archivo de {msg.original_channel} guardado en ficha médica: paciente={patient_row['id']}, tipo={m_item.type.value}, archivo={file_name}")
+                        
+                    except Exception as doc_err:
+                        logger.error(f"❌ Error al guardar archivo de {msg.original_channel} en ficha médica: {doc_err}")
+                        # No fallar el flujo principal por error en guardado de documento
 
             # --- Spec 14: Socket.IO Notification (Real-time) ---
             try:

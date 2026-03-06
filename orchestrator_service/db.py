@@ -683,6 +683,53 @@ class Database:
                 END IF;
             END $$;
             """,
+            # Parche 26: Campos de recordatorios de turnos en appointments
+            """
+            DO $$ 
+            BEGIN 
+                -- Campo para tracking de recordatorios enviados
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='appointments' AND column_name='reminder_sent') THEN
+                    ALTER TABLE appointments ADD COLUMN reminder_sent BOOLEAN DEFAULT FALSE;
+                END IF;
+                
+                -- Campo para timestamp del recordatorio
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='appointments' AND column_name='reminder_sent_at') THEN
+                    ALTER TABLE appointments ADD COLUMN reminder_sent_at TIMESTAMPTZ;
+                END IF;
+                
+                -- Índices para búsquedas eficientes
+                CREATE INDEX IF NOT EXISTS idx_appointments_reminder_sent ON appointments(reminder_sent);
+                CREATE INDEX IF NOT EXISTS idx_appointments_reminder_date ON appointments(reminder_sent_at);
+            END $$;
+            """,
+            # Parche 27: Campos de seguimiento post-atención en appointments
+            """
+            DO $$ 
+            BEGIN 
+                -- Campo para tracking de seguimiento enviado
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='appointments' AND column_name='followup_sent') THEN
+                    ALTER TABLE appointments ADD COLUMN followup_sent BOOLEAN DEFAULT FALSE;
+                END IF;
+                
+                -- Campo para timestamp del seguimiento
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='appointments' AND column_name='followup_sent_at') THEN
+                    ALTER TABLE appointments ADD COLUMN followup_sent_at TIMESTAMPTZ;
+                END IF;
+                
+                -- Índice para búsquedas eficientes
+                CREATE INDEX IF NOT EXISTS idx_appointments_followup_sent ON appointments(followup_sent);
+                CREATE INDEX IF NOT EXISTS idx_appointments_followup_date ON appointments(followup_sent_at);
+            END $$;
+            """,
+            # Parche 28: Campo city para pacientes (admisión completa)
+            """
+            DO $$ 
+            BEGIN 
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='patients' AND column_name='city') THEN
+                    ALTER TABLE patients ADD COLUMN city VARCHAR(100);
+                END IF;
+            END $$;
+            """,
         ]
 
         async with self.pool.acquire() as conn:

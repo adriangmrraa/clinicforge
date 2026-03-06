@@ -198,13 +198,35 @@ Todas las vistas anteriores usan `useTranslation()` y `t()` para respetar el sel
 
 ---
 
-## 11. Tareas frecuentes (cómo trabajar)
+## 11. Sistema de Jobs Programados (Marzo 2026)
+
+### **Arquitectura:**
+- **Ubicación:** `orchestrator_service/jobs/`
+- **Scheduler:** `JobScheduler` en `scheduler.py` (integración con FastAPI lifespan)
+- **Jobs implementados:**
+  - `reminders.py`: Recordatorios de turnos (10:00 AM diario)
+  - `followups.py`: Seguimiento post-atención (11:00 AM diario)
+- **Administración:** Endpoints en `/admin/jobs/*` (test, run-now, status)
+
+### **Características clave:**
+- ✅ **Reemplaza AutomationService antiguo** (desactivado en main.py)
+- ✅ **Parches automáticos** para campos: `reminder_sent`, `reminder_sent_at`, `followup_sent`, `followup_sent_at`
+- ✅ **Integración con agente LLM**: Detección de respuestas a seguimientos activa triage automático
+- ✅ **Multi-tenant**: Todas las queries incluyen `tenant_id`
+
+### **Nuevo campo para pacientes:**
+- **Campo `city`**: Agregado via parche automático (parche 28 en `db.py`)
+- **Migración manual**: También disponible en `patch_022_patient_admission_fields.sql`
+- **Uso**: Obligatorio en proceso de admisión para pacientes nuevos
+
+## 12. Tareas frecuentes (cómo trabajar)
 
 - **Añadir una tool al agente:** Definir función en `main.py` con `@tool`, añadirla a la lista `tools` del agente. Respetar siempre `tenant_id` en la lógica.
 - **Añadir un endpoint admin:** En `admin_routes.py`, usar `verify_admin_token`, obtener `tenant_id` del usuario cuando aplique, filtrar consultas por `tenant_id`.
 - **Añadir una vista o ruta en el frontend:** Crear vista en `frontend_react/src/views/`, añadir ruta en `App.tsx` (y en Sidebar si debe aparecer en menú). Usar `useTranslation()` y `t()` para todos los textos.
 - **Añadir traducciones:** Añadir claves en `es.json`, `en.json`, `fr.json`; en el componente usar `t('namespace.key')`.
 - **Cambiar el esquema de BD:** Añadir parche idempotente en `orchestrator_service/db.py`; opcionalmente actualizar `db/init/dentalogic_schema.sql` para nuevas instalaciones. No ejecutar SQL directo en producción sin flujo controlado.
+- **Añadir un job programado:** Crear módulo en `orchestrator_service/jobs/`, usar decorador `@schedule_daily_at`, integrar con scheduler existente.
 
 ---
 

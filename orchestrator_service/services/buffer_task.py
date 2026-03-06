@@ -170,8 +170,102 @@ async def process_buffer_task(
             logger.info(f"🎙️ Inyectando contexto de audio: {len(audio_context_str)} chars")
             user_input += f"\n\nCONTEXTO DE AUDIO (Transcripciones recientes):{audio_context_str}"
 
+        # --- DETECCIÓN DE CONTEXTO ESPECIAL ---
+        # Verificar si hay contexto especial (multimedia, seguimientos, etc.)
+        has_recent_media = False
+        is_followup_response = False
+        media_types = []
+        channel_type = "whatsapp"  # Default
+        followup_context = ""
+        
+        try:
+            # Obtener el último mensaje del usuario y el último del asistente
+            context_rows = await pool.fetch("""
+                SELECT cm.role, cm.content, cm.content_attributes, cc.channel 
+                FROM chat_messages cm
+                JOIN chat_conversations cc ON cm.conversation_id = cc.id
+                WHERE cm.conversation_id = $1 
+                ORDER BY cm.created_at DESC 
+                LIMIT 2
+            """, conversation_id)
+            
+            if context_rows:
+                for row in context_rows:
+                    if row["role"] == "user":
+                        # Verificar archivos multimedia en mensaje del usuario
+                        attrs = row["content_attributes"]
+                        channel_type = row["channel"] or "whatsapp"
+                        
+                        if attrs:
+                            import json
+                            if isinstance(attrs, str):
+                                attrs = json.loads(attrs)
+                            
+                            if isinstance(attrs, list):
+                                for att in attrs:
+                                    media_type = att.get("type", "")
+                                    if media_type in ["image", "document"]:
+                                        has_recent_media = True
+                                        media_types.append(media_type)
+                    
+                    elif row["role"] == "assistant":
+                        # Verificar si el último mensaje del asistente fue un seguimiento
+                        attrs = row["content_attributes"]
+                        if attrs:
+                            import json
+                            if isinstance(attrs, str):
+                                attrs = json.loads(attrs)
+                            
+                            # Buscar metadata de seguimiento
+                            if isinstance(attrs, dict) and attrs.get("is_followup"):
+                                is_followup_response = True
+                                followup_context = (
+                                    "⚠️ ATENCIÓN: El paciente está respondiendo a un mensaje de "
+                                    "seguimiento post-atención. DEBÉS evaluar síntomas con 'triage_urgency' "
+                                    "y aplicar las 6 reglas maxilofaciales de urgencia."
+                                )
+                                logger.info(f"🔍 Detectada respuesta a seguimiento post-atención")
+                            
+        except Exception as e:
+            logger.warning(f"Error al verificar contexto especial: {e}")
+
         executor = await get_agent_executable_for_tenant(tenant_id)
         logger.info(f"🧠 Invoking Agent for {external_user_id}...")
+        
+        # Inyectar contexto especial si es necesario
+        special_context = []
+        
+        # Contexto de archivos multimedia
+        if has_recent_media:
+            channel_name = "WhatsApp"
+            if channel_type == "instagram":
+                channel_name = "Instagram"
+            elif channel_type == "facebook":
+                channel_name = "Facebook"
+            elif channel_type == "chatwoot":
+                channel_name = "el chat"
+            
+            media_context = "IMPORTANTE: El paciente acaba de enviar "
+            if "image" in media_types and "document" in media_types:
+                media_context += "imágenes y documentos"
+            elif "image" in media_types:
+                media_context += "una imagen"
+            elif "document" in media_types:
+                media_context += "un documento"
+            
+            media_context += f" por {channel_name}. Responde confirmando que recibiste el archivo y que ya lo guardaste en su ficha médica para que la Dra. lo vea. Usa un tono amable y profesional."
+            special_context.append(media_context)
+        
+        # Contexto de respuesta a seguimiento post-atención
+        if is_followup_response and followup_context:
+            special_context.append(followup_context)
+            logger.info("✅ Contexto de seguimiento post-atención inyectado")
+        
+        # Aplicar todos los contextos especiales
+        if special_context:
+            context_block = "\n\n".join(special_context)
+            user_input = f"{context_block}\n\nMensaje del paciente: {user_input}"
+        
         response = await executor.ainvoke({
             "input": user_input,
             "chat_history": chat_history,

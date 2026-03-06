@@ -18,11 +18,12 @@ Estos documentos explican el funcionamiento actual, la arquitectura y los proces
 | 05 | [05_developer_notes.md](05_developer_notes.md) | Notas técnicas para desarrolladores. |
 | 06 | [06_ai_prompt_template.md](06_ai_prompt_template.md) | Plantilla de prompt base para el agente. |
 | 07 | [07_workflow_guide.md](07_workflow_guide.md) | **Ciclo de tareas, Git y flujo de trabajo SDD v3.0 (Actualizado Feb 2026).** |
-| 12 | [12_resumen_funcional_no_tecnico.md](12_resumen_funcional_no_tecnico.md) | Resumen funcional en lenguaje para humanos. |
+| 12 | [12_resumen_funcional_no_tecnico.md](12_resumen_funcional_no_tecnico.md) | **ACTUALIZADO** - Resumen funcional en lenguaje para humanos (incluye sistema de seguimiento post-atención). |
 | 13 | [13_lead_patient_workflow.md](13_lead_patient_workflow.md) | Protocolo de conversión de contactos a pacientes. |
-| 14 | [NUEVO_PROCESO_ADMISION_ANAMNESIS.md](NUEVO_PROCESO_ADMISION_ANAMNESIS.md) | **NUEVO** - Documentación completa del proceso de admisión y sistema de anamnesis automatizada (Marzo 2026). |
+| 14 | [NUEVO_PROCESO_ADMISION_ANAMNESIS.md](NUEVO_PROCESO_ADMISION_ANAMNESIS.md) | **ACTUALIZADO** - Documentación completa del proceso de admisión y sistema de anamnesis automatizada (Marzo 2026). Incluye nota sobre campo `city` y migración requerida. |
 | 15 | [SISTEMA_SEGUIMIENTO_POST_ATENCION.md](SISTEMA_SEGUIMIENTO_POST_ATENCION.md) | **NUEVO** - Sistema automatizado de seguimiento post-atención para pacientes de cirugía (Marzo 2026). |
 | 16 | [SISTEMA_JOBS_PROGRAMADOS.md](SISTEMA_JOBS_PROGRAMADOS.md) | **NUEVO** - Arquitectura de jobs programados: recordatorios y seguimientos (Marzo 2026). |
+| 17 | [ESTADO_ACTUAL_SISTEMA.md](ESTADO_ACTUAL_SISTEMA.md) | **NUEVO** - Estado actual del sistema, documentación vs código real, desfases corregidos (Marzo 2026). |
 | 32 | [32_SECURITY_AUDIT_REPORT.md](32_SECURITY_AUDIT_REPORT.md) | **Reporte de Seguridad Actualizado (Misión 8 + Feb 2026).** |
 | -- | [API_REFERENCE.md](API_REFERENCE.md) | Referencia completa de endpoints de la API. |
 | -- | [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | Guía activa de problemas comunes y soluciones. |

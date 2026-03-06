@@ -9,6 +9,8 @@
 
 Sistema automatizado que envía seguimientos post-atención a pacientes de cirugía, detecta respuestas y activa automáticamente el triage de urgencia según las 6 reglas maxilofaciales configuradas.
 
+**Parte del sistema de jobs programados** - Integrado con `JobScheduler` para ejecución diaria a las 11:00 AM.
+
 ## 📋 RESUMEN EJECUTIVO
 
 ### **Características principales:**

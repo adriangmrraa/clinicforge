@@ -20,6 +20,8 @@ interface Patient {
   obra_social?: string;
   obra_social_number?: string;
   birth_date?: string;
+  city?: string;
+  insurance_provider?: string | null;
   created_at: string;
   status?: string;
   medical_notes?: string;
@@ -154,6 +156,28 @@ export default function PatientDetail() {
   const getRecordTypeLabel = (type: string) => {
     const keyMap: Record<string, string> = { initial: 'initial_consult', evolution: 'evolution', procedure: 'procedure', prescription: 'prescription' };
     return t('patient_detail.' + (keyMap[type] || type)) || type;
+  };
+
+  // Formatear fecha de nacimiento
+  const formatBirthDate = (dateStr: string) => {
+    try {
+      const date = new Date(dateStr);
+      return date.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    } catch {
+      return dateStr;
+    }
+  };
+
+  // Obtener etiqueta legible para fuente de adquisición
+  const getAcquisitionSourceLabel = (source: string) => {
+    const sourceMap: Record<string, string> = {
+      'INSTAGRAM': 'Instagram',
+      'GOOGLE': 'Google',
+      'REFERRED': 'Referido',
+      'OTHER': 'Otro',
+      'ORGANIC': 'Orgánico'
+    };
+    return sourceMap[source] || source;
   };
 
   const renderTabContent = () => {
@@ -385,6 +409,34 @@ export default function PatientDetail() {
                       <span className="text-sm text-gray-600">•</span>
                       <span className="text-sm text-gray-600">{patient.email}</span>
                     </>
+                  )}
+                </div>
+                
+                {/* Datos Demográficos - Nuevos campos de admisión */}
+                <div className="flex flex-wrap items-center gap-2 mt-2 text-xs text-gray-500">
+                  {patient.city && (
+                    <span className="bg-gray-100 px-2 py-0.5 rounded">
+                      📍 {patient.city}
+                    </span>
+                  )}
+                  {patient.birth_date && (
+                    <span className="bg-gray-100 px-2 py-0.5 rounded">
+                      🎂 {formatBirthDate(patient.birth_date)}
+                    </span>
+                  )}
+                  {patient.acquisition_source && patient.acquisition_source !== 'ORGANIC' && (
+                    <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded">
+                      {getAcquisitionSourceLabel(patient.acquisition_source)}
+                    </span>
+                  )}
+                  {patient.insurance_provider ? (
+                    <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded">
+                      🏥 {patient.insurance_provider}
+                    </span>
+                  ) : (
+                    <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded">
+                      🏥 Particular
+                    </span>
                   )}
                 </div>
               </div>

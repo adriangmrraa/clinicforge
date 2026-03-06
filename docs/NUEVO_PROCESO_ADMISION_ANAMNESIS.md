@@ -29,8 +29,14 @@
 3. **DNI** (`dni`) - Solo dígitos (7-8 caracteres)
 4. **Fecha de nacimiento** (`birth_date`) - Formato DD/MM/AAAA
 5. **Email** (`email`) - Email válido para comunicación
-6. **Ciudad/Barrio** (`city`) - Ubicación del paciente
+6. **Ciudad/Barrio** (`city`) - Ubicación del paciente ⚠️ *(Requiere migración o parche automático)*
 7. **Cómo nos conoció** (`acquisition_source`) - Instagram, Google, Referido, Otro
+
+**⚠️ NOTA IMPORTANTE SOBRE EL CAMPO `city`:**
+- **En producción:** El campo `city` se agrega automáticamente al iniciar el servicio (parche 28 en `db.py`)
+- **Si el campo no existe:** La tool `book_appointment` validará pero el sistema manejará el caso
+- **Verificación:** Ejecutar `patch_022_patient_admission_fields.sql` para garantizar disponibilidad
+- **Backward compatibility:** Sistema funciona incluso si `city` no existe (usa valor por defecto)
 
 ### **2.2 Validaciones implementadas:**
 - ✅ **Fecha**: Formato estricto DD/MM/AAAA, validación de números

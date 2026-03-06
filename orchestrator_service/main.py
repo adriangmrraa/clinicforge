@@ -1644,6 +1644,15 @@ REQUISITOS DE 'book_appointment' PARA PACIENTES NUEVOS: date_time, treatment_rea
 
 FLUJO DE ANAMNESIS PARA PACIENTES NUEVOS: Después de agendar exitosamente con 'book_appointment', DEBÉS decir "¡Listo! Ya tenemos tu ficha. Ahora te hago unas preguntas de salud..." y hacer las preguntas DE A UNA POR MENSAJE en este orden: enfermedades de base, medicación habitual, alergias, cirugías previas, si es fumador (y cantidad si aplica), embarazo/lactancia, experiencias negativas previas, miedos específicos. Finalmente ejecutá 'save_patient_anamnesis'. Esta tool es OBLIGATORIA para completar el registro médico.
 
+SEGUIMIENTO POST-ATENCIÓN (CRÍTICO): Si el paciente responde a un mensaje de seguimiento post-atención (identificado por "seguimiento" en el contexto o metadata), DEBÉS:
+1. Preguntar específicamente por síntomas post-tratamiento
+2. Evaluar inmediatamente con 'triage_urgency' si menciona dolor, inflamación, sangrado, fiebre o cualquier molestia
+3. Aplicar las 6 reglas maxilofaciales de urgencia configuradas
+4. Si es emergency/high, activar protocolo de urgencia inmediatamente
+5. Si es normal/low, tranquilizar y dar indicaciones de cuidado post-operatorio
+
+Los mensajes de seguimiento son enviados automáticamente por el sistema a pacientes atendidos el día anterior. Tu respuesta debe ser empática y profesional, enfocada en evaluar su recuperación.
+
 TRIAJE Y URGENCIAS: Ante dolor o accidentes, 'triage_urgency' primero. Si es emergency/high, contené al paciente y avisá que vas a dar prioridad.
 
 Usa solo las tools proporcionadas. Siempre terminá con una pregunta o frase que invite a seguir la charla.
@@ -1686,21 +1695,43 @@ async def lifespan(app: FastAPI):
     await db.connect()
     logger.info(f"✅ Base de datos conectada. Version: {await db.pool.fetchval('SELECT version()')}")
     
-    # Iniciar motor de automatización (Spec 03 / Misión 2)
+    # ⚠️ DESACTIVADO: Motor de automatización antiguo (Spec 03 / Misión 2)
+    # Reemplazado por nuevo sistema de jobs programados (Marzo 2026)
+    # try:
+    #     await automation_service.start()
+    # except Exception as e:
+    #     logger.error(f"❌ Falló el inicio de AutomationService: {e}")
+    logger.info("✅ Sistema de jobs programados activado (reemplaza AutomationService)")
+    
+    # Iniciar scheduler de jobs programados
     try:
-        await automation_service.start()
+        from jobs.scheduler import start_scheduler
+        await start_scheduler()
+        logger.info("✅ JobScheduler iniciado correctamente")
+    except ImportError as e:
+        logger.warning(f"⚠️ No se pudo importar JobScheduler: {e}")
     except Exception as e:
-        logger.error(f"❌ Falló el inicio de AutomationService: {e}")
+        logger.error(f"❌ Error al iniciar JobScheduler: {e}")
     
     yield
     
     # Shutdown
     logger.info("🔴 Cerrando orquestador dental...")
+    
+    # Detener scheduler de jobs
+    try:
+        from jobs.scheduler import stop_scheduler
+        await stop_scheduler()
+        logger.info("✅ JobScheduler detenido")
+    except Exception as e:
+        logger.error(f"❌ Error al detener JobScheduler: {e}")
+    
     await db.disconnect()
     logger.info("✅ Desconexión completada")
     
-    # Detener motor de automatización
-    await automation_service.stop()
+    # ⚠️ DESACTIVADO: Motor de automatización antiguo
+    # await automation_service.stop()
+    logger.info("✅ Sistema de jobs programados detenido")
 
 # OpenAPI / Swagger: documentación de contratos API
 OPENAPI_TAGS = [
@@ -1799,6 +1830,14 @@ app.include_router(admin_router)
 app.include_router(chat_webhooks.router)
 app.include_router(meta_auth.router)
 app.include_router(marketing.router)
+
+# Incluir rutas de jobs programados
+try:
+    from jobs.admin_routes import router as jobs_router
+    app.include_router(jobs_router)
+    logger.info("✅ Rutas de jobs programados incluidas")
+except ImportError as e:
+    logger.warning(f"⚠️ No se pudieron incluir rutas de jobs: {e}")
 
 # Import and include Google OAuth and Ads routers
 try:
@@ -2075,6 +2114,46 @@ async def chat_endpoint(req: ChatRequest, background_tasks: BackgroundTasks):
                     item["url"] = local_url
                 
                 attachments.append(item)
+                
+                # --- AUTO-GUARDADO EN FICHA MÉDICA (WhatsApp Media) ---
+                # Solo para imágenes y documentos, no para audio
+                if media_type in ["image", "document"] and existing_patient:
+                    try:
+                        # Determinar tipo de documento para clasificación
+                        doc_type = "whatsapp_image" if media_type == "image" else "whatsapp_document"
+                        file_name = item.get("file_name") or f"{doc_type}_{uuid.uuid4().hex[:8]}"
+                        
+                        # Extraer extensión del archivo si está disponible
+                        mime_type = item.get("mime_type", "")
+                        if mime_type:
+                            import mimetypes
+                            ext = mimetypes.guess_extension(mime_type) or ""
+                            if ext and not file_name.lower().endswith(ext.lower()):
+                                file_name = f"{file_name}{ext}"
+                        
+                        # Insertar en patient_documents
+                        await db.pool.execute("""
+                            INSERT INTO patient_documents (
+                                patient_id, tenant_id, file_path, 
+                                document_type, file_name, mime_type,
+                                source, source_details, uploaded_at
+                            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+                        """, 
+                            existing_patient["id"], tenant_id, local_url,
+                            doc_type, file_name, mime_type,
+                            "whatsapp", json.dumps({
+                                "provider": provider,
+                                "provider_message_id": provider_message_id,
+                                "media_type": media_type,
+                                "caption": item.get("caption")
+                            })
+                        )
+                        
+                        logger.info(f"📁 Archivo guardado en ficha médica: paciente={existing_patient['id']}, tipo={media_type}, archivo={file_name}")
+                        
+                    except Exception as doc_err:
+                        logger.error(f"❌ Error al guardar archivo en ficha médica: {doc_err}")
+                        # No fallar el flujo principal por error en guardado de documento
         
         # 1. Guardar mensaje del usuario PRIMERO (para no perderlo si hay error)
         # Spec 24: Ensure conversation exists for Buffering
