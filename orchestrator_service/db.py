@@ -674,7 +674,7 @@ class Database:
                         file_size INTEGER,
                         mime_type VARCHAR(100),
                         document_type VARCHAR(50) DEFAULT 'clinical', -- clinical, prescription, xray, consent, lab
-                        uploaded_by INTEGER REFERENCES users(id),
+                        uploaded_by UUID REFERENCES users(id),
                         created_at TIMESTAMPTZ DEFAULT NOW(),
                         UNIQUE(tenant_id, patient_id, filename)
                     );
