@@ -2456,7 +2456,7 @@ async def upload_patient_document(
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         RETURNING id
     """, tenant_id, id, file.filename, str(file_path), file_size, file.content_type, 
-       document_type, user_data.get("id"))
+       document_type, user_data.user_id)
     
     return {
         "id": doc_id,
@@ -2465,7 +2465,7 @@ async def upload_patient_document(
         "file_size": file_size,
         "mime_type": file.content_type,
         "document_type": document_type,
-        "uploaded_by": user_data.get("id"),
+        "uploaded_by": user_data.user_id,
         "proxy_url": f"/admin/patients/{id}/documents/{doc_id}/proxy"
     }
 
