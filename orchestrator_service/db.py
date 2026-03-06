@@ -753,14 +753,15 @@ class Database:
         ]
 
         async with self.pool.acquire() as conn:
-            async with conn.transaction():
-                for i, patch in enumerate(patches):
-                    try:
+            for i, patch in enumerate(patches):
+                try:
+                    async with conn.transaction():
                         await conn.execute(patch)
-                    except Exception as e:
-                        logger.error(f"❌ Error aplicando parche evolutivo {i+1}: {e}")
-                        # En evolución, a veces es mejor fallar rápido para no corromper
-                        raise e
+                except Exception as e:
+                    logger.error(f"❌ Error aplicando parche evolutivo {i+1}: {e}")
+                    # Ya no hacemos raise e, para que el fallo de un parche 
+                    # no aborte/haga rollback de los parches posteriores (ej: el parche 28).
+                    continue
 
     async def disconnect(self):
         if self.pool:
