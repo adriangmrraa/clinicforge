@@ -2308,7 +2308,7 @@ async def delete_patient(id: int, tenant_id: int = Depends(get_resolved_tenant_i
 async def get_clinical_records(id: int, tenant_id: int = Depends(get_resolved_tenant_id)):
     """Obtener historia clínica de un paciente. Aislado por tenant_id (Regla de Oro)."""
     rows = await db.pool.fetch("""
-        SELECT cr.id, cr.appointment_id, cr.diagnosis, cr.treatment_plan, cr.odontogram_data, cr.created_at 
+        SELECT cr.id, cr.diagnosis, cr.treatment_plan, cr.odontogram_data, cr.created_at 
         FROM clinical_records cr
         JOIN patients p ON cr.patient_id = p.id
         WHERE cr.patient_id = $1 AND p.tenant_id = $2
