@@ -28,3 +28,5 @@ python-multipart
 pyjwt
 email-validator
 pytz
+alembic
+psycopg2-binary
