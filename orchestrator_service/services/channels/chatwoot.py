@@ -13,7 +13,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from buffer_manager import BufferManager
 
 # Configurar db_pool
-from ..db import db_manager
+from db import db_manager
 
 logger = structlog.get_logger(__name__)
 

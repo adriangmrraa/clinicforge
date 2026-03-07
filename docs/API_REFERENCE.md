@@ -249,8 +249,14 @@ Modifica las propiedades de un tratamiento existente.
 ### Eliminar Tratamiento
 `DELETE /admin/treatment-types/{code}`
 
-- Si no tiene citas asociadas: **Eliminación física**.
+- Si no tiene citas asociadas: **Eliminación física**. (Borra imágenes físicas asociadas).
 - Si tiene citas asociadas: **Soft Delete** (`is_active = false`).
+
+### Galería de Imágenes del Tratamiento
+`GET /admin/treatment-types/{code}/images` — Lista las imágenes asociadas al tratamiento.
+`POST /admin/treatment-types/{code}/images` — Sube una nueva imagen (multipart/form-data).
+`DELETE /admin/treatment-types/{code}/images/{image_id}` — Elimina físicamente una imagen.
+`GET /admin/public/media/{image_id}` — (Público) Sirve la imagen física para consumo directo.
 
 ## Profesionales
 
@@ -715,6 +721,7 @@ Endpoint usado por el **WhatsApp Service** (y pruebas) para enviar mensajes al a
 
 - **Vision**: Si viene `media` de tipo `image`, se dispara análisis GPT-4o.
 - **Persistencia**: Historial en BD + Inyección de contexto visual.
+- **Retry System**: El LLM se ejecuta bajo un bloque de *Exponential Backoff* (hasta 3 intentos) si ocurren fallos de red. Si falla permanentemente, el buffer envía un mensaje de intermitencia suave al paciente en lugar de descartar la conversación.
 
 ---
 
