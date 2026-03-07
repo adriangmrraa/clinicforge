@@ -3610,6 +3610,19 @@ async def delete_treatment_type(code: str, tenant_id: int = Depends(get_resolved
             tenant_id, code,
         )
         return {"status": "deactivated", "code": code, "message": "Tratamiento desactivado por tener citas asociadas."}
+        
+    # Eliminar físicas las imágenes primero (el cascade borra la DB, pero hay que borrar de disco)
+    try:
+        images = await db.pool.fetch("SELECT file_path FROM treatment_images WHERE tenant_id = $1 AND treatment_code = $2", tenant_id, code)
+        for img in images:
+            if os.path.exists(img['file_path']):
+                try:
+                    os.remove(img['file_path'])
+                except Exception as e:
+                    logger.error(f"Error borrando imagen huérfana ({img['file_path']}): {e}")
+    except Exception as e:
+        logger.error(f"Error obteniendo imagenes para borrar: {e}")
+
     result = await db.pool.execute("DELETE FROM treatment_types WHERE tenant_id = $1 AND code = $2", tenant_id, code)
     if result == "DELETE 0":
         raise HTTPException(status_code=404, detail="Tipo de tratamiento no encontrado")
@@ -3664,8 +3677,95 @@ async def get_treatment_duration(code: str, urgency_level: str = "normal", tenan
         }
     }
 
+# --- TRATAMIENTO IMÁGENES ---
 
-# Analytics endpoints already handle below
+@router.get("/treatment-types/{code}/images", dependencies=[Depends(verify_admin_token)], tags=["Tratamientos"], summary="Listar imágenes de un tratamiento")
+async def list_treatment_images(code: str, tenant_id: int = Depends(get_resolved_tenant_id)):
+    """Lista las imágenes físicas asociadas a un tratamiento."""
+    rows = await db.pool.fetch("""
+        SELECT id, filename, file_path, mime_type, file_size, created_at
+        FROM treatment_images
+        WHERE tenant_id = $1 AND treatment_code = $2
+        ORDER BY created_at ASC
+    """, tenant_id, code)
+    return [dict(row) for row in rows]
+
+@router.post("/treatment-types/{code}/images", dependencies=[Depends(verify_admin_token)], tags=["Tratamientos"], summary="Subir imagen a un tratamiento")
+async def upload_treatment_image(
+    code: str, 
+    file: UploadFile = File(...), 
+    tenant_id: int = Depends(get_resolved_tenant_id)
+):
+    """Sube una imagen física y la asocia a un tratamiento."""
+    # Verificar que el tratamiento existe
+    exists = await db.pool.fetchval("SELECT 1 FROM treatment_types WHERE tenant_id = $1 AND code = $2", tenant_id, code)
+    if not exists:
+        raise HTTPException(status_code=404, detail="Tratamiento no encontrado")
+        
+    upload_dir = f"uploads/treatments/{tenant_id}/{code}"
+    os.makedirs(upload_dir, exist_ok=True)
+    
+    file_ext = os.path.splitext(file.filename)[1]
+    safe_filename = f"{uuid.uuid4()}{file_ext}"
+    file_path = os.path.join(upload_dir, safe_filename)
+    
+    try:
+        content = await file.read()
+        with open(file_path, "wb") as f:
+            f.write(content)
+            
+        file_size = len(content)
+        mime_type = file.content_type
+        
+        new_id = await db.pool.fetchval("""
+            INSERT INTO treatment_images (tenant_id, treatment_code, filename, file_path, mime_type, file_size)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            RETURNING id
+        """, tenant_id, code, file.filename, file_path, mime_type, file_size)
+        
+        return {
+            "id": new_id,
+            "filename": file.filename,
+            "file_path": file_path,
+            "status": "uploaded"
+        }
+    except Exception as e:
+        logger.error(f"Error uploading treatment image: {e}")
+        raise HTTPException(status_code=500, detail="Error al guardar la imagen")
+
+@router.delete("/treatment-types/{code}/images/{image_id}", dependencies=[Depends(verify_admin_token)], tags=["Tratamientos"], summary="Borrar imagen de un tratamiento")
+async def delete_treatment_image(code: str, image_id: str, tenant_id: int = Depends(get_resolved_tenant_id)):
+    """Elimina una imagen física de un tratamiento."""
+    row = await db.pool.fetchrow("""
+        SELECT file_path FROM treatment_images WHERE id = $1 AND tenant_id = $2 AND treatment_code = $3
+    """, image_id, tenant_id, code)
+    
+    if not row:
+        raise HTTPException(status_code=404, detail="Imagen no encontrada")
+        
+    file_path = row['file_path']
+    if os.path.exists(file_path):
+        try:
+            os.remove(file_path)
+        except Exception as e:
+            logger.error(f"Error borrando archivo físico {file_path}: {e}")
+            
+    await db.pool.execute("DELETE FROM treatment_images WHERE id = $1", image_id)
+    return {"status": "deleted"}
+    
+@router.get("/public/media/{image_id}", tags=["Media"], summary="Servidor público de imágenes")
+async def get_public_media(image_id: str):
+    """Endpoint público para servir las imágenes temporalmente a YCloud/WhatsApp a través de la URL"""
+    try:
+        row = await db.pool.fetchrow("SELECT file_path, mime_type FROM treatment_images WHERE id = $1", image_id)
+        if not row or not os.path.exists(row['file_path']):
+            raise HTTPException(status_code=404, detail="Imagen no encontrada")
+            
+        return FileResponse(row['file_path'], media_type=row['mime_type'])
+    except Exception as e:
+        logger.error(f"Error fetching media: {e}")
+        raise HTTPException(status_code=400, detail="ID Invalido o error interno")
+
 
 # ==================== ENDPOINTS ANALYTICS ====================
 

@@ -75,3 +75,16 @@ ON CONFLICT (tenant_id, name) DO UPDATE SET value = EXCLUDED.value;
 **Síntoma**: Los números de Inversión y ROI se pisan en pantallas pequeñas.
 **Causa**: Layout de grilla estático (`grid-cols-2`).
 **Solución**: Usar grillas responsivas (`grid-cols-1 sm:grid-cols-2`) y clases `break-words` para valores monetarios grandes.
+
+---
+
+## 5. Base de Datos & Maintenance Robot
+
+### 5.1. Error: Prepared statement "S_X" already exists / Transaction Error [NEW v8.1]
+**Síntoma**: El servicio falla al arrancar con un error de base de datos relacionado con "prepared statements" o la transacción se cancela al ejecutar el script de inicialización.
+
+**Causa**: El motor de `db.py` intentaba ejecutar scripts SQL largos (como `dentalogic_schema.sql`) dentro de una transacción ya abierta, lo que causaba colisiones en el driver `asyncpg` al intentar pre-compilar bloques con `;`.
+
+**Solución**: Refactorizar `_run_evolution_pipeline` para adquirir una conexión fresca del pool por cada comando mayor, ejecutando los parches en sesiones aisladas. Esto evita que el estado fallido de un comando bloquee el canal del pool.
+
+---

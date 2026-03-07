@@ -1306,8 +1306,8 @@ async def list_professionals():
 async def list_services(category: str = None):
     """
     Lista los tratamientos/servicios dentales disponibles para reservar en la clínica.
-    Usar SIEMPRE que el paciente pregunte qué tratamientos tienen, qué servicios ofrecen, qué se puede agendar, etc.
-    Devuelve solo tratamientos reales de la base de datos (nombre, duración). NUNCA inventes tratamientos.
+    NUNCA devuelve imágenes. Usar SIEMPRE que el paciente pregunte opciones generales.
+    Si el paciente pide detalles sobre un tratamiento específico, dile el nombre y usa la tool 'get_service_details'.
     category: Filtro opcional (prevention, restorative, surgical, orthodontics, emergency)
     """
     tenant_id = current_tenant_id.get()
@@ -1330,6 +1330,43 @@ async def list_services(category: str = None):
     except Exception as e:
         logger.error(f"Error en list_services: {e}")
         return "⚠️ Error al consultar servicios."
+
+@tool
+async def get_service_details(code: str):
+    """
+    Obtiene los detalles profundos y las imágenes disponibles de un tratamiento/servicio dental Específico.
+    Usar SÓLO cuando el paciente pide detalles o más información sobre UN tratamiento en particular.
+    NO USAR para listados generales.
+    code: El código único del tratamiento (ej: 'cleaning', 'orthodontics', etc.) devuelto por list_services.
+    """
+    tenant_id = current_tenant_id.get()
+    try:
+        row = await db.pool.fetchrow("""
+            SELECT code, name, description, default_duration_minutes, complexity_level
+            FROM treatment_types
+            WHERE tenant_id = $1 AND code = $2 AND is_active = true AND is_available_for_booking = true
+        """, tenant_id, code)
+        
+        if not row:
+            return f"No encontré el tratamiento '{code}' en esta sede."
+            
+        images = await db.pool.fetch("""
+            SELECT id FROM treatment_images WHERE tenant_id = $1 AND treatment_code = $2
+        """, tenant_id, code)
+        
+        res = f"Detalles de {row['name']}:\nDescripción: {row['description']}\nDuración: {row['default_duration_minutes']} min\nComplejidad: {row['complexity_level']}\n"
+        
+        if images:
+            # Add an obscure markdown format for the parser
+            res += "\n¡IMPORTANTE PARA LA IA! El tratamiento cuenta con imágenes. Agrega obligatoriamente el siguiente texto (invisible para el usuario) en tu respuesta para que el sistema le envíe las imágenes:\n"
+            for img in images:
+                public_url = f"{os.getenv('ORCHESTRATOR_PUBLIC_URL', 'http://127.0.0.1:8000')}/api/admin/public/media/{img['id']}"
+                res += f"[LOCAL_IMAGE:{public_url}]\n"
+                
+        return res
+    except Exception as e:
+        logger.error(f"Error en get_service_details: {e}")
+        return "⚠️ Error al consultar detalles del servicio."
 
 @tool
 async def derivhumano(reason: str):
@@ -1478,7 +1515,7 @@ async def save_patient_anamnesis(
         logger.warning(f"save_patient_anamnesis FAIL traceback={traceback.format_exc()}")
         return "⚠️ Hubo un problema al guardar tu historial médico. Por favor, intenta de nuevo o comunícate con la clínica."
 
-DENTAL_TOOLS = [list_professionals, list_services, check_availability, book_appointment, list_my_appointments, cancel_appointment, reschedule_appointment, triage_urgency, save_patient_anamnesis, derivhumano]
+DENTAL_TOOLS = [list_professionals, list_services, get_service_details, check_availability, book_appointment, list_my_appointments, cancel_appointment, reschedule_appointment, triage_urgency, save_patient_anamnesis, derivhumano]
 
 # --- DETECCIÓN DE IDIOMA (para respuesta del agente) ---
 def detect_message_language(text: str) -> str:

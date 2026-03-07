@@ -17,6 +17,8 @@ from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_excep
 from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
 
 from ycloud_client import YCloudClient
+import sys
+import os
 
 # Initialize config
 load_dotenv()
@@ -153,7 +155,8 @@ async def verify_signature(request: Request):
        retry=retry_if_exception_type(httpx.HTTPError))
 async def forward_to_orchestrator(payload: dict, headers: dict):
     async with httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=5.0)) as client:
-        response = await client.post(f"{ORCHESTRATOR_URL}/chat", json=payload, headers=headers)
+        url = f"{ORCHESTRATOR_URL}/admin/ycloud/webhook?access_token={INTERNAL_API_TOKEN}"
+        response = await client.post(url, json=payload, headers=headers)
         response.raise_for_status()
         return response.json()
 
@@ -239,100 +242,12 @@ async def send_sequence(messages: List[OrchestratorMessage], user_number: str, b
         except Exception as e:
             logger.error("sequence_step_error", error=str(e), correlation_id=correlation_id)
 
-# --- Background Task ---
-async def process_user_buffer(from_number: str, business_number: str, customer_name: Optional[str], event_id: str, provider_message_id: str):
-    buffer_key, timer_key, lock_key = f"buffer:{from_number}", f"timer:{from_number}", f"active_task:{from_number}"
-    correlation_id = str(uuid.uuid4())
-    log = logger.bind(correlation_id=correlation_id, from_number=from_number[-4:])
-    try:
-        while True:
-            # 1. Debounce Phase: Wait until user stopped typing
-            while True:
-                await asyncio.sleep(2)
-                if redis_client.ttl(timer_key) <= 0: break
-            
-            # 2. Atomic Fetch: How many messages are we starting with?
-            L = redis_client.llen(buffer_key)
-            if L == 0: break
-            
-            raw_items = redis_client.lrange(buffer_key, 0, L-1)
-            parsed_items = []
-            for item in raw_items:
+            for k in [lock_key, timer_key]:
                 try:
-                    parsed_items.append(json.loads(item))
+                    redis_client.delete(k)
                 except:
-                    # Fallback for legacy items or unexpected formats
-                    parsed_items.append({"text": item, "wamid": provider_message_id, "event_id": event_id})
-            
-            joined_text = "\n".join([i["text"] for i in parsed_items])
-            # We use the LAST message IDs to identify this batch in the orchestrator (deduplication)
-            current_event_id = parsed_items[-1].get("event_id") or event_id
-            current_wamid = parsed_items[-1].get("wamid") or provider_message_id
-            
-            # Extract referral from ANY message in the batch (usually the first one has it)
-            referral_data = next((i.get("referral") for i in parsed_items if i.get("referral")), None)
+                    pass
 
-            inbound_event = {
-                "provider": "ycloud", 
-                "event_id": current_event_id, 
-                "provider_message_id": current_wamid,
-                "from_number": from_number, "to_number": business_number, "text": joined_text, "customer_name": customer_name,
-                "event_type": "whatsapp.inbound_message.received", "correlation_id": correlation_id,
-                "referral": referral_data # Propagate to Orchestrator
-            }
-            headers = {"X-Correlation-Id": correlation_id}
-            if INTERNAL_API_TOKEN: headers["X-Internal-Token"] = INTERNAL_API_TOKEN
-                 
-            log.info("forwarding_to_orchestrator", text_preview=joined_text[:50])
-            raw_res = await forward_to_orchestrator(inbound_event, headers)
-            log.info("orchestrator_response_received", status=raw_res.get("status"), send=raw_res.get("send"))
-            
-            try:
-                orch_res = OrchestratorResult(**raw_res)
-            except Exception as e:
-                log.error("orchestrator_parse_error", error=str(e), raw=raw_res)
-                # Cleanup and break to avoid stuck state
-                redis_client.ltrim(buffer_key, L, -1)
-                break
-
-            if orch_res.status == "duplicate":
-                log.info("ignoring_duplicate_response")
-                redis_client.ltrim(buffer_key, L, -1)
-                break
-
-            if orch_res.send:
-                if not YCLOUD_API_KEY:
-                    log.error("missing_ycloud_api_key", note="Cannot send sequence without API key")
-                else:
-                    msgs = orch_res.messages
-                    if not msgs and orch_res.text:
-                        msgs = [OrchestratorMessage(text=orch_res.text)]
-                    
-                    if msgs:
-                        img_count = len([m for m in msgs if m.imageUrl])
-                        log.info("starting_send_sequence", count=len(msgs), images_found=img_count)
-                        await send_sequence(msgs, from_number, business_number, current_event_id, correlation_id)
-            
-            # 3. ATOMIC TRIM: Remove only the messages we just processed
-            redis_client.ltrim(buffer_key, L, -1)
-            
-            # 4. LOOP CHECK: If more messages arrived during the sequence, process them immediately
-            if redis_client.llen(buffer_key) == 0:
-                break
-            else:
-                log.info("new_messages_while_responding", remaining=redis_client.llen(buffer_key))
-                # Nueva ventana de acumulación para los mensajes que llegaron mientras respondíamos
-                redis_client.setex(timer_key, DEBOUNCE_SECONDS, "1")
-
-    except Exception as e:
-        log.error("buffer_process_error", error=str(e))
-    finally:
-        # Buffer is handled by ltrim inside the loop or error
-        for k in [lock_key, timer_key]:
-            try:
-                redis_client.delete(k)
-            except:
-                pass
 
 # --- Endpoints ---
 @app.get("/metrics")
@@ -370,24 +285,15 @@ async def ycloud_webhook(request: Request):
             referral = msg.get("referral") # Capture referral object if present
             
             if text:
-                buffer_key, timer_key, lock_key = f"buffer:{from_n}", f"timer:{from_n}", f"active_task:{from_n}"
-                
-                # Payload enriquecido con referral
-                payload_data = {
-                    "text": text,
-                    "wamid": msg.get("wamid") or event.get("id"),
-                    "event_id": event.get("id")
-                }
-                if referral:
-                    payload_data["referral"] = referral
-
-                redis_client.rpush(buffer_key, json.dumps(payload_data))
-                redis_client.setex(timer_key, DEBOUNCE_SECONDS, "1")
-                if not redis_client.get(lock_key):
-                    redis_client.setex(lock_key, 60, "1")
-                    asyncio.create_task(process_user_buffer(from_n, to_n, name, event.get("id"), msg.get("wamid") or event.get("id")))
-                return {"status": "buffering_started", "correlation_id": correlation_id}
-            return {"status": "buffering_updated", "correlation_id": correlation_id}
+                headers = {"X-Correlation-Id": correlation_id}
+                try:
+                    await forward_to_orchestrator(event, headers)
+                    return {"status": "forwarded_to_orchestrator", "correlation_id": correlation_id}
+                except Exception as e:
+                    logger.error("forward_failed", error=str(e))
+                    raise HTTPException(status_code=500, detail="Orchestrator unavailable")
+            
+            return {"status": "ignored_no_text", "type": msg_type}
 
 
         # A.2 Audio → Enviar URL del audio + transcripción (FIX CRÍTICO Spec 20)
@@ -401,63 +307,17 @@ async def ycloud_webhook(request: Request):
                 # Transcribir audio
                 transcription = await transcribe_audio(audio_link, correlation_id)
                 
-                # ✅ Construir media_list para el audio (igual que imagen/document)
-                media_list = [{
-                    "type": "audio",
-                    "url": audio_link,
-                    "mime_type": node.get("mime_type"),
-                    "provider_id": node.get("id"),
-                    "voice": node.get("voice", False),
-                    "transcription": transcription.strip() if transcription else None
-                }]
-                
-                # ✅ Enviar AMBOS: audio + transcripción
-                payload = {
-                    "provider": "ycloud",
-                    "event_id": event.get("id"),
-                    "provider_message_id": msg.get("wamid") or event.get("id"),
-                    "from_number": from_n,
-                    "to_number": to_n,
-                    "text": transcription.strip() if transcription else None,
-                    "customer_name": name,
-                    "event_type": "whatsapp.inbound_message.received",
-                    "correlation_id": correlation_id,
-                    "media": media_list,  # ✅ Audio URL + transcripción
-                }
+                if transcription:
+                    msg["audio"] = node
+                    msg["audio"]["transcription"] = transcription.strip()
                 
                 headers = {"X-Correlation-Id": correlation_id}
-                if INTERNAL_API_TOKEN:
-                    headers["X-Internal-Token"] = INTERNAL_API_TOKEN
-                
-                logger.info("forwarding_audio_to_orchestrator", has_transcription=bool(transcription))
-                raw_res = await forward_to_orchestrator(payload, headers)
-                logger.info("orchestrator_response_received", status=raw_res.get("status"))
-                
-                # ✅ Procesar respuesta del orchestrator y enviar a WhatsApp (Spec 21)
                 try:
-                    orch_res = OrchestratorResult(**raw_res)
-                    
-                    if orch_res.status == "duplicate":
-                        logger.info("audio_duplicate_ignored", provider_message_id=payload.get("provider_message_id"))
-                        return {"status": "duplicate", "correlation_id": correlation_id}
-                    
-                    if orch_res.send:
-                        if not YCLOUD_API_KEY:
-                            logger.error("missing_ycloud_api_key_audio_reply")
-                        else:
-                            msgs = orch_res.messages
-                            if not msgs and orch_res.text:
-                                msgs = [OrchestratorMessage(text=orch_res.text)]
-                            
-                            if msgs:
-                                await send_sequence(msgs, from_n, to_n, event.get("id"), correlation_id)
-                                logger.info("audio_response_sent", success=True, message_count=len(msgs))
-                    
-                    return {"status": "processed", "correlation_id": correlation_id, "source": "audio"}
-                    
+                    await forward_to_orchestrator(event, headers)
+                    return {"status": "forwarded_audio_to_orchestrator", "correlation_id": correlation_id}
                 except Exception as e:
-                    logger.error("audio_response_processing_error", error=str(e))
-                    return {"status": "error", "correlation_id": correlation_id, "error": str(e)}
+                    logger.error("forward_audio_failed", error=str(e))
+                    raise HTTPException(status_code=500, detail="Orchestrator unavailable")
             
             return {"status": "ignored_no_link", "type": msg_type}
         
@@ -488,44 +348,13 @@ async def ycloud_webhook(request: Request):
             
         # audio ya se maneja arriba: transcribir -> buffer -> mismo flujo que texto
         if media_list:
-             # Construct payload compatible with InboundChatEvent + Media extension
-             payload = {
-                "provider": "ycloud", 
-                "event_id": event.get("id"), 
-                "provider_message_id": msg.get("wamid") or event.get("id"),
-                "from_number": from_n, 
-                "to_number": to_n, 
-                "text": text_content, # Can be None/null
-                "customer_name": name,
-                "event_type": "whatsapp.inbound_message.received", 
-                "correlation_id": correlation_id,
-                "media": media_list
-             }
              headers = {"X-Correlation-Id": correlation_id}
-             if INTERNAL_API_TOKEN: headers["X-Internal-Token"] = INTERNAL_API_TOKEN
-             
-             # Send to Orchestrator and Process Response
              try:
-                 raw_res = await forward_to_orchestrator(payload, headers)
-                 
-                 orch_res = OrchestratorResult(**raw_res)
-                 if orch_res.status == "duplicate":
-                     logger.info("media_duplicate_ignored", provider_message_id=payload.get("provider_message_id"))
-                     return {"status": "duplicate", "correlation_id": correlation_id}
-                 if orch_res.send:
-                     if not YCLOUD_API_KEY:
-                         logger.error("missing_ycloud_api_key_media_reply")
-                     else:
-                         msgs = orch_res.messages
-                         if not msgs and orch_res.text:
-                             msgs = [OrchestratorMessage(text=orch_res.text)]
-                         
-                         if msgs:
-                             await send_sequence(msgs, from_n, to_n, event.get("id"), correlation_id)
+                 await forward_to_orchestrator(event, headers)
+                 return {"status": "forwarded_media_to_orchestrator", "correlation_id": correlation_id}
              except Exception as e:
-                 logger.error("media_response_processing_error", error=str(e))
-                 
-             return {"status": "media_and_response_processed", "count": len(media_list)}
+                 logger.error("forward_media_failed", error=str(e))
+                 raise HTTPException(status_code=500, detail="Orchestrator unavailable")
              
         return {"status": "ignored_type_or_empty", "type": msg_type}
 

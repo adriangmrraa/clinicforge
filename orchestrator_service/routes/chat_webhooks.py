@@ -391,11 +391,44 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
 
             if not is_locked:
                 try:
-                    from services.relay import enqueue_buffer_and_schedule_task
-                    background_tasks.add_task(enqueue_buffer_and_schedule_task, tenant_id, str(conv_id), msg.external_user_id)
-                    logger.info(f"⏳ Relay task queued for {msg.external_user_id}")
-                except ImportError:
-                    logger.debug("relay not available")
+                    import os
+                    from db import get_pool
+                    import redis.asyncio as redis
+                    from services.buffer_manager import BufferManager
+                    
+                    redis_url = os.getenv("REDIS_URL", "redis://redis:6379")
+                    redis_client = redis.from_url(redis_url, decode_responses=True)
+                    
+                    message_data = {
+                        "text": msg.content,
+                        "wamid": ext_id_candidate,
+                        "business_info": {
+                            "conversation_id": str(conv_id)
+                        },
+                        "media": content_attrs,
+                        "correlation_id": str(uuid.uuid4())
+                    }
+                    if msg.referral:
+                        message_data["referral"] = msg.referral
+                    
+                    async def enqueue_bg():
+                        try:
+                            await BufferManager.enqueue_message(
+                                redis_client=redis_client,
+                                db_pool=get_pool(),
+                                provider=provider,
+                                channel=msg.original_channel,
+                                tenant_id=tenant_id,
+                                external_user_id=msg.external_user_id,
+                                message_data=message_data
+                            )
+                        finally:
+                            await redis_client.aclose()
+                            
+                    background_tasks.add_task(enqueue_bg)
+                    logger.info(f"⏳ Buffer task queued for {msg.external_user_id}")
+                except Exception as e:
+                    logger.error(f"⚠️ Error queuing buffer task: {e}")
             else:
                 logger.info(f"🔇 AI silenced by human override for {msg.external_user_id}")
 

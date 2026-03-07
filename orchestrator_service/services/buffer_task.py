@@ -17,6 +17,8 @@ async def process_buffer_task(
     conversation_id: str,
     external_user_id: str,
     messages: List[str],
+    provider: str = None,
+    channel: str = None
 ) -> None:
     pool = get_pool()
     row = await pool.fetchrow(
@@ -266,88 +268,79 @@ async def process_buffer_task(
             context_block = "\n\n".join(special_context)
             user_input = f"{context_block}\n\nMensaje del paciente: {user_input}"
         
-        response = await executor.ainvoke({
-            "input": user_input,
-            "chat_history": chat_history,
-            "system_prompt": system_prompt,
-        })
-        response_text = response.get("output", "") or "[Sin respuesta]"
-        logger.info(f"🤖 Agent Response: {response_text[:50]}...")
+        # --- Retry Logic con Exponential Backoff ---
+        response_text = ""
+        media_urls = []
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                response = await executor.ainvoke({
+                    "input": user_input,
+                    "chat_history": chat_history,
+                    "system_prompt": system_prompt,
+                })
+                response_text = response.get("output", "") or "[Sin respuesta]"
+                logger.info(f"🤖 Agent Response: {response_text[:50]}...")
+                break
+            except Exception as e:
+                logger.warning(f"⚠️ process_buffer_task_agent_error (intento {attempt + 1}/{max_retries}): {str(e)}")
+                if attempt < max_retries - 1:
+                    import asyncio
+                    await asyncio.sleep(2 ** attempt)
+                else:
+                    logger.exception("process_buffer_task_agent_error_final", exc_info=e)
+                    response_text = "Disculpas, estoy experimentando intermitencias técnicas. Consultame de nuevo en unos minutos."
+                    
+        # --- Extracción Multimedia Oculta ---
+        if "[LOCAL_IMAGE:" in response_text:
+            import re
+            img_pattern = r'\[LOCAL_IMAGE:(.*?)\]'
+            media_urls = re.findall(img_pattern, response_text)
+            response_text = re.sub(img_pattern, '', response_text).strip()
+            # Limpiar posible basura arrastrada por el tag markdown
+            response_text = response_text.replace('¡IMPORTANTE PARA LA IA! El tratamiento cuenta con imágenes. Agrega obligatoriamente el siguiente texto (invisible para el usuario) en tu respuesta para que el sistema le envíe las imágenes:', '').strip()
+            
     except Exception as e:
-        logger.exception("process_buffer_task_agent_error", error=str(e))
-        response_text = "[Error al procesar. Intente de nuevo.]"
+        logger.exception("process_buffer_task_fatal_error", exc_info=e)
+        response_text = "Disculpas, estoy experimentando intermitencias. Consultame de nuevo en unos minutos."
+        media_urls = []
 
     # --- SEND RESPONSE ---
+    from response_sender import ResponseSender
+    
     if provider == "chatwoot":
         account_id = row["external_account_id"]
         cw_conv_id = row["external_chatwoot_id"]
         
         if account_id and cw_conv_id:
-            from core.credentials import get_tenant_credential, CHATWOOT_API_TOKEN, CHATWOOT_BASE_URL
-            token = await get_tenant_credential(tenant_id, CHATWOOT_API_TOKEN)
-            base_url = await get_tenant_credential(tenant_id, CHATWOOT_BASE_URL) or "https://app.chatwoot.com"
-            
-            if token:
-                try:
-                    from chatwoot_client import ChatwootClient
-                    client = ChatwootClient(base_url, token)
-                    resp_data = await client.send_text_message(account_id, cw_conv_id, response_text)
-                    cw_msg_id = resp_data.get("id")
-                    logger.info(f"✅ Message sent to Chatwoot/Meta successfully: {response_text[:30]}... ID: {cw_msg_id}")
-
-                    # Spec 34: Guardar provider_message_id para deduplicación robusta
-                    meta_json = json.dumps({
-                        "provider": "chatwoot", 
-                        "provider_message_id": str(cw_msg_id) if cw_msg_id else None
-                    })
-
-                    await pool.execute(
-                        """
-                        INSERT INTO chat_messages (tenant_id, conversation_id, role, content, from_number, platform_metadata)
-                        VALUES ($1, $2, 'assistant', $3, $4, $5::jsonb)
-                        """,
-                        tenant_id, conversation_id, response_text, external_user_id or "chatwoot", meta_json
-                    )
-                except Exception as send_err:
-                    logger.exception(f"❌ Failed sending to Chatwoot/Meta: {send_err}")
-            else:
-                 logger.error(f"❌ Missing Chatwoot Token for tenant {tenant_id}")
+            logger.info(f"🚀 Sending Chatwoot Response | tenant={tenant_id} to={external_user_id} media={len(media_urls)}")
+            await ResponseSender.send_sequence(
+                tenant_id=tenant_id,
+                external_user_id=external_user_id,
+                conversation_id=conversation_id,
+                provider=provider,
+                channel=row.get("channel") or "chatwoot",
+                account_id=account_id,
+                cw_conv_id=cw_conv_id,
+                messages_text=response_text,
+                media_urls=media_urls
+            )
         else:
             logger.warning("process_buffer_task_chatwoot_missing_ids", conv_id=conversation_id)
 
     elif provider == "ycloud":
-        logger.info(f"🚀 Sending YCloud Response | tenant={tenant_id} to={external_user_id}")
-        try:
-            from core.credentials import get_tenant_credential, YCLOUD_API_KEY, YCLOUD_WHATSAPP_NUMBER
-            api_key = await get_tenant_credential(tenant_id, YCLOUD_API_KEY)
-            sender_number = await get_tenant_credential(tenant_id, YCLOUD_WHATSAPP_NUMBER)
-            
-            if api_key and sender_number:
-                from ycloud_client import YCloudClient
-                client = YCloudClient(api_key, sender_number)
-                
-                # Spec 34: Capture YCloud Message ID
-                yc_resp = await client.send_whatsapp_text(external_user_id, response_text)
-                yc_msg_id = yc_resp.get("id") if isinstance(yc_resp, dict) else None
-                
-                logger.info(f"✅ Message sent to YCloud successfully: {response_text[:30]}... ID: {yc_msg_id}")
-                
-                meta_json = json.dumps({
-                    "provider": "ycloud",
-                    "provider_message_id": str(yc_msg_id) if yc_msg_id else None
-                })
-                
-                await pool.execute(
-                    """
-                    INSERT INTO chat_messages (tenant_id, conversation_id, role, content, from_number, platform_metadata)
-                    VALUES ($1, $2, 'assistant', $3, $4, $5::jsonb)
-                    """,
-                    tenant_id, conversation_id, response_text, external_user_id, meta_json
-                )
-            else:
-                logger.error(f"❌ Missing YCloud Credentials for tenant {tenant_id}")
-        except Exception as send_err:
-             logger.error(f"❌ Failed sending to YCloud: {send_err}")
+        logger.info(f"🚀 Sending YCloud Response | tenant={tenant_id} to={external_user_id} media={len(media_urls)}")
+        await ResponseSender.send_sequence(
+                tenant_id=tenant_id,
+                external_user_id=external_user_id,
+                conversation_id=conversation_id,
+                provider=provider,
+                channel="whatsapp",
+                account_id="", # Irrelevant for ycloud
+                cw_conv_id="", 
+                messages_text=response_text,
+                media_urls=media_urls
+        )
 
     # --- Spec 14: Socket.IO Notification (Real-time AI Response) ---
     try:

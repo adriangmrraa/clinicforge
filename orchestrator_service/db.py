@@ -750,6 +750,36 @@ class Database:
             COMMENT ON COLUMN patients.birth_date IS 'Fecha de nacimiento del paciente (formato DD/MM/AAAA)';
             COMMENT ON COLUMN patients.email IS 'Email del paciente para comunicación';
             """,
+            # Parche 29: Tabla channel_configs para el sistema de Buffer Múltiple y Ráfagas
+            """
+            CREATE TABLE IF NOT EXISTS channel_configs (
+                id SERIAL PRIMARY KEY,
+                tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+                provider VARCHAR(50) NOT NULL,
+                channel VARCHAR(50),
+                config JSONB NOT NULL DEFAULT '{}',
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                UNIQUE(tenant_id, provider, channel)
+            );
+            CREATE INDEX IF NOT EXISTS idx_channel_configs_tenant ON channel_configs(tenant_id);
+            CREATE INDEX IF NOT EXISTS idx_channel_configs_provider ON channel_configs(provider);
+            """,
+            # Parche 30: Tabla de imágenes físicas de tratamientos (Soporte Multimedia)
+            """
+            CREATE TABLE IF NOT EXISTS treatment_images (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+                treatment_code VARCHAR(50) NOT NULL,
+                filename VARCHAR(255) NOT NULL,
+                file_path VARCHAR(1000) NOT NULL,
+                mime_type VARCHAR(100),
+                file_size INTEGER,
+                created_at TIMESTAMPTZ DEFAULT NOW(),
+                FOREIGN KEY (tenant_id, treatment_code) REFERENCES treatment_types(tenant_id, code) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_treatment_images_tenant_code ON treatment_images(tenant_id, treatment_code);
+            """
         ]
 
         async with self.pool.acquire() as conn:

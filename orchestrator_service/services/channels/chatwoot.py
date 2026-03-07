@@ -3,8 +3,19 @@ import json
 import logging
 from .base import ChannelAdapter
 from .types import CanonicalMessage, MediaItem, MediaType
+import sys
+import os
+import uuid
+import structlog
 
-logger = logging.getLogger(__name__)
+# Ensure services path is available
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from buffer_manager import BufferManager
+
+# Configurar db_pool
+from ..db import db_manager
+
+logger = structlog.get_logger(__name__)
 
 class ChatwootAdapter(ChannelAdapter):
     """
@@ -115,8 +126,51 @@ class ChatwootAdapter(ChannelAdapter):
             sender=sender_data
         )
         
-        self._log_normalization("Chatwoot", 1, [str(m.type) for m in media_items])
-        return [canonical]
+        # 6. Encolar en BufferManager (Nuevo Flujo Robusto)
+        # Spec 32: Devolvemos lista vacía al llamador original porque el 
+        #   BufferManager procesará la ráfaga de forma asíncrona.
+        if not is_outgoing:
+            try:
+                # Obtener pool
+                pool = db_manager.get_pool() if hasattr(db_manager, "get_pool") else None
+                
+                # Transformar media_items
+                media_dicts = [{"type": m.type.value, "url": m.url, "mime_type": m.mime_type, "file_name": m.file_name} for m in media_items]
+                correlation_id = payload.get("id", str(uuid.uuid4()))
+                message_data = {
+                    "text": content,
+                    "provider": "chatwoot",
+                    "channel": nexus_channel,
+                    "business_info": {
+                        "account_id": payload.get("account", {}).get("id"),
+                        "conversation_id": conversation.get("id"),
+                        "inbox_id": payload.get("inbox", {}).get("id")
+                    },
+                    "correlation_id": correlation_id,
+                    "media": media_dicts
+                }
+                
+                from ..redis_client import get_redis
+                redis_client = get_redis()
+                
+                import asyncio
+                asyncio.create_task(
+                    BufferManager.enqueue_message(
+                        redis_client=redis_client,
+                        db_pool=pool,
+                        provider="chatwoot",
+                        channel=nexus_channel,
+                        tenant_id=tenant_id,
+                        external_user_id=target_external_id,
+                        message_data=message_data
+                    )
+                )
+                self._log_normalization("Chatwoot", 1, [str(m.type) for m in media_items])
+                
+            except Exception as e:
+                logger.error("chatwoot_buffer_enqueue_error", error=str(e), tenant_id=tenant_id)
+        
+        return [] # Se procesará asíncronamente en batch
 
     def _extract_media(self, payload: Dict[str, Any]) -> List[MediaItem]:
         items = []

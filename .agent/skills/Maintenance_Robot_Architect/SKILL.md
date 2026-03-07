@@ -32,6 +32,9 @@ Asegurar que **CADA NUEVO DESPLIEGUE** en un entorno limpio nazca funcional y qu
     *   El motor en `db.py` ya maneja el split por `;` respetando bloques `$$`. 
     *   Asegúrate de que cada parche termine en `;` y use `$$` para envolver bloques anónimos.
 
+5.  **Aislamiento de Sesión (v8.1)**:
+    *   Para scripts largos o con múltiples `;`, usa sesiones aisladas (`pool.acquire()`) por bloque para evitar errores de canal o de "prepared statement".
+
 ## Guía de Implementación
 
 ### 1. Agregar una nueva columna/feature

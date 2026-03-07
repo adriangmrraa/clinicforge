@@ -12,7 +12,8 @@ Se completó una auditoría completa y se actualizó toda la documentación para
 1. **Documentación sincronizada** - Refleja exactamente el código real
 2. **Desfases críticos corregidos** - Campo `city` ahora documentado correctamente
 3. **Sistema unificado** - Jobs programados documentados en todos los documentos relevantes
-4. **Transparencia total** - Estado actual claramente documentado
+4. **Estabilización v8.1** - Persistencia de Odontogramas y adaptación Mobile completa
+5. **i18n Dinámico** - Soporte nativo para interpolación de variables en la UI
 
 ## 📋 DESFASES CORREGIDOS
 
@@ -137,7 +138,29 @@ city VARCHAR(100)  -- ✅ NUEVO PARCHE 28
 - **Campos obligatorios**: 7 campos para pacientes nuevos (incluye `city`)
 - **Seguimiento automático**: Detecta respuestas y activa triage
 
-## 📊 VERIFICACIÓN DE COINCIDENCIA
+### **4. 🌍 i18n & FRONTEND NEXUS (V8.1)**
+#### **Estado anterior:**
+- Interpolación de variables hardcoded (substring replace)
+- Errores de `undefined` y `{}` en PatientDetail
+- Odontograma no persistente tras refrescar
+- Layout mobile con scroll horizontal roto en tabs
+
+#### **Corrección aplicada:**
+- ✅ **`LanguageContext` v2**: Función `t()` ahora soporta objetos de datos.
+- ✅ **Nexus UI Adaptation**: Tabs de pacientes con scroll de aislamiento.
+- ✅ **Persistence Engine**: `admin_routes.py` corregido para persistir JSONB nativo.
+- ✅ **Clean Data Layer**: Filtrado de nulos en historial clínico.
+
+#### **Estado actual:**
+- i18n: Totalmente dinámico (`t('key', { var })`).
+- UI: Adaptativa (Mobile-First) en todo el módulo de pacientes.
+- Persistencia: 100% garantizada para Odontogramas.
+
+### **5. 🤖 MAINTENANCE ROBOT - TRANSACTION ISOLATION**
+- Se detectó un error al ejecutar scripts SQL largos dentro de una sola transacción.
+- ✅ **Corrección**: El Robot ahora usa sesiones aisladas (`pool.acquire()`) por cada bloque de ejecución para evitar errores de `prepared statement`.
+
+## 📚 DOCUMENTACIÓN ACTUALIZADA
 
 ### **✅ DOCUMENTACIÓN vs CÓDIGO (100% COINCIDENCIA):**
 

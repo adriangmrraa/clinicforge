@@ -450,7 +450,7 @@ Elimina el paciente del tenant (o soft-delete según esquema).
 
 ### Historial clínico (records)
 `GET /admin/patients/{id}/records` — Lista notas/registros clínicos del paciente.  
-`POST /admin/patients/{id}/records` — Crea una nota clínica. Body: `content`, opcionalmente `odontogram_data`.
+`POST /admin/patients/{id}/records` — Crea una nota clínica. Body: `content`, opcionalmente `odontogram_data`, `diagnosis`, `treatment_plan`, `treatments`. Soporta tipos complejos (JSONB) persistidos nativamente.
 
 ### Búsqueda semántica
 `GET /admin/patients/search-semantic?q=<texto>`

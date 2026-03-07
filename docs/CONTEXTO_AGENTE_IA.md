@@ -153,7 +153,7 @@ Todas las vistas anteriores usan `useTranslation()` y `t()` para respetar el sel
 
 - **Idiomas:** Español (es), Inglés (en), Francés (fr). Idioma por defecto: **inglés**.
 - **Dónde se elige:** Configuración (`/configuracion`) – solo CEO. Se persiste en `tenants.config.ui_language` vía PATCH `/admin/settings/clinic`.
-- **Frontend:** `LanguageProvider` envuelve la app. Al cargar con sesión se obtiene idioma de GET `/admin/settings/clinic`; también se usa `localStorage` (`ui_language`). Componentes usan `useTranslation()` y `t('namespace.key')`. Archivos: `frontend_react/src/locales/es.json`, `en.json`, `fr.json`.
+- **Frontend:** `LanguageProvider` envuelve la app. Al cargar con sesión se obtiene idioma de GET `/admin/settings/clinic`; también se usa `localStorage` (`ui_language`). Componentes usan `useTranslation()` y `t('namespace.key', data)`. El sistema soporta **interpolación dinámica** (ej: `t('gallery.count', { count: 5 })`). Archivos: `frontend_react/src/locales/es.json`, `en.json`, `fr.json`.
 - **Añadir un texto traducido:** 1) Añadir clave en los tres JSON (ej. `"my_section.my_key": "Texto"`). 2) En el componente: `const { t } = useTranslation();` y usar `t('my_section.my_key')`.
 - **Agente WhatsApp:** Responde en el idioma del mensaje del paciente (detección es/en/fr en backend); no depende del idioma de la UI.
 

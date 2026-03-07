@@ -455,6 +455,23 @@ CREATE INDEX IF NOT EXISTS idx_treatment_types_category ON treatment_types(categ
 CREATE INDEX IF NOT EXISTS idx_treatment_types_active ON treatment_types(is_active, is_available_for_booking);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_treatment_types_tenant_code ON treatment_types(tenant_id, code);
 
+-- ==================== TABLA DE IMÁGENES DE TRATAMIENTOS ====================
+
+CREATE TABLE IF NOT EXISTS treatment_images (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    treatment_code VARCHAR(50) NOT NULL,
+    filename VARCHAR(255) NOT NULL,
+    file_path VARCHAR(1000) NOT NULL,
+    mime_type VARCHAR(100),
+    file_size INTEGER,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    
+    FOREIGN KEY (tenant_id, treatment_code) REFERENCES treatment_types(tenant_id, code) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_treatment_images_tenant_code ON treatment_images(tenant_id, treatment_code);
+
 -- ==================== DATOS POR DEFECTO: TRATAMIENTOS DENTALES ====================
 
 INSERT INTO treatment_types (
