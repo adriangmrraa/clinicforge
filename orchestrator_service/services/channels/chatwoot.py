@@ -13,7 +13,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from buffer_manager import BufferManager
 
 # Configurar db_pool
-from db import db_manager
+from db import db
 
 logger = structlog.get_logger(__name__)
 
@@ -132,7 +132,7 @@ class ChatwootAdapter(ChannelAdapter):
         if not is_outgoing:
             try:
                 # Obtener pool
-                pool = db_manager.get_pool() if hasattr(db_manager, "get_pool") else None
+                pool = getattr(db, "pool", None)
                 
                 # Transformar media_items
                 media_dicts = [{"type": m.type.value, "url": m.url, "mime_type": m.mime_type, "file_name": m.file_name} for m in media_items]
