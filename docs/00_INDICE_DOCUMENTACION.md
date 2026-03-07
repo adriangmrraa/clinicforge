@@ -24,6 +24,7 @@ Estos documentos explican el funcionamiento actual, la arquitectura y los proces
 | 15 | [SISTEMA_SEGUIMIENTO_POST_ATENCION.md](SISTEMA_SEGUIMIENTO_POST_ATENCION.md) | **NUEVO** - Sistema automatizado de seguimiento post-atención para pacientes de cirugía (Marzo 2026). |
 | 16 | [SISTEMA_JOBS_PROGRAMADOS.md](SISTEMA_JOBS_PROGRAMADOS.md) | **NUEVO** - Arquitectura de jobs programados: recordatorios y seguimientos (Marzo 2026). |
 | 17 | [ESTADO_ACTUAL_SISTEMA.md](ESTADO_ACTUAL_SISTEMA.md) | **NUEVO** - Estado actual del sistema, documentación vs código real, desfases corregidos (Marzo 2026). |
+| 18 | [GUIA_IMPLEMENTACION_BUFFER_WHATSAPP_CHATWOOT.md](GUIA_IMPLEMENTACION_BUFFER_WHATSAPP_CHATWOOT.md) | **NUEVO** - Guía completa para implementar sistema robusto de buffer/debounce de Dentalogic en ClinicForge, soportando WhatsApp (YCloud) y Chatwoot (IG/FB) (Marzo 2026). |
 | 32 | [32_SECURITY_AUDIT_REPORT.md](32_SECURITY_AUDIT_REPORT.md) | **Reporte de Seguridad Actualizado (Misión 8 + Feb 2026).** |
 | -- | [API_REFERENCE.md](API_REFERENCE.md) | Referencia completa de endpoints de la API. |
 | -- | [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | Guía activa de problemas comunes y soluciones. |
