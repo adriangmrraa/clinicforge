@@ -176,20 +176,48 @@ export default function DocumentGallery({ patientId, readOnly = false }: Documen
     }
   };
 
-  const handlePreview = (document: PatientDocument) => {
+  const [downloadingId, setDownloadingId] = useState<number | null>(null);
+
+  const handlePreview = async (document: PatientDocument) => {
     if (document.mime_type?.startsWith('image/')) {
-      // Para imágenes, usar el proxy de medios
-      const proxyUrl = `/admin/patients/${patientId}/documents/${document.id}/proxy`;
-      setPreviewUrl(proxyUrl);
+      try {
+        setDownloadingId(document.id);
+        const response = await api.get(`/admin/patients/${patientId}/documents/${document.id}/proxy`, {
+          responseType: 'blob'
+        });
+        const url = window.URL.createObjectURL(new Blob([response.data]));
+        setPreviewUrl(url);
+      } catch (err: any) {
+        console.error('Error previewing document:', err);
+        setError(t('document_gallery.download_error') || 'Error fetching preview');
+      } finally {
+        setDownloadingId(null);
+      }
     } else {
-      // Para otros tipos, descargar
       handleDownload(document);
     }
   };
 
-  const handleDownload = (document: PatientDocument) => {
-    const downloadUrl = `/admin/patients/${patientId}/documents/${document.id}/proxy`;
-    window.open(downloadUrl, '_blank');
+  const handleDownload = async (document: PatientDocument) => {
+    try {
+      setDownloadingId(document.id);
+      const response = await api.get(`/admin/patients/${patientId}/documents/${document.id}/proxy`, {
+        responseType: 'blob'
+      });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = window.document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', document.filename);
+      window.document.body.appendChild(link);
+      link.click();
+      window.document.body.removeChild(link);
+      setTimeout(() => window.URL.revokeObjectURL(url), 1000);
+    } catch (err: any) {
+      console.error('Error downloading document:', err);
+      setError(t('document_gallery.download_error') || 'Error downloading the file');
+    } finally {
+      setDownloadingId(null);
+    }
   };
 
   const formatFileSize = (bytes?: number): string => {
@@ -206,6 +234,13 @@ export default function DocumentGallery({ patientId, readOnly = false }: Documen
 
   const formatDate = (dateString: string): string => {
     return new Date(dateString).toLocaleDateString();
+  };
+
+  const handleClosePreview = () => {
+    if (previewUrl && previewUrl.startsWith('blob:')) {
+      window.URL.revokeObjectURL(previewUrl);
+    }
+    setPreviewUrl(null);
   };
 
   return (
@@ -380,7 +415,8 @@ export default function DocumentGallery({ patientId, readOnly = false }: Documen
                     {document.mime_type?.startsWith('image/') && (
                       <button
                         onClick={() => handlePreview(document)}
-                        className="p-2 text-gray-600 hover:text-primary hover:bg-gray-100 rounded"
+                        disabled={downloadingId === document.id}
+                        className={`p-2 text-gray-600 hover:text-primary hover:bg-gray-100 rounded ${downloadingId === document.id ? 'opacity-50 cursor-wait' : ''}`}
                         title={t('document_gallery.preview')}
                       >
                         <Eye size={16} />
@@ -388,7 +424,8 @@ export default function DocumentGallery({ patientId, readOnly = false }: Documen
                     )}
                     <button
                       onClick={() => handleDownload(document)}
-                      className="p-2 text-gray-600 hover:text-primary hover:bg-gray-100 rounded"
+                      disabled={downloadingId === document.id}
+                      className={`p-2 text-gray-600 hover:text-primary hover:bg-gray-100 rounded ${downloadingId === document.id ? 'opacity-50 cursor-wait' : ''}`}
                       title={t('document_gallery.download')}
                     >
                       <Download size={16} />
@@ -418,7 +455,7 @@ export default function DocumentGallery({ patientId, readOnly = false }: Documen
             <div className="flex justify-between items-center p-4 border-b shrink-0 bg-white">
               <h3 className="font-semibold text-gray-800">{t('document_gallery.preview_title')}</h3>
               <button
-                onClick={() => setPreviewUrl(null)}
+                onClick={handleClosePreview}
                 className="p-1 hover:bg-gray-100 rounded-full bg-gray-50"
               >
                 <X size={20} />
@@ -435,7 +472,7 @@ export default function DocumentGallery({ patientId, readOnly = false }: Documen
 
             <div className="p-4 border-t flex flex-col sm:flex-row justify-end gap-3 bg-white shrink-0">
               <button
-                onClick={() => setPreviewUrl(null)}
+                onClick={handleClosePreview}
                 className="w-full sm:w-auto px-4 py-3 sm:py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 font-medium"
               >
                 {t('common.close')}
