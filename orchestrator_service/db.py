@@ -560,17 +560,238 @@ class Database:
                 END IF;
             END $$;
             """,
+            # Parche 27: Meta Form Leads System (tablas para gestión de leads de Meta Lead Forms)
+            """
+            CREATE TABLE IF NOT EXISTS meta_form_leads (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+                form_id VARCHAR(255),
+                page_id VARCHAR(255),
+                ad_id VARCHAR(255),
+                adset_id VARCHAR(255),
+                campaign_id VARCHAR(255),
+                ad_name TEXT,
+                adset_name TEXT,
+                campaign_name TEXT,
+                page_name TEXT,
+                full_name TEXT,
+                email VARCHAR(255),
+                phone_number VARCHAR(50),
+                custom_questions JSONB DEFAULT '{}',
+                status VARCHAR(50) DEFAULT 'new' CHECK (status IN ('new', 'contacted', 'consultation_scheduled', 'treatment_planned', 'converted', 'not_interested', 'spam')),
+                assigned_to UUID,
+                notes TEXT,
+                medical_interest TEXT,
+                preferred_specialty TEXT,
+                insurance_provider TEXT,
+                preferred_date DATE,
+                preferred_time TIME,
+                lead_source VARCHAR(100) DEFAULT 'meta_form',
+                attribution_data JSONB DEFAULT '{}',
+                webhook_payload JSONB DEFAULT '{}',
+                converted_to_patient_id INTEGER,
+                converted_at TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_meta_form_leads_tenant_status ON meta_form_leads(tenant_id, status);
+            CREATE INDEX IF NOT EXISTS idx_meta_form_leads_campaign ON meta_form_leads(campaign_id);
+            CREATE INDEX IF NOT EXISTS idx_meta_form_leads_ad ON meta_form_leads(ad_id);
+            CREATE INDEX IF NOT EXISTS idx_meta_form_leads_created ON meta_form_leads(created_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_meta_form_leads_assigned ON meta_form_leads(assigned_to);
+            CREATE INDEX IF NOT EXISTS idx_meta_form_leads_phone ON meta_form_leads(phone_number);
+            """,
+            # Parche 27b: lead_status_history (historial de cambios de estado de un lead)
+            """
+            CREATE TABLE IF NOT EXISTS lead_status_history (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                lead_id UUID NOT NULL REFERENCES meta_form_leads(id) ON DELETE CASCADE,
+                tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+                old_status VARCHAR(50),
+                new_status VARCHAR(50) NOT NULL,
+                changed_by UUID,
+                change_reason TEXT,
+                notes TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_lead_status_history_lead ON lead_status_history(lead_id);
+            CREATE INDEX IF NOT EXISTS idx_lead_status_history_tenant ON lead_status_history(tenant_id);
+            CREATE INDEX IF NOT EXISTS idx_lead_status_history_created ON lead_status_history(created_at DESC);
+            """,
+            # Parche 27c: lead_notes (notas internas sobre un lead)
+            """
+            CREATE TABLE IF NOT EXISTS lead_notes (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                lead_id UUID NOT NULL REFERENCES meta_form_leads(id) ON DELETE CASCADE,
+                tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+                content TEXT NOT NULL,
+                created_by UUID,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_lead_notes_lead ON lead_notes(lead_id);
+            CREATE INDEX IF NOT EXISTS idx_lead_notes_tenant ON lead_notes(tenant_id);
+            CREATE INDEX IF NOT EXISTS idx_lead_notes_created ON lead_notes(created_at DESC);
+            """,
+            # Parche 27d: Columnas Meta Ads adicionales en patients (meta_adset_id, meta_adset_name, etc.)
+            """
+            DO $$
+            BEGIN
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='patients' AND column_name='meta_adset_id') THEN
+                    ALTER TABLE patients ADD COLUMN meta_adset_id VARCHAR(255);
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='patients' AND column_name='meta_adset_name') THEN
+                    ALTER TABLE patients ADD COLUMN meta_adset_name TEXT;
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='patients' AND column_name='meta_ad_name') THEN
+                    ALTER TABLE patients ADD COLUMN meta_ad_name TEXT;
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='patients' AND column_name='meta_campaign_name') THEN
+                    ALTER TABLE patients ADD COLUMN meta_campaign_name TEXT;
+                END IF;
+            END $$;
+            """,
+            # Parche 23: Columna odontogram_data en clinical_records (JSONB) para Ficha Médica
+            """
+            DO $$ 
+            BEGIN 
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='clinical_records' AND column_name='odontogram_data') THEN
+                    ALTER TABLE clinical_records ADD COLUMN odontogram_data JSONB DEFAULT '{}';
+                END IF;
+            END $$;
+            """,
+            # Parche 24: Tabla patient_documents (multi-tenant) para gestión de documentos clínicos
+            """
+            DO $$
+            BEGIN
+                IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='patient_documents') THEN
+                    CREATE TABLE patient_documents (
+                        id SERIAL PRIMARY KEY,
+                        tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+                        patient_id INTEGER NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
+                        filename VARCHAR(255) NOT NULL,
+                        file_path VARCHAR(500) NOT NULL,
+                        file_size INTEGER,
+                        mime_type VARCHAR(100),
+                        document_type VARCHAR(50) DEFAULT 'clinical', -- clinical, prescription, xray, consent, lab
+                        uploaded_by UUID REFERENCES users(id),
+                        created_at TIMESTAMPTZ DEFAULT NOW(),
+                        UNIQUE(tenant_id, patient_id, filename)
+                    );
+                    CREATE INDEX idx_patient_documents_tenant ON patient_documents(tenant_id);
+                    CREATE INDEX idx_patient_documents_patient ON patient_documents(patient_id);
+                END IF;
+            END $$;
+            """,
+            # Parche 26: Campos de recordatorios de turnos en appointments
+            """
+            DO $$ 
+            BEGIN 
+                -- Campo para tracking de recordatorios enviados
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='appointments' AND column_name='reminder_sent') THEN
+                    ALTER TABLE appointments ADD COLUMN reminder_sent BOOLEAN DEFAULT FALSE;
+                END IF;
+                
+                -- Campo para timestamp del recordatorio
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='appointments' AND column_name='reminder_sent_at') THEN
+                    ALTER TABLE appointments ADD COLUMN reminder_sent_at TIMESTAMPTZ;
+                END IF;
+                
+                -- Índices para búsquedas eficientes
+                CREATE INDEX IF NOT EXISTS idx_appointments_reminder_sent ON appointments(reminder_sent);
+                CREATE INDEX IF NOT EXISTS idx_appointments_reminder_date ON appointments(reminder_sent_at);
+            END $$;
+            """,
+            # Parche 27: Campos de seguimiento post-atención en appointments
+            """
+            DO $$ 
+            BEGIN 
+                -- Campo para tracking de seguimiento enviado
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='appointments' AND column_name='followup_sent') THEN
+                    ALTER TABLE appointments ADD COLUMN followup_sent BOOLEAN DEFAULT FALSE;
+                END IF;
+                
+                -- Campo para timestamp del seguimiento
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='appointments' AND column_name='followup_sent_at') THEN
+                    ALTER TABLE appointments ADD COLUMN followup_sent_at TIMESTAMPTZ;
+                END IF;
+                
+                -- Índice para búsquedas eficientes
+                CREATE INDEX IF NOT EXISTS idx_appointments_followup_sent ON appointments(followup_sent);
+                CREATE INDEX IF NOT EXISTS idx_appointments_followup_date ON appointments(followup_sent_at);
+            END $$;
+            """,
+            # Parche 28: Campo city, birth_date, first_touch_source y email para pacientes (admisión completa)
+            """
+            DO $$ 
+            BEGIN 
+                -- 1. City
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='patients' AND column_name='city') THEN
+                    ALTER TABLE patients ADD COLUMN city VARCHAR(100);
+                END IF;
+                -- 2. first_touch_source
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='patients' AND column_name='first_touch_source') THEN
+                    ALTER TABLE patients ADD COLUMN first_touch_source VARCHAR(50) DEFAULT 'ORGANIC';
+                END IF;
+                -- 3. birth_date
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='patients' AND column_name='birth_date') THEN
+                    ALTER TABLE patients ADD COLUMN birth_date DATE;
+                END IF;
+                -- 4. email
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='patients' AND column_name='email') THEN
+                    ALTER TABLE patients ADD COLUMN email VARCHAR(255);
+                END IF;
+            END $$;
+            
+            CREATE INDEX IF NOT EXISTS idx_patients_city ON patients(city);
+            
+            COMMENT ON COLUMN patients.city IS 'Ciudad/Barrio del paciente para registro de admisión';
+            COMMENT ON COLUMN patients.first_touch_source IS 'Fuente de adquisición del paciente: ORGANIC, INSTAGRAM, GOOGLE, REFERRED, OTHER';
+            COMMENT ON COLUMN patients.birth_date IS 'Fecha de nacimiento del paciente (formato DD/MM/AAAA)';
+            COMMENT ON COLUMN patients.email IS 'Email del paciente para comunicación';
+            """,
+            # Parche 29: Tabla channel_configs para el sistema de Buffer Múltiple y Ráfagas
+            """
+            CREATE TABLE IF NOT EXISTS channel_configs (
+                id SERIAL PRIMARY KEY,
+                tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+                provider VARCHAR(50) NOT NULL,
+                channel VARCHAR(50),
+                config JSONB NOT NULL DEFAULT '{}',
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                UNIQUE(tenant_id, provider, channel)
+            );
+            CREATE INDEX IF NOT EXISTS idx_channel_configs_tenant ON channel_configs(tenant_id);
+            CREATE INDEX IF NOT EXISTS idx_channel_configs_provider ON channel_configs(provider);
+            """,
+            # Parche 30: Tabla de imágenes físicas de tratamientos (Soporte Multimedia)
+            """
+            CREATE TABLE IF NOT EXISTS treatment_images (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+                treatment_code VARCHAR(50) NOT NULL,
+                filename VARCHAR(255) NOT NULL,
+                file_path VARCHAR(1000) NOT NULL,
+                mime_type VARCHAR(100),
+                file_size INTEGER,
+                created_at TIMESTAMPTZ DEFAULT NOW(),
+                FOREIGN KEY (tenant_id, treatment_code) REFERENCES treatment_types(tenant_id, code) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_treatment_images_tenant_code ON treatment_images(tenant_id, treatment_code);
+            """
         ]
 
         async with self.pool.acquire() as conn:
-            async with conn.transaction():
-                for i, patch in enumerate(patches):
-                    try:
+            for i, patch in enumerate(patches):
+                try:
+                    async with conn.transaction():
                         await conn.execute(patch)
-                    except Exception as e:
-                        logger.error(f"❌ Error aplicando parche evolutivo {i+1}: {e}")
-                        # En evolución, a veces es mejor fallar rápido para no corromper
-                        raise e
+                except Exception as e:
+                    logger.error(f"❌ Error aplicando parche evolutivo {i+1}: {e}")
+                    # Ya no hacemos raise e, para que el fallo de un parche 
+                    # no aborte/haga rollback de los parches posteriores (ej: el parche 28).
+                    continue
 
     async def disconnect(self):
         if self.pool:
@@ -837,3 +1058,253 @@ def get_pool():
     if db.pool is None:
         raise RuntimeError("Database pool not initialized. Call await db.connect() first.")
     return db.pool
+
+
+# ==================== META ADS ATTRIBUTION FUNCTIONS ====================
+
+async def update_patient_attribution_from_referral(patient_id: int, tenant_id: int, referral: dict) -> bool:
+    """
+    Updates patient attribution from Meta Ads referral object.
+    
+    Args:
+        patient_id: Patient ID to update
+        tenant_id: Tenant ID for multi-tenant isolation
+        referral: Referral object from WhatsApp webhook
+    
+    Returns:
+        bool: True if attribution was updated, False otherwise
+    """
+    if not referral:
+        return False
+    
+    # Extract attribution data from referral object
+    # WhatsApp referral structure: https://developers.facebook.com/docs/whatsapp/cloud-api/webhooks/components#referral-object
+    ad_id = referral.get("ad_id")
+    if not ad_id:
+        return False
+    
+    # Build attribution update
+    attribution_update = {
+        "acquisition_source": "META_ADS",
+        "meta_ad_id": ad_id,
+        "meta_ad_name": referral.get("ad_name"),
+        "meta_ad_headline": referral.get("headline"),
+        "meta_ad_body": referral.get("body"),
+        "meta_adset_id": referral.get("adset_id"),
+        "meta_adset_name": referral.get("adset_name"),
+        "meta_campaign_id": referral.get("campaign_id"),
+        "meta_campaign_name": referral.get("campaign_name"),
+        "updated_at": "NOW()"
+    }
+    
+    # Filter out None values
+    attribution_update = {k: v for k, v in attribution_update.items() if v is not None}
+    
+    if not attribution_update:
+        return False
+    
+    # Build dynamic SQL update
+    set_clauses = []
+    params = []
+    param_index = 1
+    
+    for key, value in attribution_update.items():
+        if key == "updated_at":
+            set_clauses.append(f"{key} = NOW()")
+        else:
+            set_clauses.append(f"{key} = ${param_index}")
+            params.append(value)
+            param_index += 1
+    
+    # Add patient_id and tenant_id as final parameters
+    params.extend([patient_id, tenant_id])
+    
+    query = f"""
+        UPDATE patients 
+        SET {', '.join(set_clauses)}
+        WHERE id = ${param_index} AND tenant_id = ${param_index + 1}
+    """
+    
+    try:
+        pool = get_pool()
+        async with pool.acquire() as conn:
+            result = await conn.execute(query, *params)
+            updated = result.split()[1]  # Get "UPDATE X" count
+            
+            if updated == "1":
+                logger.info(f"✅ Patient {patient_id} attribution updated from Meta Ads referral: {ad_id}")
+                return True
+            else:
+                logger.warning(f"⚠️ Patient {patient_id} not found or not updated")
+                return False
+                
+    except Exception as e:
+        logger.error(f"❌ Error updating patient attribution: {e}")
+        return False
+
+
+async def update_patient_attribution_from_meta_webhook(patient_id: int, tenant_id: int, meta_data: dict) -> bool:
+    """
+    Updates patient attribution from Meta Lead Forms webhook data.
+    
+    Args:
+        patient_id: Patient ID to update
+        tenant_id: Tenant ID for multi-tenant isolation
+        meta_data: Meta Ads data from lead form webhook
+    
+    Returns:
+        bool: True if attribution was updated, False otherwise
+    """
+    if not meta_data:
+        return False
+    
+    # Build attribution update from Meta webhook data
+    attribution_update = {
+        "acquisition_source": "META_ADS",
+        "meta_ad_id": meta_data.get("ad_id"),
+        "meta_ad_name": meta_data.get("ad_name"),
+        "meta_ad_headline": meta_data.get("headline"),
+        "meta_ad_body": meta_data.get("body"),
+        "meta_adset_id": meta_data.get("adset_id"),
+        "meta_adset_name": meta_data.get("adset_name"),
+        "meta_campaign_id": meta_data.get("campaign_id"),
+        "meta_campaign_name": meta_data.get("campaign_name"),
+        "updated_at": "NOW()"
+    }
+    
+    # Filter out None values
+    attribution_update = {k: v for k, v in attribution_update.items() if v is not None}
+    
+    if not attribution_update:
+        return False
+    
+    # Build dynamic SQL update
+    set_clauses = []
+    params = []
+    param_index = 1
+    
+    for key, value in attribution_update.items():
+        if key == "updated_at":
+            set_clauses.append(f"{key} = NOW()")
+        else:
+            set_clauses.append(f"{key} = ${param_index}")
+            params.append(value)
+            param_index += 1
+    
+    # Add patient_id and tenant_id as final parameters
+    params.extend([patient_id, tenant_id])
+    
+    query = f"""
+        UPDATE patients 
+        SET {', '.join(set_clauses)}
+        WHERE id = ${param_index} AND tenant_id = ${param_index + 1}
+    """
+    
+    try:
+        pool = get_pool()
+        async with pool.acquire() as conn:
+            result = await conn.execute(query, *params)
+            updated = result.split()[1]  # Get "UPDATE X" count
+            
+            if updated == "1":
+                logger.info(f"✅ Patient {patient_id} attribution updated from Meta webhook")
+                return True
+            else:
+                logger.warning(f"⚠️ Patient {patient_id} not found or not updated")
+                return False
+                
+    except Exception as e:
+        logger.error(f"❌ Error updating patient attribution from webhook: {e}")
+        return False
+
+
+async def get_patient_attribution_stats(tenant_id: int, time_range: str = "last_30d") -> dict:
+    """
+    Returns Meta Ads attribution statistics for a tenant.
+    
+    Args:
+        tenant_id: Tenant ID for multi-tenant isolation
+        time_range: Time range for stats (last_30d, last_7d, all)
+    
+    Returns:
+        dict: Attribution statistics
+    """
+    # Build time filter
+    time_filters = {
+        "last_7d": "AND created_at >= NOW() - INTERVAL '7 days'",
+        "last_30d": "AND created_at >= NOW() - INTERVAL '30 days'",
+        "all": ""
+    }
+    time_filter = time_filters.get(time_range, "")
+    
+    query = f"""
+        SELECT 
+            acquisition_source,
+            COUNT(*) as total_patients,
+            COUNT(DISTINCT meta_campaign_id) as unique_campaigns,
+            COUNT(DISTINCT meta_ad_id) as unique_ads,
+            COUNT(DISTINCT meta_adset_id) as unique_adsets
+        FROM patients
+        WHERE tenant_id = $1 {time_filter}
+        GROUP BY acquisition_source
+        ORDER BY total_patients DESC
+    """
+    
+    try:
+        pool = get_pool()
+        async with pool.acquire() as conn:
+            rows = await conn.fetch(query, tenant_id)
+            
+            stats = {
+                "total_patients": 0,
+                "meta_ads_patients": 0,
+                "organic_patients": 0,
+                "unique_campaigns": 0,
+                "unique_ads": 0,
+                "unique_adsets": 0,
+                "breakdown": []
+            }
+            
+            for row in rows:
+                stats["total_patients"] += row["total_patients"]
+                
+                if row["acquisition_source"] == "META_ADS":
+                    stats["meta_ads_patients"] = row["total_patients"]
+                    stats["unique_campaigns"] = row["unique_campaigns"]
+                    stats["unique_ads"] = row["unique_ads"]
+                    stats["unique_adsets"] = row["unique_adsets"]
+                elif row["acquisition_source"] == "ORGANIC":
+                    stats["organic_patients"] = row["total_patients"]
+                
+                stats["breakdown"].append({
+                    "source": row["acquisition_source"],
+                    "count": row["total_patients"],
+                    "unique_campaigns": row["unique_campaigns"],
+                    "unique_ads": row["unique_ads"],
+                    "unique_adsets": row["unique_adsets"]
+                })
+            
+            # Calculate percentages
+            if stats["total_patients"] > 0:
+                stats["meta_ads_percentage"] = round((stats["meta_ads_patients"] / stats["total_patients"]) * 100, 1)
+                stats["organic_percentage"] = round((stats["organic_patients"] / stats["total_patients"]) * 100, 1)
+            else:
+                stats["meta_ads_percentage"] = 0
+                stats["organic_percentage"] = 0
+            
+            return stats
+            
+    except Exception as e:
+        logger.error(f"❌ Error getting patient attribution stats: {e}")
+        return {
+            "total_patients": 0,
+            "meta_ads_patients": 0,
+            "organic_patients": 0,
+            "meta_ads_percentage": 0,
+            "organic_percentage": 0,
+            "unique_campaigns": 0,
+            "unique_ads": 0,
+            "unique_adsets": 0,
+            "breakdown": [],
+            "error": str(e)
+        }

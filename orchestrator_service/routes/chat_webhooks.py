@@ -140,16 +140,26 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
                         if ref_ad_id:
                             # --- ATRIBUCIÓN LAST CLICK ---
                             # Se actualiza siempre con el anuncio más reciente (Spec Mission 3)
-                            # También guardamos la última fecha de interacción de marketing
-                            await pool.execute("""
-                                UPDATE patients SET 
-                                    acquisition_source = 'META_ADS',
-                                    meta_ad_id = $1,
-                                    meta_ad_headline = $2,
-                                    meta_ad_body = $3,
-                                    updated_at = NOW()
-                                WHERE id = $4 AND tenant_id = $5
-                            """, ref_ad_id, msg.referral.get("headline"), msg.referral.get("body"), patient_row["id"], tenant_id)
+                            # Usamos la nueva función completa de atribución
+                            try:
+                                from db import update_patient_attribution_from_referral
+                                await update_patient_attribution_from_referral(
+                                    patient_id=patient_row["id"],
+                                    tenant_id=tenant_id,
+                                    referral=msg.referral
+                                )
+                            except Exception as attr_func_err:
+                                logger.error(f"⚠️ Error usando función attribution: {attr_func_err}")
+                                # Fallback a query directa
+                                await pool.execute("""
+                                    UPDATE patients SET 
+                                        acquisition_source = 'META_ADS',
+                                        meta_ad_id = $1,
+                                        meta_ad_headline = $2,
+                                        meta_ad_body = $3,
+                                        updated_at = NOW()
+                                    WHERE id = $4 AND tenant_id = $5
+                                """, ref_ad_id, msg.referral.get("headline"), msg.referral.get("body"), patient_row["id"], tenant_id)
                             
                             # Enriquecimiento asíncrono
                             try:
@@ -273,6 +283,80 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
                         from services.vision_service import process_vision_task
                         background_tasks.add_task(process_vision_task, message_id=msg_id, image_url=m_item.url, tenant_id=tenant_id)
                     except: logger.warning("vision_service not available")
+                
+                # --- AUTO-GUARDADO EN FICHA MÉDICA (Instagram/Facebook Media) ---
+                # Solo para imágenes y documentos, no para audio/video
+                if m_item.type in [MediaType.IMAGE, MediaType.DOCUMENT] and not msg.is_agent:
+                    try:
+                        # Intentar identificar al paciente por external_user_id (ID de Instagram/Facebook)
+                        # Para redes sociales, el external_user_id es el ID de usuario de la plataforma
+                        patient_row = await pool.fetchrow("""
+                            SELECT id FROM patients 
+                            WHERE tenant_id = $1 AND (
+                                phone_number = $2 OR 
+                                meta_user_id = $2 OR
+                                instagram_user_id = $2 OR
+                                facebook_user_id = $2
+                            )
+                            LIMIT 1
+                        """, tenant_id, msg.external_user_id)
+                        
+                        if not patient_row:
+                            logger.info(f"⚠️ No se encontró paciente para external_user_id: {msg.external_user_id} (canal: {msg.original_channel})")
+                            continue
+                        
+                        # Descargar el archivo si no es local
+                        local_url = m_item.url
+                        if not m_item.url.startswith("/media/"):
+                            try:
+                                from services.media_downloader import download_media
+                                media_type_str = "image" if m_item.type == MediaType.IMAGE else "document"
+                                local_url = await download_media(m_item.url, tenant_id, media_type_str)
+                            except Exception as download_err:
+                                logger.error(f"❌ Error descargando media de {msg.original_channel}: {download_err}")
+                                continue
+                        
+                        # Determinar tipo de documento para clasificación
+                        doc_type = "instagram_image" if msg.original_channel == "instagram" and m_item.type == MediaType.IMAGE else \
+                                  "instagram_document" if msg.original_channel == "instagram" and m_item.type == MediaType.DOCUMENT else \
+                                  "facebook_image" if msg.original_channel == "facebook" and m_item.type == MediaType.IMAGE else \
+                                  "facebook_document"
+                        
+                        file_name = m_item.file_name or f"{doc_type}_{uuid.uuid4().hex[:8]}"
+                        
+                        # Extraer extensión del archivo si está disponible
+                        if m_item.mime_type:
+                            import mimetypes
+                            ext = mimetypes.guess_extension(m_item.mime_type) or ""
+                            if ext and not file_name.lower().endswith(ext.lower()):
+                                file_name = f"{file_name}{ext}"
+                        
+                        # Insertar en patient_documents
+                        await pool.execute("""
+                            INSERT INTO patient_documents (
+                                patient_id, tenant_id, file_path, 
+                                document_type, file_name, mime_type,
+                                source, source_details, uploaded_at
+                            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+                        """, 
+                            patient_row["id"], tenant_id, local_url,
+                            doc_type, file_name, m_item.mime_type,
+                            msg.original_channel, json.dumps({
+                                "provider": provider,
+                                "external_user_id": msg.external_user_id,
+                                "display_name": msg.display_name,
+                                "media_type": m_item.type.value,
+                                "file_size": m_item.meta.get("file_size"),
+                                "conversation_id": str(conv_id),
+                                "message_id": msg_id
+                            })
+                        )
+                        
+                        logger.info(f"📁 Archivo de {msg.original_channel} guardado en ficha médica: paciente={patient_row['id']}, tipo={m_item.type.value}, archivo={file_name}")
+                        
+                    except Exception as doc_err:
+                        logger.error(f"❌ Error al guardar archivo de {msg.original_channel} en ficha médica: {doc_err}")
+                        # No fallar el flujo principal por error en guardado de documento
 
             # --- Spec 14: Socket.IO Notification (Real-time) ---
             try:
@@ -307,11 +391,44 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
 
             if not is_locked:
                 try:
-                    from services.relay import enqueue_buffer_and_schedule_task
-                    background_tasks.add_task(enqueue_buffer_and_schedule_task, tenant_id, str(conv_id), msg.external_user_id)
-                    logger.info(f"⏳ Relay task queued for {msg.external_user_id}")
-                except ImportError:
-                    logger.debug("relay not available")
+                    import os
+                    from db import get_pool
+                    import redis.asyncio as redis
+                    from services.buffer_manager import BufferManager
+                    
+                    redis_url = os.getenv("REDIS_URL", "redis://redis:6379")
+                    redis_client = redis.from_url(redis_url, decode_responses=True)
+                    
+                    message_data = {
+                        "text": msg.content,
+                        "wamid": ext_id_candidate,
+                        "business_info": {
+                            "conversation_id": str(conv_id)
+                        },
+                        "media": content_attrs,
+                        "correlation_id": str(uuid.uuid4())
+                    }
+                    if msg.referral:
+                        message_data["referral"] = msg.referral
+                    
+                    async def enqueue_bg():
+                        try:
+                            await BufferManager.enqueue_message(
+                                redis_client=redis_client,
+                                db_pool=get_pool(),
+                                provider=provider,
+                                channel=msg.original_channel,
+                                tenant_id=tenant_id,
+                                external_user_id=msg.external_user_id,
+                                message_data=message_data
+                            )
+                        finally:
+                            await redis_client.aclose()
+                            
+                    background_tasks.add_task(enqueue_bg)
+                    logger.info(f"⏳ Buffer task queued for {msg.external_user_id}")
+                except Exception as e:
+                    logger.error(f"⚠️ Error queuing buffer task: {e}")
             else:
                 logger.info(f"🔇 AI silenced by human override for {msg.external_user_id}")
 

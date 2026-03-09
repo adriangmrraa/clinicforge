@@ -13,6 +13,8 @@ interface Patient {
   email?: string;
   obra_social?: string;
   dni?: string;
+  city?: string;
+  birth_date?: string;
   created_at: string;
   status?: string;
   health_conditions?: string[];
@@ -57,6 +59,8 @@ export default function PatientsView() {
     email: '',
     obra_social: '',
     dni: '',
+    city: '',
+    birth_date: '',
   });
 
   const [appointmentData, setAppointmentData] = useState({
@@ -220,6 +224,8 @@ export default function PatientsView() {
       email: patient.email || '',
       obra_social: patient.obra_social || '',
       dni: patient.dni || '',
+      city: patient.city || '',
+      birth_date: patient.birth_date || '',
     });
     // Clear appointment data on edit
     setAppointmentData({ treatment_code: '', professional_id: '', date: '', time: '' });
@@ -235,6 +241,8 @@ export default function PatientsView() {
       email: '',
       obra_social: '',
       dni: '',
+      city: '',
+      birth_date: '',
     });
     // Reset appointment data
     setAppointmentData({ treatment_code: '', professional_id: '', date: '', time: '' });
@@ -549,6 +557,29 @@ export default function PatientsView() {
                         onChange={(e) => setFormData({ ...formData, obra_social: e.target.value })}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
                         placeholder={t('patients.obra_social_placeholder')}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Ciudad / Barrio
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.city}
+                        onChange={(e) => setFormData({ ...formData, city: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                        placeholder="Ej. Córdoba Capital"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Fecha de Nacimiento
+                      </label>
+                      <input
+                        type="date"
+                        value={formData.birth_date}
+                        onChange={(e) => setFormData({ ...formData, birth_date: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
                       />
                     </div>
                   </div>

@@ -95,7 +95,6 @@ htmlcov/
 .hypothesis/
 
 # ==================== AI / IDE Agent Tooling ====================
-.agent/
 .cursor/
 .gemini/
 

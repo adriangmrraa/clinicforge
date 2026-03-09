@@ -1,0 +1,170 @@
+import asyncio
+import logging
+import re
+from typing import List
+from db import get_pool
+from buffer_manager import BufferManager
+
+logger = logging.getLogger(__name__)
+
+class ResponseSender:
+    """Clase unificada para enviar respuestas al usuario mediante burbujas (Bubble-by-bubble)."""
+    
+    @classmethod
+    async def send_sequence(cls, tenant_id: int, external_user_id: str, conversation_id: str, 
+                            provider: str, channel: str, account_id: str, cw_conv_id: str, 
+                            messages_text: str, media_urls: List[str] = None):
+        """
+        Envía una secuencia de mensajes (texto fragmentado en burbujas) y archivos multimedia previos.
+        Aplica los retrasos (BUBBLE_DELAY_SECONDS) y typing indicators de forma robusta.
+        """
+        if media_urls is None:
+            media_urls = []
+            
+        pool = get_pool()
+        delay = await BufferManager.get_config(pool, provider, channel, tenant_id, "bubble_delay", 3)
+        typing_enabled = await BufferManager.get_config(pool, provider, channel, tenant_id, "typing_indicator", True)
+        
+        # Fragmentar el texto en burbujas con un splitter mejorado (por párrafos o puntuación larga)
+        max_len = await BufferManager.get_config(pool, provider, channel, tenant_id, "max_message_length", 350)
+        bot_bubbles = cls._split_into_bubbles(messages_text, max_len)
+        
+        # Resolver physical paths for Chatwoot attachments
+        path_mapping = {}
+        if media_urls:
+            for url in media_urls:
+                try:
+                    img_id = url.split('/')[-1]
+                    # This relies on UUID format, handles exception if it's not
+                    row = await pool.fetchrow("SELECT file_path FROM treatment_images WHERE id::text = $1", img_id)
+                    if row:
+                        path_mapping[url] = row['file_path']
+                except Exception as e:
+                    logger.error(f"Error resolving media path for {url}: {e}")
+
+        
+        from core.credentials import get_tenant_credential
+        
+        if provider == "chatwoot":
+            from core.credentials import CHATWOOT_API_TOKEN, CHATWOOT_BASE_URL
+            token = await get_tenant_credential(tenant_id, CHATWOOT_API_TOKEN)
+            base_url = await get_tenant_credential(tenant_id, CHATWOOT_BASE_URL) or "https://app.chatwoot.com"
+            if not token:
+                logger.error(f"❌ Missing Chatwoot Token for tenant {tenant_id}")
+                return
+            
+            from chatwoot_client import ChatwootClient
+            client = ChatwootClient(base_url, token)
+            
+            # --- Enviar Imágenes/Media primero ---
+            for url in media_urls:
+                file_path = path_mapping.get(url)
+                if file_path:
+                    try:
+                        await client.send_attachment(account_id, cw_conv_id, file_path)
+                        await asyncio.sleep(delay)
+                    except Exception as e:
+                        logger.error(f"❌ Error sending Chatwoot attachment: {e}")
+            
+            # --- Enviar Texto Fragmentado ---
+            for bubble in bot_bubbles:
+                if typing_enabled:
+                    try:
+                        # Typing On
+                        await client.send_action(account_id, cw_conv_id, "typing_on")
+                    except Exception as e:
+                        logger.warning(f"Typing indicator failed for chatwoot: {e}")
+                
+                await asyncio.sleep(delay)
+                
+                try:
+                    resp_data = await client.send_text_message(account_id, cw_conv_id, bubble)
+                    cw_msg_id = resp_data.get("id")
+                    
+                    # Log en BD local
+                    import json
+                    meta_json = json.dumps({"provider": "chatwoot", "provider_message_id": str(cw_msg_id) if cw_msg_id else None})
+                    await pool.execute(
+                        "INSERT INTO chat_messages (tenant_id, conversation_id, role, content, from_number, platform_metadata) VALUES ($1, $2, 'assistant', $3, $4, $5::jsonb)",
+                        tenant_id, conversation_id, bubble, external_user_id or "chatwoot", meta_json
+                    )
+                except Exception as e:
+                    logger.error(f"❌ Error sending chatwoot bubble: {e}")
+                    
+                if typing_enabled:
+                    try:
+                        # Typing Off al terminar de mandar burbuja
+                        await client.send_action(account_id, cw_conv_id, "typing_off")
+                    except Exception: pass
+                    
+        elif provider == "ycloud":
+            from core.credentials import YCLOUD_API_KEY, YCLOUD_WHATSAPP_NUMBER
+            api_key = await get_tenant_credential(tenant_id, YCLOUD_API_KEY)
+            sender_number = await get_tenant_credential(tenant_id, YCLOUD_WHATSAPP_NUMBER)
+            
+            if not api_key or not sender_number:
+                logger.error(f"❌ Missing YCloud Credentials for tenant {tenant_id}")
+                return
+                
+            from ycloud_client import YCloudClient # Asume que está importable en orchestrator, si no, se moverá o aislará.
+            client = YCloudClient(api_key, sender_number)
+            
+            import uuid
+            # --- Enviar Imágenes/Media primero ---
+            for url in media_urls:
+                try:
+                    await client.send_image(external_user_id, url, correlation_id=str(uuid.uuid4()))
+                    await asyncio.sleep(delay)
+                except Exception as e:
+                    logger.error(f"❌ Error sending YCloud image: {e}")
+                    
+            # --- Enviar Texto Fragmentado ---
+            for bubble in bot_bubbles:
+                # typing indicator
+                # (ycloud lo maneja diferente o se ignorará si no hay método en YCloudClient del core, pero se intenta)
+                # En main de whatsapp_service el typing recibe inbound_id. Si no lo tenemos, pasamos de largo el typing.
+                
+                await asyncio.sleep(delay)
+                
+                try:
+                    yc_resp = await client.send_whatsapp_text(external_user_id, bubble)
+                    yc_msg_id = yc_resp.get("id") if isinstance(yc_resp, dict) else None
+                    
+                    import json
+                    meta_json = json.dumps({"provider": "ycloud", "provider_message_id": str(yc_msg_id) if yc_msg_id else None})
+                    await pool.execute(
+                        "INSERT INTO chat_messages (tenant_id, conversation_id, role, content, from_number, platform_metadata) VALUES ($1, $2, 'assistant', $3, $4, $5::jsonb)",
+                        tenant_id, conversation_id, bubble, external_user_id, meta_json
+                    )
+                except Exception as e:
+                    logger.error(f"❌ Error sending ycloud bubble: {e}")
+
+    @staticmethod
+    def _split_into_bubbles(text: str, max_length: int = 400) -> List[str]:
+        """Fragmenta inteligentemente un mensaje basado en saltos de línea y puntuación final."""
+        if not text:
+             return []
+        
+        # Primero intentar separar por dobles saltos de línea (párrafos)
+        paragraphs = [p.strip() for p in text.split('\n\n') if p.strip()]
+        result = []
+        
+        for p in paragraphs:
+            if len(p) <= max_length:
+                result.append(p)
+            else:
+                # Si el párrafo es muy largo, cortarlo por puntuaciones (. ? !)
+                # Usamos una regex que capture el delimitador y lo deje anexado al string
+                sentences = re.split(r'(?<=[.!?])\s+', p)
+                current_bubble = ""
+                for sentence in sentences:
+                    if not sentence: continue
+                    if len(current_bubble) + len(sentence) + 1 <= max_length:
+                        current_bubble += (" " + sentence if current_bubble else sentence)
+                    else:
+                        if current_bubble: result.append(current_bubble)
+                        current_bubble = sentence
+                if current_bubble:
+                    result.append(current_bubble)
+                    
+        return result

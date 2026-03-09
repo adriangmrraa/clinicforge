@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Clock, AlertCircle, CheckCircle, Save, X, Zap, Shield, Heart, Activity, Stethoscope, Edit2 } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Clock, AlertCircle, CheckCircle, Save, X, Zap, Shield, Heart, Activity, Stethoscope, Edit2, Upload, Trash2, Image as ImageIcon } from 'lucide-react';
 import api from '../api/axios';
 import { useTranslation } from '../context/LanguageContext';
 import PageHeader from '../components/PageHeader';
@@ -31,6 +31,103 @@ const categoryIcons: Record<string, React.ReactNode> = {
 };
 
 // Category icons mapping already defined
+
+const TreatmentImagesList = ({ code }: { code: string }) => {
+  const { t } = useTranslation();
+  const [images, setImages] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
+
+  useEffect(() => {
+    fetchImages();
+  }, [code]);
+
+  const fetchImages = async () => {
+    try {
+      setLoading(true);
+      const res = await api.get(`/admin/treatment-types/${code}/images`);
+      setImages(res.data);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0) return;
+    const file = e.target.files[0];
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      setUploading(true);
+      await api.post(`/admin/treatment-types/${code}/images`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+      await fetchImages();
+    } catch (e) {
+      console.error(e);
+      alert('Error uploading image');
+    } finally {
+      setUploading(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Borrar imagen?')) return;
+    try {
+      await api.delete(`/admin/treatment-types/${code}/images/${id}`);
+      await fetchImages();
+    } catch (e) {
+      console.error(e);
+      alert('Error deleting image');
+    }
+  };
+
+  // Construct base API URL depending on environment so we fetch absolute images when testing UI
+  const baseURL = api.defaults.baseURL || '';
+  const makeImgUrl = (id: string) => baseURL ? `${baseURL}/admin/public/media/${id}` : `/api/admin/public/media/${id}`;
+
+  return (
+    <div className="mt-5 pt-5 border-t border-slate-200/50">
+      <div className="flex items-center justify-between mb-4">
+        <h4 className="flex items-center gap-2 text-xs font-bold text-slate-400 uppercase tracking-widest">
+          <ImageIcon size={14} className="text-slate-400" /> Adjuntos del Tratamiento
+        </h4>
+        <label className="cursor-pointer bg-white border border-medical-200 text-medical-600 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider hover:bg-medical-50 transition-colors flex items-center gap-2 shadow-sm">
+          {uploading ? <div className="w-3.5 h-3.5 border-2 border-medical-600 border-t-transparent rounded-full animate-spin" /> : <Upload size={14} />}
+          Subir Imagen
+          <input type="file" className="hidden" accept="image/*" onChange={handleUpload} disabled={uploading} />
+        </label>
+      </div>
+
+      {loading ? (
+        <div className="text-xs font-medium text-slate-400">Cargando imágenes...</div>
+      ) : images.length === 0 ? (
+        <div className="text-xs font-medium text-slate-400 bg-slate-50/50 p-4 rounded-xl border border-dashed border-slate-200 text-center flex items-center justify-center gap-2">
+          <ImageIcon size={16} /> Este tratamiento no tiene imágenes configuradas
+        </div>
+      ) : (
+        <div className="flex gap-4 overflow-x-auto pb-2 custom-scrollbar items-center">
+          {images.map(img => (
+            <div key={img.id} className="relative group shrink-0 w-24 h-24 rounded-xl border border-slate-200 overflow-hidden shadow-sm bg-slate-50">
+              <img src={makeImgUrl(img.id)} alt={img.filename} className="w-full h-full object-cover" />
+              <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-[2px] opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center">
+                <button onClick={() => handleDelete(img.id)} className="p-2 bg-red-500/90 text-white rounded-xl hover:bg-red-600 shadow-xl active:scale-95 transition-all" title="Borrar">
+                  <Trash2 size={16} />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
 
 export default function TreatmentsView() {
   const { t } = useTranslation();
@@ -581,6 +678,9 @@ export default function TreatmentsView() {
                                 </div>
                               )}
                             </div>
+
+                            {/* IMAGES GALLERY */}
+                            <TreatmentImagesList code={treatment.code} />
                           </div>
 
                           <div className="flex gap-2 opacity-0 group-hover/item:opacity-100 transition-all translate-x-2 group-hover/item:translate-x-0">

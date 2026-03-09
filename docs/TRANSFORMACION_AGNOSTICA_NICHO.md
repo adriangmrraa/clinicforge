@@ -1,14 +1,14 @@
-# Transformación agnóstica de nicho – De Dentalogic a plataforma reutilizable
+# Transformación agnóstica de nicho – De ClinicForge a plataforma reutilizable
 
-**Propósito de este documento:** Sirve como **punto de partida para una nueva conversación con un agente de IA de código**. El flujo es: (1) el agente lee **docs/CONTEXTO_AGENTE_IA.md** y **docs/PROMPT_CONTEXTO_IA_COMPLETO.md** para entender el proyecto actual (Dentalogic); (2) luego lee **este documento** para entender el objetivo de transformación y los primeros pasos. No se aplican cambios al código en esta fase; solo se usa esta documentación para alinear al agente.
+**Propósito de este documento:** Sirve como **punto de partida para una nueva conversación con un agente de IA de código**. El flujo es: (1) el agente lee **docs/CONTEXTO_AGENTE_IA.md** y **docs/PROMPT_CONTEXTO_IA_COMPLETO.md** para entender el proyecto actual (ClinicForge); (2) luego lee **este documento** para entender el objetivo de transformación y los primeros pasos. No se aplican cambios al código en esta fase; solo se usa esta documentación para alinear al agente.
 
-**Última actualización:** 2026-02-09
+**Última actualización:** 2026-03-01
 
 ---
 
 ## 1. Objetivo de la transformación
 
-- **Estado actual:** Repositorio **Dentalogic** (clínica dental multi-tenant, agente WhatsApp para turnos, triaje, derivación a humano, agenda, pacientes, profesionales, tratamientos).
+- **Estado actual:** Repositorio **ClinicForge** (plataforma de la Dra. María Laura Delgado - Cirujana Maxilofacial e Implantóloga, con secretaria virtual IA para turnos, triaje, anamnesis completa, derivación a humano, agenda, pacientes con odontograma digital, documentos clínicos).
 - **Objetivo:** Dejar la **misma infraestructura y lógica de base** (multi-tenant, auth, API REST, frontend React, agente conversacional por WhatsApp, BD PostgreSQL, Redis, etc.) pero **agnóstica al nicho**, de forma que se pueda:
   - Reutilizar la base para **otro nicho** con otras páginas, otras tools del agente, otro system prompt y otro contrato de API (dominio distinto).
   - Ejemplo de segundo nicho: **CRM para vendedores y setters** de una empresa: cada vendedor/setter conecta su número de WhatsApp, usa plantillas aprobadas por Meta para prospectar, y el dueño/administrador ve toda la actividad y puede medir resultados (métricas por vendedor, conversaciones, etc.).
@@ -27,18 +27,19 @@ En resumen: **una base común (auth, tenants, chat, mensajería, métricas, UI s
 | **Frontend base** | React, Vite, Tailwind, AuthContext, LanguageContext, Layout, Sidebar, rutas protegidas, i18n (es/en/fr). |
 | **Chat y mensajería** | Flujo WhatsApp (webhook, buffer/debounce, transcripción audio), historial en BD, tenant por conversación. |
 | **Patrones de API** | Rutas admin bajo `verify_admin_token`, filtro por tenant_id, estructura de respuestas. |
+| **Jobs programados** | Sistema de scheduling (recordatorios, seguimientos), ejecución diaria, endpoints de administración. |
 | **Workflows y agentes** | .agent/workflows (autonomy, specify, bug_fix, update-docs), skills, protocolo SDD. |
 
 ---
 
 ## 3. Qué cambia por nicho
 
-| Aspecto | Dental (actual) | Otro nicho (ej. CRM vendedores/setters) |
+| Aspecto | Dental (actual - Dra. María Laura Delgado) | Otro nicho (ej. CRM vendedores/setters) |
 |--------|------------------|----------------------------------------|
-| **Dominio** | Pacientes, turnos, profesionales, tratamientos, clínica. | Prospectos, leads, vendedores/setters, plantillas Meta, pipelines, métricas de venta. |
-| **Páginas / vistas** | Agenda, Pacientes, Chats, Aprobaciones (staff), Tratamientos, Sedes, Analíticas por profesional, Config. | Dashboard de ventas, Lista de prospectos/leads, Chats por vendedor, Plantillas aprobadas, Conexión de números, Métricas por vendedor/setter, Config. |
-| **Tools del agente** | list_services, check_availability, book_appointment, triage_urgency, derivhumano, cancel_appointment, reschedule_appointment, list_my_appointments. | Por definir: ej. list_templates, send_template, log_lead_stage, assign_lead, derivhumano, métricas propias. |
-| **System prompt del agente** | Persona asistente dental, voseo, flujo turnos/disponibilidad/agendar. | Persona asistente de ventas/prospección, tono y flujo según uso de plantillas y etapas de lead. |
+| **Dominio** | Pacientes, turnos, anamnesis médica, odontograma digital, documentos clínicos, clínica particular. | Prospectos, leads, vendedores/setters, plantillas Meta, pipelines, métricas de venta. |
+| **Páginas / vistas** | Agenda, Pacientes (con odontograma y documentos), Chats, Aprobaciones (staff), Tratamientos, Sedes, Analíticas por profesional, Config. | Dashboard de ventas, Lista de prospectos/leads, Chats por vendedor, Plantillas aprobadas, Conexión de números, Métricas por vendedor/setter, Config. |
+| **Tools del agente** | list_services, check_availability, book_appointment, triage_urgency, derivhumano, cancel_appointment, reschedule_appointment, list_my_appointments, **save_patient_anamnesis**. | Por definir: ej. list_templates, send_template, log_lead_stage, assign_lead, derivhumano, métricas propias. |
+| **System prompt del agente** | Persona secretaria virtual de la Dra. María Laura Delgado, voseo rioplatense, flujo turnos/disponibilidad/agendar/anamnesis obligatoria, FAQs específicas. | Persona asistente de ventas/prospección, tono y flujo según uso de plantillas y etapas de lead. |
 | **Contrato de API** | Endpoints tipo /admin/patients, /admin/appointments, /admin/professionals, /admin/calendar, treatment_types, etc. | Endpoints tipo /admin/leads, /admin/sellers, /admin/templates, /admin/connections, /admin/metrics, etc. |
 | **Modelo de datos** | patients, appointments, professionals, treatment_types, clinical_records, google_calendar_blocks. | leads, sellers, templates, whatsapp_connections, template_sends, events o métricas por vendedor. |
 

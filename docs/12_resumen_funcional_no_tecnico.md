@@ -1,11 +1,11 @@
-# 📖 Guía Simple: ¿Cómo funciona Dentalogic?
+# 📖 Guía Simple: ¿Cómo funciona ClinicForge?
 
 Este documento explica de forma sencilla, sin tecnicismos, qué hace este sistema y cómo ayuda a que la clínica funcione mejor.
 
 --- 
 
-## 1. El Concepto: La Asistente Virtual de la Dra. Laura
-Imagina que tenés una secretaria muy eficiente que nunca duerme. Ella atiende el WhatsApp de la clínica, responde dudas de los pacientes y anota los turnos. Pero no es solo un bot que repite opciones; ella "entiende" lo que le dicen, ya sea por texto o por audio, usando un tono cálido y natural.
+## 1. El Concepto: La Secretaria Virtual de la Dra. María Laura Delgado
+Imagina que tenés una secretaria muy eficiente que nunca duerme. Ella atiende el WhatsApp de la clínica, responde dudas de los pacientes, toma datos completos de admisión y registra el historial médico. Pero no es solo un bot que repite opciones; ella "entiende" lo que le dicen, ya sea por texto o por audio, usando un tono cálido y natural con voseo rioplatense.
 
 ## 2. El "Cerebro" y el "Dashboard Inteligente"
 Para que todo funcione, el sistema se divide en dos partes que se hablan todo el tiempo:
@@ -25,14 +25,40 @@ Si un paciente agenda un turno por WhatsApp con la asistente, la IA envía una s
 5.  **Historial Infinito (Carga Rápida):** En los chats con muchos mensajes, el sistema carga primero los más nuevos para ser veloz. Si necesitás ver mensajes de hace meses, solo tenés que tocar el botón "Cargar mensajes anteriores" y el sistema los traerá sin recargar la página.
 6.  **Panel de Control "Fijo":** No importa qué tan largo sea un chat, la información del paciente a la derecha y la zona para escribir abajo siempre se quedan en su lugar, permitiéndote scrollear los mensajes sin perder de vista los datos importantes.
 
-## 4. El Trabajo en Equipo: Frontend, Base de Datos y la IA
+## 4. Nuevo Proceso de Admisión Completa
+Cuando un paciente nuevo agenda por primera vez, la secretaria virtual recolecta TODOS los datos necesarios:
+
+*   **Datos Personales Completos:** Nombre, apellido, DNI, fecha de nacimiento, email, ciudad/barrio
+*   **Fuente de Adquisición:** Cómo nos conoció (Instagram, Google, Referido, Otro)
+*   **Sin Obra Social:** La clínica atiende de forma particular con planes de pago accesibles
+*   **Anamnesis Automatizada:** Después de agendar, la IA hace preguntas de salud y guarda: enfermedades de base, medicación habitual, alergias, cirugías previas, hábito de fumar, embarazo/lactancia, experiencias negativas y miedos específicos
+
+## 5. El Trabajo en Equipo: Frontend, Base de Datos y la IA
 Todos los componentes trabajan juntos para que no se pierda ninguna información:
 
 *   **La Base de Datos (La Memoria):** Aquí se guarda todo. La IA recuerda si un paciente es alérgico a la penicilina o si hace mucho que no viene. 
-*   **Historias Clínicas Inteligentes:** Cuando la asistente charla con un paciente, ella "anota" en su memoria los síntomas que el paciente mencionó. Luego, cuando el doctor abre la ficha del paciente en el **Frontend**, ya puede ver un resumen de lo que el paciente le contó a la IA antes de entrar al consultorio.
-*   **Detección de Alertas:** Si el doctor anota que un paciente es diabético en el Frontend, la próxima vez que ese paciente hable con la IA, ella lo sabrá y podrá ser más cuidadosa o dar avisos específicos.
+*   **Historias Clínicas Inteligentes:** Cuando la secretaria virtual charla con un paciente, ella "anota" en su memoria los síntomas que el paciente mencionó. Luego, cuando la Dra. abre la ficha del paciente en el **Frontend**, ya puede ver un resumen completo de lo que el paciente le contó a la IA antes de entrar al consultorio.
+*   **Odontograma Digital:** En la ficha del paciente, la Dra. puede registrar el estado dental completo con un odontograma interactivo
+*   **Documentos Clínicos:** Subir y organizar radiografías, estudios y documentos del paciente
+*   **Detección de Alertas:** Si la Dra. anota que un paciente es diabético en el Frontend, la próxima vez que ese paciente hable con la IA, ella lo sabrá y podrá ser más cuidadosa o dar avisos específicos.
+
+## 6. Sistema Automatizado de Seguimiento y Recordatorios
+La clínica ahora cuenta con un sistema que trabaja automáticamente para mejorar la atención:
+
+*   **Recordatorios de Turnos:** Todos los días a las 10:00 AM, el sistema envía automáticamente recordatorios a los pacientes que tienen turno al día siguiente. El mensaje es personalizado con su nombre y hora del turno.
+*   **Seguimiento Post-Atención:** Todos los días a las 11:00 AM, el sistema contacta a los pacientes que fueron atendidos ayer para preguntarles cómo se sienten después del tratamiento. Esto es especialmente importante para cirugías y tratamientos complejos.
+*   **Detección Automática de Problemas:** Si un paciente responde al seguimiento reportando dolor, inflamación o cualquier molestia, la IA evalúa inmediatamente la gravedad usando las 6 reglas maxilofaciales de urgencia. Si detecta una emergencia, activa el protocolo de atención inmediata.
+*   **Auditoría Completa:** El sistema lleva registro de todos los recordatorios y seguimientos enviados, quién respondió y qué síntomas reportaron.
+
+## 5. Sistema Automatizado de Seguimiento Post-Atención (Marzo 2026)
+Para garantizar la mejor atención post-operatoria, el sistema ahora incluye seguimiento automatizado:
+
+*   **Recordatorios de Turnos:** Todos los días a las 10:00 AM, el sistema envía recordatorios a pacientes con turnos confirmados para el día siguiente. El mensaje personalizado incluye nombre del paciente y hora del turno.
+*   **Seguimiento Post-Cirugía:** Todos los días a las 11:00 AM, el sistema contacta a pacientes que fueron atendidos ayer (solo tratamientos/cirugías, no consultas simples) para preguntar cómo se sienten después del tratamiento.
+*   **Detección Automática de Problemas:** Si un paciente responde al seguimiento reportando dolor, inflamación o cualquier molestia, la IA evalúa inmediatamente la gravedad usando las 6 reglas maxilofaciales de urgencia. Si detecta una emergencia, activa el protocolo de atención inmediata.
+*   **Auditoría Completa:** El sistema lleva registro de todos los recordatorios y seguimientos enviados, quién respondió y qué síntomas reportaron.
  
-## 5. Registro y Aprobación de Personal
+## 6. Registro y Aprobación de Personal
 Cuando alguien nuevo pide acceso a la plataforma (desde la pantalla de login), el formulario pide **a qué sede/clínica se une** y, si es profesional o secretaría, su especialidad, teléfono y matrícula. Esa solicitud queda pendiente hasta que un CEO la apruebe. Una vez aprobada, la persona ya aparece en **Personal Activo** y puede editar su perfil (horarios, datos de contacto) desde la misma pantalla de Aprobaciones, sin necesidad de una página aparte de "Profesionales".
 
 ## 6. El "Control Humano" y la Ventana de 24hs
@@ -42,4 +68,4 @@ Si la IA no entiende algo o si el paciente pide hablar con una persona, la IA se
 *   **Regla de WhatsApp (24hs):** Por seguridad y política de WhatsApp, los mensajes manuales solo pueden enviarse si el paciente escribió en las últimas 24 horas. El sistema te avisará con un banner si la ventana se cerró, para evitar que WhatsApp bloquee la línea por spam.
 
 ---
-*En resumen: Dentalogic es tu asistente inteligente atendiendo el WhatsApp y un panel organizado en tiempo real para que tu clínica nunca pierda un paciente.*
+*En resumen: ClinicForge es la secretaria virtual de la Dra. María Laura Delgado atendiendo el WhatsApp, recolectando datos completos de admisión y registrando historial médico, con un panel organizado en tiempo real para que tu clínica nunca pierda un paciente y tenga toda la información necesaria antes de la consulta.*

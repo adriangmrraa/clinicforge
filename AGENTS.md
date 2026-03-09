@@ -26,7 +26,7 @@ Maneja la integración con YCloud y la IA de audio (Whisper).
 - **AuthContext:** Gestiona el estado de sesión y rol del usuario.
 - **Registro:** LoginView pide **Sede/Clínica** (GET `/auth/clinics`), especialidad (dropdown), teléfono y matrícula para professional/secretary; POST `/auth/register` con `tenant_id` y datos de profesional crea fila en `professionals` pendiente de aprobación.
 - **Chats por clínica:** ChatsView usa GET `/admin/chat/tenants` y GET `/admin/chat/sessions?tenant_id=`. Selector de Clínicas para CEO (varias clínicas); secretaria/profesional ven una sola. Mensajes, human-intervention y remove-silence usan `tenant_id`; override 24h independiente por clínica.
-- **Idioma (i18n):** `LanguageProvider` envuelve la app; idioma por defecto **inglés**. GET/PATCH `/admin/settings/clinic` para `ui_language` (es\|en\|fr) en `tenants.config`. Traducciones en `src/locales/{es,en,fr}.json`; **todas** las vistas principales y componentes compartidos usan `useTranslation()` y `t('clave')` (Login, Dashboard, Agenda, Pacientes, Chats, Analíticas, Aprobaciones, Sedes, Tratamientos, Perfil, Configuración, Sidebar, Layout, AppointmentForm, MobileAgenda, AnalyticsFilters, etc.). Al cambiar idioma en Configuración, `setLanguage(value)` se ejecuta primero para efecto inmediato en **toda** la plataforma.
+- **Idioma (i18n):** `LanguageProvider` envuelve la app; idioma por defecto **inglés**. GET/PATCH `/admin/settings/clinic` para `ui_language` (es|en|fr) en `tenants.config`. Traducciones en `src/locales/{es,en,fr}.json`; **todas** las vistas principales y componentes compartidos usan `useTranslation()` y `t('clave', data)`. El sistema soporta **interpolación dinámica** nativa (ej: `t('key', { count: 5 })`).
 - **Configuración:** Vista real en `/configuracion` (ConfigView) con selector de idioma; solo CEO. El agente de chat es **agnóstico**: el system prompt inyecta el nombre de la clínica (`tenants.clinic_name`) y responde en el idioma detectado del mensaje del lead (es/en/fr).
 
 ---
@@ -42,9 +42,8 @@ Maneja la integración con YCloud y la IA de audio (Whisper).
 - **`check_availability` / `book_appointment`:** Si `calendar_provider == 'google'` → usan `gcal_service` y eventos GCal; si `'local'` → solo consultas SQL a `appointments` (y bloques locales). Siempre filtro por `tenant_id`.
 - La IA usa la API Key global (env) para razonamiento; los datos de turnos están aislados por clínica.
 
-### 🤖 Maintenance Robot (Self-Healing)
-- **Protocolo Omega Prime:** Se auto-activa al primer administrador (CEO) para evitar bloqueos en despliegues nuevos.
 - **Parches 12–15 (idempotentes):** Añaden `tenant_id` + índice en `professionals`, `appointments`, `treatment_types`, `chat_messages`; en `appointments` aseguran columnas `source` y `google_calendar_event_id`. **Parches 12d/12e:** añaden `phone_number` y `specialty` a `professionals` si no existen. Usan bloques `DO $$ BEGIN ... END $$` para no romper datos existentes.
+- **Transaction Isolation (v8.1):** Los parches y el Foundation se ejecutan en **sesiones aisladas** del pool para evitar errores de pre-compilación de scripts largos (prepared statement errors).
 
 ---
 

@@ -8,3 +8,4 @@ redis
 python-dotenv
 prometheus-client
 requests
+asyncpg

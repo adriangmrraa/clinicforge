@@ -6,7 +6,7 @@ Lista de situaciones donde lo que dice el usuario puede no alinearse con lo que 
 
 ## Contrato de formato: agente vs backend
 
-**El agente es la fuente principal de formato canónico.** El system prompt incluye la sección "FORMATO CANÓNICO AL LLAMAR TOOLS", que obliga al agente a traducir lo que dice el usuario (en español o inglés) al formato esperado por las tools antes de llamarlas (p. ej. `date_time` como "día 17:00", `dni` solo dígitos, `insurance_provider` "PARTICULAR" o nombre de obra social). **El backend conserva la normalización actual** (parse_datetime ampliado, DNI solo dígitos, "particular" → PARTICULAR, validación de pasado) como **red de seguridad**: si el agente envía algo que el backend puede interpretar, se acepta; si la tool devuelve error (❌/⚠️), el agente debe reintentar al menos una vez con el formato canónico antes de dar por perdida la reserva. Así se reduce la probabilidad de fallos sin romper el comportamiento actual.
+**El agente es la fuente principal de formato canónico.** El system prompt incluye la sección "FORMATO CANÓNICO AL LLAMAR TOOLS", que obliga al agente a traducir lo que dice el usuario (en español o inglés) al formato esperado por las tools antes de llamarlas (p. ej. `date_time` como "día 17:00", `dni` solo dígitos, `birth_date` como "DD/MM/AAAA", `email` válido, `city` como texto, `acquisition_source` como Instagram/Google/Referido/Otro). **El backend conserva la normalización actual** (parse_datetime ampliado, DNI solo dígitos, validación de email, validación de fecha, normalización de fuente) como **red de seguridad**: si el agente envía algo que el backend puede interpretar, se acepta; si la tool devuelve error (❌/⚠️), el agente debe reintentar al menos una vez con el formato canónico antes de dar por perdida la reserva. Así se reduce la probabilidad de fallos sin romper el comportamiento actual.
 
 ---
 
@@ -45,13 +45,68 @@ Lista de situaciones donde lo que dice el usuario puede no alinearse con lo que 
 
 ---
 
-## 4. Obra social / particular (`insurance_provider`)
+## 4. Sistema de Seguimiento Post-Atención
+
+### 4.1 Detección de respuestas a seguimientos
+
+| Situación | Riesgo | Estado actual |
+|-----------|--------|----------------|
+| Paciente responde "todo bien" a seguimiento | Agente debe detectar contexto de seguimiento y evaluar síntomas | ✅ Buffer task detecta metadata `is_followup` |
+| Paciente reporta dolor/inflamación | Agente debe activar `triage_urgency` inmediatamente | ✅ Contexto especial inyectado en prompt |
+| Paciente responde con audio/imagen | Sistema debe procesar multimedia y mantener contexto | ✅ Mismo flujo que mensajes regulares |
+| Múltiples mensajes en conversación | Contexto debe persistir durante toda la interacción | ✅ Historial completo en chat_messages |
+
+### 4.2 Evaluación de triage automático
+
+| Síntoma reportado | Regla aplicada | Nivel de urgencia |
+|-------------------|----------------|-------------------|
+| Dolor intenso que no cede | Regla 1 - Dolor intenso | Emergency/High |
+| Inflamación importante en cara | Regla 2 - Inflamación facial | Emergency/High |
+| Sangrado abundante | Regla 3 - Sangrado no controlado | Emergency/High |
+| Traumatismo reciente | Regla 4 - Traumatismo facial | Emergency/High |
+| Fiebre + dolor dental | Regla 5 - Fiebre asociada | Emergency/High |
+| Prótesis se cayó | Regla 6 - Pérdida de prótesis | Emergency/High |
+| Dolor leve/manejable | No cumple criterios de emergencia | Normal/Low |
+
+---
+
+## 5. Nuevos campos obligatorios para pacientes nuevos
+
+### 4.1 Fecha de nacimiento (`birth_date` - formato DD/MM/AAAA)
 
 | Cómo lo dice el usuario | Riesgo | Estado actual |
 |-------------------------|--------|----------------|
-| "particular", "no tengo obra social", "pago yo" | Debe mapearse a un valor único (ej. "PARTICULAR") para no tener variantes. | Sin normalización; se guarda tal cual. |
-| "OSDE 210", "Swiss Medical" | Nombre largo o con número; la tool acepta cualquier string. | OK. |
-| "no tengo" (ambiguo) | Puede referirse a DNI o a obra social. | El agente debe aclarar. |
+| "15/05/1990" | Formato correcto | ✅ Validación estricta en backend |
+| "15-05-1990", "15.05.1990" | Formatos alternativos | ❌ Rechazado - debe usar DD/MM/AAAA |
+| "15 de mayo de 1990" | Formato textual | ❌ Rechazado - debe usar DD/MM/AAAA |
+| "05/15/1990" | Formato MM/DD/AAAA (confuso) | ❌ Rechazado - debe usar DD/MM/AAAA |
+
+### 4.2 Email (`email`)
+
+| Cómo lo dice el usuario | Riesgo | Estado actual |
+|-------------------------|--------|----------------|
+| "usuario@dominio.com" | Formato válido | ✅ Validación con regex |
+| "usuario @ dominio . com" | Espacios incorrectos | ❌ Rechazado - email inválido |
+| "sin email", "no tengo" | Campo requerido | ❌ Rechazado - campo obligatorio |
+
+### 4.3 Ciudad/Barrio (`city`)
+
+| Cómo lo dice el usuario | Riesgo | Estado actual |
+|-------------------------|--------|----------------|
+| "Neuquén Capital", "Centro" | Texto libre | ✅ Aceptado |
+| "NQN", "Nqn" | Abreviaciones | ✅ Aceptado (se guarda tal cual) |
+
+### 4.4 Cómo nos conoció (`acquisition_source`)
+
+| Cómo lo dice el usuario | Riesgo | Estado actual |
+|-------------------------|--------|----------------|
+| "Instagram", "IG" | Normalizado a INSTAGRAM | ✅ Cubierto |
+| "Google", "buscador" | Normalizado a GOOGLE | ✅ Cubierto |
+| "Referido", "recomendación" | Normalizado a REFERRED | ✅ Cubierto |
+| "Otro", "otros" | Normalizado a OTHER | ✅ Cubierto |
+| "Facebook", "Twitter" | No en lista | Normalizado a OTHER |
+
+**NOTA:** `insurance_provider` ha sido eliminado. La clínica atiende de forma particular.
 
 ---
 
@@ -80,7 +135,7 @@ Lista de situaciones donde lo que dice el usuario puede no alinearse con lo que 
 
 | Cómo lo dice el usuario | Riesgo | Estado actual |
 |-------------------------|--------|----------------|
-| "Quiero el miércoles a las 17, soy Adrian Argañaraz DNI 40989310 OSDE, limpieza con Facundo" | El modelo debe extraer: date_time, first_name, last_name, dni, insurance_provider, treatment_reason, professional_name. Cualquier campo mal asignado (ej. "17" como DNI, o nombre partido mal) rompe o da datos incorrectos. | Depende del LLM; mensajes de error de la tool ayudan a reintentar. |
+| "Quiero el miércoles a las 17, soy Adrian Argañaraz DNI 40989310 15/05/1990 adrian@email.com Neuquén Instagram, limpieza con Facundo" | El modelo debe extraer: date_time, first_name, last_name, dni, birth_date, email, city, acquisition_source, treatment_reason, professional_name. Cualquier campo mal asignado (ej. fecha mal formateada, email inválido) rompe o da datos incorrectos. | Depende del LLM; mensajes de error de la tool ayudan a reintentar. |
 
 ---
 

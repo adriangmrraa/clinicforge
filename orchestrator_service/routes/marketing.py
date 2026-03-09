@@ -214,3 +214,105 @@ async def debug_marketing_stats(
         debug_info["general_error"] = str(e)
             
     return debug_info
+
+@router.get("/combined-stats")
+async def get_combined_marketing_stats(
+    range: str = "last_30d",
+    auth_data: tuple = Depends(get_ceo_user_and_tenant)
+):
+    """
+    Get combined marketing stats from all platforms (Meta + Google)
+    """
+    user, tenant_id = auth_data
+    
+    try:
+        from services.marketing_service import MarketingService
+        combined_stats = await MarketingService.get_combined_marketing_stats(tenant_id, range)
+        
+        return {
+            "success": True,
+            "stats": combined_stats,
+            "time_range": range,
+            "tenant_id": tenant_id
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get combined marketing stats: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/multi-platform-campaigns")
+async def get_multi_platform_campaigns(
+    range: str = "last_30d",
+    auth_data: tuple = Depends(get_ceo_user_and_tenant)
+):
+    """
+    Get campaigns from all platforms (Meta + Google)
+    """
+    user, tenant_id = auth_data
+    
+    try:
+        from services.marketing_service import MarketingService
+        campaigns = await MarketingService.get_multi_platform_campaigns(tenant_id, range)
+        
+        return {
+            "success": True,
+            "campaigns": campaigns,
+            "time_range": range,
+            "tenant_id": tenant_id
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get multi-platform campaigns: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/platform-status")
+async def get_marketing_platform_status(
+    auth_data: tuple = Depends(get_ceo_user_and_tenant)
+):
+    """
+    Get connection status for all marketing platforms
+    """
+    user, tenant_id = auth_data
+    
+    try:
+        from core.credentials import get_tenant_credential
+        from services.auth.google_oauth_service import GoogleOAuthService
+        
+        # Meta status
+        meta_token = await get_tenant_credential(tenant_id, "META_USER_LONG_TOKEN")
+        meta_account = await get_tenant_credential(tenant_id, "META_AD_ACCOUNT_ID")
+        
+        # Google status
+        google_status = {}
+        try:
+            google_status = await GoogleOAuthService.get_connection_status(tenant_id, "ads")
+        except Exception as e:
+            logger.warning(f"Failed to get Google status: {e}")
+            google_status = {"connected": False, "error": str(e)}
+        
+        # Google developer token
+        google_dev_token = await get_tenant_credential(tenant_id, "GOOGLE_DEVELOPER_TOKEN")
+        
+        return {
+            "success": True,
+            "platforms": {
+                "meta": {
+                    "connected": bool(meta_token and meta_account),
+                    "has_token": bool(meta_token),
+                    "has_account": bool(meta_account),
+                    "account_id": meta_account
+                },
+                "google": {
+                    "connected": google_status.get("connected", False),
+                    "has_token": google_status.get("connected", False),
+                    "has_developer_token": bool(google_dev_token),
+                    "email": google_status.get("email"),
+                    "expires_at": google_status.get("expires_at")
+                }
+            },
+            "tenant_id": tenant_id
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get platform status: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

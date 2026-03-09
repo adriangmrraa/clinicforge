@@ -1,0 +1,11 @@
+#!/bin/bash
+echo "=== BUSCANDO URLs HARCODEADAS EN CLINICFORGE ==="
+echo ""
+echo "1. Archivos que contienen 'easypanel.host':"
+grep -r "easypanel.host" . --include="*.py" --include="*.js" --include="*.ts" --include="*.tsx" --include="*.json" --include="*.env*" --include="*.yml" --include="*.yaml" --include="*.md" | grep -v node_modules | grep -v ".git"
+echo ""
+echo "2. Archivos que contienen 'gvdlcu' (dentalforge):"
+grep -r "gvdlcu" . --include="*.py" --include="*.js" --include="*.ts" --include="*.tsx" --include="*.json" --include="*.env*" --include="*.yml" --include="*.yaml" --include="*.md" | grep -v node_modules | grep -v ".git"
+echo ""
+echo "3. Archivos que contienen 'ugwrjq' (dentalogic):"
+grep -r "ugwrjq" . --include="*.py" --include="*.js" --include="*.ts" --include="*.tsx" --include="*.json" --include="*.env*" --include="*.yml" --include="*.yaml" --include="*.md" | grep -v node_modules | grep -v ".git"

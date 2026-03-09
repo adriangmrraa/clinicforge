@@ -12,7 +12,7 @@ En la misma base del Orchestrator están disponibles:
 | **[/redoc](http://localhost:8000/redoc)** | **ReDoc**: documentación en formato lectura. |
 | **[/openapi.json](http://localhost:8000/openapi.json)** | Esquema OpenAPI 3.x en JSON para importar en Postman, Insomnia o herramientas de generación de clientes. |
 
-Sustituye `localhost:8000` por la URL del Orchestrator en tu entorno (ej. en producción: `https://clinicforge-orchestrator.ugwrjq.easypanel.host`).
+Sustituye `localhost:8000` por la URL del Orchestrator en tu entorno (ej. en producción: `https://your-orchestrator-domain.com`).
 
 ---
 
@@ -249,8 +249,14 @@ Modifica las propiedades de un tratamiento existente.
 ### Eliminar Tratamiento
 `DELETE /admin/treatment-types/{code}`
 
-- Si no tiene citas asociadas: **Eliminación física**.
+- Si no tiene citas asociadas: **Eliminación física**. (Borra imágenes físicas asociadas).
 - Si tiene citas asociadas: **Soft Delete** (`is_active = false`).
+
+### Galería de Imágenes del Tratamiento
+`GET /admin/treatment-types/{code}/images` — Lista las imágenes asociadas al tratamiento.
+`POST /admin/treatment-types/{code}/images` — Sube una nueva imagen (multipart/form-data).
+`DELETE /admin/treatment-types/{code}/images/{image_id}` — Elimina físicamente una imagen.
+`GET /admin/public/media/{image_id}` — (Público) Sirve la imagen física para consumo directo.
 
 ## Profesionales
 
@@ -450,7 +456,7 @@ Elimina el paciente del tenant (o soft-delete según esquema).
 
 ### Historial clínico (records)
 `GET /admin/patients/{id}/records` — Lista notas/registros clínicos del paciente.  
-`POST /admin/patients/{id}/records` — Crea una nota clínica. Body: `content`, opcionalmente `odontogram_data`.
+`POST /admin/patients/{id}/records` — Crea una nota clínica. Body: `content`, opcionalmente `odontogram_data`, `diagnosis`, `treatment_plan`, `treatments`. Soporta tipos complejos (JSONB) persistidos nativamente.
 
 ### Búsqueda semántica
 `GET /admin/patients/search-semantic?q=<texto>`
@@ -591,17 +597,42 @@ Lista los últimos casos de urgencia detectados por el sistema de triaje IA.
 
 ---
 
-## Marketing Hub (Meta Ads)
+## Marketing Hub (Meta Ads + Google Ads)
 
-Endpoints para la gestión de publicidad en Meta y análisis de ROI. Requiere `Authorization: Bearer <JWT>` y `X-Admin-Token`.
+Endpoints para la gestión de publicidad en Meta Ads, Google Ads y análisis de ROI combinado. Requiere `Authorization: Bearer <JWT>` y `X-Admin-Token`.
 
-### Conexión y Auth
+### Meta Ads - Conexión y Auth
 `GET /admin/marketing/meta-auth/url` — Genera la URL de login con Meta (permisos de Ads).  
 `GET /admin/marketing/stats` — Métricas consolidadas (Spent, Leads, ROI) por campaña. Soporta `range` (ej: `last_30d`, `lifetime`).  
 `GET /admin/marketing/token-status` — Devuelve si el token de Meta está activo o expirado.  
 `GET /admin/marketing/meta-portfolios` — Lista Business Managers vinculados.  
 `GET /admin/marketing/meta-accounts` — Lista Ad Accounts de un portfolio.  
 `POST /admin/marketing/connect-meta-account` — Vincula una Ad Account física a la clínica actual.
+
+### Google Ads - Conexión y Auth
+`GET /admin/auth/google/ads/url` — Genera URL de autorización OAuth 2.0 para Google Ads.  
+`GET /admin/auth/google/ads/callback` — Callback handler para OAuth (usado por Google).  
+`GET /admin/auth/google/login/url` — URL para Google Login (futuro).  
+`GET /admin/auth/google/login/callback` — Callback para Google Login.  
+`POST /admin/auth/google/ads/disconnect` — Desconecta Google Ads OAuth.  
+`GET /admin/auth/google/ads/refresh` — Refresca manualmente el token de acceso.  
+`GET /admin/auth/google/ads/test-connection` — Prueba conexión con Google Ads API.  
+`GET /admin/auth/google/ads/debug/token` — Debug endpoint para ver estado del token.
+
+### Google Ads - API y Métricas
+`GET /admin/marketing/google/campaigns` — Obtiene campañas de Google Ads con métricas. Parámetro: `time_range`.  
+`GET /admin/marketing/google/metrics` — Métricas agregadas de Google Ads (impressions, clicks, cost, conversions).  
+`GET /admin/marketing/google/customers` — Cuentas de cliente de Google Ads accesibles.  
+`POST /admin/marketing/google/sync` — Dispara sincronización manual de datos.  
+`GET /admin/marketing/google/stats` — Estadísticas completas (campañas + métricas).  
+`GET /admin/marketing/google/connection-status` — Estado de conexión con Google Ads API.  
+`GET /admin/marketing/google/combined-stats` — Estadísticas combinadas Meta + Google.  
+`GET /admin/marketing/google/debug/config` — Debug endpoint para configuración.
+
+### Marketing Combinado (Meta + Google)
+`GET /admin/marketing/combined-stats` — Estadísticas combinadas de todas las plataformas.  
+`GET /admin/marketing/multi-platform-campaigns` — Campañas de todas las plataformas (Meta + Google).  
+`GET /admin/marketing/platform-status` — Estado de conexión para todas las plataformas.
 
 ### Diagnóstico (Master Ad List)
 `GET /admin/marketing/debug/stats` — **Diagnóstico profundo.** Escanea la cuenta publicitaria sin filtros de rendimiento.  
@@ -690,6 +721,7 @@ Endpoint usado por el **WhatsApp Service** (y pruebas) para enviar mensajes al a
 
 - **Vision**: Si viene `media` de tipo `image`, se dispara análisis GPT-4o.
 - **Persistencia**: Historial en BD + Inyección de contexto visual.
+- **Retry System**: El LLM se ejecuta bajo un bloque de *Exponential Backoff* (hasta 3 intentos) si ocurren fallos de red. Si falla permanentemente, el buffer envía un mensaje de intermitencia suave al paciente en lugar de descartar la conversación.
 
 ---
 

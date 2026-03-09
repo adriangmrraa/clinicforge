@@ -94,6 +94,19 @@ Antes de invocar al Agente, la tarea `process_buffer_task`:
 2. **Deduplicación**: Elimina el último mensaje del historial si coincide con el primero del buffer (evita duplicados).
 3. **Ad Context**: Inyecta información de `meta_ad_headline` si el paciente provino de un anuncio (ej. Urgencias).
 
+## 5.5. Retry System & Exponential Backoff (Cura al Descarte)
+Dado que los fallos transitorios en las APIs de los LLMs (ej. OpenAI, Groq) u otros errores de red podían romper la cadena de buffers y dejar los mensajes "huérfanos", la ejecución principal del generador de IA (`executor.ainvoke` en `buffer_task.py`) ahora opera bajó un bloque de reintentos:
+- **Intento 1**: Ejecución normal.
+- **Si falla**: Pausa `asyncio.sleep(2 ** attempt)` y retoma.
+- **Límite**: 3 intentos. Si se supera el límite, despacha por el send path natural una frase de disculpas genérica, para asegurarse de limpiar el canal sin comprometer UX, manteniendo al paciente notificado.
+
+## 5.6. Respuesta Sender & Burbujas Multimedia (Smart Splitter)
+El sistema divide las respuestas largas del agente IA en párrafos semánticos o frases, simulando "Envío de Burbujas" reales con pausas (`typing_on` + Delay de X segundos) adaptables para YCloud y Chatwoot por igual.
+Adicionalmente, se integró el **Multimedia Sender**:
+1. **Extracción**: El Sender escanea la respuesta de la IA por el tag interno `[LOCAL_IMAGE:/media/X]`. Al detectarlo, limpia el texto para el paciente.
+2. **Priorización**: Manda *primeramente* la imagen usando los endpoints nativos de cada proveedor (`send_attachment` en Chatwoot, `send_image` en YCloud).
+3. **Flujo de Texto**: Luego de enviar la imagen exitosamente, ejecuta el split normal de texto, añadiendo los delays que correspondan, entregando una UX multimedia fluida.
+
 ## 6. Configuración de Credenciales (YCloud)
 > [!IMPORTANT]
 > Para que el canal de WhatsApp (YCloud) funcione, es OBLIGATORIO configurar las siguientes credenciales en la base de datos (tabla `credentials`):

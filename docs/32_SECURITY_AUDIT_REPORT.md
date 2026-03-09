@@ -65,14 +65,29 @@ El sistema implementa una defensa en profundidad para todas las rutas administra
 - [x] Implementar AI Guardrails (`detect_prompt_injection`, `SafeHTML` + DOMPurify).
 - [x] Parchear 5 endpoints críticos con aislamiento `tenant_id` completo.
 
+### ✅ Completado Recientemente (Febrero 2026)
+
+1. **Backend**:
+   - [x] **Console.log solo en DEV** - Implementado en commit `3af9a9a`: `console.log` solo se ejecuta en entorno de desarrollo, eliminado en producción
+   - [x] **Limpieza automática de JWT en 401** - Implementado en commit `3af9a9a`: Cuando el backend devuelve 401, el frontend limpia automáticamente el JWT
+   - [x] **Autenticación en Socket.IO** - Implementado en commit `3af9a9a`: Validación de JWT en conexiones Socket.IO
+   - [x] **Fix loop infinito en agenda** - Implementado en commit `8f1c4a7`: Socket.IO accept-all + reconnect delay de 5 segundos
+   - [x] **Guardian de rango en agenda** - Implementado en commit `18bc91b`: Fetch solo al navegar, no en re-renders internos
+
+2. **Frontend**:
+   - [x] **Persistent media secret** - Implementado en commit `c806283`: Secret persistente para media handling
+   - [x] **Whitelabel fallbacks** - Implementado en commit `c806283`: Fallbacks robustos para configuración whitelabel
+   - [x] **Socket.IO stability** - Implementado en commit `c806283`: Mejoras de estabilidad en conexiones Socket.IO
+
+3. **Base de Datos**:
+   - [x] **Actualización de Vite** - Implementado en commit `483f69a`: Vite actualizado a versión 5.4.21
+   - [x] **Mejora persistencia de vista en agenda** - Implementado en commit `483f69a`: Persistencia mejorada de vistas de calendario
+
 ### ⏳ Pendiente
 
 1. **Backend**:
    - [ ] Forzar error si `ADMIN_TOKEN` o `CREDENTIALS_FERNET_KEY` mantienen valores por defecto en producción.
    - [ ] Desactivar fallback `os.getenv` en producción para llaves de proveedores.
 
-2. **Frontend**:
-   - [ ] Limpiar `console.log` de URLs en producción (pueden contener PII).
-
-3. **Base de Datos**:
+2. **Base de Datos**:
    - [ ] Completar `ReadAuditLogger` para tablas de pacientes/DNI (acceso a PII).

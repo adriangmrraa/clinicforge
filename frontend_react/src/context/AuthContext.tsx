@@ -25,8 +25,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     useEffect(() => {
         const initializeAuth = async () => {
             const savedUser = localStorage.getItem('USER_PROFILE');
-            // Nota: El token ya no se lee de localStorage (HttpOnly Cookie)
-            if (savedUser) {
+            const savedToken = localStorage.getItem('access_token');
+            
+            if (savedUser && savedToken) {
                 try {
                     setUser(JSON.parse(savedUser));
                 } catch (e) {
@@ -39,8 +40,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         initializeAuth();
     }, []);
 
-    const login = (_newToken: string, profile: User) => {
-        // El token viene en la respuesta pero se guarda automáticamente en la Cookie HttpOnly
+    const login = (newToken: string, profile: User) => {
+        // Guardar token JWT para enviar en Authorization header
+        localStorage.setItem('access_token', newToken);
+        
+        // Guardar perfil de usuario
         localStorage.setItem('USER_PROFILE', JSON.stringify(profile));
 
         // Save tenant_id as a top-level key for axios/direct-access needs
@@ -51,6 +55,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     };
 
     const logout = () => {
+        localStorage.removeItem('access_token');
         localStorage.removeItem('USER_PROFILE');
         localStorage.removeItem('X-Tenant-ID');
         setUser(null);

@@ -18,7 +18,7 @@ You are an expert developer tasked with refactoring an existing multi-tenant AI 
 * **From Store to Clinic:** Replace Tienda Nube tools (search\_products, orders) with Dental Tools.  
 * **Required New Tools:**  
   * check\_availability(): Integration with Google Calendar API (Mirror mode).  
-  * book_appointment(): Create events in Calendar and entries in PGSQL. Support for new patient registration (first_name, last_name, dni, insurance).
+  * book\_appointment(): Create events in Calendar and entries in PGSQL.  
   * triage\_urgency(): NLP classification for "Pain/Emergency" to flag in Dashboard.  
 * **Memory:** Maintain the 20-message sliding window but adapt the sys\_template to the "Dental Professional" persona (Argentine, warm, but clinical).  
 * **Human Silence:** Keep the 24h lockout mechanism (human\_override\_until) for manual intervention.
@@ -31,12 +31,6 @@ Refactor the current schema to support:
 * appointments: Linked to Google Calendar IDs and box/chair assignment.  
 * clinical\_records: JSONB structure for Odontograms and text for clinical notes.  
 * accounting: Tables for payments, insurance claims (OSDE), and daily cash flow.
-
-### **D. Database Evolution (Maintenance Robot)**
-
-* **Self-Healing:** Never execute SQL direct or via external migrations. 
-* **Protocol:** Add new columns or tables to the `patches` list in `orchestrator_service/db.py` using `DO $$` blocks with `IF NOT EXISTS`.
-* **Synchronize:** Run `./sync-schema.ps1` to update the base foundation after changing the evolution pipeline.
 
 ### **C. Frontend Refactoring (Vanilla JS)**
 

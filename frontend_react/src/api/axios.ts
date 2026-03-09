@@ -167,10 +167,41 @@ api.interceptors.response.use(
 
     // Manejo específico de errores
     if (status === 401) {
-      console.warn('[API] ⚠️ Unauthorized - Limpiando sesión completa');
-      // Limpiar AMBOS tokens para evitar estado de auth inconsistente (JWT stale + admin token)
-      localStorage.removeItem('ADMIN_TOKEN');
-      localStorage.removeItem('access_token');
+      const errorData = error.response?.data as any;
+      const errorDetail = errorData?.detail || errorData?.error || '';
+      const isAdminTokenError = errorDetail.includes('X-Admin-Token') || 
+                                errorDetail.includes('admin_token') ||
+                                errorDetail.includes('infraestructura');
+      
+      if (isAdminTokenError) {
+        console.warn('[API] 🔧 ADMIN_TOKEN error detectado - Intentando autoreparación');
+        
+        // 1. Obtener token del entorno (VITE_ADMIN_TOKEN)
+        const envToken = import.meta.env.VITE_ADMIN_TOKEN;
+        
+        // 2. Si hay token en entorno Y no está en localStorage, restaurarlo
+        if (envToken && envToken !== 'RUNTIME_REPLACE' && envToken.length > 10) {
+          console.log('[API] 🔄 Restaurando ADMIN_TOKEN desde variables de entorno');
+          localStorage.setItem('ADMIN_TOKEN', envToken);
+          
+          // 3. Reintentar la request inmediatamente con nuevo token
+          if (originalConfig && retryCount <= MAX_RETRIES) {
+            originalConfig._retryCount = retryCount;
+            const delayMs = 100; // Retry rápido
+            console.log(`[API] 🔁 Reintentando request con token restaurado`);
+            
+            await delay(delayMs);
+            return api(originalConfig);
+          }
+        } else {
+          console.error('[API] 🔥 ERROR: No se puede restaurar ADMIN_TOKEN - VITE_ADMIN_TOKEN inválido o vacío');
+          console.log('[API] 💡 Longitud VITE_ADMIN_TOKEN:', envToken?.length || 0);
+        }
+      } else {
+        // Error 401 normal (JWT expirado, no admin token)
+        console.warn('[API] ⚠️ Unauthorized - Limpiando JWT solamente');
+        localStorage.removeItem('access_token');
+      }
 
       // No redirigir si estamos en una página pública legal (Spec Meta Review)
       const publicRoutes = ['/privacy', '/terms', '/demo'];

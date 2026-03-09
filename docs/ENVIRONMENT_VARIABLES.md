@@ -42,7 +42,7 @@ YCLOUD_API_KEY=...
 YCLOUD_WEBHOOK_SECRET=...
 WHATSAPP_SERVICE_URL=http://whatsapp:8002
 ADMIN_TOKEN=admin-secret-token
-CORS_ALLOWED_ORIGINS=https://dentalogic-frontend.ugwrjq.easypanel.host,http://localhost:3000
+CORS_ALLOWED_ORIGINS=https://your-frontend-domain.com,http://localhost:3000
 
 # SMTP Configuration (Human Handoff)
 SMTP_HOST=smtp.gmail.com
@@ -78,7 +78,7 @@ JWT_SECRET=your-jwt-secret
 ## frontend (3000)
 
 ```bash
-VITE_API_URL=https://dentalogic-orchestrator.ugwrjq.easypanel.host
-VITE_BFF_URL=https://dentalogic-bff.ugwrjq.easypanel.host
+VITE_API_URL=https://your-orchestrator-domain.com
+VITE_BFF_URL=https://your-bff-domain.com
 NODE_ENV=production
 ```

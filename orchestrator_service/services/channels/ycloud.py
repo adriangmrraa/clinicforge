@@ -52,7 +52,8 @@ class YCloudAdapter(ChannelAdapter):
                 type=MediaType.AUDIO,
                 url=audio_data.get("link"),
                 mime_type=audio_data.get("mime_type"),
-                meta={"voice": (msg_type == "voice")}
+                meta={"voice": (msg_type == "voice")},
+                transcription=audio_data.get("transcription")
             ))
             
         elif msg_type == "document":

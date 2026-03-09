@@ -15,6 +15,8 @@ import ClinicsView from './views/ClinicsView';
 import ConfigView from './views/ConfigView';
 import MetaTemplatesView from './views/MetaTemplatesView';
 import MarketingHubView from './views/MarketingHubView';
+import LeadsManagementView from './views/LeadsManagementView';
+import LeadDetailView from './views/LeadDetailView';
 import PrivacyTermsView from './views/PrivacyTermsView';
 import { AuthProvider } from './context/AuthContext';
 import { LanguageProvider } from './context/LanguageContext';
@@ -72,6 +74,16 @@ function App() {
                     <Route path="templates" element={
                       <ProtectedRoute allowedRoles={['ceo']}>
                         <MetaTemplatesView />
+                      </ProtectedRoute>
+                    } />
+                    <Route path="leads" element={
+                      <ProtectedRoute allowedRoles={['ceo']}>
+                        <LeadsManagementView />
+                      </ProtectedRoute>
+                    } />
+                    <Route path="leads/:id" element={
+                      <ProtectedRoute allowedRoles={['ceo']}>
+                        <LeadDetailView />
                       </ProtectedRoute>
                     } />
 

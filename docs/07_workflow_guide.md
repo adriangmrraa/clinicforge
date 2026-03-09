@@ -157,4 +157,79 @@ Usuario recibe mensajes
 
 ---
 
-*Guía de Flujo de Trabajo Dentalogic © 2026*
+## 9. Workflows Estructurados SDD v3.0 (Adoptados Febrero 2026)
+
+El proyecto ha adoptado el **Motor de Autonomía SDD v3.0** con workflows estructurados para desarrollo consistente:
+
+### **Workflows Principales:**
+
+#### **⚡ Autonomy Engine (`/autonomy`)**
+Motor completo de 7 fases para transformar requerimientos vagos en software funcional:
+1. **Triage** - Clasificación de solicitud
+2. **Scaffolding** - Preparación de contexto
+3. **Specification** - Generación SSOT (`.spec.md`)
+4. **Planning & Gatekeeping** - Planificación y evaluación de confianza
+5. **Implementation** - Ejecución con checkpoints
+6. **Validation** - Testing, auditoría, revisión
+7. **Completion** - Sync GitHub, documentación
+
+#### **📋 Especificación (`/specify`)**
+Generación de Single Source of Truth (SSOT):
+- Contexto y objetivos
+- Requerimientos técnicos (backend, frontend, UI/UX)
+- Criterios de aceptación (Gherkin)
+- Esquema de datos
+- Riesgos y mitigación
+
+#### **📋 Planificación (`/plan`)**
+Transformación de especificaciones en planes ejecutables:
+- Goal description
+- User review required (breaking changes)
+- Proposed changes por componente
+- Verification plan (tests, quality gates)
+
+#### **🔧 Implementación (`/implement`)**
+Ejecución disciplinada con checkpoints:
+- Sigue `implementation_plan.md`
+- Checkpoints de calidad durante implementación
+- Non-destructive fusion (preserva lógica existente)
+
+#### **✅ Verificación (`/verify`)**
+Validación y corrección autónoma:
+- Ejecución de tests automatizados
+- Auto-corrección de fallos (máximo 3 intentos)
+- Auditoría de drift (`/audit`)
+- Revisión de calidad (`/review`)
+
+### **Workflows de Soporte:**
+
+- **🐛 `/bug_fix`** - Corrección de errores
+- **📚 `/document`** - Documentación
+- **📱 `/mobile-adapt`** - Adaptación mobile
+- **🔄 `/update-docs`** - Actualización documentación
+- **🎯 `/advisor`** - Análisis de viabilidad
+- **❓ `/clarify`** - Clarificación de ambigüedades
+- **🚪 `/gate`** - Gatekeeping técnico (evaluación confianza)
+- **📋 `/tasks`** - Desglose en tareas
+- **🔄 `/push`** - Sync con GitHub
+- **🏁 `/finish`** - Cierre de sprint
+
+### **Principios Arquitectónicos No Negociables:**
+
+1. **Data Sovereignty** - Todos los queries SQL incluyen `tenant_id` filtering
+2. **Scroll Isolation** - UI: `h-screen overflow-hidden` + `min-h-0 overflow-y-auto`
+3. **Idempotent Migrations** - Database changes seguros para múltiples ejecuciones
+4. **Non-Destructive Fusion** - Preservar lógica existente mientras se agrega nueva
+
+### **Skills Especializadas:**
+
+- **Sovereign Backend Engineer** - Multi-tenancy, JIT logic
+- **Nexus UI Architect** - Scroll Isolation, Mobile-First
+- **DB Schema Surgeon** - Evolución segura de esquemas
+- **Spec Architect** - Generación y validación de specs
+- **Deep Researcher** - Validación en documentación oficial
+
+---
+
+*Guía de Flujo de Trabajo Dentalogic © 2026*  
+*Actualizado con SDD v3.0 - Febrero 2026*

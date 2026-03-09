@@ -134,7 +134,12 @@ export default function AgendaView() {
   const [selectedEvent, setSelectedEvent] = useState<Appointment | null>(null);
   const [selectedProfessionalId, setSelectedProfessionalId] = useState<string>('all');
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
-  const [currentView] = useState(window.innerWidth >= 1024 ? 'timeGridWeek' : (window.innerWidth >= 768 ? 'resourceTimeGridDay' : 'timeGridDay'));
+  const [currentView, setCurrentView] = useState(() => {
+    // Intentar recuperar vista guardada, sino usar responsive default
+    const savedView = localStorage.getItem('agendaView');
+    if (savedView) return savedView;
+    return window.innerWidth >= 1024 ? 'timeGridWeek' : (window.innerWidth >= 768 ? 'resourceTimeGridDay' : 'timeGridDay');
+  });
 
   // Mobile Detection
   useEffect(() => {
@@ -149,8 +154,8 @@ export default function AgendaView() {
   const [isBackgroundSyncing, setIsBackgroundSyncing] = useState(false);
   // Debounce para datesSet
   const datesSetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Guardián de rango: solo hace fetch si el rango de fechas o el filtro de profesional cambió realmente
-  const lastFetchedRangeRef = useRef<{ startISO: string; endISO: string; professionalId: string } | null>(null);
+  // Guardián de rango: solo hace fetch si el rango de fechas, vista o filtro de profesional cambió realmente
+  const lastFetchedRangeRef = useRef<{ startISO: string; endISO: string; professionalId: string; viewType?: string } | null>(null);
   // Ref estable a fetchData para usarlo en socket handlers sin re-suscribir en cada cambio
   const fetchDataRef = useRef<typeof fetchData | null>(null);
   // Guard para saltar el efecto de filtro en el primer render (el init ya hace el fetch)
@@ -181,6 +186,20 @@ export default function AgendaView() {
 
 
 
+  // Handler para cambios de vista
+  const handleViewChange = useCallback((viewName: string) => {
+    setCurrentView(viewName);
+    localStorage.setItem('agendaView', viewName);
+    
+    if (calendarRef.current) {
+      const calendarApi = calendarRef.current.getApi();
+      // Solo cambiar vista si es diferente a la actual
+      if (calendarApi.view.type !== viewName) {
+        calendarApi.changeView(viewName);
+      }
+    }
+  }, []);
+
   // Mobile Detection only
   useEffect(() => {
     const handleResize = () => {
@@ -189,10 +208,15 @@ export default function AgendaView() {
         if (window.innerWidth < 768) {
           if (calendarApi.view.type !== 'listDay') {
             calendarApi.changeView('listDay');
+            setCurrentView('listDay');
+            localStorage.setItem('agendaView', 'listDay');
           }
         } else {
           if (calendarApi.view.type === 'listDay') {
-            calendarApi.changeView('timeGridWeek');
+            const defaultView = window.innerWidth >= 1024 ? 'timeGridWeek' : (window.innerWidth >= 768 ? 'resourceTimeGridDay' : 'timeGridDay');
+            calendarApi.changeView(defaultView);
+            setCurrentView(defaultView);
+            localStorage.setItem('agendaView', defaultView);
           }
         }
       }
@@ -696,6 +720,17 @@ export default function AgendaView() {
                   slotDuration="00:15:00"
                   slotLabelInterval="01:00"
                   initialDate={new Date()}
+                  firstDay={1} // Lunes como primer día de semana (0=Dom, 1=Lun)
+                  datesAbove={true} // Para mostrar días en orden correcto
+                  locale={language}
+                  buttonText={{
+                    today: t('agenda.today'),
+                    month: t('agenda.month'),
+                    week: t('agenda.week'),
+                    day: t('agenda.day'),
+                    list: t('agenda.title')
+                  }}
+                  allDayText={t('agenda.all_day')}
                   headerToolbar={{
                     left: window.innerWidth < 768 ? 'prev,next' : 'prev,next today',
                     center: 'title',
@@ -711,6 +746,10 @@ export default function AgendaView() {
                   }}
                   events={calendarEvents}
                   datesSet={(dateInfo) => {
+                    // Actualizar estado de vista actual
+                    setCurrentView(dateInfo.view.type);
+                    localStorage.setItem('agendaView', dateInfo.view.type);
+                    
                     // Guardián de rango: solo fetchea si el usuario realmente navegó (cambio de vista
                     // o flechas). FullCalendar dispara datesSet también en re-renders internos con
                     // el mismo rango — este guard los ignora silenciosamente.
@@ -722,30 +761,28 @@ export default function AgendaView() {
                       const sameRange = last &&
                         last.startISO === newStart &&
                         last.endISO === newEnd &&
-                        last.professionalId === selectedProfessionalId;
+                        last.professionalId === selectedProfessionalId &&
+                        last.viewType === dateInfo.view.type;
                       if (sameRange) return; // Re-render interno — no hacer fetch
                       lastFetchedRangeRef.current = {
                         startISO: newStart,
                         endISO: newEnd,
                         professionalId: selectedProfessionalId,
+                        viewType: dateInfo.view.type,
                       };
                       fetchData(false, dateInfo.start, dateInfo.end);
                     }, 200);
+                  }}
+                  viewDidMount={(viewInfo) => {
+                    // Sincronizar estado React con vista actual de FullCalendar
+                    setCurrentView(viewInfo.view.type);
+                    localStorage.setItem('agendaView', viewInfo.view.type);
                   }}
                   dateClick={handleDateClick}
                   eventClick={handleEventClick}
                   slotEventOverlap={false}
                   slotMinTime="08:00:00"
                   slotMaxTime="20:00:00"
-                  locale={language}
-                  buttonText={{
-                    today: t('agenda.today'),
-                    month: t('agenda.month'),
-                    week: t('agenda.week'),
-                    day: t('agenda.day'),
-                    list: t('agenda.title')
-                  }}
-                  allDayText={t('agenda.all_day')}
                   eventContent={(eventInfo) => <AppointmentCard {...eventInfo} />}
                   eventDidMount={(info) => {
                     const { eventType, source, patient_phone, professional_name, notes } = info.event.extendedProps;
