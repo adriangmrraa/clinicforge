@@ -2,12 +2,19 @@ import express, { Request, Response } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import axios from 'axios';
+import path from 'path';
 
+// Buscar .env en la carpeta actual o en la raíz
 dotenv.config();
+dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 const app = express();
 const port = process.env.PORT || 3000;
-const ORCHESTRATOR_URL = process.env.ORCHESTRATOR_SERVICE_URL || process.env.ORCHESTRATOR_URL || 'http://orchestrator_service:8000';
+
+// Mejor fallback para desarrollo local
+const ORCHESTRATOR_URL = process.env.ORCHESTRATOR_SERVICE_URL ||
+    process.env.ORCHESTRATOR_URL ||
+    'http://localhost:8000';
 
 app.use(cors({
     origin: true,
@@ -15,6 +22,7 @@ app.use(cors({
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
     allowedHeaders: ['Content-Type', 'Authorization', 'x-admin-token', 'x-tenant-id', 'x-signature']
 }));
+
 app.options('*', cors());
 app.use(express.json());
 
@@ -34,20 +42,32 @@ app.use(async (req: Request, res: Response) => {
     const url = `${ORCHESTRATOR_URL}${req.originalUrl}`;
     console.log(`[Proxy] Forwarding ${req.method} ${req.originalUrl} -> ${url}`);
 
+    // Filtrar headers problemáticos
+    const headers = { ...req.headers };
+    delete headers.host;
+    delete headers['content-length'];
+    delete headers.connection;
+
     try {
         const response = await axios({
             method: req.method,
             url: url,
-            data: req.body,
-            headers: { ...req.headers, host: undefined }
+            data: ['POST', 'PUT', 'PATCH'].includes(req.method) ? req.body : undefined,
+            headers: headers,
+            validateStatus: () => true // Permitir que axios devuelva cualquier status para reenviarlo
         });
+
         res.status(response.status).send(response.data);
     } catch (error: any) {
         console.error(`[Proxy Error] ${error.message}`);
         if (error.response) {
             res.status(error.response.status).send(error.response.data);
         } else {
-            res.status(502).json({ error: 'Orchestrator unavailable', details: error.message });
+            res.status(502).json({
+                error: 'Orchestrator unavailable',
+                details: error.message,
+                target: url
+            });
         }
     }
 });
