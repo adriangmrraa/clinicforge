@@ -16,16 +16,22 @@ class YCloudAdapter(ChannelAdapter):
         # OR { "statuses": [...] } -> Ignored here
         
         event_type = payload.get("type")
-        if event_type != "message":
+        msg = {}
+        
+        if event_type == "message":
+            msg = payload.get("message", {})
+        elif event_type == "whatsapp.inbound_message.received":
+            msg = payload.get("whatsappInboundMessage", {})
+        else:
             return []
             
-        msg = payload.get("message", {})
         if not msg:
             return []
             
         # 1. Extraer Datos Básicos
         # YCloud sends "from" as the user phone number
         external_user_id = msg.get("from")
+        display_name = msg.get("customerProfile", {}).get("name")
         
         # 2. Extraer Contenido
         msg_type = msg.get("type")
@@ -84,6 +90,7 @@ class YCloudAdapter(ChannelAdapter):
             provider="ycloud",
             original_channel="whatsapp",
             external_user_id=external_user_id,
+            display_name=display_name,
             tenant_id=tenant_id,
             content=content,
             media=media_items,
