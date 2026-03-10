@@ -100,7 +100,9 @@ class ResponseSender:
         elif provider == "ycloud":
             from core.credentials import YCLOUD_API_KEY, YCLOUD_WHATSAPP_NUMBER
             api_key = await get_tenant_credential(tenant_id, YCLOUD_API_KEY)
-            sender_number = await get_tenant_credential(tenant_id, YCLOUD_WHATSAPP_NUMBER)
+            sender_number = await pool.fetchval("SELECT bot_phone_number FROM tenants WHERE id = $1", tenant_id)
+            if not sender_number:
+                sender_number = await get_tenant_credential(tenant_id, YCLOUD_WHATSAPP_NUMBER)
             
             if not api_key or not sender_number:
                 logger.error(f"❌ Missing YCloud Credentials for tenant {tenant_id}")
