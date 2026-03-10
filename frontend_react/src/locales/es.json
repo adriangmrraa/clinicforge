@@ -1001,6 +1001,9 @@
     "credentials_password": "Password:"
   },
   "leads": {
+    "title": "Lead Forms (Meta)",
+    "subtitle": "Gestión de Leads provenientes de formularios publicitarios de Meta.",
+    "integration": "Integración",
     "info": "Los leads de formularios Meta Ads se reciben automáticamente y se atribuyen a las campañas correspondientes",
     "info_detail": "Cada lead incluye información completa del formulario y atribución precisa al anuncio y campaña",
     "webhook_configuration": "Configuración de Webhook",
