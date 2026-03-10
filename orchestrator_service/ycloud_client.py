@@ -59,3 +59,41 @@ class YCloudClient:
                     error=str(e),
                 )
                 raise
+
+    async def send_image(
+        self, to: str, url: str, correlation_id: Optional[str] = None
+    ) -> dict[str, Any]:
+        """
+        Envía una imagen a través de YCloud.
+        """
+        endpoint = f"{self.base_url}/whatsapp/messages"
+        payload = {
+            "to": to,
+            "type": "image",
+            "image": {"link": url}
+        }
+
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.post(
+                    endpoint, json=payload, headers=self.headers, timeout=15.0
+                )
+                response.raise_for_status()
+                data = response.json()
+                logger.info(f"✅ YCloud image sent to {to}: {data.get('id')}")
+                return data
+            except httpx.HTTPStatusError as e:
+                logger.error(
+                    "ycloud_send_image_failed",
+                    to=to,
+                    status=e.response.status_code,
+                    body=e.response.text[:200],
+                )
+                raise
+            except Exception as e:
+                logger.error(
+                    "ycloud_send_image_error",
+                    to=to,
+                    error=str(e),
+                )
+                raise

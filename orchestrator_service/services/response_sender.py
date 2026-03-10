@@ -107,7 +107,7 @@ class ResponseSender:
                 return
                 
             from ycloud_client import YCloudClient # Asume que está importable en orchestrator, si no, se moverá o aislará.
-            client = YCloudClient(api_key, sender_number)
+            client = YCloudClient(api_key)
             
             import uuid
             # --- Enviar Imágenes/Media primero ---
@@ -127,7 +127,7 @@ class ResponseSender:
                 await asyncio.sleep(delay)
                 
                 try:
-                    yc_resp = await client.send_whatsapp_text(external_user_id, bubble)
+                    yc_resp = await client.send_text_message(to=external_user_id, text=bubble, from_number=sender_number)
                     yc_msg_id = yc_resp.get("id") if isinstance(yc_resp, dict) else None
                     
                     import json
