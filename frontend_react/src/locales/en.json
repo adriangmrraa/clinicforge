@@ -1003,6 +1003,8 @@
     "credentials_password": "Password:"
   },
   "leads": {
+    "page_title": "Meta Leads Forms",
+    "page_subtitle": "Management of prospects received from Meta Ads campaigns",
     "title": "Lead Forms (Meta)",
     "subtitle": "Management of Leads coming from Meta advertising forms.",
     "integration": "Integration",

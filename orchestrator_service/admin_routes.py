@@ -1660,7 +1660,7 @@ async def get_deployment_config(request: Request):
     base_url = f"{protocol}://{host}"
     
     return {
-        "webhook_ycloud_url": f"{base_url}/webhook/ycloud",
+        "webhook_ycloud_url": f"{base_url}/admin/ycloud/webhook",
         "webhook_ycloud_internal_port": os.getenv("WHATSAPP_SERVICE_PORT", "8002"),
         "orchestrator_url": base_url,
         "environment": os.getenv("ENVIRONMENT", "development")
