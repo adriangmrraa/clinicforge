@@ -302,22 +302,23 @@ async def get_webhook_url(
     user, tenant_id = auth_data
     
     try:
-        # Get deployment config
-        from core.deployment import get_deployment_config
+        import os
         
-        config = await get_deployment_config()
+        # In ClinicForge, the URL is driven by PLATFORM_URL or constructed for dev.
+        base_url = os.getenv("PLATFORM_URL")
         
-        if not config or not config.get("base_url"):
-            raise HTTPException(
-                status_code=404, 
-                detail="Deployment configuration not found"
-            )
+        if not base_url:
+            base_url = "https://your-domain.com" # Fallback if not set
+            
+        # Clean trailing slash if present
+        if base_url.endswith("/"):
+            base_url = base_url[:-1]
         
-        webhook_url = f"{config['base_url']}/api/webhooks/meta?tenant_id={tenant_id}"
+        webhook_url = f"{base_url}/api/webhooks/meta?tenant_id={tenant_id}"
         
         return {
             "webhook_url": webhook_url,
-            "verify_token": "clinicforge_meta_secret_token",  # From environment
+            "verify_token": "clinicforge_meta_secret_token",  # Should ideally map to an env or DB secret.
             "instructions": "Configure this URL in Meta Ads Lead Forms webhook settings"
         }
         
