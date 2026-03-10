@@ -79,6 +79,7 @@ async def receive_ycloud_webhook(
         
     try:
         payload = await request.json()
+        logger.info(f"YCLOUD_RAW_PAYLOAD: {json.dumps(payload)}")
     except Exception:
         return {"status": "ignored", "reason": "invalid_json"}
         
