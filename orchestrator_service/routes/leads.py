@@ -305,10 +305,14 @@ async def get_webhook_url(
         import os
         
         # In ClinicForge, the URL is driven by PLATFORM_URL or constructed for dev.
-        base_url = os.getenv("PLATFORM_URL")
+        # PLATFORM_URL may be a comma-separated list of allowed origins.
+        base_url_env = os.getenv("PLATFORM_URL")
         
-        if not base_url:
+        if not base_url_env:
             base_url = "https://your-domain.com" # Fallback if not set
+        else:
+            # Take the first URL if it's a comma-separated list
+            base_url = base_url_env.split(",")[0].strip()
             
         # Clean trailing slash if present
         if base_url.endswith("/"):

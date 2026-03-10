@@ -36,7 +36,9 @@
     "saving": "Enregistrement...",
     "save_changes": "Enregistrer les modifications",
     "since": "Depuis",
-    "verifying_session": "Vérification de la session..."
+    "verifying_session": "Vérification de la session...",
+    "copy": "Copier",
+    "copied": "Copié"
   },
   "config": {
     "title": "Paramètres",

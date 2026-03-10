@@ -38,7 +38,9 @@
     "saving": "Saving...",
     "save_changes": "Save changes",
     "since": "Since",
-    "verifying_session": "Verifying session..."
+    "verifying_session": "Verifying session...",
+    "copy": "Copy",
+    "copied": "Copied"
   },
   "config": {
     "title": "Settings",

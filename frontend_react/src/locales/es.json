@@ -40,7 +40,9 @@
     "saving": "Guardando...",
     "save_changes": "Guardar Cambios",
     "since": "Desde",
-    "verifying_session": "Verificando sesión..."
+    "verifying_session": "Verificando sesión...",
+    "copy": "Copiar",
+    "copied": "Copiado"
   },
   "config": {
     "title": "Configuración",
