@@ -2540,14 +2540,19 @@ async def download_patient_document_proxy(
     """, doc_id, patient_id, tenant_id)
     
     if not document:
-        raise HTTPException(status_code=404, detail="Documento no encontrado")
+        logger.warning(f"Document {doc_id} not found in DB for patient {patient_id}, tenant {tenant_id}")
+        raise HTTPException(status_code=404, detail="El documento no existe en la base de datos.")
     
     file_path = document["file_path"]
     
     # Verificar que el archivo existe
     import os
     if not os.path.exists(file_path):
-        raise HTTPException(status_code=404, detail="Archivo no encontrado en el servidor")
+        logger.error(f"File {file_path} not found on disk")
+        raise HTTPException(
+            status_code=404, 
+            detail="Falta el archivo en el servidor. (Posible reinicio del contenedor sin volumen persistente)"
+        )
     
     # Servir archivo
     return FileResponse(

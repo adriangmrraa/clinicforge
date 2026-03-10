@@ -78,6 +78,21 @@ ON CONFLICT (tenant_id, name) DO UPDATE SET value = EXCLUDED.value;
 
 ---
 
+## 6. Archivos y Archivos Adjuntos (Uploads)
+
+### 6.1. Error 404 al descargar un archivo previamente subido
+**Síntoma**: Al intentar descargar o previsualizar un documento subido a la historia clínica del paciente, el proxy devuelve un error HTTP `404 Not Found` que dice `"Falta el archivo en el servidor. (Posible reinicio del contenedor sin volumen persistente)"`. Sin embargo, en la UI el archivo sí figura listado.
+
+**Causa**: Los archivos en el container Docker se guardan físicamente en `/app/uploads`. Como en EasyPanel (o el entorno de despliegue) no se configuró un **Volumen Persistente**, al reiniciarse la aplicación o implementarse una actualización, el contenedor se vuelve a construir perdiendo los archivos previos (mientras que la base de datos Postgres sí sobrevive y recuerda sus metadatos).
+
+**Solución**:
+1. Entrar al panel de EasyPanel para el servicio Orchestrator.
+2. Navegar a **Almacenamiento (Storage)** -> **Puntos de montaje (Mounts)** -> **Agregar montaje de volumen**.
+3. Crear un volumen con `Nombre: orchestrator_uploads` y `Ruta de montaje (Mount Path): /app/uploads`.
+4. Volver a "Implementar" el servicio para que el contenedor use siempre este disco duro persistente externo. Los archivos anteriores lamentablemente se han perdido, pero los nuevos ya no se perderán.
+
+---
+
 ## 5. Base de Datos & Maintenance Robot
 
 ### 5.1. Error: Prepared statement "S_X" already exists / Transaction Error [NEW v8.1]

@@ -190,7 +190,7 @@ export default function AgendaView() {
   const handleViewChange = useCallback((viewName: string) => {
     setCurrentView(viewName);
     localStorage.setItem('agendaView', viewName);
-    
+
     if (calendarRef.current) {
       const calendarApi = calendarRef.current.getApi();
       // Solo cambiar vista si es diferente a la actual
@@ -323,16 +323,16 @@ export default function AgendaView() {
   // === EFECTO 1: Inicialización — corre UNA SOLA VEZ al montar ===
   useEffect(() => {
     const initializeAgenda = async () => {
+      // Fire and forget calendar sync so it doesn't block the UI
       if (user?.role === 'ceo' || user?.role === 'secretary' || user?.role === 'professional') {
-        try {
-          await api.post('/admin/calendar/sync');
-          await new Promise(resolve => setTimeout(resolve, 800));
-        } catch (_) { /* continúa aunque falle el sync */ }
+        api.post('/admin/calendar/sync').catch(() => { /* Continúa silenciosamente */ });
       }
+
+      // Fetch DB data immediately
       await fetchDataRef.current?.();
     };
     initializeAgenda();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Intencionalmente vacío: solo al montar
 
   // === EFECTO 2: Socket.IO — corre UNA SOLA VEZ, sin depender de fetchData ===
@@ -368,7 +368,7 @@ export default function AgendaView() {
       if (socketRef.current) socketRef.current.disconnect();
       if (datesSetTimerRef.current) clearTimeout(datesSetTimerRef.current);
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Intencionalmente vacío: socket se conecta una sola vez
 
   // FIX 2: Memoized filtered appointments and blocks
@@ -408,7 +408,7 @@ export default function AgendaView() {
     } else {
       fetchData();
     }
-  // fetchData está en deps porque aquí es una acción explícita del usuario (no loop)
+    // fetchData está en deps porque aquí es una acción explícita del usuario (no loop)
   }, [selectedProfessionalId, fetchData]);
 
   // FIX: Refetch on mobile when selectedDate changes to ensure data is available
@@ -749,7 +749,7 @@ export default function AgendaView() {
                     // Actualizar estado de vista actual
                     setCurrentView(dateInfo.view.type);
                     localStorage.setItem('agendaView', dateInfo.view.type);
-                    
+
                     // Guardián de rango: solo fetchea si el usuario realmente navegó (cambio de vista
                     // o flechas). FullCalendar dispara datesSet también en re-renders internos con
                     // el mismo rango — este guard los ignora silenciosamente.
