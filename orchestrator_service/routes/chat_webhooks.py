@@ -79,6 +79,7 @@ async def receive_ycloud_webhook(
         
     try:
         payload = await request.json()
+        logger.info(f"YCLOUD_RAW_PAYLOAD: {json.dumps(payload)}")
     except Exception:
         return {"status": "ignored", "reason": "invalid_json"}
         
@@ -392,7 +393,6 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
             if not is_locked:
                 try:
                     import os
-                    from db import get_pool
                     import redis.asyncio as redis
                     from services.buffer_manager import BufferManager
                     

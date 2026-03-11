@@ -176,7 +176,7 @@ class BufferManager:
 
                 # 4. PROCESAR CON IA (usar buffer_task logic u orchestrator main entrypoint)
                 try:
-                    from orchestrator_service.services.buffer_task import process_buffer_task
+                    from services.buffer_task import process_buffer_task
                     # El Orquestador ahora debe encargarse de procesar y, cuando tenga la respuesta, 
                     # utilizar el ResponseSender asociado al provider/channel respetando la Lógica Estricta de Mezcla y Burbuja (Reglas C3).
                     await process_buffer_task(

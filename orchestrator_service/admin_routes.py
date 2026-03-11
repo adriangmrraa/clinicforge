@@ -581,7 +581,7 @@ async def get_integration_config(
         rows = await db.fetch("""
             SELECT name, value FROM credentials 
             WHERE tenant_id = $1 AND name IN ('YCLOUD_API_KEY', 'YCLOUD_WEBHOOK_SECRET')
-        """, tenant_id)
+        """, target_tenant_id)
         data = {r['name']: r['value'] for r in rows}
         
         # API Key (Masked)
@@ -596,6 +596,31 @@ async def get_integration_config(
             decrypted = decrypt_value(secret) or secret
             config['ycloud_webhook_secret'] = f"••••••••{decrypted[-4:]}" if len(decrypted) > 4 else "••••••••"
             
+        # --- Generate Webhook URL for YCloud ---
+        webhook_token = await db.pool.fetchval(
+            "SELECT value FROM credentials WHERE tenant_id = $1 AND name = 'WEBHOOK_ACCESS_TOKEN'",
+            target_tenant_id
+        )
+        if not webhook_token:
+            webhook_token = uuid.uuid4().hex + uuid.uuid4().hex
+            await db.pool.execute("""
+                INSERT INTO credentials (tenant_id, name, value, category, description, scope, created_at, updated_at)
+                VALUES ($1, 'WEBHOOK_ACCESS_TOKEN', $2, 'system', 'Token para webhook de Chatwoot', 'tenant', NOW(), NOW())
+                ON CONFLICT (tenant_id, name) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+            """, target_tenant_id, webhook_token)
+        
+        config['access_token'] = webhook_token
+        
+        api_base = os.getenv("BASE_URL", "").rstrip("/")
+        if not api_base:
+             scheme = request.headers.get("x-forwarded-proto", request.url.scheme)
+             host = request.headers.get("x-forwarded-host", request.url.netloc)
+             api_base = f"{scheme}://{host}"
+             
+        config['api_base'] = api_base
+        config['webhook_path'] = "/admin/ycloud/webhook"
+        config['ycloud_webhook_url'] = f"{api_base}/admin/ycloud/webhook?access_token={webhook_token}"
+
     else:
         raise HTTPException(status_code=400, detail=f"Proveedor no soportado: {provider}")
         
@@ -1670,7 +1695,7 @@ async def get_deployment_config(request: Request):
     base_url = f"{protocol}://{host}"
     
     return {
-        "webhook_ycloud_url": f"{base_url}/webhook/ycloud",
+        "webhook_ycloud_url": f"{base_url}/admin/ycloud/webhook",
         "webhook_ycloud_internal_port": os.getenv("WHATSAPP_SERVICE_PORT", "8002"),
         "orchestrator_url": base_url,
         "environment": os.getenv("ENVIRONMENT", "development")
@@ -2550,14 +2575,19 @@ async def download_patient_document_proxy(
     """, doc_id, patient_id, tenant_id)
     
     if not document:
-        raise HTTPException(status_code=404, detail="Documento no encontrado")
+        logger.warning(f"Document {doc_id} not found in DB for patient {patient_id}, tenant {tenant_id}")
+        raise HTTPException(status_code=404, detail="El documento no existe en la base de datos.")
     
     file_path = document["file_path"]
     
     # Verificar que el archivo existe
     import os
     if not os.path.exists(file_path):
-        raise HTTPException(status_code=404, detail="Archivo no encontrado en el servidor")
+        logger.error(f"File {file_path} not found on disk")
+        raise HTTPException(
+            status_code=404, 
+            detail="Falta el archivo en el servidor. (Posible reinicio del contenedor sin volumen persistente)"
+        )
     
     # Servir archivo
     return FileResponse(

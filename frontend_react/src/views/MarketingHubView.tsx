@@ -90,14 +90,12 @@ export default function MarketingHubView() {
     const loadAllStats = async () => {
         setIsLoading(true);
         try {
-            // Load Meta stats
-            await loadMetaStats();
-
-            // Load Google stats
-            await loadGoogleStats();
-
-            // Load combined stats
-            await loadCombinedStats();
+            // Load all platform stats simultaneously
+            await Promise.allSettled([
+                loadMetaStats(),
+                loadGoogleStats(),
+                loadCombinedStats()
+            ]);
 
             // Load deployment config
             try {

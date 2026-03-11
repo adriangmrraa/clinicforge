@@ -100,14 +100,16 @@ class ResponseSender:
         elif provider == "ycloud":
             from core.credentials import YCLOUD_API_KEY, YCLOUD_WHATSAPP_NUMBER
             api_key = await get_tenant_credential(tenant_id, YCLOUD_API_KEY)
-            sender_number = await get_tenant_credential(tenant_id, YCLOUD_WHATSAPP_NUMBER)
+            sender_number = await pool.fetchval("SELECT bot_phone_number FROM tenants WHERE id = $1", tenant_id)
+            if not sender_number:
+                sender_number = await get_tenant_credential(tenant_id, YCLOUD_WHATSAPP_NUMBER)
             
             if not api_key or not sender_number:
                 logger.error(f"❌ Missing YCloud Credentials for tenant {tenant_id}")
                 return
                 
             from ycloud_client import YCloudClient # Asume que está importable en orchestrator, si no, se moverá o aislará.
-            client = YCloudClient(api_key, sender_number)
+            client = YCloudClient(api_key)
             
             import uuid
             # --- Enviar Imágenes/Media primero ---
@@ -127,7 +129,7 @@ class ResponseSender:
                 await asyncio.sleep(delay)
                 
                 try:
-                    yc_resp = await client.send_whatsapp_text(external_user_id, bubble)
+                    yc_resp = await client.send_text_message(to=external_user_id, text=bubble, from_number=sender_number)
                     yc_msg_id = yc_resp.get("id") if isinstance(yc_resp, dict) else None
                     
                     import json
