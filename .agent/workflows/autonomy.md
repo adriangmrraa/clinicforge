@@ -2,10 +2,22 @@
 description: Motor de Ejecución Autónoma SDD v2.0. Orquestación completa desde análisis hasta deployment.
 ---
 
-# ⚡ Antigravity Autonomy Engine
+# ⚡ Antigravity Autonomy Engine — ClinicForge
 
 **Constitución del Motor de Ejecución Autónoma**  
 Este workflow es la capa superior de orquestación que integra todo el ecosistema SDD v2.0 en un flujo de ejecución inteligente, autónomo y con checkpoints de calidad.
+
+## Stack Canónico de Referencia (ClinicForge)
+| Capa | Tecnología | Ubicación |
+|------|------------|-----------|
+| Backend (orquestador) | FastAPI + LangChain + asyncpg + Socket.IO | `orchestrator_service/` |
+| Agent tools + System Prompt | LangChain tools, `build_system_prompt()` | `orchestrator_service/main.py` |
+| Admin API | FastAPI routes | `orchestrator_service/admin_routes.py` |
+| DB Migrations | Maintenance Robot (parches idempotentes startup) | `orchestrator_service/db.py` |
+| Mensaje buffer + relay | Buffer 10s texto, 20s imagen | `services/buffer_task.py`, `services/relay.py` |
+| Frontend | React 18 + TypeScript + Vite + Tailwind | `frontend_react/src/` |
+| i18n | es/en/fr | `frontend_react/src/locales/*.json` |
+| Infra | Docker Compose / EasyPanel | `docker-compose.yml` |
 
 ---
 
@@ -308,7 +320,7 @@ Antes de ejecutar el motor completo, el agente debe generar un informe con:
 
 ## 🔄 Protocolo de Fusión No Destructiva
 
-Cuando se actualicen workflows existentes (`secuency.md`, `agents.md`):
+Cuando se actualicen workflows existentes (`AGENTS.md`, `docs/CONTEXTO_AGENTE_IA.md`, o cualquier workflow en `.agent/workflows/`):
 
 1. **NUNCA eliminar** secciones existentes
 2. **Expandir** añadiendo nueva información al final
@@ -337,4 +349,4 @@ Para ejecutar el motor completo de forma autónoma:
 
 ---
 
-*Motor de Autonomía SDD v2.0 © 2026 - Powered by Antigravity*
+*Motor de Autonomía SDD v2.0 © 2026 — Powered by Antigravity | ClinicForge (Dra. María Laura Delgado)*

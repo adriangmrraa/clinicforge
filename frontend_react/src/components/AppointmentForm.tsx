@@ -3,6 +3,8 @@ import { X, Calendar, User, Clock, FileText, DollarSign, Activity, AlertTriangle
 import type { Appointment, Patient, Professional } from '../views/AgendaView';
 import api from '../api/axios';
 import { useTranslation } from '../context/LanguageContext';
+import { useAuth } from '../context/AuthContext';
+import AnamnesisPanel from './AnamnesisPanel';
 
 interface AppointmentFormProps {
     isOpen: boolean;
@@ -28,6 +30,7 @@ export default function AppointmentForm({
     isEditing
 }: AppointmentFormProps) {
     const { t } = useTranslation();
+    const { user } = useAuth();
     const [activeTab, setActiveTab] = useState<TabType>('general');
     const [formData, setFormData] = useState({
         patient_id: '',
@@ -310,10 +313,18 @@ export default function AppointmentForm({
                     )}
 
                     {activeTab === 'anamnesis' && (
-                        <div className="text-center py-10 text-gray-400">
-                            <Activity size={48} className="mx-auto mb-3 opacity-20" />
-                            <p className="text-sm">{t('agenda.medical_history_coming')}</p>
-                        </div>
+                        formData.patient_id ? (
+                            <AnamnesisPanel
+                                patientId={parseInt(formData.patient_id)}
+                                userRole={(user as any)?.role}
+                                compact={false}
+                            />
+                        ) : (
+                            <div className="text-center py-10 text-gray-400">
+                                <Activity size={48} className="mx-auto mb-3 opacity-20" />
+                                <p className="text-sm">Seleccioná un paciente para ver su anamnesis</p>
+                            </div>
+                        )
                     )}
 
                     {activeTab === 'billing' && (

@@ -49,14 +49,15 @@ AgendaView / Odontograma
 
 **Tecnología:** FastAPI + httpx + Redis
 
-**Función:** Interfaz de comunicación con pacientes vía YCloud.
+**Función:** Interfaz de comunicación con pacientes vía YCloud API v2.
 
 **Responsabilidades:**
+- **YCloud API v2 Validation:** Valida payloads nativos (`whatsapp.inbound_message.received`) y decodifica las estructuras JSON anidadas.
 - **Transcripción Whisper:** Convierte audios de síntomas en texto para el análisis de la IA.
-- **Deduplicación:** Evita procesar el mismo mensaje de WhatsApp múltiples veces.
 - **Deduplicación:** Evita procesar el mismo mensaje de WhatsApp múltiples veces.
 - **Relay (Buffering):** Encola mensajes en `orchestrator_service` para agrupación inteligente (Sliding Window).
 - **Relay de Audio/Imagen:** Permite que los audios e imágenes sean procesados y visualizados en el dashboard.
+- **Identidad Multi-Sede:** Al momento de transmitir respuestas, el Sender recupera el `bot_phone_number` desde la tabla `tenants`, usando el Vault `credentials` sólo como fallback heredado (evita Error 403 HTTP).
 
 ### B. Orchestrator Service (Puerto 8000) - **Coordinador Clínico**
 

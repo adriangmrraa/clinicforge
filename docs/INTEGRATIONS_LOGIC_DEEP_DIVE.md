@@ -117,7 +117,11 @@ Adicionalmente, se integró el **Multimedia Sender**:
 | `YCLOUD_WHATSAPP_NUMBER` | Número del remitente (Bot) | `+54911...` |
 | `YCLOUD_WEBHOOK_SECRET` | Secreto para validar firma | `whsec_...` |
 
-Sin `YCLOUD_WHATSAPP_NUMBER`, el servicio `buffer_task.py` fallará al intentar enviar respuestas.
+> [!NOTE]
+> **YCloud API v2 Upgrade (Marzo 2026):**
+> 1. **Inbound Webhooks**: El sistema ahora rastrea los webhooks usando la validación de YCloud API v2 (`type == "whatsapp.inbound_message.received"`), leyendo nombres de perfil desde `customerProfile.name` y extrayendo metadatos nativos desde la llave `whatsappInboundMessage`.  
+> 2. **Outbound Sender**: Las respuestas de texto y multimedia se transmiten directamente al endpoint V2 sincronizado (`https://api.ycloud.com/v2/whatsapp/messages/sendDirectly`).  
+> 3. **Número del Remitente**: Aunque `YCLOUD_WHATSAPP_NUMBER` puede existir en credentials como fallback heredado de la v1, el Orquestador V2 siempre prefiere leer dinámicamente el `bot_phone_number` seteado en la interfaz de usuario en la tabla `tenants` para soportar infraestructuras Multi-Sede (Multi-Tenancy) limpias.
 
 ## 7. Meta Ads ROI Engine (Mission 3)
 

@@ -3,12 +3,14 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, User, Phone, Mail, Calendar, AlertTriangle,
   FileText, Plus, Activity, Heart, Pill, Stethoscope, Megaphone,
-  ClipboardList, History, Folder, X
+  ClipboardList, History, Folder, X, HeartPulse
 } from 'lucide-react';
 import api from '../api/axios';
 import { useTranslation } from '../context/LanguageContext';
+import { useAuth } from '../context/AuthContext';
 import Odontogram from '../components/Odontogram';
 import DocumentGallery from '../components/DocumentGallery';
+import AnamnesisPanel from '../components/AnamnesisPanel';
 
 interface Patient {
   id: number;
@@ -53,7 +55,7 @@ const criticalConditions = [
   'vih', 'hepatitis', 'asma severa'
 ];
 
-type TabType = 'summary' | 'history' | 'documents';
+type TabType = 'summary' | 'history' | 'documents' | 'anamnesis';
 
 export default function PatientDetail() {
   const { id } = useParams<{ id: string }>();
@@ -66,6 +68,7 @@ export default function PatientDetail() {
   const [showNoteForm, setShowNoteForm] = useState(false);
   const [criticalConditionsFound, setCriticalConditionsFound] = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState<TabType>('summary');
+  const { user } = useAuth();
 
   const [formData, setFormData] = useState({
     record_type: 'evolution',
@@ -191,6 +194,20 @@ export default function PatientDetail() {
 
   const renderTabContent = () => {
     switch (activeTab) {
+      case 'anamnesis':
+        return (
+          <div className="bg-white rounded-lg shadow p-6">
+            <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
+              <HeartPulse size={20} className="text-primary" /> Anamnesis
+            </h3>
+            <AnamnesisPanel
+              patientId={parseInt(id!)}
+              userRole={(user as any)?.role}
+              compact={false}
+            />
+          </div>
+        );
+
       case 'summary':
         return (
           <div className="space-y-6">
@@ -527,6 +544,18 @@ export default function PatientDetail() {
               <div className="flex items-center justify-center gap-2">
                 <Folder size={18} />
                 {t('patient_detail.tabs.documents')}
+              </div>
+            </button>
+            <button
+              onClick={() => setActiveTab('anamnesis')}
+              className={`flex-1 py-3 px-4 text-sm font-medium transition-colors ${activeTab === 'anamnesis'
+                ? 'text-primary border-b-2 border-primary'
+                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                }`}
+            >
+              <div className="flex items-center justify-center gap-2">
+                <HeartPulse size={18} />
+                Anamnesis
               </div>
             </button>
           </div>

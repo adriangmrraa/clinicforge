@@ -14,6 +14,8 @@ import type { ChatSummaryItem, ChatApiMessage } from '../types/chat';
 import AdContextCard from '../components/AdContextCard';
 import { MessageContent } from '../components/chat/MessageMedia';
 import { useSmartScroll } from '../hooks/useSmartScroll';
+import AnamnesisPanel from '../components/AnamnesisPanel';
+import { useAuth } from '../context/AuthContext';
 
 // ============================================
 // INTERFACES
@@ -91,6 +93,7 @@ interface Toast {
 
 export default function ChatsView() {
   const { t } = useTranslation();
+  const { user } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   // Clínicas (CEO puede tener varias; secretary/professional una)
@@ -1570,6 +1573,18 @@ export default function ChatsView() {
                             ) : (
                               <p className="text-sm text-gray-400 italic">{t('chats.no_treatment_plan')}</p>
                             )}
+                          </div>
+
+                          {/* Anamnesis (Spec 2026-03-11) */}
+                          <div className="p-3 bg-gray-50 rounded-lg">
+                            <h4 className="text-xs font-medium text-gray-500 mb-2 flex items-center gap-1">
+                              <span>🦷</span> Anamnesis
+                            </h4>
+                            <AnamnesisPanel
+                              phone={selectedSession?.phone_number || selectedChatwoot?.external_user_id}
+                              userRole={(user as any)?.role}
+                              compact={true}
+                            />
                           </div>
                         </>
                       ) : (

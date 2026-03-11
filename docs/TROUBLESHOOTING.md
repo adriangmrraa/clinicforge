@@ -22,6 +22,21 @@ ON CONFLICT (tenant_id, name) DO UPDATE SET value = EXCLUDED.value;
 **Causa**: Si `chat_webhooks.py` fuerza el proveedor a "chatwoot", los mensajes de YCloud se procesan buscando IDs inexistentes de Chatwoot.
 **Validación**: Verificar que `_process_canonical_messages` reciba la variable `provider` dinámica, no un string hardcoded.
 
+### 1.3. Error 500 / Webhooks ignorados (Silenciados) [YCloud API v2]
+**Síntoma**: Los webhooks de YCloud devuelven `200 OK` en el access log, pero no se inyectan en base de datos ni disparan el agente IA.
+**Causa**: Discrepancia de payloads. El adaptador intentó buscar campos V1 antiguos (`type == "message"`). YCloud V2 usa `type == "whatsapp.inbound_message.received"` almacenando la información bajo la llave `whatsappInboundMessage`.
+**Solución**: El `YCloudAdapter` ha sido actualizado a formato V2. Si esto ocurre en el futuro, verificar que YCloud no haya cambiado su esquema de payload nuevamente mirando el Log `YCLOUD_RAW_PAYLOAD`.
+
+### 1.4. Buffer Error: ModuleNotFoundError en `buffer_manager.py`
+**Síntoma**: Entra el mensaje, pero la IA falla casi instantáneamente. El log marca: `ModuleNotFoundError: No module named 'orchestrator_service'`.
+**Causa**: En el entorno Docker, el app root es `/app`. El uso de imports absolutos largos (ej. `from orchestrator_service.services...`) rompe la resolución en algunos despliegues de EasyPanel.
+**Solución**: Usar siempre importaciones relativas (`from services.buffer_task import process_buffer_task`) o dependientes del `sys.path`.
+
+### 1.5. Error 403: WHATSAPP_PHONE_NUMBER_UNAVAILABLE al enviar
+**Síntoma**: La IA formula la respuesta correctamente pero falla en el envío final hacia WhatsApp. El cliente de YCloud loggea un error HTTP 403 indicando que no tienes acceso al número de teléfono X.
+**Causa**: La configuración del número origen está incorrecta o mal referenciada. El Orquestador estaba usando un fallback genérico (`+5491162793009`) al no encontrar el número en `credentials`.
+**Solución**: Validar que en el Frontend ("Sedes / Clínicas") el "Bot Phone (YCloud)" esté correcto. El archivo `response_sender.py` lee este número directamente de la tabla `tenants` columna `bot_phone_number`.
+
 ## 2. Chatwoot (Instagram/Facebook)
 
 ### 2.1. Conversaciones Fantasma (ID Numérico)

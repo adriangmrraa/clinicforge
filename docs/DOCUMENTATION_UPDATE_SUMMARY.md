@@ -1,10 +1,31 @@
-# 📚 RESUMEN DE ACTUALIZACIÓN DE DOCUMENTACIÓN - GOOGLE ADS
+# 📚 RESUMEN DE ACTUALIZACIÓN DE DOCUMENTACIÓN - YCLOUD V2 Y BUFFER FIX 
 
-## 📅 **FECHA:** 3 de Marzo 2026
+## 📅 **FECHA:** 10 de Marzo 2026
 ## 🎯 **WORKFLOW:** `/update-docs` completado
-## 📊 **DOCUMENTOS ACTUALIZADOS:** 7 archivos
+## 📊 **DOCUMENTOS ACTUALIZADOS:** Múltiples
 
 ---
+
+## 🏗️ **DOCUMENTACIÓN ACTUALIZADA (YCLOUD V2 Y AI SENDER)**
+
+### **1. TROUBLESHOOTING** (`docs/TROUBLESHOOTING.md`)
+- ✅ **Nuevas Causas Añadidas:** Integradas resoluciones exhaustivas para los Errores 500 (payload v2 discrepante) y 403 (`WHATSAPP_PHONE_NUMBER_UNAVAILABLE`).
+- ✅ **Bugfixes documentados:** Agregada la mitigación para `ModuleNotFoundError` en buffers de Docker a causa de imports absolutos.
+
+### **2. API REFERENCE** (`docs/API_REFERENCE.md`)
+- ✅ **Chat / YCloud:** Reflejado el uso nativo de los endpoints de la V2 (`sendDirectly`).
+
+### **3. INTEGRATIONS LOGIC DEEP DIVE** (`docs/INTEGRATIONS_LOGIC_DEEP_DIVE.md`)
+- ✅ **Arquitectura Base YCloud:** Agregadas especificaciones nativas para webhooks `whatsapp.inbound_message.received`.
+- ✅ **Priorización de Tenant Phone:** Se formalizó la estrategia que prefiere buscar `bot_phone_number` en la tabla `tenants` sobre el fallback heredado del credential vault.
+
+### **4. README BACKEND** (`docs/README_BACKEND.md`)
+- ✅ **ENV Variables:** Actualizada la referencia YCLOUD_WHATSAPP_NUMBER a opcional, dándole primacía al seteo desde Dashboard (UI Sedes).
+
+---
+
+# 📚 HISTORIAL ANTERIOR - GOOGLE ADS
+
 
 ## 🏗️ **DOCUMENTACIÓN ACTUALIZADA**
 

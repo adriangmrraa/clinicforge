@@ -3884,3 +3884,125 @@ async def get_automation_logs(
     except Exception as e:
         logger.error(f"Error fetching automation logs: {e}")
         raise HTTPException(status_code=500, detail="Error obteniendo logs de automatización.")
+
+# ==================== ENDPOINTS ANAMNESIS (Spec 2026-03-11) ====================
+
+class AnamnesisUpdate(BaseModel):
+    base_diseases: Optional[str] = None
+    habitual_medication: Optional[str] = None
+    allergies: Optional[str] = None
+    previous_surgeries: Optional[str] = None
+    is_smoker: Optional[str] = None
+    smoker_amount: Optional[str] = None
+    pregnancy_lactation: Optional[str] = None
+    negative_experiences: Optional[str] = None
+    specific_fears: Optional[str] = None
+
+
+@router.get("/patients/by-phone/{phone}", tags=["Pacientes"])
+async def get_patient_by_phone(
+    phone: str,
+    user_data=Depends(verify_admin_token),
+    resolved_tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    """
+    Devuelve el paciente (incluyendo medical_history JSONB) buscado por número de teléfono.
+    Usado por el panel de anamnesis en ChatsView y EditAppointment modal.
+    Filtrado obligatorio por tenant_id extraído del JWT.
+    """
+    tenant_id = resolved_tenant_id
+    normalized = normalize_phone(phone)
+    row = await db.pool.fetchrow(
+        """SELECT id, first_name, last_name, phone_number, email, dni, birth_date,
+                  city, acquisition_source, insurance_provider, status, medical_history,
+                  created_at
+           FROM patients
+           WHERE tenant_id = $1 AND (phone_number = $2 OR phone_number = $3)
+             AND status != 'deleted'
+           LIMIT 1""",
+        tenant_id, normalized, phone
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Paciente no encontrado.")
+
+    patient_dict = dict(row)
+    # Asegurar que medical_history se devuelve como dict (o None)
+    if patient_dict.get("medical_history") and isinstance(patient_dict["medical_history"], str):
+        try:
+            patient_dict["medical_history"] = json.loads(patient_dict["medical_history"])
+        except Exception:
+            pass
+    return patient_dict
+
+
+@router.patch("/patients/{patient_id}/anamnesis", tags=["Pacientes"])
+async def update_patient_anamnesis(
+    patient_id: int,
+    payload: AnamnesisUpdate,
+    user_data=Depends(verify_admin_token),
+    resolved_tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    """
+    Actualiza (merge) la anamnesis de un paciente.
+    Permisos:
+    - CEO: puede editar cualquier paciente de su/sus clínica(s).
+    - Profesional: solo puede editar pacientes asignados a él (tienen al menos 1 turno con ese profesional).
+    - Secretaria / otros: 403.
+    Siempre filtra por tenant_id del JWT.
+    """
+    tenant_id = resolved_tenant_id
+
+    # 1. Verificar que el paciente existe en el tenant
+    patient = await db.pool.fetchrow(
+        "SELECT id, medical_history FROM patients WHERE id = $1 AND tenant_id = $2 AND status != 'deleted'",
+        patient_id, tenant_id
+    )
+    if not patient:
+        raise HTTPException(status_code=404, detail="Paciente no encontrado.")
+
+    # 2. Control de rol
+    role = user_data.role
+    if role == "ceo":
+        pass  # CEO puede editar siempre
+    elif role == "professional":
+        # Verificar que tiene al menos 1 turno con este paciente
+        uid = uuid.UUID(user_data.user_id)
+        prof = await db.pool.fetchrow(
+            "SELECT id FROM professionals WHERE user_id = $1 AND tenant_id = $2 AND is_active = true",
+            uid, tenant_id
+        )
+        if not prof:
+            raise HTTPException(status_code=403, detail="Profesional no encontrado en esta sede.")
+        has_appointment = await db.pool.fetchval(
+            """SELECT 1 FROM appointments
+               WHERE tenant_id = $1 AND patient_id = $2 AND professional_id = $3
+               LIMIT 1""",
+            tenant_id, patient_id, prof["id"]
+        )
+        if not has_appointment:
+            raise HTTPException(status_code=403, detail="No tenés turnos asignados con este paciente.")
+    else:
+        raise HTTPException(status_code=403, detail="No tenés permisos para editar la anamnesis.")
+
+    # 3. Merge: conservar campos existentes, sobreescribir solo los enviados
+    current = {}
+    if patient["medical_history"]:
+        if isinstance(patient["medical_history"], str):
+            try:
+                current = json.loads(patient["medical_history"])
+            except Exception:
+                current = {}
+        elif isinstance(patient["medical_history"], dict):
+            current = patient["medical_history"]
+
+    updates = {k: v for k, v in payload.dict().items() if v is not None}
+    current.update(updates)
+    current["anamnesis_last_edited_by"] = user_data.user_id
+    current["anamnesis_last_edited_at"] = datetime.now(timezone.utc).isoformat()
+
+    await db.pool.execute(
+        "UPDATE patients SET medical_history = $1::jsonb WHERE id = $2 AND tenant_id = $3",
+        json.dumps(current), patient_id, tenant_id
+    )
+
+    return {"message": "Anamnesis actualizada correctamente.", "medical_history": current}

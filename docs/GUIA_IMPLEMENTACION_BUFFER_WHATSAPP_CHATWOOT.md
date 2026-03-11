@@ -478,6 +478,10 @@ async def ycloud_webhook(request: Request):
     return JSONResponse({"status": "buffered"})
 ```
 
+> [!NOTE]
+> **Actualización YCloud V2 (Marzo 2026):**
+> En la implementación final, el webhook procesa eventos con `type == "whatsapp.inbound_message.received"` debido a la actualización V2 de la API de YCloud. Además, en el flujo de salida (`response_sender.py`), la propiedad `business_number` u origen del mensaje se extrae primariamente de `tenant.bot_phone_number` y no forzosamente de los credentials, facilitando configuraciones multi-sede limpias.
+
 #### **2.3 Actualizar Chatwoot Adapter (`services/channels/chatwoot.py`)**
 **Modificaciones principales:**
 
