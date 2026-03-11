@@ -140,6 +140,7 @@ function RuleFormModal({
 }) {
   const isEdit = !!rule;
   const isSystem = rule?.is_system ?? false;
+  const messageOnly = isSystem; // solo puede editar el mensaje, no el trigger/canales/horario
 
   const [name, setName] = useState(rule?.name ?? '');
   const [triggerType, setTriggerType] = useState(rule?.trigger_type ?? 'appointment_reminder');
@@ -201,9 +202,9 @@ function RuleFormModal({
         <div style={{ padding: '20px 24px 16px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
             <h2 style={{ margin: 0, color: '#0f172a', fontSize: '18px', fontWeight: 700 }}>
-              {isEdit ? (isSystem ? '🔒 Regla del Sistema' : '✏️ Editar Regla') : '✨ Nueva Regla'}
+              {messageOnly ? '✏️ Editar Mensaje' : isEdit ? '✏️ Editar Regla' : '✨ Nueva Regla'}
             </h2>
-            {isSystem && <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: '13px' }}>Solo podés activar o desactivar esta regla.</p>}
+            {messageOnly && <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: '13px' }}>Podés cambiar el mensaje que se envía. El trigger, canales y horario son propios del sistema.</p>}
           </div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '22px', cursor: 'pointer' }}>×</button>
         </div>
@@ -218,11 +219,20 @@ function RuleFormModal({
             <label style={labelStyle}>Nombre de la regla</label>
             <input value={name} onChange={e => setName(e.target.value)} disabled={isSystem}
               placeholder="Ej: Seguimiento post-implante"
-              style={{ ...lightInputStyle, opacity: isSystem ? 0.5 : 1 }} />
+              style={{ ...lightInputStyle, opacity: isSystem ? 0.6 : 1, background: isSystem ? '#f8fafc' : '#fff', cursor: isSystem ? 'not-allowed' : 'text' }} />
           </div>
 
-          {/* Trigger */}
-          {!isSystem && (
+          {/* Trigger - solo informativo para reglas de sistema */}
+          {messageOnly ? (
+            <div style={{ marginBottom: '16px', background: '#f8fafc', borderRadius: '10px', padding: '12px 16px', border: '1px solid #e2e8f0' }}>
+              <span style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Cuándo se activa</span>
+              <div style={{ marginTop: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '14px' }}>🔒</span>
+                <span style={{ color: '#334155', fontSize: '14px', fontWeight: 600 }}>{TRIGGER_LABELS[triggerType] || triggerType}</span>
+                <span style={{ fontSize: '11px', color: '#94a3b8' }}>(no editable)</span>
+              </div>
+            </div>
+          ) : (
             <div style={{ marginBottom: '16px' }}>
               <label style={labelStyle}>¿Cuándo se activa?</label>
               <select value={triggerType} onChange={e => setTriggerType(e.target.value)} style={lightInputStyle}>
@@ -235,8 +245,8 @@ function RuleFormModal({
             </div>
           )}
 
-          {/* Condición dinámica */}
-          {!isSystem && (triggerType === 'lead_meta_no_booking' || triggerType === 'patient_reactivation') && (
+          {/* Cond dinámica - solo si no es sistema */}
+          {!messageOnly && (triggerType === 'lead_meta_no_booking' || triggerType === 'patient_reactivation') && (
             <div style={{ marginBottom: '16px', background: '#f0f4ff', borderRadius: '10px', padding: '14px', border: '1px solid #c7d2fe' }}>
               <label style={{ ...labelStyle, color: '#4338ca' }}>
                 {triggerType === 'lead_meta_no_booking' ? 'Horas de espera sin turno' : 'Días de inactividad'}
@@ -253,8 +263,19 @@ function RuleFormModal({
             </div>
           )}
 
-          {/* Canales */}
-          {!isSystem && (
+          {/* Canales - informativo para sistema */}
+          {messageOnly ? (
+            <div style={{ marginBottom: '16px', background: '#f8fafc', borderRadius: '10px', padding: '12px 16px', border: '1px solid #e2e8f0' }}>
+              <span style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Canales</span>
+              <div style={{ marginTop: '4px', display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                {channels.map(ch => (
+                  <span key={ch} style={{ padding: '4px 10px', borderRadius: '6px', background: '#ede9fe', color: '#6366f1', fontSize: '12px', fontWeight: 600 }}>
+                    {CHANNEL_ICONS[ch]} {ch}
+                  </span>
+                ))}
+              </div>
+            </div>
+          ) : (
             <div style={{ marginBottom: '16px' }}>
               <label style={labelStyle}>Canales</label>
               <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
@@ -273,9 +294,8 @@ function RuleFormModal({
             </div>
           )}
 
-          {/* Tipo de mensaje */}
-          {!isSystem && (
-            <>
+          {/* Tipo de mensaje - siempre editable */}
+          <>
               <div style={{ marginBottom: '16px' }}>
                 <label style={labelStyle}>Tipo de mensaje</label>
                 <div style={{ display: 'flex', gap: '8px' }}>
@@ -347,10 +367,16 @@ function RuleFormModal({
                 </div>
               )}
             </>
-          )}
 
-          {/* Horario */}
-          {!isSystem && (
+          {/* Horario - informativo para sistema */}
+          {messageOnly ? (
+            <div style={{ marginBottom: '24px', background: '#f8fafc', borderRadius: '10px', padding: '12px 16px', border: '1px solid #e2e8f0' }}>
+              <span style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Horario</span>
+              <div style={{ marginTop: '4px', color: '#334155', fontSize: '14px', fontWeight: 600 }}>
+                {sendHourMin}:00 – {sendHourMax}:00 hs &nbsp;<span style={{ fontSize: '11px', color: '#94a3b8' }}>(no editable)</span>
+              </div>
+            </div>
+          ) : (
             <div style={{ marginBottom: '24px' }}>
               <label style={labelStyle}>Horario de envío</label>
               <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
@@ -371,8 +397,8 @@ function RuleFormModal({
           {/* Botones */}
           <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', paddingTop: '16px', borderTop: '1px solid #f1f5f9' }}>
             <button onClick={onClose} style={btnSecondaryStyle}>Cancelar</button>
-            <button onClick={handleSave} disabled={saving || isSystem} style={{ ...btnPrimaryStyle, opacity: saving || isSystem ? 0.6 : 1 }}>
-              {saving ? '⏳ Guardando...' : isEdit ? '💾 Guardar' : '✨ Crear regla'}
+            <button onClick={handleSave} disabled={saving} style={{ ...btnPrimaryStyle, opacity: saving ? 0.6 : 1 }}>
+              {saving ? '⏳ Guardando...' : messageOnly ? '💾 Guardar Mensaje' : isEdit ? '💾 Guardar' : '✨ Crear regla'}
             </button>
           </div>
         </div>

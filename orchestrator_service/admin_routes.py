@@ -4140,14 +4140,35 @@ async def update_automation_rule(
     if not rule:
         raise HTTPException(status_code=404, detail="Regla no encontrada.")
     if rule["is_system"]:
-        # Las reglas de sistema solo permiten cambiar is_active
+        # Las reglas de sistema permiten editar el MENSAJE (tipo + contenido) y el toggle is_active.
+        # NO se puede cambiar trigger_type, channels ni horarios.
+        system_updates = {}
         if payload.is_active is not None:
+            system_updates["is_active"] = payload.is_active
+        if payload.message_type is not None:
+            system_updates["message_type"] = payload.message_type
+        if payload.free_text_message is not None:
+            system_updates["free_text_message"] = payload.free_text_message
+        if payload.ycloud_template_name is not None:
+            system_updates["ycloud_template_name"] = payload.ycloud_template_name
+        if payload.ycloud_template_lang is not None:
+            system_updates["ycloud_template_lang"] = payload.ycloud_template_lang
+
+        if payload.ycloud_template_vars is not None:
             await db.pool.execute(
-                "UPDATE automation_rules SET is_active=$1, updated_at=NOW() WHERE id=$2 AND tenant_id=$3",
-                payload.is_active, rule_id, tenant_id
+                "UPDATE automation_rules SET ycloud_template_vars=$1::jsonb, updated_at=NOW() WHERE id=$2 AND tenant_id=$3",
+                json.dumps(payload.ycloud_template_vars), rule_id, tenant_id
             )
-            return {"message": f"Regla de sistema {'activada' if payload.is_active else 'desactivada'}."}
-        raise HTTPException(status_code=403, detail="Las reglas de sistema no se pueden modificar, solo activar/desactivar.")
+
+        for field, value in system_updates.items():
+            await db.pool.execute(
+                f"UPDATE automation_rules SET {field}=$1, updated_at=NOW() WHERE id=$2 AND tenant_id=$3",
+                value, rule_id, tenant_id
+            )
+
+        updated = await db.pool.fetchrow("SELECT * FROM automation_rules WHERE id=$1", rule_id)
+        return {"rule": dict(updated), "message": "Regla de sistema actualizada."}
+
 
     # Construir UPDATE dinámico
     updates = {}
