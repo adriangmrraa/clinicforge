@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, Depends, Request, status, Response
 from pydantic import BaseModel, EmailStr
 from typing import Optional
+import os
 import uuid
 import json
 import logging
@@ -219,14 +220,14 @@ async def login(payload: UserLogin, response: Response):
     }
     token = auth_service.create_access_token(token_data)
 
-    # Set HttpOnly Cookie (Nexus Security Protocol v7.6)
+    is_production = os.getenv("NODE_ENV") == "production"
     response.set_cookie(
         key="access_token",
         value=token,
         httponly=True,
-        secure=True, # Production-ready (HTTPS expected)
-        samesite="lax",
-        max_age=86400 * 7 # 7 days
+        secure=is_production,
+        samesite="lax",  # Lax funciona para localhost; None requiere Secure (HTTPS)
+        max_age=86400 * 7
     )
     
     return {

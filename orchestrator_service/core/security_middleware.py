@@ -27,7 +27,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         extra_domains = os.getenv("CSP_EXTRA_DOMAINS", "").split(",")
         
         # Limpiar y normalizar dominios (quitar protocolos/rutas)
-        csp_domains = set()
+        csp_domains = {"localhost:3000", "localhost:5173", "localhost:4173", "127.0.0.1:4173"}
         for domain in allowed_origins + extra_domains:
             d = domain.strip()
             if d:

@@ -1434,27 +1434,33 @@ async def get_dashboard_stats(
         """, tenant_id) or 0
         
         # 4. Revenue Dual (Real vs Estimado)
-        # 4a. Real Revenue (Pagos confirmados)
-        confirmed_revenue = await db.pool.fetchval(f"""
-            SELECT COALESCE(SUM(at.amount), 0) 
-            FROM accounting_transactions at
-            WHERE at.tenant_id = $1 
-            AND at.transaction_type = 'payment' 
-            AND at.status = 'completed'
-            AND at.created_at >= CURRENT_DATE - {interval_expr}
-        """, tenant_id) or 0
+        # 4a. Real Revenue — tabla opcional, puede no existir en todos los entornos
+        confirmed_revenue = 0
+        try:
+            confirmed_revenue = await db.pool.fetchval(f"""
+                SELECT COALESCE(SUM(at.amount), 0) 
+                FROM accounting_transactions at
+                WHERE at.tenant_id = $1 
+                AND at.transaction_type = 'payment' 
+                AND at.status = 'completed'
+                AND at.created_at >= CURRENT_DATE - {interval_expr}
+            """, tenant_id) or 0
+        except Exception:
+            pass  # Tabla inexistente en este entorno
 
-        # 4b. Estimated Revenue (Valor de agenda IA - Basado en precios de tratamientos)
-        # Si un turno no tiene tipo de tratamiento, usamos un falback de 100? No, mejor 0 o valor por defecto de la clínica.
-        # Buscamos el precio base asignado a cada tipo de tratamiento.
-        estimated_revenue = await db.pool.fetchval(f"""
-            SELECT COALESCE(SUM(tt.base_price), 0)
-            FROM appointments a
-            JOIN treatment_types tt ON a.appointment_type = tt.code AND tt.tenant_id = a.tenant_id
-            WHERE a.tenant_id = $1 AND a.source = 'ai'
-            AND a.status NOT IN ('cancelled')
-            AND a.appointment_datetime >= CURRENT_DATE - {interval_expr}
-        """, tenant_id) or 0
+        # 4b. Estimated Revenue (Valor de agenda IA)
+        estimated_revenue = 0
+        try:
+            estimated_revenue = await db.pool.fetchval(f"""
+                SELECT COALESCE(SUM(tt.base_price), 0)
+                FROM appointments a
+                JOIN treatment_types tt ON a.appointment_type = tt.code AND tt.tenant_id = a.tenant_id
+                WHERE a.tenant_id = $1 AND a.source = 'ai'
+                AND a.status NOT IN ('cancelled')
+                AND a.appointment_datetime >= CURRENT_DATE - {interval_expr}
+            """, tenant_id) or 0
+        except Exception:
+            pass
         
         # 5. Datos de crecimiento (Agrupación Inteligente: DÍA para Weekly/Monthly, MES para Anual/All)
         if range in ('yearly', 'all'):
@@ -1511,15 +1517,19 @@ async def get_dashboard_stats(
             AND appointment_datetime >= CURRENT_DATE - {interval_expr} * 2
         """, tenant_id) or 0
         
-        prev_confirmed_revenue = await db.pool.fetchval(f"""
-            SELECT COALESCE(SUM(at.amount), 0) 
-            FROM accounting_transactions at
-            WHERE at.tenant_id = $1 
-            AND at.transaction_type = 'payment' 
-            AND at.status = 'completed'
-            AND at.created_at < CURRENT_DATE - {interval_expr}
-            AND at.created_at >= CURRENT_DATE - {interval_expr} * 2
-        """, tenant_id) or 0
+        prev_confirmed_revenue = 0
+        try:
+            prev_confirmed_revenue = await db.pool.fetchval(f"""
+                SELECT COALESCE(SUM(at.amount), 0) 
+                FROM accounting_transactions at
+                WHERE at.tenant_id = $1 
+                AND at.transaction_type = 'payment' 
+                AND at.status = 'completed'
+                AND at.created_at < CURRENT_DATE - {interval_expr}
+                AND at.created_at >= CURRENT_DATE - {interval_expr} * 2
+            """, tenant_id) or 0
+        except Exception:
+            pass
 
         def calc_trend(current, previous):
             if previous == 0:
