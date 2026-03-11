@@ -4083,9 +4083,11 @@ async def write_automation_log(
 
 
 @router.get("/automations/rules")
-async def get_automation_rules(user_data=Depends(verify_admin_token)):
+async def get_automation_rules(
+    request: Request,
+    tenant_id: int = Depends(get_resolved_tenant_id),
+):
     """Lista todas las reglas de automatización del tenant (sistema + personalizadas)."""
-    tenant_id = await get_resolved_tenant_id(user_data)
     rows = await db.pool.fetch("""
         SELECT id, name, is_active, is_system, trigger_type, condition_json,
                message_type, free_text_message, ycloud_template_name, ycloud_template_lang,
@@ -4098,9 +4100,13 @@ async def get_automation_rules(user_data=Depends(verify_admin_token)):
 
 
 @router.post("/automations/rules")
-async def create_automation_rule(payload: AutomationRuleCreate, user_data=Depends(verify_admin_token)):
+async def create_automation_rule(
+    payload: AutomationRuleCreate,
+    request: Request,
+    tenant_id: int = Depends(get_resolved_tenant_id),
+    user_data=Depends(verify_admin_token),
+):
     """Crea una nueva regla de automatización personalizada."""
-    tenant_id = await get_resolved_tenant_id(user_data)
     row = await db.pool.fetchrow("""
         INSERT INTO automation_rules (
             tenant_id, name, trigger_type, condition_json, message_type,
@@ -4115,15 +4121,19 @@ async def create_automation_rule(payload: AutomationRuleCreate, user_data=Depend
         payload.free_text_message, payload.ycloud_template_name,
         payload.ycloud_template_lang, json.dumps(payload.ycloud_template_vars),
         payload.channels, payload.send_hour_min, payload.send_hour_max,
-        payload.is_active, user_data.user_id
+        payload.is_active, getattr(user_data, 'user_id', None)
     )
     return {"rule": dict(row), "message": "Regla creada correctamente."}
 
 
 @router.patch("/automations/rules/{rule_id}")
-async def update_automation_rule(rule_id: int, payload: AutomationRuleUpdate, user_data=Depends(verify_admin_token)):
+async def update_automation_rule(
+    rule_id: int,
+    payload: AutomationRuleUpdate,
+    request: Request,
+    tenant_id: int = Depends(get_resolved_tenant_id),
+):
     """Edita una regla de automatización. No permite editar reglas de sistema."""
-    tenant_id = await get_resolved_tenant_id(user_data)
     rule = await db.pool.fetchrow(
         "SELECT * FROM automation_rules WHERE id = $1 AND tenant_id = $2", rule_id, tenant_id
     )
@@ -4174,9 +4184,12 @@ async def update_automation_rule(rule_id: int, payload: AutomationRuleUpdate, us
 
 
 @router.patch("/automations/rules/{rule_id}/toggle")
-async def toggle_automation_rule(rule_id: int, user_data=Depends(verify_admin_token)):
+async def toggle_automation_rule(
+    rule_id: int,
+    request: Request,
+    tenant_id: int = Depends(get_resolved_tenant_id),
+):
     """Activa o desactiva una regla (incluyendo las de sistema)."""
-    tenant_id = await get_resolved_tenant_id(user_data)
     rule = await db.pool.fetchrow(
         "SELECT is_active FROM automation_rules WHERE id=$1 AND tenant_id=$2", rule_id, tenant_id
     )
@@ -4191,9 +4204,12 @@ async def toggle_automation_rule(rule_id: int, user_data=Depends(verify_admin_to
 
 
 @router.delete("/automations/rules/{rule_id}")
-async def delete_automation_rule(rule_id: int, user_data=Depends(verify_admin_token)):
+async def delete_automation_rule(
+    rule_id: int,
+    request: Request,
+    tenant_id: int = Depends(get_resolved_tenant_id),
+):
     """Elimina una regla personalizada. No se pueden eliminar las reglas de sistema."""
-    tenant_id = await get_resolved_tenant_id(user_data)
     rule = await db.pool.fetchrow(
         "SELECT is_system FROM automation_rules WHERE id=$1 AND tenant_id=$2", rule_id, tenant_id
     )
@@ -4209,6 +4225,7 @@ async def delete_automation_rule(rule_id: int, user_data=Depends(verify_admin_to
 
 @router.get("/automations/logs")
 async def get_automation_logs(
+    request: Request,
     trigger_type: Optional[str] = None,
     status: Optional[str] = None,
     channel: Optional[str] = None,
@@ -4216,10 +4233,9 @@ async def get_automation_logs(
     date_to: Optional[str] = None,
     page: int = 1,
     limit: int = 50,
-    user_data=Depends(verify_admin_token)
+    tenant_id: int = Depends(get_resolved_tenant_id),
 ):
     """Logs de automatización con filtros. Incluye logs de todos los jobs del sistema."""
-    tenant_id = await get_resolved_tenant_id(user_data)
     offset = (page - 1) * limit
 
     conditions = ["al.tenant_id = $1"]
@@ -4269,11 +4285,15 @@ async def get_automation_logs(
 
 
 @router.get("/automations/ycloud-templates")
-async def list_ycloud_templates(user_data=Depends(verify_admin_token)):
+async def list_ycloud_templates(
+    request: Request,
+    tenant_id: int = Depends(get_resolved_tenant_id),
+):
     """Proxy: obtiene plantillas HSM aprobadas desde YCloud API. No expone la API key al frontend."""
-    ycloud_api_key = os.getenv("YCLOUD_API_KEY")
+    # Lee la API key del Vault de credenciales del tenant (Settings → YCloud)
+    ycloud_api_key = await get_tenant_credential(tenant_id, "YCLOUD_API_KEY")
     if not ycloud_api_key:
-        return {"templates": [], "warning": "YCLOUD_API_KEY no configurada."}
+        return {"templates": [], "warning": "YCloud API Key no configurada. Configurala en Configuración → YCloud."}
 
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
@@ -4398,14 +4418,14 @@ async def trigger_feedback_after_delay(
 async def update_appointment_status(
     appointment_id: int,
     payload: AppointmentStatusUpdate,
+    request: Request,
     background_tasks: BackgroundTasks,
-    user_data=Depends(verify_admin_token)
+    tenant_id: int = Depends(get_resolved_tenant_id),
 ):
     """
     Actualiza el estado de un turno.
     Si el nuevo estado es 'completed', dispara el job de feedback (45min delay) en background.
     """
-    tenant_id = await get_resolved_tenant_id(user_data)
 
     # 1. Obtener turno actual
     apt = await db.pool.fetchrow("""
