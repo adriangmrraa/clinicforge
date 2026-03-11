@@ -61,7 +61,8 @@ El bot actúa como la primera línea de atención de la clínica de la Dra. Laur
 | Tool | Parámetros | Función |
 | :--- | :--- | :--- |
 | **`list_professionals`** | (ninguno) | Lista profesionales reales de la sede (nombre y especialidad desde BD). **Obligatoria** cuando el paciente pregunta qué profesionales trabajan o con quién puede sacar turno. El agente **nunca** debe inventar nombres (ej. Juan Pérez, María López). |
-| **`list_services`** | `[category]` | Lista tratamientos disponibles para reservar (desde `treatment_types`, solo `is_available_for_booking = true`). **Obligatoria** cuando preguntan qué tratamientos tienen; el agente **nunca** debe inventar listas de servicios. |
+| **`list_services`** | `[category]` | Lista tratamientos disponibles para reservar. Devuelve **solo los nombres** (sin descripción ni duración). Para preguntas generales sobre qué tratamientos hay. **Nunca** inventar listas. |
+| **`get_service_details`** | `code` | Devuelve información completa de un servicio + envía imágenes automáticamente via `[LOCAL_IMAGE:]`. Llamar cuando el paciente pregunta **por un servicio específico**. No usar para listar opciones generales. |
 | `check_availability` | `date_query, [professional_name], [treatment_name], [time_preference]` | Consulta huecos libres para un día. Llamar **una sola vez** por pregunta. Si piden "a la tarde" o "por la mañana", pasar `time_preference='tarde'` o `'mañana'`. La tool devuelve **rangos** (ej. "de 09:00 a 12:00 y de 14:00 a 17:00") para que la respuesta sea breve y humana; el agente no debe repetir el mensaje ni dar variaciones. |
 | `book_appointment` | `date_time, treatment_reason, [first_name, last_name, dni, insurance_provider], [professional_name]` | Registra el turno. Requiere servicio (tratamiento), fecha/hora y, para pacientes nuevos, los 4 datos. Opcionalmente el profesional; si no se pasa, el sistema asigna uno disponible. |
 | **`list_my_appointments`** | `[upcoming_days]` | Lista los turnos del paciente (por teléfono de la conversación) en los próximos días. Usar cuando pregunten "¿tengo turno?", "¿cuándo es mi próximo turno?". |
@@ -69,6 +70,7 @@ El bot actúa como la primera línea de atención de la clínica de la Dra. Laur
 | `reschedule_appointment` | `original_date, new_date_time` | Reprograma un turno a otra fecha/hora. |
 | `triage_urgency` | `symptoms` | Analiza el texto/audio para determinar la gravedad. |
 | `derivhumano` | `reason` | Pasa la conversación a un operador y activa el silencio de 24h. |
+| `save_patient_anamnesis` | `anamnesis_data` | Guarda el cuestionario médico en `patients.medical_history` (JSONB). La UI muestra estos datos via `AnamnesisPanel.tsx` en ChatsView, PatientDetail y AppointmentForm. |
 
 ---
 
@@ -104,6 +106,30 @@ Orden recomendado que el system prompt impone y que garantiza que el agente teng
    Solo cuando existan: **servicio (treatment_reason), fecha y hora elegidos, y los 4 datos del paciente**, ejecutar `book_appointment`. El turno se registra en calendario **local** o **Google** según la configuración de la clínica (y en Google, en el calendario del profesional correspondiente).
 
 ---
+
+## 3.2. Lógica de Servicios: Brief vs. Detallado (Sprint v2 — 2026-03-11)
+
+| Escenario | Tool | Respuesta |
+|:---|:---|:---|
+| Paciente pregunta "qué tratamientos tienen" / "qué hacen" | `list_services` | Solo nombres, sin descripción. Termina con "Sobre cuál querés más info?" |
+| Paciente menciona un servicio específico o pide más info | `get_service_details(code)` | Texto completo + imágenes automáticas via `[LOCAL_IMAGE:]` |
+| Paciente ya indicó qué servicio quiere y agendaremos | `book_appointment` | Sin preguntar de nuevo por el servicio |
+
+**Regla crítica:** NUNCA usar `list_services` cuando ya se sabe cuál es el servicio. NUNCA usar `get_service_details` para listar opciones generales.
+
+## 3.3. FAQs hardcodeadas en el Prompt (Sprint v2 — 2026-03-11)
+
+Se incorporaron 13 FAQs específicas del consultorio. El agente las responde directamente sin llamar ninguna tool:
+
+| # | Pregunta | Respuesta canónica |
+|:---|:---|:---|
+| 1 | ¿Tienen obra social? | No, atienden de forma particular; pago en etapas |  
+| 2 | ¿Cuánto cuesta un implante? | El costo vaía según la evaluación; se coordina en la primera consulta |
+| 3 | ¿Atienden urgencias? | Sí, llamar al teéfono y se prioriza el turno |
+| 4–13 | (Ortodoncia adultos, blanqueamiento embarazo, extracción + implante, documentación, etc.) | Ver system prompt en `build_system_prompt()` L. 1593+ |
+
+**Restricción:** Las FAQs son fijas. Si la consulta no está cubierta, derivar con `derivhumano`.
+
 
 ## 4. Mecanismo de Silencio y Ventana de WhatsApp (24h)
 

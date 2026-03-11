@@ -16,6 +16,23 @@ from .scheduler import schedule_daily_at
 logger = logging.getLogger(__name__)
 
 
+async def _log_automation_reminder(tenant_id, status, patient_name, phone_number, message_preview, error_detail=None, skip_reason=None):
+    """Helper: escribe en automation_logs para el job de recordatorios."""
+    try:
+        from db import db
+        await db.pool.execute("""
+            INSERT INTO automation_logs (tenant_id, rule_name, trigger_type, patient_name, phone_number,
+                channel, message_type, message_preview, status, skip_reason, error_details,
+                triggered_at, sent_at)
+            VALUES ($1,'Recordatorio 24h','appointment_reminder',$2,$3,'whatsapp','free_text',$4,$5,$6,$7,
+                NOW(), CASE WHEN $5='sent' THEN NOW() ELSE NULL END)
+        """, tenant_id, patient_name, phone_number,
+            message_preview[:200] if message_preview else None,
+            status, skip_reason, error_detail)
+    except Exception as e:
+        logger.warning(f"⚠️ No se pudo escribir automation_log (reminders): {e}")
+
+
 @schedule_daily_at(hour=10, minute=0)  # Ejecutar todos los días a las 10:00 AM
 async def send_appointment_reminders():
     """
@@ -94,6 +111,7 @@ async def send_appointment_reminders():
                 whatsapp_creds = apt["whatsapp_credentials"]
                 if not whatsapp_creds:
                     logger.warning(f"⚠️ Tenant {apt['tenant_id']} no tiene credenciales de WhatsApp configuradas")
+                    await _log_automation_reminder(apt["tenant_id"], "skipped", patient_name, apt["phone_number"], message, skip_reason="Sin credenciales WhatsApp")
                     error_count += 1
                     continue
                 
@@ -114,10 +132,11 @@ async def send_appointment_reminders():
                             updated_at = NOW()
                         WHERE id = $1 AND tenant_id = $2
                     """, apt["appointment_id"], apt["tenant_id"])
-                    
+                    await _log_automation_reminder(apt["tenant_id"], "sent", patient_name, apt["phone_number"], message)
                     logger.info(f"✅ Recordatorio enviado a {patient_name} ({apt['phone_number']}) para las {formatted_time}")
                     sent_count += 1
                 else:
+                    await _log_automation_reminder(apt["tenant_id"], "failed", patient_name, apt["phone_number"], message, error_detail="WhatsApp service error")
                     logger.error(f"❌ Error al enviar recordatorio a {patient_name}")
                     error_count += 1
                     

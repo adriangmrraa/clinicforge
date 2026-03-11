@@ -4,7 +4,7 @@
 
 **Para comenzar una nueva conversación con una IA de código (ej. Cursor):** Usá el **prompt listo para copiar/pegar** en [docs/PROMPT_CONTEXTO_IA_COMPLETO.md](PROMPT_CONTEXTO_IA_COMPLETO.md). Copiá el bloque de ese archivo y pegarlo como **primer mensaje** del chat nuevo; así la IA carga reglas, workflows y checklist desde el inicio.
 
-**Última actualización:** 2026-03 (Nuevo proceso de admisión: campos obligatorios para pacientes nuevos, sistema de anamnesis automatizado, identidad Dra. María Laura Delgado, odontograma y documentos en frontend)
+**Última actualización:** 2026-03-11 (Sprint v2: visualización de anamnesis en UI con `AnamnesisPanel.tsx` en 3 puntos, 2 nuevos endpoints, 13 FAQs en system prompt, lógica de servicios brief/detalle)
 
 ---
 
@@ -61,6 +61,7 @@ frontend_react/src/
   api/axios.ts         # Cliente HTTP; inyecta Authorization, X-Admin-Token
   views/              # Una vista por pantalla (LoginView, AgendaView, ChatsView, etc.)
   components/         # Layout, Sidebar, AppointmentForm, MobileAgenda, AnalyticsFilters, etc.
+    AnamnesisPanel.tsx  # (Sprint v2) Componente compartido para visualizar/editar anamnesis (medical_history) en ChatsView, PatientDetail y AppointmentForm
     common/SafeHTML.tsx # Componente de renderizado seguro (XSS Prevention)
   locales/
     es.json, en.json, fr.json  # Traducciones; todas las vistas usan t('clave')
@@ -98,7 +99,7 @@ frontend_react/src/
 - **Chat omnicanal (Chatwoot):** `GET /admin/integrations/chatwoot/config`, `GET /admin/chats/summary` (query `channel`: whatsapp|instagram|facebook), `GET /admin/chats/{id}/messages`, `POST /admin/whatsapp/send`, `POST /admin/conversations/{id}/human-override`; webhook público `POST /admin/chatwoot/webhook?access_token=...`. Credenciales por tenant en tabla `credentials`; agente usa `get_agent_executable_for_tenant(tenant_id)` (Vault OPENAI_API_KEY). Ver `docs/API_REFERENCE.md` (sección Chat omnicanal) y `docs/AUDIT_CHATWOOT_2025-02-13.md`.
 - **Chat YCloud (API v2):** El Orchestrator y Webhook utilizan YCloud API v2 nativo (`whatsapp.inbound_message.received`). Al enviar respuestas, se usa el endpoint `/v2/whatsapp/messages/sendDirectly`. El número origen de WhatsApp (*Business Number*) se obtiene primariamente consultando la propiedad `bot_phone_number` del `tenant` en la tabla `tenants`, haciendo de las keys en `credentials` un simple pre-fallback. Ojo al debuggear Errores 403 HTTP.
 
-**Tools del agente (nombres exactos):** `check_availability`, `book_appointment`, `triage_urgency`, `derivhumano`, `cancel_appointment`, `reschedule_appointment`, `list_services`, `save_patient_anamnesis`. Todos reciben/respetan `tenant_id`.
+**Tools del agente (nombres exactos):** `check_availability`, `book_appointment`, `triage_urgency`, `derivhumano`, `cancel_appointment`, `reschedule_appointment`, `list_services` (devuelve solo nombres; v2), `get_service_details` (detalle + imágenes automáticas; USAR para servicios concretos), `save_patient_anamnesis`, `list_professionals`, `list_my_appointments`, `reschedule_appointment`. Todos reciben/respetan `tenant_id`.
 
 **Flujo del agente (datos que necesita):** 
 1. **Saludo**: Presentarse como "secretaria virtual de la Dra. María Laura Delgado"
@@ -184,6 +185,8 @@ Todas las vistas anteriores usan `useTranslation()` y `t()` para respetar el sel
 | **docs/29_seguridad_owasp_auditoria.md** | Auditoría OWASP Top 10:2025; JWT, X-Admin-Token, credenciales. |
 | **docs/30_audit_api_contrato_2026-02-09.md** | Auditoría contrato API: OpenAPI vs endpoints reales. |
 | **docs/31_audit_documentacion_2026-02-09.md** | Auditoría documentación: alineación SaaS, referencias a specs. |
+| **docs/ANALISIS_AGENTE_IA_VS_SPEC.md** | Comparativa spec Codexy vs implementación real, por módulo. Última actualización: Sprint v2 (88% implementado). |
+| **docs/ESTADO_AGENTE_IA_ACTUAL.md** | Snapshot del agente: system prompt, tools, flujos. Actualizado con Sprint v2: anamnesis UI, FAQs, servicios. |
 | **docs/API_REFERENCE.md** | Referencia completa de la API administrativa; Swagger/ReDoc. |
 | **docs/audit_26_calendario_hibrido_2026-02-10.md** | Auditoría spec 26 (match código vs spec). |
 | **docs/AUDIT_ESTADO_COMPLETO_POR_PAGINA.md** | Auditoría estado completo por página del frontend. |

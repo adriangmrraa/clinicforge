@@ -779,6 +779,113 @@ class Database:
                 FOREIGN KEY (tenant_id, treatment_code) REFERENCES treatment_types(tenant_id, code) ON DELETE CASCADE
             );
             CREATE INDEX IF NOT EXISTS idx_treatment_images_tenant_code ON treatment_images(tenant_id, treatment_code);
+            """,
+            # Parche 31: Tabla automation_rules — Motor de Reglas de Automatización
+            """
+            CREATE TABLE IF NOT EXISTS automation_rules (
+                id SERIAL PRIMARY KEY,
+                tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+                name TEXT NOT NULL,
+                is_active BOOLEAN DEFAULT TRUE,
+                is_system BOOLEAN DEFAULT FALSE,
+                trigger_type TEXT NOT NULL,
+                condition_json JSONB DEFAULT '{}',
+                message_type TEXT NOT NULL DEFAULT 'free_text',
+                free_text_message TEXT,
+                ycloud_template_name TEXT,
+                ycloud_template_lang TEXT DEFAULT 'es',
+                ycloud_template_vars JSONB DEFAULT '{}',
+                channels TEXT[] DEFAULT ARRAY['whatsapp'],
+                send_hour_min INTEGER DEFAULT 8,
+                send_hour_max INTEGER DEFAULT 20,
+                created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+                created_at TIMESTAMPTZ DEFAULT NOW(),
+                updated_at TIMESTAMPTZ DEFAULT NOW()
+            );
+            CREATE INDEX IF NOT EXISTS idx_automation_rules_tenant_active ON automation_rules(tenant_id, is_active, trigger_type);
+            """,
+            # Parche 32: Upgrade automation_logs — campos completos para el motor
+            """
+            DO $$
+            BEGIN
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='automation_logs' AND column_name='automation_rule_id') THEN
+                    ALTER TABLE automation_logs ADD COLUMN automation_rule_id INTEGER REFERENCES automation_rules(id) ON DELETE SET NULL;
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='automation_logs' AND column_name='rule_name') THEN
+                    ALTER TABLE automation_logs ADD COLUMN rule_name TEXT;
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='automation_logs' AND column_name='patient_name') THEN
+                    ALTER TABLE automation_logs ADD COLUMN patient_name TEXT;
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='automation_logs' AND column_name='phone_number') THEN
+                    ALTER TABLE automation_logs ADD COLUMN phone_number TEXT;
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='automation_logs' AND column_name='channel') THEN
+                    ALTER TABLE automation_logs ADD COLUMN channel TEXT DEFAULT 'whatsapp';
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='automation_logs' AND column_name='message_type') THEN
+                    ALTER TABLE automation_logs ADD COLUMN message_type TEXT;
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='automation_logs' AND column_name='message_preview') THEN
+                    ALTER TABLE automation_logs ADD COLUMN message_preview TEXT;
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='automation_logs' AND column_name='template_name') THEN
+                    ALTER TABLE automation_logs ADD COLUMN template_name TEXT;
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='automation_logs' AND column_name='skip_reason') THEN
+                    ALTER TABLE automation_logs ADD COLUMN skip_reason TEXT;
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='automation_logs' AND column_name='ycloud_message_id') THEN
+                    ALTER TABLE automation_logs ADD COLUMN ycloud_message_id TEXT;
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='automation_logs' AND column_name='sent_at') THEN
+                    ALTER TABLE automation_logs ADD COLUMN sent_at TIMESTAMPTZ;
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='automation_logs' AND column_name='delivered_at') THEN
+                    ALTER TABLE automation_logs ADD COLUMN delivered_at TIMESTAMPTZ;
+                END IF;
+                -- Normalizar columna status existente
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='automation_logs' AND column_name='triggered_at') THEN
+                    ALTER TABLE automation_logs ADD COLUMN triggered_at TIMESTAMPTZ DEFAULT NOW();
+                    UPDATE automation_logs SET triggered_at = created_at WHERE triggered_at IS NULL;
+                END IF;
+            END $$;
+            CREATE INDEX IF NOT EXISTS idx_automation_logs_tenant_date ON automation_logs(tenant_id, triggered_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_automation_logs_rule ON automation_logs(automation_rule_id);
+            """,
+            # Parche 33: Seed de las 3 reglas de sistema por tenant (idempotente)
+            """
+            DO $$
+            DECLARE
+                t_id INTEGER;
+            BEGIN
+                FOR t_id IN SELECT id FROM tenants LOOP
+                    -- Regla 1: Recordatorio 24h
+                    INSERT INTO automation_rules (tenant_id, name, is_system, is_active, trigger_type, message_type, free_text_message, condition_json, channels)
+                    SELECT t_id, 'Recordatorio 24h', TRUE, TRUE, 'appointment_reminder', 'free_text',
+                        'Hola {{first_name}}, te recordamos tu turno mañana a las {{appointment_time}}. Confirmás tu asistencia? 🦷',
+                        '{"hours_before": 24}'::jsonb, ARRAY['whatsapp']
+                    WHERE NOT EXISTS (
+                        SELECT 1 FROM automation_rules WHERE tenant_id = t_id AND trigger_type = 'appointment_reminder' AND is_system = TRUE
+                    );
+                    -- Regla 2: Feedback Pacientes 45min
+                    INSERT INTO automation_rules (tenant_id, name, is_system, is_active, trigger_type, message_type, free_text_message, condition_json, channels)
+                    SELECT t_id, 'Feedback Pacientes', TRUE, TRUE, 'post_appointment_completed', 'free_text',
+                        'Hola {{first_name}}! Cómo te sentís después de tu atención de hoy? Si tuviste alguna molestia, no dudes en escribirnos. Estamos para ayudarte 💙',
+                        '{"delay_minutes": 45}'::jsonb, ARRAY['whatsapp']
+                    WHERE NOT EXISTS (
+                        SELECT 1 FROM automation_rules WHERE tenant_id = t_id AND trigger_type = 'post_appointment_completed' AND is_system = TRUE
+                    );
+                    -- Regla 3: Recuperación de Leads Meta 2h
+                    INSERT INTO automation_rules (tenant_id, name, is_system, is_active, trigger_type, message_type, free_text_message, condition_json, channels)
+                    SELECT t_id, 'Recuperación de Leads', TRUE, TRUE, 'lead_meta_no_booking', 'free_text',
+                        'Hola {{first_name}}! Vi que te interesaste en nuestros servicios. Tenemos disponibilidad esta semana. Te puedo ayudar a coordinar una consulta? 😊',
+                        '{"delay_minutes": 120, "source": "meta"}'::jsonb, ARRAY['whatsapp']
+                    WHERE NOT EXISTS (
+                        SELECT 1 FROM automation_rules WHERE tenant_id = t_id AND trigger_type = 'lead_meta_no_booking' AND is_system = TRUE
+                    );
+                END LOOP;
+            END $$;
             """
         ]
 

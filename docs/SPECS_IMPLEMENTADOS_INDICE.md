@@ -31,6 +31,7 @@ Este documento registra las especificaciones (`.spec.md`) que existían en el pr
 | **spec_13_unified_clinical_context.spec.md** | Implementado | `13_lead_patient_workflow.md` (identidad y visibilidad), `API_REFERENCE.md` (soporte platform IDs). |
 | **spec_14_multichannel_ui.spec.md** | Implementado | `meta_ads_frontend.md` (sección 6 - Patrones de UI), `ChatsView.tsx` (lógica de estilos dinámicos). |
 | **spec_18_outgoing_messages.spec.md** | Implementado | `API_REFERENCE.md` (sección "4. Envío de Mensajes (Omnicanal)" con `POST /admin/chat/send`, validación 24h, enrutamiento a YCloudClient/ChatwootClient). |
+| **2026-03-11_mejoras-agente-ia-v2.spec.md** | Implementado | `docs/ANALISIS_AGENTE_IA_VS_SPEC.md` (estado por módulo + gaps), `docs/ESTADO_AGENTE_IA_ACTUAL.md` (sección 5 y 6 sprint v2), `docs/04_agent_logic_and_persona.md` (secciones 3.2 y 3.3). Implementados: 13 FAQs en prompt, lógica servicios brief/detalle, `AnamnesisPanel.tsx` en 3 puntos de UI, 2 nuevos endpoints (`GET /patients/by-phone/{phone}`, `PATCH /patients/{id}/anamnesis`). |
 
 Cualquier criterio de aceptación o detalle técnico de los specs anteriores que no figure en los documentos indicados se considera cubierto por la implementación en código y por AGENTS.md (reglas de soberanía, scroll, auth).
 

@@ -4006,3 +4006,479 @@ async def update_patient_anamnesis(
     )
 
     return {"message": "Anamnesis actualizada correctamente.", "medical_history": current}
+
+
+# ============================================
+# AUTOMATION ENGINE v2 — Motor de Reglas
+# ============================================
+
+class AutomationRuleCreate(BaseModel):
+    name: str
+    trigger_type: str
+    condition_json: dict = {}
+    message_type: str = "free_text"
+    free_text_message: Optional[str] = None
+    ycloud_template_name: Optional[str] = None
+    ycloud_template_lang: Optional[str] = "es"
+    ycloud_template_vars: dict = {}
+    channels: List[str] = ["whatsapp"]
+    send_hour_min: int = 8
+    send_hour_max: int = 20
+    is_active: bool = True
+
+
+class AutomationRuleUpdate(BaseModel):
+    name: Optional[str] = None
+    trigger_type: Optional[str] = None
+    condition_json: Optional[dict] = None
+    message_type: Optional[str] = None
+    free_text_message: Optional[str] = None
+    ycloud_template_name: Optional[str] = None
+    ycloud_template_lang: Optional[str] = None
+    ycloud_template_vars: Optional[dict] = None
+    channels: Optional[List[str]] = None
+    send_hour_min: Optional[int] = None
+    send_hour_max: Optional[int] = None
+    is_active: Optional[bool] = None
+
+
+async def write_automation_log(
+    tenant_id: int,
+    trigger_type: str,
+    status: str,
+    patient_name: str = None,
+    phone_number: str = None,
+    channel: str = "whatsapp",
+    message_type: str = "free_text",
+    message_preview: str = None,
+    template_name: str = None,
+    rule_id: int = None,
+    rule_name: str = None,
+    skip_reason: str = None,
+    ycloud_message_id: str = None,
+    patient_id: int = None,
+    error_detail: str = None,
+):
+    """Helper centralizado para escribir en automation_logs desde cualquier job o endpoint."""
+    try:
+        await db.pool.execute("""
+            INSERT INTO automation_logs (
+                tenant_id, automation_rule_id, rule_name, trigger_type,
+                patient_id, patient_name, phone_number, channel,
+                message_type, message_preview, template_name,
+                status, skip_reason, ycloud_message_id, error_details,
+                triggered_at, sent_at
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,NOW(),
+                CASE WHEN $12 = 'sent' THEN NOW() ELSE NULL END
+            )
+        """,
+            tenant_id, rule_id, rule_name, trigger_type,
+            patient_id, patient_name, phone_number, channel,
+            message_type,
+            (message_preview[:200] if message_preview else None),
+            template_name, status, skip_reason, ycloud_message_id, error_detail
+        )
+    except Exception as e:
+        logger.warning(f"⚠️ No se pudo escribir automation_log: {e}")
+
+
+@router.get("/automations/rules")
+async def get_automation_rules(user_data=Depends(verify_admin_token)):
+    """Lista todas las reglas de automatización del tenant (sistema + personalizadas)."""
+    tenant_id = await get_resolved_tenant_id(user_data)
+    rows = await db.pool.fetch("""
+        SELECT id, name, is_active, is_system, trigger_type, condition_json,
+               message_type, free_text_message, ycloud_template_name, ycloud_template_lang,
+               ycloud_template_vars, channels, send_hour_min, send_hour_max, created_at, updated_at
+        FROM automation_rules
+        WHERE tenant_id = $1
+        ORDER BY is_system DESC, created_at ASC
+    """, tenant_id)
+    return {"rules": [dict(r) for r in rows]}
+
+
+@router.post("/automations/rules")
+async def create_automation_rule(payload: AutomationRuleCreate, user_data=Depends(verify_admin_token)):
+    """Crea una nueva regla de automatización personalizada."""
+    tenant_id = await get_resolved_tenant_id(user_data)
+    row = await db.pool.fetchrow("""
+        INSERT INTO automation_rules (
+            tenant_id, name, trigger_type, condition_json, message_type,
+            free_text_message, ycloud_template_name, ycloud_template_lang,
+            ycloud_template_vars, channels, send_hour_min, send_hour_max,
+            is_active, is_system, created_by, created_at, updated_at
+        ) VALUES ($1,$2,$3,$4::jsonb,$5,$6,$7,$8,$9::jsonb,$10,$11,$12,$13,FALSE,$14,NOW(),NOW())
+        RETURNING *
+    """,
+        tenant_id, payload.name, payload.trigger_type,
+        json.dumps(payload.condition_json), payload.message_type,
+        payload.free_text_message, payload.ycloud_template_name,
+        payload.ycloud_template_lang, json.dumps(payload.ycloud_template_vars),
+        payload.channels, payload.send_hour_min, payload.send_hour_max,
+        payload.is_active, user_data.user_id
+    )
+    return {"rule": dict(row), "message": "Regla creada correctamente."}
+
+
+@router.patch("/automations/rules/{rule_id}")
+async def update_automation_rule(rule_id: int, payload: AutomationRuleUpdate, user_data=Depends(verify_admin_token)):
+    """Edita una regla de automatización. No permite editar reglas de sistema."""
+    tenant_id = await get_resolved_tenant_id(user_data)
+    rule = await db.pool.fetchrow(
+        "SELECT * FROM automation_rules WHERE id = $1 AND tenant_id = $2", rule_id, tenant_id
+    )
+    if not rule:
+        raise HTTPException(status_code=404, detail="Regla no encontrada.")
+    if rule["is_system"]:
+        # Las reglas de sistema solo permiten cambiar is_active
+        if payload.is_active is not None:
+            await db.pool.execute(
+                "UPDATE automation_rules SET is_active=$1, updated_at=NOW() WHERE id=$2 AND tenant_id=$3",
+                payload.is_active, rule_id, tenant_id
+            )
+            return {"message": f"Regla de sistema {'activada' if payload.is_active else 'desactivada'}."}
+        raise HTTPException(status_code=403, detail="Las reglas de sistema no se pueden modificar, solo activar/desactivar.")
+
+    # Construir UPDATE dinámico
+    updates = {}
+    if payload.name is not None: updates["name"] = payload.name
+    if payload.trigger_type is not None: updates["trigger_type"] = payload.trigger_type
+    if payload.message_type is not None: updates["message_type"] = payload.message_type
+    if payload.free_text_message is not None: updates["free_text_message"] = payload.free_text_message
+    if payload.ycloud_template_name is not None: updates["ycloud_template_name"] = payload.ycloud_template_name
+    if payload.ycloud_template_lang is not None: updates["ycloud_template_lang"] = payload.ycloud_template_lang
+    if payload.channels is not None: updates["channels"] = payload.channels
+    if payload.send_hour_min is not None: updates["send_hour_min"] = payload.send_hour_min
+    if payload.send_hour_max is not None: updates["send_hour_max"] = payload.send_hour_max
+    if payload.is_active is not None: updates["is_active"] = payload.is_active
+
+    if payload.condition_json is not None:
+        await db.pool.execute(
+            "UPDATE automation_rules SET condition_json=$1::jsonb, updated_at=NOW() WHERE id=$2 AND tenant_id=$3",
+            json.dumps(payload.condition_json), rule_id, tenant_id
+        )
+    if payload.ycloud_template_vars is not None:
+        await db.pool.execute(
+            "UPDATE automation_rules SET ycloud_template_vars=$1::jsonb, updated_at=NOW() WHERE id=$2 AND tenant_id=$3",
+            json.dumps(payload.ycloud_template_vars), rule_id, tenant_id
+        )
+
+    for field, value in updates.items():
+        await db.pool.execute(
+            f"UPDATE automation_rules SET {field}=$1, updated_at=NOW() WHERE id=$2 AND tenant_id=$3",
+            value, rule_id, tenant_id
+        )
+
+    updated = await db.pool.fetchrow("SELECT * FROM automation_rules WHERE id=$1", rule_id)
+    return {"rule": dict(updated), "message": "Regla actualizada."}
+
+
+@router.patch("/automations/rules/{rule_id}/toggle")
+async def toggle_automation_rule(rule_id: int, user_data=Depends(verify_admin_token)):
+    """Activa o desactiva una regla (incluyendo las de sistema)."""
+    tenant_id = await get_resolved_tenant_id(user_data)
+    rule = await db.pool.fetchrow(
+        "SELECT is_active FROM automation_rules WHERE id=$1 AND tenant_id=$2", rule_id, tenant_id
+    )
+    if not rule:
+        raise HTTPException(status_code=404, detail="Regla no encontrada.")
+    new_state = not rule["is_active"]
+    await db.pool.execute(
+        "UPDATE automation_rules SET is_active=$1, updated_at=NOW() WHERE id=$2 AND tenant_id=$3",
+        new_state, rule_id, tenant_id
+    )
+    return {"is_active": new_state, "message": f"Regla {'activada' if new_state else 'desactivada'}."}
+
+
+@router.delete("/automations/rules/{rule_id}")
+async def delete_automation_rule(rule_id: int, user_data=Depends(verify_admin_token)):
+    """Elimina una regla personalizada. No se pueden eliminar las reglas de sistema."""
+    tenant_id = await get_resolved_tenant_id(user_data)
+    rule = await db.pool.fetchrow(
+        "SELECT is_system FROM automation_rules WHERE id=$1 AND tenant_id=$2", rule_id, tenant_id
+    )
+    if not rule:
+        raise HTTPException(status_code=404, detail="Regla no encontrada.")
+    if rule["is_system"]:
+        raise HTTPException(status_code=403, detail="Las reglas de sistema no se pueden eliminar.")
+    await db.pool.execute(
+        "DELETE FROM automation_rules WHERE id=$1 AND tenant_id=$2", rule_id, tenant_id
+    )
+    return {"message": "Regla eliminada correctamente."}
+
+
+@router.get("/automations/logs")
+async def get_automation_logs(
+    trigger_type: Optional[str] = None,
+    status: Optional[str] = None,
+    channel: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    page: int = 1,
+    limit: int = 50,
+    user_data=Depends(verify_admin_token)
+):
+    """Logs de automatización con filtros. Incluye logs de todos los jobs del sistema."""
+    tenant_id = await get_resolved_tenant_id(user_data)
+    offset = (page - 1) * limit
+
+    conditions = ["al.tenant_id = $1"]
+    params = [tenant_id]
+    idx = 2
+
+    if trigger_type:
+        conditions.append(f"al.trigger_type = ${idx}")
+        params.append(trigger_type); idx += 1
+    if status:
+        conditions.append(f"al.status = ${idx}")
+        params.append(status); idx += 1
+    if channel:
+        conditions.append(f"al.channel = ${idx}")
+        params.append(channel); idx += 1
+    if date_from:
+        conditions.append(f"al.triggered_at >= ${idx}::date")
+        params.append(date_from); idx += 1
+    if date_to:
+        conditions.append(f"al.triggered_at <= (${idx}::date + INTERVAL '1 day')")
+        params.append(date_to); idx += 1
+
+    where_clause = " AND ".join(conditions)
+
+    rows = await db.pool.fetch(f"""
+        SELECT al.id, al.automation_rule_id, al.rule_name, al.trigger_type,
+               al.patient_name, al.phone_number, al.channel,
+               al.message_type, al.message_preview, al.template_name,
+               al.status, al.skip_reason, al.error_details, al.ycloud_message_id,
+               al.triggered_at, al.sent_at, al.delivered_at
+        FROM automation_logs al
+        WHERE {where_clause}
+        ORDER BY al.triggered_at DESC
+        LIMIT ${idx} OFFSET ${idx+1}
+    """, *params, limit, offset)
+
+    total = await db.pool.fetchval(f"""
+        SELECT COUNT(*) FROM automation_logs al WHERE {where_clause}
+    """, *params)
+
+    return {
+        "logs": [dict(r) for r in rows],
+        "total": total,
+        "page": page,
+        "pages": (total + limit - 1) // limit if total else 0
+    }
+
+
+@router.get("/automations/ycloud-templates")
+async def list_ycloud_templates(user_data=Depends(verify_admin_token)):
+    """Proxy: obtiene plantillas HSM aprobadas desde YCloud API. No expone la API key al frontend."""
+    ycloud_api_key = os.getenv("YCLOUD_API_KEY")
+    if not ycloud_api_key:
+        return {"templates": [], "warning": "YCLOUD_API_KEY no configurada."}
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.get(
+                "https://api.ycloud.com/v2/whatsapp/templates",
+                headers={"X-API-Key": ycloud_api_key},
+                params={"limit": 100}
+            )
+        if response.status_code != 200:
+            logger.warning(f"YCloud templates API error: {response.status_code}")
+            return {"templates": [], "warning": f"YCloud devolvió {response.status_code}"}
+
+        data = response.json()
+        templates = data.get("items", [])
+        # Filtrar solo las aprobadas
+        approved = [t for t in templates if t.get("status") == "APPROVED"]
+        return {"templates": approved, "total": len(approved)}
+    except Exception as e:
+        logger.error(f"Error obteniendo templates YCloud: {e}")
+        return {"templates": [], "warning": str(e)}
+
+
+# ============================================
+# APPOINTMENTS — PATCH STATUS (Event-Driven)
+# ============================================
+
+class AppointmentStatusUpdate(BaseModel):
+    status: str  # pending, confirmed, completed, cancelled, no_show
+    notes: Optional[str] = None
+
+
+async def trigger_feedback_after_delay(
+    appointment_id: int,
+    tenant_id: int,
+    patient_name: str,
+    phone_number: str,
+    delay_minutes: int = 45
+):
+    """
+    Job event-driven: se ejecuta delay_minutes después de marcar un turno como completado.
+    Envía el mensaje de feedback configurado en la regla 'post_appointment_completed'.
+    """
+    import asyncio
+    try:
+        await asyncio.sleep(delay_minutes * 60)
+
+        # 1. Verificar que la regla de feedback esté activa
+        rule = await db.pool.fetchrow("""
+            SELECT * FROM automation_rules
+            WHERE tenant_id=$1 AND trigger_type='post_appointment_completed' AND is_active=TRUE
+            ORDER BY is_system DESC LIMIT 1
+        """, tenant_id)
+
+        if not rule:
+            logger.info(f"⏭️ Regla feedback inactiva para tenant {tenant_id}, no se envía.")
+            return
+
+        # 2. Verificar que no se haya enviado ya (idempotencia)
+        existing = await db.pool.fetchval("""
+            SELECT id FROM automation_logs
+            WHERE automation_rule_id=$1 AND phone_number=$2 AND DATE(triggered_at)=CURRENT_DATE AND status='sent'
+        """, rule["id"], phone_number)
+        if existing:
+            logger.info(f"⏭️ Feedback ya enviado hoy a {phone_number}")
+            return
+
+        # 3. Construir mensaje con variables
+        first_name = patient_name.split()[0] if patient_name else "paciente"
+        message = (rule["free_text_message"] or "Hola! ¿Cómo te sentís después de la consulta?").replace(
+            "{{first_name}}", first_name
+        )
+
+        # 4. Enviar via WhatsApp Service
+        internal_token = os.getenv("INTERNAL_API_TOKEN")
+        whatsapp_url = os.getenv("WHATSAPP_SERVICE_URL", "http://whatsapp_service:8000")
+        sent_ok = False
+        ycloud_msg_id = None
+
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                resp = await client.post(
+                    f"{whatsapp_url}/send",
+                    json={"to": phone_number, "text": message, "tenant_id": tenant_id},
+                    headers={"X-Internal-Token": internal_token, "Content-Type": "application/json"}
+                )
+            sent_ok = resp.status_code == 200
+            if sent_ok:
+                result = resp.json()
+                ycloud_msg_id = result.get("messageId")
+        except Exception as send_err:
+            logger.error(f"❌ Error enviando feedback a {phone_number}: {send_err}")
+
+        # 5. Registrar en automation_logs
+        await write_automation_log(
+            tenant_id=tenant_id,
+            trigger_type="post_appointment_completed",
+            status="sent" if sent_ok else "failed",
+            patient_name=patient_name,
+            phone_number=phone_number,
+            channel="whatsapp",
+            message_type="free_text",
+            message_preview=message[:200],
+            rule_id=rule["id"],
+            rule_name=rule["name"],
+            ycloud_message_id=ycloud_msg_id,
+            error_detail=None if sent_ok else "WhatsApp service error"
+        )
+
+        # 6. Marcar followup_sent en el turno
+        if sent_ok:
+            await db.pool.execute(
+                "UPDATE appointments SET followup_sent=TRUE, followup_sent_at=NOW() WHERE id=$1 AND tenant_id=$2",
+                appointment_id, tenant_id
+            )
+            logger.info(f"✅ Feedback post-completado enviado a {phone_number}")
+
+    except Exception as e:
+        logger.error(f"❌ Error en trigger_feedback_after_delay: {e}")
+
+
+@router.patch("/appointments/{appointment_id}/status")
+async def update_appointment_status(
+    appointment_id: int,
+    payload: AppointmentStatusUpdate,
+    background_tasks: BackgroundTasks,
+    user_data=Depends(verify_admin_token)
+):
+    """
+    Actualiza el estado de un turno.
+    Si el nuevo estado es 'completed', dispara el job de feedback (45min delay) en background.
+    """
+    tenant_id = await get_resolved_tenant_id(user_data)
+
+    # 1. Obtener turno actual
+    apt = await db.pool.fetchrow("""
+        SELECT a.id, a.status as old_status, a.tenant_id, a.patient_id,
+               p.first_name, p.last_name, p.phone_number
+        FROM appointments a
+        LEFT JOIN patients p ON a.patient_id = p.id AND p.tenant_id = a.tenant_id
+        WHERE a.id=$1 AND a.tenant_id=$2
+    """, appointment_id, tenant_id)
+
+    if not apt:
+        raise HTTPException(status_code=404, detail="Turno no encontrado.")
+
+    allowed_statuses = ["pending", "confirmed", "completed", "cancelled", "no_show"]
+    if payload.status not in allowed_statuses:
+        raise HTTPException(status_code=400, detail=f"Estado inválido. Permitidos: {allowed_statuses}")
+
+    # 2. Actualizar estado
+    update_fields = "status=$1, updated_at=NOW()"
+    params = [payload.status, appointment_id, tenant_id]
+
+    if payload.notes:
+        update_fields += ", notes=$4"
+        params.append(payload.notes)
+
+    await db.pool.execute(
+        f"UPDATE appointments SET {update_fields} WHERE id=$2 AND tenant_id=$3",
+        *params
+    )
+
+    # 3. Escribir log de automatización del cambio de estado
+    await write_automation_log(
+        tenant_id=tenant_id,
+        trigger_type="appointment_status_change",
+        status="sent",
+        patient_name=f"{apt['first_name'] or ''} {apt['last_name'] or ''}".strip(),
+        phone_number=apt["phone_number"] or "",
+        channel="system",
+        message_type="system",
+        message_preview=f"Estado: {apt['old_status']} → {payload.status}"
+    )
+
+    # 4. Si se marca como COMPLETADO → disparar feedback event-driven
+    if payload.status == "completed" and apt["old_status"] != "completed":
+        patient_name = f"{apt['first_name'] or ''} {apt['last_name'] or ''}".strip() or "paciente"
+        phone = apt["phone_number"]
+
+        if phone:
+            # Obtener delay_minutes de la regla
+            rule = await db.pool.fetchrow("""
+                SELECT condition_json FROM automation_rules
+                WHERE tenant_id=$1 AND trigger_type='post_appointment_completed' AND is_active=TRUE
+                ORDER BY is_system DESC LIMIT 1
+            """, tenant_id)
+            delay = 45
+            if rule and rule["condition_json"]:
+                cond = rule["condition_json"] if isinstance(rule["condition_json"], dict) else json.loads(rule["condition_json"])
+                delay = cond.get("delay_minutes", 45)
+
+            # Disparar en background (no bloquea la respuesta)
+            import asyncio
+            asyncio.create_task(trigger_feedback_after_delay(
+                appointment_id=appointment_id,
+                tenant_id=tenant_id,
+                patient_name=patient_name,
+                phone_number=phone,
+                delay_minutes=delay
+            ))
+            logger.info(f"⏰ Feedback programado para {patient_name} en {delay} minutos")
+
+    return {
+        "message": f"Estado actualizado a '{payload.status}'.",
+        "appointment_id": appointment_id,
+        "new_status": payload.status,
+        "feedback_scheduled": payload.status == "completed" and apt["old_status"] != "completed" and bool(apt["phone_number"])
+    }

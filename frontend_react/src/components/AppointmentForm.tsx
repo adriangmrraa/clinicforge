@@ -40,6 +40,9 @@ export default function AppointmentForm({
         notes: '',
         duration_minutes: 30
     });
+    const [appointmentStatus, setAppointmentStatus] = useState<string>('scheduled');
+    const [statusLoading, setStatusLoading] = useState(false);
+    const [statusSuccess, setStatusSuccess] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [collisionWarning, setCollisionWarning] = useState<string | null>(null);
@@ -62,11 +65,31 @@ export default function AppointmentForm({
                 notes: initialData.notes || '',
                 duration_minutes: initialData.duration_minutes || 30
             });
+            setAppointmentStatus((initialData as any).status || 'scheduled');
+            setStatusSuccess(null);
             setError(null);
             setCollisionWarning(null);
             setActiveTab('general');
         }
     }, [isOpen, initialData, professionals]);
+
+    // Cambio de estado del turno (event-driven → dispara feedback si es 'completed')
+    const handleStatusChange = async (newStatus: string) => {
+        if (!initialData.id || !isEditing) return;
+        setStatusLoading(true);
+        setStatusSuccess(null);
+        try {
+            await api.patch(`/admin/appointments/${initialData.id}/status`, { status: newStatus });
+            setAppointmentStatus(newStatus);
+            setStatusSuccess(newStatus === 'completed' ? '✅ Turno completado. Feedback programado en 45 min.' : `✅ Estado actualizado a "${newStatus}".`);
+            setTimeout(() => setStatusSuccess(null), 5000);
+        } catch (e: any) {
+            setError(e?.response?.data?.detail ?? 'Error al cambiar el estado.');
+        } finally {
+            setStatusLoading(false);
+        }
+    };
+
 
     // Check collisions
     const checkCollisions = async (profId: string, dateStr: string) => {
@@ -282,7 +305,9 @@ export default function AppointmentForm({
                             )}
 
                             <div className="space-y-1.5">
-                                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{t('agenda.appointment_type')}</label>
+                                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                                    {t('agenda.appointment_type')}
+                                </label>
                                 <div className="grid grid-cols-3 gap-2">
                                     {['checkup', 'cleaning', 'ortho', 'surgery', 'emergency'].map(type => (
                                         <button
@@ -299,6 +324,41 @@ export default function AppointmentForm({
                                     ))}
                                 </div>
                             </div>
+
+                            {/* Estado del turno — solo en edición */}
+                            {isEditing && (
+                                <div className="space-y-2 p-4 bg-slate-50 rounded-xl border border-slate-200">
+                                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Estado del Turno</label>
+                                    <p className="text-xs text-slate-400">Cambiar a &quot;Completada&quot; enviará un mensaje de feedback al paciente en 45 minutos.</p>
+                                    <div className="grid grid-cols-3 gap-2">
+                                        {[
+                                            { value: 'scheduled', label: '📅 Programado', color: 'blue' },
+                                            { value: 'confirmed', label: '✅ Confirmado', color: 'green' },
+                                            { value: 'completed', label: '🏁 Completada', color: 'purple' },
+                                            { value: 'cancelled', label: '❌ Cancelado', color: 'red' },
+                                            { value: 'no_show', label: '👻 No asistió', color: 'gray' },
+                                        ].map(s => (
+                                            <button
+                                                key={s.value}
+                                                type="button"
+                                                disabled={statusLoading}
+                                                onClick={() => handleStatusChange(s.value)}
+                                                className={`px-3 py-2 text-xs font-semibold rounded-lg border transition-all ${
+                                                    appointmentStatus === s.value
+                                                        ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm'
+                                                        : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                                                } ${statusLoading ? 'opacity-50 cursor-wait' : ''}`}
+                                            >
+                                                {s.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                    {statusSuccess && (
+                                        <p className="text-xs text-emerald-600 font-medium mt-1">{statusSuccess}</p>
+                                    )}
+                                </div>
+                            )}
+
 
                             <div className="space-y-1.5">
                                 <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{t('agenda.notes')}</label>
