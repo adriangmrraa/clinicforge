@@ -1,0 +1,4 @@
+# Forzar LF en todos los archivos de shell para evitar problemas en Linux/Docker
+*.sh text eol=lf
+*.py text eol=lf
+Dockerfile text eol=lf
