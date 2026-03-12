@@ -1,6 +1,17 @@
 import { useState, useEffect, useCallback } from 'react';
 import api from '../api/axios';
 
+// ─── Mobile Hook ──────────────────────────────────────────────────────────────
+function useWindowWidth() {
+  const [width, setWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1024);
+  useEffect(() => {
+    const handler = () => setWidth(window.innerWidth);
+    window.addEventListener('resize', handler);
+    return () => window.removeEventListener('resize', handler);
+  }, []);
+  return width;
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface AutomationRule {
@@ -131,12 +142,13 @@ function TriggerBadge({ type }: { type: string }) {
 // ─── Rule Form Modal ──────────────────────────────────────────────────────────
 
 function RuleFormModal({
-  rule, templates, onClose, onSave,
+  rule, templates, onClose, onSave, isMobile
 }: {
   rule?: AutomationRule | null;
   templates: YCloudTemplate[];
   onClose: () => void;
   onSave: () => void;
+  isMobile: boolean;
 }) {
   const isEdit = !!rule;
   const isSystem = rule?.is_system ?? false;
@@ -193,8 +205,10 @@ function RuleFormModal({
       display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px',
     }} onClick={e => e.target === e.currentTarget && onClose()}>
       <div style={{
-        background: '#fff', borderRadius: '16px', width: '100%', maxWidth: '600px',
-        maxHeight: '90vh', overflowY: 'auto',
+        background: '#fff', borderRadius: isMobile ? '0' : '16px', width: '100%', 
+        maxWidth: isMobile ? '100%' : '600px',
+        height: isMobile ? '100%' : 'auto',
+        maxHeight: isMobile ? '100%' : '90vh', overflowY: 'auto',
         boxShadow: '0 20px 60px rgba(0,0,0,0.15)',
         border: '1px solid #e2e8f0',
       }}>
@@ -494,6 +508,8 @@ function StatCard({ icon, label, value, color }: { icon: string; label: string; 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function MetaTemplatesView() {
+  const width = useWindowWidth();
+  const isMobile = width < 768;
   const [activeTab, setActiveTab] = useState<'rules' | 'logs' | 'templates'>('rules');
   const [rules, setRules] = useState<AutomationRule[]>([]);
   const [logs, setLogs] = useState<AutomationLog[]>([]);
@@ -588,7 +604,7 @@ export default function MetaTemplatesView() {
   }
 
   return (
-    <div style={{ height: '100%', overflowY: 'auto', background: '#f8fafc', padding: '28px 32px' }}>
+    <div style={{ height: '100%', overflowY: 'auto', background: '#f8fafc', padding: isMobile ? '16px' : '28px 32px' }}>
       {/* Header */}
       <div style={{ marginBottom: '24px' }}>
         <h1 style={{ margin: '0 0 4px', color: '#0f172a', fontSize: '22px', fontWeight: 800 }}>
@@ -598,14 +614,29 @@ export default function MetaTemplatesView() {
       </div>
 
       {/* Stats */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '14px', marginBottom: '24px' }}>
+      <div style={{ 
+        display: 'grid', 
+        gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)', 
+        gap: '12px', 
+        marginBottom: '24px' 
+      }}>
         <StatCard icon="📤" label="Enviados (últimos registros)" value={stats.sent} color="#6366f1" />
         <StatCard icon="📬" label="Tasa de entrega" value={`${stats.delivery_rate}%`} color="#10b981" />
         <StatCard icon="⚡" label="Reglas activas" value={stats.active_rules} color="#f59e0b" />
       </div>
 
       {/* Tabs */}
-      <div style={{ display: 'flex', gap: '2px', background: '#e2e8f0', borderRadius: '10px', padding: '3px', marginBottom: '22px', width: 'fit-content' }}>
+      <div style={{ 
+        display: 'flex', 
+        gap: '2px', 
+        background: '#e2e8f0', 
+        borderRadius: '10px', 
+        padding: '3px', 
+        marginBottom: '22px', 
+        width: isMobile ? '100%' : 'fit-content',
+        overflowX: 'auto',
+        WebkitOverflowScrolling: 'touch'
+      }}>
         {(['rules', 'logs', 'templates'] as const).map(tab => (
           <button key={tab} onClick={() => setActiveTab(tab)} style={{
             padding: '8px 18px', borderRadius: '8px', border: 'none', cursor: 'pointer',
@@ -819,6 +850,7 @@ export default function MetaTemplatesView() {
         <RuleFormModal
           rule={editingRule}
           templates={templates}
+          isMobile={isMobile}
           onClose={() => { setShowModal(false); setEditingRule(null); }}
           onSave={async () => { setShowModal(false); setEditingRule(null); await loadRules(); }}
         />
