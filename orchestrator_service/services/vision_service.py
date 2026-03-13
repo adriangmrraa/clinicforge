@@ -31,7 +31,7 @@ async def analyze_image_url(image_url: str, tenant_id: int) -> Optional[str]:
         vision_messages = []
         
         # Detectar si es path local o URL relativa
-        is_local = image_url.startswith("/media/") or "localhost" in image_url or "orchestrator" in image_url
+        is_local = image_url.startswith("/media/") or image_url.startswith("/uploads/") or "localhost" in image_url or "orchestrator" in image_url
         
         if is_local:
             # 1. Resolver path físico del archivo
@@ -43,7 +43,16 @@ async def analyze_image_url(image_url: str, tenant_id: int) -> Optional[str]:
             
             # Quitar slash inicial si existe para join
             rel_path = path.lstrip("/")
-            local_path = os.path.join(os.getcwd(), rel_path)
+            
+            # Determinar directorio base según el path
+            if path.startswith("/uploads/"):
+                # Usar UPLOADS_DIR si está configurado
+                base_dir = os.getenv("UPLOADS_DIR", os.path.join(os.getcwd(), "uploads"))
+            else:
+                # Usar MEDIA_ROOT si está configurado (para /media/)
+                base_dir = os.getenv("MEDIA_ROOT", os.getcwd())
+            
+            local_path = os.path.join(base_dir, rel_path)
             
             if not os.path.exists(local_path):
                 logger.error(f"❌ Vision: Archivo local no encontrado: {local_path}")

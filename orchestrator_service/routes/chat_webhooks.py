@@ -324,7 +324,7 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
                     try:
                         # Descargar el archivo si no es local
                         local_url = m_item.url
-                        if not m_item.url.startswith("/media/"):
+                        if not m_item.url.startswith("/media/") and not m_item.url.startswith("/uploads/"):
                             try:
                                 from services.media_downloader import download_media
                                 media_type_str = m_item.type.value
@@ -431,7 +431,7 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
                         if att_url:
                             # ✅ FIX: Limpiar de parámetros legacy antes de firmar (Spec 19)
                             clean_att_url = att_url
-                            if att_url.startswith("/media/"):
+                            if att_url.startswith("/media/") or att_url.startswith("/uploads/"):
                                 clean_att_url = att_url.split('?')[0]
 
                             signature, expires = generate_signed_url(clean_att_url, tenant_id)

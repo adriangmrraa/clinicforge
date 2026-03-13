@@ -77,8 +77,9 @@ async def download_media(url: str, tenant_id: int, media_type: str = "document")
                 ext = type_defaults.get(media_type, ".bin")
             
             filename = f"{uuid.uuid4()}{ext}"
-            # Asegurar directorio de media
-            media_dir = os.path.join(os.getcwd(), "media", str(tenant_id))
+            # Asegurar directorio de media - usar UPLOADS_DIR si está configurado
+            uploads_dir = os.getenv("UPLOADS_DIR", os.path.join(os.getcwd(), "uploads"))
+            media_dir = os.path.join(uploads_dir, str(tenant_id))
             os.makedirs(media_dir, exist_ok=True)
             
             local_path = os.path.join(media_dir, filename)
@@ -86,7 +87,7 @@ async def download_media(url: str, tenant_id: int, media_type: str = "document")
                 f.write(res.content)
             
             logger.info(f"✅ Media guardada: {local_path} ({len(res.content)} bytes, ext={ext})")
-            return f"/media/{tenant_id}/{filename}"
+            return f"/uploads/{tenant_id}/{filename}"
         except httpx.HTTPStatusError as e:
             logger.error(f"❌ Media download HTTP error {e.response.status_code}: {url[:80]}")
             return url  # Fallback a la URL original si falla  

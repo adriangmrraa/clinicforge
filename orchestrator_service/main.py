@@ -2641,7 +2641,9 @@ async def serve_local_media(
     if ".." in filename or "/" in filename or "\\" in filename:
         raise HTTPException(status_code=400, detail="Invalid filename")
     
-    media_path = os.path.join(os.getcwd(), "media", str(tenant_id), filename)
+    # Usar MEDIA_ROOT si está configurado, sino usar directorio actual
+    media_root = os.getenv("MEDIA_ROOT", os.getcwd())
+    media_path = os.path.join(media_root, "media", str(tenant_id), filename)
     
     if not os.path.exists(media_path):
         logger.warning(f"❌ Media file not found: {media_path}")
@@ -2653,6 +2655,48 @@ async def serve_local_media(
     logger.info(f"🖼️ Serving signed media: {media_path}")
     return FileResponse(
         media_path,
+        media_type=mime_type or "application/octet-stream",
+        filename=filename
+    )
+
+
+# --- UPLOADS SERVING ENDPOINT (Para archivos persistentes) ---
+@app.get("/uploads/{tenant_id}/{filename}", tags=["Media"], summary="Servir archivos subidos persistentes")
+async def serve_uploads(
+    tenant_id: int, 
+    filename: str,
+    signature: str = Query(..., description="Firma HMAC de seguridad"),
+    expires: int = Query(..., description="Timestamp de expiración")
+):
+    """
+    Sirve archivos subidos persistentes (attachments de mensajes, documentos de pacientes).
+    Requiere firma válida generada por el orchestrator.
+    Path: /uploads/{tenant_id}/{filename}
+    """
+    # 1. Verificar firma HMAC
+    url_path = f"/uploads/{tenant_id}/{filename}"
+    if not verify_signed_url(url_path, tenant_id, signature, expires):
+        logger.warning(f"🛡️ Security Block: Attempt to access uploads without valid signature. Path: {url_path}")
+        raise HTTPException(status_code=403, detail="Acceso denegado: Firma inválida o expirada.")
+
+    # 2. Seguridad: validar filename para prevenir path traversal
+    if ".." in filename or "/" in filename or "\\" in filename:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    
+    # Usar UPLOADS_DIR si está configurado, sino usar /app/uploads
+    uploads_dir = os.getenv("UPLOADS_DIR", os.path.join(os.getcwd(), "uploads"))
+    file_path = os.path.join(uploads_dir, str(tenant_id), filename)
+    
+    if not os.path.exists(file_path):
+        logger.warning(f"❌ Upload file not found: {file_path}")
+        raise HTTPException(status_code=404, detail="Not Found")
+    
+    # Determinar content type
+    mime_type, _ = mimetypes.guess_type(filename)
+    
+    logger.info(f"📎 Serving upload: {file_path}")
+    return FileResponse(
+        file_path,
         media_type=mime_type or "application/octet-stream",
         filename=filename
     )
