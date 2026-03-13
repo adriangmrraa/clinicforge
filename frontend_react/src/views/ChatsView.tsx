@@ -663,8 +663,8 @@ export default function ChatsView() {
         setShowToast({
           id: Date.now().toString(),
           type: 'error',
-          title: 'Ventana Cerrada',
-          message: 'Canal bloqueado por Meta. Use plantillas para contactar al paciente.',
+          title: t('chats.meta_window_closed_title'),
+          message: t('chats.meta_window_closed_message'),
         });
       }
     } finally {
@@ -710,7 +710,7 @@ export default function ChatsView() {
     try {
       const d = new Date(dateStr);
       if (isNaN(d.getTime())) return '';
-      return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+      return d.toLocaleDateString(undefined, { day: '2-digit', month: '2-digit', year: 'numeric' });
     } catch { return ''; }
   };
 
@@ -731,7 +731,7 @@ export default function ChatsView() {
       const now = new Date();
       const diff = now.getTime() - date.getTime();
 
-      if (diff < 60000) return 'Ahora';
+      if (diff < 60000) return t('chats.time_now');
       if (diff < 3600000) return `${Math.floor(diff / 60000)}m`;
       if (diff < 86400000) return `${Math.floor(diff / 3600000)}h`;
       return date.toLocaleDateString();
@@ -814,7 +814,7 @@ export default function ChatsView() {
     return {
       badge: (
         <span className="flex items-center gap-1 text-xs text-green-600">
-          <Activity size={12} /> IA Activa
+          <Activity size={12} /> {t('chats.ia_active')}
         </span>
       ),
       avatarBg: 'bg-primary',
@@ -907,7 +907,7 @@ export default function ChatsView() {
 
       {/* Chat List */}
       <div className={`
-        ${selectedSession || selectedChatwoot ? 'hidden lg:flex' : 'flex'} 
+        ${selectedSession || selectedChatwoot ? 'hidden lg:flex' : 'flex'}
         w-full lg:w-80 border-r bg-white flex-col
       `}>
         <div className="p-4 border-b">
@@ -939,13 +939,13 @@ export default function ChatsView() {
             <p className="text-xs text-gray-500 mb-2">{clinics[0].clinic_name}</p>
           )}
           <div className="mb-3">
-            <label className="block text-xs font-medium text-gray-500 mb-1">Canal</label>
+            <label className="block text-xs font-medium text-gray-500 mb-1">{t('chats.channel_label')}</label>
             <select
               value={channelFilter}
               onChange={(e) => setChannelFilter(e.target.value as 'all' | 'whatsapp' | 'instagram' | 'facebook')}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary bg-white"
             >
-              <option value="all">Todos</option>
+              <option value="all">{t('chats.channel_all')}</option>
               <option value="whatsapp">WhatsApp</option>
               <option value="instagram">Instagram</option>
               <option value="facebook">Facebook</option>
@@ -1199,7 +1199,7 @@ export default function ChatsView() {
               {(selectedSession?.last_derivhumano_at || selectedChatwoot?.last_derivhumano_at) ? (
                 <div className="bg-orange-50 border-b border-orange-200 px-4 py-2 flex items-center gap-2">
                   <AlertCircle size={16} className="text-orange-600" />
-                  <span className="text-sm text-orange-800 font-medium">{t('chat_extra.attention_required_handoff')}</span>
+                  <span className="text-sm text-orange-800 font-medium">{t('chats.attention_required_handoff')}</span>
                 </div>
               ) : null}
 
@@ -1219,13 +1219,13 @@ export default function ChatsView() {
                   <div className="bg-blue-50 border-b border-blue-200 px-4 py-2 flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <Pause size={16} className="text-blue-600 fill-current" />
-                      <span className="text-sm text-blue-800 font-bold">✋ {t('chat_extra.manual_mode_active_banner')}</span>
+                      <span className="text-sm text-blue-800 font-bold">✋ {t('chats.manual_mode_active_banner')}</span>
                     </div>
                     <button
                       onClick={() => selectedSession ? handleToggleHumanMode() : handleToggleChatwootLock()}
                       className="text-xs bg-blue-100 hover:bg-blue-200 text-blue-700 px-3 py-1 rounded-full font-bold transition-colors"
                     >
-                      Activate AI
+                      {t('chats.activate_ai')}
                     </button>
                   </div>
                 )}
@@ -1242,7 +1242,7 @@ export default function ChatsView() {
                       onClick={() => navigate('/templates')}
                       className="ml-auto flex items-center gap-1 text-xs font-bold text-yellow-700 hover:bg-yellow-100 px-2 py-1 rounded border border-yellow-300 transition-colors"
                     >
-                      Plantillas Meta <ChevronRight size={14} />
+                      {t('chats.meta_templates')} <ChevronRight size={14} />
                     </button>
                   </div>
                 )}
@@ -1370,7 +1370,7 @@ export default function ChatsView() {
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
                       className="p-2 text-gray-400 hover:text-medical-600 hover:bg-medical-50 rounded-lg transition-colors"
-                      title="Adjuntar archivo"
+                      title={t('chats.attach_file')}
                     >
                       <Paperclip size={20} />
                     </button>
@@ -1380,8 +1380,8 @@ export default function ChatsView() {
                       onChange={(e) => setNewMessage(e.target.value)}
                       placeholder={
                         (selectedSession && selectedSession.is_window_open === false) || (selectedChatwoot && !isWindowOpen(selectedChatwoot.last_user_message_at))
-                          ? "Ventana cerrada - Esperando paciente..."
-                          : "Escribe un mensaje..."
+                          ? t('chats.window_closed_placeholder')
+                          : t('chats.type_message_placeholder')
                       }
                       disabled={!!((selectedSession && selectedSession.is_window_open === false) || (selectedChatwoot && !isWindowOpen(selectedChatwoot.last_user_message_at)))}
                       onKeyDown={(e) => {
@@ -1391,7 +1391,7 @@ export default function ChatsView() {
                           else handleSendMessage(e as any);
                         }
                       }}
-                      className={`flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 bg-white text-gray-900 
+                      className={`flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 bg-white text-gray-900
                         ${selectedSession && selectedSession.is_window_open === false ? 'bg-gray-100 cursor-not-allowed opacity-75' : ''}
                         ${selectedSession ? 'focus:ring-green-500' : selectedChatwoot?.channel === 'instagram' ? 'focus:ring-pink-500' : selectedChatwoot?.channel === 'facebook' ? 'focus:ring-blue-500' : 'focus:ring-medical-500'}
                       `}
@@ -1406,7 +1406,7 @@ export default function ChatsView() {
                       className={`p-2 text-white rounded-lg disabled:opacity-50 flex items-center justify-center transition-colors min-w-[44px]
                         ${selectedSession ? 'bg-green-600 hover:bg-green-700' : selectedChatwoot?.channel === 'instagram' ? 'bg-pink-600 hover:bg-pink-700' : selectedChatwoot?.channel === 'facebook' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-medical-600 hover:bg-medical-700'}
                       `}
-                      title={(selectedSession && selectedSession.is_window_open === false) || (selectedChatwoot && !isWindowOpen(selectedChatwoot.last_user_message_at)) ? "Ventana de 24hs cerrada" : "Enviar mensaje"}
+                      title={(selectedSession && selectedSession.is_window_open === false) || (selectedChatwoot && !isWindowOpen(selectedChatwoot.last_user_message_at)) ? t('chats.window_24h_closed_title') : t('chats.send_message_title')}
                     >
                       {sending ? (
                         <Activity size={20} className="animate-spin" />
@@ -1458,7 +1458,7 @@ export default function ChatsView() {
                   const overrideUntil = selectedSession?.human_override_until;
 
                   return (
-                    <div className={`p-3 rounded-lg ${isHuman
+                    <div className={`p-3 mx-3 mt-4 rounded-lg ${isHuman
                       ? 'bg-orange-50 border border-orange-200'
                       : 'bg-green-50 border border-green-200'
                       }`}>
@@ -1474,12 +1474,12 @@ export default function ChatsView() {
                       </div>
                       <p className="text-sm text-gray-600">
                         {isHuman
-                          ? 'Atendido por persona'
+                          ? t('chats.status_human')
                           : t('chats.ia_active')}
                       </p>
                       {overrideUntil && (
-                        <p className="text-xs text-gray-500 mt-1">
-                          Hasta: {safeFormatTime(overrideUntil)}
+                      <p className="text-xs text-gray-500 mt-1">
+                          {t('common.until')}: {safeFormatTime(overrideUntil)}
                         </p>
                       )}
                     </div>
@@ -1505,10 +1505,10 @@ export default function ChatsView() {
                           </>
                         ) : (
                           <>
-                            <h4 className="text-xs font-medium text-amber-700 mb-2">{t('chat_extra.lead_no_appointments')}</h4>
+                            <h4 className="text-xs font-medium text-amber-700 mb-2">{t('chats.contact_no_appointments')}</h4>
                             <p className="font-medium">{displayName}</p>
                             <p className="text-sm text-gray-500">{displayPhone}</p>
-                            <p className="text-xs text-amber-700 mt-2">{t('chat_extra.contact_not_patient')}</p>
+                            <p className="text-xs text-amber-700 mt-2">{t('chats.no_appointments_yet')}</p>
                           </>
                         )}
                       </div>
@@ -1578,7 +1578,7 @@ export default function ChatsView() {
                           {/* Anamnesis (Spec 2026-03-11) */}
                           <div className="p-3 bg-gray-50 rounded-lg">
                             <h4 className="text-xs font-medium text-gray-500 mb-2 flex items-center gap-1">
-                              <span>🦷</span> Anamnesis
+                              <span>🦷</span> {t('chats.anamnesis')}
                             </h4>
                             <AnamnesisPanel
                               phone={selectedSession?.phone_number || selectedChatwoot?.external_user_id}
