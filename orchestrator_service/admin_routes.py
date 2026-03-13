@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 # Configuración
 from core.credentials import get_tenant_credential, CREDENTIALS_FERNET_KEY, encrypt_value, decrypt_value
 from core.auth import verify_admin_token, get_resolved_tenant_id, ADMIN_TOKEN
+from core.security_utils import generate_signed_url
 
 INTERNAL_API_TOKEN = os.getenv("INTERNAL_API_TOKEN", "internal-secret-token")
 WHATSAPP_SERVICE_URL = os.getenv("WHATSAPP_SERVICE_URL", "http://whatsapp:8002")
@@ -2593,7 +2594,25 @@ async def list_patient_documents(
         ORDER BY created_at DESC
     """, id, tenant_id)
     
-    return [dict(doc) for doc in documents]
+    from urllib.parse import urlencode
+    out = []
+    for doc in documents:
+        d = dict(doc)
+        file_path = d.get("file_path", "")
+        if file_path:
+            # ✅ FIX: Generar URL firmada para previsualización (Spec 19)
+            signature, expires = generate_signed_url(file_path, tenant_id)
+            proxy_params = {
+                "url": file_path,
+                "tenant_id": tenant_id,
+                "signature": signature,
+                "expires": expires
+            }
+            # Usamos el proxy unificado definido en chat_api
+            d["url"] = f"/admin/chat/media/proxy?{urlencode(proxy_params)}"
+        out.append(d)
+        
+    return out
 
 @router.get("/patients/{patient_id}/documents/{doc_id}/proxy", 
            dependencies=[Depends(verify_admin_token)], 

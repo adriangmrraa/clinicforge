@@ -10,6 +10,7 @@ from typing import Any
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request
 
 from core.credentials import resolve_tenant_from_webhook_token
+from core.security_utils import generate_signed_url
 from db import get_pool, db
 from services.channels.service import ChannelService
 from services.channels.types import CanonicalMessage, MediaType
@@ -422,11 +423,29 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
                 sio = getattr(app.state, "sio", None)
                 to_json_safe = getattr(app.state, "to_json_safe", lambda x: x)
                 if sio:
+                    # ✅ FIX: Sign attachment URLs for real-time preview (Spec 19)
+                    from urllib.parse import urlencode
+                    signed_socket_attachments = []
+                    for att in content_attrs:
+                        att_url = att.get("url")
+                        if att_url:
+                            signature, expires = generate_signed_url(att_url, tenant_id)
+                            proxy_params = {
+                                "url": att_url,
+                                "tenant_id": tenant_id,
+                                "signature": signature,
+                                "expires": expires
+                            }
+                            signed_url = f"/admin/chat/media/proxy?{urlencode(proxy_params)}"
+                            signed_socket_attachments.append({**att, "url": signed_url})
+                        else:
+                            signed_socket_attachments.append(att)
+
                     await sio.emit('NEW_MESSAGE', to_json_safe({
                         'phone_number': msg.external_user_id,
                         'tenant_id': tenant_id,
                         'message': msg.content or (f"[{msg.media[0].type.value.upper()}]" if msg.media else ""),
-                        'attachments': content_attrs,
+                        'attachments': signed_socket_attachments,
                         'role': role,
                         'channel': msg.original_channel
                     }))

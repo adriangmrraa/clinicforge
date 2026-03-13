@@ -120,8 +120,11 @@ async def chats_summary(
         ho = r["human_override_until"]
         
         avatar_url = meta.get("customer_avatar")
-        # ✅ Proxy avatar if it looks like a remote Meta/External URL
-        if avatar_url and (avatar_url.startswith("http") or avatar_url.startswith("https")) and "/admin/chat/media/proxy" not in avatar_url:
+        # ✅ Proxy avatar if it looks like a remote Meta/External URL or local /media/
+        is_external = avatar_url and (avatar_url.startswith("http") or avatar_url.startswith("https"))
+        is_local_media = avatar_url and avatar_url.startswith("/media/")
+        
+        if (is_external or is_local_media) and "/admin/chat/media/proxy" not in avatar_url:
             signature, expires = generate_signed_url(avatar_url, tenant_id)
             proxy_params = {
                 "url": avatar_url,
