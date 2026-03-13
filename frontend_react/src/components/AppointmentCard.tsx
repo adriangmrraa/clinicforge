@@ -10,6 +10,7 @@ interface ExtendedProps {
     patient_phone?: string;
     professional_name?: string;
     appointment_type?: string;
+    appointment_name?: string;
     notes?: string;
     urgency_level?: string;
 }
@@ -122,7 +123,7 @@ export const AppointmentCard: React.FC<EventContentArg> = (eventInfo) => {
                 {/* Treatment Badge */}
                 <div className="flex">
                     <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-medium bg-white/60 backdrop-blur-sm text-slate-700 truncate max-w-full">
-                        {appointment_type || 'Consulta'}
+                        {props.appointment_name || props.appointment_type || 'Consulta'}
                     </span>
                 </div>
 

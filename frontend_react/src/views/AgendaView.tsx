@@ -33,6 +33,7 @@ export interface Appointment {
   patient_name?: string;
   patient_phone?: string;
   professional_name?: string;
+  appointment_name?: string;
 }
 
 export interface GoogleCalendarBlock {

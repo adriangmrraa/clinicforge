@@ -356,19 +356,25 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
                             
                             if patient_row:
                                 # Determinar tipo de documento para clasificación
-                                doc_type = "instagram_image" if msg.original_channel == "instagram" and m_item.type == MediaType.IMAGE else \
-                                          "instagram_document" if msg.original_channel == "instagram" and m_item.type == MediaType.DOCUMENT else \
-                                          "facebook_image" if msg.original_channel == "facebook" and m_item.type == MediaType.IMAGE else \
-                                          "facebook_document"
+                                # V7.6 Platinum: Clasificación genérica basada en canal y tipo
+                                channel_name = msg.original_channel or "whatsapp"
+                                media_type_str = m_item.type.value
+                                doc_type = f"{channel_name}_{media_type_str}"
                                 
                                 file_name = m_item.file_name or f"{doc_type}_{uuid.uuid4().hex[:8]}"
                                 
                                 # Extraer extensión del archivo si está disponible
-                                if m_item.mime_type:
-                                    import mimetypes
-                                    ext = mimetypes.guess_extension(m_item.mime_type) or ""
-                                    if ext and not file_name.lower().endswith(ext.lower()):
-                                        file_name = f"{file_name}{ext}"
+                                import mimetypes
+                                ext = mimetypes.guess_extension(m_item.mime_type) if m_item.mime_type else None
+                                if not ext:
+                                    # Fallback manual para tipos comunes si mimetypes falla
+                                    if m_item.type == MediaType.IMAGE: ext = ".jpg"
+                                    elif m_item.type == MediaType.AUDIO: ext = ".ogg"
+                                    elif m_item.type == MediaType.DOCUMENT: ext = ".pdf"
+                                    else: ext = ".bin"
+                                
+                                if ext and not file_name.lower().endswith(ext.lower()):
+                                    file_name = f"{file_name}{ext}"
                                 
                                 # Insertar en patient_documents
                                 await pool.execute("""

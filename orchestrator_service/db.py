@@ -886,6 +886,68 @@ class Database:
                     );
                 END LOOP;
             END $$;
+            """,
+            # Parche 34: Asegurar constraint unique (tenant_id, external_user_id) en chat_conversations
+            """
+            DO $$ 
+            BEGIN 
+                IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'idx_chat_conv_tenant_channel_user') THEN
+                    -- Primero borramos duplicados si los hay (estrategia conservadora: mantener el más reciente)
+                    DELETE FROM chat_conversations a USING chat_conversations b
+                    WHERE a.id < b.id 
+                    AND a.tenant_id = b.tenant_id 
+                    AND a.channel = b.channel 
+                    AND a.external_user_id = b.external_user_id;
+
+                    ALTER TABLE chat_conversations ADD CONSTRAINT idx_chat_conv_tenant_channel_user UNIQUE (tenant_id, channel, external_user_id);
+                END IF;
+            END $$;
+            """,
+            # Parche 35: Evolución de patient_documents (Naming parity y column expansion)
+            """
+            DO $$ 
+            BEGIN 
+                -- 1. Unificar naming (filename vs file_name)
+                IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='patient_documents' AND column_name='filename') 
+                   AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='patient_documents' AND column_name='file_name') THEN
+                    ALTER TABLE patient_documents RENAME COLUMN filename TO file_name;
+                END IF;
+
+                -- 2. Agregar source si no existe
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='patient_documents' AND column_name='source') THEN
+                    ALTER TABLE patient_documents ADD COLUMN source VARCHAR(50) DEFAULT 'manual';
+                END IF;
+
+                -- 3. Agregar source_details if not exists
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='patient_documents' AND column_name='source_details') THEN
+                    ALTER TABLE patient_documents ADD COLUMN source_details JSONB DEFAULT '{}';
+                END IF;
+
+                -- 4. Agregar uploaded_at if not exists (y migrar de created_at si es necesario)
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='patient_documents' AND column_name='uploaded_at') THEN
+                    ALTER TABLE patient_documents ADD COLUMN uploaded_at TIMESTAMPTZ DEFAULT NOW();
+                    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='patient_documents' AND column_name='created_at') THEN
+                        UPDATE patient_documents SET uploaded_at = created_at WHERE uploaded_at IS NULL;
+                    END IF;
+                END IF;
+            END $$;
+            """,
+            # Parche 36: Asegurar que existan servicios básicos si la tabla está vacía para un tenant
+            """
+            DO $$
+            DECLARE
+                t_id RECORD;
+            BEGIN
+                FOR t_id IN SELECT id FROM tenants LOOP
+                    IF NOT EXISTS (SELECT 1 FROM treatment_types WHERE tenant_id = t_id.id) THEN
+                        INSERT INTO treatment_types (tenant_id, code, name, default_duration_minutes, base_price, is_active, is_available_for_booking)
+                        VALUES 
+                            (t_id.id, 'checkup', 'Consulta General', 30, 0, true, true),
+                            (t_id.id, 'cleaning', 'Limpieza Dental', 45, 0, true, true),
+                            (t_id.id, 'consultation', 'Consulta Especializada', 30, 0, true, true);
+                    END IF;
+                END LOOP;
+            END $$;
             """
         ]
 

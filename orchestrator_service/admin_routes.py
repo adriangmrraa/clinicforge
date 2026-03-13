@@ -2515,15 +2515,16 @@ async def upload_patient_document(
     # Guardar en base de datos
     doc_id = await db.pool.fetchval("""
         INSERT INTO patient_documents 
-        (tenant_id, patient_id, filename, file_path, file_size, mime_type, document_type, uploaded_by)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        (tenant_id, patient_id, file_name, file_path, file_size, mime_type, document_type, uploaded_by, source, uploaded_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'manual', NOW())
         RETURNING id
     """, tenant_id, id, file.filename, str(file_path), file_size, file.content_type, 
        document_type, user_data.user_id)
     
     return {
         "id": doc_id,
-        "filename": file.filename,
+        "file_name": file.filename,
+        "filename": file.filename, # Compatibility
         "file_path": str(file_path),
         "file_size": file_size,
         "mime_type": file.content_type,
@@ -2553,8 +2554,8 @@ async def list_patient_documents(
         raise HTTPException(status_code=404, detail="Paciente no encontrado")
     
     documents = await db.pool.fetch("""
-        SELECT id, filename, file_path, file_size, mime_type, document_type, 
-               uploaded_by, created_at
+        SELECT id, file_name as filename, file_name, file_path, file_size, mime_type, document_type, 
+               uploaded_by, created_at, source, source_details, uploaded_at
         FROM patient_documents
         WHERE patient_id = $1 AND tenant_id = $2
         ORDER BY created_at DESC
@@ -2577,7 +2578,7 @@ async def download_patient_document_proxy(
     """
     # Verificar que el documento existe y pertenece al paciente/tenant
     document = await db.pool.fetchrow("""
-        SELECT file_path, mime_type, filename
+        SELECT file_path, mime_type, file_name
         FROM patient_documents
         WHERE id = $1 AND patient_id = $2 AND tenant_id = $3
     """, doc_id, patient_id, tenant_id)
@@ -2601,7 +2602,7 @@ async def download_patient_document_proxy(
     return FileResponse(
         path=file_path,
         media_type=document["mime_type"] or "application/octet-stream",
-        filename=document["filename"]
+        filename=document["file_name"]
     )
 
 @router.delete("/patients/{patient_id}/documents/{doc_id}", 
@@ -2640,6 +2641,27 @@ async def delete_patient_document(
     
     return {"status": "ok", "message": "Documento eliminado"}
 
+# ==================== ENDPOINTS TRATAMIENTOS ====================
+
+@router.get("/treatment_types", dependencies=[Depends(verify_admin_token)], tags=["Tratamientos"], summary="Listar tipos de tratamiento disponibles")
+async def list_treatment_types(
+    tenant_id: int = Depends(get_resolved_tenant_id),
+    only_active: bool = Query(True, description="Solo mostrar tratamientos activos"),
+    only_booking: bool = Query(False, description="Solo mostrar tratamientos disponibles para reserva")
+):
+    """Listar tipos de tratamiento por clínica. Aislado por tenant_id (Regla de Oro)."""
+    query = "SELECT * FROM treatment_types WHERE tenant_id = $1"
+    params = [tenant_id]
+    
+    if only_active:
+        query += " AND is_active = true"
+    if only_booking:
+        query += " AND is_available_for_booking = true"
+        
+    query += " ORDER BY name ASC"
+    rows = await db.pool.fetch(query, *params)
+    return [dict(row) for row in rows]
+
 # ==================== ENDPOINTS TURNOS (AGENDA) ====================
 
 @router.get("/appointments", dependencies=[Depends(verify_admin_token)], tags=["Turnos"], summary="Listar turnos en un rango de fechas")
@@ -2655,10 +2677,12 @@ async def list_appointments(
                a.source, a.appointment_type, a.notes,
                (p.first_name || ' ' || COALESCE(p.last_name, '')) as patient_name, 
                p.phone_number as patient_phone,
-               prof.first_name as professional_name, prof.id as professional_id
+               prof.first_name as professional_name, prof.id as professional_id,
+               COALESCE(tt.name, a.appointment_type, 'Consulta') as appointment_name
         FROM appointments a
         JOIN patients p ON a.patient_id = p.id
         LEFT JOIN professionals prof ON a.professional_id = prof.id
+        LEFT JOIN treatment_types tt ON a.appointment_type = tt.code AND a.tenant_id = tt.tenant_id
         WHERE a.tenant_id = $1 AND a.appointment_datetime BETWEEN $2 AND $3
     """
     params = [tenant_id, datetime.fromisoformat(start_date), datetime.fromisoformat(end_date)]

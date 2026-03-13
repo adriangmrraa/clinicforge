@@ -82,7 +82,7 @@ export const MessageMedia = ({ attachments, message }: { attachments: any[], mes
                 const url = getProxyUrl(att.url);
                 if (!url) return null; // No renderizar si no hay URL válida
 
-                if (type === 'image' && !isGrouped) {
+                if ((type === 'image' || type.includes('image')) && !isGrouped) {
                     return (
                         <div key={idx} className="relative group">
                             <img
@@ -90,16 +90,24 @@ export const MessageMedia = ({ attachments, message }: { attachments: any[], mes
                                 alt="attachment"
                                 className="max-w-xs rounded-lg cursor-pointer hover:opacity-90 transition-opacity border"
                                 onClick={() => window.open(url, '_blank')}
+                                loading="lazy"
+                                crossOrigin="anonymous"
                             />
                         </div>
                     );
                 }
 
-                if (type === 'audio' && !isGrouped) {
+                if ((type === 'audio' || type.includes('audio')) && !isGrouped) {
                     return (
                         <div key={idx} className="bg-gray-50 p-2 rounded-lg border flex flex-col gap-2 min-w-[240px]">
                             <div className="flex items-center gap-2">
-                                <audio controls src={url} className="h-8 w-full" />
+                                <audio 
+                                    controls 
+                                    src={url} 
+                                    className="h-8 w-full" 
+                                    preload="metadata"
+                                    crossOrigin="anonymous"
+                                />
                                 <button
                                     onClick={() => handleTranscribeAgain(att.url)}
                                     className="p-1.5 hover:bg-gray-200 rounded-full transition-colors text-gray-500"

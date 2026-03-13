@@ -6,12 +6,15 @@ import api from '../api/axios';
 interface PatientDocument {
   id: number;
   filename: string;
+  file_name: string;
   file_path: string;
   file_size?: number;
   mime_type?: string;
   document_type: string;
   uploaded_by?: number;
   created_at: string;
+  source?: string;
+  uploaded_at?: string;
 }
 
 interface DocumentGalleryProps {
@@ -35,6 +38,9 @@ const MIME_TYPE_ICONS: Record<string, React.ReactNode> = {
   'image/jpeg': <Image className="text-blue-500" size={24} />,
   'image/png': <Image className="text-green-500" size={24} />,
   'image/gif': <Image className="text-purple-500" size={24} />,
+  'audio/mpeg': <Activity className="text-orange-500" size={24} />,
+  'audio/ogg': <Activity className="text-orange-500" size={24} />,
+  'audio/wav': <Activity className="text-orange-500" size={24} />,
   'application/msword': <FileText className="text-blue-600" size={24} />,
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document': <FileText className="text-blue-600" size={24} />
 };
@@ -229,6 +235,7 @@ export default function DocumentGallery({ patientId, readOnly = false }: Documen
 
   const getFileIcon = (mimeType?: string): React.ReactNode => {
     if (!mimeType) return <FileText className="text-gray-400" size={24} />;
+    if (mimeType.startsWith('audio/')) return <Activity className="text-orange-500" size={24} />;
     return MIME_TYPE_ICONS[mimeType] || <FileText className="text-gray-400" size={24} />;
   };
 
@@ -402,9 +409,14 @@ export default function DocumentGallery({ patientId, readOnly = false }: Documen
                         <span className="text-xs text-gray-500">
                           {formatFileSize(document.file_size)}
                         </span>
+                        {document.source && (
+                          <span className="inline-flex items-center px-1.5 py-0.5 bg-gray-100 text-gray-600 text-[10px] rounded uppercase font-bold">
+                            {document.source}
+                          </span>
+                        )}
                       </div>
                       <p className="text-xs text-gray-400 mt-2">
-                        {t('document_gallery.uploaded_on')} {formatDate(document.created_at)}
+                        {t('document_gallery.uploaded_on')} {formatDate(document.uploaded_at || document.created_at)}
                       </p>
                     </div>
                   </div>

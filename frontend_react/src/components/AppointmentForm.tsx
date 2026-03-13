@@ -46,6 +46,28 @@ export default function AppointmentForm({
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [collisionWarning, setCollisionWarning] = useState<string | null>(null);
+    const [treatmentTypes, setTreatmentTypes] = useState<any[]>([]);
+
+    // Fetch treatment types
+    useEffect(() => {
+        const fetchTreatmentTypes = async () => {
+            try {
+                const response = await api.get('/admin/treatment_types', {
+                    params: { only_active: true }
+                });
+                setTreatmentTypes(response.data);
+            } catch (err) {
+                console.error('Error fetching treatment types:', err);
+                // Fallback to basic types if request fails
+                setTreatmentTypes([
+                    { code: 'checkup', name: 'Consulta' },
+                    { code: 'cleaning', name: 'Limpieza' },
+                    { code: 'emergency', name: 'Urgencia' }
+                ]);
+            }
+        };
+        fetchTreatmentTypes();
+    }, []);
 
     // Format date for datetime-local input: local YYYY-MM-DDTHH:mm (avoid UTC display bug)
     const toLocalDatetimeInput = (isoOrDate: string | Date): string => {
@@ -308,18 +330,18 @@ export default function AppointmentForm({
                                 <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
                                     {t('agenda.appointment_type')}
                                 </label>
-                                <div className="grid grid-cols-3 gap-2">
-                                    {['checkup', 'cleaning', 'ortho', 'surgery', 'emergency'].map(type => (
+                                <div className="grid grid-cols-2 gap-2">
+                                    {treatmentTypes.map(s => (
                                         <button
-                                            key={type}
+                                            key={s.code}
                                             type="button"
-                                            onClick={() => handleChange('appointment_type', type)}
-                                            className={`px-3 py-2 text-xs font-medium rounded-lg border transition-all ${formData.appointment_type === type
+                                            onClick={() => handleChange('appointment_type', s.code)}
+                                            className={`px-3 py-2 text-xs font-medium rounded-lg border transition-all ${formData.appointment_type === s.code
                                                 ? 'bg-blue-50 border-blue-200 text-blue-700 shadow-sm'
                                                 : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
                                                 }`}
                                         >
-                                            {type.charAt(0).toUpperCase() + type.slice(1)}
+                                            {s.name}
                                         </button>
                                     ))}
                                 </div>
