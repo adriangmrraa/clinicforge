@@ -17,7 +17,7 @@ import hashlib
 import time
 from urllib.parse import urlparse
 
-from fastapi import BackgroundTasks, FastAPI, Request, HTTPException, Depends
+from fastapi import BackgroundTasks, FastAPI, Request, HTTPException, Depends, Query, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 from pydantic import BaseModel, Field
