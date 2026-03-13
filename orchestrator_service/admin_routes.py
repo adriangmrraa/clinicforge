@@ -1704,7 +1704,7 @@ async def get_clinic_settings(resolved_tenant_id: int = Depends(get_resolved_ten
         if not row:
             return _fallback_clinic_settings()
         config = row["config"] or {}
-        ui_lang = (config.get("ui_language") or "en") if isinstance(config, dict) else "en"
+        ui_lang = (config.get("ui_language") or "es") if isinstance(config, dict) else "es"
         return {
             "name": row["clinic_name"] or os.getenv("CLINIC_NAME", "Clínica Dental"),
             "location": os.getenv("CLINIC_LOCATION", ""),
@@ -1728,7 +1728,7 @@ def _fallback_clinic_settings():
         "hours_end": os.getenv("CLINIC_HOURS_END", "19:00"),
         "working_days": [0, 1, 2, 3, 4, 5],
         "time_zone": "America/Argentina/Buenos_Aires",
-        "ui_language": "en",
+        "ui_language": "es",
     }
 
 

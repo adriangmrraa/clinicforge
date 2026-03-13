@@ -354,8 +354,12 @@ export default function AgendaView() {
 
   // FIX 2: Memoized filtered appointments and blocks
   const filteredAppointments = useMemo(() => {
-    if (!selectedProfessionalId || selectedProfessionalId === 'all') return appointments;
-    return appointments.filter((apt: Appointment) => apt.professional_id.toString() === selectedProfessionalId);
+    let list = appointments;
+    // Filtrar cancelados (Protocolo Platinum: no molestar visualmente)
+    list = list.filter((apt: Appointment) => apt.status !== 'cancelled');
+    
+    if (!selectedProfessionalId || selectedProfessionalId === 'all') return list;
+    return list.filter((apt: Appointment) => apt.professional_id.toString() === selectedProfessionalId);
   }, [appointments, selectedProfessionalId]);
 
   const filteredBlocks = useMemo(() => {
@@ -509,9 +513,10 @@ export default function AgendaView() {
   };
 
   const handleDelete = async (id: string) => {
+    if (!window.confirm(t('agenda.confirm_delete'))) return;
     try {
-      // Soft delete/cancel
-      await api.put(`/admin/appointments/${id}/status`, { status: 'cancelled' });
+      // Borrado físico (Protocolo Platinum: limpieza total de agenda)
+      await api.delete(`/admin/appointments/${id}`);
       await fetchData();
       setShowModal(false);
     } catch (error) {
