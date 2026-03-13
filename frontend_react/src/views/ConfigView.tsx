@@ -56,13 +56,12 @@ interface IntegrationConfig {
 }
 
 export default function ConfigView() {
-    const { t, setLanguage } = useTranslation();
+    const { t, language, setLanguage } = useTranslation();
     const { user } = useAuth();
     const [activeTab, setActiveTab] = useState<'general' | 'ycloud' | 'chatwoot' | 'others' | 'maintenance' | 'leads'>('general');
 
     // General Settings State
     const [settings, setSettings] = useState<ClinicSettings | null>(null);
-    const [selectedLang, setSelectedLang] = useState<UiLanguage>('en');
 
     // Data State
     const [tenants, setTenants] = useState<Tenant[]>([]);
@@ -107,7 +106,6 @@ export default function ConfigView() {
             setLoading(true);
             const res = await api.get<ClinicSettings>('/admin/settings/clinic');
             setSettings(res.data);
-            setSelectedLang((res.data.ui_language as UiLanguage) || 'en');
         } catch (err) {
             console.error(err);
         } finally {
@@ -167,7 +165,6 @@ export default function ConfigView() {
     // --- HANDLERS ---
 
     const handleLanguageChange = async (value: UiLanguage) => {
-        setSelectedLang(value);
         setSaving(true);
         try {
             await api.patch('/admin/settings/clinic', { ui_language: value });
@@ -186,10 +183,10 @@ export default function ConfigView() {
         setError(null);
         try {
             await api.post(`/admin/integrations/${intConfig.provider}/config`, intConfig);
-            showSuccess(`Configuración de ${intConfig.provider === 'ycloud' ? 'WhatsApp' : 'Chatwoot'} guardada.`);
+            showSuccess(t('config.saved_integration', { provider: intConfig.provider === 'ycloud' ? 'WhatsApp' : 'Chatwoot' }));
             loadCredentials(); // Refresh table
         } catch (err: any) {
-            setError(err.message || "Error al guardar integración.");
+            setError(err.message || t('config.save_integration_error'));
         } finally {
             setSaving(false);
         }
@@ -205,33 +202,33 @@ export default function ConfigView() {
             }
             setIsCredModalOpen(false);
             loadCredentials();
-            showSuccess("Credencial guardada.");
+            showSuccess(t('config.credential_saved'));
         } catch (e: any) {
-            alert('Error: ' + e.message);
+            alert(t('config.error_prefix') + e.message);
         }
     };
 
     const handleCleanMedia = async (days: number) => {
-        if (!confirm(`¿Estás seguro de que deseas eliminar los archivos multimedia con más de ${days} días de antigüedad? Esta acción es irreversible.`)) return;
+        if (!confirm(t('config.confirm_clean_media', { days }))) return;
         setSaving(true);
         try {
             const { data } = await api.post('/admin/maintenance/clean-media', { days });
-            showSuccess(`Limpieza completada. Se eliminaron ${data.deleted} archivos.`);
+            showSuccess(t('config.clean_media_success', { count: data.deleted }));
         } catch (err: any) {
-            setError(err.message || "Error al realizar limpieza.");
+            setError(err.message || t('config.clean_media_error'));
         } finally {
             setSaving(false);
         }
     };
 
     const handleDeleteCredential = async (id: number) => {
-        if (!confirm('¿Eliminar esta credencial?')) return;
+        if (!confirm(t('config.confirm_delete_credential'))) return;
         try {
             await api.delete(`/admin/credentials/${id}`);
             loadCredentials();
-            showSuccess("Credencial eliminada.");
+            showSuccess(t('config.credential_deleted'));
         } catch (e: any) {
-            alert('Error: ' + e.message);
+            alert(t('config.error_prefix') + e.message);
         }
     };
 
@@ -242,15 +239,15 @@ export default function ConfigView() {
 
     const copyToClipboard = (text: string) => {
         navigator.clipboard.writeText(text);
-        showSuccess('Copiado al portapapeles');
+        showSuccess(t('common.copied'));
     };
 
     // --- RENDER HELPERS ---
 
     const getTenantName = (id: number | null | undefined) => {
-        if (!id) return "Global";
-        const t = tenants.find(t => t.id === id);
-        return t ? t.clinic_name : `ID: ${id}`;
+        if (!id) return t('config.scope_global');
+        const tenant = tenants.find(ten => ten.id === id);
+        return tenant ? tenant.clinic_name : `ID: ${id}`;
     }
 
     // --- TABS CONTENT ---
@@ -269,12 +266,12 @@ export default function ConfigView() {
                             key={opt.value}
                             onClick={() => handleLanguageChange(opt.value)}
                             disabled={saving}
-                            className={`px-4 py-2.5 rounded-xl font-medium transition-colors border-2 min-h-[44px] ${selectedLang === opt.value
+                            className={`px-4 py-2.5 rounded-xl font-medium transition-colors border-2 min-h-[44px] ${language === opt.value
                                 ? 'border-blue-600 bg-blue-50 text-blue-700'
                                 : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50'
                                 }`}
                         >
-                            {saving && selectedLang === opt.value ? <Loader2 className="w-5 h-5 animate-spin" /> : t(opt.labelKey)}
+                            {saving && language === opt.value ? <Loader2 className="w-5 h-5 animate-spin" /> : t(opt.labelKey)}
                         </button>
                     ))}
                 </div>
@@ -383,14 +380,14 @@ export default function ConfigView() {
                                                 <button
                                                     onClick={() => setIntConfig({ ...intConfig, tenant_id: c.tenant_id || null })}
                                                     className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors border border-transparent hover:border-indigo-100"
-                                                    title="Editar"
+                                                    title={t('common.edit')}
                                                 >
                                                     <Edit2 size={16} />
                                                 </button>
                                                 <button
                                                     onClick={() => handleDeleteCredential(c.id!)}
                                                     className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors border border-transparent hover:border-rose-100"
-                                                    title="Eliminar"
+                                                    title={t('common.delete')}
                                                 >
                                                     <Trash2 size={16} />
                                                 </button>
@@ -512,14 +509,14 @@ export default function ConfigView() {
                                                 <button
                                                     onClick={() => setIntConfig({ ...intConfig, tenant_id: c.tenant_id || null })}
                                                     className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors border border-transparent hover:border-indigo-100"
-                                                    title="Editar"
+                                                    title={t('common.edit')}
                                                 >
                                                     <Edit2 size={16} />
                                                 </button>
                                                 <button
                                                     onClick={() => handleDeleteCredential(c.id!)}
                                                     className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors border border-transparent hover:border-rose-100"
-                                                    title="Eliminar"
+                                                    title={t('common.delete')}
                                                 >
                                                     <Trash2 size={16} />
                                                 </button>
@@ -550,7 +547,7 @@ export default function ConfigView() {
                     onClick={() => { setEditingCred(null); setCredForm({ name: '', value: '', category: 'openai', description: '', scope: 'global', tenant_id: null }); setIsCredModalOpen(true); }}
                     className="px-4 py-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 flex items-center gap-2 font-medium"
                 >
-                    <Plus size={18} /> Nueva
+                    <Plus size={18} /> {t('common.new')}
                 </button>
             </div>
 
@@ -562,7 +559,7 @@ export default function ConfigView() {
                             <div>
                                 <h4 className="font-semibold text-gray-800 leading-tight">{cred.name}</h4>
                                 <span className="inline-flex items-center gap-1.5 mt-1 px-2 py-0.5 rounded-md bg-gray-100 text-xs text-gray-600 font-medium lowercase">
-                                    {cred.category} • {cred.scope === 'global' ? 'Global' : getTenantName(cred.tenant_id)}
+                                    {cred.category} • {cred.scope === 'global' ? t('config.scope_global') : getTenantName(cred.tenant_id)}
                                 </span>
                             </div>
                             <div className="flex gap-1 group-hover:opacity-100 opacity-0 transition-opacity">

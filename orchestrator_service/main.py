@@ -38,7 +38,7 @@ from admin_routes import router as admin_router
 from auth_routes import router as auth_router
 from routes import chat_webhooks, chat_api, meta_auth, marketing
 from email_service import email_service
-from services.automation_service import automation_service
+# from services.automation_service import automation_service # Deprecated: reemplazado por jobs/
 from core.security_middleware import SecurityHeadersMiddleware
 from core.prompt_security import detect_prompt_injection, sanitize_input
 from services.vision_service import process_vision_task
@@ -683,9 +683,12 @@ async def check_availability(date_query: str, professional_name: Optional[str] =
 @tool
 async def book_appointment(date_time: str, treatment_reason: str, 
                          first_name: Optional[str] = None, last_name: Optional[str] = None, 
-                         dni: Optional[str] = None, birth_date: Optional[str] = None,
-                         email: Optional[str] = None, city: Optional[str] = None,
+                         dni: Optional[str] = None,
+                         birth_date: Optional[str] = None,
+                         email: Optional[str] = None,
+                         city: Optional[str] = None,
                          acquisition_source: Optional[str] = None,
+                         duration_minutes: Optional[int] = 30,
                          professional_name: Optional[str] = None):
     """
     Registra un turno en la BD. 
@@ -693,21 +696,19 @@ async def book_appointment(date_time: str, treatment_reason: str,
     1. Nombre (first_name)
     2. Apellido (last_name) 
     3. DNI (solo números)
-    4. Fecha de nacimiento (formato DD/MM/AAAA)
-    5. Email
-    6. Ciudad/Barrio (city)
-    7. Cómo nos conoció (acquisition_source: Instagram, Google, Referido, Otro)
     
-    Si faltan estos datos en un usuario nuevo, el turno será rechazado.
+    NO ES OBLIGATORIO pedir fecha de nacimiento, email, ciudad o cómo nos conoció. Dejalos vacíos si el paciente no los proporciona, el personal de recepción los completará luego. No insistas pidiendo estos últimos 4 datos si el paciente quiere agendar rápido.
     
-    date_time: Fecha y hora en un solo string (ej: 'miércoles 17:00', 'miércoles 17 hs', 'mañana 14:00').
+    date_time: Fecha y hora en un solo string (ej: 'miércoles 17:00').
     treatment_reason: Nombre del tratamiento tal como en list_services (ej. limpieza profunda, consulta).
-    first_name, last_name: Nombre y apellido por separado (ej. Adrian / Rodolfo Argañaraz).
-    birth_date: Fecha de nacimiento en formato DD/MM/AAAA (ej. 15/05/1990).
-    email: Email del paciente para comunicación.
-    city: Ciudad o barrio donde vive el paciente.
-    acquisition_source: Cómo nos conoció (Instagram, Google, Referido, Otro).
-    professional_name: (Opcional) Nombre del profesional (ej. Facundo).
+    first_name, last_name: Nombre y apellido por separado.
+    dni: Documento (solo números).
+    birth_date: (Opcional) Fecha de nacimiento DD/MM/AAAA.
+    email: (Opcional) Email del paciente.
+    city: (Opcional) Ciudad o barrio.
+    acquisition_source: (Opcional) Cómo nos conoció.
+    duration_minutes: (Opcional) Duración del turno en minutos. Por defecto 30 minutos.
+    professional_name: (Opcional) Nombre del profesional.
     """
     phone = current_customer_phone.get()
     if not phone:
@@ -725,21 +726,28 @@ async def book_appointment(date_time: str, treatment_reason: str,
         
         # Procesar fecha de nacimiento (formato DD/MM/AAAA)
         birth_date_parsed = None
-        if birth_date:
+        if birth_date and str(birth_date).strip() not in ["00/00/0000", "0", "None", "null", ""]:
             try:
                 # Parsear fecha en formato DD/MM/AAAA
-                day, month, year = map(int, birth_date.split('/'))
+                day, month, year = map(int, str(birth_date).split('/'))
                 birth_date_parsed = date(year, month, day)
             except (ValueError, AttributeError):
-                return "❌ Error: Formato de fecha de nacimiento inválido. Usá DD/MM/AAAA (ej. 15/05/1990)."
+                # En lugar de fallar, logueamos el error y dejamos NULL, la IA ya confirmó turno.
+                logger.warning(f"⚠️ Fecha de nac inválida omitida: {birth_date}")
         
         # Procesar email
         email_clean = str(email).strip().lower() if email else None
-        if email_clean and not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', email_clean):
-            return "❌ Error: Email inválido. Proporcioná un email válido."
+        if email_clean in ["sin_email@placeholder.com", "none", "null", "", "a_confirmar@placeholder.com"]:
+            email_clean = None
+        elif email_clean and not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', email_clean):
+            # En lugar de fallar, lo omitimos para no detener turno
+            logger.warning(f"⚠️ Email inválido omitido: {email_clean}")
+            email_clean = None
         
-        # Procesar ciudad
+        # Procesar ciudad (Placeholder "Neuquén", "a_confirmar")
         city_clean = str(city).strip() if city else None
+        if city_clean and city_clean.lower() in ["neuquén", "neuquen", "a_confirmar", "none", "null", "sin especificar"]:
+            city_clean = None
         
         # Procesar fuente de adquisición
         acquisition_source_clean = str(acquisition_source).strip().upper() if acquisition_source else None
@@ -767,16 +775,33 @@ async def book_appointment(date_time: str, treatment_reason: str,
              return "❌ Error Técnico: LASTNAME_TOO_SHORT. El apellido provisto es demasiado corto. Pedí el apellido completo."
         # -----------------------------------------------
 
-        t_data = await db.pool.fetchrow("""
-            SELECT code, default_duration_minutes FROM treatment_types
-            WHERE tenant_id = $1 AND (name ILIKE $2 OR code ILIKE $2) AND is_active = true AND is_available_for_booking = true
-            LIMIT 1
-        """, tenant_id, f"%{treatment_reason}%")
-        if not t_data:
-            return "❌ Ese tratamiento no está disponible en esta clínica. Los únicos que se pueden agendar son los que devuelve la tool 'list_services'. Llamá a list_services y ofrecé solo esos al paciente; si pide otro, decile que en esta sede solo se agendan los de esa lista."
-        duration = t_data["default_duration_minutes"]
-        treatment_code = t_data["code"]
-        end_apt = apt_datetime + timedelta(minutes=duration)
+        # Use provided duration_minutes if available, otherwise fetch from treatment_types
+        final_duration = duration_minutes
+        if treatment_reason and (final_duration is None or final_duration == 30): # If default 30 or not provided, try to get from treatment
+            t_data = await db.pool.fetchrow("""
+                SELECT code, default_duration_minutes FROM treatment_types
+                WHERE tenant_id = $1 AND (name ILIKE $2 OR code ILIKE $2) AND is_active = true AND is_available_for_booking = true
+                LIMIT 1
+            """, tenant_id, f"%{treatment_reason}%")
+            if not t_data:
+                return "❌ Ese tratamiento no está disponible en esta clínica. Los únicos que se pueden agendar son los que devuelve la tool 'list_services'. Llamá a list_services y ofrecé solo esos al paciente; si pide otro, decile que en esta sede solo se agendan los de esa lista."
+            final_duration = t_data["default_duration_minutes"]
+            treatment_code = t_data["code"]
+        elif treatment_reason: # If treatment_reason is provided and duration_minutes is also provided and not default
+            t_data = await db.pool.fetchrow("""
+                SELECT code FROM treatment_types
+                WHERE tenant_id = $1 AND (name ILIKE $2 OR code ILIKE $2) AND is_active = true AND is_available_for_booking = true
+                LIMIT 1
+            """, tenant_id, f"%{treatment_reason}%")
+            if not t_data:
+                return "❌ Ese tratamiento no está disponible en esta clínica. Los únicos que se pueden agendar son los que devuelve la tool 'list_services'. Llamá a list_services y ofrecé solo esos al paciente; si pide otro, decile que en esta sede solo se agendan los de esa lista."
+            treatment_code = t_data["code"]
+        else: # No treatment_reason, use default duration or provided duration_minutes
+            treatment_code = "CONSULTA" # Default treatment code if not specified
+            if final_duration is None:
+                final_duration = 30 # Fallback if no treatment and no duration_minutes
+
+        end_apt = apt_datetime + timedelta(minutes=final_duration)
 
         # 2. Verificar/Crear paciente (aislado por tenant)
         existing_patient = await db.pool.fetchrow(
@@ -806,18 +831,14 @@ async def book_appointment(date_time: str, treatment_reason: str,
             required_fields = [
                 ("Nombre", first_name),
                 ("Apellido", last_name),
-                ("DNI", dni),
-                ("Fecha de nacimiento", birth_date),
-                ("Email", email),
-                ("Ciudad/Barrio", city),
-                ("Cómo nos conoció", acquisition_source)
+                ("DNI", dni)
             ]
             
             missing_fields = [field_name for field_name, field_value in required_fields if not field_value]
             
             if missing_fields:
                 fields_list = ", ".join(missing_fields)
-                return f"❌ Para agendar por primera vez necesito: {fields_list}. Formato esperado: Nombre y Apellido por separado; DNI solo números; Fecha de nacimiento DD/MM/AAAA; Email válido; Ciudad/Barrio; Cómo nos conoció (Instagram, Google, Referido, Otro)."
+                return f"❌ Para agendar por primera vez necesito: {fields_list}. Formato esperado: Nombre y Apellido por separado; DNI solo números."
             
             # Crear nuevo paciente con todos los datos de admisión
             # Nota: insurance_provider se deja como NULL (clínica particular)
@@ -917,13 +938,13 @@ async def book_appointment(date_time: str, treatment_reason: str,
                 break
 
         if not target_prof:
-            return f"❌ Lo siento, no hay disponibilidad a las {apt_datetime.strftime('%H:%M')} para el tratamiento de {duration} min. ¿Probamos otro horario?"
+            return f"❌ Lo siento, no hay disponibilidad a las {apt_datetime.strftime('%H:%M')} para el tratamiento de {final_duration} min. ¿Probamos otro horario?"
 
         apt_id = str(uuid.uuid4())
         await db.pool.execute("""
             INSERT INTO appointments (id, tenant_id, patient_id, professional_id, appointment_datetime, duration_minutes, appointment_type, status, source, created_at)
             VALUES ($1, $2, $3, $4, $5, $6, $7, 'scheduled', 'ai', NOW())
-        """, apt_id, tenant_id, patient_id, target_prof["id"], apt_datetime, duration, treatment_code)
+        """, apt_id, tenant_id, patient_id, target_prof["id"], apt_datetime, final_duration, treatment_code)
 
         if calendar_provider == "google" and target_prof.get("google_calendar_id"):
             try:
@@ -953,7 +974,7 @@ async def book_appointment(date_time: str, treatment_reason: str,
 
         dias = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
         dia_nombre = dias[apt_datetime.weekday()]
-        return f"✅ ¡Turno confirmado con el/la Dr/a. {target_prof['first_name']}! {dia_nombre} {apt_datetime.strftime('%d/%m')} a las {apt_datetime.strftime('%H:%M')} ({duration} min)."
+        return f"✅ ¡Turno confirmado con el/la Dr/a. {target_prof['first_name']}! {dia_nombre} {apt_datetime.strftime('%d/%m')} a las {apt_datetime.strftime('%H:%M')} ({final_duration} min)."
 
     except Exception as e:
         import traceback
@@ -1248,6 +1269,8 @@ async def reschedule_appointment(original_date: str, new_date_time: str):
                 appointment_datetime = $1,
                 google_calendar_event_id = COALESCE($2, google_calendar_event_id),
                 google_calendar_sync_status = $3,
+                reminder_sent = false,
+                reminder_sent_at = NULL,
                 updated_at = NOW()
             WHERE id = $4
         """, new_dt, new_gcal["id"] if new_gcal else None, sync_status, apt["id"])
@@ -1600,6 +1623,27 @@ IDENTIDAD Y TONO (ESTRICTO):
 • PERSONALIDAD: Sos una persona real, cálida, que se preocupa por el paciente. 
 • CERCANÍA: Si el paciente está de acuerdo, usá su nombre. Generá confianza y curiosidad sobre su salud bucal.
 
+INFORMACIÓN DEL CONSULTORIO (OBLIGATORIA — RESPONDER SIEMPRE QUE SE PREGUNTE):
+• Dirección: Calle Córdoba 431, Neuquén Capital.
+• Google Maps: https://maps.google.com/?q=Calle+Córdoba+431+Neuquén+Capital
+• REGLA CRÍTICA: Si el paciente pregunta dónde están, la dirección, cómo llegar o cualquier variante de ubicación, SIEMPRE respondé con la dirección y el link de Maps. NUNCA digas que no podés brindar esa información.
+• Horarios de atención:
+  - Lunes: 13:00 a 19:00
+  - Martes: 10:00 a 17:00
+  - Miércoles: 12:00 a 18:00
+  - Jueves: 10:00 a 17:00
+  - Viernes: 14:00 a 19:00
+  - Sábados y Domingos: CERRADO
+
+REGLA ANTI-REPETICIÓN DE CONTEXTO (CRÍTICO — ERROR GRAVE NO CUMPLIRLA):
+• Mantené internamente el estado de cada conversación: qué tratamiento dijo el paciente, qué día prefirió, qué hora eligió.
+• NUNCA volvás a preguntar algo que el paciente ya respondió en la misma conversación.
+• Ejemplos de lo que NO hay que hacer:
+  - El paciente dijo "blanqueamiento" → el agente NO debe preguntar "qué tratamiento necesitás?"
+  - El paciente dijo "el lunes" → el agente NO debe preguntar "para qué día querés el turno?"
+  - El paciente ya eligió horario → el agente NO debe volver a consultar disponibilidad.
+• Si el paciente ya mencionó el tratamiento al inicio, saltá directo a consultar disponibilidad (PASO 3).
+
 HORARIOS BASE (ESTRICTO - NO INVENTAR):
 • Lunes: 13:00 a 19:00
 • Martes: 10:00 a 17:00
@@ -1645,52 +1689,61 @@ FAQs OBLIGATORIAS (RESPUESTAS ESTRICTAS - NO ALUCINAR OTRAS POLÍTICAS):
 • Resultado natural: "Sí. El enfoque de la Dra. está en lograr resultados en armonía con tu rostro y edad. Todo se planifica de forma personalizada."
 • Necesito estudios previos: "Para implantes o cirugías generalmente se requiere tomografía. La Dra. te indica exactamente qué necesitás en la primera consulta."
 
-REGLA DE ORO DE ADMISIÓN (INQUEBRANTABLE): Los datos personales (Nombre, Apellido, DNI, Fecha de Nacimiento, Email, Ciudad, Cómo nos conoció) se deben pedir DE A UNO POR MENSAJE para que la conversación sea natural. NUNCA envíes una lista de preguntas juntas. Cada dato debe ser una interacción separada.
+REGLA DE ORO DE ADMISIÓN — DATOS MÍNIMOS (INQUEBRANTABLE):
+Para agendar un turno solo se necesitan 3 datos esenciales. El teléfono ya lo tenemos por WhatsApp.
+• Nombre y Apellido (de a uno por mensaje)
+• DNI (solo los números)
+Los demás datos (fecha de nacimiento, email, ciudad, cómo nos conoció) son OPCIONALES y se completan en el consultorio. NO los pidas salvo que el paciente esté dispuesto a darlos. NUNCA envíes una lista de preguntas juntas — cada dato es una interacción separada.
 
 FLUJO DE AGENDAMIENTO Y ADMISIÓN (ORDEN ESTRICTO - PASO A PASO):
 PASO 1: SALUDO E IDENTIDAD - En el primer mensaje, presentate como secretaria virtual de la Dra. María Laura Delgado.
-PASO 2: DEFINIR SERVICIO - Asegurate de tener claro qué tratamiento busca. Si no lo dijo, preguntalo. Sin servicio definido no se puede consultar disponibilidad.
+PASO 2: DEFINIR SERVICIO - Asegurate de tener claro qué tratamiento busca. Si el paciente ya lo dijo, NO lo volvás a preguntar. Sin servicio definido no se puede consultar disponibilidad.
 PASO 3: CONSULTAR DISPONIBILIDAD - Llamá 'check_availability' UNA vez con date_query, treatment_name y (si pidieron tarde o mañana) time_preference='tarde' o 'mañana'. La tool devuelve rangos tipo "de 09:00 a 12:00 y de 14:00 a 17:00". Transmití eso al paciente en un solo mensaje.
-PASO 4: PROFESIONAL - Preguntá "¿Tenés preferencia por algún profesional o buscamos el primer disponible?" Si tiene preferencia, usá 'check_availability' con professional_name; si no, llamá 'check_availability' sin professional_name.
-PASO 5: DATOS DE ADMISIÓN (PACIENTES NUEVOS) - Cuando el paciente elija día y hora, INICIÁ EL PROCESO DE ADMISIÓN DE A UN DATO POR MENSAJE:
-   a) "¿Cómo te llamás?" (esperá respuesta, luego preguntá)
-   b) "¿Y tu apellido?" (esperá respuesta, luego preguntá)
-   c) "¿Tu DNI? (solo los números)" (esperá respuesta, luego preguntá)
-   d) "¿Fecha de nacimiento? (formato DD/MM/AAAA)" (esperá respuesta, luego preguntá)
-   e) "¿Email para contacto?" (esperá respuesta, luego preguntá)
-   f) "¿En qué ciudad/barrio vivís?" (esperá respuesta, luego preguntá)
-   g) "¿Cómo nos conociste? (Instagram, Google, Referido, Otro)" (esperá respuesta)
-PASO 6: AGENDAR - Solo cuando tengas: servicio, fecha/hora elegidos, y los 7 datos completos, ejecutá 'book_appointment'.
-PASO 7: ANAMNESIS - Inmediatamente después de agendar exitosamente, decí: "¡Listo! Ya tenemos tu ficha. Ahora te hago unas preguntas de salud..." e iniciá el cuestionario DE A UNA PREGUNTA POR MENSAJE:
-   a) "¿Tenés alguna enfermedad de base? (hipertensión, diabetes, etc.)" (esperá respuesta, luego preguntá)
-   b) "¿Tomás alguna medicación habitualmente?" (esperá respuesta, luego preguntá)
-   c) "¿Tenés alergias conocidas?" (esperá respuesta, luego preguntá)
-   d) "¿Te hiciste alguna cirugía previa?" (esperá respuesta, luego preguntá)
-   e) "¿Sos fumador/a?" (si dice Sí, preguntá cantidad) (esperá respuesta, luego preguntá)
-   f) "¿Estás embarazada o en período de lactancia?" (esperá respuesta, luego preguntá)
-   g) "¿Tuviste experiencias negativas previas en odontología?" (esperá respuesta, luego preguntá)
-   h) "¿Tenés algún miedo específico relacionado con tratamientos dentales?" (esperá respuesta)
-PASO 8: GUARDAR ANAMNESIS - Con todas las respuestas, ejecutá 'save_patient_anamnesis'.
+PASO 4: PROFESIONAL (OBLIGATORIO) - NUNCA agendes un turno sin un profesional. Preguntá "Tenés preferencia por algún profesional o buscamos el primer disponible?" Si tiene preferencia, usá 'check_availability' con professional_name; si no, llamá 'check_availability' sin professional_name. Si por algún motivo no hay profesionales disponibles, informalo, pero NUNCA dejes el campo vacío al agendar.
+PASO 5: DATOS DE ADMISIÓN MÍNIMOS (PACIENTES NUEVOS) - Cuando el paciente elija día y hora, pedí DE A UN DATO POR MENSAJE solo los 3 esenciales:
+   a) "Cómo te llamás?" (esperá respuesta, luego preguntá)
+   b) "Y tu apellido?" (esperá respuesta, luego preguntá)
+   c) "Tu DNI? (solo los números)" (esperá respuesta)
+   NOTA: Si el paciente ya dio alguno de estos datos antes en la conversación, NO lo volvás a pedir.
+   DATO EXTRA OPCIONAL: Si la conversación lo permite naturalmente, podés preguntar la fecha de nacimiento. El resto (email, ciudad, cómo nos conociste) se completa en el consultorio.
+PASO 6: AGENDAR - Con servicio, fecha/hora, nombre, apellido y DNI ejecutá 'book_appointment'. Si la tool pide más campos (birth_date, email, city, acquisition_source), usá valores placeholder como "a_confirmar" y completá lo que tenés.
+PASO 7: CONFIRMACIÓN DEL TURNO (OBLIGATORIA) - Inmediatamente después de que 'book_appointment' confirme el turno, enviá este mensaje de confirmación completo:
+   "Perfecto [Nombre]! Tu turno para [Tratamiento] quedó agendado para el [día] a las [hora] hs con la Dra. María Laura Delgado.
+   Te esperamos en 📍 Calle Córdoba 431, Neuquén Capital.
+   🗺️ https://maps.google.com/?q=Calle+Córdoba+431+Neuquén+Capital
+   Te vamos a enviar un recordatorio antes del turno. Cualquier cambio avisanos por acá. Cuídate mucho! 😊"
+PASO 8: ANAMNESIS - Inmediatamente después del mensaje de confirmación, decí: "Antes de terminar, te hago unas preguntas de salud para que la Dra. tenga todo listo..." e iniciá el cuestionario DE A UNA PREGUNTA POR MENSAJE:
+   a) "Tenés alguna enfermedad de base? (hipertensión, diabetes, etc.)" (esperá respuesta, luego preguntá)
+   b) "Tomás alguna medicación habitualmente?" (esperá respuesta, luego preguntá)
+   c) "Tenés alergias conocidas?" (esperá respuesta, luego preguntá)
+   d) "Te hiciste alguna cirugía previa?" (esperá respuesta, luego preguntá)
+   e) "Sos fumador/a?" (si dice Sí, preguntá cantidad) (esperá respuesta, luego preguntá)
+   f) "Estás embarazada o en período de lactancia?" (esperá respuesta, luego preguntá)
+   g) "Tuviste experiencias negativas previas en odontología?" (esperá respuesta, luego preguntá)
+   h) "Tenés algún miedo específico relacionado con tratamientos dentales?" (esperá respuesta)
+PASO 9: GUARDAR ANAMNESIS - Con todas las respuestas, ejecutá 'save_patient_anamnesis'.
 
-PACIENTES EXISTENTES: Solo necesitan PASO 1-4 y PASO 6 (con fecha/hora y tratamiento).
+PACIENTES EXISTENTES: Solo necesitan PASO 1-4 y PASO 6-7 (con fecha/hora y tratamiento). NO pides datos de admisión ni anamnesis.
 
-GESTIÓN DE TURNOS EXISTENTES: Si preguntan "¿tengo turno?", "¿cuándo es mi próximo turno?" usá 'list_my_appointments'. Para cancelar: 'cancel_appointment'. Para reprogramar: 'reschedule_appointment'.
+GESTIÓN DE TURNOS EXISTENTES: Si preguntan "tengo turno?", "cuándo es mi próximo turno?" usá 'list_my_appointments'. 
+Para cancelar: 'cancel_appointment'. 
+Para reprogramar: 'reschedule_appointment'. Al reprogramar, debés ser empática y natural (ej: "No hay problema, ¡lo cambiamos! ¿Para cuándo te quedaría mejor?"). Identificá el turno actual usando 'list_my_appointments' si es necesario, y luego aplicá el cambio solicitado (solo fecha, solo hora, o ambos).
 
 FORMATO CANÓNICO AL LLAMAR TOOLS (español e inglés): Antes de llamar cualquier tool, traducí lo que dijo el usuario al formato que la tool espera. Para 'book_appointment' siempre enviá:
 • date_time: "día de la semana" + espacio + hora en 24h con :00 si no hay minutos. Ejemplos: miércoles 17:00, tomorrow 14:00, Wednesday 17:00. Si el usuario dice "5 pm" o "17 hs", convertí a 24h (17:00).
 • first_name y last_name: Por separado. Si solo da un nombre, usá first_name y pedí el apellido si la tool lo exige para pacientes nuevos.
 • dni: Solo dígitos, sin puntos ni espacios (ej. 40989310).
-• birth_date: Fecha de nacimiento en formato DD/MM/AAAA (ej. 15/05/1990).
-• email: Email válido del paciente.
-• city: Ciudad o barrio donde vive el paciente.
-• acquisition_source: Cómo nos conoció (Instagram, Google, Referido, Otro).
+• birth_date: Fecha de nacimiento en formato DD/MM/AAAA (ej. 15/05/1990). Si no lo tenés, usá "00/00/0000" como placeholder.
+• email: Email válido del paciente. Si no lo tenés, usá "sin_email@placeholder.com".
+• city: Ciudad o barrio donde vive el paciente. Si no lo tenés, usá "Neuquén".
+• acquisition_source: Cómo nos conoció (Instagram, Google, Referido, Otro). Si no lo tenés, usá "Sin especificar".
 • treatment_reason: Nombre exacto como en la respuesta de list_services (ej. Limpieza Profunda, consulta).
 
 NUNCA DAR POR PERDIDA UNA RESERVA: Si una tool devuelve un mensaje que empiece con ❌ o ⚠️, interpretalo como error de formato o validación. Debés leer el mensaje, corregir el parámetro indicado según el formato canónico anterior y volver a llamar la misma tool. No digas al paciente "no pude procesar" sin haber reintentado al menos una vez. Solo si tras el reintento la tool sigue fallando, pedí al paciente que repita el dato concreto o ofrecé derivación.
 
-REQUISITOS DE 'book_appointment' PARA PACIENTES NUEVOS: date_time, treatment_reason, first_name, last_name, dni, birth_date, email, city, acquisition_source (professional_name opcional). Si faltan datos, la tool te lo indica; pedilos y volvé a intentar. Para pacientes existentes, solo se requieren date_time y treatment_reason.
+REQUISITOS DE 'book_appointment' PARA PACIENTES NUEVOS: date_time, treatment_reason, first_name, last_name, dni son OBLIGATORIOS. Los demás (birth_date, email, city, acquisition_source) usá placeholders si no los tenés. Para pacientes existentes, solo se requieren date_time y treatment_reason.
 
-FLUJO DE ANAMNESIS PARA PACIENTES NUEVOS: Después de agendar exitosamente con 'book_appointment', DEBÉS decir "¡Listo! Ya tenemos tu ficha. Ahora te hago unas preguntas de salud..." y hacer las preguntas DE A UNA POR MENSAJE en este orden: enfermedades de base, medicación habitual, alergias, cirugías previas, si es fumador (y cantidad si aplica), embarazo/lactancia, experiencias negativas previas, miedos específicos. Finalmente ejecutá 'save_patient_anamnesis'. Esta tool es OBLIGATORIA para completar el registro médico.
+FLUJO DE ANAMNESIS PARA PACIENTES NUEVOS: Después del mensaje de confirmación del turno, DEBÉS decir "Antes de terminar, te hago unas preguntas de salud para que la Dra. tenga todo listo..." y hacer las preguntas DE A UNA POR MENSAJE en este orden: enfermedades de base, medicación habitual, alergias, cirugías previas, si es fumador (y cantidad si aplica), embarazo/lactancia, experiencias negativas previas, miedos específicos. Finalmente ejecutá 'save_patient_anamnesis'. Esta tool es OBLIGATORIA para completar el registro médico.
 
 SEGUIMIENTO POST-ATENCIÓN (CRÍTICO): Si el paciente responde a un mensaje de seguimiento post-atención (identificado por "seguimiento" en el contexto o metadata), DEBÉS:
 1. Preguntar específicamente por síntomas post-tratamiento
@@ -1705,20 +1758,32 @@ TRIAJE Y URGENCIAS: Ante dolor o accidentes, 'triage_urgency' primero. Si es eme
 
 EJEMPLOS DE CONVERSACIÓN IDEAL:
 
-EJEMPLO 1 — Paciente nuevo pide turno:
-Paciente: "Hola, quiero sacar un turno"
-Bot: "Hola! Soy la secretaria virtual de la Dra. María Laura Delgado, es un gusto saludarte. Para coordinar tu turno, necesito saber: que tratamiento necesitás?"
-Paciente: "Una limpieza"
-Bot: "Perfecto. Para qué día querés el turno?"
+EJEMPLO 1 — Paciente nuevo pide turno (ya menciona el tratamiento):
+Paciente: "Hola, quiero un turno de blanqueamiento"
+Bot: "Hola! Soy la secretaria virtual de la Dra. María Laura Delgado, es un gusto saludarte. Para coordinar tu turno de blanqueamiento, para qué día te queda mejor?"
+[OJO: El agente NO vuelve a preguntar el tratamiento porque el paciente ya lo dijo]
 Paciente: "El martes a la mañana"
-Bot: [llama check_availability] → "Para el martes a la mañana tenemos disponibilidad de 10:00 a 12:00. Tenes preferencia por algún profesional o te asigno el que esté libre?"
-Paciente: "El que esté libre"
-Bot: "Qué horario te queda mejor dentro de ese rango?"
-Paciente: "A las 10"
-Bot: "Perfecto. Necesito algunos datos para tu ficha. Cómo te llamás?"
-[...continúa de a un dato por mensaje hasta completar los 7 campos y luego book_appointment + anamnesis...]
+Bot: [llama check_availability] → "Para el martes a la mañana tenemos disponibilidad de 10:00 a 12:00. Tenés preferencia por algún profesional o te asigno el primero disponible?"
+Paciente: "El que esté libre. A las 10 me queda bien."
+Bot: "Perfecto. Para completar tu ficha necesito unos datos. Cómo te llamás?"
+Paciente: "Lucas"
+Bot: "Y tu apellido, Lucas?"
+Paciente: "Rodríguez"
+Bot: "Tu DNI? (solo los números)"
+Paciente: "35123456"
+Bot: [llama book_appointment] → "Perfecto Lucas! Tu turno para Blanqueamiento BEYOND quedó agendado para el martes a las 10:00 hs con la Dra. María Laura Delgado.
+Te esperamos en 📍 Calle Córdoba 431, Neuquén Capital.
+🗺️ https://maps.google.com/?q=Calle+Córdoba+431+Neuquén+Capital
+Te vamos a enviar un recordatorio antes del turno. Cualquier cambio avisanos por acá. Cuídate mucho! 😊"
+[Continúa con preguntas de anamnesis de a una por mensaje...]
 
-EJEMPLO 2 — Paciente pregunta por servicios y luego por uno específico:
+EJEMPLO 2 — Paciente pregunta por ubicación:
+Paciente: "Me decís dónde están ubicados?"
+Bot: "Claro! Estamos en 📍 Calle Córdoba 431, Neuquén Capital.
+🗺️ https://maps.google.com/?q=Calle+Córdoba+431+Neuquén+Capital
+Si necesitás indicaciones más detalladas, avisame y te ayudo!"
+
+EJEMPLO 3 — Paciente pregunta por servicios y luego por uno específico:
 Paciente: "Qué tratamientos tienen?"
 Bot: [llama list_services] → "Tenemos: Consulta inicial, Implante convencional, Blanqueamiento BEYOND, Extracción simple, Cirugía maxilofacial. Sobre cuál querés más info?"
 Paciente: "El blanqueamiento"
@@ -1764,12 +1829,7 @@ async def lifespan(app: FastAPI):
     await db.connect()
     logger.info(f"✅ Base de datos conectada. Version: {await db.pool.fetchval('SELECT version()')}")
     
-    # ⚠️ DESACTIVADO: Motor de automatización antiguo (Spec 03 / Misión 2)
-    # Reemplazado por nuevo sistema de jobs programados (Marzo 2026)
-    # try:
-    #     await automation_service.start()
-    # except Exception as e:
-    #     logger.error(f"❌ Falló el inicio de AutomationService: {e}")
+    # await start_automation_service()
     logger.info("✅ Sistema de jobs programados activado (reemplaza AutomationService)")
     
     # Iniciar scheduler de jobs programados
@@ -1799,7 +1859,7 @@ async def lifespan(app: FastAPI):
     logger.info("✅ Desconexión completada")
     
     # ⚠️ DESACTIVADO: Motor de automatización antiguo
-    # await automation_service.stop()
+    # await stop_automation_service()
     logger.info("✅ Sistema de jobs programados detenido")
 
 # OpenAPI / Swagger: documentación de contratos API

@@ -57,15 +57,15 @@ interface LeadsSummary {
   }>;
 }
 
-const STATUS_OPTIONS = [
-  { value: '', label: 'Todos' },
-  { value: 'new', label: 'Nuevo', color: 'bg-blue-100 text-blue-800' },
-  { value: 'contacted', label: 'Contactado', color: 'bg-green-100 text-green-800' },
-  { value: 'consultation_scheduled', label: 'Consulta Agendada', color: 'bg-purple-100 text-purple-800' },
-  { value: 'treatment_planned', label: 'Tratamiento Planificado', color: 'bg-amber-100 text-amber-800' },
-  { value: 'converted', label: 'Convertido', color: 'bg-emerald-100 text-emerald-800' },
-  { value: 'not_interested', label: 'No Interesado', color: 'bg-red-100 text-red-800' },
-  { value: 'spam', label: 'Spam', color: 'bg-gray-100 text-gray-800' },
+const getStatusOptions = (t: any) => [
+  { value: '', label: t('leads.status_all') },
+  { value: 'new', label: t('leads.status_new'), color: 'bg-blue-100 text-blue-800' },
+  { value: 'contacted', label: t('leads.status_contacted'), color: 'bg-green-100 text-green-800' },
+  { value: 'consultation_scheduled', label: t('leads.status_consultation_scheduled'), color: 'bg-purple-100 text-purple-800' },
+  { value: 'treatment_planned', label: t('leads.status_treatment_planned'), color: 'bg-amber-100 text-amber-800' },
+  { value: 'converted', label: t('leads.status_converted'), color: 'bg-emerald-100 text-emerald-800' },
+  { value: 'not_interested', label: t('leads.status_not_interested'), color: 'bg-red-100 text-red-800' },
+  { value: 'spam', label: t('leads.status_spam'), color: 'bg-gray-100 text-gray-800' },
 ];
 
 const STATUS_ICONS: Record<string, React.ReactNode> = {
@@ -219,12 +219,12 @@ export default function LeadsManagementView() {
   };
 
   const getStatusLabel = (status: string) => {
-    const option = STATUS_OPTIONS.find(opt => opt.value === status);
-    return option?.label || status;
+    return t(`leads.status_${status || 'all'}`);
   };
 
   const getStatusColor = (status: string) => {
-    const option = STATUS_OPTIONS.find(opt => opt.value === status);
+    const ST_OPTIONS = getStatusOptions(t);
+    const option = ST_OPTIONS.find(opt => opt.value === status);
     return option?.color || 'bg-gray-100 text-gray-800';
   };
 
@@ -239,7 +239,7 @@ export default function LeadsManagementView() {
         title={t('leads.page_title')}
         subtitle={t('leads.page_subtitle')}
         icon={<Users className="w-6 h-6" />}
-        actions={
+        action={
           <div className="flex flex-wrap gap-2">
             <button
               onClick={() => setShowFilters(!showFilters)}
@@ -340,7 +340,7 @@ export default function LeadsManagementView() {
                   onChange={(e) => setStatusFilter(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 >
-                  {STATUS_OPTIONS.map(option => (
+                  {getStatusOptions(t).map(option => (
                     <option key={option.value} value={option.value}>
                       {option.label}
                     </option>
@@ -820,7 +820,7 @@ export default function LeadsManagementView() {
                 onChange={(e) => setNewStatus(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               >
-                {STATUS_OPTIONS.filter(opt => opt.value).map(option => (
+                {getStatusOptions(t).filter(opt => opt.value).map(option => (
                   <option key={option.value} value={option.value}>
                     {option.label}
                   </option>

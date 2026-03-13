@@ -70,7 +70,7 @@ const TreatmentImagesList = ({ code }: { code: string }) => {
       await fetchImages();
     } catch (e) {
       console.error(e);
-      alert('Error uploading image');
+      alert(t('treatments.error_upload_image'));
     } finally {
       setUploading(false);
       e.target.value = '';
@@ -78,13 +78,13 @@ const TreatmentImagesList = ({ code }: { code: string }) => {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Borrar imagen?')) return;
+    if (!confirm(t('treatments.confirm_delete_image'))) return;
     try {
       await api.delete(`/admin/treatment-types/${code}/images/${id}`);
       await fetchImages();
     } catch (e) {
       console.error(e);
-      alert('Error deleting image');
+      alert(t('treatments.error_delete_image'));
     }
   };
 
@@ -96,20 +96,20 @@ const TreatmentImagesList = ({ code }: { code: string }) => {
     <div className="mt-5 pt-5 border-t border-slate-200/50">
       <div className="flex items-center justify-between mb-4">
         <h4 className="flex items-center gap-2 text-xs font-bold text-slate-400 uppercase tracking-widest">
-          <ImageIcon size={14} className="text-slate-400" /> Adjuntos del Tratamiento
+          <ImageIcon size={14} className="text-slate-400" /> {t('treatments.attachments_title')}
         </h4>
         <label className="cursor-pointer bg-white border border-medical-200 text-medical-600 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider hover:bg-medical-50 transition-colors flex items-center gap-2 shadow-sm">
           {uploading ? <div className="w-3.5 h-3.5 border-2 border-medical-600 border-t-transparent rounded-full animate-spin" /> : <Upload size={14} />}
-          Subir Imagen
+          {t('treatments.upload_image')}
           <input type="file" className="hidden" accept="image/*" onChange={handleUpload} disabled={uploading} />
         </label>
       </div>
 
       {loading ? (
-        <div className="text-xs font-medium text-slate-400">Cargando imágenes...</div>
+        <div className="text-xs font-medium text-slate-400">{t('treatments.loading_images')}</div>
       ) : images.length === 0 ? (
         <div className="text-xs font-medium text-slate-400 bg-slate-50/50 p-4 rounded-xl border border-dashed border-slate-200 text-center flex items-center justify-center gap-2">
-          <ImageIcon size={16} /> Este tratamiento no tiene imágenes configuradas
+          <ImageIcon size={16} /> {t('treatments.no_images')}
         </div>
       ) : (
         <div className="flex gap-4 overflow-x-auto pb-2 custom-scrollbar items-center">
@@ -117,7 +117,7 @@ const TreatmentImagesList = ({ code }: { code: string }) => {
             <div key={img.id} className="relative group shrink-0 w-24 h-24 rounded-xl border border-slate-200 overflow-hidden shadow-sm bg-slate-50">
               <img src={makeImgUrl(img.id)} alt={img.filename} className="w-full h-full object-cover" />
               <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-[2px] opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center">
-                <button onClick={() => handleDelete(img.id)} className="p-2 bg-red-500/90 text-white rounded-xl hover:bg-red-600 shadow-xl active:scale-95 transition-all" title="Borrar">
+                <button onClick={() => handleDelete(img.id)} className="p-2 bg-red-500/90 text-white rounded-xl hover:bg-red-600 shadow-xl active:scale-95 transition-all" title={t('common.delete')}>
                   <Trash2 size={16} />
                 </button>
               </div>
@@ -296,7 +296,7 @@ export default function TreatmentsView() {
               </div>
               <div className="flex flex-col">
                 <span className="text-slate-500 font-medium uppercase text-[10px] tracking-wider">{t('treatments.urgency_consult')}</span>
-                <span className="text-slate-900 font-bold text-lg">15 min</span>
+                <span className="text-slate-900 font-bold text-lg">15 {t('common.minutes_short')}</span>
               </div>
             </div>
             <div className="flex items-center gap-4 p-4 bg-white/60 rounded-2xl border border-white/40 hover:border-medical-200 transition-colors">
@@ -305,7 +305,7 @@ export default function TreatmentsView() {
               </div>
               <div className="flex flex-col">
                 <span className="text-slate-500 font-medium uppercase text-[10px] tracking-wider">{t('treatments.deep_cleaning')}</span>
-                <span className="text-slate-900 font-bold text-lg">30 min</span>
+                <span className="text-slate-900 font-bold text-lg">30 {t('common.minutes_short')}</span>
               </div>
             </div>
             <div className="flex items-center gap-4 p-4 bg-white/60 rounded-2xl border border-white/40 hover:border-medical-200 transition-colors">
@@ -314,7 +314,7 @@ export default function TreatmentsView() {
               </div>
               <div className="flex flex-col">
                 <span className="text-slate-500 font-medium uppercase text-[10px] tracking-wider">{t('treatments.complex_treatment')}</span>
-                <span className="text-slate-900 font-bold text-lg">60 min</span>
+                <span className="text-slate-900 font-bold text-lg">60 {t('common.minutes_short')}</span>
               </div>
             </div>
           </div>
@@ -663,13 +663,13 @@ export default function TreatmentsView() {
                                   <Clock size={14} />
                                 </div>
                                 <span className="text-slate-600 text-sm font-semibold">
-                                  <strong className="text-slate-900 text-base">{treatment.default_duration_minutes}</strong> min <span className="text-slate-400 font-medium">{t('treatments.min_standard')}</span>
+                                  <strong className="text-slate-900 text-base">{treatment.default_duration_minutes}</strong> {t('common.minutes_short')} <span className="text-slate-400 font-medium">{t('treatments.min_standard')}</span>
                                 </span>
                               </div>
                               <div className="h-4 w-px bg-slate-200 hidden sm:block"></div>
                               <div className="flex items-center gap-4 text-xs font-bold text-slate-400 uppercase tracking-tight">
-                                <span>{t('treatments.min_short')}: <span className="text-slate-700">{treatment.min_duration_minutes}m</span></span>
-                                <span>{t('treatments.max_short')}: <span className="text-slate-700">{treatment.max_duration_minutes}m</span></span>
+                               <span>{t('treatments.min_short')}: <span className="text-slate-700">{treatment.min_duration_minutes}{t('common.min_short')}</span></span>
+                                <span>{t('treatments.max_short')}: <span className="text-slate-700">{treatment.max_duration_minutes}{t('common.min_short')}</span></span>
                               </div>
                               {treatment.session_gap_days > 0 && (
                                 <div className="flex items-center gap-2 text-xs font-bold text-purple-500 uppercase tracking-tight">
@@ -727,7 +727,7 @@ export default function TreatmentsView() {
               {t('treatments.setup_first_service')}
             </button>
             <div className="mt-12 p-4 bg-blue-50/50 rounded-2xl border border-blue-100/50 inline-block text-blue-600 text-xs font-bold uppercase tracking-widest">
-              Tip: Revisa la migración 006_treatment_config.sql
+              {t('treatments.tip_migration')}
             </div>
           </div>
         )}

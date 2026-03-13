@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import api from '../api/axios';
+import { useTranslation } from '../context/LanguageContext';
 
 // ─── Mobile Hook ──────────────────────────────────────────────────────────────
 function useWindowWidth() {
@@ -65,12 +66,12 @@ interface YCloudTemplate {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const TRIGGER_LABELS: Record<string, string> = {
-  appointment_reminder: 'Recordatorio 24h',
-  post_appointment_completed: 'Feedback post-consulta',
-  lead_meta_no_booking: 'Lead Meta sin turno',
-  post_treatment_followup: 'Seguimiento tratamiento',
-  patient_reactivation: 'Reactivación paciente',
-  appointment_status_change: 'Cambio de estado',
+  appointment_reminder: 'meta_templates.triggers.appointment_reminder',
+  post_appointment_completed: 'meta_templates.triggers.post_appointment_completed',
+  lead_meta_no_booking: 'meta_templates.triggers.lead_meta_no_booking',
+  post_treatment_followup: 'meta_templates.triggers.post_treatment_followup',
+  patient_reactivation: 'meta_templates.triggers.patient_reactivation',
+  appointment_status_change: 'meta_templates.triggers.appointment_status_change',
 };
 
 const TRIGGER_COLORS: Record<string, string> = {
@@ -99,34 +100,37 @@ const CHANNEL_ICONS: Record<string, string> = {
 };
 
 const AVAILABLE_VARS = [
-  { key: 'first_name', label: 'Nombre' },
-  { key: 'last_name', label: 'Apellido' },
-  { key: 'appointment_date', label: 'Fecha del turno' },
-  { key: 'appointment_time', label: 'Hora del turno' },
-  { key: 'treatment_name', label: 'Tratamiento' },
-  { key: 'clinic_name', label: 'Nombre clínica' },
-  { key: 'professional_name', label: 'Profesional' },
+  { key: 'first_name', label: 'meta_templates.variables.first_name' },
+  { key: 'last_name', label: 'meta_templates.variables.last_name' },
+  { key: 'appointment_date', label: 'meta_templates.variables.appointment_date' },
+  { key: 'appointment_time', label: 'meta_templates.variables.appointment_time' },
+  { key: 'treatment_name', label: 'meta_templates.variables.treatment_name' },
+  { key: 'clinic_name', label: 'meta_templates.variables.clinic_name' },
+  { key: 'professional_name', label: 'meta_templates.variables.professional_name' },
 ];
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 function StatusBadge({ status }: { status: string }) {
+  const { t } = useTranslation();
   const s = STATUS_STYLES[status] || STATUS_STYLES.pending;
   return (
     <span style={{
       display: 'inline-block', padding: '2px 10px', borderRadius: '9999px',
       fontSize: '12px', fontWeight: 600, background: s.bg, color: s.text, textTransform: 'capitalize',
     }}>
-      {status === 'sent' ? '✅ Enviado' :
-       status === 'delivered' ? '📬 Entregado' :
-       status === 'read' ? '👁️ Leído' :
-       status === 'failed' ? '❌ Fallido' :
-       status === 'skipped' ? '⏭️ Omitido' : status}
+      {status === 'sent' ? t('meta_templates.statuses.sent') :
+       status === 'delivered' ? t('meta_templates.statuses.delivered') :
+       status === 'read' ? t('meta_templates.statuses.read') :
+       status === 'failed' ? t('meta_templates.statuses.failed') :
+       status === 'skipped' ? t('meta_templates.statuses.skipped') : 
+       status === 'pending' ? t('meta_templates.statuses.pending') : status}
     </span>
   );
 }
 
 function TriggerBadge({ type }: { type: string }) {
+  const { t } = useTranslation();
   const color = TRIGGER_COLORS[type] || '#64748b';
   return (
     <span style={{
@@ -134,7 +138,7 @@ function TriggerBadge({ type }: { type: string }) {
       fontSize: '12px', fontWeight: 600,
       background: color + '18', color: color, border: `1px solid ${color}33`,
     }}>
-      {TRIGGER_LABELS[type] || type}
+      {TRIGGER_LABELS[type] ? t(TRIGGER_LABELS[type]) : type}
     </span>
   );
 }
@@ -150,6 +154,7 @@ function RuleFormModal({
   onSave: () => void;
   isMobile: boolean;
 }) {
+  const { t } = useTranslation();
   const isEdit = !!rule;
   const isSystem = rule?.is_system ?? false;
   const messageOnly = isSystem; // solo puede editar el mensaje, no el trigger/canales/horario
@@ -176,9 +181,9 @@ function RuleFormModal({
     setChannels(prev => prev.includes(ch) ? prev.filter(c => c !== ch) : [...prev, ch]);
 
   const handleSave = async () => {
-    if (!name.trim()) { setError('El nombre es obligatorio.'); return; }
-    if (messageType === 'free_text' && !freeText.trim()) { setError('El mensaje es obligatorio.'); return; }
-    if (messageType === 'hsm' && !templateName) { setError('Seleccioná una plantilla HSM.'); return; }
+    if (!name.trim()) { setError(t('meta_templates.form.name_required')); return; }
+    if (messageType === 'free_text' && !freeText.trim()) { setError(t('meta_templates.form.message_required')); return; }
+    if (messageType === 'hsm' && !templateName) { setError(t('meta_templates.form.template_required')); return; }
     setSaving(true); setError('');
     try {
       const payload = {
@@ -194,7 +199,7 @@ function RuleFormModal({
       else await api.post('/admin/automations/rules', payload);
       onSave();
     } catch (e: any) {
-      setError(e?.response?.data?.detail ?? 'Error al guardar la regla.');
+      setError(e?.response?.data?.detail ?? t('meta_templates.form.error_saving'));
     } finally { setSaving(false); }
   };
 
@@ -216,9 +221,9 @@ function RuleFormModal({
         <div style={{ padding: '20px 24px 16px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
             <h2 style={{ margin: 0, color: '#0f172a', fontSize: '18px', fontWeight: 700 }}>
-              {messageOnly ? '✏️ Editar Mensaje' : isEdit ? '✏️ Editar Regla' : '✨ Nueva Regla'}
+              {messageOnly ? t('meta_templates.form.edit_message') : isEdit ? t('meta_templates.form.edit_rule') : t('meta_templates.form.new_rule')}
             </h2>
-            {messageOnly && <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: '13px' }}>Podés cambiar el mensaje que se envía. El trigger, canales y horario son propios del sistema.</p>}
+            {messageOnly && <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: '13px' }}>{t('meta_templates.form.system_rule_hint')}</p>}
           </div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '22px', cursor: 'pointer' }}>×</button>
         </div>
@@ -230,31 +235,31 @@ function RuleFormModal({
 
           {/* Nombre */}
           <div style={{ marginBottom: '16px' }}>
-            <label style={labelStyle}>Nombre de la regla</label>
+            <label style={labelStyle}>{t('meta_templates.form.rule_name')}</label>
             <input value={name} onChange={e => setName(e.target.value)} disabled={isSystem}
-              placeholder="Ej: Seguimiento post-implante"
+              placeholder={t('meta_templates.form.rule_name_placeholder')}
               style={{ ...lightInputStyle, opacity: isSystem ? 0.6 : 1, background: isSystem ? '#f8fafc' : '#fff', cursor: isSystem ? 'not-allowed' : 'text' }} />
           </div>
 
           {/* Trigger - solo informativo para reglas de sistema */}
           {messageOnly ? (
             <div style={{ marginBottom: '16px', background: '#f8fafc', borderRadius: '10px', padding: '12px 16px', border: '1px solid #e2e8f0' }}>
-              <span style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Cuándo se activa</span>
+              <span style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{t('meta_templates.form.trigger_when')}</span>
               <div style={{ marginTop: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <span style={{ fontSize: '14px' }}>🔒</span>
-                <span style={{ color: '#334155', fontSize: '14px', fontWeight: 600 }}>{TRIGGER_LABELS[triggerType] || triggerType}</span>
-                <span style={{ fontSize: '11px', color: '#94a3b8' }}>(no editable)</span>
+                <span style={{ color: '#334155', fontSize: '14px', fontWeight: 600 }}>{TRIGGER_LABELS[triggerType] ? t(TRIGGER_LABELS[triggerType]) : triggerType}</span>
+                <span style={{ fontSize: '11px', color: '#94a3b8' }}>{t('meta_templates.form.not_editable')}</span>
               </div>
             </div>
           ) : (
             <div style={{ marginBottom: '16px' }}>
-              <label style={labelStyle}>¿Cuándo se activa?</label>
+              <label style={labelStyle}>{t('meta_templates.form.trigger_label')}</label>
               <select value={triggerType} onChange={e => setTriggerType(e.target.value)} style={lightInputStyle}>
-                <option value="appointment_reminder">Recordatorio 24h antes del turno</option>
-                <option value="post_appointment_completed">45 min después de completar consulta</option>
-                <option value="lead_meta_no_booking">Lead de Meta no agendó</option>
-                <option value="post_treatment_followup">Seguimiento post-tratamiento</option>
-                <option value="patient_reactivation">Paciente inactivo X días</option>
+                <option value="appointment_reminder">{t('meta_templates.trigger_options.appointment_reminder')}</option>
+                <option value="post_appointment_completed">{t('meta_templates.trigger_options.post_appointment_completed')}</option>
+                <option value="lead_meta_no_booking">{t('meta_templates.trigger_options.lead_meta_no_booking')}</option>
+                <option value="post_treatment_followup">{t('meta_templates.trigger_options.post_treatment_followup')}</option>
+                <option value="patient_reactivation">{t('meta_templates.trigger_options.patient_reactivation')}</option>
               </select>
             </div>
           )}
@@ -263,7 +268,7 @@ function RuleFormModal({
           {!messageOnly && (triggerType === 'lead_meta_no_booking' || triggerType === 'patient_reactivation') && (
             <div style={{ marginBottom: '16px', background: '#f0f4ff', borderRadius: '10px', padding: '14px', border: '1px solid #c7d2fe' }}>
               <label style={{ ...labelStyle, color: '#4338ca' }}>
-                {triggerType === 'lead_meta_no_booking' ? 'Horas de espera sin turno' : 'Días de inactividad'}
+                {triggerType === 'lead_meta_no_booking' ? t('meta_templates.form.delay_hours') : t('meta_templates.form.delay_days')}
               </label>
               <input type="number"
                 value={triggerType === 'lead_meta_no_booking' ? (conditionJson.delay_minutes || 120) / 60 : (conditionJson.days_inactive || 90)}
@@ -280,7 +285,7 @@ function RuleFormModal({
           {/* Canales - informativo para sistema */}
           {messageOnly ? (
             <div style={{ marginBottom: '16px', background: '#f8fafc', borderRadius: '10px', padding: '12px 16px', border: '1px solid #e2e8f0' }}>
-              <span style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Canales</span>
+              <span style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{t('meta_templates.form.channels')}</span>
               <div style={{ marginTop: '4px', display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                 {channels.map(ch => (
                   <span key={ch} style={{ padding: '4px 10px', borderRadius: '6px', background: '#ede9fe', color: '#6366f1', fontSize: '12px', fontWeight: 600 }}>
@@ -291,7 +296,7 @@ function RuleFormModal({
             </div>
           ) : (
             <div style={{ marginBottom: '16px' }}>
-              <label style={labelStyle}>Canales</label>
+              <label style={labelStyle}>{t('meta_templates.form.channels')}</label>
               <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                 {['whatsapp', 'instagram', 'facebook'].map(ch => (
                   <button key={ch} onClick={() => handleChannelToggle(ch)} style={{
@@ -311,7 +316,7 @@ function RuleFormModal({
           {/* Tipo de mensaje - siempre editable */}
           <>
               <div style={{ marginBottom: '16px' }}>
-                <label style={labelStyle}>Tipo de mensaje</label>
+                <label style={labelStyle}>{t('meta_templates.form.message_type')}</label>
                 <div style={{ display: 'flex', gap: '8px' }}>
                   {(['free_text', 'hsm'] as const).map(type => (
                     <button key={type} onClick={() => setMessageType(type)} style={{
@@ -321,58 +326,68 @@ function RuleFormModal({
                       color: messageType === type ? '#6366f1' : '#64748b',
                       fontWeight: 600, fontSize: '14px', transition: 'all 0.15s',
                     }}>
-                      {type === 'free_text' ? '💬 Texto libre' : '📋 Plantilla HSM'}
+                      {type === 'free_text' ? t('meta_templates.form.free_text') : t('meta_templates.form.hsm_template')}
                     </button>
                   ))}
                 </div>
                 <p style={{ margin: '6px 0 0', fontSize: '12px', color: '#94a3b8' }}>
                   {messageType === 'free_text'
-                    ? 'Gratuito · Solo dentro de ventana 24h de WhatsApp'
-                    : 'Plantilla aprobada por Meta · Funciona fuera de la ventana de 24h'}
+                    ? t('meta_templates.form.free_text_hint')
+                    : t('meta_templates.form.hsm_hint')}
                 </p>
               </div>
 
               {messageType === 'free_text' && (
                 <div style={{ marginBottom: '16px' }}>
-                  <label style={labelStyle}>Mensaje</label>
+                  <label style={labelStyle}>{t('meta_templates.form.message')}</label>
                   <p style={{ margin: '0 0 6px', fontSize: '12px', color: '#94a3b8' }}>
-                    Variables disponibles: {'{{first_name}}'} {'{{appointment_time}}'} {'{{treatment_name}}'} {'{{clinic_name}}'}
+                    {t('meta_templates.form.available_vars')} {'{{first_name}}'} {'{{appointment_time}}'} {'{{treatment_name}}'} {'{{clinic_name}}'}
                   </p>
                   <textarea value={freeText} onChange={e => setFreeText(e.target.value)} rows={4}
-                    placeholder="Hola {{first_name}}, te recordamos tu turno mañana..."
+                    placeholder={t('meta_templates.form.message_placeholder')}
                     style={{ ...lightInputStyle, resize: 'vertical', minHeight: '90px' }} />
                 </div>
               )}
 
               {messageType === 'hsm' && (
                 <div style={{ marginBottom: '16px' }}>
-                  <label style={labelStyle}>Plantilla HSM</label>
+                  <label style={labelStyle}>{t('meta_templates.form.hsm_template')}</label>
                   {templates.length === 0 ? (
-                    <div style={{ padding: '12px', background: '#fef9c3', borderRadius: '8px', color: '#854d0e', fontSize: '13px' }}>
-                      ⚠️ No hay plantillas aprobadas disponibles. Verificá YCLOUD_API_KEY en el servidor.
+                    <div style={{ padding: '12px', background: '#fffbeb', color: '#b45309', borderRadius: '8px', fontSize: '12px', border: '1px solid #fde68a' }}>
+                      {t('meta_templates.form.no_templates')}
                     </div>
                   ) : (
-                    <select value={templateName} onChange={e => setTemplateName(e.target.value)} style={lightInputStyle}>
-                      <option value="">— Elegí una plantilla —</option>
+                    <select value={templateName} onChange={e => {
+                        setTemplateName(e.target.value);
+                        setTemplateVars({});
+                      }}
+                      style={lightInputStyle}
+                    >
+                      <option value="">{t('meta_templates.form.select_template')}</option>
                       {templates.map(t => <option key={t.name} value={t.name}>{t.name} · {t.language} · {t.category}</option>)}
                     </select>
                   )}
-                  {bodyText && (
-                    <div style={{ marginTop: '10px', background: '#f8fafc', borderRadius: '8px', padding: '12px', border: '1px solid #e2e8f0' }}>
-                      <p style={{ margin: '0 0 6px', fontSize: '11px', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Preview</p>
-                      <p style={{ margin: 0, color: '#334155', fontSize: '13px', lineHeight: '1.5', whiteSpace: 'pre-wrap' }}>{bodyText}</p>
+                  {selectedTemplate?.components?.find(c => c.type === 'BODY')?.text && (
+                    <div style={{ marginTop: '12px', padding: '12px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '12px', color: '#64748b' }}>
+                      <strong style={{ color: '#475569' }}>{t('meta_templates.form.preview')}:</strong><br/>
+                      {selectedTemplate.components.find(c => c.type === 'BODY')?.text}
                     </div>
                   )}
-                  {varMatches.length > 0 && (
-                    <div style={{ marginTop: '14px' }}>
-                      <label style={{ ...labelStyle, marginBottom: '6px' }}>Mapeo de variables</label>
-                      {varMatches.map(v => (
-                        <div key={v} style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
-                          <span style={{ width: '48px', textAlign: 'center', padding: '7px', borderRadius: '6px', background: '#ede9fe', color: '#6366f1', fontSize: '12px', fontWeight: 700 }}>{v}</span>
-                          <span style={{ color: '#94a3b8' }}>→</span>
-                          <select value={templateVars[v] ?? ''} onChange={e => setTemplateVars(prev => ({ ...prev, [v]: e.target.value }))} style={{ ...lightInputStyle, flex: 1 }}>
-                            <option value="">— Campo del paciente —</option>
-                            {AVAILABLE_VARS.map(av => <option key={av.key} value={av.key}>{av.label}</option>)}
+                  {templateVarsList.length > 0 && (
+                    <div style={{ marginTop: '16px', background: '#f0fdf4', padding: '12px 16px', borderRadius: '8px', border: '1px solid #bbf7d0' }}>
+                      <label style={{ ...labelStyle, color: '#166534', marginBottom: '8px' }}>{t('meta_templates.form.var_mapping')}</label>
+                      {templateVarsList.map(v => (
+                        <div key={v} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                          <span style={{ fontSize: '13px', color: '#15803d', fontWeight: 600, minWidth: '40px' }}>{v}:</span>
+                          <select
+                            value={templateVars[v] || ''}
+                            onChange={e => setTemplateVars({ ...templateVars, [v]: e.target.value })}
+                            style={{ ...lightInputStyle, flex: 1, padding: '6px 10px', fontSize: '13px' }}
+                          >
+                            <option value="">{t('meta_templates.form.patient_field')}</option>
+                            {AVAILABLE_VARS.map(opt => (
+                              <option key={opt.key} value={opt.key}>{t(opt.label)}</option>
+                            ))}
                           </select>
                         </div>
                       ))}
@@ -385,34 +400,33 @@ function RuleFormModal({
           {/* Horario - informativo para sistema */}
           {messageOnly ? (
             <div style={{ marginBottom: '24px', background: '#f8fafc', borderRadius: '10px', padding: '12px 16px', border: '1px solid #e2e8f0' }}>
-              <span style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Horario</span>
-              <div style={{ marginTop: '4px', color: '#334155', fontSize: '14px', fontWeight: 600 }}>
-                {sendHourMin}:00 – {sendHourMax}:00 hs &nbsp;<span style={{ fontSize: '11px', color: '#94a3b8' }}>(no editable)</span>
+              <span style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{t('meta_templates.form.schedule')}</span>
+              <div style={{ marginTop: '4px', fontSize: '14px', color: '#334155', fontWeight: 600 }}>
+                {schedule.start_time} {t('meta_templates.form.hs')} &nbsp;—&nbsp; {schedule.end_time} {t('meta_templates.form.hs')}
               </div>
             </div>
           ) : (
             <div style={{ marginBottom: '24px' }}>
-              <label style={labelStyle}>Horario de envío</label>
+              <label style={{ ...labelStyle, marginBottom: '8px' }}>{t('meta_templates.form.schedule_label')}</label>
               <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                  <span style={{ fontSize: '11px', color: '#94a3b8' }}>Desde</span>
-                  <input type="number" min={0} max={23} value={sendHourMin} onChange={e => setSendHourMin(Number(e.target.value))} style={{ ...lightInputStyle, width: '76px' }} />
+                <div style={{ flex: 1 }}>
+                  <span style={{ fontSize: '11px', color: '#64748b', display: 'block', marginBottom: '4px' }}>{t('meta_templates.form.from')}</span>
+                  <input type="time" value={schedule.start_time} onChange={e => setSchedule({ ...schedule, start_time: e.target.value })} style={lightInputStyle} />
                 </div>
-                <span style={{ color: '#94a3b8', marginTop: '16px' }}>–</span>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                  <span style={{ fontSize: '11px', color: '#94a3b8' }}>Hasta</span>
-                  <input type="number" min={0} max={23} value={sendHourMax} onChange={e => setSendHourMax(Number(e.target.value))} style={{ ...lightInputStyle, width: '76px' }} />
+                <span style={{ color: '#cbd5e1', fontWeight: 300 }}>—</span>
+                <div style={{ flex: 1 }}>
+                  <span style={{ fontSize: '11px', color: '#64748b', display: 'block', marginBottom: '4px' }}>{t('meta_templates.form.to')}</span>
+                  <input type="time" value={schedule.end_time} onChange={e => setSchedule({ ...schedule, end_time: e.target.value })} style={lightInputStyle} />
                 </div>
-                <span style={{ color: '#94a3b8', marginTop: '16px', fontSize: '13px' }}>hs</span>
               </div>
             </div>
           )}
 
           {/* Botones */}
           <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', paddingTop: '16px', borderTop: '1px solid #f1f5f9' }}>
-            <button onClick={onClose} style={btnSecondaryStyle}>Cancelar</button>
+            <button onClick={onClose} style={btnSecondaryStyle}>{t('meta_templates.form.cancel')}</button>
             <button onClick={handleSave} disabled={saving} style={{ ...btnPrimaryStyle, opacity: saving ? 0.6 : 1 }}>
-              {saving ? '⏳ Guardando...' : messageOnly ? '💾 Guardar Mensaje' : isEdit ? '💾 Guardar' : '✨ Crear regla'}
+              {saving ? t('meta_templates.form.saving') : messageOnly ? t('meta_templates.form.save_message') : isEdit ? t('meta_templates.form.save') : t('meta_templates.form.create_rule')}
             </button>
           </div>
         </div>
@@ -423,10 +437,11 @@ function RuleFormModal({
 
 // ─── Rule Card ────────────────────────────────────────────────────────────────
 
-function RuleCard({ rule, onToggle, onEdit, onDelete }: {
+function RuleCard({ rule, onEdit, onDelete, onToggle }: {
   rule: AutomationRule; onToggle: () => void;
   onEdit: () => void; onDelete: (() => void) | null;
 }) {
+  const { t } = useTranslation();
   const triggerColor = TRIGGER_COLORS[rule.trigger_type] || '#64748b';
   return (
     <div style={{
@@ -456,28 +471,28 @@ function RuleCard({ rule, onToggle, onEdit, onDelete }: {
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
           <span style={{ color: '#0f172a', fontSize: '15px', fontWeight: 700 }}>{rule.name}</span>
           {rule.is_system && (
-            <span style={{ padding: '1px 7px', borderRadius: '5px', fontSize: '11px', fontWeight: 700, background: '#ede9fe', color: '#6366f1' }}>🔒 Sistema</span>
+            <span style={{ padding: '1px 7px', borderRadius: '5px', fontSize: '11px', fontWeight: 700, background: '#ede9fe', color: '#6366f1' }}>🔒 {t('meta_templates.rules.system')}</span>
           )}
         </div>
         <div style={{ display: 'flex', gap: '8px', marginTop: '5px', flexWrap: 'wrap', alignItems: 'center' }}>
           <TriggerBadge type={rule.trigger_type} />
           <span style={{ color: '#94a3b8', fontSize: '12px' }}>
-            {rule.message_type === 'hsm' ? `📋 HSM: ${rule.ycloud_template_name}` : '💬 Texto libre'}
+            {rule.message_type === 'hsm' ? `📋 ${t('meta_templates.rules.hsm_template')}: ${rule.ycloud_template_name}` : `💬 ${t('meta_templates.rules.free_text')}`}
           </span>
           {rule.channels.map(ch => (
             <span key={ch} style={{ color: '#94a3b8', fontSize: '12px' }}>{CHANNEL_ICONS[ch]}</span>
           ))}
-          <span style={{ color: '#cbd5e1', fontSize: '12px' }}>{rule.send_hour_min}:00 – {rule.send_hour_max}:00 hs</span>
+          <span style={{ color: '#cbd5e1', fontSize: '12px' }}>{rule.send_hour_min}:00 – {rule.send_hour_max}:00 {t('meta_templates.rules.hours')}</span>
         </div>
       </div>
 
       {/* Acciones */}
       <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
-        <button onClick={onEdit} title={rule.is_system ? 'Ver' : 'Editar'} style={iconBtnStyle}>
+        <button onClick={onEdit} title={rule.is_system ? t('meta_templates.rules.view') : t('meta_templates.rules.edit')} style={iconBtnStyle}>
           {rule.is_system ? '👁️' : '✏️'}
         </button>
         {onDelete && (
-          <button onClick={onDelete} title="Eliminar" style={{ ...iconBtnStyle, color: '#ef4444' }}>🗑️</button>
+          <button onClick={onDelete} title={t('meta_templates.rules.delete')} style={{ ...iconBtnStyle, color: '#ef4444' }}>🗑️</button>
         )}
       </div>
     </div>
@@ -508,8 +523,8 @@ function StatCard({ icon, label, value, color }: { icon: string; label: string; 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function MetaTemplatesView() {
-  const width = useWindowWidth();
-  const isMobile = width < 768;
+  const { t } = useTranslation();
+  const isMobile = useWindowWidth() < 768;
   const [activeTab, setActiveTab] = useState<'rules' | 'logs' | 'templates'>('rules');
   const [rules, setRules] = useState<AutomationRule[]>([]);
   const [logs, setLogs] = useState<AutomationLog[]>([]);
@@ -583,9 +598,9 @@ export default function MetaTemplatesView() {
   };
 
   const handleDeleteRule = async (rule: AutomationRule) => {
-    if (!confirm(`¿Eliminar "${rule.name}"?`)) return;
+    if (!confirm(t('meta_templates.rules.confirm_delete', { name: rule.name }))) return;
     try { await api.delete(`/admin/automations/rules/${rule.id}`); await loadRules(); }
-    catch (e: any) { alert(e?.response?.data?.detail ?? 'Error al eliminar.'); }
+    catch (e: any) { alert(e?.response?.data?.detail ?? t('meta_templates.rules.error_deleting')); }
   };
 
   const systemRules = rules.filter(r => r.is_system);
@@ -597,7 +612,7 @@ export default function MetaTemplatesView() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', background: '#f8fafc' }}>
         <div style={{ textAlign: 'center', color: '#64748b' }}>
           <div style={{ fontSize: '28px', marginBottom: '8px', animation: 'spin 1s linear infinite' }}>⚙️</div>
-          <p style={{ margin: 0, fontSize: '14px' }}>Cargando reglas...</p>
+          <p style={{ margin: 0, fontSize: '14px' }}>{t('meta_templates.loading_rules')}</p>
         </div>
       </div>
     );
@@ -608,31 +623,31 @@ export default function MetaTemplatesView() {
       {/* Header */}
       <div style={{ marginBottom: '24px' }}>
         <h1 style={{ margin: '0 0 4px', color: '#0f172a', fontSize: '22px', fontWeight: 800 }}>
-          Automatizaciones & HSM
+          {t('meta_templates.title')}
         </h1>
-        <p style={{ margin: 0, color: '#94a3b8', fontSize: '14px' }}>Motor de Reglas · Seguimientos · WhatsApp Marketing</p>
+        <p style={{ margin: 0, color: '#94a3b8', fontSize: '14px' }}>{t('meta_templates.subtitle')}</p>
       </div>
 
       {/* Stats */}
-      <div style={{ 
-        display: 'grid', 
-        gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)', 
-        gap: '12px', 
-        marginBottom: '24px' 
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)',
+        gap: '12px',
+        marginBottom: '24px'
       }}>
-        <StatCard icon="📤" label="Enviados (últimos registros)" value={stats.sent} color="#6366f1" />
-        <StatCard icon="📬" label="Tasa de entrega" value={`${stats.delivery_rate}%`} color="#10b981" />
-        <StatCard icon="⚡" label="Reglas activas" value={stats.active_rules} color="#f59e0b" />
+        <StatCard icon="📤" label={t('meta_templates.stats.sent')} value={stats.sent} color="#6366f1" />
+        <StatCard icon="📬" label={t('meta_templates.stats.delivery_rate')} value={`${stats.delivery_rate}%`} color="#10b981" />
+        <StatCard icon="⚡" label={t('meta_templates.stats.active_rules')} value={stats.active_rules} color="#f59e0b" />
       </div>
 
       {/* Tabs */}
-      <div style={{ 
-        display: 'flex', 
-        gap: '2px', 
-        background: '#e2e8f0', 
-        borderRadius: '10px', 
-        padding: '3px', 
-        marginBottom: '22px', 
+      <div style={{
+        display: 'flex',
+        gap: '2px',
+        background: '#e2e8f0',
+        borderRadius: '10px',
+        padding: '3px',
+        marginBottom: '22px',
         width: isMobile ? '100%' : 'fit-content',
         overflowX: 'auto',
         WebkitOverflowScrolling: 'touch'
@@ -645,7 +660,7 @@ export default function MetaTemplatesView() {
             color: activeTab === tab ? '#6366f1' : '#64748b',
             boxShadow: activeTab === tab ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
           }}>
-            {tab === 'rules' ? '⚡ Reglas' : tab === 'logs' ? '📋 Logs' : '🗂️ Plantillas YCloud'}
+            {tab === 'rules' ? t('meta_templates.tabs.rules') : tab === 'logs' ? t('meta_templates.tabs.logs') : t('meta_templates.tabs.templates')}
           </button>
         ))}
       </div>
@@ -657,8 +672,8 @@ export default function MetaTemplatesView() {
           <div style={{ marginBottom: '24px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
               <div style={{ width: '3px', height: '18px', background: '#6366f1', borderRadius: '2px' }} />
-              <h2 style={{ margin: 0, color: '#0f172a', fontSize: '15px', fontWeight: 700 }}>Reglas del Sistema</h2>
-              <span style={{ padding: '1px 8px', background: '#ede9fe', color: '#6366f1', borderRadius: '6px', fontSize: '11px', fontWeight: 700 }}>No editables</span>
+              <h2 style={{ margin: 0, color: '#0f172a', fontSize: '15px', fontWeight: 700 }}>{t('meta_templates.rules.system_rules')}</h2>
+              <span style={{ padding: '1px 7px', borderRadius: '5px', fontSize: '11px', fontWeight: 700, background: '#ede9fe', color: '#6366f1' }}>{t('meta_templates.rules.not_editable')}</span>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               {systemRules.map(rule => (
@@ -667,7 +682,7 @@ export default function MetaTemplatesView() {
               ))}
               {systemRules.length === 0 && (
                 <div style={{ color: '#94a3b8', fontSize: '13px', padding: '14px', background: '#fff', borderRadius: '10px', border: '1px solid #f1f5f9' }}>
-                  Las reglas de sistema se crearán automáticamente al reiniciar el servidor.
+                  {t('meta_templates.rules.system_auto_created')}
                 </div>
               )}
             </div>
@@ -678,10 +693,10 @@ export default function MetaTemplatesView() {
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <div style={{ width: '3px', height: '18px', background: '#10b981', borderRadius: '2px' }} />
-                <h2 style={{ margin: 0, color: '#0f172a', fontSize: '15px', fontWeight: 700 }}>Reglas Personalizadas</h2>
+                <h2 style={{ margin: 0, color: '#0f172a', fontSize: '15px', fontWeight: 700 }}>{t('meta_templates.rules.custom_rules')}</h2>
               </div>
               <button onClick={() => { setEditingRule(null); setShowModal(true); }} style={btnPrimaryStyle}>
-                + Nueva Regla
+                {t('meta_templates.rules.new_rule_btn')}
               </button>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -696,9 +711,9 @@ export default function MetaTemplatesView() {
                   textAlign: 'center', color: '#94a3b8', background: '#fff',
                 }}>
                   <div style={{ fontSize: '32px', marginBottom: '10px' }}>⚡</div>
-                  <p style={{ margin: '0 0 14px', fontSize: '14px' }}>Aún no tenés reglas personalizadas.</p>
+                  <p style={{ margin: '0 0 14px', fontSize: '14px' }}>{t('meta_templates.rules.no_custom_rules')}</p>
                   <button onClick={() => { setEditingRule(null); setShowModal(true); }} style={btnPrimaryStyle}>
-                    Crear primera regla
+                    {t('meta_templates.rules.create_first_rule')}
                   </button>
                 </div>
               )}
@@ -711,20 +726,20 @@ export default function MetaTemplatesView() {
       {activeTab === 'logs' && (
         <div>
           {/* Filtros */}
-          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '16px', background: '#fff', borderRadius: '10px', padding: '14px', border: '1px solid #f1f5f9', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+          <div style={{ display: 'flex', gap: '10px', marginBottom: '16px', flexWrap: 'wrap' }}>
             <select value={filterTrigger} onChange={e => { setFilterTrigger(e.target.value); setLogPage(1); }} style={{ ...lightInputStyle, flex: '1 1 150px' }}>
-              <option value="">Todos los triggers</option>
+              <option value="">{t('meta_templates.logs.all_triggers')}</option>
               {Object.entries(TRIGGER_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
             </select>
             <select value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setLogPage(1); }} style={{ ...lightInputStyle, flex: '1 1 130px' }}>
-              <option value="">Todos los estados</option>
-              <option value="sent">Enviado</option>
-              <option value="delivered">Entregado</option>
-              <option value="failed">Fallido</option>
-              <option value="skipped">Omitido</option>
+              <option value="">{t('meta_templates.logs.all_statuses')}</option>
+              <option value="sent">{t('meta_templates.logs.status_sent')}</option>
+              <option value="delivered">{t('meta_templates.logs.status_delivered')}</option>
+              <option value="failed">{t('meta_templates.logs.status_failed')}</option>
+              <option value="skipped">{t('meta_templates.logs.status_skipped')}</option>
             </select>
             <select value={filterChannel} onChange={e => { setFilterChannel(e.target.value); setLogPage(1); }} style={{ ...lightInputStyle, flex: '1 1 120px' }}>
-              <option value="">Todos los canales</option>
+              <option value="">{t('meta_templates.logs.all_channels')}</option>
               <option value="whatsapp">WhatsApp</option>
               <option value="instagram">Instagram</option>
               <option value="facebook">Facebook</option>
@@ -732,19 +747,19 @@ export default function MetaTemplatesView() {
             <input type="date" value={filterDateFrom} onChange={e => { setFilterDateFrom(e.target.value); setLogPage(1); }} style={{ ...lightInputStyle, flex: '1 1 130px' }} />
             <input type="date" value={filterDateTo} onChange={e => { setFilterDateTo(e.target.value); setLogPage(1); }} style={{ ...lightInputStyle, flex: '1 1 130px' }} />
             <button onClick={() => { setFilterTrigger(''); setFilterStatus(''); setFilterChannel(''); setFilterDateFrom(''); setFilterDateTo(''); setLogPage(1); }} style={btnSecondaryStyle}>
-              Limpiar
+              {t('meta_templates.logs.clear_filters')}
             </button>
           </div>
 
           <div style={{ background: '#fff', borderRadius: '12px', border: '1px solid #f1f5f9', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
             {logsLoading ? (
-              <div style={{ padding: '40px', textAlign: 'center', color: '#94a3b8', fontSize: '14px' }}>Cargando logs...</div>
+              <div style={{ padding: '40px', textAlign: 'center', color: '#94a3b8', fontSize: '14px' }}>{t('meta_templates.logs.loading_logs')}</div>
             ) : (
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
                     <tr style={{ background: '#f8fafc' }}>
-                      {['Paciente', 'Trigger', 'Canal', 'Mensaje', 'Fecha/Hora', 'Estado'].map(h => (
+                      {[t('meta_templates.logs.patient'), t('meta_templates.logs.trigger'), t('meta_templates.logs.channel'), t('meta_templates.logs.message'), t('meta_templates.logs.date_time'), t('meta_templates.logs.status')].map(h => (
                         <th key={h} style={{ padding: '11px 14px', textAlign: 'left', color: '#94a3b8', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid #f1f5f9', whiteSpace: 'nowrap' }}>{h}</th>
                       ))}
                     </tr>
@@ -752,7 +767,7 @@ export default function MetaTemplatesView() {
                   <tbody>
                     {logs.length === 0 && (
                       <tr><td colSpan={6} style={{ padding: '40px', textAlign: 'center', color: '#94a3b8', fontSize: '14px' }}>
-                        No hay logs con los filtros actuales.
+                        {t('meta_templates.logs.no_logs_with_filters')}
                       </td></tr>
                     )}
                     {logs.map((log, i) => (
@@ -786,7 +801,7 @@ export default function MetaTemplatesView() {
             )}
             {logPages > 1 && (
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', borderTop: '1px solid #f1f5f9' }}>
-                <span style={{ color: '#94a3b8', fontSize: '12px' }}>{logTotal} registros · Pág. {logPage} de {logPages}</span>
+                <span style={{ color: '#94a3b8', fontSize: '12px' }}>{logTotal} {t('meta_templates.logs.records')} · {t('meta_templates.logs.page')} {logPage} {t('meta_templates.logs.of')} {logPages}</span>
                 <div style={{ display: 'flex', gap: '6px' }}>
                   <button disabled={logPage <= 1} onClick={() => setLogPage(p => p - 1)} style={{ ...btnSecondaryStyle, padding: '5px 12px', opacity: logPage <= 1 ? 0.4 : 1 }}>‹</button>
                   <button disabled={logPage >= logPages} onClick={() => setLogPage(p => p + 1)} style={{ ...btnSecondaryStyle, padding: '5px 12px', opacity: logPage >= logPages ? 0.4 : 1 }}>›</button>
@@ -802,17 +817,17 @@ export default function MetaTemplatesView() {
         <div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
             <div>
-              <h2 style={{ margin: '0 0 2px', color: '#0f172a', fontSize: '15px', fontWeight: 700 }}>Plantillas HSM de YCloud</h2>
-              <p style={{ margin: 0, color: '#94a3b8', fontSize: '12px' }}>Solo plantillas con estado APPROVED · Solo lectura</p>
+              <h2 style={{ margin: '0 0 2px', color: '#0f172a', fontSize: '15px', fontWeight: 700 }}>{t('meta_templates.templates.title')}</h2>
+              <p style={{ margin: 0, color: '#94a3b8', fontSize: '12px' }}>{t('meta_templates.templates.subtitle')}</p>
             </div>
-            <button onClick={loadTemplates} style={btnSecondaryStyle}>🔄 Actualizar</button>
+            <button onClick={loadTemplates} style={btnSecondaryStyle}>{t('meta_templates.templates.refresh')}</button>
           </div>
 
           {templates.length === 0 ? (
             <div style={{ padding: '60px', textAlign: 'center', color: '#94a3b8', background: '#fff', borderRadius: '12px', border: '1px solid #f1f5f9' }}>
               <div style={{ fontSize: '36px', marginBottom: '10px' }}>📭</div>
-              <p style={{ margin: '0 0 6px', fontSize: '14px' }}>No hay plantillas aprobadas.</p>
-              <p style={{ margin: 0, fontSize: '12px' }}>Verificá que YCLOUD_API_KEY esté configurada en el servidor.</p>
+              <p style={{ margin: '0 0 6px', fontSize: '14px' }}>{t('meta_templates.templates.no_templates')}</p>
+              <p style={{ margin: 0, fontSize: '12px' }}>{t('meta_templates.templates.verify_api_key')}</p>
             </div>
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '14px' }}>

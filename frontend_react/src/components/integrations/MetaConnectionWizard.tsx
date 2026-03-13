@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { CheckCircle2, ChevronRight, Building2, Briefcase, BarChart3, Loader2 } from 'lucide-react';
 import api from '../../api/axios';
-
+import { useLanguage } from '../../contexts/LanguageContext';
 interface MetaConnectionWizardProps {
     isOpen: boolean;
     onClose: () => void;
@@ -12,6 +12,7 @@ export default function MetaConnectionWizard({ isOpen, onClose, onSuccess }: Met
     const [step, setStep] = useState(1);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const { t } = useLanguage();
 
     // Data for steps
     const [clinics, setClinics] = useState<any[]>([]);
@@ -20,7 +21,6 @@ export default function MetaConnectionWizard({ isOpen, onClose, onSuccess }: Met
 
     // Selection
     const [selectedClinic, setSelectedClinic] = useState<any>(null);
-    const [selectedPortfolio, setSelectedPortfolio] = useState<any>(null);
     const [selectedAccount, setSelectedAccount] = useState<any>(null);
 
     useEffect(() => {
@@ -37,7 +37,7 @@ export default function MetaConnectionWizard({ isOpen, onClose, onSuccess }: Met
             setClinics(data.clinics || []);
             setStep(1);
         } catch (err: any) {
-            setError(err.response?.data?.detail || "Error loading clinics");
+            setError(err.response?.data?.detail || t('meta_wizard.errors.load_clinics'));
         } finally {
             setLoading(false);
         }
@@ -51,7 +51,7 @@ export default function MetaConnectionWizard({ isOpen, onClose, onSuccess }: Met
             setPortfolios(data.portfolios || []);
             setStep(2);
         } catch (err: any) {
-            setError(err.response?.data?.detail || "Error loading portfolios");
+            setError(err.response?.data?.detail || t('meta_wizard.errors.load_portfolios'));
         } finally {
             setLoading(false);
         }
@@ -68,7 +68,7 @@ export default function MetaConnectionWizard({ isOpen, onClose, onSuccess }: Met
             setAccounts(data.accounts || []);
             setStep(3);
         } catch (err: any) {
-            setError(err.response?.data?.detail || "Error loading accounts");
+            setError(err.response?.data?.detail || t('meta_wizard.errors.load_accounts'));
         } finally {
             setLoading(false);
         }
@@ -89,7 +89,7 @@ export default function MetaConnectionWizard({ isOpen, onClose, onSuccess }: Met
                 onClose();
             }, 2000);
         } catch (err: any) {
-            setError(err.response?.data?.detail || "Error connecting account");
+            setError(err.response?.data?.detail || t('meta_wizard.errors.connect_account'));
         } finally {
             setLoading(false);
         }
@@ -107,8 +107,8 @@ export default function MetaConnectionWizard({ isOpen, onClose, onSuccess }: Met
                             <BarChart3 size={24} />
                         </div>
                         <div>
-                            <h2 className="text-xl font-bold text-gray-900">Meta Connection Wizard</h2>
-                            <p className="text-sm text-gray-500">Configure your ads connection in seconds.</p>
+                            <h2 className="text-xl font-bold text-gray-900">{t('meta_wizard.title')}</h2>
+                            <p className="text-sm text-gray-500">{t('meta_wizard.subtitle')}</p>
                         </div>
                     </div>
                 </div>
@@ -138,14 +138,14 @@ export default function MetaConnectionWizard({ isOpen, onClose, onSuccess }: Met
                     {loading ? (
                         <div className="flex flex-col items-center justify-center py-12 gap-4">
                             <Loader2 className="w-10 h-10 text-blue-600 animate-spin" />
-                            <p className="text-gray-500 font-medium">Fetching data from Meta...</p>
+                            <p className="text-gray-500 font-medium">{t('meta_wizard.loading_meta')}</p>
                         </div>
                     ) : (
                         <div className="space-y-4">
                             {/* STEP 1: Choose Clinic */}
                             {step === 1 && (
                                 <>
-                                    <h3 className="font-bold text-gray-900 mb-2">Paso 1: ¿A qué clínica conectamos?</h3>
+                                    <h3 className="font-bold text-gray-900 mb-2">{t('meta_wizard.step1_title')}</h3>
                                     <div className="grid gap-3">
                                         {clinics.map(c => (
                                             <button
@@ -164,7 +164,7 @@ export default function MetaConnectionWizard({ isOpen, onClose, onSuccess }: Met
                                                     </div>
                                                 </div>
                                                 {c.is_connected && (
-                                                    <span className="text-[10px] font-bold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full uppercase">Ya conectada</span>
+                                                    <span className="text-[10px] font-bold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full uppercase">{t('meta_wizard.already_connected')}</span>
                                                 )}
                                                 <ChevronRight className="text-gray-300 group-hover:text-blue-600" size={18} />
                                             </button>
@@ -176,13 +176,12 @@ export default function MetaConnectionWizard({ isOpen, onClose, onSuccess }: Met
                             {/* STEP 2: Choose Portfolio */}
                             {step === 2 && (
                                 <>
-                                    <h3 className="font-bold text-gray-900 mb-2">Paso 2: Selecciona el Portafolio</h3>
+                                    <h3 className="font-bold text-gray-900 mb-2">{t('meta_wizard.step2_title')}</h3>
                                     <div className="grid gap-3 max-h-[300px] overflow-y-auto pr-2">
                                         {portfolios.map(p => (
                                             <button
                                                 key={p.id}
                                                 onClick={() => {
-                                                    setSelectedPortfolio(p);
                                                     loadAccounts(p.id);
                                                 }}
                                                 className="w-full p-4 rounded-2xl border-2 border-gray-100 hover:border-blue-600 hover:bg-blue-50/50 transition-all text-left flex items-center justify-between group"
@@ -196,24 +195,24 @@ export default function MetaConnectionWizard({ isOpen, onClose, onSuccess }: Met
                                         ))}
                                         {portfolios.length === 0 && (
                                             <div className="text-center py-8 space-y-4">
-                                                <p className="text-gray-500">No se encontraron Business Managers.</p>
+                                                <p className="text-gray-500">{t('meta_wizard.no_portfolios')}</p>
                                                 <button
                                                     onClick={() => loadAccounts()}
                                                     className="w-full py-3 bg-blue-50 text-blue-600 rounded-xl font-bold hover:bg-blue-100 transition-all"
                                                 >
-                                                    Listar todas las cuentas de anuncios
+                                                    {t('meta_wizard.list_all_accounts')}
                                                 </button>
                                             </div>
                                         )}
                                     </div>
-                                    <button onClick={() => setStep(1)} className="text-blue-600 text-sm font-bold hover:underline">← Volver</button>
+                                    <button onClick={() => setStep(1)} className="text-blue-600 text-sm font-bold hover:underline">{t('meta_wizard.back')}</button>
                                 </>
                             )}
 
                             {/* STEP 3: Choose Ad Account */}
                             {step === 3 && (
                                 <>
-                                    <h3 className="font-bold text-gray-900 mb-2">Paso 3: Elige la Cuenta de Anuncios</h3>
+                                    <h3 className="font-bold text-gray-900 mb-2">{t('meta_wizard.step3_title')}</h3>
                                     <div className="grid gap-3 max-h-[300px] overflow-y-auto pr-2">
                                         {accounts.map(a => (
                                             <button
@@ -235,37 +234,37 @@ export default function MetaConnectionWizard({ isOpen, onClose, onSuccess }: Met
                                                     <Briefcase size={24} />
                                                 </div>
                                                 <div>
-                                                    <p className="font-bold text-amber-900">No hay cuentas disponibles</p>
-                                                    <p className="text-xs text-amber-700 mt-1">Asegúrate de haber seleccionado tus cuentas en el popup de Meta Ads (Facebook).</p>
+                                                    <p className="font-bold text-amber-900">{t('meta_wizard.no_accounts')}</p>
+                                                    <p className="text-xs text-amber-700 mt-1">{t('meta_wizard.no_accounts_desc')}</p>
                                                 </div>
                                                 <div className="flex flex-col gap-2">
                                                     <button
                                                         onClick={() => loadAccounts()}
                                                         className="py-2.5 px-4 bg-white border border-amber-200 text-amber-800 rounded-xl text-xs font-bold hover:bg-amber-100 transition-all"
                                                     >
-                                                        Buscar fuera del portafolio
+                                                        {t('meta_wizard.search_outside_portfolio')}
                                                     </button>
                                                     <a
                                                         href="/marketing?reconnect=true"
                                                         className="text-xs text-blue-600 font-bold hover:underline"
                                                     >
-                                                        Re-conectar eligiendo todas las cuentas
+                                                        {t('meta_wizard.reconnect_all')}
                                                     </a>
                                                 </div>
                                             </div>
                                         )}
                                     </div>
                                     <div className="pt-6 border-t border-gray-100 mt-4">
-                                        <div className="text-xs font-bold text-gray-500 mb-2 uppercase tracking-wide">¿No ves tu cuenta?</div>
+                                        <div className="text-xs font-bold text-gray-500 mb-2 uppercase tracking-wide">{t('meta_wizard.dont_see_account')}</div>
                                         <div className="flex gap-2">
                                             <input
                                                 type="text"
-                                                placeholder="Pegar ID manual (ej. 120218...)"
+                                                placeholder={t('meta_wizard.paste_id')}
                                                 className="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500 transition-all font-mono"
                                                 onChange={(e) => {
                                                     const val = e.target.value.trim();
                                                     if (val) {
-                                                        setSelectedAccount({ id: val, name: "Cuenta Manual (" + val.slice(-4) + ")", currency: "UNK" });
+                                                        setSelectedAccount({ id: val, name: t('meta_wizard.manual_account', { id: val.slice(-4) }), currency: "UNK" });
                                                     } else {
                                                         setSelectedAccount(null);
                                                     }
@@ -273,17 +272,17 @@ export default function MetaConnectionWizard({ isOpen, onClose, onSuccess }: Met
                                             />
                                         </div>
                                         <p className="text-[10px] text-gray-400 mt-2">
-                                            Si tienes permisos pero Meta no lista la cuenta, pega el ID directamente aquí.
+                                            {t('meta_wizard.paste_id_desc')}
                                         </p>
                                     </div>
                                     <div className="pt-6 flex gap-3">
-                                        <button onClick={() => setStep(2)} className="flex-1 py-4 text-gray-500 font-bold hover:bg-gray-50 rounded-2xl transition-all">Atrás</button>
+                                        <button onClick={() => setStep(2)} className="flex-1 py-4 text-gray-500 font-bold hover:bg-gray-50 rounded-2xl transition-all">{t('meta_wizard.btn_back')}</button>
                                         <button
                                             disabled={!selectedAccount}
                                             onClick={handleConnect}
                                             className="flex-2 px-8 py-4 bg-gray-900 text-white rounded-2xl font-bold hover:bg-black transition-all disabled:opacity-50"
                                         >
-                                            Confirmar Conexión
+                                            {t('meta_wizard.btn_confirm')}
                                         </button>
                                     </div>
                                 </>
@@ -296,8 +295,8 @@ export default function MetaConnectionWizard({ isOpen, onClose, onSuccess }: Met
                                         <CheckCircle2 size={48} />
                                     </div>
                                     <div>
-                                        <h3 className="text-2xl font-bold text-gray-900">¡Conexión Exitosa!</h3>
-                                        <p className="text-gray-500 mt-2">La cuenta <strong>{selectedAccount?.name}</strong> está lista.<br />Sincronizando datos...</p>
+                                        <h3 className="text-2xl font-bold text-gray-900">{t('meta_wizard.success_title')}</h3>
+                                        <p className="text-gray-500 mt-2">{t('meta_wizard.success_desc1')} <strong>{selectedAccount?.name}</strong> {t('meta_wizard.success_desc2')}<br />{t('meta_wizard.syncing')}</p>
                                     </div>
                                 </div>
                             )}
@@ -307,7 +306,7 @@ export default function MetaConnectionWizard({ isOpen, onClose, onSuccess }: Met
 
                 {/* Footer simple (opcional) */}
                 <div className="p-6 bg-gray-50 text-center">
-                    <button onClick={onClose} className="text-xs text-gray-400 hover:text-gray-600 font-medium tracking-tight">Cerrar Asistente</button>
+                    <button onClick={onClose} className="text-xs text-gray-400 hover:text-gray-600 font-medium tracking-tight">{t('meta_wizard.close_wizard')}</button>
                 </div>
             </div>
         </div>

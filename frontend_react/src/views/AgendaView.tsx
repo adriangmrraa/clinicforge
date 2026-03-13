@@ -85,16 +85,7 @@ const SOURCE_COLORS: Record<string, { hex: string; label: string; bgClass: strin
   },
 };
 
-// Mapeo de IDs de appointment_statuses a colores hexadecimales
-// 1: scheduled, 2: confirmed, 3: in_progress, 4: completed, 5: cancelled, 6: no_show
-const STATUS_COLORS: Record<number, { hex: string; label: string }> = {
-  1: { hex: '#3b82f6', label: 'scheduled' },   // azul - Programado
-  2: { hex: '#22c55e', label: 'confirmed' },   // verde - Confirmado
-  3: { hex: '#eab308', label: 'in_progress' }, // amarillo - En progreso
-  4: { hex: '#6b7280', label: 'completed' },   // gris - Completado
-  5: { hex: '#ef4444', label: 'cancelled' },   // rojo - Cancelado
-  6: { hex: '#f97316', label: 'no_show' },     // naranja - No asistido
-};
+// STATUS_COLORS removed as it was unused
 
 
 
@@ -186,19 +177,7 @@ export default function AgendaView() {
 
 
 
-  // Handler para cambios de vista
-  const handleViewChange = useCallback((viewName: string) => {
-    setCurrentView(viewName);
-    localStorage.setItem('agendaView', viewName);
-
-    if (calendarRef.current) {
-      const calendarApi = calendarRef.current.getApi();
-      // Solo cambiar vista si es diferente a la actual
-      if (calendarApi.view.type !== viewName) {
-        calendarApi.changeView(viewName);
-      }
-    }
-  }, []);
+  // handleViewChange removed as it was unused
 
   // Mobile Detection only
   useEffect(() => {
@@ -482,7 +461,7 @@ export default function AgendaView() {
   const handleEventClick = (info: any) => {
     // Check if it's a Google Calendar block
     if (info.event.extendedProps.eventType === 'gcalendar_block') {
-      alert(`Bloqueo de Google Calendar:\n\n${info.event.title}\n${new Date(info.event.start).toLocaleString()} - ${new Date(info.event.end).toLocaleString()}`);
+      alert(`${t('agenda.google_block')}:\n\n${info.event.title}\n${new Date(info.event.start).toLocaleString(language)} - ${new Date(info.event.end).toLocaleString(language)}`);
       return;
     }
 
@@ -721,7 +700,6 @@ export default function AgendaView() {
                   slotLabelInterval="01:00"
                   initialDate={new Date()}
                   firstDay={1} // Lunes como primer día de semana (0=Dom, 1=Lun)
-                  datesAbove={true} // Para mostrar días en orden correcto
                   locale={language}
                   buttonText={{
                     today: t('agenda.today'),

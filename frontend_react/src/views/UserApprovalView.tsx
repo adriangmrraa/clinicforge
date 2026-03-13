@@ -332,7 +332,7 @@ const UserApprovalView: React.FC = () => {
         e.preventDefault();
         setLinkFormSubmitting(true);
         try {
-            const name = `${selectedStaff.first_name || ''} ${selectedStaff.last_name || ''}`.trim() || 'Profesional';
+            const name = `${selectedStaff.first_name || ''} ${selectedStaff.last_name || ''}`.trim() || t('approvals.professional_fallback');
             await api.post('/admin/professionals', {
                 email: selectedStaff.email,
                 tenant_id,
@@ -468,9 +468,9 @@ const UserApprovalView: React.FC = () => {
                     <div className="bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl w-full max-w-6xl h-[92dvh] sm:h-auto sm:max-h-[92vh] flex flex-col overflow-hidden animate-in fade-in duration-200">
                         <div className="flex items-center justify-between gap-3 px-4 py-4 sm:px-6 sm:py-5 border-b border-gray-100 shrink-0">
                             <h2 className="text-lg sm:text-xl font-bold text-gray-900 truncate min-w-0">
-                                {selectedStaff.first_name || 'Sin nombre'} {selectedStaff.last_name || ''}
+                                {selectedStaff.first_name || t('approvals.no_name')} {selectedStaff.last_name || ''}
                             </h2>
-                            <button type="button" onClick={closeStaffModal} className="shrink-0 p-2.5 min-w-[44px] min-h-[44px] rounded-xl text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors touch-manipulation" aria-label="Cerrar">
+                            <button type="button" onClick={closeStaffModal} className="shrink-0 p-2.5 min-w-[44px] min-h-[44px] rounded-xl text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors touch-manipulation" aria-label={t('common.close')}>
                                 <X size={24} />
                             </button>
                         </div>
@@ -662,7 +662,7 @@ const UserApprovalView: React.FC = () => {
                                                                             <li>{t('approvals.completed_appointments')}: <strong>{m.total_appointments}</strong> ({t('approvals.completion')} {m.completion_rate}%)</li>
                                                                             <li>{t('approvals.cancellations')}: <strong>{m.cancellation_rate}%</strong></li>
                                                                             <li>{t('approvals.estimated_revenue')}: <strong>${typeof m.revenue === 'number' ? m.revenue.toLocaleString() : m.revenue}</strong></li>
-                                                                            {d?.tags?.length ? <li>Tags: {d.tags.join(', ')}</li> : null}
+                                                                            {d?.tags?.length ? <li>{t('approvals.tags')}: {d.tags.join(', ')}</li> : null}
                                                                         </ul>
                                                                     ) : (
                                                                         <p className="text-gray-500">{t('approvals.no_data_period')}</p>

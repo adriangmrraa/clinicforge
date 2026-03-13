@@ -1,6 +1,5 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
 import api from '../api/axios';
-import { useAuth } from './AuthContext';
 
 import es from '../locales/es.json';
 import en from '../locales/en.json';
@@ -27,7 +26,7 @@ function getNested(obj: Record<string, unknown>, path: string): string | undefin
 interface LanguageContextType {
   language: UiLanguage;
   setLanguage: (lang: UiLanguage) => void;
-  t: (key: string) => string;
+  t: (key: string, data?: Record<string, any>) => string;
   isLoading: boolean;
 }
 
@@ -58,11 +57,16 @@ export const LanguageProvider: React.FC<{ children: ReactNode }> = ({ children }
       .then((res) => {
         const lang = res.data?.ui_language;
         if (lang === 'es' || lang === 'fr' || lang === 'en') {
+          // If we have a stored language that is different from server, 
+          // we might want to keep it if it was just changed, but server should be source of truth.
+          // For now, let's sync server -> state/localStorage
           setLanguageState(lang);
           localStorage.setItem(STORAGE_KEY, lang);
         }
       })
-      .catch(() => { })
+      .catch((err) => {
+        console.error("Error loading language settings:", err);
+      })
       .finally(() => setIsLoading(false));
   }, []);
 

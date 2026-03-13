@@ -57,7 +57,7 @@ async def send_appointment_reminders():
         
         logger.info(f"📅 Buscando turnos para: {tomorrow.strftime('%Y-%m-%d')}")
         
-        # Query para obtener turnos del día siguiente
+        # Query para obtener turnos del día siguiente (IA: scheduled, Manual: confirmed)
         appointments = await db.pool.fetch("""
             SELECT 
                 a.id as appointment_id,
@@ -74,7 +74,7 @@ async def send_appointment_reminders():
             FROM appointments a
             INNER JOIN patients p ON a.patient_id = p.id AND p.tenant_id = a.tenant_id
             INNER JOIN tenants t ON a.tenant_id = t.id
-            WHERE a.status = 'scheduled'
+            WHERE a.status IN ('scheduled', 'confirmed')
                 AND a.appointment_datetime >= $1
                 AND a.appointment_datetime <= $2
                 AND (a.reminder_sent IS NULL OR a.reminder_sent = false)

@@ -263,7 +263,8 @@ async def get_patient_clinical_context(
     }
 
 class StatusUpdate(BaseModel):
-    status: str # active, suspended, pending
+    status: str
+    notes: Optional[str] = None # active, suspended, pending
 
 # --- RUTAS DE ADMINISTRACIÓN DE USUARIOS ---
 
@@ -363,6 +364,7 @@ class AppointmentCreate(BaseModel):
     patient_phone: Optional[str] = None # Si es paciente nuevo rápido
     professional_id: int
     appointment_datetime: datetime
+    duration_minutes: Optional[int] = 30 # Por defecto 30 min
     appointment_type: str = "checkup"
     notes: Optional[str] = None
     check_collisions: bool = True # Por defecto verificar colisiones
@@ -2706,7 +2708,7 @@ async def create_appointment_manual(
             collision_response = await check_collisions(
                 apt.professional_id,
                 apt.appointment_datetime.isoformat(),
-                60,
+                apt.duration_minutes or 60, # Use duration_minutes from model
                 None,
                 tenant_id=tenant_id,
             )
@@ -2751,17 +2753,17 @@ async def create_appointment_manual(
             raise HTTPException(status_code=400, detail="Paciente no encontrado")
         # 4. Crear turno (source='manual')
         new_id = str(uuid.uuid4())
+        duration = apt.duration_minutes or 30
         await db.pool.execute("""
             INSERT INTO appointments (
                 id, tenant_id, patient_id, professional_id, appointment_datetime, 
-                duration_minutes, appointment_type, status, urgency_level, source, created_at
-            ) VALUES ($1, $2, $3, $4, $5, 60, $6, 'confirmed', 'normal', 'manual', NOW())
-        """, new_id, tenant_id, pid, apt.professional_id, apt.appointment_datetime, apt.appointment_type)
-        
+                duration_minutes, appointment_type, status, urgency_level, source, notes, created_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'confirmed', 'normal', 'manual', $8, NOW())
+        """, new_id, tenant_id, pid, apt.professional_id, apt.appointment_datetime, duration, apt.appointment_type, apt.notes)
         # 5. Obtener datos completos del turno para evento y GCal
         appointment_data = await db.pool.fetchrow("""
             SELECT a.id, a.patient_id, a.professional_id, a.appointment_datetime, 
-                   a.appointment_type, a.status, a.urgency_level,
+                   a.appointment_type, a.status, a.urgency_level, a.notes, a.duration_minutes,
                    (p.first_name || ' ' || COALESCE(p.last_name, '')) as patient_name, 
                    p.phone_number as patient_phone,
                    p.first_name, p.last_name, -- Para el summary de GCal
@@ -2825,22 +2827,31 @@ async def update_appointment_status(
     id: str,
     payload: StatusUpdate,
     request: Request,
+    background_tasks: BackgroundTasks,
     tenant_id: int = Depends(get_resolved_tenant_id),
 ):
     """Cambiar estado: confirmed, cancelled, attended, no_show. Aislado por tenant_id (Regla de Oro)."""
+    # 2. Actualizar en BD
+    update_fields = "status = $1, updated_at = NOW()"
+    params = [payload.status, id, tenant_id]
+    
+    if payload.notes is not None:
+        update_fields = "status = $1, notes = $4, updated_at = NOW()"
+        params.append(payload.notes)
+        
     result = await db.pool.execute(
-        "UPDATE appointments SET status = $1 WHERE id = $2 AND tenant_id = $3",
-        payload.status, id, tenant_id
+        f"UPDATE appointments SET {update_fields} WHERE id = $2 AND tenant_id = $3",
+        *params
     )
     if result == "UPDATE 0":
         raise HTTPException(status_code=404, detail="Turno no encontrado o sin acceso")
     
-    # Obtener datos actualizados del turno para emitir evento
+    # Obtener datos actuales del turno para emitir evento y lógica de feedback
     appointment_data = await db.pool.fetchrow("""
         SELECT a.id, a.patient_id, a.professional_id, a.appointment_datetime, 
                a.appointment_type, a.status, a.urgency_level,
                (p.first_name || ' ' || COALESCE(p.last_name, '')) as patient_name, 
-               p.phone_number as patient_phone,
+               p.first_name, p.last_name, p.phone_number,
                prof.first_name as professional_name,
                a.google_calendar_event_id, a.google_calendar_sync_status
         FROM appointments a
@@ -2849,6 +2860,24 @@ async def update_appointment_status(
         WHERE a.id = $1
     """, id)
     
+    if not appointment_data:
+        raise HTTPException(status_code=404, detail="Turno no encontrado")
+
+    if payload.status == 'completed' and appointment_data['status'] != 'completed' and appointment_data['phone_number']:
+        # Disparar feedback automático en background
+        try:
+            background_tasks.add_task(
+                trigger_feedback_after_delay,
+                appointment_id=int(id) if str(id).isdigit() else id,
+                tenant_id=tenant_id,
+                patient_name=f"{appointment_data['first_name'] or ''} {appointment_data['last_name'] or ''}".strip() or "paciente",
+                phone_number=appointment_data['phone_number'],
+                delay_minutes=45 
+            )
+            logger.info(f"⏰ Feedback programado para turno {id}")
+        except Exception as e:
+            logger.error(f"Error programando feedback: {e}")
+
     if appointment_data:
         # 1. Sincronizar cancelación con Google Calendar
         if payload.status == 'cancelled' and appointment_data['google_calendar_event_id']:
@@ -2866,13 +2895,31 @@ async def update_appointment_status(
                         id
                     )
             except Exception as ge:
-                print(f"Error deleting GCal event: {ge}")
+                logger.warning(f"Error deleting GCal event: {ge}")
+
+        if payload.status == 'completed' and apt['status'] != 'completed' and apt['phone_number']:
+            # Disparar feedback automático en background
+            try:
+                background_tasks.add_task(
+                    trigger_feedback_after_delay,
+                    appointment_id=int(id) if str(id).isdigit() else id,
+                    tenant_id=tenant_id,
+                    patient_name=f"{apt['first_name'] or ''} {apt['last_name'] or ''}".strip() or "paciente",
+                    phone_number=apt['phone_number'],
+                    delay_minutes=45 
+                )
+                logger.info(f"⏰ Feedback programado para turno {id}")
+            except Exception as e:
+                logger.error(f"Error programando feedback: {e}")
 
         # 2. Emitir evento según el nuevo estado
-        if payload.status == 'cancelled':
-            await emit_appointment_event("APPOINTMENT_DELETED", id, request)
-        else:
-            await emit_appointment_event("APPOINTMENT_UPDATED", dict(appointment_data), request)
+        try:
+            if payload.status == 'cancelled':
+                await emit_appointment_event("APPOINTMENT_DELETED", id, request)
+            else:
+                await emit_appointment_event("APPOINTMENT_UPDATED", appointment_data_dict, request)
+        except Exception as emit_err:
+            logger.warning(f"Socket emit failed for status update {id}: {emit_err}")
     
     return {"status": "updated", "appointment_id": str(id), "new_status": payload.status}
 
@@ -2979,7 +3026,14 @@ async def update_appointment(id: str, apt: AppointmentCreate, request: Request, 
             WHERE a.id = $1
         """, id)
         if full_data:
-            await emit_appointment_event("APPOINTMENT_UPDATED", dict(full_data), request)
+            full_data_dict = dict(full_data)
+            if full_data_dict.get('appointment_datetime'):
+                full_data_dict['appointment_datetime'] = full_data_dict['appointment_datetime'].isoformat()
+            
+            try:
+                await emit_appointment_event("APPOINTMENT_UPDATED", full_data_dict, request)
+            except Exception as emit_err:
+                logger.warning(f"Socket emit failed for appointment update {id}: {emit_err}")
 
         return {"status": "updated", "id": id}
     except HTTPException:
@@ -4435,91 +4489,3 @@ async def trigger_feedback_after_delay(
         logger.error(f"❌ Error en trigger_feedback_after_delay: {e}")
 
 
-@router.patch("/appointments/{appointment_id}/status")
-async def update_appointment_status(
-    appointment_id: int,
-    payload: AppointmentStatusUpdate,
-    request: Request,
-    background_tasks: BackgroundTasks,
-    tenant_id: int = Depends(get_resolved_tenant_id),
-):
-    """
-    Actualiza el estado de un turno.
-    Si el nuevo estado es 'completed', dispara el job de feedback (45min delay) en background.
-    """
-
-    # 1. Obtener turno actual
-    apt = await db.pool.fetchrow("""
-        SELECT a.id, a.status as old_status, a.tenant_id, a.patient_id,
-               p.first_name, p.last_name, p.phone_number
-        FROM appointments a
-        LEFT JOIN patients p ON a.patient_id = p.id AND p.tenant_id = a.tenant_id
-        WHERE a.id=$1 AND a.tenant_id=$2
-    """, appointment_id, tenant_id)
-
-    if not apt:
-        raise HTTPException(status_code=404, detail="Turno no encontrado.")
-
-    allowed_statuses = ["pending", "confirmed", "completed", "cancelled", "no_show"]
-    if payload.status not in allowed_statuses:
-        raise HTTPException(status_code=400, detail=f"Estado inválido. Permitidos: {allowed_statuses}")
-
-    # 2. Actualizar estado
-    update_fields = "status=$1, updated_at=NOW()"
-    params = [payload.status, appointment_id, tenant_id]
-
-    if payload.notes:
-        update_fields += ", notes=$4"
-        params.append(payload.notes)
-
-    await db.pool.execute(
-        f"UPDATE appointments SET {update_fields} WHERE id=$2 AND tenant_id=$3",
-        *params
-    )
-
-    # 3. Escribir log de automatización del cambio de estado
-    await write_automation_log(
-        tenant_id=tenant_id,
-        trigger_type="appointment_status_change",
-        status="sent",
-        patient_name=f"{apt['first_name'] or ''} {apt['last_name'] or ''}".strip(),
-        phone_number=apt["phone_number"] or "",
-        channel="system",
-        message_type="system",
-        message_preview=f"Estado: {apt['old_status']} → {payload.status}"
-    )
-
-    # 4. Si se marca como COMPLETADO → disparar feedback event-driven
-    if payload.status == "completed" and apt["old_status"] != "completed":
-        patient_name = f"{apt['first_name'] or ''} {apt['last_name'] or ''}".strip() or "paciente"
-        phone = apt["phone_number"]
-
-        if phone:
-            # Obtener delay_minutes de la regla
-            rule = await db.pool.fetchrow("""
-                SELECT condition_json FROM automation_rules
-                WHERE tenant_id=$1 AND trigger_type='post_appointment_completed' AND is_active=TRUE
-                ORDER BY is_system DESC LIMIT 1
-            """, tenant_id)
-            delay = 45
-            if rule and rule["condition_json"]:
-                cond = rule["condition_json"] if isinstance(rule["condition_json"], dict) else json.loads(rule["condition_json"])
-                delay = cond.get("delay_minutes", 45)
-
-            # Disparar en background (no bloquea la respuesta)
-            import asyncio
-            asyncio.create_task(trigger_feedback_after_delay(
-                appointment_id=appointment_id,
-                tenant_id=tenant_id,
-                patient_name=patient_name,
-                phone_number=phone,
-                delay_minutes=delay
-            ))
-            logger.info(f"⏰ Feedback programado para {patient_name} en {delay} minutos")
-
-    return {
-        "message": f"Estado actualizado a '{payload.status}'.",
-        "appointment_id": appointment_id,
-        "new_status": payload.status,
-        "feedback_scheduled": payload.status == "completed" and apt["old_status"] != "completed" and bool(apt["phone_number"])
-    }

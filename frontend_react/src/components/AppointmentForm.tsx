@@ -328,15 +328,15 @@ export default function AppointmentForm({
                             {/* Estado del turno — solo en edición */}
                             {isEditing && (
                                 <div className="space-y-2 p-4 bg-slate-50 rounded-xl border border-slate-200">
-                                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Estado del Turno</label>
-                                    <p className="text-xs text-slate-400">Cambiar a &quot;Completada&quot; enviará un mensaje de feedback al paciente en 45 minutos.</p>
+                                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">{t('agenda.appointment_status')}</label>
+                                    <p className="text-xs text-slate-400">{t('agenda.status_completed_hint')}</p>
                                     <div className="grid grid-cols-3 gap-2">
                                         {[
-                                            { value: 'scheduled', label: '📅 Programado', color: 'blue' },
-                                            { value: 'confirmed', label: '✅ Confirmado', color: 'green' },
-                                            { value: 'completed', label: '🏁 Completada', color: 'purple' },
-                                            { value: 'cancelled', label: '❌ Cancelado', color: 'red' },
-                                            { value: 'no_show', label: '👻 No asistió', color: 'gray' },
+                                            { value: 'scheduled', label: `📅 ${t('agenda.status_scheduled')}`, color: 'blue' },
+                                            { value: 'confirmed', label: `✅ ${t('agenda.status_confirmed')}`, color: 'green' },
+                                            { value: 'completed', label: `🏁 ${t('agenda.status_completed')}`, color: 'purple' },
+                                            { value: 'cancelled', label: `❌ ${t('agenda.status_cancelled')}`, color: 'red' },
+                                            { value: 'no_show', label: `👻 ${t('agenda.status_no_show')}`, color: 'gray' },
                                         ].map(s => (
                                             <button
                                                 key={s.value}
@@ -382,7 +382,7 @@ export default function AppointmentForm({
                         ) : (
                             <div className="text-center py-10 text-gray-400">
                                 <Activity size={48} className="mx-auto mb-3 opacity-20" />
-                                <p className="text-sm">Seleccioná un paciente para ver su anamnesis</p>
+                                <p className="text-sm">{t('agenda.select_patient_anamnesis')}</p>
                             </div>
                         )
                     )}

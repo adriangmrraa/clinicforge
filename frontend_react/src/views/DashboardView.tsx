@@ -57,7 +57,7 @@ const KPICard = ({ title, value, icon: Icon, color, trend }: any) => (
   </div>
 );
 
-const UrgencyBadge = ({ level }: { level: UrgencyRecord['urgency_level'] }) => {
+const UrgencyBadge = ({ level, t }: { level: UrgencyRecord['urgency_level'], t: any }) => {
   const styles = {
     CRITICAL: 'bg-red-100 text-red-700 border-red-200',
     HIGH: 'bg-orange-100 text-orange-700 border-orange-200',
@@ -65,7 +65,7 @@ const UrgencyBadge = ({ level }: { level: UrgencyRecord['urgency_level'] }) => {
   };
   return (
     <span className={`px-2 py-1 rounded-full text-[10px] font-bold border ${styles[level]}`}>
-      {level}
+      {t(`dashboard.severity_${level.toLowerCase()}`)}
     </span>
   );
 };
@@ -297,7 +297,7 @@ export default function DashboardView() {
                     </td>
                     <td className="px-6 py-4 text-sm text-slate-600 font-medium">{u.reason}</td>
                     <td className="px-6 py-4">
-                      <UrgencyBadge level={u.urgency_level} />
+                      <UrgencyBadge level={u.urgency_level} t={t} />
                     </td>
                     <td className="px-6 py-4 text-sm text-slate-500">
                       <div className="flex items-center gap-1.5">

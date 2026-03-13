@@ -36,7 +36,7 @@ interface Professional {
 }
 
 export default function PatientsView() {
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
   const navigate = useNavigate();
   const [patients, setPatients] = useState<Patient[]>([]);
   const [filteredPatients, setFilteredPatients] = useState<Patient[]>([]);
@@ -182,7 +182,7 @@ export default function PatientsView() {
             professional_id: parseInt(appointmentData.professional_id),
             appointment_datetime: aptDate.toISOString(),
             appointment_type: appointmentData.treatment_code,
-            notes: "Turno inicial (Alta manual)",
+            notes: t('patients.initial_appointment_notes'),
             check_collisions: true
           });
           alert(t('alerts.patient_and_appointment_ok'));
@@ -317,10 +317,10 @@ export default function PatientsView() {
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Paciente
+                      {t('patients.patient')}
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Contacto
+                      {t('patients.contact')}
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       {t('patients.dni_obra_social')}
@@ -366,7 +366,7 @@ export default function PatientsView() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">-</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {new Date(patient.created_at).toLocaleDateString('es-AR')}
+                        {new Date(patient.created_at).toLocaleDateString(language)}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                         <div className="flex justify-end gap-2">
@@ -449,7 +449,7 @@ export default function PatientsView() {
 
                   <div className="flex items-center justify-between pt-2">
                     <span className="text-[10px] text-gray-400">
-                      Cargado el {new Date(patient.created_at).toLocaleDateString('es-AR')}
+                      {t('patients.loaded_on')}: {new Date(patient.created_at).toLocaleDateString(language)}
                     </span>
                     <button
                       onClick={() => handleDelete(patient.id)}
@@ -561,19 +561,19 @@ export default function PatientsView() {
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Ciudad / Barrio
+                        {t('patients.city_neighborhood')}
                       </label>
                       <input
                         type="text"
                         value={formData.city}
                         onChange={(e) => setFormData({ ...formData, city: e.target.value })}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-                        placeholder="Ej. Córdoba Capital"
+                        placeholder={t('patients.city_placeholder')}
                       />
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Fecha de Nacimiento
+                        {t('patients.birth_date')}
                       </label>
                       <input
                         type="date"
