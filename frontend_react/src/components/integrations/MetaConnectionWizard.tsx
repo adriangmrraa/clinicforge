@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { CheckCircle2, ChevronRight, Building2, Briefcase, BarChart3, Loader2 } from 'lucide-react';
 import api from '../../api/axios';
-import { useLanguage } from '../../contexts/LanguageContext';
+import { useTranslation } from '../../context/LanguageContext';
 interface MetaConnectionWizardProps {
     isOpen: boolean;
     onClose: () => void;
@@ -12,7 +12,7 @@ export default function MetaConnectionWizard({ isOpen, onClose, onSuccess }: Met
     const [step, setStep] = useState(1);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const { t } = useLanguage();
+    const { t } = useTranslation();
 
     // Data for steps
     const [clinics, setClinics] = useState<any[]>([]);

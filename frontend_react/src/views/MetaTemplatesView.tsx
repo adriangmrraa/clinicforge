@@ -266,7 +266,7 @@ function RuleFormModal({
           {/* Nombre */}
           <div style={{ marginBottom: '16px' }}>
             <label style={labelStyle}>{t('meta_templates.form.rule_name')}</label>
-            <input value={name} onChange={e => setName(e.target.value)} disabled={isSystem}
+            <input value={name} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setName(e.target.value)} disabled={isSystem}
               placeholder={t('meta_templates.form.rule_name_placeholder')}
               style={{ ...lightInputStyle, opacity: isSystem ? 0.6 : 1, background: isSystem ? '#f8fafc' : '#fff', cursor: isSystem ? 'not-allowed' : 'text' }} />
           </div>
