@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { io, Socket } from 'socket.io-client';
 import { useNavigate } from 'react-router-dom';
 import {
   Users, Search, Filter, Calendar, Phone, Mail, MessageSquare,
@@ -6,7 +7,7 @@ import {
   ChevronRight, ChevronLeft, Download, RefreshCw, BarChart3,
   Eye, MoreVertical, Tag, UserCheck, ArrowUpDown
 } from 'lucide-react';
-import api from '../api/axios';
+import api, { BACKEND_URL } from '../api/axios';
 import { useTranslation } from '../context/LanguageContext';
 import PageHeader from '../components/PageHeader';
 import { Modal } from '../components/Modal';
@@ -108,6 +109,21 @@ export default function LeadsManagementView() {
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [newStatus, setNewStatus] = useState('');
   const [statusChangeReason, setStatusChangeReason] = useState('');
+  const socketRef = useRef<Socket | null>(null);
+
+  // WebSocket Connection
+  useEffect(() => {
+    socketRef.current = io(BACKEND_URL);
+
+    socketRef.current.on('NEW_PATIENT', () => {
+      loadLeads();
+      loadSummary();
+    });
+
+    return () => {
+      if (socketRef.current) socketRef.current.disconnect();
+    };
+  }, []);
 
   // Load leads on mount and when filters change
   useEffect(() => {

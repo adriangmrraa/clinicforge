@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useLocation } from 'react-router-dom';
 import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import interactionPlugin from '@fullcalendar/interaction';
@@ -115,6 +116,7 @@ const getSourceLabel = (source: string | undefined, t?: (k: string) => string): 
 export default function AgendaView() {
   const { user } = useAuth();
   const { t, language } = useTranslation();
+  const location = useLocation();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [googleBlocks, setGoogleBlocks] = useState<GoogleCalendarBlock[]>([]);
   const [professionals, setProfessionals] = useState<Professional[]>([]);
@@ -396,6 +398,22 @@ export default function AgendaView() {
       fetchData(true); // Background fetch to avoid flickering
     }
   }, [selectedDate, isMobile]);
+
+  // Handle deep linking from notifications
+  useEffect(() => {
+    const state = location.state as { openAppointmentId?: string | number };
+    if (state?.openAppointmentId && appointments.length > 0) {
+      const aptId = state.openAppointmentId.toString();
+      const apt = appointments.find(a => a.id.toString() === aptId);
+      if (apt) {
+        setSelectedEvent(apt);
+        setSelectedDate(new Date(apt.appointment_datetime));
+        setShowModal(true);
+        // Limpiar el estado para evitar re-aperturas no deseadas
+        window.history.replaceState({}, document.title);
+      }
+    }
+  }, [location.state, appointments]);
 
   // Calendar events transformer
   const calendarEvents = [

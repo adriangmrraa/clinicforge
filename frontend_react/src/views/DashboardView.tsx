@@ -40,7 +40,15 @@ interface UrgencyRecord {
 // COMPONENTS
 // ============================================
 
-const KPICard = ({ title, value, icon: Icon, color, trend }: any) => (
+interface KPICardProps {
+  title: string;
+  value: string | number;
+  icon: any;
+  color: string;
+  trend?: string;
+}
+
+const KPICard = ({ title, value, icon: Icon, color, trend }: KPICardProps) => (
   <div className="bg-white/80 backdrop-blur-md border border-white/20 rounded-2xl p-6 shadow-sm hover:shadow-md transition-all duration-300 group">
     <div className="flex justify-between items-start mb-4">
       <div className={`p-3 rounded-xl ${color} bg-opacity-10 group-hover:scale-110 transition-transform`}>
@@ -86,15 +94,37 @@ export default function DashboardView() {
     // 1. Conectar WebSocket
     socketRef.current = io(BACKEND_URL);
 
+    const loadUrgencies = async () => {
+      try {
+        const res = await api.get('/admin/chat/urgencies');
+        setUrgencies(res.data);
+      } catch (e) {
+        console.error('Error refreshing urgencies:', e);
+      }
+    };
+
     // 2. Escuchar nuevos turnos/mensajes para actualización en vivo
     socketRef.current.on('NEW_APPOINTMENT', () => {
-      setStats(prev => {
+      setStats((prev: AnalyticsStats | null) => {
         if (!prev) return prev;
         return {
           ...prev,
           ia_appointments: (prev.ia_appointments || 0) + 1
         };
       });
+    });
+
+    socketRef.current.on('PATIENT_UPDATED', (data: any) => {
+      // Actualizar contador
+      setStats((prev: AnalyticsStats | null) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          active_urgencies: (prev.active_urgencies || 0) + 1
+        };
+      });
+      // Recargar lista de urgencias
+      loadUrgencies();
     });
 
     const loadDashboardData = async (range: string) => {
@@ -196,7 +226,7 @@ export default function DashboardView() {
             title={t('dashboard.appointments')}
             value={stats?.ia_appointments?.toLocaleString() || '0'}
             icon={Calendar}
-            color="bg-indigo-500"
+            color="bg-emerald-500"
             trend={(stats as any)?.ia_appointments_trend}
           />
           <KPICard

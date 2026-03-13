@@ -136,6 +136,38 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
                         tenant_id=tenant_id,
                         first_name=msg.display_name or "Visitante"
                     )
+                    
+                    # --- Spec 34: NEW_PATIENT Notification (V7.6) ---
+                    # Si el paciente fue creado recientemente (detectado por created_at vs NOW)
+                    # o si no tenía acquisition_source previo.
+                    if patient_row:
+                        # Consideramos "nuevo" si fue creado en los últimos 30 segundos
+                        # o si el flag 'is_new' estuviera disponible (db.py no lo devuelve explícitamente pero created_at sí)
+                        from datetime import datetime, timezone, timedelta
+                        created_at = patient_row.get("created_at")
+                        is_new = False
+                        if created_at:
+                            if created_at.tzinfo is None:
+                                created_at = created_at.replace(tzinfo=timezone.utc)
+                            if datetime.now(timezone.utc) - created_at < timedelta(seconds=30):
+                                is_new = True
+                        
+                        if is_new:
+                            try:
+                                from main import app
+                                sio = getattr(app.state, "sio", None)
+                                to_json_safe = getattr(app.state, "to_json_safe", lambda x: x)
+                                if sio:
+                                    await sio.emit('NEW_PATIENT', to_json_safe({
+                                        'phone_number': msg.external_user_id,
+                                        'tenant_id': tenant_id,
+                                        'name': msg.display_name or "Nuevo Paciente",
+                                        'channel': msg.original_channel
+                                    }))
+                                    logger.info(f"📡 Socket NEW_PATIENT emitted for {msg.external_user_id}")
+                            except Exception as sio_err:
+                                logger.error(f"⚠️ Error emitting NEW_PATIENT SocketIO event: {sio_err}")
+
                     if patient_row:
                         ref_ad_id = msg.referral.get("ad_id")
                         if ref_ad_id:

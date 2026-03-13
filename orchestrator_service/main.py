@@ -967,7 +967,8 @@ async def book_appointment(date_time: str, treatment_reason: str,
                 "id": apt_id, 
                 "patient_name": f"{first_name} {last_name or ''}",
                 "appointment_datetime": apt_datetime.isoformat(),
-                "professional_name": target_prof['first_name']
+                "professional_name": target_prof['first_name'],
+                "tenant_id": tenant_id
             })
             await sio.emit("NEW_APPOINTMENT", safe_data)
         except: pass
@@ -1085,11 +1086,16 @@ async def triage_urgency(symptoms: str):
             """, urgency_level, symptoms, patient_row['id'])
             
             # Notificar al dashboard el cambio de prioridad
+            # Obtenemos el nombre para el Toast
+            name = f"{patient_row.get('first_name', '')} {patient_row.get('last_name', '') or ''}".strip() or phone
+
             await sio.emit("PATIENT_UPDATED", to_json_safe({
                 "phone_number": phone,
+                "patient_name": name,
                 "urgency_level": urgency_level,
                 "urgency_reason": symptoms,
                 "ad_intent_match": ad_intent_match,
+                "tenant_id": tenant_id
             }))
         except Exception as e:
             logger.error(f"Error persisting triage: {e}")

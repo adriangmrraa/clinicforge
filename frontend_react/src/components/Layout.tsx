@@ -5,14 +5,14 @@ import { useAuth } from '../context/AuthContext';
 import { useTranslation } from '../context/LanguageContext';
 import { io, Socket } from 'socket.io-client';
 import { BACKEND_URL } from '../api/axios';
-import { AlertCircle, X, Wifi, WifiOff } from 'lucide-react';
+import { X, Wifi, WifiOff, Bell, UserPlus, Calendar, AlertTriangle } from 'lucide-react';
 import MetaTokenBanner from './MetaTokenBanner';
 
 interface LayoutProps {
   children: ReactNode;
 }
 
-export const Layout: React.FC<LayoutProps> = ({ children }) => {
+export const Layout: React.FC<LayoutProps> = ({ children }: LayoutProps) => {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const { user } = useAuth();
@@ -25,8 +25,13 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
   // Notification State
   const [notification, setNotification] = useState<{
     show: boolean;
-    phone: string;
-    reason: string;
+    type: 'handoff' | 'new_patient' | 'urgency' | 'appointment';
+    phone?: string;
+    reason?: string;
+    name?: string;
+    id?: string | number;
+    urgency_level?: string;
+    appointment_id?: string | number;
   } | null>(null);
 
   // Global Socket Listener for Handoffs
@@ -67,29 +72,78 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
 
     // Listener
     // Listener
-    const handleHandoff = (data: { phone_number: string; reason: string }) => {
-
-      // Mostrar notificación
-      setNotification({
-        show: true,
-        phone: data.phone_number,
-        reason: data.reason
-      });
-
-      // Auto-ocultar a los 5 segundos
+    // --- NOTIFICATION HANDLERS ---
+    
+    const showNotification = (notif: typeof notification) => {
+      if (!notif) return;
+      setNotification(notif);
+      
+      // Auto-ocultar a los 10 segundos (Requerimiento Spec v7.6)
       setTimeout(() => {
-        setNotification(null);
-      }, 5000);
+        setNotification((prev: any) => (prev?.id === notif?.id ? null : prev));
+      }, 10000);
 
-      // Reproducir sonido (opcional, si el navegador lo permite)
+      // Reproducir sonido diferenciado
       try {
-        const audio = new Audio('/assets/notification.mp3');
-        // Fallback or generic sound logic here if asset missing
+        const isCritical = notif.type === 'urgency' && notif.urgency_level === 'emergency';
+        const audioPath = isCritical ? '/assets/critical_alert.mp3' : '/assets/notification.mp3';
+        const audio = new Audio(audioPath);
         audio.play().catch(_e => { });
       } catch (e) { }
     };
 
+    const handleHandoff = (data: { phone_number: string; reason: string; tenant_id?: number }) => {
+      if (data.tenant_id && user.tenant_id && data.tenant_id !== user.tenant_id) return;
+      showNotification({
+        show: true,
+        type: 'handoff',
+        phone: data.phone_number,
+        reason: data.reason,
+        id: Date.now()
+      });
+    };
+
+    const handleNewPatient = (data: { name: string; phone_number: string; channel: string; tenant_id?: number }) => {
+      if (data.tenant_id && user.tenant_id && data.tenant_id !== user.tenant_id) return;
+      showNotification({
+        show: true,
+        type: 'new_patient',
+        name: data.name,
+        phone: data.phone_number,
+        reason: `Nuevo lead vía ${data.channel}`,
+        id: Date.now()
+      });
+    };
+
+    const handleUrgency = (data: { patient_name: string; urgency_level: string; urgency_reason: string; phone_number: string; tenant_id?: number }) => {
+      if (data.tenant_id && user.tenant_id && data.tenant_id !== user.tenant_id) return;
+      showNotification({
+        show: true,
+        type: 'urgency',
+        name: data.patient_name,
+        phone: data.phone_number,
+        reason: data.urgency_reason,
+        urgency_level: data.urgency_level,
+        id: Date.now()
+      });
+    };
+
+    const handleAppointment = (data: { patient_name: string; id: string | number; tenant_id?: number }) => {
+      if (data.tenant_id && user.tenant_id && data.tenant_id !== user.tenant_id) return;
+      showNotification({
+        show: true,
+        type: 'appointment',
+        name: data.patient_name,
+        appointment_id: data.id,
+        reason: 'Nuevo agendamiento realizado por la IA',
+        id: Date.now()
+      });
+    };
+
     socket.on('HUMAN_HANDOFF', handleHandoff);
+    socket.on('NEW_PATIENT', handleNewPatient);
+    socket.on('PATIENT_UPDATED', handleUrgency);
+    socket.on('NEW_APPOINTMENT', handleAppointment);
 
     return () => {
       socket.off('connect', onConnect);
@@ -97,15 +151,30 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
       socket.off('reconnect_attempt', onReconnectAttempt);
       socket.off('reconnect', onConnect);
       socket.off('HUMAN_HANDOFF', handleHandoff);
+      socket.off('NEW_PATIENT', handleNewPatient);
+      socket.off('PATIENT_UPDATED', handleUrgency);
+      socket.off('NEW_APPOINTMENT', handleAppointment);
     };
   }, [user]);
 
   const handleNotificationClick = () => {
-    if (notification) {
-      // Navegar al chat seleccionando el teléfono
-      navigate('/chats', { state: { selectPhone: notification.phone } });
-      setNotification(null);
+    if (!notification) return;
+
+    switch (notification.type) {
+      case 'appointment':
+        navigate('/agenda', { state: { openAppointmentId: notification.appointment_id } });
+        break;
+      case 'urgency':
+      case 'handoff':
+        navigate('/chats', { state: { selectPhone: notification.phone } });
+        break;
+      case 'new_patient':
+        navigate('/leads');
+        break;
+      default:
+        break;
     }
+    setNotification(null);
   };
 
   return (
@@ -193,31 +262,80 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
         </div>
       </main>
 
-      {/* GLOBAL NOTIFICATION TOAST */}
+      {/* GLOBAL PREMIUM NOTIFICATION TOAST */}
       {notification && (
         <div
-          className="fixed bottom-6 right-6 z-50 max-w-sm w-full bg-white rounded-lg shadow-xl border-l-4 border-orange-500 p-4 transform transition-all duration-300 ease-in-out cursor-pointer hover:bg-gray-50"
+          className={`fixed bottom-6 right-6 z-[100] max-w-sm w-full animate-in slide-in-from-right-10 duration-500 overflow-hidden cursor-pointer group`}
           onClick={handleNotificationClick}
         >
-          <div className="flex items-start gap-3">
-            <div className="flex-shrink-0">
-              <AlertCircle className="h-6 w-6 text-orange-500" />
-            </div>
-            <div className="flex-1">
-              <h3 className="text-sm font-medium text-gray-900">🔔 {t('layout.notification_handoff')}</h3>
-              <p className="mt-1 text-sm text-gray-500 line-clamp-2">
-                {notification.phone}. {t('layout.notification_reason')}: {notification.reason}
-              </p>
-              <div className="mt-2 text-xs text-orange-600 font-medium">
-                {t('layout.click_to_open_chat')}
+          {/* Glassmorphic Background with Gradient Border */}
+          <div className={`relative p-[1px] rounded-2xl shadow-2xl transition-transform duration-300 hover:scale-[1.02] active:scale-[0.98]
+            ${notification.type === 'urgency' ? 'bg-gradient-to-r from-red-500 via-rose-500 to-red-600' : 
+              (notification.type === 'appointment' || notification.type === 'new_patient') ? 'bg-gradient-to-r from-emerald-500 via-green-500 to-emerald-600' : 
+              'bg-gradient-to-r from-blue-500 via-indigo-500 to-blue-600'}`}>
+            
+            <div className="bg-white/95 backdrop-blur-xl rounded-[15px] p-4 flex items-start gap-4">
+              {/* Animated Icon Container */}
+              <div className={`relative flex-shrink-0 w-12 h-12 rounded-xl flex items-center justify-center shadow-inner overflow-hidden
+                ${notification.type === 'urgency' ? 'bg-red-50 text-red-600' : 
+                  (notification.type === 'appointment' || notification.type === 'new_patient') ? 'bg-emerald-50 text-emerald-600' : 
+                  'bg-blue-50 text-blue-600'}`}>
+                
+                {/* Background Glow Implementation */}
+                <div className={`absolute inset-0 opacity-20 animate-pulse
+                  ${notification.type === 'urgency' ? 'bg-red-400' : 
+                    (notification.type === 'appointment' || notification.type === 'new_patient') ? 'bg-emerald-400' : 
+                    'bg-blue-400'}`} />
+
+                {notification.type === 'urgency' ? <AlertTriangle className="h-6 w-6 relative z-10 animate-bounce" /> : 
+                 notification.type === 'appointment' ? <Calendar className="h-6 w-6 relative z-10" /> : 
+                 notification.type === 'new_patient' ? <UserPlus className="h-6 w-6 relative z-10" /> : 
+                 <Bell className="h-6 w-6 relative z-10" />}
+              </div>
+
+              {/* Content Area */}
+              <div className="flex-1 min-w-0">
+                <div className="flex justify-between items-start">
+                  <span className={`text-[10px] font-black uppercase tracking-[0.15em] mb-1 block
+                    ${notification.type === 'urgency' ? 'text-red-500' : 
+                      (notification.type === 'appointment' || notification.type === 'new_patient') ? 'text-emerald-600' : 
+                      'text-blue-600'}`}>
+                    {notification.type === 'urgency' ? 'Urgent Alert' : 
+                     notification.type === 'appointment' ? 'New Booking' : 
+                     notification.type === 'new_patient' ? 'New Patient' : 
+                     'Notification'}
+                  </span>
+                  <button
+                    onClick={(e: React.MouseEvent) => { e.stopPropagation(); setNotification(null); }}
+                    className="text-gray-400 hover:text-gray-600 p-1 -mt-1 -mr-1 transition-colors rounded-full hover:bg-gray-100"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+                
+                <h3 className="text-sm font-bold text-slate-900 truncate">
+                  {notification.name || notification.phone}
+                </h3>
+                
+                <p className="mt-1 text-xs text-slate-600 font-medium line-clamp-2 leading-relaxed opacity-80">
+                  {notification.reason}
+                </p>
+
+                {/* Interactive Indicator */}
+                <div className="mt-3 flex items-center gap-1.5">
+                  <div className={`h-1 w-1 rounded-full animate-ping
+                    ${notification.type === 'urgency' ? 'bg-red-500' : 
+                      (notification.type === 'appointment' || notification.type === 'new_patient') ? 'bg-emerald-500' : 
+                      'bg-blue-500'}`} />
+                  <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-tighter group-hover:text-slate-600 transition-colors">
+                    Click para gestionar
+                  </span>
+                </div>
               </div>
             </div>
-            <button
-              onClick={(e) => { e.stopPropagation(); setNotification(null); }}
-              className="text-gray-400 hover:text-gray-600"
-            >
-              <X size={16} />
-            </button>
+
+            {/* Shine effect on hover */}
+            <div className="absolute inset-0 pointer-events-none bg-gradient-to-tr from-transparent via-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700 -translate-x-full group-hover:translate-x-full" />
           </div>
         </div>
       )}
