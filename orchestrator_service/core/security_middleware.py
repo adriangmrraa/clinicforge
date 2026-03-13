@@ -37,7 +37,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
                 csp_domains.add(d)
         
         # Dominios de confianza base (OpenAI, Meta) + dinámicos
-        trusted_connect = ["*.openai.com", "*.facebook.com", "*.messenger.com", "*.fbcdn.net"]
+        trusted_connect = ["*.openai.com", "*.facebook.com", "*.messenger.com", "*.fbcdn.net", "cdn.jsdelivr.net"]
         connect_src = " ".join(["'self'"] + trusted_connect + list(csp_domains))
         
         csp_policy = (
