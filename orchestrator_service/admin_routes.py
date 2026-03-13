@@ -1078,7 +1078,13 @@ async def media_proxy(url: str, user_data=Depends(verify_admin_token)):
     Proxy seguro para servir archivos multimedia (YCloud, Local, Chatwoot).
     Permite visualizar contenido sin exponer URLs directas o lidiar con CORS/Expiración.
     """
-    async with httpx.AsyncClient(timeout=10.0) as client:
+    # Headers con autenticación para YCloud si disponible
+    headers = {}
+    ycloud_key = os.getenv("YCLOUD_API_KEY")
+    if ycloud_key and "ycloud" in url.lower():
+        headers["X-API-Key"] = ycloud_key
+
+    async with httpx.AsyncClient(timeout=10.0, follow_redirects=True, headers=headers) as client:
         try:
             resp = await client.get(url)
             if resp.status_code != 200:

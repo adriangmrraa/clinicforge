@@ -54,12 +54,19 @@ class YCloudAdapter(ChannelAdapter):
         elif msg_type == "audio" or msg_type == "voice":
             # Fix Audio WhatsApp: YCloud distingue audio (files) de voice (ptt)
             audio_data = msg.get("audio") or msg.get("voice", {})
+            transcription = audio_data.get("transcription")
+            
+            # --- SPEC: AI AGENT VISIBILITY ---
+            # Si hay transcripción, la inyectamos en el contenido para que el agente la vea
+            if transcription and not content:
+                content = transcription
+                
             media_items.append(MediaItem(
                 type=MediaType.AUDIO,
                 url=audio_data.get("link"),
                 mime_type=audio_data.get("mime_type"),
                 meta={"voice": (msg_type == "voice")},
-                transcription=audio_data.get("transcription")
+                transcription=transcription
             ))
             
         elif msg_type == "document":
