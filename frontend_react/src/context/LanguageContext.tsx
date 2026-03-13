@@ -37,8 +37,9 @@ const STORAGE_KEY = 'ui_language';
 export const LanguageProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [language, setLanguageState] = useState<UiLanguage>(() => {
     const stored = localStorage.getItem(STORAGE_KEY) as UiLanguage | null;
-    return stored === 'es' || stored === 'fr' ? stored : 'en';
+    return stored === 'en' || stored === 'fr' ? stored : 'es';
   });
+
   const [isLoading, setIsLoading] = useState(true);
 
   const setLanguage = useCallback((lang: UiLanguage) => {
@@ -57,9 +58,6 @@ export const LanguageProvider: React.FC<{ children: ReactNode }> = ({ children }
       .then((res) => {
         const lang = res.data?.ui_language;
         if (lang === 'es' || lang === 'fr' || lang === 'en') {
-          // If we have a stored language that is different from server, 
-          // we might want to keep it if it was just changed, but server should be source of truth.
-          // For now, let's sync server -> state/localStorage
           setLanguageState(lang);
           localStorage.setItem(STORAGE_KEY, lang);
         }
