@@ -1,5 +1,11 @@
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { 
+  Smartphone, Instagram, Facebook, Settings, AlertCircle, CheckCircle2, 
+  Clock, SkipForward, Send, UserCheck, Zap, Pencil, Trash2, Plus, 
+  Lock, Files, MessageSquare, RefreshCw, X, Eye, Inbox
+} from 'lucide-react';
 import api from '../api/axios';
+import PageHeader from '../components/PageHeader';
 
 // ─── Mobile Hook ──────────────────────────────────────────────────────────────
 function useWindowWidth() {
@@ -91,11 +97,11 @@ const STATUS_STYLES: Record<string, { bg: string; text: string }> = {
   pending:   { bg: '#f1f5f9', text: '#475569' },
 };
 
-const CHANNEL_ICONS: Record<string, string> = {
-  whatsapp: '📱',
-  instagram: '📸',
-  facebook: '👍',
-  system: '⚙️',
+const CHANNEL_ICONS: Record<string, any> = {
+  whatsapp: <Smartphone size={14} />,
+  instagram: <Instagram size={14} />,
+  facebook: <Facebook size={14} />,
+  system: <Settings size={14} />,
 };
 
 const AVAILABLE_VARS = [
@@ -112,16 +118,26 @@ const AVAILABLE_VARS = [
 
 function StatusBadge({ status }: { status: string }) {
   const s = STATUS_STYLES[status] || STATUS_STYLES.pending;
+  const icons: Record<string, any> = {
+    sent: <CheckCircle2 size={12} />,
+    delivered: <CheckCircle2 size={12} />,
+    read: <Eye size={12} />,
+    failed: <AlertCircle size={12} />,
+    skipped: <SkipForward size={12} />,
+    pending: <Clock size={12} />,
+  };
+
   return (
     <span style={{
-      display: 'inline-block', padding: '2px 10px', borderRadius: '9999px',
+      display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '2px 10px', borderRadius: '9999px',
       fontSize: '12px', fontWeight: 600, background: s.bg, color: s.text, textTransform: 'capitalize',
     }}>
-      {status === 'sent' ? '✅ Enviado' :
-       status === 'delivered' ? '📬 Entregado' :
-       status === 'read' ? '👁️ Leído' :
-       status === 'failed' ? '❌ Fallido' :
-       status === 'skipped' ? '⏭️ Omitido' : status}
+      {icons[status] || icons.pending}
+      {status === 'sent' ? 'Enviado' :
+       status === 'delivered' ? 'Entregado' :
+       status === 'read' ? 'Leído' :
+       status === 'failed' ? 'Fallido' :
+       status === 'skipped' ? 'Omitido' : status}
     </span>
   );
 }
@@ -166,6 +182,13 @@ function RuleFormModal({
   const [sendHourMax, setSendHourMax] = useState(rule?.send_hour_max ?? 20);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+
+  const icons = {
+    edit: <Pencil size={18} />,
+    plus: <Plus size={18} />,
+    lock: <Lock size={14} />,
+    save: <Send size={16} />,
+  };
 
   const selectedTemplate = templates.find(t => t.name === templateName);
   const bodyComp = selectedTemplate?.components?.find(c => c.type === 'BODY');
@@ -214,13 +237,16 @@ function RuleFormModal({
       }}>
         {/* Header */}
         <div style={{ padding: '20px 24px 16px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>
-            <h2 style={{ margin: 0, color: '#0f172a', fontSize: '18px', fontWeight: 700 }}>
-              {messageOnly ? '✏️ Editar Mensaje' : isEdit ? '✏️ Editar Regla' : '✨ Nueva Regla'}
-            </h2>
-            {messageOnly && <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: '13px' }}>Podés cambiar el mensaje que se envía. El trigger, canales y horario son propios del sistema.</p>}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div style={{ color: '#6366f1' }}>{isEdit ? icons.edit : icons.plus}</div>
+            <div>
+              <h2 style={{ margin: 0, color: '#0f172a', fontSize: '18px', fontWeight: 700 }}>
+                {messageOnly ? 'Editar Mensaje' : isEdit ? 'Editar Regla' : 'Nueva Regla'}
+              </h2>
+              {messageOnly && <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: '13px' }}>Podés cambiar el mensaje que se envía. El trigger, canales y horario son propios del sistema.</p>}
+            </div>
           </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '22px', cursor: 'pointer' }}>×</button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', display: 'flex', alignItems: 'center' }}><X size={20} /></button>
         </div>
 
         <div style={{ padding: '20px 24px' }}>
@@ -241,9 +267,9 @@ function RuleFormModal({
             <div style={{ marginBottom: '16px', background: '#f8fafc', borderRadius: '10px', padding: '12px 16px', border: '1px solid #e2e8f0' }}>
               <span style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Cuándo se activa</span>
               <div style={{ marginTop: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span style={{ fontSize: '14px' }}>🔒</span>
+                <Lock size={12} style={{ color: '#94a3b8' }} />
                 <span style={{ color: '#334155', fontSize: '14px', fontWeight: 600 }}>{TRIGGER_LABELS[triggerType] || triggerType}</span>
-                <span style={{ fontSize: '11px', color: '#94a3b8' }}>(no editable)</span>
+                <span style={{ fontSize: '11px', color: '#94a3b8' }}>(propietaria)</span>
               </div>
             </div>
           ) : (
@@ -316,12 +342,14 @@ function RuleFormModal({
                   {(['free_text', 'hsm'] as const).map(type => (
                     <button key={type} onClick={() => setMessageType(type)} style={{
                       flex: 1, padding: '11px', borderRadius: '9px', cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
                       border: messageType === type ? '2px solid #6366f1' : '2px solid #e2e8f0',
                       background: messageType === type ? '#ede9fe' : '#fafafa',
                       color: messageType === type ? '#6366f1' : '#64748b',
                       fontWeight: 600, fontSize: '14px', transition: 'all 0.15s',
                     }}>
-                      {type === 'free_text' ? '💬 Texto libre' : '📋 Plantilla HSM'}
+                      {type === 'free_text' ? <MessageSquare size={16} /> : <Files size={16} />}
+                      {type === 'free_text' ? 'Texto libre' : 'Plantilla HSM'}
                     </button>
                   ))}
                 </div>
@@ -411,8 +439,9 @@ function RuleFormModal({
           {/* Botones */}
           <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', paddingTop: '16px', borderTop: '1px solid #f1f5f9' }}>
             <button onClick={onClose} style={btnSecondaryStyle}>Cancelar</button>
-            <button onClick={handleSave} disabled={saving} style={{ ...btnPrimaryStyle, opacity: saving ? 0.6 : 1 }}>
-              {saving ? '⏳ Guardando...' : messageOnly ? '💾 Guardar Mensaje' : isEdit ? '💾 Guardar' : '✨ Crear regla'}
+            <button onClick={handleSave} disabled={saving} style={{ ...btnPrimaryStyle, opacity: saving ? 0.6 : 1, display: 'flex', alignItems: 'center', gap: '8px' }}>
+              {saving ? <RefreshCw size={16} className="animate-spin" /> : icons.save}
+              {saving ? 'Guardando...' : messageOnly ? 'Guardar Mensaje' : isEdit ? 'Guardar Cambios' : 'Crear Regla'}
             </button>
           </div>
         </div>
@@ -456,7 +485,9 @@ function RuleCard({ rule, onToggle, onEdit, onDelete }: {
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
           <span style={{ color: '#0f172a', fontSize: '15px', fontWeight: 700 }}>{rule.name}</span>
           {rule.is_system && (
-            <span style={{ padding: '1px 7px', borderRadius: '5px', fontSize: '11px', fontWeight: 700, background: '#ede9fe', color: '#6366f1' }}>🔒 Sistema</span>
+            <span style={{ padding: '1px 7px', borderRadius: '5px', fontSize: '11px', fontWeight: 700, background: '#ede9fe', color: '#6366f1', display: 'flex', alignItems: 'center', gap: '3px' }}>
+              <Lock size={10} /> Sistema
+            </span>
           )}
         </div>
         <div style={{ display: 'flex', gap: '8px', marginTop: '5px', flexWrap: 'wrap', alignItems: 'center' }}>
@@ -474,10 +505,12 @@ function RuleCard({ rule, onToggle, onEdit, onDelete }: {
       {/* Acciones */}
       <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
         <button onClick={onEdit} title={rule.is_system ? 'Ver' : 'Editar'} style={iconBtnStyle}>
-          {rule.is_system ? '👁️' : '✏️'}
+          {rule.is_system ? <Eye size={16} /> : <Pencil size={16} />}
         </button>
         {onDelete && (
-          <button onClick={onDelete} title="Eliminar" style={{ ...iconBtnStyle, color: '#ef4444' }}>🗑️</button>
+          <button onClick={onDelete} title="Eliminar" style={{ ...iconBtnStyle, color: '#ef4444' }}>
+            <Trash2 size={16} />
+          </button>
         )}
       </div>
     </div>
@@ -486,7 +519,7 @@ function RuleCard({ rule, onToggle, onEdit, onDelete }: {
 
 // ─── Stat Card ────────────────────────────────────────────────────────────────
 
-function StatCard({ icon, label, value, color }: { icon: string; label: string; value: any; color: string }) {
+function StatCard({ icon: Icon, label, value, color }: { icon: React.ComponentType<{ size?: number; className?: string }>; label: string; value: string | number; color: string }) {
   return (
     <div style={{
       background: '#fff', borderRadius: '12px', padding: '18px 22px',
@@ -494,8 +527,8 @@ function StatCard({ icon, label, value, color }: { icon: string; label: string; 
       display: 'flex', alignItems: 'center', gap: '14px',
       boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
     }}>
-      <div style={{ fontSize: '24px', width: '44px', height: '44px', borderRadius: '12px', background: color + '18', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        {icon}
+      <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: color + '18', display: 'flex', alignItems: 'center', justifyContent: 'center', color: color }}>
+        <Icon size={24} />
       </div>
       <div>
         <div style={{ color: '#0f172a', fontSize: '24px', fontWeight: 800, lineHeight: 1 }}>{value}</div>
@@ -596,8 +629,8 @@ export default function MetaTemplatesView() {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', background: '#f8fafc' }}>
         <div style={{ textAlign: 'center', color: '#64748b' }}>
-          <div style={{ fontSize: '28px', marginBottom: '8px', animation: 'spin 1s linear infinite' }}>⚙️</div>
-          <p style={{ margin: 0, fontSize: '14px' }}>Cargando reglas...</p>
+          <RefreshCw size={32} className="animate-spin" style={{ margin: '0 auto 12px', color: '#6366f1' }} />
+          <p style={{ margin: 0, fontSize: '14px', fontWeight: 500 }}>Cargando automatizaciones...</p>
         </div>
       </div>
     );
@@ -606,12 +639,10 @@ export default function MetaTemplatesView() {
   return (
     <div style={{ height: '100%', overflowY: 'auto', background: '#f8fafc', padding: isMobile ? '16px' : '28px 32px' }}>
       {/* Header */}
-      <div style={{ marginBottom: '24px' }}>
-        <h1 style={{ margin: '0 0 4px', color: '#0f172a', fontSize: '22px', fontWeight: 800 }}>
-          Automatizaciones & HSM
-        </h1>
-        <p style={{ margin: 0, color: '#94a3b8', fontSize: '14px' }}>Motor de Reglas · Seguimientos · WhatsApp Marketing</p>
-      </div>
+      <PageHeader 
+        title="Automatizaciones & HSM" 
+        subtitle="Motor de Reglas · Seguimientos · WhatsApp Marketing"
+      />
 
       {/* Stats */}
       <div style={{ 
@@ -620,9 +651,9 @@ export default function MetaTemplatesView() {
         gap: '12px', 
         marginBottom: '24px' 
       }}>
-        <StatCard icon="📤" label="Enviados (últimos registros)" value={stats.sent} color="#6366f1" />
-        <StatCard icon="📬" label="Tasa de entrega" value={`${stats.delivery_rate}%`} color="#10b981" />
-        <StatCard icon="⚡" label="Reglas activas" value={stats.active_rules} color="#f59e0b" />
+        <StatCard icon={Send} label="Enviados (total)" value={stats.sent} color="#6366f1" />
+        <StatCard icon={UserCheck} label="Tasa de entrega" value={`${stats.delivery_rate}%`} color="#10b981" />
+        <StatCard icon={Zap} label="Reglas activas" value={stats.active_rules} color="#f59e0b" />
       </div>
 
       {/* Tabs */}
@@ -637,17 +668,18 @@ export default function MetaTemplatesView() {
         overflowX: 'auto',
         WebkitOverflowScrolling: 'touch'
       }}>
-        {(['rules', 'logs', 'templates'] as const).map(tab => (
-          <button key={tab} onClick={() => setActiveTab(tab)} style={{
-            padding: '8px 18px', borderRadius: '8px', border: 'none', cursor: 'pointer',
-            fontSize: '13px', fontWeight: 600, transition: 'all 0.15s',
-            background: activeTab === tab ? '#fff' : 'transparent',
-            color: activeTab === tab ? '#6366f1' : '#64748b',
-            boxShadow: activeTab === tab ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
-          }}>
-            {tab === 'rules' ? '⚡ Reglas' : tab === 'logs' ? '📋 Logs' : '🗂️ Plantillas YCloud'}
-          </button>
-        ))}
+            <button key={tab} onClick={() => setActiveTab(tab)} style={{
+              padding: '8px 18px', borderRadius: '8px', border: 'none', cursor: 'pointer',
+              fontSize: '13px', fontWeight: 600, transition: 'all 0.15s',
+              display: 'flex', alignItems: 'center', gap: '8px',
+              background: activeTab === tab ? '#fff' : 'transparent',
+              color: activeTab === tab ? '#6366f1' : '#64748b',
+              boxShadow: activeTab === tab ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+              whiteSpace: 'nowrap'
+            }}>
+              {tab === 'rules' ? <Zap size={14} /> : tab === 'logs' ? <MessageSquare size={14} /> : <Files size={14} />}
+              {tab === 'rules' ? 'Reglas' : tab === 'logs' ? 'Logs de Envío' : 'Plantillas YCloud'}
+            </button>
       </div>
 
       {/* ── TAB: REGLAS ── */}
@@ -656,9 +688,11 @@ export default function MetaTemplatesView() {
           {/* Reglas Sistema */}
           <div style={{ marginBottom: '24px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
-              <div style={{ width: '3px', height: '18px', background: '#6366f1', borderRadius: '2px' }} />
+              <Zap size={18} style={{ color: '#6366f1' }} />
               <h2 style={{ margin: 0, color: '#0f172a', fontSize: '15px', fontWeight: 700 }}>Reglas del Sistema</h2>
-              <span style={{ padding: '1px 8px', background: '#ede9fe', color: '#6366f1', borderRadius: '6px', fontSize: '11px', fontWeight: 700 }}>No editables</span>
+              <span style={{ padding: '1px 8px', background: '#ede9fe', color: '#6366f1', borderRadius: '6px', fontSize: '11px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <Lock size={10} /> Propietarias
+              </span>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               {systemRules.map(rule => (
@@ -680,8 +714,8 @@ export default function MetaTemplatesView() {
                 <div style={{ width: '3px', height: '18px', background: '#10b981', borderRadius: '2px' }} />
                 <h2 style={{ margin: 0, color: '#0f172a', fontSize: '15px', fontWeight: 700 }}>Reglas Personalizadas</h2>
               </div>
-              <button onClick={() => { setEditingRule(null); setShowModal(true); }} style={btnPrimaryStyle}>
-                + Nueva Regla
+              <button onClick={() => { setEditingRule(null); setShowModal(true); }} style={{ ...btnPrimaryStyle, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Plus size={16} /> Nueva Regla
               </button>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -695,8 +729,10 @@ export default function MetaTemplatesView() {
                   padding: '40px', borderRadius: '12px', border: '2px dashed #e2e8f0',
                   textAlign: 'center', color: '#94a3b8', background: '#fff',
                 }}>
-                  <div style={{ fontSize: '32px', marginBottom: '10px' }}>⚡</div>
-                  <p style={{ margin: '0 0 14px', fontSize: '14px' }}>Aún no tenés reglas personalizadas.</p>
+                  <div style={{ marginBottom: '16px', color: '#e2e8f0' }}>
+                    <Zap size={48} style={{ margin: '0 auto' }} />
+                  </div>
+                  <p style={{ margin: '0 0 14px', fontSize: '14px', fontWeight: 500 }}>Aún no tenés reglas personalizadas.</p>
                   <button onClick={() => { setEditingRule(null); setShowModal(true); }} style={btnPrimaryStyle}>
                     Crear primera regla
                   </button>
@@ -772,7 +808,7 @@ export default function MetaTemplatesView() {
                           <div style={{ color: '#64748b', fontSize: '12px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             {log.message_preview || log.template_name || '—'}
                           </div>
-                          {log.skip_reason && <div style={{ color: '#b45309', fontSize: '11px', marginTop: '1px' }}>⏭ {log.skip_reason}</div>}
+                          {log.skip_reason && <div style={{ color: '#b45309', fontSize: '11px', marginTop: '1px', display: 'flex', alignItems: 'center', gap: '4px' }}><SkipForward size={10} /> {log.skip_reason}</div>}
                         </td>
                         <td style={{ padding: '12px 14px', color: '#94a3b8', fontSize: '12px', whiteSpace: 'nowrap' }}>
                           {new Date(log.triggered_at).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
@@ -810,8 +846,10 @@ export default function MetaTemplatesView() {
 
           {templates.length === 0 ? (
             <div style={{ padding: '60px', textAlign: 'center', color: '#94a3b8', background: '#fff', borderRadius: '12px', border: '1px solid #f1f5f9' }}>
-              <div style={{ fontSize: '36px', marginBottom: '10px' }}>📭</div>
-              <p style={{ margin: '0 0 6px', fontSize: '14px' }}>No hay plantillas aprobadas.</p>
+              <div style={{ color: '#e2e8f0', marginBottom: '16px' }}>
+                <Inbox size={48} style={{ margin: '0 auto' }} />
+              </div>
+              <p style={{ margin: '0 0 6px', fontSize: '14px', fontWeight: 500, color: '#64748b' }}>No hay plantillas aprobadas.</p>
               <p style={{ margin: 0, fontSize: '12px' }}>Verificá que YCLOUD_API_KEY esté configurada en el servidor.</p>
             </div>
           ) : (
@@ -829,7 +867,7 @@ export default function MetaTemplatesView() {
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', alignItems: 'flex-end' }}>
                         <span style={{ padding: '1px 7px', borderRadius: '5px', fontSize: '10px', fontWeight: 700, background: catColor + '18', color: catColor }}>{t.category}</span>
-                        <span style={{ padding: '1px 7px', borderRadius: '5px', fontSize: '10px', fontWeight: 700, background: '#d1fae5', color: '#065f46' }}>✅ APPROVED</span>
+                        <span style={{ padding: '1px 7px', borderRadius: '5px', fontSize: '10px', fontWeight: 700, background: '#d1fae5', color: '#065f46', display: 'flex', alignItems: 'center', gap: '3px' }}><CheckCircle2 size={10} /> APPROVED</span>
                       </div>
                     </div>
                     {body?.text && (
