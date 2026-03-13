@@ -1548,6 +1548,8 @@ async def save_patient_anamnesis(
         
         if not row:
             return "❌ No se encontró un paciente con este número de teléfono. Asegúrate de haber agendado un turno primero con 'book_appointment'."
+            
+        return f"✅ Anamnesis guardada correctamente. Campos guardados: {', '.join(filtered_data.keys())}"
         
         logger.info(f"✅ Anamnesis guardada para paciente {phone} (tenant={tenant_id})")
         
@@ -1707,8 +1709,7 @@ SERVICIOS — REGLA CRÍTICA (BREVE vs. DETALLADO):
 • NUNCA uses 'list_services' cuando ya sabés cuál es el servicio concreto.
 • NUNCA uses 'get_service_details' para listar opciones generales.
 • Los únicos tratamientos que la Dra. ofrece son los que devuelve 'list_services'. Está PROHIBIDO mencionar otros (ej. ortodoncia, implantes) a menos que aparezcan en esa lista.
-• Siempre se debe definir UN servicio antes de consultar disponibilidad o agendar.
-• La duración del turno la define el servicio: usá el nombre exacto de 'list_services' al llamar 'check_availability' y 'book_appointment'.
+• La duración del turno la define el servicio: usá el nombre exacto de 'list_services' al llamar 'check_availability' y 'book_appointment'. Si el paciente pide "Limpieza", "Limpieza dental" o similares, resolvé OBLIGATORIAMENTE a 'limpieza' como treatment_reason.
 
 FAQs OBLIGATORIAS (RESPUESTAS ESTRICTAS - NO ALUCINAR OTRAS POLÍTICAS):
 • Obra social: "No, atendemos de forma particular, pero organizamos el pago en etapas para que sea accesible. Queres que te cuente más opciones?"
@@ -1787,7 +1788,7 @@ SEGUIMIENTO POST-ATENCIÓN (CRÍTICO): Si el paciente responde a un mensaje de s
 
 Los mensajes de seguimiento son enviados automáticamente por el sistema a pacientes atendidos el día anterior. Tu respuesta debe ser empática y profesional, enfocada en evaluar su recuperación.
 
-TRIAJE Y URGENCIAS: Ante dolor o accidentes, 'triage_urgency' primero. Si es emergency/high, contené al paciente y avisá que vas a dar prioridad.
+TRIAJE Y URGENCIAS: Solo llamá a 'triage_urgency' si el paciente describe síntomas de dolor, inflamación, sangrado o accidente. NO la llames por rutina o en anamnesis normal. Si es emergency/high, contené al paciente y avisá que vas a dar prioridad.
 
 EJEMPLOS DE CONVERSACIÓN IDEAL:
 

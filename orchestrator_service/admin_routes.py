@@ -1452,12 +1452,11 @@ async def get_dashboard_stats(
             WHERE tenant_id = $1 AND source = 'ai' AND appointment_datetime >= CURRENT_DATE - {interval_expr}
         """, tenant_id) or 0
         
-        # 3. Urgencias activas (Total acumulado de urgencias detectadas en el rango)
+        # 3. Urgencias activas (Pacientes marcados con urgencia)
         active_urgencies = await db.pool.fetchval(f"""
-            SELECT COUNT(*) FROM appointments 
-            WHERE tenant_id = $1 AND urgency_level IN ('high', 'emergency') 
-            AND status NOT IN ('cancelled', 'completed')
-            AND appointment_datetime >= CURRENT_DATE - {interval_expr}
+            SELECT COUNT(*) FROM patients 
+            WHERE tenant_id = $1 AND urgency_level IN ('high', 'emergency')
+            AND updated_at >= CURRENT_DATE - {interval_expr}
         """, tenant_id) or 0
         
         # 4. Revenue Dual (Real vs Estimado)
@@ -2278,13 +2277,24 @@ async def update_professional(
 async def get_patient(id: int, tenant_id: int = Depends(get_resolved_tenant_id)):
     """Obtener un paciente por ID. Aislado por tenant_id (Regla de Oro)."""
     row = await db.pool.fetchrow("""
-        SELECT id, first_name, last_name, phone_number, email, insurance_provider as obra_social, dni, birth_date, city, first_touch_source as acquisition_source, meta_adset_id, meta_adset_name, meta_ad_name, meta_campaign_name, created_at, status, notes
+        SELECT id, first_name, last_name, phone_number, email, insurance_provider as obra_social, 
+               dni, birth_date, city, first_touch_source as acquisition_source, 
+               meta_ad_id, meta_adset_id, meta_adset_name, meta_ad_name, meta_campaign_name, 
+               medical_history, created_at, status, notes
         FROM patients 
         WHERE id = $1 AND tenant_id = $2
     """, id, tenant_id)
     if not row:
         raise HTTPException(status_code=404, detail="Paciente no encontrado")
-    return dict(row)
+    
+    patient_dict = dict(row)
+    # Asegurar que medical_history se devuelve como dict
+    if patient_dict.get("medical_history") and isinstance(patient_dict["medical_history"], str):
+        try:
+            patient_dict["medical_history"] = json.loads(patient_dict["medical_history"])
+        except:
+            pass
+    return patient_dict
 
 @router.put("/patients/{id}", dependencies=[Depends(verify_admin_token)], tags=["Pacientes"], summary="Actualizar datos de un paciente")
 async def update_patient(id: int, p: PatientCreate, tenant_id: int = Depends(get_resolved_tenant_id)):
@@ -4006,9 +4016,9 @@ async def update_patient_anamnesis(
     """
     tenant_id = resolved_tenant_id
 
-    # 1. Verificar que el paciente existe en el tenant
+    # 1. Verificar que el paciente existe en el tenant (incluir phone_number para el socket)
     patient = await db.pool.fetchrow(
-        "SELECT id, medical_history FROM patients WHERE id = $1 AND tenant_id = $2 AND status != 'deleted'",
+        "SELECT id, phone_number, medical_history FROM patients WHERE id = $1 AND tenant_id = $2 AND status != 'deleted'",
         patient_id, tenant_id
     )
     if not patient:

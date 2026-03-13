@@ -78,6 +78,12 @@ const ANAMNESIS_FIELDS: AnamnesisField[] = [
     alertLevel: 'none',
   },
   {
+    key: 'smoker_amount',
+    label: 'Cantidad de cigarrillos',
+    icon: <Cigarette size={15} />,
+    alertLevel: 'none',
+  },
+  {
     key: 'pregnancy_lactation',
     label: 'Embarazo / Lactancia',
     icon: <Baby size={15} />,
@@ -248,11 +254,17 @@ export default function AnamnesisPanel({
   }
 
   // ---- Render visualización ----
-  const fieldsWithValues = ANAMNESIS_FIELDS.filter(f => history[f.key]);
+  // En modo compacto, mostramos solo lo que tiene valor (incluyendo "No")
+  // Pero agrupamos smoker_amount con is_smoker
+  const fieldsWithValues = ANAMNESIS_FIELDS.filter(f => {
+    const val = history[f.key];
+    if (f.key === 'smoker_amount') return false; // Se maneja dentro de is_smoker
+    return val !== undefined && val !== null && val !== '';
+  });
 
   return (
     <div className={compact ? 'space-y-1.5' : 'space-y-3'}>
-      {/* Header con botón de editar */}
+      {/* Header con botón de editar (Solo en modo expandido) */}
       {canEdit && !compact && (
         <div className="flex justify-end">
           <button
@@ -269,20 +281,28 @@ export default function AnamnesisPanel({
         <p className="text-xs text-gray-400 text-center py-2">Sin datos cargados.</p>
       ) : (
         fieldsWithValues.map(f => {
-          const val = history[f.key]!;
+          let val = history[f.key]!;
           const hasAlert = isAlertValue(val);
+          
+          // Especial: Combinar fumador
+          if (f.key === 'is_smoker' && history.smoker_amount) {
+            val = `${val} (${history.smoker_amount})`;
+          }
+
           return (
             <div
               key={f.key}
               className={`flex items-start gap-2 ${compact ? 'text-xs' : 'text-sm'} ${hasAlert && f.alertLevel !== 'none' ? 'bg-red-50 border border-red-100 rounded p-1.5' : ''}`}
             >
               <span className={`mt-0.5 flex-shrink-0 ${alertClass(f.alertLevel, hasAlert)}`}>{f.icon}</span>
-              <div className="min-w-0">
-                <p className={`font-medium text-gray-600 flex items-center gap-1 ${compact ? 'text-[10px]' : 'text-xs'}`}>
+              <div className="min-w-0 flex-1">
+                <p className={`font-medium text-gray-600 flex items-center gap-1 ${compact ? 'text-[10px]' : 'text-xs'} leading-none mb-0.5`}>
                   {f.label}
                   {hasAlert && f.alertLevel !== 'none' && <span className={badgeClass(f.alertLevel, hasAlert)} />}
                 </p>
-                <p className={`text-gray-800 break-words ${compact ? 'text-[11px]' : ''}`}>{val}</p>
+                <p className={`text-gray-800 break-words leading-tight ${compact ? 'text-[11px]' : ''}`}>
+                  {val === 'No' || val === 'no' ? <span className="text-gray-400">No</span> : val}
+                </p>
               </div>
             </div>
           );
@@ -301,13 +321,14 @@ export default function AnamnesisPanel({
         </div>
       )}
 
-      {/* Botón editar en modo compact */}
+      {/* Botón editar en modo compact (al final) */}
       {canEdit && compact && (
         <button
+          id="btn-edit-anamnesis-compact"
           onClick={() => { setEditing(true); setEditData({}); }}
-          className="flex items-center gap-1 text-[10px] text-primary hover:underline mt-1"
+          className="w-full flex items-center justify-center gap-1 py-1 px-2 border border-primary text-primary rounded text-[10px] font-bold hover:bg-primary/5 transition-colors mt-2"
         >
-          <Edit2 size={10} /> Editar anamnesis
+          <Edit2 size={10} /> {t('common.edit')} {t('chats.anamnesis')}
         </button>
       )}
     </div>
