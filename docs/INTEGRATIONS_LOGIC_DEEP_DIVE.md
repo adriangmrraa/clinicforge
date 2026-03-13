@@ -164,12 +164,15 @@ Las herramientas de agendamiento (`book_appointment`) actúan como filtros final
 
 ## 9. Motor de Automatización ("Maintenance Robot")
 
-El motor reside en `orchestrator_service/services/automation_service.py` y se encarga de tareas programadas y de mantenimiento.
+> [!WARNING]
+> **DEPRECATED (Marzo 2026)**: El motor monolítico original en `orchestrator_service/services/automation_service.py` ha sido completamente retirado.
+> Ver [`SISTEMA_JOBS_PROGRAMADOS.md`](SISTEMA_JOBS_PROGRAMADOS.md) para la nueva arquitectura y cronograma de tareas.
 
-### Tareas Críticas
-- **Handoff Notifications**: Detecta cuando un usuario solicita atención humana y notifica via Socket.IO al panel de control.
-- **Recordatorios de Turnos**: (En desarrollo) Escanea citas próximas y dispara mensajes proactivos via YCloud.
-- **Sincronización de Sesiones**: Mantiene limpia la tabla de `chat_sessions` y estados de los canales.
+### Nueva Arquitectura Modular (`jobs/`)
+El sistema ahora opera con módulos independientes acoplados al ciclo de vida de FastAPI (Lifespan):
+- **`jobs/reminders.py`**: Dispara un recordatorio de HSM 24 horas previas al turno agendado.
+- **`jobs/lead_recovery.py`**: Sistema inteligente que lee el historial del chat de un Lead (meta Ads), evalúa los servicios conversados, revisa la disponibilidad de forma dinámica en JIT y envía un último mensaje pro-activo para agendar.
+- **`jobs/followups.py`**: Seguimiento clínico post-atención (cirugías).
 
 ### Ejecución
-Se basa en el motor de `BackgroundTasks` de FastAPI y un loop infinito controlado en `main.py` (si se usa modo `standalone`) o triggers JIT ante eventos.
+Se basa en un Scheduler Asíncrono Central que inicializa todas las rutinas registradas al encender la app y procesa cada rutina iterativamente sin bloquear los request-handling concurrentes.

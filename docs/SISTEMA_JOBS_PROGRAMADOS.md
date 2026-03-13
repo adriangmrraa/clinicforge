@@ -21,6 +21,7 @@ Arquitectura unificada para la ejecución de tareas programadas (cron jobs) en C
 | Job | Horario | Descripción | Estado |
 |-----|---------|-------------|--------|
 | **Appointment Reminders** | 10:00 AM | Recordatorios de turnos para el día siguiente | ✅ PRODUCCIÓN |
+| **Lead Recovery** | Cada 1 hora | Recuperación de leads de Meta Ads (ventana 2h) | ✅ PRODUCCIÓN |
 | **Post-Treatment Followups** | 11:00 AM | Seguimiento post-atención para pacientes de cirugía | ✅ PRODUCCIÓN |
 
 ### **Características comunes:**
@@ -39,6 +40,7 @@ orchestrator_service/jobs/
 ├── scheduler.py         # Sistema de scheduling centralizado
 ├── reminders.py         # Job de recordatorios de turnos
 ├── followups.py         # Job de seguimiento post-atención
+├── lead_recovery.py     # Job de recuperación de leads (IA + disponibilidad)
 └── admin_routes.py      # Endpoints de administración
 ```
 
@@ -244,6 +246,46 @@ SEGUIMIENTO POST-ATENCIÓN (CRÍTICO): Si el paciente responde a un mensaje de s
 3. Aplicar las 6 reglas maxilofaciales de urgencia configuradas
 4. Si es emergency/high, activar protocolo de urgencia inmediatamente
 5. Si es normal/low, tranquilizar y dar indicaciones de cuidado post-operatorio
+```
+
+## 🤖 JOB 3: RECUPERACIÓN DE LEADS (LEAD RECOVERY)
+
+### **Configuración:**
+- **Horario:** Ejecución horaria (verifica leads de hace 2 horas).
+- **Objetivo:** Convertir leads de Meta Ads que no agendaron tras interactuar con la IA.
+- **Audiencia:** Leads con `source = 'META_ADS'` sin citas previas ni futuras.
+
+### **Lógica de Ejecución:**
+1. **Filtro de Exclusión**: Se excluyen pacientes que ya tienen o tuvieron turnos (considerados pacientes en tratamiento).
+2. **Análisis de Interés**: La IA analiza los últimos 15 mensajes para extraer el servicio de interés.
+3. **Disponibilidad Real**: Consulta huecos libres para el servicio detectado (Mañana -> +7 días).
+4. **Mensaje Personalizado**: Genera un mensaje contextual (ej: "Vi que te interesó el blanqueamiento...").
+
+### **Query SQL de Identificación:**
+```sql
+SELECT 
+    p.id as patient_id, 
+    p.phone_number, 
+    p.first_name, 
+    p.tenant_id,
+    c.id as clinic_id
+FROM patients p
+JOIN tenants c ON p.tenant_id = c.id
+WHERE p.source = 'META_ADS'
+  AND p.created_at < NOW() - INTERVAL '2 hours'
+  AND p.created_at > NOW() - INTERVAL '26 hours' -- Evitar leads muy viejos
+  AND NOT EXISTS (
+      SELECT 1 FROM appointments a 
+      WHERE a.patient_id = p.id
+  )
+  AND (p.platform_metadata->>'recovery_sent')::boolean IS NOT TRUE;
+```
+
+### **Campos de BD:**
+```sql
+-- En tabla patients (platform_metadata JSONB)
+-- recovery_sent: true/false
+-- last_recovery_at: timestamp
 ```
 
 ## 🔧 ENDPOINTS DE ADMINISTRACIÓN

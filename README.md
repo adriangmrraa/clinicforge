@@ -265,14 +265,14 @@ ClinicForge uses a **Sovereign Microservices Architecture**, designed to scale w
 - **Actions:** Human intervention, remove silence, unified messaging outlet; click on derivation notification opens the right conversation.
 - **Meta Templates View**: Dedicated section for managing re-engagement campaigns and approved platform templates (HSM).
 
-### 🤖 Automation Motor ("Maintenance Robot")
+### 🤖 Sistema de Jobs Programados (Modular)
 
-ClinicForge features a proactive automation service (`automation_service.py`) that executes background tasks to improve patient engagement and retention:
+ClinicForge cuenta con un motor de tareas en segundo plano (`orchestrator_service/jobs/`) que gestiona procesos proactivos para maximizar la conversión y retención:
 
-- **Appointment Reminders**: Sends a WhatsApp HSM **24 hours before** the appointment to reduce no-shows.
-- **Automated Feedback**: Sends a review request **45 minutes after** the appointment is marked as completed.
-- **Lead Recovery**: Proactively reaches out to Meta Ads leads **2 hours after** initial contact if no appointment was booked.
-- **Audit Feed**: All automated actions are logged in the `automation_logs` table and visible in the admin panel for complete transparency.
+- **Lead Recovery (Recuperación Inteligente)**: Re-contacta automáticamente a leads de Meta Ads **2 horas después** de su última interacción si no agendaron. Utiliza IA para analizar el interés y proponer huecos reales de la agenda.
+- **Appointment Reminders**: Envía recordatorios vía WhatsApp HSM **24 horas antes** del turno. Soporta reinicio automático si el paciente reprograma.
+- **Post-Treatment Followups**: Seguimiento clínico **45 minutos** o **24 horas** después de tratamientos complejos/cirugías para evaluar síntomas vía Triage IA.
+- **Audit Logs**: Registro completo de cada ejecución visible en el panel de **Automatizaciones & HSM**.
 
 ### 📊 Analytics (CEO + Marketing)
 
@@ -296,10 +296,11 @@ ClinicForge features a proactive automation service (`automation_service.py`) th
 - **CEO:** Can switch clinic in Chats and other views; manages approvals, clinics, and configuration per sede.
 - **Staff:** Access only to their assigned clinic(s).
 
-### 🌐 Internationalization (i18n)
+### 🌐 Internationalization (i18n) & UX Premium
 
-- **UI:** Spanish, English, French. Set in **Configuration** (CEO); stored in `tenants.config.ui_language`; applies to login, menus, agenda, analytics, chats, and all main views.
-- **WhatsApp agent:** Responds in the **language of the patient's message** (auto-detect es/en/fr); independent of UI language.
+- **UI Multilingüe**: Interfaz completa en **Español**, **Inglés** y **Francés**, gestionada mediante `LanguageProvider` y traducción dinámica.
+- **Diseño Dark Glass**: Estética premium con aislamiento de scroll, componentes de `Lucide React` y layouts adaptativos (Mobile First).
+- **WhatsApp agent**: Detecta el idioma del mensaje del paciente (es/en/fr) y responde en consecuencia de forma agnóstica a la configuración de la clínica.
 
 ### 🎪 Landing & Public Demo
 
@@ -333,8 +334,11 @@ ClinicForge/
 │   ├── services/
 │   │   ├── meta_ads_service.py   # Meta Graph API client (ad enrichment)
 │   │   ├── marketing_service.py  # ROI & Performance intelligence
-│   │   ├── automation_service.py # Background jobs & HSM triggers ("Maintenance Robot")
 │   │   └── tasks.py              # Background tasks (Redis cache + enrichment)
+│   ├── jobs/                     # Modular background jobs system (The Scheduler)
+│   │   ├── lead_recovery.py      # Lead recovery AI-driven logic
+│   │   ├── reminders.py          # Proactive appointment reminders
+│   │   └── followups.py          # Clinical post-op followups
 │   ├── scripts/
 │   │   └── check_meta_health.py  # Meta Ads health check (CLI + API)
 │   └── requirements.txt

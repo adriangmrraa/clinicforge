@@ -1,6 +1,12 @@
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { 
+  Smartphone, Instagram, Facebook, Settings, AlertCircle, CheckCircle2, 
+  Clock, SkipForward, Send, UserCheck, Zap, Pencil, Trash2, Plus, 
+  Lock, Files, MessageSquare, RefreshCw, X, Eye, Inbox
+} from 'lucide-react';
 import api from '../api/axios';
 import { useTranslation } from '../context/LanguageContext';
+import PageHeader from '../components/PageHeader';
 
 // ─── Mobile Hook ──────────────────────────────────────────────────────────────
 function useWindowWidth() {
@@ -92,11 +98,11 @@ const STATUS_STYLES: Record<string, { bg: string; text: string }> = {
   pending:   { bg: '#f1f5f9', text: '#475569' },
 };
 
-const CHANNEL_ICONS: Record<string, string> = {
-  whatsapp: '📱',
-  instagram: '📸',
-  facebook: '👍',
-  system: '⚙️',
+const CHANNEL_ICONS: Record<string, any> = {
+  whatsapp: <Smartphone size={14} />,
+  instagram: <Instagram size={14} />,
+  facebook: <Facebook size={14} />,
+  system: <Settings size={14} />,
 };
 
 const AVAILABLE_VARS = [
@@ -114,11 +120,21 @@ const AVAILABLE_VARS = [
 function StatusBadge({ status }: { status: string }) {
   const { t } = useTranslation();
   const s = STATUS_STYLES[status] || STATUS_STYLES.pending;
+  const icons: Record<string, any> = {
+    sent: <CheckCircle2 size={12} />,
+    delivered: <CheckCircle2 size={12} />,
+    read: <Eye size={12} />,
+    failed: <AlertCircle size={12} />,
+    skipped: <SkipForward size={12} />,
+    pending: <Clock size={12} />,
+  };
+
   return (
     <span style={{
-      display: 'inline-block', padding: '2px 10px', borderRadius: '9999px',
+      display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '2px 10px', borderRadius: '9999px',
       fontSize: '12px', fontWeight: 600, background: s.bg, color: s.text, textTransform: 'capitalize',
     }}>
+      {icons[status] || icons.pending}
       {status === 'sent' ? t('meta_templates.statuses.sent') :
        status === 'delivered' ? t('meta_templates.statuses.delivered') :
        status === 'read' ? t('meta_templates.statuses.read') :
@@ -167,10 +183,19 @@ function RuleFormModal({
   const [templateName, setTemplateName] = useState(rule?.ycloud_template_name ?? '');
   const [templateVars, setTemplateVars] = useState<Record<string, string>>(rule?.ycloud_template_vars ?? {});
   const [channels, setChannels] = useState<string[]>(rule?.channels ?? ['whatsapp']);
-  const [sendHourMin, setSendHourMin] = useState(rule?.send_hour_min ?? 8);
-  const [sendHourMax, setSendHourMax] = useState(rule?.send_hour_max ?? 20);
+  const [schedule, setSchedule] = useState({
+    start_time: rule?.send_hour_min != null ? `${String(rule.send_hour_min).padStart(2, '0')}:00` : '08:00',
+    end_time: rule?.send_hour_max != null ? `${String(rule.send_hour_max).padStart(2, '0')}:00` : '20:00',
+  });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+
+  const icons = {
+    edit: <Pencil size={18} />,
+    plus: <Plus size={18} />,
+    lock: <Lock size={14} />,
+    save: <Send size={16} />,
+  };
 
   const selectedTemplate = templates.find(t => t.name === templateName);
   const bodyComp = selectedTemplate?.components?.find(c => c.type === 'BODY');
@@ -186,6 +211,8 @@ function RuleFormModal({
     if (messageType === 'hsm' && !templateName) { setError(t('meta_templates.form.template_required')); return; }
     setSaving(true); setError('');
     try {
+      const [hMin] = schedule.start_time.split(':').map(Number);
+      const [hMax] = schedule.end_time.split(':').map(Number);
       const payload = {
         name, trigger_type: triggerType, condition_json: conditionJson,
         message_type: messageType,
@@ -193,7 +220,7 @@ function RuleFormModal({
         ycloud_template_name: messageType === 'hsm' ? templateName : null,
         ycloud_template_lang: 'es',
         ycloud_template_vars: messageType === 'hsm' ? templateVars : {},
-        channels, send_hour_min: sendHourMin, send_hour_max: sendHourMax,
+        channels, send_hour_min: hMin, send_hour_max: hMax,
       };
       if (isEdit && rule) await api.patch(`/admin/automations/rules/${rule.id}`, payload);
       else await api.post('/admin/automations/rules', payload);
@@ -219,13 +246,16 @@ function RuleFormModal({
       }}>
         {/* Header */}
         <div style={{ padding: '20px 24px 16px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>
-            <h2 style={{ margin: 0, color: '#0f172a', fontSize: '18px', fontWeight: 700 }}>
-              {messageOnly ? t('meta_templates.form.edit_message') : isEdit ? t('meta_templates.form.edit_rule') : t('meta_templates.form.new_rule')}
-            </h2>
-            {messageOnly && <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: '13px' }}>{t('meta_templates.form.system_rule_hint')}</p>}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div style={{ color: '#6366f1' }}>{isEdit ? icons.edit : icons.plus}</div>
+            <div>
+              <h2 style={{ margin: 0, color: '#0f172a', fontSize: '18px', fontWeight: 700 }}>
+                {messageOnly ? t('meta_templates.form.edit_message') : isEdit ? t('meta_templates.form.edit_rule') : t('meta_templates.form.new_rule')}
+              </h2>
+              {messageOnly && <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: '13px' }}>{t('meta_templates.form.system_rule_hint')}</p>}
+            </div>
           </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '22px', cursor: 'pointer' }}>×</button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', display: 'flex', alignItems: 'center' }}><X size={20} /></button>
         </div>
 
         <div style={{ padding: '20px 24px' }}>
@@ -246,7 +276,7 @@ function RuleFormModal({
             <div style={{ marginBottom: '16px', background: '#f8fafc', borderRadius: '10px', padding: '12px 16px', border: '1px solid #e2e8f0' }}>
               <span style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{t('meta_templates.form.trigger_when')}</span>
               <div style={{ marginTop: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span style={{ fontSize: '14px' }}>🔒</span>
+                <Lock size={12} style={{ color: '#94a3b8' }} />
                 <span style={{ color: '#334155', fontSize: '14px', fontWeight: 600 }}>{TRIGGER_LABELS[triggerType] ? t(TRIGGER_LABELS[triggerType]) : triggerType}</span>
                 <span style={{ fontSize: '11px', color: '#94a3b8' }}>{t('meta_templates.form.not_editable')}</span>
               </div>
@@ -321,11 +351,13 @@ function RuleFormModal({
                   {(['free_text', 'hsm'] as const).map(type => (
                     <button key={type} onClick={() => setMessageType(type)} style={{
                       flex: 1, padding: '11px', borderRadius: '9px', cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
                       border: messageType === type ? '2px solid #6366f1' : '2px solid #e2e8f0',
                       background: messageType === type ? '#ede9fe' : '#fafafa',
                       color: messageType === type ? '#6366f1' : '#64748b',
                       fontWeight: 600, fontSize: '14px', transition: 'all 0.15s',
                     }}>
+                      {type === 'free_text' ? <MessageSquare size={16} /> : <Files size={16} />}
                       {type === 'free_text' ? t('meta_templates.form.free_text') : t('meta_templates.form.hsm_template')}
                     </button>
                   ))}
@@ -373,10 +405,10 @@ function RuleFormModal({
                       {selectedTemplate.components.find(c => c.type === 'BODY')?.text}
                     </div>
                   )}
-                  {templateVarsList.length > 0 && (
+                  {varMatches.length > 0 && (
                     <div style={{ marginTop: '16px', background: '#f0fdf4', padding: '12px 16px', borderRadius: '8px', border: '1px solid #bbf7d0' }}>
                       <label style={{ ...labelStyle, color: '#166534', marginBottom: '8px' }}>{t('meta_templates.form.var_mapping')}</label>
-                      {templateVarsList.map(v => (
+                      {varMatches.map(v => (
                         <div key={v} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
                           <span style={{ fontSize: '13px', color: '#15803d', fontWeight: 600, minWidth: '40px' }}>{v}:</span>
                           <select
@@ -425,7 +457,8 @@ function RuleFormModal({
           {/* Botones */}
           <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', paddingTop: '16px', borderTop: '1px solid #f1f5f9' }}>
             <button onClick={onClose} style={btnSecondaryStyle}>{t('meta_templates.form.cancel')}</button>
-            <button onClick={handleSave} disabled={saving} style={{ ...btnPrimaryStyle, opacity: saving ? 0.6 : 1 }}>
+            <button onClick={handleSave} disabled={saving} style={{ ...btnPrimaryStyle, opacity: saving ? 0.6 : 1, display: 'flex', alignItems: 'center', gap: '8px' }}>
+              {saving ? <RefreshCw size={16} className="animate-spin" /> : icons.save}
               {saving ? t('meta_templates.form.saving') : messageOnly ? t('meta_templates.form.save_message') : isEdit ? t('meta_templates.form.save') : t('meta_templates.form.create_rule')}
             </button>
           </div>
@@ -471,7 +504,9 @@ function RuleCard({ rule, onEdit, onDelete, onToggle }: {
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
           <span style={{ color: '#0f172a', fontSize: '15px', fontWeight: 700 }}>{rule.name}</span>
           {rule.is_system && (
-            <span style={{ padding: '1px 7px', borderRadius: '5px', fontSize: '11px', fontWeight: 700, background: '#ede9fe', color: '#6366f1' }}>🔒 {t('meta_templates.rules.system')}</span>
+            <span style={{ padding: '1px 7px', borderRadius: '5px', fontSize: '11px', fontWeight: 700, background: '#ede9fe', color: '#6366f1', display: 'flex', alignItems: 'center', gap: '3px' }}>
+              <Lock size={10} /> {t('meta_templates.rules.system')}
+            </span>
           )}
         </div>
         <div style={{ display: 'flex', gap: '8px', marginTop: '5px', flexWrap: 'wrap', alignItems: 'center' }}>
@@ -489,10 +524,12 @@ function RuleCard({ rule, onEdit, onDelete, onToggle }: {
       {/* Acciones */}
       <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
         <button onClick={onEdit} title={rule.is_system ? t('meta_templates.rules.view') : t('meta_templates.rules.edit')} style={iconBtnStyle}>
-          {rule.is_system ? '👁️' : '✏️'}
+          {rule.is_system ? <Eye size={16} /> : <Pencil size={16} />}
         </button>
         {onDelete && (
-          <button onClick={onDelete} title={t('meta_templates.rules.delete')} style={{ ...iconBtnStyle, color: '#ef4444' }}>🗑️</button>
+          <button onClick={onDelete} title={t('meta_templates.rules.delete')} style={{ ...iconBtnStyle, color: '#ef4444' }}>
+            <Trash2 size={16} />
+          </button>
         )}
       </div>
     </div>
@@ -501,7 +538,7 @@ function RuleCard({ rule, onEdit, onDelete, onToggle }: {
 
 // ─── Stat Card ────────────────────────────────────────────────────────────────
 
-function StatCard({ icon, label, value, color }: { icon: string; label: string; value: any; color: string }) {
+function StatCard({ icon: Icon, label, value, color }: { icon: any; label: string; value: string | number; color: string }) {
   return (
     <div style={{
       background: '#fff', borderRadius: '12px', padding: '18px 22px',
@@ -509,8 +546,8 @@ function StatCard({ icon, label, value, color }: { icon: string; label: string; 
       display: 'flex', alignItems: 'center', gap: '14px',
       boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
     }}>
-      <div style={{ fontSize: '24px', width: '44px', height: '44px', borderRadius: '12px', background: color + '18', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        {icon}
+      <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: color + '18', display: 'flex', alignItems: 'center', justifyContent: 'center', color: color }}>
+        <Icon size={24} />
       </div>
       <div>
         <div style={{ color: '#0f172a', fontSize: '24px', fontWeight: 800, lineHeight: 1 }}>{value}</div>
@@ -610,10 +647,10 @@ export default function MetaTemplatesView() {
   if (rulesLoading) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', background: '#f8fafc' }}>
-        <div style={{ textAlign: 'center', color: '#64748b' }}>
-          <div style={{ fontSize: '28px', marginBottom: '8px', animation: 'spin 1s linear infinite' }}>⚙️</div>
-          <p style={{ margin: 0, fontSize: '14px' }}>{t('meta_templates.loading_rules')}</p>
-        </div>
+      <div style={{ textAlign: 'center', color: '#64748b' }}>
+        <RefreshCw size={32} className="animate-spin" style={{ margin: '0 auto 12px', color: '#6366f1' }} />
+        <p style={{ margin: 0, fontSize: '14px', fontWeight: 500 }}>{t('meta_templates.loading_rules')}</p>
+      </div>
       </div>
     );
   }
@@ -621,12 +658,10 @@ export default function MetaTemplatesView() {
   return (
     <div style={{ height: '100%', overflowY: 'auto', background: '#f8fafc', padding: isMobile ? '16px' : '28px 32px' }}>
       {/* Header */}
-      <div style={{ marginBottom: '24px' }}>
-        <h1 style={{ margin: '0 0 4px', color: '#0f172a', fontSize: '22px', fontWeight: 800 }}>
-          {t('meta_templates.title')}
-        </h1>
-        <p style={{ margin: 0, color: '#94a3b8', fontSize: '14px' }}>{t('meta_templates.subtitle')}</p>
-      </div>
+      <PageHeader 
+        title={t('meta_templates.title')} 
+        subtitle={t('meta_templates.subtitle')}
+      />
 
       {/* Stats */}
       <div style={{
@@ -635,9 +670,9 @@ export default function MetaTemplatesView() {
         gap: '12px',
         marginBottom: '24px'
       }}>
-        <StatCard icon="📤" label={t('meta_templates.stats.sent')} value={stats.sent} color="#6366f1" />
-        <StatCard icon="📬" label={t('meta_templates.stats.delivery_rate')} value={`${stats.delivery_rate}%`} color="#10b981" />
-        <StatCard icon="⚡" label={t('meta_templates.stats.active_rules')} value={stats.active_rules} color="#f59e0b" />
+        <StatCard icon={Send} label={t('meta_templates.stats.sent')} value={stats.sent} color="#6366f1" />
+        <StatCard icon={UserCheck} label={t('meta_templates.stats.delivery_rate')} value={`${stats.delivery_rate}%`} color="#10b981" />
+        <StatCard icon={Zap} label={t('meta_templates.stats.active_rules')} value={stats.active_rules} color="#f59e0b" />
       </div>
 
       {/* Tabs */}
@@ -656,10 +691,13 @@ export default function MetaTemplatesView() {
           <button key={tab} onClick={() => setActiveTab(tab)} style={{
             padding: '8px 18px', borderRadius: '8px', border: 'none', cursor: 'pointer',
             fontSize: '13px', fontWeight: 600, transition: 'all 0.15s',
+            display: 'flex', alignItems: 'center', gap: '8px',
             background: activeTab === tab ? '#fff' : 'transparent',
             color: activeTab === tab ? '#6366f1' : '#64748b',
             boxShadow: activeTab === tab ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+            whiteSpace: 'nowrap'
           }}>
+            {tab === 'rules' ? <Zap size={14} /> : tab === 'logs' ? <MessageSquare size={14} /> : <Files size={14} />}
             {tab === 'rules' ? t('meta_templates.tabs.rules') : tab === 'logs' ? t('meta_templates.tabs.logs') : t('meta_templates.tabs.templates')}
           </button>
         ))}
@@ -671,9 +709,11 @@ export default function MetaTemplatesView() {
           {/* Reglas Sistema */}
           <div style={{ marginBottom: '24px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
-              <div style={{ width: '3px', height: '18px', background: '#6366f1', borderRadius: '2px' }} />
+              <Zap size={18} style={{ color: '#6366f1' }} />
               <h2 style={{ margin: 0, color: '#0f172a', fontSize: '15px', fontWeight: 700 }}>{t('meta_templates.rules.system_rules')}</h2>
-              <span style={{ padding: '1px 7px', borderRadius: '5px', fontSize: '11px', fontWeight: 700, background: '#ede9fe', color: '#6366f1' }}>{t('meta_templates.rules.not_editable')}</span>
+              <span style={{ padding: '1px 8px', background: '#ede9fe', color: '#6366f1', borderRadius: '6px', fontSize: '11px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <Lock size={10} /> {t('meta_templates.form.not_editable')}
+              </span>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               {systemRules.map(rule => (
@@ -695,8 +735,8 @@ export default function MetaTemplatesView() {
                 <div style={{ width: '3px', height: '18px', background: '#10b981', borderRadius: '2px' }} />
                 <h2 style={{ margin: 0, color: '#0f172a', fontSize: '15px', fontWeight: 700 }}>{t('meta_templates.rules.custom_rules')}</h2>
               </div>
-              <button onClick={() => { setEditingRule(null); setShowModal(true); }} style={btnPrimaryStyle}>
-                {t('meta_templates.rules.new_rule_btn')}
+              <button onClick={() => { setEditingRule(null); setShowModal(true); }} style={{ ...btnPrimaryStyle, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Plus size={16} /> {t('meta_templates.rules.new_rule_btn')}
               </button>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -710,8 +750,10 @@ export default function MetaTemplatesView() {
                   padding: '40px', borderRadius: '12px', border: '2px dashed #e2e8f0',
                   textAlign: 'center', color: '#94a3b8', background: '#fff',
                 }}>
-                  <div style={{ fontSize: '32px', marginBottom: '10px' }}>⚡</div>
-                  <p style={{ margin: '0 0 14px', fontSize: '14px' }}>{t('meta_templates.rules.no_custom_rules')}</p>
+                  <div style={{ marginBottom: '16px', color: '#e2e8f0' }}>
+                    <Zap size={48} style={{ margin: '0 auto' }} />
+                  </div>
+                  <p style={{ margin: '0 0 14px', fontSize: '14px', fontWeight: 500 }}>{t('meta_templates.rules.no_custom_rules')}</p>
                   <button onClick={() => { setEditingRule(null); setShowModal(true); }} style={btnPrimaryStyle}>
                     {t('meta_templates.rules.create_first_rule')}
                   </button>
@@ -787,7 +829,7 @@ export default function MetaTemplatesView() {
                           <div style={{ color: '#64748b', fontSize: '12px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             {log.message_preview || log.template_name || '—'}
                           </div>
-                          {log.skip_reason && <div style={{ color: '#b45309', fontSize: '11px', marginTop: '1px' }}>⏭ {log.skip_reason}</div>}
+                          {log.skip_reason && <div style={{ color: '#b45309', fontSize: '11px', marginTop: '1px', display: 'flex', alignItems: 'center', gap: '4px' }}><SkipForward size={10} /> {log.skip_reason}</div>}
                         </td>
                         <td style={{ padding: '12px 14px', color: '#94a3b8', fontSize: '12px', whiteSpace: 'nowrap' }}>
                           {new Date(log.triggered_at).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
@@ -825,8 +867,10 @@ export default function MetaTemplatesView() {
 
           {templates.length === 0 ? (
             <div style={{ padding: '60px', textAlign: 'center', color: '#94a3b8', background: '#fff', borderRadius: '12px', border: '1px solid #f1f5f9' }}>
-              <div style={{ fontSize: '36px', marginBottom: '10px' }}>📭</div>
-              <p style={{ margin: '0 0 6px', fontSize: '14px' }}>{t('meta_templates.templates.no_templates')}</p>
+              <div style={{ color: '#e2e8f0', marginBottom: '16px' }}>
+                <Inbox size={48} style={{ margin: '0 auto' }} />
+              </div>
+              <p style={{ margin: '0 0 6px', fontSize: '14px', fontWeight: 500, color: '#64748b' }}>{t('meta_templates.templates.no_templates')}</p>
               <p style={{ margin: 0, fontSize: '12px' }}>{t('meta_templates.templates.verify_api_key')}</p>
             </div>
           ) : (
@@ -844,7 +888,7 @@ export default function MetaTemplatesView() {
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', alignItems: 'flex-end' }}>
                         <span style={{ padding: '1px 7px', borderRadius: '5px', fontSize: '10px', fontWeight: 700, background: catColor + '18', color: catColor }}>{t.category}</span>
-                        <span style={{ padding: '1px 7px', borderRadius: '5px', fontSize: '10px', fontWeight: 700, background: '#d1fae5', color: '#065f46' }}>✅ APPROVED</span>
+                        <span style={{ padding: '1px 7px', borderRadius: '5px', fontSize: '10px', fontWeight: 700, background: '#d1fae5', color: '#065f46', display: 'flex', alignItems: 'center', gap: '3px' }}><CheckCircle2 size={10} /> APPROVED</span>
                       </div>
                     </div>
                     {body?.text && (
