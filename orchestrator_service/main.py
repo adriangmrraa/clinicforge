@@ -1538,7 +1538,7 @@ async def save_patient_anamnesis(
         
         # Actualizar el campo medical_history en la base de datos
         # Usamos jsonb_set para mergear con datos existentes
-        result = await db.pool.execute("""
+        row = await db.pool.fetchrow("""
             UPDATE patients 
             SET medical_history = COALESCE(medical_history, '{}'::jsonb) || $1::jsonb,
                 updated_at = NOW()
@@ -1546,7 +1546,7 @@ async def save_patient_anamnesis(
             RETURNING id
         """, json.dumps(filtered_data), tenant_id, phone)
         
-        if result == "UPDATE 0":
+        if not row:
             return "❌ No se encontró un paciente con este número de teléfono. Asegúrate de haber agendado un turno primero con 'book_appointment'."
         
         logger.info(f"✅ Anamnesis guardada para paciente {phone} (tenant={tenant_id})")
@@ -1558,11 +1558,10 @@ async def save_patient_anamnesis(
                 "phone_number": phone,
                 "tenant_id": tenant_id,
                 "update_type": "anamnesis_saved",
-                "anamnesis_fields": list(filtered_data.keys())
+                "patient_id": row['id']
             }))
-        except:
-            pass
-        
+        except Exception as e:
+            logger.warning(f"No se pudo emitir evento Socket.IO: {e}")
         return "✅ He guardado tu historial médico (anamnesis) en tu ficha. Esto ayudará al profesional a brindarte una atención más segura y personalizada."
         
     except Exception as e:

@@ -188,7 +188,7 @@ async def get_patient_clinical_context(
         normalized_phone = normalize_phone(phone)
         patient = await db.pool.fetchrow("""
             SELECT id, first_name, last_name, phone_number, status, urgency_level, urgency_reason, preferred_schedule,
-                   acquisition_source, meta_ad_id, meta_ad_headline, meta_ad_body, external_ids
+                   acquisition_source, meta_ad_id, meta_ad_headline, meta_ad_body, external_ids, medical_history
             FROM patients 
             WHERE tenant_id = $1 AND (phone_number = $2 OR phone_number = $3)
             AND status != 'deleted'
@@ -199,7 +199,7 @@ async def get_patient_clinical_context(
         # Probamos el ID contra todas las claves del JSONB
         patient = await db.pool.fetchrow("""
             SELECT id, first_name, last_name, phone_number, status, urgency_level, urgency_reason, preferred_schedule,
-                   acquisition_source, meta_ad_id, meta_ad_headline, meta_ad_body, external_ids
+                   acquisition_source, meta_ad_id, meta_ad_headline, meta_ad_body, external_ids, medical_history
             FROM patients 
             WHERE tenant_id = $1 
             AND (
@@ -213,7 +213,45 @@ async def get_patient_clinical_context(
     if patient:
         from core.auth import log_pii_access
         await log_pii_access(request, user_data, patient['id'], action="read_clinical_context")
-        return patient
+        
+        # 2. Última cita (pasada) - Mapeo a 'date' para el frontend
+        last_apt = await db.pool.fetchrow("""
+            SELECT a.id, a.appointment_datetime AS date, a.appointment_type AS type, a.status, 
+                   a.duration_minutes, p.first_name as professional_name
+            FROM appointments a
+            LEFT JOIN professionals p ON a.professional_id = p.id
+            WHERE a.tenant_id = $1 AND a.patient_id = $2 AND a.appointment_datetime < NOW()
+            ORDER BY a.appointment_datetime DESC LIMIT 1
+        """, tenant_id, patient['id'])
+
+        # 3. Próxima cita (futura) - Mapeo a 'date' para el frontend
+        upcoming_apt = await db.pool.fetchrow("""
+            SELECT a.id, a.appointment_datetime AS date, a.appointment_type AS type, a.status,
+                   a.duration_minutes, p.first_name as professional_name
+            FROM appointments a
+            LEFT JOIN professionals p ON a.professional_id = p.id
+            WHERE a.tenant_id = $1 AND a.patient_id = $2 AND a.appointment_datetime >= NOW()
+            AND a.status IN ('scheduled', 'confirmed')
+            ORDER BY a.appointment_datetime ASC LIMIT 1
+        """, tenant_id, patient['id'])
+
+        # 4. Plan de tratamiento (del último registro clínico)
+        clinical_record = await db.pool.fetchrow("""
+            SELECT treatment_plan, diagnosis, created_at as record_date
+            FROM clinical_records
+            WHERE tenant_id = $1 AND patient_id = $2
+            ORDER BY created_at DESC LIMIT 1
+        """, tenant_id, patient['id'])
+
+        # 5. Respuesta combinada
+        return {
+            "patient": dict(patient),
+            "last_appointment": dict(last_apt) if last_apt else None,
+            "upcoming_appointment": dict(upcoming_apt) if upcoming_apt else None,
+            "treatment_plan": clinical_record['treatment_plan'] if clinical_record else None,
+            "diagnosis": clinical_record['diagnosis'] if clinical_record else None,
+            "is_guest": patient['status'] == 'guest'
+        }
     
     # Si no existe, es un lead puro sin registro previo
     return {
@@ -222,44 +260,6 @@ async def get_patient_clinical_context(
         "upcoming_appointment": None,
         "treatment_plan": None,
         "is_guest": True
-    }
-
-    # 2. Última cita (pasada) - Mapeo a 'date' para el frontend
-    last_apt = await db.pool.fetchrow("""
-        SELECT a.id, a.appointment_datetime AS date, a.appointment_type AS type, a.status, 
-               a.duration_minutes, p.first_name as professional_name
-        FROM appointments a
-        LEFT JOIN professionals p ON a.professional_id = p.id
-        WHERE a.tenant_id = $1 AND a.patient_id = $2 AND a.appointment_datetime < NOW()
-        ORDER BY a.appointment_datetime DESC LIMIT 1
-    """, tenant_id, patient['id'])
-
-    # 3. Próxima cita (futura) - Mapeo a 'date' para el frontend
-    upcoming_apt = await db.pool.fetchrow("""
-        SELECT a.id, a.appointment_datetime AS date, a.appointment_type AS type, a.status,
-               a.duration_minutes, p.first_name as professional_name
-        FROM appointments a
-        LEFT JOIN professionals p ON a.professional_id = p.id
-        WHERE a.tenant_id = $1 AND a.patient_id = $2 AND a.appointment_datetime >= NOW()
-        AND a.status IN ('scheduled', 'confirmed')
-        ORDER BY a.appointment_datetime ASC LIMIT 1
-    """, tenant_id, patient['id'])
-
-    # 4. Plan de tratamiento (del último registro clínico)
-    clinical_record = await db.pool.fetchrow("""
-        SELECT treatment_plan, diagnosis, record_date
-        FROM clinical_records
-        WHERE tenant_id = $1 AND patient_id = $2
-        ORDER BY created_at DESC LIMIT 1
-    """, tenant_id, patient['id'])
-
-    return {
-        "patient": dict(patient),
-        "last_appointment": dict(last_apt) if last_apt else None,
-        "upcoming_appointment": dict(upcoming_apt) if upcoming_apt else None,
-        "treatment_plan": clinical_record['treatment_plan'] if clinical_record else None,
-        "diagnosis": clinical_record['diagnosis'] if clinical_record else None,
-        "is_guest": patient['status'] == 'guest'
     }
 
 class StatusUpdate(BaseModel):
@@ -4058,6 +4058,18 @@ async def update_patient_anamnesis(
         "UPDATE patients SET medical_history = $1::jsonb WHERE id = $2 AND tenant_id = $3",
         json.dumps(current), patient_id, tenant_id
     )
+
+    # Notificar via Socket.IO para refrescar UI
+    try:
+        from main import sio, to_json_safe
+        await sio.emit("PATIENT_UPDATED", to_json_safe({
+            "phone_number": patient["phone_number"],
+            "patient_id": patient_id,
+            "tenant_id": tenant_id,
+            "update_type": "anamnesis_manual_update"
+        }))
+    except:
+        pass
 
     return {"message": "Anamnesis actualizada correctamente.", "medical_history": current}
 

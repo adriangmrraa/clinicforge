@@ -81,31 +81,60 @@ async def process_buffer_task(
         tenant_row = await pool.fetchrow("SELECT clinic_name FROM tenants WHERE id = $1", tenant_id)
         clinic_name = (tenant_row["clinic_name"] or CLINIC_NAME) if tenant_row else CLINIC_NAME
         
-        # Spec 24 / Spec 06: Ad Context Logic (Parity)
-        # Fetch patient data to detect Ad Context
+        # Spec 24 / Spec 06 / v7.6: Patient Identity & Appointment Context
+        # Fetch patient data and upcoming appointments for a richer context
         patient_row = await pool.fetchrow(
-            "SELECT meta_ad_headline, acquisition_source FROM patients WHERE tenant_id = $1 AND phone_number = $2",
+            "SELECT id, first_name, last_name, dni, acquisition_source FROM patients WHERE tenant_id = $1 AND phone_number = $2",
             tenant_id, external_user_id
         )
+        
+        patient_context = ""
         ad_context = ""
+        
         if patient_row:
-            meta_headline = patient_row.get("meta_ad_headline") or ""
+            p_id = patient_row["id"]
+            p_first = patient_row["first_name"] or ""
+            p_last = patient_row["last_name"] or ""
+            p_dni = patient_row["dni"] or ""
+            
+            # 1. Building Identity Context
+            identity_lines = []
+            if p_first or p_last:
+                identity_lines.append(f"• Nombre registrado: {p_first} {p_last}".strip())
+            if p_dni:
+                identity_lines.append(f"• DNI registrado: {p_dni}")
+            
+            # 2. Building Ad Context (Spec 06)
+            meta_headline = "" # Already in patient_row if we joined or updated, checking current db state
+            # Acquisition source check
             meta_source = patient_row.get("acquisition_source") or ""
-            if meta_source and meta_source != "ORGANIC" and meta_headline:
-                urgency_ad_keywords = ["urgencia", "dolor", "emergencia", "trauma", "emergency", "pain", "urgent"]
-                is_urgency_ad = any(kw in meta_headline.lower() for kw in urgency_ad_keywords)
-                if is_urgency_ad:
-                    ad_context = (
-                        f"• EL PACIENTE VIENE DE UN ANUNCIO DE URGENCIA: \"{meta_headline}\".\n"
-                        f"• PRIORIZA EL TRIAJE CLÍNICO sobre la captura de datos administrativos.\n"
-                        f"• Preguntá inmediatamente por el dolor/síntoma y usá 'triage_urgency' cuanto antes.\n"
-                        f"• Recién después del triaje, procedé con datos (nombre, DNI, obra social)."
-                    )
-                else:
-                    ad_context = (
-                        f"• El paciente llegó desde un anuncio de Meta Ads: \"{meta_headline}\".\n"
-                        f"• Podés personalizar el saludo mencionando el tema del anuncio de forma natural."
-                    )
+            
+            # Quick check for meta headline if not in main row (some schemas store it differently)
+            # For simplicity, we assume attributes might have it or use what's in 'patients'
+            
+            # 3. Fetching Next Appointment Context
+            next_apt = await pool.fetchrow("""
+                SELECT a.appointment_datetime, tt.name as treatment_name, 
+                       prof.first_name as professional_name
+                FROM appointments a
+                LEFT JOIN treatment_types tt ON a.appointment_type = tt.code
+                LEFT JOIN professionals prof ON a.professional_id = prof.id
+                WHERE a.tenant_id = $1 AND a.patient_id = $2 
+                AND a.appointment_datetime >= NOW()
+                AND a.status IN ('scheduled', 'confirmed')
+                ORDER BY a.appointment_datetime ASC
+                LIMIT 1
+            """, tenant_id, p_id)
+            
+            if next_apt:
+                dt = next_apt['appointment_datetime']
+                from main import ARG_TZ
+                if hasattr(dt, 'astimezone'): dt = dt.astimezone(ARG_TZ)
+                dt_str = dt.strftime("%A %d/%m a las %H:%M")
+                identity_lines.append(f"• PRÓXIMO TURNO: Tiene un turno de {next_apt['treatment_name'] or 'Consulta'} con el/la Dr/a. {next_apt['professional_name']} el día {dt_str}.")
+            
+            if identity_lines:
+                patient_context = "\n".join(identity_lines)
 
         now = get_now_arg()
         dias = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
@@ -117,11 +146,12 @@ async def process_buffer_task(
             hours_start=CLINIC_HOURS_START,
             hours_end=CLINIC_HOURS_END,
             ad_context=ad_context,
+            patient_context=patient_context,
         )
 
-        # Spec 24: Fetch DB Metadata History (Fix Amnesia)
-        # Fetch last 10 messages from DB to give context
-        db_history_dicts = await db.get_chat_history(external_user_id, limit=10, tenant_id=tenant_id)
+        # Spec 24 / v7.6: Fetch DB Metadata History
+        # Increased limit to 15 for better conversation continuity
+        db_history_dicts = await db.get_chat_history(external_user_id, limit=15, tenant_id=tenant_id)
         
         # Deduplication: If the last message in DB matches the first in Buffer, remove it from history
         if db_history_dicts and messages:
