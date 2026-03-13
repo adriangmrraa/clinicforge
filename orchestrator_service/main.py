@@ -461,7 +461,7 @@ async def check_availability(date_query: str, professional_name: Optional[str] =
                              treatment_name: Optional[str] = None, time_preference: Optional[str] = None):
     """
     Consulta la disponibilidad REAL de turnos para una fecha. Llamar UNA sola vez por pregunta del paciente.
-    date_query: Día a consultar: 'mañana', 'lunes', 'martes', 'jueves', etc. Si dice "miércoles a la tarde" usar date_query='miércoles' y time_preference='tarde'.
+    date_query: Día a consultar. Es crítico entender términos relativos: 'hoy', 'mañana', 'pasado mañana', 'lunes', 'martes', etc. Si el paciente dice "qué horarios tienen hoy?" usar date_query='hoy'.
     professional_name: (Opcional) Nombre del profesional (uno de list_professionals).
     treatment_name: (Opcional) Tratamiento ya definido (ej. limpieza profunda, consulta).
     time_preference: OBLIGATORIO cuando el paciente pide horarios de un momento del día: si pide 'a la tarde', 'por la tarde', 'tarde' -> 'tarde'; si pide 'a la mañana', 'por la mañana', 'mañana' (en sentido horario) -> 'mañana'; si no especifica -> 'todo' o no pasar.
@@ -697,9 +697,9 @@ async def book_appointment(date_time: str, treatment_reason: str,
     2. Apellido (last_name) 
     3. DNI (solo números)
     
-    NO ES OBLIGATORIO pedir fecha de nacimiento, email, ciudad o cómo nos conoció. Dejalos vacíos si el paciente no los proporciona, el personal de recepción los completará luego. No insistas pidiendo estos últimos 4 datos si el paciente quiere agendar rápido.
+    NO ES OBLIGATORIO pedir fecha de nacimiento, email, ciudad o cómo nos conoció. Dejalas vacíos si el paciente no los proporciona, el personal de recepción los completará luego. No insistas pidiendo estos últimos 4 datos si el paciente quiere agendar rápido.
     
-    date_time: Fecha y hora en un solo string (ej: 'miércoles 17:00').
+    date_time: Fecha y hora en un solo string. Soporta términos relativos: 'hoy 17:00', 'mañana a las 10', 'lunes 15:30', 'miércoles 17:00'.
     treatment_reason: Nombre del tratamiento tal como en list_services (ej. limpieza profunda, consulta).
     first_name, last_name: Nombre y apellido por separado.
     dni: Documento (solo números).
@@ -804,13 +804,21 @@ async def book_appointment(date_time: str, treatment_reason: str,
         end_apt = apt_datetime + timedelta(minutes=final_duration)
 
         # 2. Verificar/Crear paciente (aislado por tenant)
+        # Búsqueda primero por teléfono (identificador rápido)
         existing_patient = await db.pool.fetchrow(
-            "SELECT id, status FROM patients WHERE tenant_id = $1 AND phone_number = $2",
+            "SELECT id, status, phone_number FROM patients WHERE tenant_id = $1 AND phone_number = $2",
             tenant_id, phone,
         )
+        
+        # Búsqueda secundaria por DNI si no se encontró por teléfono
+        if not existing_patient and dni:
+            existing_patient = await db.pool.fetchrow(
+                "SELECT id, status, phone_number FROM patients WHERE tenant_id = $1 AND dni = $2",
+                tenant_id, dni,
+            )
         if existing_patient:
             # Actualizar paciente existente con nuevos datos si se proporcionan
-            # Nota: No actualizamos insurance_provider (clínica particular)
+            # Aceptamos cambios de teléfono si el DNI coincide (identificador fuerte)
             await db.pool.execute("""
                 UPDATE patients
                 SET first_name = COALESCE($1, first_name), 
@@ -820,11 +828,12 @@ async def book_appointment(date_time: str, treatment_reason: str,
                     email = COALESCE($5, email),
                     city = COALESCE($6, city),
                     first_touch_source = COALESCE($7, first_touch_source),
+                    phone_number = COALESCE($9, phone_number),
                     status = 'active', 
                     updated_at = NOW()
                 WHERE id = $8
             """, first_name, last_name, dni, birth_date_parsed, email_clean, 
-                city_clean, acquisition_source_clean, existing_patient["id"])
+                city_clean, acquisition_source_clean, existing_patient["id"], phone)
             patient_id = existing_patient["id"]
         else:
             # Validar datos obligatorios para pacientes nuevos
@@ -1602,11 +1611,13 @@ def build_system_prompt(
     hours_start: str = "08:00",
     hours_end: str = "19:00",
     ad_context: str = "",
+    patient_context: str = "",
 ) -> str:
     """
     Construye el system prompt del agente de forma agnóstica: usa el nombre de la clínica
     inyectado y la instrucción de idioma de respuesta (es/en/fr).
     ad_context: (Spec 06) Directiva contextual del anuncio de Meta Ads, si aplica.
+    patient_context: (v7.6) Datos de identidad y turnos del paciente.
     """
     lang_instructions = {
         "es": "RESPONDE ÚNICAMENTE EN ESPAÑOL. Todo tu mensaje (saludos, explicaciones, preguntas) debe estar en español. Mantené el voseo rioplatense cuando sea natural.",
@@ -1615,12 +1626,14 @@ def build_system_prompt(
     }
     lang_rule = lang_instructions.get(response_language, lang_instructions["es"])
 
-    # Spec 06: Bloque de contexto de anuncio (se inyecta al inicio si existe)
-    ad_block = ""
+    # Spec 06 / v7.6: Bloques de contexto (se inyectan al inicio si existen)
+    extra_context = ""
     if ad_context:
-        ad_block = f"""\n\nCONTEXTO DE ANUNCIO (Meta Ads):\n{ad_context}\n"""
+        extra_context += f"\n\nCONTEXTO DE ANUNCIO (Meta Ads):\n{ad_context}\n"
+    if patient_context:
+        extra_context += f"\n\nCONTEXTO DEL PACIENTE (Identidad y Turnos):\n{patient_context}\n"
 
-    return f"""REGLA DE IDIOMA (OBLIGATORIA): {lang_rule}{ad_block}
+    return f"""REGLA DE IDIOMA (OBLIGATORIA): {lang_rule}{extra_context}
 
 REGLA DE ORO DE IDENTIDAD: En tu primer mensaje de cada conversación, presentate como la secretaria virtual de la Dra. María Laura Delgado. Ejemplo en español: "Hola! Soy la secretaria virtual de la Dra. María Laura Delgado, es un gusto saludarte. 😊". Adaptá esta presentación al idioma en el que debés responder.
 Sos la secretaria virtual de la Dra. María Laura Delgado (Cirujana Maxilofacial e Implantóloga en Neuquén). No sos un bot corporativo ni de ninguna otra clínica.
@@ -1680,8 +1693,8 @@ POLÍTICAS DURAS:
 • PROFESIONALES Y TRATAMIENTOS (OBLIGATORIO): Si el paciente pregunta qué profesionales trabajan, quiénes atienden o con quién puede sacar turno, DEBES llamar a 'list_professionals' y responder ÚNICAMENTE con los nombres y especialidades que devuelva la tool. Si pregunta qué tratamientos tienen, qué servicios ofrecen o qué se puede agendar, DEBES llamar a 'list_services' y responder ÚNICAMENTE con la lista que devuelva la tool. NUNCA inventes nombres de profesionales (ej. Juan Pérez, María López) ni listas de tratamientos; solo los que devuelvan las tools.
 • HORARIOS SAGRADOS: Los horarios de los profesionales son sagrados. Si un profesional no atiende el día solicitado, informalo claramente al paciente y ofrecé alternativas (otro día con el mismo profesional u otros profesionales para ese día).
 • NO DIAGNOSTICAR: Ante dudas clínicas, decí que la Dra. María Laura Delgado tendrá que evaluar en consultorio para un diagnóstico certero.
-• ZONA HORARIA: America/Argentina/Buenos_Aires (GMT-3). 
-• TIEMPO ACTUAL: {current_time}
+• TIEMPO ACTUAL (Referencia absoluta): {current_time}
+• REGLA DE CONCIENCIA TEMPORAL: Usá el 'TIEMPO ACTUAL' anterior para resolver términos como "hoy", "mañana", "ayer" o "esta tarde". Si hoy es Lunes 13/03 y el paciente pide "para mañana", entendé que es Martes 14/03.
 • HORARIOS DE ATENCIÓN GENERAL: Lunes a Sábados de {hours_start} a {hours_end} (Domingos cerrado). Cada profesional tiene su propio horario que 'check_availability' conoce.
 • REGLA ANTI-PASADO: No podés agendar turnos para horarios que ya pasaron. Si un paciente pide un horario ya pasado, informale amablemente y ofrecele los siguientes disponibles.
 • DERIVACIÓN (Human Handoff): 
@@ -1739,7 +1752,7 @@ PASO 8: ANAMNESIS - Inmediatamente después del mensaje de confirmación, decí:
    c) "Tenés alergias conocidas?" (esperá respuesta, luego preguntá)
    d) "Te hiciste alguna cirugía previa?" (esperá respuesta, luego preguntá)
    e) "Sos fumador/a?" (si dice Sí, preguntá cantidad) (esperá respuesta, luego preguntá)
-   f) "Estás embarazada o en período de lactancia?" (esperá respuesta, luego preguntá)
+   f) "Estás embarazada o en período de lactancia?" (esperá respuesta, luego preguntá). **REGLA DE ORO**: Si el paciente es claramente hombre (por nombre o contexto), SALTEÁ esta pregunta y pasá a la siguiente.
    g) "Tuviste experiencias negativas previas en odontología?" (esperá respuesta, luego preguntá)
    h) "Tenés algún miedo específico relacionado con tratamientos dentales?" (esperá respuesta)
 PASO 9: GUARDAR ANAMNESIS - Con todas las respuestas, ejecutá 'save_patient_anamnesis'.
