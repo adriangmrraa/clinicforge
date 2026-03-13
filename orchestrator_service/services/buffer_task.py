@@ -68,7 +68,16 @@ async def process_buffer_task(
             CLINIC_HOURS_START,
             CLINIC_HOURS_END,
             db,  # Import db wrapper for get_chat_history
+            current_customer_phone,
+            current_tenant_id,
+            current_patient_id
         )
+        
+        # ✅ FIX: Establecer ContextVars para que las tools (book_appointment, etc) 
+        # puedan identificar al paciente en la tarea background
+        current_customer_phone.set(external_user_id)
+        current_tenant_id.set(tenant_id)
+        
         tenant_row = await pool.fetchrow("SELECT clinic_name FROM tenants WHERE id = $1", tenant_id)
         clinic_name = (tenant_row["clinic_name"] or CLINIC_NAME) if tenant_row else CLINIC_NAME
         
