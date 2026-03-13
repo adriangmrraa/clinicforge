@@ -335,6 +335,13 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
                                     if attr.get("url") == m_item.url:
                                         attr["url"] = local_url
                                         logger.info(f"📍 URL de media actualizada a local: {local_url}")
+                                
+                                # Persistir el cambio en chat_messages inmediatamente
+                                await pool.execute(
+                                    "UPDATE chat_messages SET content_attributes = $1::jsonb WHERE id = $2",
+                                    json.dumps(content_attrs),
+                                    msg_id
+                                )
                             except Exception as download_err:
                                 logger.error(f"❌ Error descargando media de {msg.original_channel}: {download_err}")
                                 continue
@@ -342,17 +349,21 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
                         # Solo imágenes y documentos van a la ficha médica (patient_documents)
                         if m_item.type in [MediaType.IMAGE, MediaType.DOCUMENT]:
                             # Intentar identificar al paciente por external_user_id (ID de Instagram/Facebook)
-                            # Para redes sociales, el external_user_id es el ID de usuario de la plataforma
+                            # Normalizar teléfono (remover +) para búsqueda más flexible
+                            clean_ext_id = msg.external_user_id.replace("+", "") if msg.external_user_id else ""
+                            
                             patient_row = await pool.fetchrow("""
                                 SELECT id FROM patients 
                                 WHERE tenant_id = $1 AND (
                                     phone_number = $2 OR 
+                                    phone_number = $3 OR
                                     meta_user_id = $2 OR
+                                    meta_user_id = $3 OR
                                     instagram_user_id = $2 OR
                                     facebook_user_id = $2
                                 )
                                 LIMIT 1
-                            """, tenant_id, msg.external_user_id)
+                            """, tenant_id, msg.external_user_id, clean_ext_id)
                             
                             if patient_row:
                                 # Determinar tipo de documento para clasificación

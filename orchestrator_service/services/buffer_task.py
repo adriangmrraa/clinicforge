@@ -176,6 +176,10 @@ async def process_buffer_task(
                             seen_multimodal.add(trans)
             except Exception: pass
 
+        # 4. Fetching Recent History (Spec 23)
+        # We fetch the last 20 messages to ensure the agent has enough context
+        db_history_dicts = await db.get_chat_history(external_user_id, limit=20, tenant_id=tenant_id)
+
         # --- EXTRACT CONTEXT BEFORE DEDUPLICATION (VISION FIX) ---
         for msg in db_history_dicts:
             extract_multimodal(msg.get('content_attributes'))
