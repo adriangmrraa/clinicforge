@@ -1355,7 +1355,8 @@ async def list_services(category: str = None):
             return "No hay tratamientos disponibles para reservar en esta sede en este momento."
         res = "🦷 Tratamientos disponibles:\n"
         for r in rows:
-            res += f"• {r['name']}\n"
+            res += f"• {r['name']} (código: {r['code']})\n"
+        res += "\n💡 Para más detalles o fotos de un tratamiento, pedimelo usando su nombre o código."
         return res
     except Exception as e:
         logger.error(f"Error en list_services: {e}")
@@ -1374,18 +1375,31 @@ async def get_service_details(code: str):
     """
     tenant_id = current_tenant_id.get()
     try:
+        # 1. Intentar buscar por código exacto
         row = await db.pool.fetchrow("""
             SELECT code, name, description, default_duration_minutes, complexity_level
             FROM treatment_types
             WHERE tenant_id = $1 AND code = $2 AND is_active = true AND is_available_for_booking = true
         """, tenant_id, code)
         
+        # 2. Fallback: Intentar buscar por nombre si no se encontró por código (el agente a veces pasa el nombre)
         if not row:
-            return f"No encontré el tratamiento '{code}' en esta sede."
+            row = await db.pool.fetchrow("""
+                SELECT code, name, description, default_duration_minutes, complexity_level
+                FROM treatment_types
+                WHERE tenant_id = $1 AND name ILIKE $2 AND is_active = true AND is_available_for_booking = true
+                LIMIT 1
+            """, tenant_id, f"%{code}%")
+            
+        if not row:
+            return f"No encontré el tratamiento '{code}' en esta sede. Por favor, verificá el listado general con 'list_services'."
+            
+        # Actualizar el código real encontrado
+        actual_code = row['code']
             
         images = await db.pool.fetch("""
             SELECT id FROM treatment_images WHERE tenant_id = $1 AND treatment_code = $2
-        """, tenant_id, code)
+        """, tenant_id, actual_code)
         
         res = f"Detalles de {row['name']}:\nDescripción: {row['description']}\nDuración: {row['default_duration_minutes']} min\nComplejidad: {row['complexity_level']}\n"
         
@@ -1676,7 +1690,8 @@ POLÍTICAS DURAS:
 
 SERVICIOS — REGLA CRÍTICA (BREVE vs. DETALLADO):
 • Si el paciente pregunta en GENERAL qué servicios/tratamientos tienen → llamá 'list_services' → respondé SOLO con los nombres, sin descripción, e invitá a preguntar por uno: "Sobre cuál querés más info?"
-• Si el paciente menciona UN servicio concreto o pide más info de uno → llamá 'get_service_details' con el code del tratamiento. Esta tool devuelve descripción e imágenes que el sistema enviará automáticamente al paciente.
+• Si el paciente menciona UN servicio concreto o pide más info de uno → llamá 'get_service_details' usando el 'código' obtenido previamente de 'list_services'. Esta tool devuelve descripción e imágenes que el sistema enviará automáticamente al paciente.
+• NUNCA inventes el código del tratamiento; usá siempre el que te da la tool.
 • NUNCA uses 'list_services' cuando ya sabés cuál es el servicio concreto.
 • NUNCA uses 'get_service_details' para listar opciones generales.
 • Los únicos tratamientos que la Dra. ofrece son los que devuelve 'list_services'. Está PROHIBIDO mencionar otros (ej. ortodoncia, implantes) a menos que aparezcan en esa lista.
