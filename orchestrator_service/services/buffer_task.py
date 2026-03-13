@@ -149,17 +149,6 @@ async def process_buffer_task(
             patient_context=patient_context,
         )
 
-        # Spec 24 / v7.6: Fetch DB Metadata History
-        # Increased limit to 15 for better conversation continuity
-        db_history_dicts = await db.get_chat_history(external_user_id, limit=15, tenant_id=tenant_id)
-        
-        # Deduplication: If the last message in DB matches the first in Buffer, remove it from history
-        if db_history_dicts and messages:
-            last_db_msg = db_history_dicts[-1]['content']
-            first_buffer_msg = messages[0]
-            if last_db_msg.strip() == first_buffer_msg.strip():
-                db_history_dicts.pop()
-
         chat_history = []
         vision_context_str = ""
         audio_context_str = ""
@@ -187,13 +176,20 @@ async def process_buffer_task(
                             seen_multimodal.add(trans)
             except Exception: pass
 
+        # --- EXTRACT CONTEXT BEFORE DEDUPLICATION (VISION FIX) ---
+        for msg in db_history_dicts:
+            extract_multimodal(msg.get('content_attributes'))
+
+        # Deduplication: If the last message in DB matches the first in Buffer, remove it from history
+        if db_history_dicts and messages:
+            last_db_msg = db_history_dicts[-1]['content']
+            first_buffer_msg = messages[0]
+            if last_db_msg.strip() == first_buffer_msg.strip():
+                db_history_dicts.pop()
+
         for msg in db_history_dicts:
             role = msg['role']
             content = msg['content']
-            attrs = msg.get('content_attributes')
-            
-            # Extract context from history
-            extract_multimodal(attrs)
             
             if role == 'user':
                 chat_history.append(HumanMessage(content=content))

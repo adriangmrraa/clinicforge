@@ -65,7 +65,7 @@ async def analyze_image_url(image_url: str, tenant_id: int) -> Optional[str]:
                 {
                     "role": "user", 
                     "content": [
-                        {"type": "text", "text": "Describe esta imagen detalladamente. Céntrate en detalles clínicos dentales si los hay (dientes, encías, aparatos), o describe el documento/foto si es administrativo. Sé conciso pero preciso."},
+                        {"type": "text", "text": "Actúa como un asistente dental experto. Describe esta imagen detalladamente con enfoque clínico. Detecta: 1) Signos de dolor, inflamación, sangrado o caries visibles. 2) Dientes rotos o faltantes. 3) Aparatos (brackets, prótesis, implantes). 4) Si es un documento, describe de qué tipo es (estudio, receta, presupuesto). Sé muy preciso y profesional."},
                         {
                             "type": "image_url",
                             "image_url": {

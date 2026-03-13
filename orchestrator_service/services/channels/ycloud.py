@@ -42,13 +42,17 @@ class YCloudAdapter(ChannelAdapter):
             content = msg.get("text", {}).get("body", "")
             
         elif msg_type == "image":
-            img_data = msg.get("image", {})
-            content = img_data.get("caption", "")
+            image_data = msg.get("image", {})
+            caption = image_data.get("caption")
+            if caption and not content:
+                content = caption
+                
             media_items.append(MediaItem(
                 type=MediaType.IMAGE,
-                url=img_data.get("link"),
-                mime_type=img_data.get("mime_type"),
-                meta={"scanner_id": img_data.get("id")}
+                url=image_data.get("link"),
+                mime_type=image_data.get("mime_type"),
+                file_name=image_data.get("filename") or "image",
+                meta={"sha256": image_data.get("sha256")}
             ))
             
         elif msg_type == "audio" or msg_type == "voice":
