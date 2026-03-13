@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from '../context/LanguageContext';
-import { Upload, FileText, Image, File, Trash2, Download, Eye, X } from 'lucide-react';
+import { Upload, FileText, Image, File, Trash2, Download, Eye, X, Activity } from 'lucide-react';
 import api from '../api/axios';
 
 interface PatientDocument {

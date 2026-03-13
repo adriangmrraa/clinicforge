@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends, Request, status, Response
 from pydantic import BaseModel, EmailStr
-from typing import Optional
+from typing import Optional, List
 import uuid
 import json
 import logging

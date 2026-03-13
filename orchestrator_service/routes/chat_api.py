@@ -11,8 +11,9 @@ import hashlib
 import time
 import traceback
 from datetime import datetime, timedelta
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Dict
 
+from pydantic import BaseModel
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, File, UploadFile
 from fastapi.responses import StreamingResponse
 import httpx
