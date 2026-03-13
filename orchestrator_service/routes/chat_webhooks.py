@@ -357,13 +357,13 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
                                 WHERE tenant_id = $1 AND (
                                     phone_number = $2 OR 
                                     phone_number = $3 OR
-                                    meta_user_id = $2 OR
-                                    meta_user_id = $3 OR
-                                    instagram_user_id = $2 OR
-                                    facebook_user_id = $2
+                                    external_ids @> $4::jsonb OR
+                                    external_ids @> $5::jsonb
                                 )
                                 LIMIT 1
-                            """, tenant_id, msg.external_user_id, clean_ext_id)
+                            """, tenant_id, msg.external_user_id, clean_ext_id, 
+                            json.dumps({"whatsapp_id": msg.external_user_id}),
+                            json.dumps({"whatsapp_id": clean_ext_id}))
                             
                             if patient_row:
                                 # Determinar tipo de documento para clasificación

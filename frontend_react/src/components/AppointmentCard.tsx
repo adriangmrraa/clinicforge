@@ -114,7 +114,7 @@ export const AppointmentCard: React.FC<EventContentArg> = (eventInfo) => {
 
             {/* Center: Patient Name */}
             <div className={`font-semibold text-xs truncate leading-snug mb-1 ${styles.text}`}>
-                {eventInfo.event.title.split(' - ')[0]}
+                {eventInfo.event.title?.split(' - ')[0] || t('agenda.no_name')}
             </div>
 
             {/* Bottom: Badge & Professional */}
