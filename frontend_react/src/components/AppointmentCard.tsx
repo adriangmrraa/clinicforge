@@ -1,6 +1,7 @@
 import React from 'react';
 import { CheckCircle, Clock, AlertTriangle, CloudOff, User, HelpCircle } from 'lucide-react';
 import type { EventContentArg } from '@fullcalendar/core';
+import { useTranslation } from '../context/LanguageContext';
 
 interface ExtendedProps {
     eventType: 'appointment' | 'gcalendar_block';
@@ -69,6 +70,7 @@ const STATUS_STYLES: Record<string, { bg: string; border: string; text: string; 
 };
 
 export const AppointmentCard: React.FC<EventContentArg> = (eventInfo) => {
+    const { t } = useTranslation();
     const props = eventInfo.event.extendedProps as ExtendedProps;
     const { eventType, status, appointment_type, professional_name, urgency_level } = props;
     const isGCal = eventType === 'gcalendar_block';

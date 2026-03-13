@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
-import { MessageSquare, Calendar, Activity, DollarSign, TrendingUp, TrendingDown, Target, Zap, Clock, ArrowUpRight, User } from 'lucide-react';
+import { MessageSquare, Calendar, Activity as LucideActivity, DollarSign, TrendingUp, TrendingDown, Target, Zap, Clock, ArrowUpRight, User } from 'lucide-react';
 import {
   XAxis,
   YAxis,
@@ -232,7 +232,7 @@ export default function DashboardView() {
           <KPICard
             title={t('dashboard.urgencies')}
             value={stats?.active_urgencies}
-            icon={Activity}
+            icon={LucideActivity}
             color="bg-rose-500"
           />
           <KPICard
