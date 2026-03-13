@@ -429,9 +429,14 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
                     for att in content_attrs:
                         att_url = att.get("url")
                         if att_url:
-                            signature, expires = generate_signed_url(att_url, tenant_id)
+                            # ✅ FIX: Limpiar de parámetros legacy antes de firmar (Spec 19)
+                            clean_att_url = att_url
+                            if att_url.startswith("/media/"):
+                                clean_att_url = att_url.split('?')[0]
+
+                            signature, expires = generate_signed_url(clean_att_url, tenant_id)
                             proxy_params = {
-                                "url": att_url,
+                                "url": clean_att_url,
                                 "tenant_id": tenant_id,
                                 "signature": signature,
                                 "expires": expires

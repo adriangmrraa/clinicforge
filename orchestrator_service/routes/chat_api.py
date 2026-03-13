@@ -229,12 +229,17 @@ async def chat_messages(
             # Sign ALL URLs to ensure they go through the proxy (fixes audio mime-type issues)
             original_url = att.get("url", "")
             if original_url:
+                # ✅ FIX: Si es local /media/, limpiar de parámetros antes de re-firmar para el proxy (Spec 19)
+                clean_url = original_url
+                if original_url.startswith("/media/"):
+                    clean_url = original_url.split('?')[0]
+
                 # Generar firma para URL (sea externa o local /media/)
-                signature, expires = generate_signed_url(original_url, tenant_id)
+                signature, expires = generate_signed_url(clean_url, tenant_id)
                 # Construir URL del proxy con parámetros de seguridad
                 from urllib.parse import urlencode
                 proxy_params = {
-                    "url": original_url,
+                    "url": clean_url,
                     "tenant_id": tenant_id,
                     "signature": signature,
                     "expires": expires

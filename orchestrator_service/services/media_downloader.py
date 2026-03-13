@@ -5,7 +5,6 @@ import httpx
 import logging
 import mimetypes
 from urllib.parse import urlparse
-from core.security_utils import generate_signed_url
 
 logger = logging.getLogger(__name__)
 
@@ -87,9 +86,7 @@ async def download_media(url: str, tenant_id: int, media_type: str = "document")
                 f.write(res.content)
             
             logger.info(f"✅ Media guardada: {local_path} ({len(res.content)} bytes, ext={ext})")
-            relative_url = f"/media/{tenant_id}/{filename}"
-            signature, expires = generate_signed_url(relative_url, tenant_id)
-            return f"{relative_url}?signature={signature}&expires={expires}"
+            return f"/media/{tenant_id}/{filename}"
         except httpx.HTTPStatusError as e:
             logger.error(f"❌ Media download HTTP error {e.response.status_code}: {url[:80]}")
             return url  # Fallback a la URL original si falla  

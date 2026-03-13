@@ -2640,14 +2640,29 @@ async def download_patient_document_proxy(
     
     file_path = document["file_path"]
     
-    # Verificar que el archivo existe
+    # ✅ FIX Spec 19: Limpiar path de posibles parámetros (HMAC legacy) antes de validar en disco
+    # Esto arregla retroactivamente documentos que se guardaron con firma
+    clean_path = file_path.split('?')[0]
+    
+    # Asegurar path absoluto para validación en disco
     import os
-    if not os.path.exists(file_path):
-        logger.error(f"File {file_path} not found on disk")
+    full_path = os.path.join(os.getcwd(), clean_path.lstrip('/'))
+    
+    if not os.path.exists(full_path):
+        logger.error(f"ERROR:admin_routes:File {clean_path} not found on disk (abs={full_path})")
         raise HTTPException(
             status_code=404, 
             detail="Falta el archivo en el servidor. (Posible reinicio del contenedor sin volumen persistente)"
         )
+    
+    # Determinar filename para descarga
+    download_filename = document["file_name"] or os.path.basename(clean_path)
+    
+    return FileResponse(
+        path=full_path, 
+        filename=download_filename,
+        media_type=document["mime_type"] or "application/octet-stream"
+    )
     
     # Servir archivo
     return FileResponse(
