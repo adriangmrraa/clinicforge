@@ -13,6 +13,10 @@ logger = logging.getLogger("auth_routes")
 
 # --- MODELS ---
 
+class ClinicPublicResponse(BaseModel):
+    id: int
+    clinic_name: str
+
 class UserLogin(BaseModel):
     email: EmailStr
     password: str
@@ -47,7 +51,7 @@ def _default_working_hours():
     return wh
 
 
-@router.get("/clinics")
+@router.get("/clinics", response_model=List[ClinicPublicResponse])
 async def list_clinics_public():
     """
     Lista de clínicas/sedes para el selector del formulario de registro.

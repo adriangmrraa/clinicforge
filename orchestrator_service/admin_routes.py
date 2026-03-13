@@ -30,6 +30,38 @@ ARG_TZ = timezone(timedelta(hours=-3))
 from services.whisper_service import transcribe_audio_url
 import glob
 
+class AppointmentResponse(BaseModel):
+    id: int
+    patient_id: int
+    appointment_datetime: datetime
+    duration_minutes: int
+    status: str
+    urgency_level: Optional[str] = None
+    source: Optional[str] = None
+    appointment_type: Optional[str] = None
+    notes: Optional[str] = None
+    patient_name: str
+    patient_phone: Optional[str] = None
+    professional_name: Optional[str] = None
+    professional_id: Optional[int] = None
+    appointment_name: str
+
+class TreatmentTypeResponse(BaseModel):
+    id: int
+    code: str
+    name: str
+    description: Optional[str] = None
+    default_duration_minutes: int
+    min_duration_minutes: Optional[int] = None
+    max_duration_minutes: Optional[int] = None
+    complexity_level: Optional[str] = None
+    category: Optional[str] = None
+    requires_multiple_sessions: bool
+    session_gap_days: Optional[int] = None
+    is_active: bool
+    is_available_for_booking: bool
+    internal_notes: Optional[str] = None
+
 router = APIRouter(prefix="/admin", tags=["Dental Admin"])
 
 # ============================================
@@ -2664,7 +2696,11 @@ async def list_treatment_types(
 
 # ==================== ENDPOINTS TURNOS (AGENDA) ====================
 
-@router.get("/appointments", dependencies=[Depends(verify_admin_token)], tags=["Turnos"], summary="Listar turnos en un rango de fechas")
+@router.get("/appointments", 
+            dependencies=[Depends(verify_admin_token)], 
+            tags=["Turnos"], 
+            summary="Listar turnos en un rango de fechas",
+            response_model=List[AppointmentResponse])
 async def list_appointments(
     start_date: str,
     end_date: str,
@@ -3645,7 +3681,11 @@ class TreatmentTypeUpdate(BaseModel):
     internal_notes: Optional[str] = None
 
 
-@router.get("/treatment-types", dependencies=[Depends(verify_admin_token)], tags=["Tratamientos"], summary="Listar tipos de tratamientos ofrecidos")
+@router.get("/treatment-types", 
+            dependencies=[Depends(verify_admin_token)], 
+            tags=["Tratamientos"], 
+            summary="Listar tipos de tratamientos ofrecidos",
+            response_model=List[TreatmentTypeResponse])
 async def list_treatment_types(tenant_id: int = Depends(get_resolved_tenant_id)):
     """Listar tipos de tratamiento de la clínica. Aislado por tenant_id (Regla de Oro)."""
     rows = await db.pool.fetch("""

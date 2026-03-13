@@ -12,6 +12,9 @@ import re
 from gcal_service import gcal_service
 import httpx
 import mimetypes
+import hmac
+import hashlib
+import time
 from urllib.parse import urlparse
 
 from fastapi import BackgroundTasks, FastAPI, Request, HTTPException, Depends
@@ -33,6 +36,7 @@ from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 from langchain.tools import tool
 
 import socketio
+from core.security_utils import verify_signed_url
 from db import db
 from admin_routes import router as admin_router
 from auth_routes import router as auth_router
@@ -2615,13 +2619,25 @@ async def chat_endpoint(req: ChatRequest, background_tasks: BackgroundTasks):
         )
 
 # --- MEDIA SERVING ENDPOINT (Spec 20) ---
-@app.get("/media/{tenant_id}/{filename}", tags=["Health"], summary="Servir archivos multimedia locales")
-async def serve_local_media(tenant_id: int, filename: str):
+@app.get("/media/{tenant_id}/{filename}", tags=["Media"], summary="Servir archivos multimedia locales")
+async def serve_local_media(
+    tenant_id: int, 
+    filename: str,
+    signature: str = Query(..., description="Firma HMAC de seguridad"),
+    expires: int = Query(..., description="Timestamp de expiración")
+):
     """
-    Sirve archivos de media descargados localmente (Spec 19 + Spec 20).
+    Sirve archivos de media descargados localmente.
+    Requiere firma válida generada por el orchestrator.
     Path: /media/{tenant_id}/{filename}
     """
-    # Seguridad: validar filename para prevenir path traversal
+    # 1. Verificar firma HMAC (Spec 19/20 Security)
+    url_path = f"/media/{tenant_id}/{filename}"
+    if not verify_signed_url(url_path, tenant_id, signature, expires):
+        logger.warning(f"🛡️ Security Block: Attempt to access media without valid signature. Path: {url_path}")
+        raise HTTPException(status_code=403, detail="Acceso denegado: Firma inválida o expirada.")
+
+    # 2. Seguridad: validar filename para prevenir path traversal
     if ".." in filename or "/" in filename or "\\" in filename:
         raise HTTPException(status_code=400, detail="Invalid filename")
     
@@ -2634,7 +2650,7 @@ async def serve_local_media(tenant_id: int, filename: str):
     # Determinar content type
     mime_type, _ = mimetypes.guess_type(filename)
     
-    logger.info(f"🖼️ Serving media: {media_path}")
+    logger.info(f"🖼️ Serving signed media: {media_path}")
     return FileResponse(
         media_path,
         media_type=mime_type or "application/octet-stream",
@@ -2651,7 +2667,7 @@ async def health():
 # DEBUG ENDPOINT - Para diagnosticar problemas de auth
 # ============================================
 
-@app.get("/api/debug/auth")
+@app.get("/api/debug/auth", tags=["Debug"])
 async def debug_auth(request: Request, x_admin_token: str = None):
     """
     Endpoint público para debug de autenticación.
@@ -2693,7 +2709,7 @@ async def debug_auth(request: Request, x_admin_token: str = None):
     return debug_info
 
 
-@app.get("/api/debug/env")
+@app.get("/api/debug/env", tags=["Debug"])
 async def debug_env():
     """
     Endpoint público para debug de variables de entorno (sin info sensible).
@@ -2710,7 +2726,7 @@ async def debug_env():
     return env_info
 
 
-@app.get("/api/debug/health")
+@app.get("/api/debug/health", tags=["Debug"])
 async def debug_health():
     """
     Endpoint de health check público.

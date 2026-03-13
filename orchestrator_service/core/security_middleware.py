@@ -42,10 +42,10 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         
         csp_policy = (
             f"default-src 'self'; "
-            f"script-src 'self' 'unsafe-inline'; "
-            f"style-src 'self' 'unsafe-inline' fonts.googleapis.com; "
+            f"script-src 'self' 'unsafe-inline' cdn.jsdelivr.net; "
+            f"style-src 'self' 'unsafe-inline' fonts.googleapis.com cdn.jsdelivr.net; "
             f"font-src 'self' fonts.gstatic.com; "
-            f"img-src 'self' data:; "
+            f"img-src 'self' data: fastapi.tiangolo.com; "
             f"connect-src {connect_src}; "
             f"frame-ancestors 'none'; "
             f"object-src 'none';"

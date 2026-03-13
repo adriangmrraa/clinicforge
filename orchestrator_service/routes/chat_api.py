@@ -24,74 +24,46 @@ from core.credentials import (
     YCLOUD_API_KEY,
     get_tenant_credential,
 )
+from core.security_utils import generate_signed_url, verify_signed_url
 from core.auth import verify_ceo_token, verify_staff_token
 from db import get_pool
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Chat"])
 
+class ChatSummaryResponse(BaseModel):
+    id: str
+    tenant_id: int
+    name: str
+    avatar_url: Optional[str] = None
+    external_user_id: str
+    channel: str
+    provider: str
+    last_message: str
+    last_message_at: Optional[str] = None
+    last_user_message_at: Optional[str] = None
+    is_locked: bool
+    status: str
+    last_derivhumano_at: Optional[str] = None
+    meta: Dict[str, Any]
+    unread_count: int
+
 
 from admin_routes import get_resolved_tenant_id
 
-# Clave secreta para firmar URLs de medios. Debe definirse en producción via MEDIA_PROXY_SECRET.
-# Si no está definida, se genera un valor aleatorio por sesión (invalida URLs firmadas al reiniciar).
-_raw_secret = os.getenv("MEDIA_PROXY_SECRET", "")
-if not _raw_secret:
-    import uuid as _uuid
-    _raw_secret = _uuid.uuid4().hex
-    logger.warning(
-        "⚠️ MEDIA_PROXY_SECRET no definida. Se usará un secreto temporal aleatorio. "
-        "Las URLs de medios firmadas se invalidarán al reiniciar el servidor. "
-        "Define MEDIA_PROXY_SECRET en las variables de entorno del orchestrator."
-    )
-MEDIA_PROXY_SECRET = _raw_secret
-MEDIA_URL_TTL = 3600  # 1 hora de validez
-
-def generate_signed_url(url: str, tenant_id: int) -> str:
-    """
-    Genera una URL firmada para acceso seguro al proxy de medios.
-    """
-    expires = int(time.time()) + MEDIA_URL_TTL
-    
-    # Crear firma HMAC
-    message = f"{url}|{tenant_id}|{expires}"
-    signature = hmac.new(
-        MEDIA_PROXY_SECRET.encode(),
-        message.encode(),
-        hashlib.sha256
-    ).hexdigest()
-    
-    return signature, expires
-
-def verify_signed_url(url: str, tenant_id: int, signature: str, expires: int) -> bool:
-    """
-    Verifica que la URL firmada sea válida y no haya expirado.
-    """
-    # Verificar expiración
-    if int(time.time()) > expires:
-        return False
-    
-    # Verificar firma
-    message = f"{url}|{tenant_id}|{expires}"
-    expected_signature = hmac.new(
-        MEDIA_PROXY_SECRET.encode(),
-        message.encode(),
-        hashlib.sha256
-    ).hexdigest()
-    
-    return hmac.compare_digest(signature, expected_signature)
 
 
 
 
-@router.get("/admin/chats/summary", summary="Obtener resumen de conversaciones omnicanal")
+
+@router.get("/admin/chats/summary", summary="Obtener resumen de conversaciones omnicanal", response_model=List[ChatSummaryResponse])
 async def chats_summary(
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
     channel: Optional[str] = Query(None),
     human_override: Optional[bool] = Query(None),
     tenant_id: int = Depends(get_resolved_tenant_id),
-) -> List[dict]:
+):
     from datetime import datetime, timezone
     pool = get_pool()
     conditions = ["c.tenant_id = $1"]
@@ -657,9 +629,12 @@ async def chat_upload(
                  raise HTTPException(status_code=413, detail="File too large (Max 20MB)")
             f.write(chunk)
     
+    relative_url = f"/media/{tenant_id}/{filename}"
+    signature, expires = generate_signed_url(relative_url, tenant_id)
+    
     return {
         "type": file_type,
-        "url": f"/media/{tenant_id}/{filename}",
+        "url": f"{relative_url}?signature={signature}&expires={expires}",
         "file_name": file.filename,
         "size": size_so_far
     }
