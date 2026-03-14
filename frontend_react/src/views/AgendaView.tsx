@@ -700,14 +700,16 @@ export default function AgendaView() {
           }
         `}</style>
 
-              {loading && appointments.length === 0 ? (
-                <div className="flex items-center justify-center h-full">
-                  <div className="flex flex-col items-center gap-4">
-                    <RefreshCw className="w-12 h-12 text-blue-500 animate-spin" />
-                    <p className="text-gray-500 font-medium">{t('common.loading')}</p>
+              {/* Siempre montar el calendario para que las flechas y la vista no reviertan al hacer fetch */}
+              <div className="relative h-full min-h-[400px]">
+                {loading && appointments.length === 0 && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-white/80 z-10 rounded-2xl">
+                    <div className="flex flex-col items-center gap-4">
+                      <RefreshCw className="w-12 h-12 text-blue-500 animate-spin" />
+                      <p className="text-gray-500 font-medium">{t('common.loading')}</p>
+                    </div>
                   </div>
-                </div>
-              ) : (
+                )}
                 <FullCalendar
                   ref={calendarRef}
                   plugins={[dayGridPlugin, interactionPlugin, timeGridPlugin, resourceTimeGridPlugin, listPlugin]}
@@ -732,9 +734,14 @@ export default function AgendaView() {
                     day: t('agenda.day'),
                     year: t('agenda.year'),
                     three_years: t('agenda.three_years'),
-                    list: t('agenda.title')
+                    list: t('agenda.list')
                   }}
                   views={{
+                    listYear: {
+                      type: 'list',
+                      duration: { years: 1 },
+                      buttonText: t('agenda.year')
+                    },
                     listThreeYears: {
                       type: 'list',
                       duration: { years: 3 },
@@ -817,7 +824,7 @@ export default function AgendaView() {
                     }
                   }}
                 />
-              )}
+              </div>
             </div>
           </div>
         )}

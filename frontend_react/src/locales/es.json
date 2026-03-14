@@ -223,6 +223,7 @@
     "day": "Día",
     "year": "Año",
     "three_years": "3 Años",
+    "list": "Lista",
     "all_day": "Todo el día",
     "alert_past_date": "No se pueden agendar citas en fechas u horarios pasados. Por favor, seleccioná una fecha futura.",
     "alert_cancel_error": "Error al cancelar turno",

@@ -213,6 +213,8 @@
     "week": "Semaine",
     "day": "Jour",
     "year": "Année",
+    "three_years": "3 Ans",
+    "list": "Liste",
     "all_day": "Toute la journée",
     "alert_past_date": "Impossible de prendre rendez-vous dans le passé. Veuillez choisir une date future.",
     "alert_cancel_error": "Erreur lors de l'annulation du rendez-vous",
