@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard CEO - Dra. Laura Delgado</title>
+    <style>
+        :root {
+            --primary: #2563eb;
+            --primary-dark: #1d4ed8;
+            --secondary: #10b981;
+            --danger: #ef4444;
+            --warning: #f59e0b;
+            --gray-50: #f9fafb;
+            --gray-100: #f3f4f6;
+            --gray-200: #e5e7eb;
+            --gray-700: #374151;
+            --gray-900: #111827;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: var(--gray-50);
+            color: var(--gray-900);
+            padding: 20px;
+            line-height: 1.6;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.05);
+            border-left: 5px solid var(--primary);
+        }
+        
+        .header h1 {
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 10px;
+            color: var(--gray-900);
+        }
+        
+        .header p {
+            color: var(--gray-700);
+            font-size: 16px;
+        }
+        
+        .status-badge {
+            display: inline-block;
+            background: var(--secondary);
+            color: white;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 600;
+            margin-top: 10px;
+        }
+        
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .metric-card {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.05);
+            transition: transform 0.3s;
+        }
+        
+        .metric-card:hover {
+            transform: translateY(-5px);
+        }
+        
+        .metric-value {
+            font-size: 32px;
+            font-weight: 700;
+            color: var(--primary);
+            margin-bottom: 10px;
+        }
+        
+        .metric-label {
+            font-size: 14px;
+            color: var(--gray-700);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .info-box {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            margin-bottom: 30px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.05);
+        }
+        
+        .info-box h2 {
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 20px;
+            color: var(--gray-900);
+        }
+        
+        .info-list {
+            list-style: none;
+        }
+        
+        .info-list li {
+            padding: 10px 0;
+            border-bottom: 1px solid var(--gray-200);
+            display: flex;
+            justify-content: space-between;
+        }
+        
+        .info-list li:last-child {
+            border-bottom: none;
+        }
+        
+        .info-label {
+            font-weight: 500;
+        }
+        
+        .info-value {
+            font-family: 'Monaco', 'Courier New', monospace;
+            background: var(--gray-100);
+            padding: 3px 8px;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+        
+        .warning-box {
+            background: #fef3c7;
+            border-left: 5px solid var(--warning);
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 30px;
+        }
+        
+        .warning-box h3 {
+            color: var(--warning);
+            margin-bottom: 10px;
+        }
+        
+        .btn {
+            display: inline-block;
+            background: var(--primary);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 600;
+            transition: all 0.3s;
+            border: none;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        
+        .btn:hover {
+            background: var(--primary-dark);
+            transform: translateY(-2px);
+        }
+        
+        .btn-secondary {
+            background: var(--gray-200);
+            color: var(--gray-900);
+        }
+        
+        .btn-secondary:hover {
+            background: var(--gray-300);
+        }
+        
+        .footer {
+            text-align: center;
+            margin-top: 50px;
+            padding-top: 20px;
+            border-top: 1px solid var(--gray-200);
+            color: var(--gray-700);
+            font-size: 14px;
+        }
+        
+        @media (max-width: 768px) {
+            .metrics-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .header {
+                padding: 20px;
+            }
+            
+            .header h1 {
+                font-size: 24px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1>📊 Dashboard CEO - Dra. Laura Delgado</h1>
+            <p>Sistema de monitoreo y métricas del agente IA</p>
+            <div class="status-badge">
+                ✅ Acceso CEO Autorizado
+            </div>
+        </div>
+        
+        {% if not metrics_available %}
+        <div class="warning-box">
+            <h3>⚠️ Sistema de Métricas en Configuración</h3>
+            <p>Los módulos de métricas no están completamente cargados. Esto puede ser porque:</p>
+            <ul>
+                <li>El sistema se está iniciando por primera vez</li>
+                <li>Hay problemas con la base de datos</li>
+                <li>Falta alguna dependencia</li>
+            </ul>
+            <p>Los datos mostrados a continuación son de ejemplo.</p>
+        </div>
+        {% endif %}
+        
+        <!-- Métricas Principales -->
+        <div class="metrics-grid">
+            <div class="metric-card">
+                <div class="metric-value">${{ "%.2f"|format(token_metrics.totals.total_cost_usd) }}</div>
+                <div class="metric-label">Costo Total OpenAI</div>
+            </div>
+            
+            <div class="metric-card">
+                <div class="metric-value">{{ "{:,}".format(token_metrics.totals.total_tokens) }}</div>
+                <div class="metric-label">Tokens Utilizados</div>
+            </div>
+            
+            <div class="metric-card">
+                <div class="metric-value">{{ token_metrics.totals.total_conversations }}</div>
+                <div class="metric-label">Conversaciones</div>
+            </div>
+            
+            <div class="metric-card">
+                <div class="metric-value">{{ projections.efficiency_score|default(0) }}/100</div>
+                <div class="metric-label">Score Eficiencia</div>
+            </div>
+        </div>
+        
+        <!-- Información del Sistema -->
+        <div class="info-box">
+            <h2>⚙️ Información del Sistema</h2>
+            <ul class="info-list">
+                <li>
+                    <span class="info-label">Estado del Sistema</span>
+                    <span class="info-value">{{ system_metrics.status|default("operational") }}</span>
+                </li>
+                <li>
+                    <span class="info-label">Pacientes Totales</span>
+                    <span class="info-value">{{ db_stats.total_patients|default(0) }}</span>
+                </li>
+                <li>
+                    <span class="info-label">Turnos Próximos (7 días)</span>
+                    <span class="info-value">{{ db_stats.upcoming_appointments|default(0) }}</span>
+                </li>
+                <li>
+                    <span class="info-label">Conversaciones Totales</span>
+                    <span class="info-value">{{ db_stats.total_conversations|default(0) }}</span>
+                </li>
+                <li>
+                    <span class="info-label">Última Actualización</span>
+                    <span class="info-value">{{ current_time }}</span>
+                </li>
+            </ul>
+        </div>
+        
+        <!-- Costos y Proyecciones -->
+        <div class="info-box">
+            <h2>💰 Costos y Proyecciones</h2>
+            <ul class="info-list">
+                <li>
+                    <span class="info-label">Costo Hoy</span>
+                    <span class="info-value">${{ "%.4f"|format(token_metrics.today.cost_usd) }}</span>
+                </li>
+                <li>
+                    <span class="info-label">Costo Este Mes</span>
+                    <span class="info-value">${{ "%.2f"|format(token_metrics.current_month.cost_usd) }}</span>
+                </li>
+                <li>
+                    <span class="info-label">Proyección Mensual</span>
+                    <span class="info-value">${{ "%.2f"|format(projections.projected_monthly_cost_usd|default(0)) }}</span>
+                </li>
+                <li>
+                    <span class="info-label">Costo por 1K Tokens</span>
+                    <span class="info-value">${{ "%.4f"|format(projections.cost_per_1000_tokens|default(0)) }}</span>
+                </li>
+                <li>
+                    <span class="info-label">Tokens por Conversación</span>
+                    <span class="info-value">{{ "%.0f"|format(token_metrics.totals.avg_tokens_per_conversation) }}</span>
+                </li>
+            </ul>
+        </div>
+        
+        <!-- Acciones -->
+        <div style="text-align: center; margin: 40px 0;">
+            <a href="/" class="btn btn-secondary">🏠 Volver al Inicio</a>
+            <button onclick="location.reload()" class="btn">🔄 Actualizar Datos</button>
+        </div>
+        
+        <!-- Footer -->
+        <div class="footer">
+            <p>Dashboard CEO - Dra. Laura Delgado</p>
+            <p>© 2026 ClinicForge - Sistema de métricas en tiempo real</p>
+            <p style="font-size: 12px; margin-top: 10px; color: var(--gray-500);">
+                Versión simplificada - Datos actualizados: {{ current_time }}
+            </p>
+        </div>
+    </div>
+    
+    <script>
+        // Auto-refresh cada 60 segundos
+        setTimeout(() => {
+            location.reload();
+        }, 60000);
+        
+        // Mostrar notificación de actualización
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('Dashboard CEO cargado correctamente');
+            
+            // Verificar si hay datos reales o de ejemplo
+            const totalCost = parseFloat("{{ token_metrics.totals.total_cost_usd }}");
+            if (totalCost === 0) {
+                console.warn('⚠️ Mostrando datos de ejemplo - Sistema en configuración');
+            }
+        });
+    </script>
+</body>
+</html>

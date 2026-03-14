@@ -1,23 +1,16 @@
 """
-Status Page - Dashboard privado para el CEO con autenticación automática
+Status Page Simple - Dashboard CEO integrado con autenticación existente
 """
 
 import logging
-from datetime import datetime, timedelta
-from typing import Dict, Any, List
-from fastapi import APIRouter, Request, Depends, HTTPException, Form
-from fastapi.responses import HTMLResponse, RedirectResponse
+from datetime import datetime
+from typing import Dict, Any
+from fastapi import APIRouter, Request, Depends, HTTPException
+from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 import os
 
-from .auth_middleware import (
-    ceo_auth_required,
-    ceo_api_auth,
-    create_login_response,
-    create_logout_response,
-    get_ceo_session,
-    ceo_context
-)
+from .auth_integrated import ceo_access_required, ceo_api_access, get_current_user
 
 logger = logging.getLogger(__name__)
 
@@ -30,182 +23,148 @@ templates = Jinja2Templates(directory=templates_dir)
 # Crear router para el dashboard
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
 
-# Página de login
-@router.get("/login", response_class=HTMLResponse)
-async def login_page(request: Request):
-    """Página de login para CEO"""
-    # Si ya está autenticado, redirigir al dashboard
-    if get_ceo_session(request):
-        return RedirectResponse(url="/dashboard/status", status_code=302)
-    
-    return templates.TemplateResponse("login.html", {
-        "request": request,
-        "error": None
-    })
-
-@router.post("/login")
-async def login_submit(
-    request: Request,
-    access_key: str = Form(...)
-):
-    """Endpoint para submit de login"""
-    from .auth_middleware import CEO_ACCESS_KEY
-    
-    if access_key == CEO_ACCESS_KEY:
-        from .auth_middleware import session_manager
-        session_id = session_manager.create_session(request)
-        return create_login_response(session_id, "/dashboard/status")
-    else:
-        return templates.TemplateResponse("login.html", {
-            "request": request,
-            "error": "Clave de acceso incorrecta"
-        })
-
-@router.get("/logout")
-async def logout():
-    """Endpoint para logout"""
-    return create_logout_response()
-
-# Dashboard principal - ahora con autenticación automática
+# Dashboard principal - Solo requiere autenticación existente
 @router.get("/status", response_class=HTMLResponse)
 async def status_dashboard(
     request: Request,
     days: int = 30,
-    session_id: str = Depends(ceo_auth_required)  # ← Autenticación automática
+    _: bool = Depends(ceo_access_required)  # ← Usa autenticación existente
 ):
     """
-    Dashboard de status privado para el CEO
+    Dashboard de status para CEO
     URL: https://app.dralauradelgado.com/dashboard/status
+    Acceso: Cualquier usuario autenticado en ClinicForge
     """
     try:
-        # Obtener métricas del sistema
-        from .token_tracker import token_tracker
-        from .config_manager import config_manager
-        from agent.integration import enhanced_system
+        # Obtener información del usuario actual
+        user = get_current_user(request)
         
-        # Obtener métricas de tokens
-        token_metrics = await token_tracker.get_total_metrics(tenant_id=1, days=days)
-        daily_usage = await token_tracker.get_daily_usage(tenant_id=1, days=days)
-        model_usage = await token_tracker.get_model_usage(tenant_id=1, days=days)
-        available_models = await token_tracker.get_available_models()
-        
-        # Obtener configuración actual
-        current_config = await config_manager.get_all_config(tenant_id=1)
-        config_by_category = await config_manager.get_config_by_category(tenant_id=1)
-        
-        # Obtener métricas del sistema mejorado
-        system_metrics = await enhanced_system.get_system_metrics(days=days)
-        
-        # Obtener estadísticas de la base de datos
-        from core import db
-        db_stats = await get_database_stats()
-        
-        # Calcular proyecciones
-        projections = calculate_projections(token_metrics)
-        
-        # Obtener contexto de autenticación
-        auth_context = await ceo_context(request)
+        # Obtener métricas del sistema (si están disponibles)
+        try:
+            from .token_tracker import token_tracker
+            from .config_manager import config_manager
+            from agent.integration import enhanced_system
+            
+            token_metrics = await token_tracker.get_total_metrics(tenant_id=1, days=days)
+            daily_usage = await token_tracker.get_daily_usage(tenant_id=1, days=days)
+            model_usage = await token_tracker.get_model_usage(tenant_id=1, days=days)
+            available_models = await token_tracker.get_available_models()
+            current_config = await config_manager.get_all_config(tenant_id=1)
+            system_metrics = await enhanced_system.get_system_metrics(days=days)
+            
+            # Obtener estadísticas de la base de datos
+            from core import db
+            db_stats = await get_database_stats()
+            
+            # Calcular proyecciones
+            projections = calculate_projections(token_metrics)
+            
+            metrics_available = True
+            
+        except ImportError as e:
+            logger.warning(f"⚠️ Módulos del dashboard no disponibles: {e}")
+            # Datos de ejemplo para desarrollo
+            token_metrics = {
+                "totals": {
+                    "total_cost_usd": 0.0,
+                    "total_tokens": 0,
+                    "total_conversations": 0,
+                    "avg_tokens_per_conversation": 0,
+                    "avg_cost_per_conversation": 0
+                },
+                "today": {
+                    "cost_usd": 0.0,
+                    "total_tokens": 0,
+                    "conversations": 0
+                },
+                "current_month": {
+                    "cost_usd": 0.0
+                }
+            }
+            daily_usage = []
+            model_usage = []
+            available_models = []
+            current_config = {}
+            system_metrics = {"status": "simplified"}
+            db_stats = {}
+            projections = {}
+            metrics_available = False
         
         # Preparar contexto para el template
         context = {
             "request": request,
             "current_time": datetime.now().isoformat(),
+            "user_authenticated": user["authenticated"],
+            "metrics_available": metrics_available,
             "token_metrics": token_metrics,
             "daily_usage": daily_usage,
             "model_usage": model_usage,
             "available_models": available_models,
             "current_config": current_config,
-            "config_by_category": config_by_category,
             "system_metrics": system_metrics,
             "db_stats": db_stats,
             "projections": projections,
-            "days": days,
-            **auth_context  # Inyectar contexto de autenticación
+            "days": days
         }
         
-        return templates.TemplateResponse("status.html", context)
+        return templates.TemplateResponse("status_simple.html", context)
         
     except Exception as e:
         logger.error(f"❌ Error generando dashboard: {e}")
-        raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
+        # Fallback a página simple de error
+        return HTMLResponse(f"""
+        <html>
+            <head><title>Error Dashboard</title></head>
+            <body>
+                <h1>Error en Dashboard CEO</h1>
+                <p>{str(e)}</p>
+                <p><a href="/">Volver al inicio</a></p>
+            </body>
+        </html>
+        """)
 
 # APIs protegidas
 @router.get("/api/metrics")
 async def get_dashboard_metrics(
     request: Request,
     days: int = 30,
-    session_id: str = Depends(ceo_api_auth)  # ← Autenticación para API
+    _: bool = Depends(ceo_api_access)
 ):
     """API para obtener métricas del dashboard (JSON)"""
     try:
-        from .token_tracker import token_tracker
-        from .config_manager import config_manager
-        from agent.integration import enhanced_system
-        
-        token_metrics = await token_tracker.get_total_metrics(tenant_id=1, days=days)
-        daily_usage = await token_tracker.get_daily_usage(tenant_id=1, days=days)
-        model_usage = await token_tracker.get_model_usage(tenant_id=1, days=days)
-        current_config = await config_manager.get_all_config(tenant_id=1)
-        system_metrics = await enhanced_system.get_system_metrics(days=days)
-        db_stats = await get_database_stats()
-        
-        return {
-            "timestamp": datetime.now().isoformat(),
-            "token_metrics": token_metrics,
-            "daily_usage": daily_usage,
-            "model_usage": model_usage,
-            "current_config": current_config,
-            "system_metrics": system_metrics,
-            "db_stats": db_stats,
-            "projections": calculate_projections(token_metrics)
-        }
+        # Intentar cargar módulos
+        try:
+            from .token_tracker import token_tracker
+            from .config_manager import config_manager
+            from agent.integration import enhanced_system
+            
+            token_metrics = await token_tracker.get_total_metrics(tenant_id=1, days=days)
+            daily_usage = await token_tracker.get_daily_usage(tenant_id=1, days=days)
+            model_usage = await token_tracker.get_model_usage(tenant_id=1, days=days)
+            current_config = await config_manager.get_all_config(tenant_id=1)
+            system_metrics = await enhanced_system.get_system_metrics(days=days)
+            db_stats = await get_database_stats()
+            
+            return {
+                "timestamp": datetime.now().isoformat(),
+                "token_metrics": token_metrics,
+                "daily_usage": daily_usage,
+                "model_usage": model_usage,
+                "current_config": current_config,
+                "system_metrics": system_metrics,
+                "db_stats": db_stats,
+                "projections": calculate_projections(token_metrics)
+            }
+            
+        except ImportError:
+            return {
+                "timestamp": datetime.now().isoformat(),
+                "status": "modules_not_available",
+                "message": "Módulos del dashboard no cargados correctamente"
+            }
         
     except Exception as e:
         logger.error(f"❌ Error obteniendo métricas: {e}")
-        raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
-
-@router.post("/api/config")
-async def update_config(
-    request: Request,
-    config_updates: Dict[str, Any],
-    session_id: str = Depends(ceo_api_auth)
-):
-    """API para actualizar configuración desde el dashboard"""
-    try:
-        from .config_manager import config_manager
-        
-        results = {}
-        for key, value in config_updates.items():
-            success = await config_manager.set_config(
-                key=key,
-                value=value,
-                tenant_id=1,
-                updated_by="ceo_dashboard"
-            )
-            results[key] = success
-        
-        return {
-            "success": all(results.values()),
-            "results": results,
-            "timestamp": datetime.now().isoformat()
-        }
-        
-    except Exception as e:
-        logger.error(f"❌ Error actualizando configuración: {e}")
-        raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
-
-@router.get("/api/models")
-async def get_available_models_api(
-    request: Request,
-    session_id: str = Depends(ceo_api_auth)
-):
-    """API para obtener modelos disponibles"""
-    try:
-        from .token_tracker import token_tracker
-        models = await token_tracker.get_available_models()
-        return {"models": models}
-    except Exception as e:
-        logger.error(f"❌ Error obteniendo modelos: {e}")
         raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
 
 # Funciones auxiliares
@@ -238,15 +197,6 @@ async def get_database_stats() -> Dict[str, Any]:
                 AND date_time <= NOW() + INTERVAL '7 days'
             """)
             stats["upcoming_appointments"] = upcoming_row["count"] if upcoming_row else 0
-            
-            # Pacientes nuevos este mes
-            new_patients_row = await conn.fetchrow("""
-                SELECT COUNT(*) as count 
-                FROM patients 
-                WHERE tenant_id = 1 
-                AND created_at >= DATE_TRUNC('month', CURRENT_DATE)
-            """)
-            stats["new_patients_this_month"] = new_patients_row["count"] if new_patients_row else 0
         
         return stats
         
@@ -293,15 +243,9 @@ def calculate_projections(token_metrics: Dict[str, Any]) -> Dict[str, Any]:
 def calculate_efficiency_score(avg_tokens: float, avg_cost: float) -> float:
     """Calcula score de eficiencia (0-100)"""
     try:
-        # Tokens ideales por conversación: 500-1000
-        # Costo ideal por conversación: $0.01-$0.05
-        
         token_score = max(0, min(100, (1000 - avg_tokens) / 10))
         cost_score = max(0, min(100, (0.05 - avg_cost) * 2000))
-        
-        # Ponderación: 60% tokens, 40% costo
         efficiency_score = (token_score * 0.6) + (cost_score * 0.4)
-        
         return round(efficiency_score, 1)
     except:
         return 0.0
