@@ -125,6 +125,8 @@ export default function ChatsView() {
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [showToast, setShowToast] = useState<Toast | null>(null);
   const [showMobileContext, setShowMobileContext] = useState(false);
+  /** Incrementa cuando save_patient_anamnesis guarda para refrescar AnamnesisPanel en tiempo real */
+  const [anamnesisRefreshKey, setAnamnesisRefreshKey] = useState(0);
 
 
 
@@ -133,6 +135,8 @@ export default function ChatsView() {
   const socketRef = useRef<Socket | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const lastSoundTimes = useRef<Record<string, number>>({});
+  /** Clave única del paciente actual para evitar mezcla de datos entre pacientes (encapsulación) */
+  const currentPatientKeyRef = useRef<string>('');
 
   // Scroll Inteligente
   const scrollDependency = useMemo(() => [messages, chatwootMessages], [messages, chatwootMessages]);
@@ -308,17 +312,28 @@ export default function ChatsView() {
       });
     });
 
-    // Evento: Paciente actualizado (urgencia, etc)
-    socketRef.current.on('PATIENT_UPDATED', (data: { phone_number: string; urgency_level: string }) => {
-      if (selectedSession?.phone_number === data.phone_number) {
-        fetchPatientContext(data.phone_number);
+    // Evento: Paciente actualizado (urgencia, anamnesis guardada, etc)
+    socketRef.current.on('PATIENT_UPDATED', (data: { phone_number: string; tenant_id?: number; urgency_level?: string; update_type?: string }) => {
+      const phoneMatches = (p: string) =>
+        p === data.phone_number ||
+        p?.replace(/\D/g, '') === data.phone_number?.replace(/\D/g, '');
+      const isSelected = selectedSession && phoneMatches(selectedSession.phone_number) ||
+        selectedChatwoot && phoneMatches(selectedChatwoot.external_user_id || '');
+
+      if (isSelected) {
+        fetchPatientContext(data.phone_number, data.tenant_id ?? selectedSession?.tenant_id ?? selectedChatwoot?.tenant_id);
+        if (data.update_type === 'anamnesis_saved') {
+          setAnamnesisRefreshKey(k => k + 1);
+        }
       }
 
-      setSessions(prev => prev.map(s =>
-        s.phone_number === data.phone_number
-          ? { ...s, urgency_level: data.urgency_level as any }
-          : s
-      ));
+      if (data.urgency_level) {
+        setSessions(prev => prev.map(s =>
+          s.phone_number === data.phone_number
+            ? { ...s, urgency_level: data.urgency_level as any }
+            : s
+        ));
+      }
     });
 
     // Evento: Nuevo turno agendado (refrescar contexto)
@@ -378,9 +393,28 @@ export default function ChatsView() {
   useEffect(() => {
     if (selectedSession) {
       setSelectedChatwoot(null);
-      fetchMessages(selectedSession.phone_number, selectedSession.tenant_id);
-      fetchPatientContext(selectedSession.phone_number, selectedSession.tenant_id);
-      markAsRead(selectedSession.phone_number, selectedSession.tenant_id);
+      const patientKey = `whatsapp:${selectedSession.phone_number}:${selectedSession.tenant_id}`;
+      currentPatientKeyRef.current = patientKey;
+      setPatientContext(null);
+      setMessages([]);
+      const fetchForSession = async () => {
+        const keyAtStart = patientKey;
+        const [ctxRes, msgRes] = await Promise.all([
+          api.get(`/admin/patients/phone/${selectedSession.phone_number}/context`, {
+            params: selectedSession.tenant_id != null ? { tenant_id_override: selectedSession.tenant_id } : {}
+          }).catch(() => null),
+          api.get(`/admin/chat/messages/${selectedSession.phone_number}`, {
+            params: { tenant_id: selectedSession.tenant_id, limit: 50, offset: 0 }
+          }).catch(() => null)
+        ]);
+        if (currentPatientKeyRef.current !== keyAtStart) return;
+        if (ctxRes?.data) setPatientContext(ctxRes.data);
+        if (msgRes?.data) setMessages(msgRes.data);
+        setHasMoreMessages((msgRes?.data?.length ?? 0) === 50);
+        setMessageOffset(0);
+        markAsRead(selectedSession.phone_number, selectedSession.tenant_id);
+      };
+      fetchForSession();
     }
   }, [selectedSession]);
 
@@ -1584,6 +1618,7 @@ export default function ChatsView() {
                               phone={selectedSession?.phone_number || selectedChatwoot?.external_user_id}
                               userRole={(user as any)?.role}
                               compact={true}
+                              refreshKey={anamnesisRefreshKey}
                             />
                           </div>
                         </>

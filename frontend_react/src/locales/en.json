@@ -219,6 +219,7 @@
     "month": "Month",
     "week": "Week",
     "day": "Day",
+    "year": "Year",
     "all_day": "All day",
     "alert_past_date": "Cannot schedule appointments in the past. Please select a future date.",
     "alert_cancel_error": "Error cancelling appointment",

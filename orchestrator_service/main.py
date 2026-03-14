@@ -807,63 +807,28 @@ async def book_appointment(date_time: str, treatment_reason: str,
 
         end_apt = apt_datetime + timedelta(minutes=final_duration)
 
-        # 2. Verificar/Crear paciente (aislado por tenant)
-        # Búsqueda primero por teléfono (identificador rápido)
+        # 2a. Lectura temprana: verificar si paciente existe (read-only, sin persistir aún)
+        # Spec 2026-03-13: No crear paciente hasta confirmar disponibilidad
         existing_patient = await db.pool.fetchrow(
             "SELECT id, status, phone_number FROM patients WHERE tenant_id = $1 AND phone_number = $2",
             tenant_id, phone,
         )
-        
-        # Búsqueda secundaria por DNI si no se encontró por teléfono
         if not existing_patient and dni:
             existing_patient = await db.pool.fetchrow(
                 "SELECT id, status, phone_number FROM patients WHERE tenant_id = $1 AND dni = $2",
                 tenant_id, dni,
             )
-        if existing_patient:
-            # Actualizar paciente existente con nuevos datos si se proporcionan
-            # Aceptamos cambios de teléfono si el DNI coincide (identificador fuerte)
-            await db.pool.execute("""
-                UPDATE patients
-                SET first_name = COALESCE($1, first_name), 
-                    last_name = COALESCE($2, last_name),
-                    dni = COALESCE($3, dni),
-                    birth_date = COALESCE($4, birth_date),
-                    email = COALESCE($5, email),
-                    city = COALESCE($6, city),
-                    first_touch_source = COALESCE($7, first_touch_source),
-                    phone_number = COALESCE($9, phone_number),
-                    status = 'active', 
-                    updated_at = NOW()
-                WHERE id = $8
-            """, first_name, last_name, dni, birth_date_parsed, email_clean, 
-                city_clean, acquisition_source_clean, existing_patient["id"], phone)
-            patient_id = existing_patient["id"]
-        else:
-            # Validar datos obligatorios para pacientes nuevos
+        # Validación temprana para pacientes nuevos: fallar antes de buscar profesionales
+        if not existing_patient:
             required_fields = [
                 ("Nombre", first_name),
                 ("Apellido", last_name),
                 ("DNI", dni)
             ]
-            
             missing_fields = [field_name for field_name, field_value in required_fields if not field_value]
-            
             if missing_fields:
                 fields_list = ", ".join(missing_fields)
                 return f"❌ Para agendar por primera vez necesito: {fields_list}. Formato esperado: Nombre y Apellido por separado; DNI solo números."
-            
-            # Crear nuevo paciente con todos los datos de admisión
-            # Nota: insurance_provider se deja como NULL (clínica particular)
-            row = await db.pool.fetchrow("""
-                INSERT INTO patients (
-                    tenant_id, phone_number, first_name, last_name, dni, 
-                    birth_date, email, city, first_touch_source, status, created_at
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'active', NOW())
-                RETURNING id
-            """, tenant_id, phone, first_name, last_name, dni, 
-                birth_date_parsed, email_clean, city_clean, acquisition_source_clean)
-            patient_id = row["id"]
 
         # 3. Profesionales del tenant (solo aprobados: u.status = 'active')
         clean_p_name = re.sub(r"^(dr|dra|doctor|doctora)\.?\s+", "", (professional_name or ""), flags=re.IGNORECASE).strip()
@@ -951,13 +916,44 @@ async def book_appointment(date_time: str, treatment_reason: str,
                 break
 
         if not target_prof:
+            logger.info(f"book_appointment: sin disponibilidad phone={phone} tenant={tenant_id} datetime={apt_datetime} tratamiento={treatment_code} (paciente no creado por spec)")
             return f"❌ Lo siento, no hay disponibilidad a las {apt_datetime.strftime('%H:%M')} para el tratamiento de {final_duration} min. ¿Probamos otro horario?"
+
+        # 4. Crear/actualizar paciente SOLO cuando hay disponibilidad confirmada (Spec 2026-03-13)
+        if existing_patient:
+            await db.pool.execute("""
+                UPDATE patients
+                SET first_name = COALESCE($1, first_name), 
+                    last_name = COALESCE($2, last_name),
+                    dni = COALESCE($3, dni),
+                    birth_date = COALESCE($4, birth_date),
+                    email = COALESCE($5, email),
+                    city = COALESCE($6, city),
+                    first_touch_source = COALESCE($7, first_touch_source),
+                    phone_number = COALESCE($9, phone_number),
+                    status = 'active', 
+                    updated_at = NOW()
+                WHERE id = $8
+            """, first_name, last_name, dni, birth_date_parsed, email_clean, 
+                city_clean, acquisition_source_clean, existing_patient["id"], phone)
+            patient_id = existing_patient["id"]
+        else:
+            row = await db.pool.fetchrow("""
+                INSERT INTO patients (
+                    tenant_id, phone_number, first_name, last_name, dni, 
+                    birth_date, email, city, first_touch_source, status, created_at
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'active', NOW())
+                RETURNING id
+            """, tenant_id, phone, first_name, last_name, dni, 
+                birth_date_parsed, email_clean, city_clean, acquisition_source_clean)
+            patient_id = row["id"]
 
         apt_id = str(uuid.uuid4())
         await db.pool.execute("""
             INSERT INTO appointments (id, tenant_id, patient_id, professional_id, appointment_datetime, duration_minutes, appointment_type, status, source, created_at)
             VALUES ($1, $2, $3, $4, $5, $6, $7, 'scheduled', 'ai', NOW())
         """, apt_id, tenant_id, patient_id, target_prof["id"], apt_datetime, final_duration, treatment_code)
+        logger.info(f"✅ book_appointment OK phone={phone} tenant={tenant_id} apt_id={apt_id} patient_id={patient_id} prof={target_prof['first_name']} datetime={apt_datetime}")
 
         if calendar_provider == "google" and target_prof.get("google_calendar_id"):
             try:
@@ -1551,13 +1547,12 @@ async def save_patient_anamnesis(
         """, json.dumps(filtered_data), tenant_id, phone)
         
         if not row:
+            logger.warning(f"save_patient_anamnesis: paciente no encontrado phone={phone} tenant={tenant_id}")
             return "❌ No se encontró un paciente con este número de teléfono. Asegúrate de haber agendado un turno primero con 'book_appointment'."
-            
-        return f"✅ Anamnesis guardada correctamente. Campos guardados: {', '.join(filtered_data.keys())}"
-        
-        logger.info(f"✅ Anamnesis guardada para paciente {phone} (tenant={tenant_id})")
-        
-        # Notificar al dashboard si Socket.IO está disponible
+
+        logger.info(f"✅ Anamnesis guardada para paciente {phone} (tenant={tenant_id}) patient_id={row['id']} campos={list(filtered_data.keys())}")
+
+        # Notificar al dashboard para refrescar AnamnesisPanel en tiempo real
         try:
             from main import sio
             await sio.emit("PATIENT_UPDATED", to_json_safe({
@@ -1568,6 +1563,7 @@ async def save_patient_anamnesis(
             }))
         except Exception as e:
             logger.warning(f"No se pudo emitir evento Socket.IO: {e}")
+
         return "✅ He guardado tu historial médico (anamnesis) en tu ficha. Esto ayudará al profesional a brindarte una atención más segura y personalizada."
         
     except Exception as e:
@@ -1817,7 +1813,7 @@ PASO 7: CONFIRMACIÓN DEL TURNO (OBLIGATORIA) - Inmediatamente después de que '
    Te esperamos en 📍 Calle Córdoba 431, Neuquén Capital.
    🗺️ https://maps.google.com/?q=Calle+Córdoba+431+Neuquén+Capital
    Te vamos a enviar un recordatorio antes del turno. Cualquier cambio avisanos por acá. Cuídate mucho! 😊"
-PASO 8: ANAMNESIS - Inmediatamente después del mensaje de confirmación, decí: "Antes de terminar, te hago unas preguntas de salud para que la Dra. tenga todo listo..." e iniciá el cuestionario DE A UNA PREGUNTA POR MENSAJE:
+PASO 8: ANAMNESIS (SOLO PACIENTES NUEVOS QUE ACABARON DE AGENDAR) - La anamnesis es OBLIGATORIA únicamente cuando 'book_appointment' retornó éxito para un paciente NUEVO (que no tenía turnos previos). Si el paciente YA EXISTÍA en el sistema (tenía turnos anteriores o ficha previa), saltá al PASO 9 sin hacer anamnesis. Inmediatamente después del mensaje de confirmación, decí: "Antes de terminar, te hago unas preguntas de salud para que la Dra. tenga todo listo..." e iniciá el cuestionario DE A UNA PREGUNTA POR MENSAJE:
    a) "Tenés alguna enfermedad de base? (hipertensión, diabetes, etc.)" (esperá respuesta, luego preguntá)
    b) "Tomás alguna medicación habitualmente?" (esperá respuesta, luego preguntá)
    c) "Tenés alergias conocidas?" (esperá respuesta, luego preguntá)
@@ -1826,9 +1822,9 @@ PASO 8: ANAMNESIS - Inmediatamente después del mensaje de confirmación, decí:
    f) "Estás embarazada o en período de lactancia?" (esperá respuesta, luego preguntá). **REGLA DE ORO**: Si el paciente es claramente hombre (por nombre o contexto), SALTEÁ esta pregunta y pasá a la siguiente.
    g) "Tuviste experiencias negativas previas en odontología?" (esperá respuesta, luego preguntá)
    h) "Tenés algún miedo específico relacionado con tratamientos dentales?" (esperá respuesta)
-PASO 9: GUARDAR ANAMNESIS - Con todas las respuestas, ejecutá 'save_patient_anamnesis'.
+PASO 9: GUARDAR ANAMNESIS - Con todas las respuestas del cuestionario, ejecutá 'save_patient_anamnesis' UNA sola vez al final. NO la llames hasta tener al menos 3-4 respuestas; si el paciente abandona a mitad del cuestionario, llamala igual con lo que tengas (merge incremental permitido).
 
-PACIENTES EXISTENTES: Solo necesitan PASO 1-4 y PASO 6-7 (con fecha/hora y tratamiento). NO pides datos de admisión ni anamnesis.
+PACIENTES EXISTENTES (con turnos previos o ficha en el sistema): Solo necesitan PASO 1-4 y PASO 6-7. NO pides datos de admisión ni anamnesis (ya la tienen). Identificá paciente existente por: ya agendaron antes, tienen DNI/teléfono en el sistema, o 'book_appointment' no te pidió nombre/apellido/DNI porque los encontró.
 
 GESTIÓN DE TURNOS EXISTENTES: Si preguntan "tengo turno?", "cuándo es mi próximo turno?" usá 'list_my_appointments'. 
 Para cancelar: 'cancel_appointment'. 
@@ -1901,7 +1897,7 @@ IA: "A las 10:00 no está libre, pero el martes tengo: 11:00, 14:00, 16:00"
 
 REQUISITOS DE 'book_appointment' PARA PACIENTES NUEVOS: date_time, treatment_reason, first_name, last_name, dni son OBLIGATORIOS. Los demás (birth_date, email, city, acquisition_source) usá placeholders si no los tenés. Para pacientes existentes, solo se requieren date_time y treatment_reason.
 
-FLUJO DE ANAMNESIS PARA PACIENTES NUEVOS: Después del mensaje de confirmación del turno, DEBÉS decir "Antes de terminar, te hago unas preguntas de salud para que la Dra. tenga todo listo..." y hacer las preguntas DE A UNA POR MENSAJE en este orden: enfermedades de base, medicación habitual, alergias, cirugías previas, si es fumador (y cantidad si aplica), embarazo/lactancia, experiencias negativas previas, miedos específicos. Finalmente ejecutá 'save_patient_anamnesis'. Esta tool es OBLIGATORIA para completar el registro médico.
+FLUJO DE ANAMNESIS (SOLO SI EL PACIENTE ES NUEVO Y ACABÓ DE AGENDAR): Después del mensaje de confirmación del turno, DEBÉS decir "Antes de terminar, te hago unas preguntas de salud para que la Dra. tenga todo listo..." y hacer las preguntas DE A UNA POR MENSAJE. Ejecutá 'save_patient_anamnesis' UNA vez al terminar (o con lo que tengas si el paciente deja de responder). Esta tool solo funciona si el paciente ya existe (creado por book_appointment); si book_appointment falló con "no hay disponibilidad", el paciente no se creó y save_patient_anamnesis fallará — informá al paciente que primero hay que conseguir un horario disponible.
 
 ## 🎯 CTAS NATURALES Y CONTEXTUALES (NO FORZADOS)
 

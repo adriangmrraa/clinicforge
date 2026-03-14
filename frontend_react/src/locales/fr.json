@@ -212,6 +212,7 @@
     "month": "Mois",
     "week": "Semaine",
     "day": "Jour",
+    "year": "Année",
     "all_day": "Toute la journée",
     "alert_past_date": "Impossible de prendre rendez-vous dans le passé. Veuillez choisir une date future.",
     "alert_cancel_error": "Erreur lors de l'annulation du rendez-vous",

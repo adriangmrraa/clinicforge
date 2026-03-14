@@ -730,6 +730,7 @@ export default function AgendaView() {
                     month: t('agenda.month'),
                     week: t('agenda.week'),
                     day: t('agenda.day'),
+                    year: t('agenda.year'),
                     list: t('agenda.title')
                   }}
                   allDayText={t('agenda.all_day')}
@@ -737,8 +738,8 @@ export default function AgendaView() {
                     left: window.innerWidth < 768 ? 'prev,next' : 'prev,next today',
                     center: 'title',
                     right: window.innerWidth < 768
-                      ? 'timeGridDay,dayGridMonth'
-                      : (window.innerWidth < 1024 ? 'timeGridWeek,dayGridMonth' : 'resourceTimeGridDay,timeGridWeek,dayGridMonth'),
+                      ? 'timeGridDay,dayGridMonth,listYear'
+                      : (window.innerWidth < 1024 ? 'timeGridWeek,dayGridMonth,listYear' : 'resourceTimeGridDay,timeGridWeek,dayGridMonth,listYear'),
                   }}
                   height="auto"
                   contentHeight="auto"

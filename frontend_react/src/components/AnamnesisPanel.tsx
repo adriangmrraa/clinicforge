@@ -29,7 +29,7 @@ interface AnamnesisField {
   alertLevel: 'none' | 'warning' | 'danger'; // badge visual si hay dato
 }
 
-interface AnamnesisпанelProps {
+interface AnamnesisPanelProps {
   /** Modo de carga: por ID de paciente o por teléfono */
   patientId?: number;
   phone?: string;
@@ -41,6 +41,8 @@ interface AnamnesisпанelProps {
   compact?: boolean;
   /** Callback tras guardar (para refrescar padre) */
   onSaved?: () => void;
+  /** Incrementar para forzar refetch (ej. cuando llega PATIENT_UPDATED con update_type anamnesis_saved) */
+  refreshKey?: number;
 }
 
 // ============================================================
@@ -134,7 +136,8 @@ export default function AnamnesisPanel({
   userRole = 'secretary',
   compact = false,
   onSaved,
-}: AnamnesisпанelProps) {
+  refreshKey,
+}: AnamnesisPanelProps) {
   const { t } = useTranslation();
   const [history, setHistory] = useState<MedicalHistory | null>(externalHistory ?? null);
   const [resolvedPatientId, setResolvedPatientId] = useState<number | undefined>(patientId);
@@ -176,7 +179,7 @@ export default function AnamnesisPanel({
     };
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [patientId, phone]);
+  }, [patientId, phone, refreshKey]);
 
   // ---- Guardar ----
   const handleSave = async () => {

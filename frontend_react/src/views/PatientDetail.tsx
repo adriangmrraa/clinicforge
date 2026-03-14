@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, User, Phone, Mail, Calendar, AlertTriangle,
@@ -69,6 +69,7 @@ export default function PatientDetail() {
   const [criticalConditionsFound, setCriticalConditionsFound] = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState<TabType>('summary');
   const { user } = useAuth();
+  const idRef = useRef<string | undefined>(id);
 
   const [formData, setFormData] = useState({
     record_type: 'evolution',
@@ -83,31 +84,39 @@ export default function PatientDetail() {
 
   useEffect(() => {
     if (id) {
+      setPatient(null);
+      setRecords([]);
+      setCriticalConditionsFound([]);
       fetchPatientData();
     }
   }, [id]);
 
+  useEffect(() => {
+    idRef.current = id;
+  });
+
   const fetchPatientData = async () => {
+    const fetchForId = id;
+    if (!fetchForId) return;
     try {
       setLoading(true);
       const [patientRes, recordsRes] = await Promise.all([
-        api.get(`/admin/patients/${id}`),
-        api.get(`/admin/patients/${id}/records`),
+        api.get(`/admin/patients/${fetchForId}`),
+        api.get(`/admin/patients/${fetchForId}/records`),
       ]);
+      if (idRef.current !== fetchForId) return;
       setPatient(patientRes.data);
       setRecords(recordsRes.data);
-
       if (patientRes.data.medical_notes) {
         const notes = patientRes.data.medical_notes.toLowerCase();
-        const found = criticalConditions.filter(condition =>
-          notes.includes(condition.toLowerCase())
+        setCriticalConditionsFound(
+          criticalConditions.filter(c => notes.includes(c.toLowerCase()))
         );
-        setCriticalConditionsFound(found);
       }
     } catch (error) {
-      console.error('Error fetching patient data:', error);
+      if (idRef.current === fetchForId) console.error('Error fetching patient data:', error);
     } finally {
-      setLoading(false);
+      if (idRef.current === fetchForId) setLoading(false);
     }
   };
 
@@ -408,7 +417,7 @@ export default function PatientDetail() {
   }
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden">
+    <div key={`patient-detail-${id}`} className="flex flex-col h-screen overflow-hidden">
       {/* Header Fijo */}
       <div className="shrink-0 bg-white border-b">
         <div className="p-4 lg:p-6">
