@@ -1,10 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { X, Calendar, User, Clock, FileText, DollarSign, Activity, AlertTriangle, Trash2, Check } from 'lucide-react';
 import type { Appointment, Patient, Professional } from '../views/AgendaView';
-import api from '../api/axios';
+import api, { BACKEND_URL } from '../api/axios';
 import { useTranslation } from '../context/LanguageContext';
 import { useAuth } from '../context/AuthContext';
 import AnamnesisPanel from './AnamnesisPanel';
+import { io, Socket } from 'socket.io-client';
+import { addMonths } from 'date-fns';
 
 interface AppointmentFormProps {
     isOpen: boolean;
@@ -47,6 +49,8 @@ export default function AppointmentForm({
     const [error, setError] = useState<string | null>(null);
     const [collisionWarning, setCollisionWarning] = useState<string | null>(null);
     const [treatmentTypes, setTreatmentTypes] = useState<any[]>([]);
+    const [anamnesisRefreshKey, setAnamnesisRefreshKey] = useState(0);
+    const socketRef = useRef<Socket | null>(null);
 
     // Fetch treatment types
     useEffect(() => {
@@ -139,6 +143,35 @@ export default function AppointmentForm({
         }
     };
 
+    // Socket for real-time anamnesis refresh
+    useEffect(() => {
+        if (!isOpen) return;
+
+        const jwtToken = localStorage.getItem('access_token');
+        const adminToken = localStorage.getItem('ADMIN_TOKEN');
+
+        socketRef.current = io(BACKEND_URL, {
+            transports: ['websocket', 'polling'],
+            auth: { token: jwtToken || '', adminToken: adminToken || '' },
+        });
+
+        socketRef.current.on('PATIENT_UPDATED', (payload: { patient_id?: number; phone?: string }) => {
+            const currentPatientId = formData.patient_id ? parseInt(formData.patient_id) : null;
+            const patientObj = patients.find(p => p.id.toString() === formData.patient_id);
+            
+            if (
+                (payload.patient_id && payload.patient_id === currentPatientId) ||
+                (payload.phone && patientObj?.phone_number === payload.phone)
+            ) {
+                setAnamnesisRefreshKey(prev => prev + 1);
+            }
+        });
+
+        return () => {
+            socketRef.current?.disconnect();
+        };
+    }, [isOpen, formData.patient_id, patients]);
+
     const handleChange = (field: string, value: any) => {
         setFormData(prev => {
             const newData = { ...prev, [field]: value };
@@ -169,6 +202,25 @@ export default function AppointmentForm({
         } finally {
             setLoading(false);
         }
+    };
+
+    const handleFollowup = () => {
+        if (!formData.patient_id) return;
+        
+        // Calcular fecha + 6 meses
+        const baseDate = formData.appointment_datetime ? new Date(formData.appointment_datetime) : new Date();
+        const futureDate = addMonths(baseDate, 6);
+        
+        setFormData(prev => ({
+            ...prev,
+            appointment_datetime: toLocalDatetimeInput(futureDate),
+            notes: (t('agenda.followup_notes_prefix') || '') + prev.notes
+        }));
+        
+        // Forzar tab general para ver el cambio
+        setActiveTab('general');
+        setError(null);
+        setCollisionWarning(null);
     };
 
     // Close on Escape key
@@ -396,10 +448,11 @@ export default function AppointmentForm({
 
                     {activeTab === 'anamnesis' && (
                         formData.patient_id ? (
-                            <AnamnesisPanel
+                             <AnamnesisPanel
                                 patientId={parseInt(formData.patient_id)}
                                 userRole={(user as any)?.role}
                                 compact={false}
+                                refreshKey={anamnesisRefreshKey}
                             />
                         ) : (
                             <div className="text-center py-10 text-gray-400">
@@ -426,7 +479,18 @@ export default function AppointmentForm({
                         >
                             <Trash2 size={20} />
                         </button>
-                    ) : <div />}
+                    ) : (
+                        formData.patient_id && (
+                            <button
+                                type="button"
+                                onClick={handleFollowup}
+                                className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors border border-blue-100"
+                            >
+                                <Calendar size={14} />
+                                {t('agenda.schedule_followup')}
+                            </button>
+                        )
+                    )}
 
                     <div className="flex items-center gap-3">
                         <button

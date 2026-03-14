@@ -222,6 +222,7 @@
     "week": "Semana",
     "day": "Día",
     "year": "Año",
+    "three_years": "3 Años",
     "all_day": "Todo el día",
     "alert_past_date": "No se pueden agendar citas en fechas u horarios pasados. Por favor, seleccioná una fecha futura.",
     "alert_cancel_error": "Error al cancelar turno",
@@ -255,7 +256,9 @@
     "status_completed": "Completada",
     "status_cancelled": "Cancelado",
     "status_no_show": "No asistió",
-    "select_patient_anamnesis": "Seleccioná un paciente para ver su anamnesis"
+    "select_patient_anamnesis": "Seleccioná un paciente para ver su anamnesis",
+    "schedule_followup": "Agendar Seguimiento (+6m)",
+    "followup_notes_prefix": "Seguimiento recomendado tras consulta previa. "
   },
   "patients": {
     "title": "Listado de Pacientes",
@@ -266,7 +269,6 @@
     "search_results": "Resultados de búsqueda",
     "general_search": "Búsqueda general",
     "name_surname": "Nombre y Apellido",
-    "actions": "Acciones",
     "edit": "Editar",
     "view_appointments": "Ver Turnos",
     "view_file": "Ver Ficha",
@@ -295,9 +297,6 @@
     "edit_patient": "Editar Paciente",
     "dni_obra_social": "DNI / Obra Social",
     "health": "Salud",
-    "date_added": "Fecha Alta",
-    "actions": "Acciones",
-    "loading": "Cargando pacientes...",
     "view_chart": "Ver Ficha",
     "phone_label": "Teléfono"
   },

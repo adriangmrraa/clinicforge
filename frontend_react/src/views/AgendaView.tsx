@@ -731,7 +731,15 @@ export default function AgendaView() {
                     week: t('agenda.week'),
                     day: t('agenda.day'),
                     year: t('agenda.year'),
+                    three_years: t('agenda.three_years'),
                     list: t('agenda.title')
+                  }}
+                  views={{
+                    listThreeYears: {
+                      type: 'list',
+                      duration: { years: 3 },
+                      buttonText: t('agenda.three_years')
+                    }
                   }}
                   allDayText={t('agenda.all_day')}
                   headerToolbar={{
@@ -739,7 +747,9 @@ export default function AgendaView() {
                     center: 'title',
                     right: window.innerWidth < 768
                       ? 'timeGridDay,dayGridMonth,listYear'
-                      : (window.innerWidth < 1024 ? 'timeGridWeek,dayGridMonth,listYear' : 'resourceTimeGridDay,timeGridWeek,dayGridMonth,listYear'),
+                      : (window.innerWidth < 1024 
+                          ? 'timeGridWeek,dayGridMonth,listYear,listThreeYears' 
+                          : 'resourceTimeGridDay,timeGridWeek,dayGridMonth,listYear,listThreeYears'),
                   }}
                   height="auto"
                   contentHeight="auto"

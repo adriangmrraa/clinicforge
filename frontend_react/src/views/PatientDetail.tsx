@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
-  ArrowLeft, User, Phone, Mail, Calendar, AlertTriangle,
+  ArrowLeft, User, Phone, Mail, AlertTriangle,
   FileText, Plus, Activity, Heart, Pill, Stethoscope, Megaphone,
   ClipboardList, History, Folder, X, HeartPulse
 } from 'lucide-react';
@@ -11,6 +11,8 @@ import { useAuth } from '../context/AuthContext';
 import Odontogram from '../components/Odontogram';
 import DocumentGallery from '../components/DocumentGallery';
 import AnamnesisPanel from '../components/AnamnesisPanel';
+import { io, Socket } from 'socket.io-client';
+import { BACKEND_URL } from '../api/axios';
 
 interface Patient {
   id: number;
@@ -70,6 +72,8 @@ export default function PatientDetail() {
   const [activeTab, setActiveTab] = useState<TabType>('summary');
   const { user } = useAuth();
   const idRef = useRef<string | undefined>(id);
+  const socketRef = useRef<Socket | null>(null);
+  const [anamnesisRefreshKey, setAnamnesisRefreshKey] = useState(0);
 
   const [formData, setFormData] = useState({
     record_type: 'evolution',
@@ -119,6 +123,31 @@ export default function PatientDetail() {
       if (idRef.current === fetchForId) setLoading(false);
     }
   };
+
+  useEffect(() => {
+    const jwtToken = localStorage.getItem('access_token');
+    const adminToken = localStorage.getItem('ADMIN_TOKEN');
+    
+    socketRef.current = io(BACKEND_URL, {
+      transports: ['websocket', 'polling'],
+      auth: { token: jwtToken || '', adminToken: adminToken || '' },
+    });
+
+    socketRef.current.on('PATIENT_UPDATED', (payload: { patient_id?: number; phone?: string }) => {
+      // Si el evento coincide con el paciente actual, refrescar AnamnesisPanel
+      const currentPatientId = id ? parseInt(id) : null;
+      if (
+        (payload.patient_id && payload.patient_id === currentPatientId) ||
+        (payload.phone && patient?.phone_number === payload.phone)
+      ) {
+        setAnamnesisRefreshKey(prev => prev + 1);
+      }
+    });
+
+    return () => {
+      socketRef.current?.disconnect();
+    };
+  }, [id, patient?.phone_number]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -213,6 +242,7 @@ export default function PatientDetail() {
               patientId={parseInt(id!)}
               userRole={(user as any)?.role}
               compact={false}
+              refreshKey={anamnesisRefreshKey}
             />
           </div>
         );
@@ -303,7 +333,7 @@ export default function PatientDetail() {
               </div>
             ) : (
               <div className="space-y-4">
-                {records.map((record, index) => (
+                {records.map((record) => (
                   <div key={record.id} className="bg-white rounded-lg shadow overflow-hidden">
                     <div className="p-4 border-b">
                       <div className="flex justify-between items-start">
