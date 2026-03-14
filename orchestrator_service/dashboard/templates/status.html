@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard CEO - Dra. Laura Delgado</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/luxon@3.4.4/build/global/luxon.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios@1.6.7/dist/axios.min.js"></script>
+    <style>
+        :root {
+            --primary: #2563eb;
+            --primary-dark: #1d4ed8;
+            --secondary: #10b981;
+            --danger: #ef4444;
+            --warning: #f59e0b;
+            --gray-50: #f9fafb;
+            --gray-100: #f3f4f6;
+            --gray-200: #e5e7eb;
+            --gray-300: #d1d5db;
+            --gray-700: #374151;
+            --gray-900: #111827;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            color: var(--gray-900);
+        }
+        
+        .dashboard-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        
+        .dashboard-header {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+            color: white;
+            padding: 30px 40px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .header-title h1 {
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 5px;
+        }
+        
+        .header-title p {
+            opacity: 0.9;
+            font-size: 14px;
+        }
+        
+        .header-stats {
+            display: flex;
+            gap: 30px;
+        }
+        
+        .stat-box {
+            text-align: center;
+        }
+        
+        .stat-value {
+            font-size: 32px;
+            font-weight: 700;
+            margin-bottom: 5px;
+        }
+        
+        .stat-label {
+            font-size: 12px;
+            opacity: 0.8;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .dashboard-content {
+            padding: 30px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+        }
+        
+        .card {
+            background: var(--gray-50);
+            border-radius: 15px;
+            padding: 25px;
+            border: 1px solid var(--gray-200);
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+        
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        }
+        
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        
+        .card-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--gray-900);
+        }
+        
+        .card-subtitle {
+            font-size: 14px;
+            color: var(--gray-700);
+            margin-top: 5px;
+        }
+        
+        .metric-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+        
+        .metric-item {
+            background: white;
+            padding: 15px;
+            border-radius: 10px;
+            border-left: 4px solid var(--primary);
+        }
+        
+        .metric-value {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--gray-900);
+        }
+        
+        .metric-label {
+            font-size: 12px;
+            color: var(--gray-700);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-top: 5px;
+        }
+        
+        .chart-container {
+            height: 300px;
+            margin-top: 20px;
+            position: relative;
+        }
+        
+        .config-section {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+        
+        .config-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 0;
+            border-bottom: 1px solid var(--gray-200);
+        }
+        
+        .config-item:last-child {
+            border-bottom: none;
+        }
+        
+        .config-label {
+            font-weight: 500;
+        }
+        
+        .config-value {
+            font-family: 'Monaco', 'Courier New', monospace;
+            background: var(--gray-100);
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+        
+        .select-model {
+            padding: 8px 15px;
+            border-radius: 8px;
+            border: 2px solid var(--gray-300);
+            background: white;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .select-model:hover {
+            border-color: var(--primary);
+        }
+        
+        .btn {
+            padding: 10px 20px;
+            border-radius: 8px;
+            border: none;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background: var(--primary-dark);
+        }
+        
+        .btn-success {
+            background: var(--secondary);
+            color: white;
+        }
+        
+        .btn-success:hover {
+            opacity: 0.9;
+        }
+        
+        .tab-container {
+            margin-top: 30px;
+        }
+        
+        .tabs {
+            display: flex;
+            border-bottom: 2px solid var(--gray-200);
+            margin-bottom: 20px;
+        }
+        
+        .tab {
+            padding: 12px 24px;
+            cursor: pointer;
+            font-weight: 500;
+            border-bottom: 3px solid transparent;
+            transition: all 0.3s;
+        }
+        
+        .tab.active {
+            border-bottom-color: var(--primary);
+            color: var(--primary);
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        .full-width {
+            grid-column: 1 / -1;
+        }
+        
+        .refresh-btn {
+            background: none;
+            border: none;
+            color: var(--primary);
+            cursor: pointer;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .loading {
+            opacity: 0.7;
+            pointer-events: none;
+        }
+        
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 15px 20px;
+            border-radius: 10px;
+            color: white;
+            font-weight: 500;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+            z-index: 1000;
+            transform: translateX(120%);
+            transition: transform 0.3s;
+        }
+        
+        .notification.show {
+            transform: translateX(0);
+        }
+        
+        .notification.success {
+            background: var(--secondary);
+        }
+        
+        .notification.error {
+            background: var(--danger);
+        }
+        
+        .notification.info {
+            background: var(--primary);
+        }
+        
+        @media (max-width: 1024px) {
+            .dashboard-content {
+                grid-template-columns: 1fr;
+            }
+            
+            .header-stats {
+                flex-direction: column;
+                gap: 15px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="dashboard-container">
+        <!-- Header -->
+        <div class="dashboard-header">
+            <div class="header-title">
+                <h1>Dashboard CEO - Dra. Laura Delgado</h1>
+                <p>Sistema de monitoreo y configuración del agente IA</p>
+            </div>
+            <div class="header-stats">
+                <div class="stat-box">
+                    <div class="stat-value" id="totalCost">${{ "%.2f"|format(token_metrics.totals.total_cost_usd) }}</div>
+                    <div class="stat-label">Costo Total</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-value" id="totalTokens">{{ "{:,}".format(token_metrics.totals.total_tokens) }}</div>
+                    <div class="stat-label">Tokens</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-value" id="totalConvs">{{ token_metrics.totals.total_conversations }}</div>
+                    <div class="stat-label">Conversaciones</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-value" id="efficiencyScore">{{ projections.efficiency_score }}/100</div>
+                    <div class="stat-label">Eficiencia</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Content -->
+        <div class="dashboard-content">
+            <!-- Columna Izquierda -->
+            <div class="column-left">
+                <!-- Resumen de Costos -->
+                <div class="card">
+                    <div class="card-header">
+                        <div>
+                            <div class="card-title">📊 Resumen de Costos</div>
+                            <div class="card-subtitle">Últimos {{ days }} días</div>
+                        </div>
+                        <button class="refresh-btn" onclick="refreshData()">
+                            🔄 Actualizar
+                        </button>
+                    </div>
+                    
+                    <div class="metric-grid">
+                        <div class="metric-item">
+                            <div class="metric-value">${{ "%.2f"|format(token_metrics.today.cost_usd) }}</div>
+                            <div class="metric-label">Hoy</div>
+                        </div>
+                        <div class="metric-item">
+                            <div class="metric-value">${{ "%.2f"|format(token_metrics.current_month.cost_usd) }}</div>
+                            <div class="metric-label">Este Mes</div>
+                        </div>
+                        <div class="metric-item">
+                            <div class="metric-value">${{ "%.2f"|format(projections.projected_monthly_cost_usd) }}</div>
+                            <div class="metric-label">Proyección Mensual</div>
+                        </div>
+                        <div class="metric-item">
+                            <div class="metric-value">${{ "%.4f"|format(projections.cost_per_1000_tokens) }}</div>
+                            <div class="metric-label">Costo por 1K tokens</div>
+                        </div>
+                    </div>
+                    
+                    <div class="chart-container">
+                        <canvas id="costChart"></canvas>
+                    </div>
+                </div>
+                
+                <!-- Uso por Modelo -->
+                <div class="card">
+                    <div class="card-header">
+                        <div>
+                            <div class="card-title">🤖 Uso por Modelo</div>
+                            <div class="card-subtitle">Distribución de tokens por modelo</div>
+                        </div>
+                    </div>
+                    
+                    <div class="chart-container">
+                        <canvas id="modelChart"></canvas>
+                    </div>
+                    
+                    <div class="config-section">
+                        <div class="config-item">
+                            <div class="config-label">Modelo Actual</div>
+                            <div>
+                                <select id="modelSelect" class="select-model" onchange="updateModel()">
+                                    {% for model in available_models %}
+                                    <option value="{{ model.id }}" 
+                                            {% if current_config.OPENAI_MODEL == model.id %}selected{% endif %}
+                                            data-input-price="{{ model.input_price_per_1k }}"
+                                            data-output-price="{{ model.output_price_per_1k }}">
+                                        {{ model.description }} ({{ model.id }})
+                                    </option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                        <div class="config-item">
+                            <div class="config-label">Precio Input/1K</div>
+                            <div class="config-value" id="inputPrice">$0.00015</div>
+                        </div>
+                        <div class="config-item">
+                            <div class="config-label">Precio Output/1K</div>
+                            <div class="config-value" id="outputPrice">$0.00060</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Columna Derecha -->
+            <div class="column-right">
+                <!-- Métricas del Sistema -->
+                <div class="card">
+                    <div class="card-header">
+                        <div>
+                            <div class="card-title">⚙️ Métricas del Sistema</div>
+                            <div class="card-subtitle">Estadísticas de rendimiento</div>
+                        </div>
+                    </div>
+                    
+                    <div class="metric-grid">
+                        <div class="metric-item">
+                            <div class="metric-value">{{ "{:,}".format(token_metrics.totals.avg_tokens_per_conversation|int) }}</div>
+                            <div class="metric-label">Tokens/Conversación</div>
+                        </div>
+                        <div class="metric-item">
+                            <div class="metric-value">${{ "%.4f"|format(token_metrics.totals.avg_cost_per_conversation) }}</div>
+                            <div class="metric-label">Costo/Conversación</div>
+                        </div>
+                        <div class="metric-item">
+                            <div class="metric-value">{{ "{:,}".format(db_stats.total_patients) }}</div>
+                            <div class="metric-label">Pacientes Totales</div>
+                        </div>
+                        <div class="metric-item">
+                            <div class="metric-value">{{ db_stats.upcoming_appointments }}</div>
+                            <div class="metric-label">Turnos Próximos</div>
+                        </div>
+                    </div>
+                    
+                    <div class="chart-container">
+                        <canvas id="dailyUsageChart"></canvas>
+                    </div>
+                </div>
+                
+                <!-- Configuración del Sistema -->
+                <div class="card full-width">
+                    <div class="card-header">
+                        <div>
+                            <div class="card-title">⚡ Configuración Rápida</div>
+                            <div class="card-subtitle">Ajustes clave del sistema</div>
+                        </div>
+                    </div>
+                    
+                    <div class="tab-container">
+                        <div class="tabs">
+                            <div class="tab active" onclick="switchTab('ai')">🤖 IA</div>
+                            <div class="tab" onclick="switchTab('limits')">📊 Límites</div>
+                            <div class="tab" onclick="switchTab('features')">🚀 Features</div>
+                            <div class="tab" onclick="switchTab('clinic')">🏥 Clínica</div>
+                        </div>
+                        
+                        <!-- Tab IA -->
+                        <div class="tab-content active" id="tab-ai">
+                            <div class="config-section">
+                                <div class="config-item">
+                                    <div class="config-label">Temperatura</div>
+                                    <div>
+                                        <input type="range" id="temperature" min="0" max="2" step="0.1" 
+                                               value="{{ current_config.OPENAI_TEMPERATURE|default('0.7') }}"
+                                               onchange="updateConfig('OPENAI_TEMPERATURE', this.value)">
+                                        <span id="tempValue">{{ current_config.OPENAI_TEMPERATURE|default('0.7') }}</span>
+                                    </div>
+                                </div>
+                                <div class="config-item">
+                                    <div class="config-label">Máx Tokens/Respuesta</div>
+                                    <div>
+                                        <input type="number" id="maxTokens" 
+                                               value="{{ current_config.MAX_TOKENS_PER_RESPONSE|default('1000') }}"
+                                               onchange="updateConfig('MAX_TOKENS_PER_RESPONSE', this.value)"
+                                               style="width: 100px; padding: 5px; border-radius: 5px; border: 1px solid #ccc;">
+                                    </div>
+                                </div>
+                                <div class="config-item">
+                                    <div class="config-label">Idioma por Defecto</div>
+                                    <div>
+                                        <select id="responseLanguage" onchange="updateConfig('RESPONSE_LANGUAGE', this.value)"
+                                                style="padding: 5px 10px; border-radius: 5px; border: 1px solid #ccc;">
+                                            <option value="es" {% if current_config.RESPONSE_LANGUAGE == 'es' %}selected{% endif %}>Español</option>
+                                            <option value="en" {% if current_config.RESPONSE_LANGUAGE == 'en' %}selected{% endif

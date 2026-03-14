@@ -30,8 +30,6 @@ from langchain_openai import ChatOpenAI
 # Busca la línea que falla y reemplázala por estas:
 from langchain.agents import AgentExecutor
 from langchain.agents import create_openai_tools_agent
-from agent.integration import enhanced_system
-from guardrails.injection_detector import process_with_guardrails
 
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
@@ -2704,40 +2702,6 @@ async def serve_uploads(
 async def health():
     """Estado del servicio. Público; usado por orquestadores y monitoreo."""
     return {"status": "ok", "service": "dental-orchestrator"}
-
-# --- ENDPOINTS DEL SISTEMA MEJORADO ---
-@app.get("/api/agent/metrics", tags=["Agent Analytics"])
-async def get_agent_metrics(
-    days: int = Query(7, description="Número de días para analizar"),
-    x_admin_token: str = Header(..., description="Token de administración")
-):
-    """
-    Endpoint de métricas del agente mejorado
-    """
-    from core.auth import ADMIN_TOKEN
-    if x_admin_token != ADMIN_TOKEN:
-        raise HTTPException(status_code=403, detail="Token de administración inválido")
-    
-    try:
-        metrics = await enhanced_system.get_system_metrics(days)
-        return metrics
-    except Exception as e:
-        return {"error": str(e), "status": "simplified"}
-
-
-@app.get("/api/agent/status", tags=["Health"])
-async def get_agent_status():
-    """
-    Estado del sistema mejorado
-    """
-    return {
-        "status": "operational",
-        "version": "2.0.0-simplified",
-        "timestamp": "2026-03-14T20:00:00Z",
-        "features": ["modular_prompts", "metrics_dashboard"],
-        "note": "Sistema mejorado en modo compatible"
-    }
-
 
 # ============================================
 # DEBUG ENDPOINT - Para diagnosticar problemas de auth
