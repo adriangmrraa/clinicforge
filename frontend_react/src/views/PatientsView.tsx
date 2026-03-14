@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, Plus, Edit, Trash2, X, FileText, Brain, Calendar, User, Clock, Stethoscope } from 'lucide-react';
+import { Search, Plus, Edit, Trash2, X, FileText, Brain, Calendar, User, Clock, Stethoscope, Mail } from 'lucide-react';
 import api from '../api/axios';
 import { useTranslation } from '../context/LanguageContext';
 import PageHeader from '../components/PageHeader';
@@ -25,6 +25,7 @@ interface TreatmentType {
   name: string;
   description: string;
   category: string;
+  default_duration_minutes?: number;
 }
 
 interface Professional {
@@ -67,7 +68,8 @@ export default function PatientsView() {
     treatment_code: '',
     professional_id: '',
     date: '',
-    time: ''
+    time: '',
+    duration_minutes: 30
   });
 
   // Fetch patients on mount
@@ -182,6 +184,7 @@ export default function PatientsView() {
             professional_id: parseInt(appointmentData.professional_id),
             appointment_datetime: aptDate.toISOString(),
             appointment_type: appointmentData.treatment_code,
+            duration_minutes: appointmentData.duration_minutes || 30,
             notes: t('patients.initial_appointment_notes'),
             check_collisions: true
           });
@@ -228,7 +231,7 @@ export default function PatientsView() {
       birth_date: patient.birth_date || '',
     });
     // Clear appointment data on edit
-    setAppointmentData({ treatment_code: '', professional_id: '', date: '', time: '' });
+    setAppointmentData({ treatment_code: '', professional_id: '', date: '', time: '', duration_minutes: 30 });
     setShowModal(true);
   };
 
@@ -245,7 +248,7 @@ export default function PatientsView() {
       birth_date: '',
     });
     // Reset appointment data
-    setAppointmentData({ treatment_code: '', professional_id: '', date: '', time: '' });
+    setAppointmentData({ treatment_code: '', professional_id: '', date: '', time: '', duration_minutes: 30 });
     setShowModal(true);
   };
 
@@ -465,144 +468,148 @@ export default function PatientsView() {
         )}
       </div>
 
-      {/* Modal: key por paciente para encapsulación total — evita mezcla de datos entre pacientes */}
+      {/* Modal: estilo slide-over como Agenda (Inspector Clínico) */}
       {showModal && (
-        <div key={`patient-modal-${editingPatient?.id ?? 'new'}`} className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 overflow-y-auto">
-          <div className="bg-white rounded-lg w-full max-w-2xl mx-4 my-8">
-            <div className="flex justify-between items-center p-4 border-b sticky top-0 bg-white z-10">
-              <h2 className="text-xl font-bold">
-                {editingPatient ? t('patients.edit_patient') : t('patients.new_patient')}
-              </h2>
-              <button onClick={closeModal} className="text-gray-500 hover:text-gray-700">
-                <X size={24} />
+        <div key={`patient-modal-${editingPatient?.id ?? 'new'}`} className="fixed inset-0 z-[60]">
+          <div
+            className="fixed inset-0 bg-black/20 backdrop-blur-sm transition-opacity duration-300"
+            onClick={closeModal}
+          />
+          <div className="fixed inset-y-0 right-0 z-[70] w-full md:w-[450px] bg-white/90 backdrop-blur-xl shadow-2xl transform transition-transform duration-300 ease-out border-l border-white/50 flex flex-col">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-white/50">
+              <div>
+                <h2 className="text-xl font-bold text-slate-800">
+                  {editingPatient ? t('patients.edit_patient') : t('patients.new_patient')}
+                </h2>
+                <p className="text-xs text-slate-500">{t('patients.personal_data')}</p>
+              </div>
+              <button onClick={closeModal} className="p-2 hover:bg-gray-100 rounded-full text-gray-400 hover:text-gray-600 transition-colors">
+                <X size={20} />
               </button>
             </div>
-            <form onSubmit={handleSubmit} className="p-6">
 
-              {/* Sections Container */}
-              <div className="space-y-6">
-
-                {/* 1. Datos Personales */}
-                <div>
-                  <h3 className="text-lg font-medium text-gray-800 mb-4 flex items-center gap-2">
-                    <User size={18} />
-                    {t('patients.personal_data')}
-                  </h3>
+            <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto flex flex-col">
+              <div className="flex-1 p-6 space-y-6">
+                {/* Datos personales */}
+                <div className="space-y-5">
                   <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        {t('patients.first_name_req')}
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        value={formData.first_name}
-                        onChange={(e) => setFormData({ ...formData, first_name: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-                      />
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{t('patients.first_name_req')}</label>
+                      <div className="relative">
+                        <User className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                        <input
+                          type="text"
+                          required
+                          value={formData.first_name}
+                          onChange={(e) => setFormData({ ...formData, first_name: e.target.value })}
+                          className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-transparent rounded-lg focus:bg-white focus:border-blue-500 focus:ring-0 transition-all text-sm"
+                        />
+                      </div>
                     </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        {t('patients.last_name_req')}
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        value={formData.last_name}
-                        onChange={(e) => setFormData({ ...formData, last_name: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-                      />
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{t('patients.last_name_req')}</label>
+                      <div className="relative">
+                        <User className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                        <input
+                          type="text"
+                          required
+                          value={formData.last_name}
+                          onChange={(e) => setFormData({ ...formData, last_name: e.target.value })}
+                          className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-transparent rounded-lg focus:bg-white focus:border-blue-500 focus:ring-0 transition-all text-sm"
+                        />
+                      </div>
                     </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        {t('patients.phone_req')}
-                      </label>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{t('patients.phone_req')}</label>
+                    <div className="relative">
+                      <Phone className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
                       <input
                         type="tel"
                         required
                         value={formData.phone_number}
                         onChange={(e) => setFormData({ ...formData, phone_number: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                        className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-transparent rounded-lg focus:bg-white focus:border-blue-500 focus:ring-0 transition-all text-sm"
                       />
                     </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        {t('patients.dni')}
-                      </label>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{t('patients.dni')}</label>
+                    <div className="relative">
+                      <FileText className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
                       <input
                         type="text"
                         value={formData.dni}
                         onChange={(e) => setFormData({ ...formData, dni: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                        className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-transparent rounded-lg focus:bg-white focus:border-blue-500 focus:ring-0 transition-all text-sm"
                       />
                     </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        {t('patients.email')}
-                      </label>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{t('patients.email')}</label>
+                    <div className="relative">
+                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
                       <input
                         type="email"
                         value={formData.email}
                         onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                        className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-transparent rounded-lg focus:bg-white focus:border-blue-500 focus:ring-0 transition-all text-sm"
                       />
                     </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        {t('patients.obra_social')}
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.obra_social}
-                        onChange={(e) => setFormData({ ...formData, obra_social: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-                        placeholder={t('patients.obra_social_placeholder')}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        {t('patients.city_neighborhood')}
-                      </label>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{t('patients.obra_social')}</label>
+                    <input
+                      type="text"
+                      value={formData.obra_social}
+                      onChange={(e) => setFormData({ ...formData, obra_social: e.target.value })}
+                      placeholder={t('patients.obra_social_placeholder')}
+                      className="w-full px-4 py-2.5 bg-gray-50 border border-transparent rounded-lg focus:bg-white focus:border-blue-500 focus:ring-0 transition-all text-sm"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{t('patients.city_neighborhood')}</label>
                       <input
                         type="text"
                         value={formData.city}
                         onChange={(e) => setFormData({ ...formData, city: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
                         placeholder={t('patients.city_placeholder')}
+                        className="w-full px-4 py-2.5 bg-gray-50 border border-transparent rounded-lg focus:bg-white focus:border-blue-500 focus:ring-0 transition-all text-sm"
                       />
                     </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        {t('patients.birth_date')}
-                      </label>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{t('patients.birth_date')}</label>
                       <input
                         type="date"
                         value={formData.birth_date}
                         onChange={(e) => setFormData({ ...formData, birth_date: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                        className="w-full px-4 py-2.5 bg-gray-50 border border-transparent rounded-lg focus:bg-white focus:border-blue-500 focus:ring-0 transition-all text-sm"
                       />
                     </div>
                   </div>
                 </div>
 
-                {/* 2. Turno Inicial (Solo para Nuevos) */}
+                {/* Turno inicial (solo para nuevos) */}
                 {!editingPatient && (
-                  <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
-                    <h3 className="text-lg font-medium text-gray-800 mb-4 flex items-center gap-2">
-                      <Calendar size={18} />
+                  <div className="pt-4 border-t border-gray-100">
+                    <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-4 flex items-center gap-2">
+                      <Calendar size={16} />
                       {t('patients.schedule_first_appointment')}
                     </h3>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="col-span-2">
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          {t('patients.treatment_service')}
-                        </label>
+                    <div className="space-y-5">
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{t('patients.treatment_service')}</label>
                         <div className="relative">
-                          <Stethoscope className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
+                          <Stethoscope className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
                           <select
                             value={appointmentData.treatment_code}
-                            onChange={(e) => setAppointmentData({ ...appointmentData, treatment_code: e.target.value })}
-                            className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                            onChange={(e) => {
+                              const code = e.target.value;
+                              const tr = treatments.find(t => t.code === code);
+                              setAppointmentData({ ...appointmentData, treatment_code: code, duration_minutes: tr?.default_duration_minutes ?? 30 });
+                            }}
+                            className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-transparent rounded-lg focus:bg-white focus:border-blue-500 focus:ring-0 transition-all text-sm appearance-none cursor-pointer"
                           >
                             <option value="">{t('patients.select_treatment')}</option>
                             {treatments.map(t => (
@@ -611,49 +618,61 @@ export default function PatientsView() {
                           </select>
                         </div>
                       </div>
-                      <div className="col-span-2">
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          {t('agenda.professional')}
-                        </label>
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{t('agenda.professional')}</label>
                         <div className="relative">
-                          <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
+                          <User className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
                           <select
                             value={appointmentData.professional_id}
                             onChange={(e) => setAppointmentData({ ...appointmentData, professional_id: e.target.value })}
-                            className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                            className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-transparent rounded-lg focus:bg-white focus:border-blue-500 focus:ring-0 transition-all text-sm appearance-none cursor-pointer"
                           >
                             <option value="">{t('patients.select_professional')}</option>
                             {professionals.map(p => (
-                              <option key={p.id} value={p.id}>
-                                {[p.first_name, p.last_name].filter(Boolean).join(' ') || t('patients.professional')}
-                              </option>
+                              <option key={p.id} value={p.id}>Dr. {[p.first_name, p.last_name].filter(Boolean).join(' ')}</option>
                             ))}
                           </select>
                         </div>
                       </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          {t('patients.date')}
-                        </label>
-                        <input
-                          type="date"
-                          value={appointmentData.date}
-                          onChange={(e) => setAppointmentData({ ...appointmentData, date: e.target.value })}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-                        />
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1.5">
+                          <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{t('patients.date')}</label>
+                          <div className="relative">
+                            <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                            <input
+                              type="date"
+                              value={appointmentData.date}
+                              onChange={(e) => setAppointmentData({ ...appointmentData, date: e.target.value })}
+                              className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-transparent rounded-lg focus:bg-white focus:border-blue-500 focus:ring-0 transition-all text-sm"
+                            />
+                          </div>
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{t('patients.time')}</label>
+                          <div className="relative">
+                            <Clock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                            <input
+                              type="time"
+                              value={appointmentData.time}
+                              onChange={(e) => setAppointmentData({ ...appointmentData, time: e.target.value })}
+                              className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-transparent rounded-lg focus:bg-white focus:border-blue-500 focus:ring-0 transition-all text-sm"
+                            />
+                          </div>
+                        </div>
                       </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          {t('patients.time')}
-                        </label>
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{t('agenda.duration_min')}</label>
                         <div className="relative">
-                          <Clock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
-                          <input
-                            type="time"
-                            value={appointmentData.time}
-                            onChange={(e) => setAppointmentData({ ...appointmentData, time: e.target.value })}
-                            className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-                          />
+                          <Clock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                          <select
+                            value={appointmentData.duration_minutes}
+                            onChange={(e) => setAppointmentData({ ...appointmentData, duration_minutes: parseInt(e.target.value) || 30 })}
+                            className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-transparent rounded-lg focus:bg-white focus:border-blue-500 focus:ring-0 transition-all text-sm appearance-none"
+                          >
+                            {[15, 30, 45, 60, 90, 120].map(m => (
+                              <option key={m} value={m}>{m} min</option>
+                            ))}
+                          </select>
                         </div>
                       </div>
                     </div>
@@ -661,18 +680,11 @@ export default function PatientsView() {
                 )}
               </div>
 
-              <div className="flex justify-end gap-3 mt-6">
-                <button
-                  type="button"
-                  onClick={closeModal}
-                  className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
-                >
+              <div className="flex justify-end gap-3 p-6 border-t border-gray-100 bg-white/50">
+                <button type="button" onClick={closeModal} className="px-4 py-2.5 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium">
                   {t('common.cancel')}
                 </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 text-white bg-primary rounded-lg hover:bg-primary-dark transition-colors"
-                >
+                <button type="submit" className="px-4 py-2.5 text-white bg-primary rounded-lg hover:bg-primary-dark transition-colors text-sm font-medium">
                   {editingPatient ? t('common.save_changes') : t('patients.create_patient')}
                 </button>
               </div>

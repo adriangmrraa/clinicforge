@@ -17,6 +17,7 @@ import MetaTemplatesView from './views/MetaTemplatesView';
 import MarketingHubView from './views/MarketingHubView';
 import LeadsManagementView from './views/LeadsManagementView';
 import LeadDetailView from './views/LeadDetailView';
+import DashboardStatusView from './views/DashboardStatusView';
 import PrivacyTermsView from './views/PrivacyTermsView';
 import { AuthProvider } from './context/AuthContext';
 import { LanguageProvider } from './context/LanguageContext';
@@ -38,6 +39,11 @@ function App() {
                 <Layout>
                   <Routes>
                     <Route index element={<DashboardView />} />
+                    <Route path="dashboard/status" element={
+                      <ProtectedRoute allowedRoles={['ceo']}>
+                        <DashboardStatusView />
+                      </ProtectedRoute>
+                    } />
                     <Route path="agenda" element={<AgendaView />} />
                     <Route path="pacientes" element={<PatientsView />} />
                     <Route path="pacientes/:id" element={<PatientDetail />} />

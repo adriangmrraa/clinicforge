@@ -154,6 +154,8 @@ export default function AgendaView() {
   const fetchDataRef = useRef<typeof fetchData | null>(null);
   // Guard para saltar el efecto de filtro en el primer render (el init ya hace el fetch)
   const filterInitialRenderRef = useRef(true);
+  // Rango visible actual (para indicador de UI)
+  const [visibleRangeStr, setVisibleRangeStr] = useState<string>('');
 
   const [formData, setFormData] = useState({
     patient_id: '',
@@ -251,10 +253,10 @@ export default function AgendaView() {
         startDate = calendarApi.view.activeStart;
         endDate = calendarApi.view.activeEnd;
       } else {
-        // Fallback for mobile view where FullCalendar is unmounted
+        // Fallback: rango amplio cuando el calendario aún no está montado (p. ej. init)
         const baseDate = selectedDate || new Date();
-        startDate = startOfDay(subDays(baseDate, 7));
-        endDate = endOfDay(addDays(baseDate, 7));
+        startDate = startOfDay(subDays(baseDate, 60));
+        endDate = endOfDay(addDays(baseDate, 90));
       }
 
       const startDateStr = startDate.toISOString();
@@ -494,19 +496,23 @@ export default function AgendaView() {
   };
 
   const handleSave = async (data: any) => {
+    // Capturar rango visible antes de operaciones async para refetch correcto
+    const cal = calendarRef.current?.getApi();
+    const rangeStart = cal?.view?.activeStart;
+    const rangeEnd = cal?.view?.activeEnd;
+
     try {
       if (selectedEvent) {
-        // Update
         await api.put(`/admin/appointments/${selectedEvent.id}`, data);
       } else {
-        // Create
         await api.post('/admin/appointments', {
           ...data,
           status: 'confirmed',
           source: 'manual',
         });
       }
-      await fetchData();
+      // Refetch con rango explícito para que el turno nuevo aparezca de inmediato
+      await fetchData(false, rangeStart ?? undefined, rangeEnd ?? undefined);
       setShowModal(false);
     } catch (error: any) {
       throw error; // Propagate to form for error display
@@ -535,6 +541,11 @@ export default function AgendaView() {
             <div className="border-l-4 border-medical-500 pl-3 sm:pl-4 min-w-0">
               <h1 className="text-xl sm:text-2xl font-bold text-slate-800 tracking-tight">{t('agenda.title')}</h1>
               <p className="text-xs sm:text-sm text-slate-600 mt-0.5">{t('agenda.subtitle')}</p>
+              {visibleRangeStr && (
+                <p className="text-xs text-slate-500 mt-1" title={t('agenda.range_hint')}>
+                  {filteredAppointments.length} {t('agenda.appointments_in_view')} • {visibleRangeStr}
+                </p>
+              )}
             </div>
 
             {/* Professional Filter (CEO/Secretary only) - Mobile Stacking */}
@@ -769,6 +780,9 @@ export default function AgendaView() {
                     // Actualizar estado de vista actual
                     setCurrentView(dateInfo.view.type);
                     localStorage.setItem('agendaView', dateInfo.view.type);
+                    // Mostrar rango visible (para que el usuario sepa dónde buscar)
+                    const fmt = (d: Date) => d.toLocaleDateString(language === 'es' ? 'es-AR' : language === 'fr' ? 'fr-FR' : 'en-US', { day: 'numeric', month: 'short', year: 'numeric' });
+                    setVisibleRangeStr(`${fmt(dateInfo.start)} – ${fmt(dateInfo.end)}`);
 
                     // Guardián de rango: solo fetchea si el usuario realmente navegó (cambio de vista
                     // o flechas). FullCalendar dispara datesSet también en re-renders internos con

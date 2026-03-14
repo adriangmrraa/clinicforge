@@ -152,6 +152,7 @@
     "urgencies": "Urgencias",
     "conversations": "Conversaciones IA",
     "appointments": "Turnos",
+    "appointments_hint": "Turnos agendados por IA según el rango seleccionado. Usá la Agenda para ver todos.",
     "revenue": "Ingresos",
     "revenue_confirmed": "Revenue Confirmado",
     "revenue_estimated": "Ventas Estimadas IA",
@@ -215,6 +216,8 @@
   "agenda": {
     "title": "Agenda",
     "subtitle": "Gestión de turnos y citas",
+    "appointments_in_view": "turnos en pantalla",
+    "range_hint": "Usá las flechas para navegar a otras fechas y ver más turnos",
     "new_appointment": "Nuevo turno",
     "today": "Hoy",
     "all_professionals": "Todos los Profesionales",
@@ -1368,4 +1371,4 @@
     }
   }
 }
-
+

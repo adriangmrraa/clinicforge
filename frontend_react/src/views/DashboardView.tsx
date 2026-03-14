@@ -46,10 +46,11 @@ interface KPICardProps {
   icon: any;
   color: string;
   trend?: string;
+  hint?: string;
 }
 
-const KPICard = ({ title, value, icon: Icon, color, trend }: KPICardProps) => (
-  <div className="bg-white/80 backdrop-blur-md border border-white/20 rounded-2xl p-6 shadow-sm hover:shadow-md transition-all duration-300 group">
+const KPICard = ({ title, value, icon: Icon, color, trend, hint }: KPICardProps) => (
+  <div className="bg-white/80 backdrop-blur-md border border-white/20 rounded-2xl p-6 shadow-sm hover:shadow-md transition-all duration-300 group" title={hint}>
     <div className="flex justify-between items-start mb-4">
       <div className={`p-3 rounded-xl ${color} bg-opacity-10 group-hover:scale-110 transition-transform`}>
         <Icon className={`w-6 h-6 ${color.replace('bg-', 'text-')}`} />
@@ -228,6 +229,7 @@ export default function DashboardView() {
             icon={Calendar}
             color="bg-emerald-500"
             trend={(stats as any)?.ia_appointments_trend}
+            hint={t('dashboard.appointments_hint')}
           />
           <KPICard
             title={t('dashboard.urgencies')}

@@ -150,6 +150,7 @@
     "urgencies": "Urgencies",
     "conversations": "IA Conversations",
     "appointments": "Appointments",
+    "appointments_hint": "AI-scheduled appointments for the selected range. Use Agenda to view all.",
     "revenue": "Revenue",
     "revenue_confirmed": "Confirmed Revenue",
     "revenue_estimated": "Estimated IA Sales",
@@ -213,6 +214,8 @@
   "agenda": {
     "title": "Agenda",
     "subtitle": "Appointments and scheduling",
+    "appointments_in_view": "appointments on screen",
+    "range_hint": "Use the arrows to navigate to other dates and see more appointments",
     "new_appointment": "New appointment",
     "today": "Today",
     "all_professionals": "All professionals",

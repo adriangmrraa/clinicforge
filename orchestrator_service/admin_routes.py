@@ -41,6 +41,7 @@ class AppointmentResponse(BaseModel):
     source: Optional[str] = None
     appointment_type: Optional[str] = None
     notes: Optional[str] = None
+    end_datetime: Optional[datetime] = None  # Para FullCalendar (start + duration)
     patient_name: str
     patient_phone: Optional[str] = None
     professional_name: Optional[str] = None
@@ -2745,6 +2746,7 @@ async def list_appointments(
     query = """
         SELECT a.id, a.patient_id, a.appointment_datetime, a.duration_minutes, a.status, a.urgency_level,
                a.source, a.appointment_type, a.notes,
+               (a.appointment_datetime + (COALESCE(a.duration_minutes, 30) || ' minutes')::interval) AS end_datetime,
                (p.first_name || ' ' || COALESCE(p.last_name, '')) as patient_name, 
                p.phone_number as patient_phone,
                prof.first_name as professional_name, prof.id as professional_id,

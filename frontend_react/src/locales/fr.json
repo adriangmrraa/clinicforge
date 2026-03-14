@@ -148,6 +148,7 @@
     "urgencies": "Urgences",
     "conversations": "Conversations IA",
     "appointments": "Rendez-vous",
+    "appointments_hint": "Rendez-vous IA selon la plage sélectionnée. Utilisez l'Agenda pour tout voir.",
     "revenue": "Revenus",
     "analytics_title": "Tableau de bord analytique",
     "analytics_subtitle": "Suivi en temps réel de la clinique",
@@ -206,6 +207,8 @@
   "agenda": {
     "title": "Agenda",
     "subtitle": "Gestion des rendez-vous et des créneaux",
+    "appointments_in_view": "rendez-vous à l'écran",
+    "range_hint": "Utilisez les flèches pour naviguer vers d'autres dates et voir plus de rendez-vous",
     "new_appointment": "Nouveau rendez-vous",
     "today": "Aujourd'hui",
     "all_professionals": "Tous les professionnels",

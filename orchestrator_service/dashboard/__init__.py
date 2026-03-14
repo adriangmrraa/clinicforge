@@ -5,7 +5,7 @@ Dashboard CEO Simple - Sistema integrado con autenticación existente
 import logging
 import os
 from fastapi import APIRouter
-from .status_page_simple import router as status_router
+from .status_page import router as status_router
 
 logger = logging.getLogger(__name__)
 
