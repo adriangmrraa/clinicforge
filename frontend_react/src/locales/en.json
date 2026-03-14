@@ -44,7 +44,9 @@
     "new": "New",
     "minutes_short": "min",
     "min_short": "m",
-    "until": "Until"
+    "until": "Until",
+    "notification_appointment_manual": "Appointment booked successfully",
+    "notification_appointment_ai": "New appointment booked by AI"
   },
   "config": {
     "title": "Settings",

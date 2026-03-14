@@ -498,8 +498,8 @@ export default function AgendaView() {
   const handleSave = async (data: any) => {
     // Capturar rango visible antes de operaciones async para refetch correcto
     const cal = calendarRef.current?.getApi();
-    const rangeStart = cal?.view?.activeStart;
-    const rangeEnd = cal?.view?.activeEnd;
+    let rangeStart = cal?.view?.activeStart;
+    let rangeEnd = cal?.view?.activeEnd;
 
     try {
       if (selectedEvent) {
@@ -510,6 +510,13 @@ export default function AgendaView() {
           status: 'confirmed',
           source: 'manual',
         });
+        // Al crear, ampliar el rango de refetch para incluir la fecha del turno nuevo
+        // (si la vista actual no la muestra, p.ej. semana 14-20 y turno el 26)
+        const newDate = data.appointment_datetime ? new Date(data.appointment_datetime) : null;
+        if (newDate && rangeStart && rangeEnd) {
+          rangeStart = newDate < rangeStart ? startOfDay(newDate) : rangeStart;
+          rangeEnd = newDate > rangeEnd ? endOfDay(addDays(newDate, 1)) : rangeEnd;
+        }
       }
       // Refetch con rango explícito para que el turno nuevo aparezca de inmediato
       await fetchData(false, rangeStart ?? undefined, rangeEnd ?? undefined);

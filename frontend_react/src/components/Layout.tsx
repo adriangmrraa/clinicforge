@@ -128,14 +128,17 @@ export const Layout: React.FC<LayoutProps> = ({ children }: LayoutProps) => {
       });
     };
 
-    const handleAppointment = (data: { patient_name: string; id: string | number; tenant_id?: number }) => {
+    const handleAppointment = (data: { patient_name: string; id: string | number; tenant_id?: number; source?: string }) => {
       if (data.tenant_id && user.tenant_id && data.tenant_id !== user.tenant_id) return;
+      const reason = data.source === 'manual'
+        ? t('common.notification_appointment_manual')
+        : t('common.notification_appointment_ai');
       showNotification({
         show: true,
         type: 'appointment',
         name: data.patient_name,
         appointment_id: data.id,
-        reason: 'Nuevo agendamiento realizado por la IA',
+        reason,
         id: Date.now()
       });
     };

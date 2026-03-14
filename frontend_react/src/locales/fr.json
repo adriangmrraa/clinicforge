@@ -42,7 +42,9 @@
     "new": "Nouveau",
     "minutes_short": "min",
     "min_short": "m",
-    "until": "Jusqu'à"
+    "until": "Jusqu'à",
+    "notification_appointment_manual": "Rendez-vous enregistré correctement",
+    "notification_appointment_ai": "Nouveau rendez-vous pris par l'IA"
   },
   "config": {
     "title": "Paramètres",

@@ -2872,10 +2872,11 @@ async def create_appointment_manual(
                 duration_minutes, appointment_type, status, urgency_level, source, notes, created_at
             ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'confirmed', 'normal', 'manual', $8, NOW())
         """, new_id, tenant_id, pid, apt.professional_id, apt.appointment_datetime, duration, apt.appointment_type, apt.notes)
-        # 5. Obtener datos completos del turno para evento y GCal
+        # 5. Obtener datos completos del turno para evento y GCal (incluye source y tenant_id para notificación)
         appointment_data = await db.pool.fetchrow("""
             SELECT a.id, a.patient_id, a.professional_id, a.appointment_datetime, 
                    a.appointment_type, a.status, a.urgency_level, a.notes, a.duration_minutes,
+                   a.source, a.tenant_id,
                    (p.first_name || ' ' || COALESCE(p.last_name, '')) as patient_name, 
                    p.phone_number as patient_phone,
                    p.first_name, p.last_name, -- Para el summary de GCal

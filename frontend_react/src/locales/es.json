@@ -46,7 +46,9 @@
     "new": "Nuevo",
     "minutes_short": "min",
     "min_short": "m",
-    "until": "Hasta"
+    "until": "Hasta",
+    "notification_appointment_manual": "Turno agendado correctamente",
+    "notification_appointment_ai": "Nuevo agendamiento realizado por la IA"
   },
   "config": {
     "title": "Configuración",

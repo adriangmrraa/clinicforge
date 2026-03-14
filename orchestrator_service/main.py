@@ -979,7 +979,8 @@ async def book_appointment(date_time: str, treatment_reason: str,
                 "patient_name": f"{first_name} {last_name or ''}",
                 "appointment_datetime": apt_datetime.isoformat(),
                 "professional_name": target_prof['first_name'],
-                "tenant_id": tenant_id
+                "tenant_id": tenant_id,
+                "source": "ai"
             })
             await sio.emit("NEW_APPOINTMENT", safe_data)
         except: pass
