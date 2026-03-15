@@ -1463,6 +1463,37 @@ async def send_chat_message(
 
 # ==================== ENDPOINTS DASHBOARD ====================
 
+@router.get("/dashboard/metrics", tags=["Dashboard"], summary="Métricas de tokens y agente IA (alias para frontend)")
+async def get_dashboard_token_metrics(
+    days: int = Query(30, ge=1, le=365),
+    user_data=Depends(verify_admin_token),
+    tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    """
+    API de métricas de tokens del agente IA. Consumida por DashboardStatusView.
+    Alias bajo /admin para garantizar que el proxy envíe al backend.
+    """
+    try:
+        from dashboard.status_page import fetch_dashboard_metrics
+        return await fetch_dashboard_metrics(days=days, tenant_id=tenant_id)
+    except ImportError as e:
+        logger.warning(f"Dashboard metrics import error: {e}")
+        return {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "status": "modules_not_available",
+            "message": "Módulos del dashboard (token_tracker, config_manager) no disponibles",
+            "token_metrics": {"totals": {"total_cost_usd": 0, "total_tokens": 0, "total_conversations": 0}, "today": {}, "current_month": {}},
+            "daily_usage": [],
+            "model_usage": [],
+            "current_config": {},
+            "system_metrics": {},
+            "db_stats": {},
+            "projections": {}
+        }
+    except Exception as e:
+        logger.error(f"Error obteniendo métricas dashboard: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.get("/stats/summary", tags=["Estadísticas"], summary="Obtener resumen de métricas del dashboard")
 async def get_dashboard_stats(
     range: str = 'all',

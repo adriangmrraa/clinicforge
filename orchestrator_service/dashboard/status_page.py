@@ -123,6 +123,36 @@ async def status_dashboard(
         </html>
         """)
 
+# Helper compartido (usado por /dashboard/api/metrics y /admin/dashboard/metrics)
+async def fetch_dashboard_metrics(days: int = 30, tenant_id: int = 1) -> Dict[str, Any]:
+    """Obtiene métricas de tokens, config y BD. Reutilizable por múltiples rutas."""
+    try:
+        from .token_tracker import token_tracker
+        from .config_manager import config_manager
+        from agent.integration import enhanced_system
+        token_metrics = await token_tracker.get_total_metrics(tenant_id=tenant_id, days=days)
+        daily_usage = await token_tracker.get_daily_usage(tenant_id=tenant_id, days=days)
+        model_usage = await token_tracker.get_model_usage(tenant_id=tenant_id, days=days)
+        current_config = await config_manager.get_all_config(tenant_id=tenant_id)
+        system_metrics = await enhanced_system.get_system_metrics(days=days)
+        db_stats = await get_database_stats()
+        return {
+            "timestamp": datetime.now().isoformat(),
+            "token_metrics": token_metrics,
+            "daily_usage": daily_usage,
+            "model_usage": model_usage,
+            "current_config": current_config,
+            "system_metrics": system_metrics,
+            "db_stats": db_stats,
+            "projections": calculate_projections(token_metrics)
+        }
+    except ImportError:
+        return {
+            "timestamp": datetime.now().isoformat(),
+            "status": "modules_not_available",
+            "message": "Módulos del dashboard no cargados correctamente"
+        }
+
 # APIs protegidas
 @router.get("/api/metrics")
 async def get_dashboard_metrics(
@@ -132,37 +162,7 @@ async def get_dashboard_metrics(
 ):
     """API para obtener métricas del dashboard (JSON)"""
     try:
-        # Intentar cargar módulos
-        try:
-            from .token_tracker import token_tracker
-            from .config_manager import config_manager
-            from agent.integration import enhanced_system
-            
-            token_metrics = await token_tracker.get_total_metrics(tenant_id=1, days=days)
-            daily_usage = await token_tracker.get_daily_usage(tenant_id=1, days=days)
-            model_usage = await token_tracker.get_model_usage(tenant_id=1, days=days)
-            current_config = await config_manager.get_all_config(tenant_id=1)
-            system_metrics = await enhanced_system.get_system_metrics(days=days)
-            db_stats = await get_database_stats()
-            
-            return {
-                "timestamp": datetime.now().isoformat(),
-                "token_metrics": token_metrics,
-                "daily_usage": daily_usage,
-                "model_usage": model_usage,
-                "current_config": current_config,
-                "system_metrics": system_metrics,
-                "db_stats": db_stats,
-                "projections": calculate_projections(token_metrics)
-            }
-            
-        except ImportError:
-            return {
-                "timestamp": datetime.now().isoformat(),
-                "status": "modules_not_available",
-                "message": "Módulos del dashboard no cargados correctamente"
-            }
-        
+        return await fetch_dashboard_metrics(days=days)
     except Exception as e:
         logger.error(f"❌ Error obteniendo métricas: {e}")
         raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")

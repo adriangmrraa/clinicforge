@@ -1,6 +1,6 @@
 /**
  * Dashboard CEO: Tokens, métricas del agente IA y estado del sistema.
- * Consume la API /dashboard/api/metrics - diseño integrado con ClinicForge.
+ * Consume la API /admin/dashboard/metrics - diseño integrado con ClinicForge.
  */
 import { useEffect, useState } from 'react';
 import {
@@ -86,7 +86,7 @@ export default function DashboardStatusView() {
     setLoading(true);
     setError(null);
     try {
-      const res = await api.get<MetricsResponse>('/dashboard/api/metrics', {
+      const res = await api.get<MetricsResponse>('/admin/dashboard/metrics', {
         params: { days }
       });
       setData(res.data);
