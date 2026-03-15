@@ -6,7 +6,7 @@ import httpx
 import logging
 import re
 from datetime import datetime, timedelta, date, timezone
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Union
 from fastapi import APIRouter, HTTPException, Query, Header, Depends, Request, status, BackgroundTasks, UploadFile, File, Form
 from fastapi.responses import JSONResponse, StreamingResponse, FileResponse
 from pydantic import BaseModel
@@ -32,7 +32,7 @@ from services.whisper_service import transcribe_audio_url
 import glob
 
 class AppointmentResponse(BaseModel):
-    id: int
+    id: Union[str, uuid.UUID]  # UUID en appointments (create manual usa uuid.uuid4)
     patient_id: int
     appointment_datetime: datetime
     duration_minutes: int
