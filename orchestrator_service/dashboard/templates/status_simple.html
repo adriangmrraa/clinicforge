@@ -283,6 +283,28 @@
             </ul>
         </div>
         
+        <!-- Modelo del Agente (Fuente de verdad: system_config.OPENAI_MODEL) -->
+        {% if available_models %}
+        <div class="info-box">
+            <h2>🤖 Modelo del Agente OpenAI</h2>
+            <p style="color: var(--gray-700); font-size: 14px; margin-bottom: 15px;">El modelo seleccionado se usa en todas las conversaciones del agente. Persistido en base de datos.</p>
+            <form id="modelForm" onsubmit="event.preventDefault(); updateModel();">
+                <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
+                    <select id="modelSelect" class="info-value" style="min-width: 280px; padding: 10px 14px; font-size: 14px;">
+                        {% for model in available_models %}
+                        <option value="{{ model.id }}" {% if current_config.OPENAI_MODEL == model.id %}selected{% endif %}
+                                data-desc="{{ model.description }}">
+                            {{ model.id }} — {{ model.description }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    <button type="submit" class="btn">Guardar modelo</button>
+                </div>
+            </form>
+            <p style="font-size: 12px; color: var(--gray-500); margin-top: 10px;">Modelo actual: <strong>{{ current_config.OPENAI_MODEL|default('gpt-4o-mini') }}</strong></p>
+        </div>
+        {% endif %}
+        
         <!-- Costos y Proyecciones -->
         <div class="info-box">
             <h2>💰 Costos y Proyecciones</h2>
@@ -342,6 +364,29 @@
                 console.warn('⚠️ Mostrando datos de ejemplo - Sistema en configuración');
             }
         });
+        
+        async function updateModel() {
+            const sel = document.getElementById('modelSelect');
+            if (!sel) return;
+            const modelId = sel.value;
+            try {
+                const res = await fetch('/dashboard/api/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ OPENAI_MODEL: modelId })
+                });
+                if (res.ok) {
+                    alert('Modelo actualizado a: ' + modelId);
+                    location.reload();
+                } else {
+                    const err = await res.json().catch(() => ({}));
+                    alert('Error: ' + (err.detail || res.statusText));
+                }
+            } catch (e) {
+                alert('Error al guardar: ' + e.message);
+            }
+        }
     </script>
 </body>
 </html>

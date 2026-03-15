@@ -20,6 +20,11 @@ def init_dashboard(app, db_pool):
     Inicializa el dashboard simple integrado con autenticación existente
     """
     try:
+        # Inicializar token tracker y config manager (fuente de verdad para OPENAI_MODEL)
+        from .token_tracker import init_token_tracker
+        from .config_manager import init_config_manager
+        init_token_tracker(db_pool)
+        init_config_manager(db_pool)
         # Incluir router en la app principal
         app.include_router(router)
         

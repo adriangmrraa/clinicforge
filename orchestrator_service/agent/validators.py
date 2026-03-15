@@ -168,6 +168,7 @@ class ToolValidator:
             "check_availability": self._validate_check_availability,
             "get_service_details": self._validate_get_service_details,
             "save_patient_anamnesis": self._validate_save_patient_anamnesis,
+            "save_patient_email": self._validate_save_patient_email,
         }
         
         if tool_name not in validators_map:
@@ -273,6 +274,17 @@ class ToolValidator:
             "errors": errors,
             "warnings": warnings
         }
+
+    def _validate_save_patient_email(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Valida parámetros para save_patient_email"""
+        errors = []
+        if "email" not in params or not params.get("email", "").strip():
+            errors.append("Email requerido")
+        elif params.get("email"):
+            is_valid, msg = self.data_validator.validate_email_format(params["email"])
+            if not is_valid:
+                errors.append(f"Email inválido: {msg}")
+        return {"is_valid": len(errors) == 0, "errors": errors, "warnings": []}
 
 
 # Instancia global para uso fácil

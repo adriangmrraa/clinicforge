@@ -64,6 +64,7 @@ async def process_buffer_task(
             get_agent_executable_for_tenant,
             build_system_prompt,
             get_now_arg,
+            normalize_phone_digits,
             CLINIC_NAME,
             CLINIC_HOURS_START,
             CLINIC_HOURS_END,
@@ -82,10 +83,12 @@ async def process_buffer_task(
         clinic_name = (tenant_row["clinic_name"] or CLINIC_NAME) if tenant_row else CLINIC_NAME
         
         # Spec 24 / Spec 06 / v7.6: Patient Identity & Appointment Context
-        # Fetch patient data and upcoming appointments for a richer context
+        # Fetch patient data (normalized phone for consistency with tools)
+        phone_digits = normalize_phone_digits(external_user_id)
         patient_row = await pool.fetchrow(
-            "SELECT id, first_name, last_name, dni, acquisition_source FROM patients WHERE tenant_id = $1 AND phone_number = $2",
-            tenant_id, external_user_id
+            """SELECT id, first_name, last_name, dni, acquisition_source FROM patients
+               WHERE tenant_id = $1 AND REGEXP_REPLACE(phone_number, '[^0-9]', '', 'g') = $2""",
+            tenant_id, phone_digits
         )
         
         patient_context = ""
@@ -131,7 +134,23 @@ async def process_buffer_task(
                 from main import ARG_TZ
                 if hasattr(dt, 'astimezone'): dt = dt.astimezone(ARG_TZ)
                 dt_str = dt.strftime("%A %d/%m a las %H:%M")
+                # Tiempo hasta turno para saludo proactivo
+                now_arg = get_now_arg()
+                delta = dt - now_arg
+                total_hours = delta.total_seconds() / 3600.0
+                if total_hours < 0.5:
+                    time_until = "menos de 30 minutos"
+                elif total_hours < 1:
+                    time_until = "menos de 1 hora"
+                elif total_hours < 24:
+                    h = int(total_hours)
+                    time_until = f"faltan {h} {'hora' if h == 1 else 'horas'}"
+                elif total_hours < 48:
+                    time_until = f"mañana a las {dt.strftime('%H:%M')}"
+                else:
+                    time_until = f"el {dt_str}"
                 identity_lines.append(f"• PRÓXIMO TURNO: Tiene un turno de {next_apt['treatment_name'] or 'Consulta'} con el/la Dr/a. {next_apt['professional_name']} el día {dt_str}.")
+                identity_lines.append(f"• TIEMPO HASTA TURNO: {time_until}. Hora exacta: {dt.strftime('%H:%M')}.")
             
             if identity_lines:
                 patient_context = "\n".join(identity_lines)

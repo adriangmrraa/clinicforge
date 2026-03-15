@@ -53,7 +53,7 @@ async def status_dashboard(
             system_metrics = await enhanced_system.get_system_metrics(days=days)
             
             # Obtener estadísticas de la base de datos
-            from core import db
+            from db import db
             db_stats = await get_database_stats()
             
             # Calcular proyecciones
@@ -167,11 +167,40 @@ async def get_dashboard_metrics(
         logger.error(f"❌ Error obteniendo métricas: {e}")
         raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
 
+@router.post("/api/config", tags=["Dashboard"])
+async def update_dashboard_config(
+    request: Request,
+    payload: Dict[str, Any],
+    _: bool = Depends(ceo_api_access)
+):
+    """Actualiza configuración (OPENAI_MODEL, etc.). Fuente de verdad: system_config en DB."""
+    try:
+        from .config_manager import config_manager
+        if config_manager is None:
+            raise HTTPException(status_code=503, detail="Config manager no inicializado")
+        tenant_id = 1
+        allowed = {"OPENAI_MODEL", "OPENAI_TEMPERATURE", "MAX_TOKENS_PER_RESPONSE"}
+        for key, value in payload.items():
+            if key in allowed:
+                if isinstance(value, str) and key == "OPENAI_MODEL":
+                    await config_manager.set_config(key, value.strip(), data_type="string", category="ai", tenant_id=tenant_id)
+                elif key == "OPENAI_TEMPERATURE":
+                    await config_manager.set_config(key, str(float(value)), data_type="float", category="ai", tenant_id=tenant_id)
+                elif key == "MAX_TOKENS_PER_RESPONSE":
+                    await config_manager.set_config(key, str(int(value)), data_type="integer", category="ai", tenant_id=tenant_id)
+                logger.info(f"✅ {key} actualizado a: {value}")
+        return {"status": "ok", "message": "Configuración actualizada"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error actualizando config: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 # Funciones auxiliares
 async def get_database_stats() -> Dict[str, Any]:
     """Obtiene estadísticas de la base de datos"""
     try:
-        from core import db
+        from db import db
         
         stats = {}
         
@@ -193,8 +222,9 @@ async def get_database_stats() -> Dict[str, Any]:
                 SELECT COUNT(*) as count 
                 FROM appointments 
                 WHERE tenant_id = 1 
-                AND date_time >= NOW() 
-                AND date_time <= NOW() + INTERVAL '7 days'
+                AND status NOT IN ('cancelled', 'no-show')
+                AND appointment_datetime >= NOW() 
+                AND appointment_datetime <= NOW() + INTERVAL '7 days'
             """)
             stats["upcoming_appointments"] = upcoming_row["count"] if upcoming_row else 0
         

@@ -180,6 +180,13 @@ def to_json_safe(obj: Any) -> Any:
         return obj.isoformat()
     return obj
 
+def normalize_phone_digits(phone: Optional[str]) -> str:
+    """Normaliza teléfono a solo dígitos (E.164 sin +) para comparaciones robustas.
+    Permite match entre +54911..., 54911..., 54 9 11... etc."""
+    if not phone:
+        return ""
+    return re.sub(r'\D', '', str(phone))
+
 # --- HELPERS PARA PARSING DE FECHAS ---
 
 def get_next_weekday(target_weekday: int) -> date:
@@ -1145,13 +1152,14 @@ async def triage_urgency(symptoms: str):
 async def list_my_appointments(upcoming_days: int = 14):
     """
     Lista los turnos del paciente que tiene la conversación (próximos o recientes).
-    Usar cuando pregunten si tienen turno, cuándo es su próximo turno, qué turnos tienen, etc.
+    Usar SIEMPRE cuando pregunten si tienen turno, cuándo es su próximo turno, qué turnos tienen, mis turnos, etc.
     upcoming_days: Cantidad de días hacia adelante a partir de hoy (default 14).
     """
     phone = current_customer_phone.get()
     if not phone:
         return "No pude identificar tu número. Escribime desde el mismo WhatsApp con el que te registraste."
     tenant_id = current_tenant_id.get()
+    phone_digits = normalize_phone_digits(phone)
     try:
         start = get_now_arg().date()
         end = start + timedelta(days=max(1, min(upcoming_days, 90)))
@@ -1161,11 +1169,12 @@ async def list_my_appointments(upcoming_days: int = 14):
             FROM appointments a
             JOIN patients p ON a.patient_id = p.id
             LEFT JOIN professionals p_prof ON a.professional_id = p_prof.id
-            WHERE p.tenant_id = $1 AND p.phone_number = $2
+            WHERE p.tenant_id = $1 AND REGEXP_REPLACE(p.phone_number, '[^0-9]', '', 'g') = $2
             AND DATE(a.appointment_datetime) >= $3 AND DATE(a.appointment_datetime) <= $4
             AND a.status IN ('scheduled', 'confirmed')
             ORDER BY a.appointment_datetime ASC
-        """, tenant_id, phone, start, end)
+        """, tenant_id, phone_digits, start, end)
+        logger.info(f"list_my_appointments phone_digits={phone_digits} tenant={tenant_id} found={len(rows)}")
         if not rows:
             return f"No tenés turnos registrados en los próximos {upcoming_days} días. ¿Querés que busquemos disponibilidad para agendar?"
         lines = []
@@ -1192,16 +1201,17 @@ async def cancel_appointment(date_query: str):
         return "⚠️ No pude identificar tu teléfono. Por favor, contactame de nuevo."
 
     tenant_id = current_tenant_id.get()
+    phone_digits = normalize_phone_digits(phone)
     try:
         target_date = parse_date(date_query)
         apt = await db.pool.fetchrow("""
             SELECT a.id, a.google_calendar_event_id
             FROM appointments a
             JOIN patients p ON a.patient_id = p.id
-            WHERE p.tenant_id = $1 AND p.phone_number = $2 AND DATE(a.appointment_datetime) = $3
+            WHERE p.tenant_id = $1 AND REGEXP_REPLACE(p.phone_number, '[^0-9]', '', 'g') = $2 AND DATE(a.appointment_datetime) = $3
             AND a.status IN ('scheduled', 'confirmed')
             LIMIT 1
-        """, tenant_id, phone, target_date)
+        """, tenant_id, phone_digits, target_date)
         if not apt:
             return f"No encontré ningún turno activo para el día {date_query}. ¿Querés que revisemos otra fecha?"
 
@@ -1242,6 +1252,7 @@ async def reschedule_appointment(original_date: str, new_date_time: str):
     if not phone:
         return "⚠️ No pude identificar tu teléfono."
     tenant_id = current_tenant_id.get()
+    phone_digits = normalize_phone_digits(phone)
     try:
         orig_date = parse_date(original_date)
         new_dt = parse_datetime(new_date_time)
@@ -1249,10 +1260,10 @@ async def reschedule_appointment(original_date: str, new_date_time: str):
             SELECT a.id, a.google_calendar_event_id, a.professional_id
             FROM appointments a
             JOIN patients p ON a.patient_id = p.id
-            WHERE p.tenant_id = $1 AND p.phone_number = $2 AND DATE(a.appointment_datetime) = $3
+            WHERE p.tenant_id = $1 AND REGEXP_REPLACE(p.phone_number, '[^0-9]', '', 'g') = $2 AND DATE(a.appointment_datetime) = $3
             AND a.status IN ('scheduled', 'confirmed')
             LIMIT 1
-        """, tenant_id, phone, orig_date)
+        """, tenant_id, phone_digits, orig_date)
         if not apt:
             return f"No encontré tu turno para el {original_date}. ¿Podrías confirmarme la fecha original?"
 
@@ -1539,15 +1550,15 @@ async def save_patient_anamnesis(
         # Filtrar valores None para no sobreescribir con nulls
         filtered_data = {k: v for k, v in anamnesis_data.items() if v is not None}
         
-        # Actualizar el campo medical_history en la base de datos
-        # Usamos jsonb_set para mergear con datos existentes
+        # Actualizar el campo medical_history (normalización de teléfono para match robusto)
+        phone_digits = normalize_phone_digits(phone)
         row = await db.pool.fetchrow("""
             UPDATE patients 
             SET medical_history = COALESCE(medical_history, '{}'::jsonb) || $1::jsonb,
                 updated_at = NOW()
-            WHERE tenant_id = $2 AND phone_number = $3
+            WHERE tenant_id = $2 AND REGEXP_REPLACE(phone_number, '[^0-9]', '', 'g') = $3
             RETURNING id
-        """, json.dumps(filtered_data), tenant_id, phone)
+        """, json.dumps(filtered_data), tenant_id, phone_digits)
         
         if not row:
             logger.warning(f"save_patient_anamnesis: paciente no encontrado phone={phone} tenant={tenant_id}")
@@ -1575,7 +1586,39 @@ async def save_patient_anamnesis(
         logger.warning(f"save_patient_anamnesis FAIL traceback={traceback.format_exc()}")
         return "⚠️ Hubo un problema al guardar tu historial médico. Por favor, intenta de nuevo o comunícate con la clínica."
 
-DENTAL_TOOLS = [list_professionals, list_services, get_service_details, check_availability, book_appointment, list_my_appointments, cancel_appointment, reschedule_appointment, triage_urgency, save_patient_anamnesis, derivhumano]
+@tool
+async def save_patient_email(email: str):
+    """
+    Guarda el email del paciente en su ficha. Usar SOLO cuando el paciente responde con su email tras haber agendado un turno.
+    El flujo: tras confirmar el turno, ofrecer "Si me pasás tu mail te mantenemos al tanto 😊". Cuando responda con un email válido, llamar esta tool.
+    email: Dirección de correo electrónico del paciente.
+    """
+    phone = current_customer_phone.get()
+    if not phone:
+        return "❌ No pude identificar tu número. Escribí desde el mismo WhatsApp con el que agendaste."
+    tenant_id = current_tenant_id.get()
+    email_clean = str(email).strip().lower() if email else None
+    if not email_clean or email_clean in ["sin_email@placeholder.com", "none", "null", ""]:
+        return "❌ No es un email válido. Decime tu correo electrónico (ej: tu@ejemplo.com) y lo guardo."
+    if not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', email_clean):
+        return "❌ Ese formato no parece un email válido. Revisalo y escribilo de nuevo."
+    try:
+        phone_digits = normalize_phone_digits(phone)
+        row = await db.pool.fetchrow("""
+            UPDATE patients
+            SET email = $1, updated_at = NOW()
+            WHERE tenant_id = $2 AND REGEXP_REPLACE(phone_number, '[^0-9]', '', 'g') = $3
+            RETURNING id
+        """, email_clean, tenant_id, phone_digits)
+        if not row:
+            return "No encontré tu ficha. Asegurate de haber agendado primero; si ya lo hiciste, contactá a la clínica por otro medio."
+        logger.info(f"✅ save_patient_email OK phone_digits={phone_digits} tenant={tenant_id} patient_id={row['id']}")
+        return "✅ Guardé tu email. Te vamos a mantener al tanto por ahí."
+    except Exception as e:
+        logger.error(f"Error en save_patient_email: {e}")
+        return "Hubo un problema al guardar tu email. Probá de nuevo o avisá a la clínica."
+
+DENTAL_TOOLS = [list_professionals, list_services, get_service_details, check_availability, book_appointment, list_my_appointments, cancel_appointment, reschedule_appointment, triage_urgency, save_patient_anamnesis, save_patient_email, derivhumano]
 
 # --- DETECCIÓN DE IDIOMA (para respuesta del agente) ---
 def detect_message_language(text: str) -> str:
@@ -1636,6 +1679,8 @@ def build_system_prompt(
         extra_context += f"\n\nCONTEXTO DE ANUNCIO (Meta Ads):\n{ad_context}\n"
     if patient_context:
         extra_context += f"\n\nCONTEXTO DEL PACIENTE (Identidad y Turnos):\n{patient_context}\n"
+        extra_context += """
+SALUDO PROACTIVO (OBLIGATORIO con anti-repetición): Si el paciente saluda brevemente (Hola, Buenas, Buen día, etc.) y en su contexto figura PRÓXIMO TURNO con tiempo hasta el turno, respondé con un saludo personalizado que mencione su turno. ANTES de hacerlo: revisá los últimos mensajes de la conversación (tu contexto). Si YA enviaste un mensaje que menciona su turno próximo o "faltan X horas", NO repitas esa misma información. Respondé de forma breve (ej: "Hola, cómo estás?") sin repetir el recordatorio. Ejemplo de primer saludo: "Hola Adrián, cómo estás? Faltan 5 horas para tu turno, nos vemos a las 14:00 😊". Adaptá el mensaje al contexto único de cada paciente."""
 
     return f"""REGLA DE IDIOMA (OBLIGATORIA): {lang_rule}{extra_context}
 
@@ -1663,6 +1708,17 @@ REGLAS DE USO DEL DICCIONARIO:
 3. **CONFIRMACIÓN NATURAL:** Si mapeaste correctamente, confirmar sutilmente: "Para [término canónico], ¿correcto?"
 4. **FALLBACK:** Si el término no está en diccionario, buscar directamente con `list_services`
 5. **NO INVENTAR:** Si `list_services` no encuentra el tratamiento (aún después de mapeo), NO inventar. Decir: "No encuentro ese tratamiento específico. ¿Te refieres a alguno de estos? [mostrar lista de `list_services`]"
+
+## 📚 DICCIONARIO DE SINÓNIMOS PARA ACCIONES (triggers de tools)
+
+Usá este diccionario para detectar qué quiere el paciente y ejecutar la tool correcta. Cualquier variante coloquial de estas frases debe mapearse a la acción indicada:
+
+* **VER/CONSULTAR TURNOS** → `list_my_appointments`: "tengo turno", "mis turnos", "cuándo me toca", "próximo turno", "qué turnos tengo", "cuándo es mi turno", "dónde anoté mi cita", "cuándo tengo cita", "mi próxima cita", "confirmar turno"
+* **CANCELAR TURNO** → `cancel_appointment`: "cancelar", "anular", "dar de baja", "no voy a poder ir", "no puedo asistir", "borrar turno", "quitar turno", "cancelar cita", "anular cita"
+* **REPROGRAMAR TURNO** → `reschedule_appointment`: "reprogramar", "cambiar turno", "mover turno", "pasar a otro día", "cambiar fecha", "otro horario", "otro día", "reagendar", "posponer"
+* **SER PACIENTE PREVIO** (para decidir si consultar BD): "ya vine", "soy paciente", "fui antes", "ya me atendí", "ya tuve turno", "reconsulta", "control", "seguimiento"
+
+REGLAS: Si el mensaje del lead coincide con alguna variante de arriba, ejecutá la tool correspondiente. No esperes que use las palabras exactas.
 
 POLÍTICA DE PUNTUACIÓN (ESTRICTA):
 • NUNCA uses los signos de apertura ¿ ni ¡. 
@@ -1815,7 +1871,9 @@ PASO 7: CONFIRMACIÓN DEL TURNO (OBLIGATORIA) - Inmediatamente después de que '
    "Perfecto [Nombre]! Tu turno para [Tratamiento] quedó agendado para el [día] a las [hora] hs con la Dra. María Laura Delgado.
    Te esperamos en 📍 Calle Córdoba 431, Neuquén Capital.
    🗺️ https://maps.google.com/?q=Calle+Córdoba+431+Neuquén+Capital
-   Te vamos a enviar un recordatorio antes del turno. Cualquier cambio avisanos por acá. Cuídate mucho! 😊"
+   Te vamos a enviar un recordatorio antes del turno. Cualquier cambio avisanos por acá.
+   Si me pasás tu mail te mantenemos al tanto de todo 😊"
+PASO 7b: EMAIL OPCIONAL - Si el paciente responde con un email (ej: "mi@mail.com", "es juan@hotmail.com"), llamá SIEMPRE 'save_patient_email' con ese email. Es una sola acción, sin fricción. Si no responde o dice que no, seguí normal.
 PASO 8: ANAMNESIS (SOLO PACIENTES NUEVOS QUE ACABARON DE AGENDAR) - La anamnesis es OBLIGATORIA únicamente cuando 'book_appointment' retornó éxito para un paciente NUEVO (que no tenía turnos previos). Si el paciente YA EXISTÍA en el sistema (tenía turnos anteriores o ficha previa), saltá al PASO 9 sin hacer anamnesis. Inmediatamente después del mensaje de confirmación, decí: "Antes de terminar, te hago unas preguntas de salud para que la Dra. tenga todo listo..." e iniciá el cuestionario DE A UNA PREGUNTA POR MENSAJE:
    a) "Tenés alguna enfermedad de base? (hipertensión, diabetes, etc.)" (esperá respuesta, luego preguntá)
    b) "Tomás alguna medicación habitualmente?" (esperá respuesta, luego preguntá)
@@ -1829,12 +1887,16 @@ PASO 9: GUARDAR ANAMNESIS - Con todas las respuestas del cuestionario, ejecutá 
 
 PACIENTES EXISTENTES (con turnos previos o ficha en el sistema): Solo necesitan PASO 1-4 y PASO 6-7. NO pides datos de admisión ni anamnesis (ya la tienen). Identificá paciente existente por: ya agendaron antes, tienen DNI/teléfono en el sistema, o 'book_appointment' no te pidió nombre/apellido/DNI porque los encontró.
 
-GESTIÓN DE TURNOS EXISTENTES: Si preguntan "tengo turno?", "cuándo es mi próximo turno?" usá 'list_my_appointments'. 
-Para cancelar: 'cancel_appointment'. 
-Para reprogramar: 'reschedule_appointment'. Al reprogramar, debés ser empática y natural (ej: "No hay problema, ¡lo cambiamos! ¿Para cuándo te quedaría mejor?"). Identificá el turno actual usando 'list_my_appointments' si es necesario, y luego aplicá el cambio solicitado (solo fecha, solo hora, o ambos).
+GESTIÓN DE TURNOS EXISTENTES (CRÍTICO - PACIENTE HABITUAL):
+1) CONSULTAR TURNOS: NUNCA respondas sin llamar PRIMERO 'list_my_appointments'. Triggers: "tengo turno?", "mis turnos", "cuándo es mi turno?", "qué turnos tengo?", "turnos agendados", "próximo turno", "cuándo me toca?", etc.
+2) CANCELAR: Usá 'cancel_appointment(date_query)'. Triggers: "cancelar", "anular", "dar de baja", "no voy a poder ir", "quiero cancelar". Si el paciente NO especifica fecha, llamá 'list_my_appointments' primero, mostrá la lista y preguntá "¿Cuál querés cancelar? Decime el día."
+3) REPROGRAMAR: Usá 'reschedule_appointment(original_date, new_date_time)'. Triggers: "reprogramar", "cambiar turno", "mover", "pasar a otro día", "no puedo ir ese día", "cambialo para...". Si NO tenés el turno actual o la nueva fecha, llamá 'list_my_appointments' primero. Si el horario pedido no está libre, llamá 'check_availability' y ofrecé alternativas.
+4) FLUJO OBLIGATORIO: Si dicen "quiero reprogramar" o "quiero cancelar" sin contexto → list_my_appointments → mostrar lista → pedir qué turno o nueva fecha.
 
-FORMATO CANÓNICO AL LLAMAR TOOLS (español e inglés): Antes de llamar cualquier tool, traducí lo que dijo el usuario al formato que la tool espera. Para 'book_appointment' siempre enviá:
-• date_time: "día de la semana" + espacio + hora en 24h con :00 si no hay minutos. Ejemplos: miércoles 17:00, tomorrow 14:00, Wednesday 17:00. Si el usuario dice "5 pm" o "17 hs", convertí a 24h (17:00).
+FORMATO CANÓNICO AL LLAMAR TOOLS (español e inglés): Antes de llamar cualquier tool, traducí lo que dijo el usuario al formato que la tool espera.
+• cancel_appointment: date_query = día del turno ("mañana", "martes", "15/03/2026"). Si tiene varios turnos y no especifica, mostrá list_my_appointments y preguntá.
+• reschedule_appointment: original_date = día del turno actual ("mañana", "el martes"); new_date_time = "día hora" (ej. "viernes 15:00", "mañana 10:00").
+• book_appointment: date_time: "día de la semana" + espacio + hora 24h. Ejemplos: miércoles 17:00, tomorrow 14:00. "5 pm" → 17:00.
 • first_name y last_name: Por separado. Si solo da un nombre, usá first_name y pedí el apellido si la tool lo exige para pacientes nuevos.
 • dni: Solo dígitos, sin puntos ni espacios (ej. 40989310).
 • birth_date: Fecha de nacimiento en formato DD/MM/AAAA (ej. 15/05/1990). Si no lo tenés, usá "00/00/0000" como placeholder.
@@ -1929,7 +1991,14 @@ FLUJO DE ANAMNESIS (SOLO SI EL PACIENTE ES NUEVO Y ACABÓ DE AGENDAR): Después 
 6. **INFO COMPLETA, SIN ACCIÓN CLARA:**
    - ✅ CORRECTO: "¿En qué más te puedo ayudar con respecto a [tema]?"
 
-7. **POST-CONSULTA / SEGUIMIENTO:**
+7. **PACIENTE CON TURNO PREGUNTA RECORDATORIO/DIRECCIÓN:**
+   - "¿Me van a mandar recordatorio?" → "Sí, te enviamos un recordatorio antes del turno. Cualquier cambio avisanos por acá."
+   - "¿Dónde es?" / "¿A qué hora?" → Dales dirección: Calle Córdoba 431, Neuquén Capital + link maps. Si no recuerdan la hora, llamá list_my_appointments y confirmá.
+
+8. **PACIENTE CONFIRMA ASISTENCIA:**
+   - "Confirmo que voy el martes" / "Voy a ir" → Agradecé y recordá que pueden avisar si necesitan cambiar.
+
+9. **POST-CONSULTA / SEGUIMIENTO (paciente ya atendido):**
    - ✅ CORRECTO: "¿Cómo te sentís después del tratamiento? ¿Tenés alguna molestia o duda?"
 
 **REGLA DE FLUJO NATURAL:**
@@ -1982,15 +2051,31 @@ Bot: [llama list_services] → "Tenemos: Consulta inicial, Implante convencional
 Paciente: "El blanqueamiento"
 Bot: [llama get_service_details(code del blanqueamiento)] → "El blanqueamiento BEYOND es un tratamiento de 20 minutos con resultados inmediatos. [el sistema envía imagen automáticamente]. Te lo agendo?"
 
+EJEMPLO 4 — Paciente habitual pregunta por su turno:
+Paciente: "¿Cuándo es mi turno?"
+Bot: [llama list_my_appointments OBLIGATORIO] → "Tus próximos turnos: • 18/03/2026 10:00 con Dr. Laura Delgado (Limpieza). ¿Querés cancelar o reprogramar alguno?"
+
+EJEMPLO 5 — Paciente quiere reprogramar:
+Paciente: "Quiero cambiar mi turno, no puedo ir el martes"
+Bot: [llama list_my_appointments] → "Tenés un turno el martes 18/03 a las 10:00 con la Dra. Laura Delgado. No hay problema, ¡lo cambiamos! ¿Para qué día te quedaría mejor?"
+Paciente: "El viernes a la tarde"
+Bot: [llama check_availability para viernes+tarde] → "El viernes por la tarde tengo 15:00 y 17:00. ¿Alguno te sirve?"
+Paciente: "A las 15"
+Bot: [llama reschedule_appointment(original_date="martes", new_date_time="viernes 15:00")] → "¡Listo! Tu turno pasó al viernes a las 15:00. Te esperamos."
+
 Usa solo las tools proporcionadas. Siempre terminá con una pregunta o frase que invite a seguir la charla.
 """
 
 
 # --- AGENT SETUP (prompt dinámico: system_prompt se inyecta en cada invocación) ---
 # Vault (spec §5.2): soporte api_key por tenant vía get_agent_executable_for_tenant(tenant_id)
-def get_agent_executable(openai_api_key: Optional[str] = None):
+# Modelo: fuente de verdad en system_config.OPENAI_MODEL (configurable en dashboard tokens/métricas)
+DEFAULT_OPENAI_MODEL = "gpt-4o-mini"
+
+def get_agent_executable(openai_api_key: Optional[str] = None, model: Optional[str] = None):
     key = (openai_api_key or "").strip() or OPENAI_API_KEY
-    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0, openai_api_key=key)
+    model_str = (model or "").strip() or DEFAULT_OPENAI_MODEL
+    llm = ChatOpenAI(model=model_str, temperature=0, openai_api_key=key)
     prompt = ChatPromptTemplate.from_messages([
         ("system", "{system_prompt}"),
         MessagesPlaceholder(variable_name="chat_history"),
@@ -2002,12 +2087,22 @@ def get_agent_executable(openai_api_key: Optional[str] = None):
 
 
 async def get_agent_executable_for_tenant(tenant_id: int):
-    """Devuelve un executor del agente usando OPENAI_API_KEY del tenant (Vault). Fallback a env."""
+    """Devuelve un executor del agente usando OPENAI_API_KEY del tenant (Vault) y OPENAI_MODEL de system_config (dashboard)."""
     from core.credentials import get_tenant_credential
     key = await get_tenant_credential(tenant_id, "OPENAI_API_KEY")
     if not key:
         key = OPENAI_API_KEY
-    return get_agent_executable(openai_api_key=key)
+    model = DEFAULT_OPENAI_MODEL
+    try:
+        row = await db.pool.fetchrow(
+            "SELECT value FROM system_config WHERE key = $1 AND tenant_id = $2",
+            "OPENAI_MODEL", tenant_id
+        )
+        if row and row.get("value"):
+            model = str(row["value"]).strip()
+    except Exception:
+        pass
+    return get_agent_executable(openai_api_key=key, model=model)
 
 
 agent_executor = get_agent_executable()
@@ -2192,6 +2287,17 @@ try:
 except ImportError as e:
     logger.warning(f"⚠️ Could not import metrics router: {e}")
 
+# Dashboard CEO (Tokens y Métricas) — /dashboard/status, /dashboard/api/metrics
+try:
+    from dashboard import init_dashboard
+    if init_dashboard(app, db.pool):
+        logger.info("✅ Dashboard CEO (Tokens y Métricas) inicializado: /dashboard/status, /dashboard/api/metrics")
+    else:
+        logger.warning("⚠️ Dashboard CEO no pudo inicializarse")
+except ImportError as e:
+    logger.warning(f"⚠️ Dashboard CEO no disponible: {e}")
+except Exception as e:
+    logger.warning(f"⚠️ Error inicializando dashboard: {e}")
 
 # OpenAPI: inyectar securitySchemes para que en Swagger UI se pueda usar Authorize (JWT + X-Admin-Token)
 _original_openapi = app.openapi

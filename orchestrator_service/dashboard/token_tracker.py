@@ -13,50 +13,29 @@ import json
 logger = logging.getLogger(__name__)
 
 # Precios por 1K tokens (USD) - Actualizado Marzo 2026
-# Fuente: https://openai.com/pricing
+# Fuente: https://openai.com/pricing — Lista completa para selector en dashboard
 OPENAI_PRICING = {
-    # GPT-4o Mini (nuestro modelo actual)
-    "gpt-4o-mini": {
-        "input": Decimal("0.00015"),   # $0.15 por 1M tokens input
-        "output": Decimal("0.00060"),  # $0.60 por 1M tokens output
-        "context": 128000,
-        "description": "GPT-4o Mini - Más rápido y económico"
-    },
-    # GPT-4o
-    "gpt-4o": {
-        "input": Decimal("0.00250"),   # $2.50 por 1M tokens input
-        "output": Decimal("0.01000"),  # $10.00 por 1M tokens output
-        "context": 128000,
-        "description": "GPT-4o - Balanceado para tareas generales"
-    },
-    # GPT-4 Turbo
-    "gpt-4-turbo": {
-        "input": Decimal("0.01000"),   # $10.00 por 1M tokens input
-        "output": Decimal("0.03000"),  # $30.00 por 1M tokens output
-        "context": 128000,
-        "description": "GPT-4 Turbo - Alta capacidad"
-    },
-    # GPT-3.5 Turbo (más económico)
-    "gpt-3.5-turbo": {
-        "input": Decimal("0.00050"),   # $0.50 por 1M tokens input
-        "output": Decimal("0.00150"),  # $1.50 por 1M tokens output
-        "context": 16385,
-        "description": "GPT-3.5 Turbo - Más económico"
-    },
-    # o1-preview (para razonamiento)
-    "o1-preview": {
-        "input": Decimal("0.01500"),   # $15.00 por 1M tokens input
-        "output": Decimal("0.06000"),  # $60.00 por 1M tokens output
-        "context": 128000,
-        "description": "o1-preview - Razonamiento avanzado"
-    },
-    # o1-mini (económico para razonamiento)
-    "o1-mini": {
-        "input": Decimal("0.00300"),   # $3.00 por 1M tokens input
-        "output": Decimal("0.01200"),  # $12.00 por 1M tokens output
-        "context": 128000,
-        "description": "o1-mini - Razonamiento económico"
-    }
+    # --- GPT-5 Serie (flagship) ---
+    "gpt-5.4": {"input": Decimal("0.00250"), "output": Decimal("0.01500"), "context": 1000000, "description": "GPT-5.4 - Flagship, razonamiento complejo"},
+    "gpt-5": {"input": Decimal("0.00250"), "output": Decimal("0.01500"), "context": 400000, "description": "GPT-5 - Chat principal"},
+    "gpt-5-mini": {"input": Decimal("0.00025"), "output": Decimal("0.00200"), "context": 400000, "description": "GPT-5 Mini - Baja latencia y costo"},
+    "gpt-5.3": {"input": Decimal("0.00200"), "output": Decimal("0.01200"), "context": 400000, "description": "GPT-5.3 - Balanceado"},
+    "gpt-5.2": {"input": Decimal("0.00150"), "output": Decimal("0.01000"), "context": 400000, "description": "GPT-5.2 - Versión estándar"},
+    "gpt-5.2-instant": {"input": Decimal("0.00150"), "output": Decimal("0.01000"), "context": 400000, "description": "GPT-5.2 Instant - Respuesta rápida"},
+    "gpt-5.2-thinking": {"input": Decimal("0.00200"), "output": Decimal("0.01200"), "context": 400000, "description": "GPT-5.2 Thinking - Razonamiento extendido"},
+    # --- GPT-4o Serie ---
+    "gpt-4o-mini": {"input": Decimal("0.00015"), "output": Decimal("0.00060"), "context": 128000, "description": "GPT-4o Mini - Más rápido y económico"},
+    "gpt-4o": {"input": Decimal("0.00250"), "output": Decimal("0.01000"), "context": 128000, "description": "GPT-4o - Balanceado"},
+    "gpt-4o-2024-11-20": {"input": Decimal("0.00250"), "output": Decimal("0.01000"), "context": 128000, "description": "GPT-4o (Nov 2024)"},
+    "gpt-4o-mini-2024-07-18": {"input": Decimal("0.00015"), "output": Decimal("0.00060"), "context": 128000, "description": "GPT-4o Mini (Jul 2024)"},
+    # --- GPT-4 Serie ---
+    "gpt-4-turbo": {"input": Decimal("0.01000"), "output": Decimal("0.03000"), "context": 128000, "description": "GPT-4 Turbo - Alta capacidad"},
+    "gpt-4-turbo-preview": {"input": Decimal("0.01000"), "output": Decimal("0.03000"), "context": 128000, "description": "GPT-4 Turbo Preview"},
+    # --- GPT-3.5 ---
+    "gpt-3.5-turbo": {"input": Decimal("0.00050"), "output": Decimal("0.00150"), "context": 16385, "description": "GPT-3.5 Turbo - Más económico"},
+    # --- o1 Serie (razonamiento) ---
+    "o1-preview": {"input": Decimal("0.01500"), "output": Decimal("0.06000"), "context": 128000, "description": "o1-preview - Razonamiento avanzado"},
+    "o1-mini": {"input": Decimal("0.00300"), "output": Decimal("0.01200"), "context": 128000, "description": "o1-mini - Razonamiento económico"},
 }
 
 @dataclass
@@ -307,7 +286,7 @@ class TokenTracker:
             return {}
     
     async def get_available_models(self) -> List[Dict]:
-        """Obtiene lista de modelos disponibles con precios"""
+        """Obtiene lista completa de modelos OpenAI para selector en dashboard (fuente de verdad: DB)"""
         models = []
         for model_id, info in OPENAI_PRICING.items():
             models.append({
