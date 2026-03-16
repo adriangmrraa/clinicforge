@@ -265,7 +265,7 @@ export default function DashboardView() {
             </div>
             <div className="h-[300px] w-full">
               {stats?.growth_data ? (
-                <ResponsiveContainer width="100%" height="100%">
+                <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                   <AreaChart data={stats.growth_data}>
                     <defs>
                       <linearGradient id="colorIA" x1="0" y1="0" x2="0" y2="1">

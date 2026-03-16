@@ -1476,21 +1476,22 @@ async def get_dashboard_token_metrics(
     try:
         from dashboard.status_page import fetch_dashboard_metrics
         return await fetch_dashboard_metrics(days=days, tenant_id=tenant_id)
-    except ImportError as e:
-        logger.warning(f"Dashboard metrics import error: {e}")
-        return {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "status": "modules_not_available",
-            "message": "Módulos del dashboard (token_tracker, config_manager) no disponibles",
-            "token_metrics": {"totals": {"total_cost_usd": 0, "total_tokens": 0, "total_conversations": 0}, "today": {}, "current_month": {}},
-            "daily_usage": [],
-            "model_usage": [],
-            "current_config": {},
-            "system_metrics": {},
-            "db_stats": {},
-            "projections": {}
-        }
     except Exception as e:
+        err_msg = str(e).lower()
+        if "jinja2" in err_msg or "import" in err_msg or isinstance(e, ImportError):
+            logger.warning(f"Dashboard metrics: dependencia no disponible ({e})")
+            return {
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "status": "modules_not_available",
+                "message": "Módulos del dashboard no disponibles (jinja2 u otra dependencia faltante)",
+                "token_metrics": {"totals": {"total_cost_usd": 0, "total_tokens": 0, "total_conversations": 0}, "today": {}, "current_month": {}},
+                "daily_usage": [],
+                "model_usage": [],
+                "current_config": {},
+                "system_metrics": {},
+                "db_stats": {},
+                "projections": {}
+            }
         logger.error(f"Error obteniendo métricas dashboard: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
