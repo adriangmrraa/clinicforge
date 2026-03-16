@@ -137,6 +137,17 @@ export default function ChatsView() {
   const lastSoundTimes = useRef<Record<string, number>>({});
   /** Clave única del paciente actual para evitar mezcla de datos entre pacientes (encapsulación) */
   const currentPatientKeyRef = useRef<string>('');
+  // Refs para mantener valores frescos en los handlers del socket sin reconectar
+  const selectedSessionRef = useRef(selectedSession);
+  selectedSessionRef.current = selectedSession;
+  const selectedChatwootRef = useRef(selectedChatwoot);
+  selectedChatwootRef.current = selectedChatwoot;
+  const channelFilterRef = useRef(channelFilter);
+  channelFilterRef.current = channelFilter;
+  const soundEnabledRef = useRef(soundEnabled);
+  soundEnabledRef.current = soundEnabled;
+  const selectedTenantIdRef = useRef(selectedTenantId);
+  selectedTenantIdRef.current = selectedTenantId;
 
   // Scroll Inteligente
   const scrollDependency = useMemo(() => [messages, chatwootMessages], [messages, chatwootMessages]);
@@ -148,12 +159,12 @@ export default function ChatsView() {
   // ============================================
 
   useEffect(() => {
-    // Conectar al WebSocket
+    // Conectar al WebSocket (una sola vez — los handlers leen refs para valores frescos)
     socketRef.current = io(BACKEND_URL);
 
     // Evento: Nueva derivación humana (derivhumano) — solo para la clínica seleccionada
     socketRef.current.on('HUMAN_HANDOFF', (data: { phone_number: string; reason: string; tenant_id?: number }) => {
-      if (data.tenant_id != null && selectedTenantId != null && data.tenant_id !== selectedTenantId) return;
+      if (data.tenant_id != null && selectedTenantIdRef.current != null && data.tenant_id !== selectedTenantIdRef.current) return;
       setSessions(prev => prev.map(s =>
         s.phone_number === data.phone_number
           ? {
@@ -165,10 +176,6 @@ export default function ChatsView() {
           : s
       ));
 
-      // Resaltar el chat en la lista (removido por ahora si no hay estado)
-      // setHighlightedSession(data.phone_number);
-      // setTimeout(() => setHighlightedSession(null), 5000);
-
       // Mostrar toast (idioma según selector)
       setShowToast({
         id: Date.now().toString(),
@@ -178,7 +185,7 @@ export default function ChatsView() {
       });
 
       // Reproducir sonido
-      if (soundEnabled) {
+      if (soundEnabledRef.current) {
         playNotificationSound();
       }
     });
@@ -186,20 +193,25 @@ export default function ChatsView() {
     // Evento: Nuevo mensaje (Omnicanal) — Spec 14
     socketRef.current.on('NEW_MESSAGE', (data: { phone_number: string; message: string; role: string; tenant_id: number; channel?: string }) => {
       // 1. Validar clínica seleccionada
-      if (selectedTenantId != null && data.tenant_id !== selectedTenantId) return;
+      if (selectedTenantIdRef.current != null && data.tenant_id !== selectedTenantIdRef.current) return;
 
       console.log('📨 NEW_MESSAGE socket event:', data);
+
+      // Leer valores actuales desde refs (siempre frescos)
+      const currentSession = selectedSessionRef.current;
+      const currentChatwoot = selectedChatwootRef.current;
+      const currentChannelFilter = channelFilterRef.current;
 
       // 2. Notificaciones sonoras inteligentes:
       // - Solo si el sonido está activado
       // - Solo si NO es el chat que el usuario tiene abierto actualmente
       // - Solo al inicio de una ráfaga (ej: primer mensaje en 30 segundos)
       const isActiveChat = (
-        (data.channel === 'whatsapp' && selectedSession?.phone_number === data.phone_number) ||
-        (data.channel !== 'whatsapp' && selectedChatwoot?.external_user_id === data.phone_number)
+        (data.channel === 'whatsapp' && currentSession?.phone_number === data.phone_number) ||
+        (data.channel !== 'whatsapp' && currentChatwoot?.external_user_id === data.phone_number)
       );
 
-      if (soundEnabled && !isActiveChat && data.role === 'user') {
+      if (soundEnabledRef.current && !isActiveChat && data.role === 'user') {
         const now = Date.now();
         const lastTime = lastSoundTimes.current[data.phone_number] || 0;
         if (now - lastTime > 30000) { // 30s de silencio entre sonidos por chat
@@ -209,7 +221,7 @@ export default function ChatsView() {
       }
 
       // 3. Si es el chat abierto (YCloud/WhatsApp), agregar mensaje localmente
-      if (data.channel === 'whatsapp' && selectedSession?.phone_number === data.phone_number) {
+      if (data.channel === 'whatsapp' && currentSession?.phone_number === data.phone_number) {
         setMessages(prev => {
           const isDuplicate = prev.some(m =>
             m.role === data.role &&
@@ -228,17 +240,17 @@ export default function ChatsView() {
       }
 
       // 4. Si es el chat abierto (Chatwoot/FB/IG), refrescar mensajes desde API
-      if (data.channel !== 'whatsapp' && selectedChatwoot?.external_user_id === data.phone_number) {
-        chatsApi.fetchChatMessages(selectedChatwoot.id, { limit: 20 })
+      if (data.channel !== 'whatsapp' && currentChatwoot?.external_user_id === data.phone_number) {
+        chatsApi.fetchChatMessages(currentChatwoot.id, { limit: 20 })
           .then(list => setChatwootMessages(list))
           .catch(err => console.error("Error refreshing chatwoot messages:", err));
       }
 
       // 5. Refrescar listas de chats siempre para ver vistas previas actualizadas
-      if (selectedTenantId != null) {
-        fetchSessions(selectedTenantId);
+      if (selectedTenantIdRef.current != null) {
+        fetchSessions(selectedTenantIdRef.current);
       }
-      chatsApi.fetchChatsSummary({ limit: 50, channel: channelFilter === 'all' ? undefined : channelFilter })
+      chatsApi.fetchChatsSummary({ limit: 50, channel: currentChannelFilter === 'all' ? undefined : currentChannelFilter })
         .then(list => setChatwootList(list))
         .catch(err => console.error("Error refreshing chatwoot summary:", err));
     });
@@ -246,7 +258,7 @@ export default function ChatsView() {
     // Evento: Estado de override cambiado (por clínica: solo actualizar si es la clínica seleccionada)
     socketRef.current.on('HUMAN_OVERRIDE_CHANGED', (data: { phone_number: string; conversation_id?: string; enabled: boolean; until?: string; tenant_id?: number }) => {
       console.log("🔔 Socket Received: HUMAN_OVERRIDE_CHANGED", data);
-      if (data.tenant_id != null && selectedTenantId != null && data.tenant_id !== selectedTenantId) return;
+      if (data.tenant_id != null && selectedTenantIdRef.current != null && data.tenant_id !== selectedTenantIdRef.current) return;
 
       // Update YCloud Sessions (Match by Phone)
       setSessions(prev => {
@@ -261,7 +273,7 @@ export default function ChatsView() {
         );
 
         // Sincronizar selectedSession si es el actual
-        if (selectedSession?.phone_number === data.phone_number) {
+        if (selectedSessionRef.current?.phone_number === data.phone_number) {
           const current = updated.find(s => s.phone_number === data.phone_number);
           if (current) setSelectedSession(current);
         }
@@ -283,13 +295,14 @@ export default function ChatsView() {
       }));
 
       // Update Selected Chatwoot (Match by ID if available)
-      if (selectedChatwoot) {
+      const currentChatwoot = selectedChatwootRef.current;
+      if (currentChatwoot) {
         const isMatch = data.conversation_id
-          ? selectedChatwoot.id === data.conversation_id
-          : selectedChatwoot.external_user_id === data.phone_number;
+          ? currentChatwoot.id === data.conversation_id
+          : currentChatwoot.external_user_id === data.phone_number;
 
         if (isMatch) {
-          console.log("✅ Updating selectedChatwoot:", selectedChatwoot.id);
+          console.log("✅ Updating selectedChatwoot:", currentChatwoot.id);
           setSelectedChatwoot(prev => prev ? { ...prev, is_locked: data.enabled } : null);
         }
       }
@@ -303,7 +316,7 @@ export default function ChatsView() {
         );
 
         // Sincronizar selectedSession si es el actual
-        if (selectedSession?.phone_number === data.phone_number) {
+        if (selectedSessionRef.current?.phone_number === data.phone_number) {
           const current = updated.find(s => s.phone_number === data.phone_number);
           if (current) setSelectedSession(current);
         }
@@ -317,11 +330,13 @@ export default function ChatsView() {
       const phoneMatches = (p: string) =>
         p === data.phone_number ||
         p?.replace(/\D/g, '') === data.phone_number?.replace(/\D/g, '');
-      const isSelected = selectedSession && phoneMatches(selectedSession.phone_number) ||
-        selectedChatwoot && phoneMatches(selectedChatwoot.external_user_id || '');
+      const currentSession = selectedSessionRef.current;
+      const currentChatwoot = selectedChatwootRef.current;
+      const isSelected = currentSession && phoneMatches(currentSession.phone_number) ||
+        currentChatwoot && phoneMatches(currentChatwoot.external_user_id || '');
 
       if (isSelected) {
-        fetchPatientContext(data.phone_number, data.tenant_id ?? selectedSession?.tenant_id ?? selectedChatwoot?.tenant_id);
+        fetchPatientContext(data.phone_number, data.tenant_id ?? currentSession?.tenant_id ?? currentChatwoot?.tenant_id);
         if (data.update_type === 'anamnesis_saved') {
           setAnamnesisRefreshKey(k => k + 1);
         }
@@ -338,7 +353,7 @@ export default function ChatsView() {
 
     // Evento: Nuevo turno agendado (refrescar contexto)
     socketRef.current.on('NEW_APPOINTMENT', (data: { phone_number: string }) => {
-      if (selectedSession?.phone_number === data.phone_number) {
+      if (selectedSessionRef.current?.phone_number === data.phone_number) {
         fetchPatientContext(data.phone_number);
       }
 
@@ -357,7 +372,8 @@ export default function ChatsView() {
         socketRef.current.disconnect();
       }
     };
-  }, [selectedSession, soundEnabled, selectedTenantId, t]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [t]);
 
   // ============================================
   // DATOS - CARGAR CLÍNICAS, SESIONES Y MENSAJES
