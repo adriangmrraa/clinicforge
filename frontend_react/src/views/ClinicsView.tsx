@@ -1,17 +1,61 @@
 import { useState, useEffect } from 'react';
-import { Building2, Plus, Edit, Trash2, Phone, Loader2, AlertCircle, CheckCircle2, Calendar } from 'lucide-react';
+import { Building2, Plus, Edit, Trash2, Phone, Loader2, AlertCircle, CheckCircle2, Calendar, Clock, MapPin, HelpCircle, ChevronDown, X } from 'lucide-react';
 import api from '../api/axios';
 import { useTranslation } from '../context/LanguageContext';
 import PageHeader from '../components/PageHeader';
 
-/** Clínica = Tenant en backend. Incluye config.calendar_provider: 'local' | 'google'. */
+/* ── Types ── */
+interface DayConfig { enabled: boolean; slots: { start: string; end: string }[]; }
+interface WorkingHours {
+  monday: DayConfig; tuesday: DayConfig; wednesday: DayConfig; thursday: DayConfig;
+  friday: DayConfig; saturday: DayConfig; sunday: DayConfig;
+}
+const DAY_KEYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const;
+
+function createDefaultWorkingHours(): WorkingHours {
+  const wh = {} as WorkingHours;
+  DAY_KEYS.forEach((key) => {
+    wh[key] = { enabled: key !== 'sunday' && key !== 'saturday', slots: (key !== 'sunday' && key !== 'saturday') ? [{ start: '09:00', end: '18:00' }] : [] };
+  });
+  return wh;
+}
+function parseWorkingHours(raw: unknown): WorkingHours {
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+    const o = raw as Record<string, unknown>;
+    const base = createDefaultWorkingHours();
+    (Object.keys(base) as (keyof WorkingHours)[]).forEach(k => {
+      if (o[k] && typeof o[k] === 'object' && !Array.isArray(o[k])) {
+        const d = o[k] as { enabled?: boolean; slots?: { start?: string; end?: string }[] };
+        base[k] = {
+          enabled: d.enabled ?? base[k].enabled,
+          slots: Array.isArray(d.slots) ? d.slots.map(s => ({ start: s?.start ?? '09:00', end: s?.end ?? '18:00' })) : base[k].slots,
+        };
+      }
+    });
+    return base;
+  }
+  return createDefaultWorkingHours();
+}
+
 export interface Clinica {
     id: number;
     clinic_name: string;
     bot_phone_number: string;
+    address?: string;
+    google_maps_url?: string;
+    working_hours?: unknown;
     config?: { calendar_provider?: 'local' | 'google' };
     created_at: string;
     updated_at?: string;
+}
+
+interface FAQ {
+    id?: number;
+    tenant_id?: number;
+    category: string;
+    question: string;
+    answer: string;
+    sort_order: number;
 }
 
 const CALENDAR_PROVIDER_OPTIONS = (t: (k: string) => string) => [
@@ -29,14 +73,26 @@ export default function ClinicsView() {
         clinic_name: '',
         bot_phone_number: '',
         calendar_provider: 'local' as 'local' | 'google',
+        address: '',
+        google_maps_url: '',
+        working_hours: createDefaultWorkingHours(),
     });
+    const [expandedDays, setExpandedDays] = useState<string[]>([]);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState<string | null>(null);
 
-    useEffect(() => {
-        fetchClinicas();
-    }, []);
+    // FAQ state
+    const [faqModalOpen, setFaqModalOpen] = useState(false);
+    const [faqClinicId, setFaqClinicId] = useState<number | null>(null);
+    const [faqClinicName, setFaqClinicName] = useState('');
+    const [faqs, setFaqs] = useState<FAQ[]>([]);
+    const [faqLoading, setFaqLoading] = useState(false);
+    const [faqEditing, setFaqEditing] = useState<FAQ | null>(null);
+    const [faqForm, setFaqForm] = useState<FAQ>({ category: 'General', question: '', answer: '', sort_order: 0 });
+    const [faqSaving, setFaqSaving] = useState(false);
+
+    useEffect(() => { fetchClinicas(); }, []);
 
     const fetchClinicas = async () => {
         try {
@@ -56,12 +112,16 @@ export default function ClinicsView() {
             setFormData({
                 clinic_name: clinica.clinic_name,
                 bot_phone_number: clinica.bot_phone_number,
-                calendar_provider: (clinica.config?.calendar_provider === 'google' ? 'google' : 'local') as 'local' | 'google',
+                calendar_provider: (clinica.config?.calendar_provider === 'google' ? 'google' : 'local'),
+                address: clinica.address || '',
+                google_maps_url: clinica.google_maps_url || '',
+                working_hours: parseWorkingHours(clinica.working_hours),
             });
         } else {
             setEditingClinica(null);
-            setFormData({ clinic_name: '', bot_phone_number: '', calendar_provider: 'local' });
+            setFormData({ clinic_name: '', bot_phone_number: '', calendar_provider: 'local', address: '', google_maps_url: '', working_hours: createDefaultWorkingHours() });
         }
+        setExpandedDays([]);
         setError(null);
         setIsModalOpen(true);
     };
@@ -71,19 +131,19 @@ export default function ClinicsView() {
         setSaving(true);
         setError(null);
         try {
+            const payload = {
+                clinic_name: formData.clinic_name,
+                bot_phone_number: formData.bot_phone_number,
+                calendar_provider: formData.calendar_provider,
+                address: formData.address || null,
+                google_maps_url: formData.google_maps_url || null,
+                working_hours: formData.working_hours,
+            };
             if (editingClinica) {
-                await api.put(`/admin/tenants/${editingClinica.id}`, {
-                    clinic_name: formData.clinic_name,
-                    bot_phone_number: formData.bot_phone_number,
-                    calendar_provider: formData.calendar_provider,
-                });
+                await api.put(`/admin/tenants/${editingClinica.id}`, payload);
                 setSuccess(t('clinics.toast_updated'));
             } else {
-                await api.post('/admin/tenants', {
-                    clinic_name: formData.clinic_name,
-                    bot_phone_number: formData.bot_phone_number,
-                    calendar_provider: formData.calendar_provider,
-                });
+                await api.post('/admin/tenants', payload);
                 setSuccess(t('clinics.toast_created'));
             }
             await fetchClinicas();
@@ -103,6 +163,109 @@ export default function ClinicsView() {
             fetchClinicas();
         } catch (err) {
             console.error('Error eliminando clínica:', err);
+        }
+    };
+
+    /* ── Working Hours Handlers ── */
+    const toggleDayEnabled = (dayKey: keyof WorkingHours) => {
+        setFormData(prev => ({
+            ...prev,
+            working_hours: {
+                ...prev.working_hours,
+                [dayKey]: {
+                    ...prev.working_hours[dayKey],
+                    enabled: !prev.working_hours[dayKey].enabled,
+                    slots: !prev.working_hours[dayKey].enabled && prev.working_hours[dayKey].slots.length === 0
+                        ? [{ start: '09:00', end: '18:00' }] : prev.working_hours[dayKey].slots,
+                },
+            },
+        }));
+    };
+    const addTimeSlot = (dayKey: keyof WorkingHours) => {
+        setFormData(prev => ({
+            ...prev,
+            working_hours: {
+                ...prev.working_hours,
+                [dayKey]: { ...prev.working_hours[dayKey], slots: [...prev.working_hours[dayKey].slots, { start: '09:00', end: '18:00' }] },
+            },
+        }));
+    };
+    const removeTimeSlot = (dayKey: keyof WorkingHours, index: number) => {
+        setFormData(prev => ({
+            ...prev,
+            working_hours: {
+                ...prev.working_hours,
+                [dayKey]: { ...prev.working_hours[dayKey], slots: prev.working_hours[dayKey].slots.filter((_, i) => i !== index) },
+            },
+        }));
+    };
+    const updateTimeSlot = (dayKey: keyof WorkingHours, index: number, field: 'start' | 'end', value: string) => {
+        setFormData(prev => ({
+            ...prev,
+            working_hours: {
+                ...prev.working_hours,
+                [dayKey]: {
+                    ...prev.working_hours[dayKey],
+                    slots: prev.working_hours[dayKey].slots.map((slot, i) => i === index ? { ...slot, [field]: value } : slot),
+                },
+            },
+        }));
+    };
+
+    /* ── FAQ Handlers ── */
+    const openFaqModal = async (clinica: Clinica) => {
+        setFaqClinicId(clinica.id);
+        setFaqClinicName(clinica.clinic_name);
+        setFaqEditing(null);
+        setFaqForm({ category: 'General', question: '', answer: '', sort_order: 0 });
+        setFaqModalOpen(true);
+        await fetchFaqs(clinica.id);
+    };
+
+    const fetchFaqs = async (tenantId: number) => {
+        setFaqLoading(true);
+        try {
+            const resp = await api.get(`/admin/tenants/${tenantId}/faqs`);
+            setFaqs(resp.data);
+        } catch (err) {
+            console.error('Error cargando FAQs:', err);
+        } finally {
+            setFaqLoading(false);
+        }
+    };
+
+    const handleFaqSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!faqClinicId) return;
+        setFaqSaving(true);
+        try {
+            if (faqEditing?.id) {
+                await api.put(`/admin/faqs/${faqEditing.id}`, faqForm);
+            } else {
+                await api.post(`/admin/tenants/${faqClinicId}/faqs`, faqForm);
+            }
+            setFaqEditing(null);
+            setFaqForm({ category: 'General', question: '', answer: '', sort_order: 0 });
+            await fetchFaqs(faqClinicId);
+        } catch (err: any) {
+            console.error('Error guardando FAQ:', err);
+        } finally {
+            setFaqSaving(false);
+        }
+    };
+
+    const handleFaqEdit = (faq: FAQ) => {
+        setFaqEditing(faq);
+        setFaqForm({ category: faq.category, question: faq.question, answer: faq.answer, sort_order: faq.sort_order });
+    };
+
+    const handleFaqDelete = async (faqId: number) => {
+        if (!window.confirm(t('clinics.faq_confirm_delete'))) return;
+        try {
+            await api.delete(`/admin/faqs/${faqId}`);
+            if (faqClinicId) await fetchFaqs(faqClinicId);
+        } catch (err) {
+            console.error('Error eliminando FAQ:', err);
         }
     };
 
@@ -153,6 +316,13 @@ export default function ClinicsView() {
                                 </div>
                                 <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                     <button
+                                        onClick={() => openFaqModal(clinica)}
+                                        className="p-2 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
+                                        title={t('clinics.faq_manage')}
+                                    >
+                                        <HelpCircle size={18} />
+                                    </button>
+                                    <button
                                         onClick={() => handleOpenModal(clinica)}
                                         className="p-2 text-medical-600 hover:bg-medical-50 rounded-lg transition-colors"
                                     >
@@ -173,6 +343,12 @@ export default function ClinicsView() {
                                     <Phone size={14} className="shrink-0" />
                                     <span className="font-mono">{clinica.bot_phone_number}</span>
                                 </div>
+                                {clinica.address && (
+                                    <div className="flex items-center gap-2 text-medical-500 mt-1 text-xs">
+                                        <MapPin size={12} className="shrink-0" />
+                                        <span>{clinica.address}</span>
+                                    </div>
+                                )}
                                 <div className="flex items-center gap-2 text-medical-500 mt-1 text-xs">
                                     <Calendar size={12} className="shrink-0" />
                                     <span>{calendarProviderLabel(clinica.config?.calendar_provider || 'local')}</span>
@@ -188,87 +364,203 @@ export default function ClinicsView() {
                 ))}
             </div>
 
+            {/* ── Modal Editar/Crear Clínica ── */}
             {isModalOpen && (
                 <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-md animate-scale-in">
-                        <div className="p-6 border-b">
+                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl animate-scale-in max-h-[90vh] flex flex-col">
+                        <div className="p-6 border-b shrink-0 flex justify-between items-center">
                             <h2 className="text-xl font-bold flex items-center gap-2">
                                 {editingClinica ? <Edit className="text-medical-600" /> : <Plus className="text-medical-600" />}
                                 {editingClinica ? t('clinics.edit_clinic') : t('clinics.create_clinic')}
                             </h2>
+                            <button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-gray-100 rounded-lg"><X size={20} /></button>
                         </div>
 
-                        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+                        <form onSubmit={handleSubmit} className="flex-1 min-h-0 overflow-y-auto p-6 space-y-5">
                             {error && (
                                 <div className="bg-red-50 text-red-600 p-3 rounded-lg flex items-center gap-2 text-sm border border-red-100">
                                     <AlertCircle size={16} /> {error}
                                 </div>
                             )}
 
-                            <div className="space-y-2">
-                                <label className="text-sm font-semibold text-medical-700">{t('clinics.clinic_name_label')}</label>
-                                <input
-                                    required
-                                    type="text"
-                                    placeholder={t('clinics.clinic_name_placeholder')}
-                                    className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-medical-500 outline-none transition-all"
-                                    value={formData.clinic_name}
-                                    onChange={(e) => setFormData({ ...formData, clinic_name: e.target.value })}
-                                />
+                            {/* Nombre y teléfono */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div className="space-y-1">
+                                    <label className="text-sm font-semibold text-medical-700">{t('clinics.clinic_name_label')}</label>
+                                    <input required type="text" placeholder={t('clinics.clinic_name_placeholder')}
+                                        className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-medical-500 outline-none"
+                                        value={formData.clinic_name} onChange={(e) => setFormData({ ...formData, clinic_name: e.target.value })} />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-sm font-semibold text-medical-700">{t('clinics.bot_phone_label')}</label>
+                                    <input required type="text" placeholder={t('clinics.bot_phone_placeholder')}
+                                        className="w-full px-4 py-2 border rounded-lg font-mono focus:ring-2 focus:ring-medical-500 outline-none"
+                                        value={formData.bot_phone_number} onChange={(e) => setFormData({ ...formData, bot_phone_number: e.target.value })} />
+                                </div>
                             </div>
 
-                            <div className="space-y-2">
-                                <label className="text-sm font-semibold text-medical-700">{t('clinics.bot_phone_label')}</label>
-                                <input
-                                    required
-                                    type="text"
-                                    placeholder={t('clinics.bot_phone_placeholder')}
-                                    className="w-full px-4 py-2 border rounded-lg font-mono focus:ring-2 focus:ring-medical-500 outline-none transition-all"
-                                    value={formData.bot_phone_number}
-                                    onChange={(e) => setFormData({ ...formData, bot_phone_number: e.target.value })}
-                                />
-                                <p className="text-[10px] text-medical-400 italic">
-                                    {t('clinics.bot_phone_help')}
-                                </p>
-                            </div>
-
-                            <div className="space-y-2">
-                                <label className="text-sm font-semibold text-medical-700 flex items-center gap-2">
-                                    <Calendar size={14} /> {t('clinics.calendar_provider_label')}
-                                </label>
-                                <select
+                            {/* Dirección y Maps */}
+                            <div className="space-y-1">
+                                <label className="text-sm font-semibold text-medical-700 flex items-center gap-2"><MapPin size={14} /> {t('clinics.address_label')}</label>
+                                <input type="text" placeholder={t('clinics.address_placeholder')}
                                     className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-medical-500 outline-none"
+                                    value={formData.address} onChange={(e) => setFormData({ ...formData, address: e.target.value })} />
+                            </div>
+                            <div className="space-y-1">
+                                <label className="text-sm font-semibold text-medical-700">{t('clinics.maps_url_label')}</label>
+                                <input type="url" placeholder={t('clinics.maps_url_placeholder')}
+                                    className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-medical-500 outline-none text-sm"
+                                    value={formData.google_maps_url} onChange={(e) => setFormData({ ...formData, google_maps_url: e.target.value })} />
+                            </div>
+
+                            {/* Calendar provider */}
+                            <div className="space-y-1">
+                                <label className="text-sm font-semibold text-medical-700 flex items-center gap-2"><Calendar size={14} /> {t('clinics.calendar_provider_label')}</label>
+                                <select className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-medical-500 outline-none"
                                     value={formData.calendar_provider}
-                                    onChange={(e) => setFormData({ ...formData, calendar_provider: e.target.value as 'local' | 'google' })}
-                                >
+                                    onChange={(e) => setFormData({ ...formData, calendar_provider: e.target.value as 'local' | 'google' })}>
                                     {CALENDAR_PROVIDER_OPTIONS(t).map((opt) => (
-                                        <option key={opt.value} value={opt.value}>
-                                            {opt.label}
-                                        </option>
+                                        <option key={opt.value} value={opt.value}>{opt.label}</option>
                                     ))}
                                 </select>
-                                <p className="text-[10px] text-medical-400 italic">
-                                    {t('clinics.calendar_help')}
-                                </p>
                             </div>
 
-                            <div className="flex gap-3 pt-4">
-                                <button
-                                    type="button"
-                                    onClick={() => setIsModalOpen(false)}
-                                    className="flex-1 py-2 text-medical-700 font-medium hover:bg-medical-50 rounded-lg transition-all"
-                                >
+                            {/* Horarios por día */}
+                            <div className="space-y-3">
+                                <h3 className="text-sm font-bold text-medical-700 flex items-center gap-2"><Clock size={14} /> {t('clinics.working_hours_label')}</h3>
+                                <p className="text-xs text-medical-400">{t('clinics.working_hours_help')}</p>
+                                <div className="space-y-2">
+                                    {DAY_KEYS.map((dayKey) => {
+                                        const config = formData.working_hours[dayKey];
+                                        const isExpanded = expandedDays.includes(dayKey);
+                                        return (
+                                            <div key={dayKey} className="rounded-xl border border-gray-200 overflow-hidden bg-white">
+                                                <div className="flex items-center justify-between px-4 py-3 hover:bg-gray-50/80 transition-colors">
+                                                    <label className="flex items-center gap-3 cursor-pointer flex-1">
+                                                        <input type="checkbox" checked={config.enabled} onChange={() => toggleDayEnabled(dayKey)}
+                                                            className="w-4 h-4 rounded border-gray-300 text-medical-600" />
+                                                        <span className="text-sm font-medium text-gray-800">{t('approvals.day_' + dayKey)}</span>
+                                                    </label>
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-xs text-gray-500">{config.slots.length} {t('approvals.slots')}</span>
+                                                        <button type="button" onClick={() => setExpandedDays(prev => isExpanded ? prev.filter(d => d !== dayKey) : [...prev, dayKey])}
+                                                            className="p-2 rounded-lg hover:bg-gray-200 text-gray-500">
+                                                            <ChevronDown size={18} className={isExpanded ? 'rotate-180 transition-transform' : 'transition-transform'} />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                                {isExpanded && config.enabled && (
+                                                    <div className="px-4 pb-4 pt-1 space-y-3 bg-gray-50/50 border-t border-gray-100">
+                                                        {config.slots.map((slot, idx) => (
+                                                            <div key={idx} className="flex items-center gap-3">
+                                                                <input type="time" value={slot.start} onChange={(e) => updateTimeSlot(dayKey, idx, 'start', e.target.value)}
+                                                                    className="px-3 py-1.5 border rounded-lg text-sm w-28" />
+                                                                <span className="text-gray-400">-</span>
+                                                                <input type="time" value={slot.end} onChange={(e) => updateTimeSlot(dayKey, idx, 'end', e.target.value)}
+                                                                    className="px-3 py-1.5 border rounded-lg text-sm w-28" />
+                                                                <button type="button" onClick={() => removeTimeSlot(dayKey, idx)} className="text-sm text-red-500 hover:text-red-700">{t('approvals.remove')}</button>
+                                                            </div>
+                                                        ))}
+                                                        <button type="button" onClick={() => addTimeSlot(dayKey)} className="text-sm font-medium text-medical-600 hover:text-medical-800">+ {t('approvals.add_schedule')}</button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+
+                            <div className="flex gap-3 pt-4 sticky bottom-0 bg-white pb-2">
+                                <button type="button" onClick={() => setIsModalOpen(false)}
+                                    className="flex-1 py-2 text-medical-700 font-medium hover:bg-medical-50 rounded-lg transition-all">
                                     {t('common.cancel')}
                                 </button>
-                                <button
-                                    type="submit"
-                                    disabled={saving}
-                                    className="flex-1 py-2 bg-medical-600 text-white font-bold rounded-lg hover:bg-medical-700 transition-all shadow-md disabled:opacity-50 flex items-center justify-center gap-2"
-                                >
+                                <button type="submit" disabled={saving}
+                                    className="flex-1 py-2 bg-medical-600 text-white font-bold rounded-lg hover:bg-medical-700 transition-all shadow-md disabled:opacity-50 flex items-center justify-center gap-2">
                                     {saving ? <Loader2 className="animate-spin" size={20} /> : t('common.save')}
                                 </button>
                             </div>
                         </form>
+                    </div>
+                </div>
+            )}
+
+            {/* ── Modal FAQs ── */}
+            {faqModalOpen && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl animate-scale-in max-h-[90vh] flex flex-col">
+                        <div className="p-6 border-b shrink-0 flex justify-between items-center">
+                            <h2 className="text-xl font-bold flex items-center gap-2">
+                                <HelpCircle className="text-amber-600" />
+                                {t('clinics.faq_title')} - {faqClinicName}
+                            </h2>
+                            <button onClick={() => setFaqModalOpen(false)} className="p-2 hover:bg-gray-100 rounded-lg"><X size={20} /></button>
+                        </div>
+
+                        <div className="flex-1 min-h-0 overflow-y-auto p-6 space-y-6">
+                            {/* Formulario agregar/editar FAQ */}
+                            <form onSubmit={handleFaqSubmit} className="space-y-3 bg-gray-50 p-4 rounded-xl border">
+                                <h3 className="text-sm font-bold text-gray-700">
+                                    {faqEditing ? t('clinics.faq_edit') : t('clinics.faq_add')}
+                                </h3>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="text-xs font-semibold text-gray-600">{t('clinics.faq_category')}</label>
+                                        <input type="text" value={faqForm.category} onChange={e => setFaqForm({ ...faqForm, category: e.target.value })}
+                                            className="w-full px-3 py-1.5 border rounded-lg text-sm mt-1" placeholder="Ej: Pagos, General, Tratamientos" />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs font-semibold text-gray-600">{t('clinics.faq_order')}</label>
+                                        <input type="number" value={faqForm.sort_order} onChange={e => setFaqForm({ ...faqForm, sort_order: parseInt(e.target.value) || 0 })}
+                                            className="w-full px-3 py-1.5 border rounded-lg text-sm mt-1" />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="text-xs font-semibold text-gray-600">{t('clinics.faq_question')}</label>
+                                    <input required type="text" value={faqForm.question} onChange={e => setFaqForm({ ...faqForm, question: e.target.value })}
+                                        className="w-full px-3 py-1.5 border rounded-lg text-sm mt-1" placeholder={t('clinics.faq_question_placeholder')} />
+                                </div>
+                                <div>
+                                    <label className="text-xs font-semibold text-gray-600">{t('clinics.faq_answer')}</label>
+                                    <textarea required value={faqForm.answer} onChange={e => setFaqForm({ ...faqForm, answer: e.target.value })}
+                                        className="w-full px-3 py-1.5 border rounded-lg text-sm mt-1 min-h-[60px]" placeholder={t('clinics.faq_answer_placeholder')} />
+                                </div>
+                                <div className="flex gap-2">
+                                    {faqEditing && (
+                                        <button type="button" onClick={() => { setFaqEditing(null); setFaqForm({ category: 'General', question: '', answer: '', sort_order: 0 }); }}
+                                            className="px-4 py-1.5 text-sm text-gray-600 hover:bg-gray-200 rounded-lg">{t('common.cancel')}</button>
+                                    )}
+                                    <button type="submit" disabled={faqSaving}
+                                        className="px-4 py-1.5 text-sm bg-medical-600 text-white rounded-lg hover:bg-medical-700 disabled:opacity-50 flex items-center gap-2">
+                                        {faqSaving && <Loader2 className="animate-spin" size={14} />}
+                                        {faqEditing ? t('common.save') : t('clinics.faq_add_btn')}
+                                    </button>
+                                </div>
+                            </form>
+
+                            {/* Lista de FAQs */}
+                            {faqLoading ? (
+                                <div className="flex justify-center py-8"><Loader2 className="animate-spin text-medical-600" size={24} /></div>
+                            ) : faqs.length === 0 ? (
+                                <p className="text-center text-gray-400 py-8 text-sm">{t('clinics.faq_empty')}</p>
+                            ) : (
+                                <div className="space-y-3">
+                                    {faqs.map((faq) => (
+                                        <div key={faq.id} className="bg-white border rounded-xl p-4 space-y-2 hover:shadow-sm transition-shadow">
+                                            <div className="flex justify-between items-start">
+                                                <span className="text-xs font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">{faq.category}</span>
+                                                <div className="flex gap-1">
+                                                    <button onClick={() => handleFaqEdit(faq)} className="p-1 text-medical-600 hover:bg-medical-50 rounded"><Edit size={14} /></button>
+                                                    <button onClick={() => faq.id && handleFaqDelete(faq.id)} className="p-1 text-red-500 hover:bg-red-50 rounded"><Trash2 size={14} /></button>
+                                                </div>
+                                            </div>
+                                            <p className="text-sm font-medium text-gray-800">{faq.question}</p>
+                                            <p className="text-sm text-gray-600">{faq.answer}</p>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </div>
             )}

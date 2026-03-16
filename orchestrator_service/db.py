@@ -941,12 +941,46 @@ class Database:
                 FOR t_id IN SELECT id FROM tenants LOOP
                     IF NOT EXISTS (SELECT 1 FROM treatment_types WHERE tenant_id = t_id.id) THEN
                         INSERT INTO treatment_types (tenant_id, code, name, default_duration_minutes, base_price, is_active, is_available_for_booking)
-                        VALUES 
+                        VALUES
                             (t_id.id, 'checkup', 'Consulta General', 30, 0, true, true),
                             (t_id.id, 'cleaning', 'Limpieza Dental', 45, 0, true, true),
                             (t_id.id, 'consultation', 'Consulta Especializada', 30, 0, true, true);
                     END IF;
                 END LOOP;
+            END $$;
+            """,
+            # Parche 37: Agregar address, google_maps_url y working_hours a tenants (Dynamic Clinic Config)
+            """
+            DO $$
+            BEGIN
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='tenants' AND column_name='address') THEN
+                    ALTER TABLE tenants ADD COLUMN address TEXT;
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='tenants' AND column_name='google_maps_url') THEN
+                    ALTER TABLE tenants ADD COLUMN google_maps_url TEXT;
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='tenants' AND column_name='working_hours') THEN
+                    ALTER TABLE tenants ADD COLUMN working_hours JSONB DEFAULT '{}';
+                END IF;
+            END $$;
+            """,
+            # Parche 38: Crear tabla clinic_faqs para FAQs configurables por tenant
+            """
+            CREATE TABLE IF NOT EXISTS clinic_faqs (
+                id SERIAL PRIMARY KEY,
+                tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+                category VARCHAR(100) NOT NULL DEFAULT 'General',
+                question TEXT NOT NULL,
+                answer TEXT NOT NULL,
+                sort_order INTEGER DEFAULT 0,
+                created_at TIMESTAMPTZ DEFAULT NOW(),
+                updated_at TIMESTAMPTZ DEFAULT NOW()
+            );
+            DO $$
+            BEGIN
+                IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_clinic_faqs_tenant') THEN
+                    CREATE INDEX idx_clinic_faqs_tenant ON clinic_faqs(tenant_id);
+                END IF;
             END $$;
             """
         ]

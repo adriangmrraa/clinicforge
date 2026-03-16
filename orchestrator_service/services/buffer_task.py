@@ -79,8 +79,23 @@ async def process_buffer_task(
         current_customer_phone.set(external_user_id)
         current_tenant_id.set(tenant_id)
         
-        tenant_row = await pool.fetchrow("SELECT clinic_name FROM tenants WHERE id = $1", tenant_id)
+        tenant_row = await pool.fetchrow(
+            "SELECT clinic_name, address, google_maps_url, working_hours FROM tenants WHERE id = $1", tenant_id
+        )
         clinic_name = (tenant_row["clinic_name"] or CLINIC_NAME) if tenant_row else CLINIC_NAME
+        clinic_address = (tenant_row["address"] or "") if tenant_row else ""
+        clinic_maps_url = (tenant_row["google_maps_url"] or "") if tenant_row else ""
+        clinic_working_hours = None
+        if tenant_row and tenant_row.get("working_hours"):
+            wh = tenant_row["working_hours"]
+            clinic_working_hours = json.loads(wh) if isinstance(wh, str) else wh
+
+        # Fetch FAQs for this tenant
+        faq_rows = await pool.fetch(
+            "SELECT category, question, answer FROM clinic_faqs WHERE tenant_id = $1 ORDER BY sort_order ASC, id ASC LIMIT 20",
+            tenant_id
+        )
+        faqs = [dict(r) for r in faq_rows] if faq_rows else []
         
         # Spec 24 / Spec 06 / v7.6: Patient Identity & Appointment Context
         # Fetch patient data (normalized phone for consistency with tools)
@@ -166,6 +181,10 @@ async def process_buffer_task(
             hours_end=CLINIC_HOURS_END,
             ad_context=ad_context,
             patient_context=patient_context,
+            clinic_address=clinic_address,
+            clinic_maps_url=clinic_maps_url,
+            clinic_working_hours=clinic_working_hours,
+            faqs=faqs,
         )
 
         chat_history = []

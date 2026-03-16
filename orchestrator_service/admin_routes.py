@@ -1648,7 +1648,7 @@ async def get_tenants(user_data=Depends(verify_admin_token)):
     if user_data.role != 'ceo':
         raise HTTPException(status_code=403, detail="Solo el CEO puede gestionar clínicas.")
     rows = await db.pool.fetch(
-        "SELECT id, clinic_name, bot_phone_number, config, created_at, updated_at FROM tenants ORDER BY id ASC"
+        "SELECT id, clinic_name, bot_phone_number, config, address, google_maps_url, working_hours, created_at, updated_at FROM tenants ORDER BY id ASC"
     )
     return [dict(r) for r in rows]
 
@@ -1698,6 +1698,15 @@ async def update_tenant(tenant_id: int, data: Dict[str, Any], user_data=Depends(
         config_patch = json.dumps({"calendar_provider": cp})
         params.append(config_patch)
         updates.append(f"config = COALESCE(config, '{{}}')::jsonb || ${len(params)}::jsonb")
+    if "address" in data:
+        params.append(data.get("address") or None)
+        updates.append(f"address = ${len(params)}")
+    if "google_maps_url" in data:
+        params.append(data.get("google_maps_url") or None)
+        updates.append(f"google_maps_url = ${len(params)}")
+    if "working_hours" in data and data["working_hours"] is not None:
+        params.append(json.dumps(data["working_hours"]))
+        updates.append(f"working_hours = ${len(params)}::jsonb")
     if not updates:
         return {"status": "updated"}
     params.append(tenant_id)
@@ -1713,6 +1722,67 @@ async def delete_tenant(tenant_id: int, user_data=Depends(verify_admin_token)):
     if user_data.role != 'ceo':
         raise HTTPException(status_code=403, detail="Solo el CEO puede gestionar clínicas.")
     await db.pool.execute("DELETE FROM tenants WHERE id = $1", tenant_id)
+    return {"status": "deleted"}
+
+# ─── FAQs por Clínica (Spec 2026-03-16) ───
+
+@router.get("/tenants/{tenant_id}/faqs", tags=["FAQs"], summary="Listar FAQs de una clínica")
+async def get_tenant_faqs(tenant_id: int, user_data=Depends(verify_admin_token)):
+    """Retorna todas las FAQs de un tenant ordenadas por sort_order."""
+    rows = await db.pool.fetch(
+        "SELECT id, tenant_id, category, question, answer, sort_order, created_at, updated_at FROM clinic_faqs WHERE tenant_id = $1 ORDER BY sort_order ASC, id ASC",
+        tenant_id
+    )
+    return [dict(r) for r in rows]
+
+@router.post("/tenants/{tenant_id}/faqs", tags=["FAQs"], summary="Crear una FAQ")
+async def create_tenant_faq(tenant_id: int, data: Dict[str, Any], user_data=Depends(verify_admin_token)):
+    """Crea una nueva FAQ para un tenant."""
+    if user_data.role != 'ceo':
+        raise HTTPException(status_code=403, detail="Solo el CEO puede gestionar FAQs.")
+    question = (data.get("question") or "").strip()
+    answer = (data.get("answer") or "").strip()
+    if not question or not answer:
+        raise HTTPException(status_code=400, detail="question y answer son obligatorios.")
+    category = (data.get("category") or "General").strip()
+    sort_order = int(data.get("sort_order", 0))
+    new_id = await db.pool.fetchval(
+        "INSERT INTO clinic_faqs (tenant_id, category, question, answer, sort_order) VALUES ($1, $2, $3, $4, $5) RETURNING id",
+        tenant_id, category, question, answer, sort_order
+    )
+    return {"id": new_id, "status": "created"}
+
+@router.put("/faqs/{faq_id}", tags=["FAQs"], summary="Actualizar una FAQ")
+async def update_faq(faq_id: int, data: Dict[str, Any], user_data=Depends(verify_admin_token)):
+    """Actualiza una FAQ existente."""
+    if user_data.role != 'ceo':
+        raise HTTPException(status_code=403, detail="Solo el CEO puede gestionar FAQs.")
+    row = await db.pool.fetchrow("SELECT tenant_id FROM clinic_faqs WHERE id = $1", faq_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="FAQ no encontrada.")
+    updates = []
+    params = []
+    for field in ("category", "question", "answer"):
+        if field in data and data[field] is not None:
+            params.append(str(data[field]).strip())
+            updates.append(f"{field} = ${len(params)}")
+    if "sort_order" in data:
+        params.append(int(data["sort_order"]))
+        updates.append(f"sort_order = ${len(params)}")
+    if not updates:
+        return {"status": "no_changes"}
+    updates.append("updated_at = NOW()")
+    params.append(faq_id)
+    query = f"UPDATE clinic_faqs SET {', '.join(updates)} WHERE id = ${len(params)}"
+    await db.pool.execute(query, *params)
+    return {"status": "updated"}
+
+@router.delete("/faqs/{faq_id}", tags=["FAQs"], summary="Eliminar una FAQ")
+async def delete_faq(faq_id: int, user_data=Depends(verify_admin_token)):
+    """Elimina una FAQ."""
+    if user_data.role != 'ceo':
+        raise HTTPException(status_code=403, detail="Solo el CEO puede gestionar FAQs.")
+    await db.pool.execute("DELETE FROM clinic_faqs WHERE id = $1", faq_id)
     return {"status": "deleted"}
 
 @router.get("/chat/urgencies", dependencies=[Depends(verify_admin_token)], tags=["Chat"], summary="Listar urgencias recientes detectadas")
