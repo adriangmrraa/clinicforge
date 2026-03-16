@@ -28,3 +28,4 @@ python-multipart
 pyjwt
 email-validator
 pytz
+jinja2

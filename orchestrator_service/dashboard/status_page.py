@@ -7,18 +7,24 @@ from datetime import datetime
 from typing import Dict, Any
 from fastapi import APIRouter, Request, Depends, HTTPException
 from fastapi.responses import HTMLResponse
-from fastapi.templating import Jinja2Templates
 import os
 
 from .auth_integrated import ceo_access_required, ceo_api_access, get_current_user
 
 logger = logging.getLogger(__name__)
 
-# Configurar templates
+# Configurar templates (lazy init para no requerir jinja2 al importar solo fetch_dashboard_metrics)
 templates_dir = os.path.join(os.path.dirname(__file__), "templates")
 os.makedirs(templates_dir, exist_ok=True)
 
-templates = Jinja2Templates(directory=templates_dir)
+_templates = None
+
+def get_templates():
+    global _templates
+    if _templates is None:
+        from fastapi.templating import Jinja2Templates
+        _templates = Jinja2Templates(directory=templates_dir)
+    return _templates
 
 # Crear router para el dashboard
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
@@ -107,7 +113,7 @@ async def status_dashboard(
             "days": days
         }
         
-        return templates.TemplateResponse("status_simple.html", context)
+        return get_templates().TemplateResponse("status_simple.html", context)
         
     except Exception as e:
         logger.error(f"❌ Error generando dashboard: {e}")
