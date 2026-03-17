@@ -21,8 +21,13 @@ def get_url() -> str:
     Alembic usa SQLAlchemy sincrónico, por eso reemplazamos el driver asyncpg.
     """
     dsn = os.getenv("POSTGRES_DSN", "")
-    # asyncpg no es compatible con SQLAlchemy sincrónico de Alembic
-    return dsn.replace("postgresql+asyncpg://", "postgresql://").replace("postgresql+asyncpg", "postgresql")
+    # Normalizar el esquema de la URL para SQLAlchemy sincrónico:
+    # - postgresql+asyncpg:// → postgresql://  (FastAPI async driver)
+    # - postgres://           → postgresql://  (formato corto usado por algunos providers)
+    dsn = dsn.replace("postgresql+asyncpg://", "postgresql://")
+    if dsn.startswith("postgres://"):
+        dsn = dsn.replace("postgres://", "postgresql://", 1)
+    return dsn
 
 
 def run_migrations_offline() -> None:
