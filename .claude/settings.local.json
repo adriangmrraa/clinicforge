@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -r \"tenants\\\\.\\\\\\(address\\\\|google_maps_url\\\\|working_hours\\\\\\)\" 'C:\\\\Users\\\\Asus\\\\Documents\\\\estabilizacion\\\\Laura Delgado\\\\clinicforge\\\\orchestrator_service' --include=*.py)"
+    ]
+  }
+}
