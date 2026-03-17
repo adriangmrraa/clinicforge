@@ -1,7 +1,7 @@
 import axios, { type AxiosInstance, type AxiosError, type AxiosRequestConfig, type InternalAxiosRequestConfig } from 'axios';
 import { getEnv } from '../utils/env';
 
-const API_URL = getEnv('VITE_API_URL') || 'http://localhost:8000';
+const API_URL = getEnv('VITE_API_URL') || 'http://localhost:3000';
 export const BACKEND_URL = API_URL;
 const MAX_RETRIES = 3;
 const BASE_DELAY = 1000;
@@ -70,26 +70,17 @@ const api: AxiosInstance = axios.create({
 // Request interceptor: agregar token y X-Tenant-ID
 api.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
-    // 1. Get Infrastructure token from localStorage
-    let adminToken = localStorage.getItem('ADMIN_TOKEN');
+    // 1. Infrastructure token: SIEMPRE desde env (nunca cacheado en localStorage)
+    // Prioridad: window.__ENV__ (runtime Docker) → import.meta.env (build Vite) → localStorage (legado)
+    const envToken = getEnv('VITE_ADMIN_TOKEN');
+    let adminToken: string | null = null;
 
-    // Self-healing: clear polluted storage from previous versions
-    if (adminToken === 'RUNTIME_REPLACE') {
-      import.meta.env.DEV && console.warn('🚨 Corrupt ADMIN_TOKEN detected in localStorage. Clearing...');
-      localStorage.removeItem('ADMIN_TOKEN');
-      adminToken = null;
-    }
-
-    // Auto-init for Admin Token (Compatibility)
-    if (!adminToken || adminToken === 'RUNTIME_REPLACE') {
-      const envToken = getEnv('VITE_ADMIN_TOKEN');
-      if (envToken && envToken !== 'RUNTIME_REPLACE') {
-        localStorage.setItem('ADMIN_TOKEN', envToken);
-        adminToken = envToken;
-      } else if (envToken === 'RUNTIME_REPLACE') {
-        console.error('🚨 VITE_ADMIN_TOKEN is still "RUNTIME_REPLACE" in the environment! Check your deployment configuration.');
-        adminToken = null; // NEVER send RUNTIME_REPLACE
-      }
+    if (envToken && envToken !== 'RUNTIME_REPLACE' && envToken.length > 0) {
+      adminToken = envToken;
+    } else {
+      // Fallback legado: leer de localStorage por compatibilidad con versiones anteriores
+      adminToken = localStorage.getItem('ADMIN_TOKEN');
+      if (adminToken === 'RUNTIME_REPLACE') adminToken = null;
     }
 
     if (config.headers) {
@@ -169,27 +160,27 @@ api.interceptors.response.use(
     if (status === 401) {
       const errorData = error.response?.data as any;
       const errorDetail = errorData?.detail || errorData?.error || '';
-      const isAdminTokenError = errorDetail.includes('X-Admin-Token') || 
-                                errorDetail.includes('admin_token') ||
-                                errorDetail.includes('infraestructura');
-      
+      const isAdminTokenError = errorDetail.includes('X-Admin-Token') ||
+        errorDetail.includes('admin_token') ||
+        errorDetail.includes('infraestructura');
+
       if (isAdminTokenError) {
         console.warn('[API] 🔧 ADMIN_TOKEN error detectado - Intentando autoreparación');
-        
+
         // 1. Obtener token del entorno (VITE_ADMIN_TOKEN)
         const envToken = import.meta.env.VITE_ADMIN_TOKEN;
-        
+
         // 2. Si hay token en entorno Y no está en localStorage, restaurarlo
         if (envToken && envToken !== 'RUNTIME_REPLACE' && envToken.length > 10) {
           console.log('[API] 🔄 Restaurando ADMIN_TOKEN desde variables de entorno');
           localStorage.setItem('ADMIN_TOKEN', envToken);
-          
+
           // 3. Reintentar la request inmediatamente con nuevo token
           if (originalConfig && retryCount <= MAX_RETRIES) {
             originalConfig._retryCount = retryCount;
             const delayMs = 100; // Retry rápido
             console.log(`[API] 🔁 Reintentando request con token restaurado`);
-            
+
             await delay(delayMs);
             return api(originalConfig);
           }

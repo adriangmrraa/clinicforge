@@ -9,7 +9,9 @@ Ejecución disciplinada de cambios técnicos. **Pre-requisito:** Tener un `.spec
 ## Stack de Referencia (ClinicForge)
 - **Backend:** `orchestrator_service/` — FastAPI + LangChain + asyncpg + Socket.IO
 - **Frontend:** `frontend_react/src/` — React 18 + TypeScript + Vite + Tailwind + FullCalendar
-- **DB Migrations:** `orchestrator_service/db.py` (Maintenance Robot — parches idempotentes en startup)
+- **BFF Service:** `bff_service/` — Express proxy (Frontend :4173 → BFF :3000 → Orchestrator :8000)
+- **DB Migrations:** `orchestrator_service/alembic/` (Alembic — migraciones versionadas en startup)
+- **ORM Models:** `orchestrator_service/models.py` (30 clases SQLAlchemy)
 - **Infra:** Docker Compose (`docker-compose.yml`) / EasyPanel
 
 ---
@@ -17,14 +19,22 @@ Ejecución disciplinada de cambios técnicos. **Pre-requisito:** Tener un `.spec
 ## Orden de Ejecución
 
 ### 1. Backend — DB (si hay cambios de esquema)
-- **Regla:** Añadir parche idempotente al final de `db.py` (Maintenance Robot). Nunca SQL manual.
+- **Regla:** Crear migración Alembic en `orchestrator_service/alembic/versions/`. Nunca SQL manual.
 - **Patrón:**
-  ```sql
-  DO $$ BEGIN
-    ALTER TABLE patients ADD COLUMN IF NOT EXISTS medical_history JSONB;
-  EXCEPTION WHEN others THEN NULL; END $$;
+  ```bash
+  # Desde orchestrator_service/
+  alembic revision -m "add medical_history to patients"
   ```
-- **Idempotencia:** Siempre usar `IF NOT EXISTS`, `IF EXISTS`, `ON CONFLICT DO NOTHING`.
+  ```python
+  # En el archivo de migración generado:
+  def upgrade():
+      op.add_column('patients', sa.Column('medical_history', sa.JSON(), nullable=True))
+
+  def downgrade():
+      op.drop_column('patients', 'medical_history')
+  ```
+- **Modelos ORM:** Actualizar `models.py` para reflejar el cambio.
+- **Aplicar:** `alembic upgrade head` (automático en startup vía `start.sh`).
 
 ### 2. Backend — Nuevas Tools del Agente (`main.py`)
 - Definir la función con `@tool` y su docstring completo (el agente lee el docstring para decidir cuándo usarla).
@@ -83,7 +93,7 @@ Ejecución disciplinada de cambios técnicos. **Pre-requisito:** Tener un `.spec
 | Crear/editar sistema prompt | ¿No hay `¿` ni `¡`? ¿El flujo de pasos 1-8 es coherente? |
 | Modificar Layout/contenedor UI | ¿Se preserva Scroll Isolation? |
 | Añadir texto visible en React | ¿Está en los 3 archivos de locales? |
-| Añadir parche de DB | ¿Es idempotente (`IF NOT EXISTS`)? |
+| Crear migración Alembic | ¿Tiene `upgrade()` y `downgrade()`? ¿Se actualizó `models.py`? |
 
 ---
 

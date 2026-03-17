@@ -29,3 +29,5 @@ pyjwt
 email-validator
 pytz
 jinja2
+alembic
+psycopg2-binary

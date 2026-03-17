@@ -1,22 +1,26 @@
 ---
 name: "Sovereign Backend Engineer"
-description: "v8.0: Senior Backend Architect & Python Expert. Lógica JIT v2, multi-tenancy y evolución idempotente."
-trigger: "v8.0, backend, JIT, tenancy, idempotencia, tools"
+description: "v8.1: Senior Backend Architect & Python Expert. Lógica JIT v2, multi-tenancy, Alembic migrations y BFF service."
+trigger: "v8.1, backend, JIT, tenancy, alembic, migrations, bff, tools"
 scope: "BACKEND"
 auto-invoke: true
 ---
 
-# Sovereign Backend Engineer - Dentalogic
+# Sovereign Backend Engineer - Dentalogic v8.1
 
-# Sovereign Backend Engineer - Dentalogic
+## 1. Evolución de Datos & Migraciones (Alembic)
+**REGLA DE ORO**: Nunca proporciones o ejecutes SQL directo. Todo cambio de esquema pasa por Alembic.
+- **Alembic Pipeline**: Todo cambio estructural debe implementarse como una migración en `orchestrator_service/alembic/versions/`.
+- **Crear migración**: `alembic revision -m "descripción del cambio"` → editar el archivo generado con `op.add_column()`, `op.create_table()`, etc.
+- **Aplicar**: `alembic upgrade head` (se ejecuta automáticamente en startup vía `start.sh`).
+- **Modelos ORM**: Mantener sincronizados los modelos en `orchestrator_service/models.py` (30 clases SQLAlchemy).
+- **Baseline**: La migración `001_a1b2c3d4e5f6_full_baseline.py` cubre las 28+ tablas existentes.
 
-# Sovereign Backend Engineer - Dentalogic v8.0
-
-## 1. Evolución de Datos & Idempotencia (Maintenance Robot)
-**REGLA DE ORO**: Nunca proporciones o ejecutes SQL directo fuera del pipeline de migración.
-- **Evolution Pipeline**: Todo cambio estructural debe implementarse como un parche en `orchestrator_service/db.py`.
-- **Bloques DO $$**: Usar siempre bloques `DO $$` para garantizar que la migración sea idempotente (ej: `IF NOT EXISTS (SELECT 1 FROM information_schema.columns...)`).
-- **Foundation**: Si el parche es crítico para nuevos tenants, debe replicarse en `db/init/00x_schema.sql`.
+## 1b. BFF Service (Backend-for-Frontend)
+- **Arquitectura**: El frontend se comunica con el orchestrator a través del BFF service (`bff_service/`, puerto 3000).
+- **Flujo**: `Frontend (React :4173) → BFF (Express :3000) → Orchestrator (FastAPI :8000)`.
+- **Tecnología**: Node.js + Express + Axios (proxy reverso con manejo de CORS y timeout de 60s).
+- **Health check**: `GET /health` → `{ status: 'ok', service: 'bff-interface', mode: 'proxy' }`.
 
 ## 2. Multi-tenancy & Esquema Dental
 Es obligatorio el aislamiento estricto de datos:

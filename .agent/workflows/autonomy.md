@@ -13,7 +13,8 @@ Este workflow es la capa superior de orquestación que integra todo el ecosistem
 | Backend (orquestador) | FastAPI + LangChain + asyncpg + Socket.IO | `orchestrator_service/` |
 | Agent tools + System Prompt | LangChain tools, `build_system_prompt()` | `orchestrator_service/main.py` |
 | Admin API | FastAPI routes | `orchestrator_service/admin_routes.py` |
-| DB Migrations | Maintenance Robot (parches idempotentes startup) | `orchestrator_service/db.py` |
+| DB Migrations | Alembic (migraciones versionadas en startup) | `orchestrator_service/alembic/` |
+| BFF Service | Express proxy (Frontend → Orchestrator) | `bff_service/` |
 | Mensaje buffer + relay | Buffer 10s texto, 20s imagen | `services/buffer_task.py`, `services/relay.py` |
 | Frontend | React 18 + TypeScript + Vite + Tailwind | `frontend_react/src/` |
 | i18n | es/en/fr | `frontend_react/src/locales/*.json` |
@@ -52,7 +53,7 @@ El Motor de Autonomía transforma solicitudes vagas en software funcional siguie
 # Lee automáticamente todas las skills disponibles en .agent/skills/
 ```
 **Skills Críticas Verificadas:**
-- ✅ **Sovereign Backend Engineer**: Multi-tenancy, JIT logic, idempotent migrations
+- ✅ **Sovereign Backend Engineer**: Multi-tenancy, JIT logic, Alembic migrations, BFF service
 - ✅ **Nexus UI Architect**: Scroll Isolation, Mobile-First, DKG (Design Knowledge Graph)
 - ✅ **DB Schema Surgeon**: Evolución segura de esquemas, JSONB clínico
 - ✅ **Spec Architect**: Generación y validación de `.spec.md`
@@ -281,16 +282,19 @@ tenant_id = request.query_params.get('tenant_id')
 </div>
 ```
 
-### 3. Idempotencia en Migraciones DB
+### 3. Migraciones DB con Alembic
 
-**db.py:**
-```sql
--- ✅ CORRECTO: Idempotent migration
-ALTER TABLE IF EXISTS professionals
-  ADD COLUMN IF NOT EXISTS working_hours JSONB DEFAULT '{}';
+**orchestrator_service/alembic/versions/:**
+```python
+# ✅ CORRECTO: Migración Alembic versionada
+def upgrade():
+    op.add_column('professionals', sa.Column('working_hours', sa.JSON(), server_default='{}'))
 
--- ❌ INCORRECTO: Falla en segunda ejecución
-ALTER TABLE professionals ADD COLUMN working_hours JSONB;
+def downgrade():
+    op.drop_column('professionals', 'working_hours')
+
+# ❌ INCORRECTO: SQL directo fuera de Alembic
+# await db.pool.execute("ALTER TABLE professionals ADD COLUMN working_hours JSONB")
 ```
 
 ---

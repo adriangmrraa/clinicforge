@@ -8,11 +8,13 @@ Transforma requerimientos vagos en una especificación técnica rigurosa antes d
 
 ## Stack de Referencia (ClinicForge)
 - **Backend:** FastAPI + LangChain + asyncpg (`orchestrator_service/`)
-  - Core: `main.py` (agent tools, POST /chat), `admin_routes.py` (/admin/*), `auth_routes.py`, `db.py` (Maintenance Robot)
+  - Core: `main.py` (agent tools, POST /chat), `admin_routes.py` (/admin/*), `auth_routes.py`
   - Servicios: `services/buffer_task.py`, `services/relay.py`, `chatwoot_client.py`, `gcal_service.py`
+- **BFF Service:** Express proxy (`bff_service/`) — Frontend → BFF :3000 → Orchestrator :8000
 - **Frontend:** React 18 + TypeScript + Vite + Tailwind (`frontend_react/src/`)
   - Vistas: `views/` | Componentes: `components/` | i18n: `locales/es.json`, `en.json`, `fr.json`
-- **DB:** PostgreSQL — cambios vía parches idempotentes en `db.py` (`DO $$ ... END $$`)
+- **DB:** PostgreSQL — cambios vía migraciones Alembic en `orchestrator_service/alembic/versions/`
+- **ORM:** SQLAlchemy models en `orchestrator_service/models.py`
 - **Infra:** Docker Compose / EasyPanel
 
 ## Pasos
@@ -55,7 +57,7 @@ Guardar en `specs/YYYY-MM-DD_nombre-feature.spec.md` siguiendo la **Plantilla Ma
 - **Backend:** [Archivos exactos + líneas de referencia si aplica]
 - **Frontend:** [Componentes o vistas afectadas]
 - **API:** [Endpoints nuevos o modificados — método, ruta, auth requerida]
-- **DB:** [Parche SQL idempotente en db.py si aplica]
+- **DB:** [Migración Alembic si aplica — actualizar también models.py]
 
 ## 5. Criterios de Aceptación (Gherkin)
 - **Escenario N:**
@@ -78,7 +80,7 @@ Guardar en `specs/YYYY-MM-DD_nombre-feature.spec.md` siguiendo la **Plantilla Ma
 - **Backend SQL:** Toda query nueva incluye `WHERE tenant_id = $x`
 - **Frontend:** Scroll Isolation — contenedor padre `h-screen overflow-hidden`, área de contenido `flex-1 min-h-0 overflow-y-auto`
 - **Nuevos endpoints:** Validation por JWT + `X-Admin-Token`; `tenant_id` desde JWT, nunca desde query params
-- **Cambios de DB:** Parches en `db.py` con `DO $$ BEGIN ... EXCEPTION WHEN ... END $$` (idempotentes)
+- **Cambios de DB:** Migraciones Alembic en `orchestrator_service/alembic/versions/` con `upgrade()` y `downgrade()`. Actualizar `models.py`.
 - **Texto visible:** Usar `t('namespace.key')` con keys en `es.json`, `en.json` y `fr.json`
 
 ### 5. REGLA DE ORO DE EJECUCIÓN

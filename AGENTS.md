@@ -9,7 +9,7 @@ Este documento es el manual de instrucciones definitivo para cualquier IA o desa
 ### 📡 Core Intelligence (Orchestrator) - `orchestrator_service`
 El cerebro central. Gestiona el agente LangChain, la memoria y la base de datos.
 - **Seguridad de Triple Capa:** JWT para identidad, `X-Admin-Token` para infraestructura, y estado `pending` para nuevos registros.
-- **Maintenance Robot (db.py):** Sistema de auto-curación de base de datos. Los parches PL/pgSQL se ejecutan en cada arranque para asegurar el esquema.
+- **Alembic Migrations (`alembic/`):** Sistema de versionado de esquema de base de datos. Las migraciones se ejecutan en cada arranque vía `start.sh` (`alembic upgrade head`). Modelos ORM en `models.py` (30 clases SQLAlchemy).
 - **WebSocket / Socket.IO:** Sincronización en tiempo real de la agenda.
 
 > [!IMPORTANT]
@@ -42,8 +42,8 @@ Maneja la integración con YCloud y la IA de audio (Whisper).
 - **`check_availability` / `book_appointment`:** Si `calendar_provider == 'google'` → usan `gcal_service` y eventos GCal; si `'local'` → solo consultas SQL a `appointments` (y bloques locales). Siempre filtro por `tenant_id`.
 - La IA usa la API Key global (env) para razonamiento; los datos de turnos están aislados por clínica.
 
-- **Parches 12–15 (idempotentes):** Añaden `tenant_id` + índice en `professionals`, `appointments`, `treatment_types`, `chat_messages`; en `appointments` aseguran columnas `source` y `google_calendar_event_id`. **Parches 12d/12e:** añaden `phone_number` y `specialty` a `professionals` si no existen. Usan bloques `DO $$ BEGIN ... END $$` para no romper datos existentes.
-- **Transaction Isolation (v8.1):** Los parches y el Foundation se ejecutan en **sesiones aisladas** del pool para evitar errores de pre-compilación de scripts largos (prepared statement errors).
+- **Migraciones Alembic (v8.1):** El esquema completo está cubierto por la migración baseline `001_a1b2c3d4e5f6_full_baseline.py` (28+ tablas). Nuevos cambios se crean con `alembic revision -m "descripción"`. El antiguo sistema de parches DO $$ en `db.py` fue removido.
+- **BFF Service (v8.1):** Proxy Express en `bff_service/` (puerto 3000) que media entre el frontend React y el orchestrator FastAPI. Manejo de CORS, timeout de 60s y health checks.
 
 ---
 
@@ -89,9 +89,9 @@ Maneja la integración con YCloud y la IA de audio (Whisper).
 | **Sovereign Backend Engineer** | *v8.0, JIT, API* | v8.0: Senior Backend Architect. Experto en lógica de negocio, JIT v2 y multi-tenancy. |
 | **Nexus UI Developer** | *React, Frontend* | Especialista en interfaces dinámicas, reordering en tiempo real y Socket.IO. |
 | **Prompt Architect** | *Identity, Persona* | Mantenimiento de la identidad (Dra. Laura Delgado) y tono rioplatense. |
-| **DB Schema Surgeon** | *v8.0, Idempotent* | v8.0: Database & Persistence Master. Gestión de evolución segura y JSONB clínico. |
-| **Maintenance Robot Architect**| *db.py, miguel* | Arquitecto de evolución de base de datos segura y self-healing. |
+| **DB Schema Surgeon** | *v8.1, Alembic, ORM* | v8.1: Database & Persistence Master. Alembic migrations, modelos SQLAlchemy y JSONB clínico. |
+| **Alembic Migration Architect**| *alembic, migrations* | Arquitecto de migraciones de base de datos con Alembic y modelos ORM. |
 | **Mobile Adaptation Architect**| *v8.0, DKG* | v8.0: Senior UI/UX Architect. Especialista en Blueprint Universal y Scroll Isolation. |
 
 ---
-*Actualizado: 2026-03-13 - Protocolo Platinum Resilience v7.6 (Cerebro Híbrido, Chats por clínica, connect-sovereign; registro con sede, Personal Activo → modal Editar Perfil/Vincular a sede, parches 12d/12e; i18n es/en/fr, idioma por defecto español, agente agnóstico con nombre clínica inyectado y detección idioma del mensaje)*
+*Actualizado: 2026-03-17 - v8.1: Alembic migrations (reemplaza Maintenance Robot), BFF Service activo, modelos ORM SQLAlchemy en models.py. Cerebro Híbrido, Chats por clínica, connect-sovereign; i18n es/en/fr, agente agnóstico con detección idioma del mensaje.*

@@ -184,14 +184,16 @@ ClinicForge uses a **Sovereign Microservices Architecture**, designed to scale w
 | Component | Technology |
 |------------|------------|
 | **Orchestrator** | FastAPI (Python 3.11+) – central brain, LangChain agent, Socket.IO server |
+| **BFF Service** | Express + Axios (Node.js) – reverse proxy between Frontend and Orchestrator |
 | **Add-ons** | Pydantic, Uvicorn (ASGI) |
-| **Microservices** | `orchestrator_service`: main API, agent, calendar, tenants, auth, **relay (buffer)**; `whatsapp_service`: YCloud relay, Whisper transcription |
+| **Microservices** | `orchestrator_service`: main API, agent, calendar, tenants, auth, **relay (buffer)**; `bff_service`: Express proxy (CORS, timeout 60s); `whatsapp_service`: YCloud relay, Whisper transcription |
 
 ### 🗄️ Infrastructure & Persistence
 
 | Layer | Technology |
 |-------|------------|
 | **Database** | PostgreSQL (clinical records, patients, appointments, tenants, professionals, Meta Ads attribution) |
+| **ORM & Migrations** | SQLAlchemy 2.0 (30 model classes) + **Alembic** (versioned schema migrations, auto-run on startup) |
 | **Cache / Locks** | Redis (deduplication, context, Meta Ads enrichment cache) |
 | **Containers** | Docker & Docker Compose |
 | **Deployment** | EasyPanel, Render, AWS ECS compatible |
@@ -326,7 +328,13 @@ ClinicForge/
 │   ├── main.py                   # App, /chat, /health, Socket.IO, LangChain agent & tools
 │   ├── admin_routes.py           # /admin/* (patients, appointments, marketing, health, etc.)
 │   ├── auth_routes.py            # /auth/* (clinics, register, login, me, profile)
-│   ├── db.py                     # Pool + Maintenance Robot (idempotent patches)
+│   ├── db.py                     # Async connection pool (asyncpg)
+│   ├── models.py                 # SQLAlchemy ORM models (30 classes)
+│   ├── alembic.ini               # Alembic configuration
+│   ├── alembic/                  # Database migrations
+│   │   ├── env.py                # DSN normalization (asyncpg → psycopg2)
+│   │   └── versions/             # Migration scripts (baseline + incremental)
+│   ├── start.sh                  # Startup: alembic upgrade head → uvicorn
 │   ├── gcal_service.py           # Google Calendar (hybrid calendar)
 │   ├── analytics_service.py      # Professional metrics
 │   ├── core/
@@ -342,6 +350,11 @@ ClinicForge/
 │   ├── scripts/
 │   │   └── check_meta_health.py  # Meta Ads health check (CLI + API)
 │   └── requirements.txt
+├── 📂 bff_service/               # Backend-for-Frontend (Express proxy)
+│   ├── src/index.ts              # Reverse proxy: Frontend → Orchestrator
+│   ├── package.json              # Express, Axios, CORS
+│   ├── tsconfig.json
+│   └── Dockerfile
 ├── 📂 whatsapp_service/          # YCloud relay & Whisper
 │   ├── main.py
 │   ├── ycloud_client.py          # Unified WhatsApp messaging client
@@ -354,8 +367,8 @@ ClinicForge/
 │   ├── meta_ads_audit_*.md       # Pre-deployment audit reports
 │   ├── API_REFERENCE.md          # Full API contract
 │   └── ...
-├── 📂 db/init/                   # dentalogic_schema.sql
-├── docker-compose.yml            # Local stack
+├── 📂 db/init/                   # Legacy schema (baseline now in Alembic)
+├── docker-compose.yml            # Local stack (orchestrator + bff + whatsapp + postgres + redis)
 ├── .gitignore
 └── README.md                     # This file
 ```
@@ -408,10 +421,11 @@ docker-compose up -d --build
 | Service | URL | Purpose |
 |---------|-----|---------|
 | **Orchestrator** | `http://localhost:8000` | Core API & agent |
+| **BFF Service** | `http://localhost:3000` | Express proxy (Frontend gateway) |
 | **Swagger UI** | `http://localhost:8000/docs` | OpenAPI contract; test with JWT + X-Admin-Token |
 | **ReDoc / OpenAPI** | `http://localhost:8000/redoc`, `/openapi.json` | Read-only docs and JSON schema |
 | **WhatsApp Service** | `http://localhost:8002` | YCloud relay & Whisper |
-| **Operations Center** | `http://localhost:5173` | React UI (ES/EN/FR) |
+| **Operations Center** | `http://localhost:4173` | React UI (ES/EN/FR) via BFF |
 
 ---
 
@@ -437,7 +451,7 @@ docker-compose up -d --build
 
 ## 🤝 Contributing
 
-Development follows the project's SDD workflows (specify → plan → implement) and **AGENTS.md** (sovereignty rules, scroll isolation, auth). For documentation changes, use the **Non-Destructive Fusion** protocol (see [update-docs](.agent/workflows/update-docs.md)). Do not run SQL directly; propose commands for the maintainer to run.
+Development follows the project's SDD workflows (specify → plan → implement) and **AGENTS.md** (sovereignty rules, scroll isolation, auth). For documentation changes, use the **Non-Destructive Fusion** protocol (see [update-docs](.agent/workflows/update-docs.md)). Database changes must go through **Alembic migrations** (`alembic revision -m "..."`) — never run SQL directly. Update `models.py` ORM classes alongside every migration.
 
 ---
 
