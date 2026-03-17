@@ -1,62 +1,105 @@
 ---
-name: Maintenance Robot Architect
-description: Especialista en la actualización del sistema de auto-migración "Maintenance Robot" en orchestrator_service/db.py.
+name: Alembic Migration Architect
+description: Especialista en la gestión de migraciones de base de datos con Alembic y modelos ORM SQLAlchemy en orchestrator_service.
 ---
 
-# Maintenance Robot Architect
+# Alembic Migration Architect
 
-Este Skill instruye al agente sobre cómo modificar, extender y mantener el sistema de inicialización y evolución de base de datos automatizado, conocido como "Maintenance Robot". Dicho sistema reside en `orchestrator_service/db.py`.
+Este Skill instruye al agente sobre cómo crear, extender y mantener el sistema de migraciones de base de datos con **Alembic**, que reemplaza al antiguo "Maintenance Robot". Las migraciones residen en `orchestrator_service/alembic/`.
 
 ## Propósito
 
 Asegurar que **CADA NUEVO DESPLIEGUE** en un entorno limpio nazca funcional y que las **BASES EXISTENTES** se actualicen sin intervención humana:
-1.  **Foundation**: Creación de tablas base si no existen.
-2.  **Evolution**: Aplicación de parches quirúrgicos para nuevas features.
-3.  **Idempotencia**: Garantizar que el servicio pueda reiniciar infinitas veces sin errores.
+1.  **Baseline**: Migración `001_a1b2c3d4e5f6_full_baseline.py` crea todas las tablas si no existen.
+2.  **Evolution**: Nuevas migraciones incrementales para features y cambios de esquema.
+3.  **Startup automático**: `start.sh` ejecuta `alembic upgrade head` en cada arranque.
 
-## Reglas de Oro (Protocolo Omega)
+## Reglas de Oro
 
-1.  **Idempotencia Absoluta**:
-    *   Toda alteración de columna o tabla debe usar bloques `DO $$ ... END $$` con cláusulas `IF NOT EXISTS` sobre `information_schema`.
-    *   NUNCA uses `ALTER TABLE` directo sin verificación previa en el parche.
+1.  **Nunca SQL directo**:
+    *   Todo cambio de esquema se crea como migración Alembic.
+    *   Nunca ejecutar `ALTER TABLE` fuera del pipeline de migraciones.
 
 2.  **Ubicación de la Lógica**:
-    *   La evolución vive en el método `_run_evolution_pipeline` de `db.py`.
-    *   Los parches se agregan como strings SQL a la lista `patches`.
+    *   Configuración: `orchestrator_service/alembic.ini` y `alembic/env.py`.
+    *   Migraciones: `orchestrator_service/alembic/versions/`.
+    *   Modelos ORM: `orchestrator_service/models.py` (30 clases SQLAlchemy).
 
-3.  **No Modificar Patches Antiguos**:
-    *   Los parches son históricos. Agrega siempre al final de la lista.
-    *   Solo se modifican si rompen el arranque por error de sintaxis grave.
+3.  **No Modificar Migraciones Antiguas**:
+    *   Las migraciones son históricas e inmutables.
+    *   Siempre crear una nueva migración para cambios adicionales.
 
-4.  **Smart SQL Splitting**:
-    *   El motor en `db.py` ya maneja el split por `;` respetando bloques `$$`. 
-    *   Asegúrate de que cada parche termine en `;` y use `$$` para envolver bloques anónimos.
+4.  **DSN Normalization**:
+    *   `env.py` convierte `postgresql+asyncpg://` (FastAPI async) a `postgresql://` (Alembic sync).
+    *   Pool: `NullPool` para compatibilidad con Alembic.
 
-5.  **Aislamiento de Sesión (v8.1)**:
-    *   Para scripts largos o con múltiples `;`, usa sesiones aisladas (`pool.acquire()`) por bloque para evitar errores de canal o de "prepared statement".
+5.  **Sincronización de Modelos**:
+    *   Tras crear una migración, actualizar `models.py` para que refleje el estado actual del esquema.
 
 ## Guía de Implementación
 
 ### 1. Agregar una nueva columna/feature
-Cuando el código requiera un cambio en la BD, añade un parche a la lista en `db.py`:
 
-```python
-    # Parche N: [Descripción]
-    """
-    DO $$ 
-    BEGIN 
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='appointments' AND column_name='ai_notes') THEN
-            ALTER TABLE appointments ADD COLUMN ai_notes TEXT;
-        END IF;
-    END $$;
-    """
+```bash
+# Desde orchestrator_service/
+alembic revision -m "add ai_notes column to appointments"
 ```
 
-### 2. Sincronización del Foundation
-Si el cambio es permanente para nuevos usuarios, actualiza también `db/init/dentalogic_schema.sql` y corre `./sync-schema.ps1` para que las nuevas instalaciones tengan la estructura final desde el inicio.
+Editar el archivo generado en `alembic/versions/`:
+
+```python
+def upgrade():
+    op.add_column('appointments', sa.Column('ai_notes', sa.Text(), nullable=True))
+
+def downgrade():
+    op.drop_column('appointments', 'ai_notes')
+```
+
+Actualizar `models.py`:
+```python
+class Appointment(Base):
+    __tablename__ = 'appointments'
+    # ... campos existentes ...
+    ai_notes = Column(Text, nullable=True)  # NUEVO
+```
+
+### 2. Crear una nueva tabla
+
+```python
+def upgrade():
+    op.create_table(
+        'new_table',
+        sa.Column('id', sa.Integer(), primary_key=True),
+        sa.Column('tenant_id', sa.Integer(), sa.ForeignKey('tenants.id'), nullable=False),
+        sa.Column('name', sa.String(255), nullable=False),
+    )
+    op.create_index('ix_new_table_tenant_id', 'new_table', ['tenant_id'])
+
+def downgrade():
+    op.drop_table('new_table')
+```
+
+### 3. Aplicar migraciones
+
+```bash
+# Aplicar todas las migraciones pendientes
+alembic upgrade head
+
+# Ver estado actual
+alembic current
+
+# Ver historial
+alembic history
+```
 
 ## Casos de Uso
-- **Nuevas Tablas**: Usar `CREATE TABLE IF NOT EXISTS`.
-- **Nuevos Índices**: Usar `CREATE INDEX IF NOT EXISTS`.
-- **Nuevas Columnas**: Usar el bloque `DO` con el `ALTER TABLE` interno.
-- **Seeds de Configuración**: Usar `INSERT ... ON CONFLICT DO NOTHING`.
+- **Nuevas Tablas**: `op.create_table(...)` con `tenant_id` obligatorio.
+- **Nuevos Índices**: `op.create_index(...)`.
+- **Nuevas Columnas**: `op.add_column(...)`.
+- **Seeds de Configuración**: Usar `op.execute("INSERT ... ON CONFLICT DO NOTHING")`.
+
+## Startup Flow (start.sh)
+1. Verifica si la BD tiene tabla `alembic_version`.
+2. Si la BD existe pero no tiene `alembic_version`: `alembic stamp head` (marca como actualizada).
+3. Si es nueva o tiene migraciones pendientes: `alembic upgrade head`.
+4. Arranca uvicorn.

@@ -1,22 +1,20 @@
 ---
 name: "DB Schema Surgeon"
-description: "v8.0: Database & Persistence Master. Gestión de evolución segura, parches idempotentes y JSONB clínico."
-trigger: "v8.0, sql, idempotent, schema, migration, database"
+description: "v8.1: Database & Persistence Master. Alembic migrations, modelos ORM SQLAlchemy y JSONB clínico."
+trigger: "v8.1, sql, alembic, schema, migration, database, orm, models"
 scope: "DATABASE"
 auto-invoke: true
 ---
 
-# DB Schema Surgeon - Dentalogic
+# Database & Persistence Master - Dentalogic v8.1
 
-# DB Schema Surgeon - Dentalogic
-
-# Database & Persistence Master - Dentalogic v8.0
-
-## 1. Evolución Segura e Idempotente (Maintenance Robot)
-**REGLA DE ORO**: Se prohíbe la ejecución de SQL directo fuera del Evolution Pipeline.
-- **Protocolo de Parches**: Todo cambio estructural debe realizarse mediante un parche asíncrono en `orchestrator_service/db.py`.
-- **Bloques DO $$**: Uso mandatorio de bloques `DO $$` con lógica de verificación (`IF NOT EXISTS`, `IF EXISTS`) para garantizar la estabilidad tras múltiples reinicios.
-- **Sincronización de Base**: Tras evolucionar el pipeline, se debe actualizar el archivo de cimiento `db/init/dentalogic_schema.sql` (o `001_schema.sql`) para nuevas instalaciones.
+## 1. Evolución Segura con Alembic
+**REGLA DE ORO**: Se prohíbe la ejecución de SQL directo. Todo cambio de esquema se gestiona vía Alembic.
+- **Pipeline de Migraciones**: Todo cambio estructural debe crearse como una migración Alembic en `orchestrator_service/alembic/versions/`.
+- **Crear migración**: `alembic revision -m "add column X to table Y"` → implementar `upgrade()` y `downgrade()`.
+- **Modelos ORM**: Actualizar siempre `orchestrator_service/models.py` (30 clases SQLAlchemy) para que refleje el estado actual del esquema.
+- **Baseline**: La migración `001_a1b2c3d4e5f6_full_baseline.py` usa `CREATE TABLE IF NOT EXISTS` para idempotencia en la instalación inicial.
+- **Startup automático**: `start.sh` detecta si la BD ya existe (`alembic stamp head`) o es nueva (`alembic upgrade head`).
 
 ## 2. Multi-tenancy & Aislamiento Legal
 - **Filtro tenant_id**: Todas las tablas core (`patients`, `professionals`, `appointments`, etc.) **DEBEN** incluir y filtrar por `tenant_id` en cada consulta de lectura o escritura.

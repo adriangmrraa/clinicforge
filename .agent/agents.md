@@ -9,7 +9,7 @@ Este archivo actúa como el índice maestro de capacidades para los Agentes Aut�
 |-------|------------------|---------------|
 | **[Backend_Sovereign](file:///c:/Users/Asus/Downloads/Clinica%20Dental/.agent/skills/Backend_Sovereign/SKILL.md)** | `backend`, `fastapi`, `db`, `auth` | Arquitectura, endpoints, seguridad y base de datos. |
 | **[Frontend_Nexus](file:///c:/Users/Asus/Downloads/Clinica%20Dental/.agent/skills/Frontend_Nexus/SKILL.md)** | `frontend`, `react`, `ui`, `hooks` | Componentes React, llamadas API, estado y estilos. |
-| **[DB_Evolution](file:///c:/Users/Asus/Downloads/Clinica%20Dental/.agent/skills/DB_Evolution/SKILL.md)** | `schema`, `migration`, `sql`, `rag` | Cambios en DB, gestión de vectores y migraciones. |
+| **[DB_Evolution](file:///c:/Users/Asus/Downloads/Clinica%20Dental/.agent/skills/DB_Evolution/SKILL.md)** | `schema`, `migration`, `alembic`, `orm` | Cambios en DB con Alembic, modelos ORM SQLAlchemy y JSONB clínico. |
 
 ## 💬 Communication & Integrations
 | Skill | Trigger Keywords | Uso Principal |
@@ -80,7 +80,13 @@ Cada clínica posee sus propias credenciales de IA encriptadas en la base de dat
   - `main.py`: FastAPI app y herramientas de la IA (Dental Tools).
   - `admin_routes.py`: Gestión de pacientes, profesionales y configuración de despliegue.
   - `gcal_service.py`: Integración real con Google Calendar (Service Account).
-  - `db.py`: Conector de base de datos asíncrono.
+  - `db.py`: Conector de base de datos asíncrono (asyncpg pool).
+  - `models.py`: Modelos ORM SQLAlchemy (30 clases).
+  - `alembic/`: Migraciones versionadas de base de datos.
+
+#### `/bff_service` - Backend-for-Frontend
+- **Responsabilidad**: Proxy reverso Express entre el frontend React y el orchestrator FastAPI.
+- **Características**: CORS handling, timeout 60s, health check en `/health`.
 
 #### `/whatsapp_service` - Canal WhatsApp
 - **Responsabilidad**: Recepción de webhooks de YCloud, validación de firmas y forwarding al orquestador.
@@ -109,10 +115,10 @@ Cada clínica posee sus propias credenciales de IA encriptadas en la base de dat
 | **[AI Behavior Architect](file:///C:/Users/Asus/Documents/estabilizacion/Laura Delgado/clinicforge/.agent/skills/Prompt_Architect/SKILL.md)** | `Cuando edite system prompts, plantillas de agentes o lógica de RAG.` | Ingeniería de prompts para los Agentes de Ventas, Soporte y Business Forge. |
 | **[Agent Configuration Architect](file:///C:/Users/Asus/Documents/estabilizacion/Laura Delgado/clinicforge/.agent/skills/Agent_Configuration_Architect/SKILL.md)** | `agents, agentes, AI, tools, templates, models, prompts, system prompt, wizard` | Especialista en configuración de agentes de IA: templates, tools, models, prompts y seed data. |
 | **[Credential Vault Specialist](file:///C:/Users/Asus/Documents/estabilizacion/Laura Delgado/clinicforge/.agent/skills/Credential_Vault_Specialist/SKILL.md)** | `credentials, credenciales, vault, api keys, tokens, encriptación, settings, sovereign` | Especialista en gestión segura de credenciales multi-tenant: encriptación, scope, categorías y The Vault. |
-| **[DB Schema Surgeon](file:///C:/Users/Asus/Documents/estabilizacion/Laura Delgado/clinicforge/.agent/skills/DB_Evolution/SKILL.md)** | `v8.0, sql, idempotent, schema, migration, database` | v8.0: Database & Persistence Master. Gestión de evolución segura, parches idempotentes y JSONB clínico. |
+| **[DB Schema Surgeon](file:///C:/Users/Asus/Documents/estabilizacion/Laura Delgado/clinicforge/.agent/skills/DB_Evolution/SKILL.md)** | `v8.1, sql, alembic, schema, migration, database, orm` | v8.1: Database & Persistence Master. Alembic migrations, modelos ORM SQLAlchemy y JSONB clínico. |
 | **[Deep Researcher](file:///C:/Users/Asus/Documents/estabilizacion/Laura Delgado/clinicforge/.agent/skills/Deep_Research/SKILL.md)** | `Antes de usar una librería nueva, al enfrentar un error desconocido, o cuando el usuario diga 'investiga esto'.` | Investiga documentación oficial y valida soluciones en internet antes de implementar. |
 | **[EasyPanel DevOps](file:///C:/Users/Asus/Documents/estabilizacion/Laura Delgado/clinicforge/.agent/skills/DevOps_EasyPanel/SKILL.md)** | `Cuando toque Dockerfile, docker-compose.yml o variables de entorno.` | Experto en Dockerización, Docker Compose y despliegue en EasyPanel. |
-| **[Maintenance Robot Architect](file:///C:/Users/Asus/Documents/estabilizacion/Laura Delgado/clinicforge/.agent/skills/Maintenance_Robot_Architect/SKILL.md)** | `N/A` | Especialista en la actualización del sistema de auto-migración "Maintenance Robot" en orchestrator_service/db.py. |
+| **[Alembic Migration Architect](file:///C:/Users/Asus/Documents/estabilizacion/Laura Delgado/clinicforge/.agent/skills/Maintenance_Robot_Architect/SKILL.md)** | `alembic, migrations, schema, models` | Especialista en migraciones de base de datos con Alembic y modelos ORM SQLAlchemy. |
 | **[Meta Integration Diplomat](file:///C:/Users/Asus/Documents/estabilizacion/Laura Delgado/clinicforge/.agent/skills/Meta_Integration_Diplomat/SKILL.md)** | `meta, facebook, instagram, whatsapp, oauth, integration, waba, pages` | Especialista en OAuth Meta (Facebook, Instagram, WhatsApp Business) y gestión de activos de negocio. |
 | **[Mobile_Adaptation_Architect](file:///C:/Users/Asus/Documents/estabilizacion/Laura Delgado/clinicforge/.agent/skills/Mobile_Adaptation_Architect/SKILL.md)** | `v8.0, mobile, responsive, isolation, DKG, adaptive` | v8.0: Senior UI/UX Architect. Especialista en Blueprint Universal, DKG y Scroll Isolation. |
 | **[Nexus QA Engineer](file:///C:/Users/Asus/Documents/estabilizacion/Laura Delgado/clinicforge/.agent/skills/Testing_Quality/SKILL.md)** | `Cuando pida crear tests, probar una feature o corregir bugs.` | Especialista en Pytest Asyncio y Vitest para arquitecturas aisladas. |
@@ -122,7 +128,7 @@ Cada clínica posee sus propias credenciales de IA encriptadas en la base de dat
 | **[Skill Synchronizer](file:///C:/Users/Asus/Documents/estabilizacion/Laura Delgado/clinicforge/.agent/skills/Skill_Sync/SKILL.md)** | `Después de crear o modificar una skill, o cuando el usuario diga 'sincronizar skills'.` | Lee los metadatos de todas las skills y actualiza el índice en AGENTS.md. |
 | **[Skill_Forge_Master](file:///C:/Users/Asus/Documents/estabilizacion/Laura Delgado/clinicforge/.agent/skills/Skill_Forge_Master/SKILL.md)** | `crear skill, nueva habilidad, skill architect, forge skill, capability, nueva skill` | Arquitecto y generador de Skills. Define, estructura y registra nuevas capacidades para el agente Antigravity. |
 | **[Smart Doc Keeper](file:///C:/Users/Asus/Documents/estabilizacion/Laura Delgado/clinicforge/.agent/skills/Doc_Keeper/SKILL.md)** | `Cuando el usuario diga 'actualiza la doc', 'documenta este cambio' o tras editar código importante.` | Actualiza documentación y skills usando el protocolo 'Non-Destructive Fusion'. Garantiza que el contenido previo se preserve. |
-| **[Sovereign Backend Engineer](file:///C:/Users/Asus/Documents/estabilizacion/Laura Delgado/clinicforge/.agent/skills/Backend_Sovereign/SKILL.md)** | `v8.0, backend, JIT, tenancy, idempotencia, tools` | v8.0: Senior Backend Architect & Python Expert. Lógica JIT v2, multi-tenancy y evolución idempotente. |
+| **[Sovereign Backend Engineer](file:///C:/Users/Asus/Documents/estabilizacion/Laura Delgado/clinicforge/.agent/skills/Backend_Sovereign/SKILL.md)** | `v8.1, backend, JIT, tenancy, alembic, bff, tools` | v8.1: Senior Backend Architect & Python Expert. Lógica JIT v2, multi-tenancy, Alembic migrations y BFF service. |
 | **[Sovereign Code Auditor](file:///C:/Users/Asus/Documents/estabilizacion/Laura Delgado/clinicforge/.agent/skills/Sovereign_Auditor/SKILL.md)** | `Antes de hacer commit, o cuando pida revisar seguridad o aislamiento.` | Experto en ciberseguridad y cumplimiento del Protocolo de Soberanía Nexus. |
 | **[Spec Architect](file:///C:/Users/Asus/Documents/estabilizacion/Laura Delgado/clinicforge/.agent/skills/Spec_Architect/SKILL.md)** | `Cuando el usuario diga 'crea una especificación', 'planifica esta feature' o use el comando '/specify'.` | Genera y valida archivos de especificación (.spec.md) siguiendo el estándar SDD v2.0. |
 | **[Template Transplant Specialist](file:///C:/Users/Asus/Documents/estabilizacion/Laura Delgado/clinicforge/.agent/skills/Template_Transplant_Specialist/SKILL.md)** | `N/A` | Extrae y distribuye instrucciones de un system prompt legacy en las capas correctas (Wizard, Tool Config, Sistema Interno). |
