@@ -14,16 +14,19 @@ services:
       timeout: 10s
       retries: 3
     depends_on:
-      - orchestrator_service
+      orchestrator_service:
+        condition: service_healthy
 
   frontend_react:
     build: ./frontend_react
     ports:
       - "4173:80"
     environment:
-      - VITE_API_BASE_URL=https://bff.pointcoach.shop # Logic needed here or baking in build
+      - VITE_API_URL=${VITE_API_URL:-http://localhost:3000}
+      - VITE_ADMIN_TOKEN=${ADMIN_TOKEN}
     depends_on:
-      - bff_service
+      bff_service:
+        condition: service_healthy
 
   # --- Existing Backend Services ---
 
@@ -40,6 +43,8 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - INTERNAL_API_TOKEN=${INTERNAL_API_TOKEN}
       - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS}
+      - ADMIN_TOKEN=${ADMIN_TOKEN}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
       interval: 30s
