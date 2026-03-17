@@ -57,10 +57,12 @@ class TokenTracker:
     def __init__(self, db_pool):
         self.db_pool = db_pool
         self.logger = logging.getLogger(__name__)
-        self._ensure_table()
-    
-    def _ensure_table(self):
+        self._table_ready = False
+
+    async def ensure_table(self):
         """Crea la tabla de tracking de tokens si no existe"""
+        if self._table_ready or not self.db_pool:
+            return
         create_table_sql = """
         CREATE TABLE IF NOT EXISTS token_usage (
             id SERIAL PRIMARY KEY,
@@ -75,35 +77,18 @@ class TokenTracker:
             tenant_id INTEGER NOT NULL,
             created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
         );
-        
         CREATE INDEX IF NOT EXISTS idx_token_usage_conversation ON token_usage(conversation_id);
         CREATE INDEX IF NOT EXISTS idx_token_usage_patient ON token_usage(patient_phone);
         CREATE INDEX IF NOT EXISTS idx_token_usage_timestamp ON token_usage(timestamp);
         CREATE INDEX IF NOT EXISTS idx_token_usage_tenant ON token_usage(tenant_id);
         """
-        
         try:
-            # Ejecutar en un thread ya que es operación bloqueante
-            import threading
-            def create_tables():
-                import asyncio
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                loop.run_until_complete(self._execute_create_tables(create_table_sql))
-                loop.close()
-            
-            thread = threading.Thread(target=create_tables)
-            thread.start()
-            thread.join(timeout=5)
-            
+            async with self.db_pool.acquire() as conn:
+                await conn.execute(create_table_sql)
+            self._table_ready = True
             self.logger.info("✅ Tabla de token_usage verificada/creada")
         except Exception as e:
             self.logger.error(f"❌ Error creando tabla token_usage: {e}")
-    
-    async def _execute_create_tables(self, sql):
-        """Ejecuta SQL de creación de tablas"""
-        async with self.db_pool.acquire() as conn:
-            await conn.execute(sql)
     
     def calculate_cost(self, model: str, input_tokens: int, output_tokens: int) -> Decimal:
         """Calcula costo en USD basado en tokens y modelo"""

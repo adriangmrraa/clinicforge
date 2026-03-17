@@ -17,10 +17,12 @@ class ConfigManager:
     def __init__(self, db_pool):
         self.db_pool = db_pool
         self.logger = logging.getLogger(__name__)
-        self._ensure_table()
-    
-    def _ensure_table(self):
-        """Crea la tabla de configuración si no existe"""
+        self._table_ready = False
+
+    async def ensure_table(self):
+        """Crea la tabla de configuración si no existe y carga defaults"""
+        if self._table_ready or not self.db_pool:
+            return
         create_table_sql = """
         CREATE TABLE IF NOT EXISTS system_config (
             id SERIAL PRIMARY KEY,
@@ -34,131 +36,36 @@ class ConfigManager:
             updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
             created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
         );
-        
         CREATE INDEX IF NOT EXISTS idx_system_config_key ON system_config(key);
         CREATE INDEX IF NOT EXISTS idx_system_config_category ON system_config(category);
         CREATE INDEX IF NOT EXISTS idx_system_config_tenant ON system_config(tenant_id);
         """
-        
         try:
-            # Ejecutar en un thread ya que es operación bloqueante
-            import threading
-            def create_tables():
-                import asyncio
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                loop.run_until_complete(self._execute_create_tables(create_table_sql))
-                loop.close()
-            
-            thread = threading.Thread(target=create_tables)
-            thread.start()
-            thread.join(timeout=5)
-            
+            async with self.db_pool.acquire() as conn:
+                await conn.execute(create_table_sql)
+            self._table_ready = True
             self.logger.info("✅ Tabla de system_config verificada/creada")
-            self._initialize_default_config()
+            await self._initialize_default_config()
         except Exception as e:
             self.logger.error(f"❌ Error creando tabla system_config: {e}")
-    
-    async def _execute_create_tables(self, sql):
-        """Ejecuta SQL de creación de tablas"""
-        async with self.db_pool.acquire() as conn:
-            await conn.execute(sql)
-    
-    def _initialize_default_config(self):
+
+    async def _initialize_default_config(self):
         """Inicializa configuración por defecto"""
         default_config = [
-            {
-                "key": "OPENAI_MODEL",
-                "value": "gpt-4o-mini",
-                "data_type": "string",
-                "description": "Modelo OpenAI a utilizar por el agente",
-                "category": "ai"
-            },
-            {
-                "key": "OPENAI_TEMPERATURE",
-                "value": "0.7",
-                "data_type": "float",
-                "description": "Temperatura para generación (0-2)",
-                "category": "ai"
-            },
-            {
-                "key": "MAX_TOKENS_PER_RESPONSE",
-                "value": "1000",
-                "data_type": "integer",
-                "description": "Máximo de tokens por respuesta",
-                "category": "ai"
-            },
-            {
-                "key": "ENABLE_TOKEN_TRACKING",
-                "value": "true",
-                "data_type": "boolean",
-                "description": "Habilitar tracking de tokens",
-                "category": "monitoring"
-            },
-            {
-                "key": "DAILY_TOKEN_LIMIT",
-                "value": "100000",
-                "data_type": "integer",
-                "description": "Límite diario de tokens (0 = ilimitado)",
-                "category": "limits"
-            },
-            {
-                "key": "ENABLE_ADVANCED_FEATURES",
-                "value": "false",
-                "data_type": "boolean",
-                "description": "Habilitar features avanzadas del sistema mejorado",
-                "category": "features"
-            },
-            {
-                "key": "RESPONSE_LANGUAGE",
-                "value": "es",
-                "data_type": "string",
-                "description": "Idioma por defecto para respuestas",
-                "category": "localization"
-            },
-            {
-                "key": "CLINIC_NAME",
-                "value": "Dra. María Laura Delgado",
-                "data_type": "string",
-                "description": "Nombre de la clínica",
-                "category": "clinic"
-            },
-            {
-                "key": "CLINIC_LOCATION",
-                "value": "Calle Córdoba 431, Neuquén Capital",
-                "data_type": "string",
-                "description": "Dirección de la clínica",
-                "category": "clinic"
-            },
-            {
-                "key": "BUSINESS_HOURS_START",
-                "value": "08:00",
-                "data_type": "string",
-                "description": "Hora de apertura",
-                "category": "clinic"
-            },
-            {
-                "key": "BUSINESS_HOURS_END",
-                "value": "19:00",
-                "data_type": "string",
-                "description": "Hora de cierre",
-                "category": "clinic"
-            }
+            {"key": "OPENAI_MODEL", "value": "gpt-4o-mini", "data_type": "string", "description": "Modelo OpenAI a utilizar por el agente", "category": "ai"},
+            {"key": "OPENAI_TEMPERATURE", "value": "0.7", "data_type": "float", "description": "Temperatura para generación (0-2)", "category": "ai"},
+            {"key": "MAX_TOKENS_PER_RESPONSE", "value": "1000", "data_type": "integer", "description": "Máximo de tokens por respuesta", "category": "ai"},
+            {"key": "ENABLE_TOKEN_TRACKING", "value": "true", "data_type": "boolean", "description": "Habilitar tracking de tokens", "category": "monitoring"},
+            {"key": "DAILY_TOKEN_LIMIT", "value": "100000", "data_type": "integer", "description": "Límite diario de tokens (0 = ilimitado)", "category": "limits"},
+            {"key": "ENABLE_ADVANCED_FEATURES", "value": "false", "data_type": "boolean", "description": "Habilitar features avanzadas del sistema mejorado", "category": "features"},
+            {"key": "RESPONSE_LANGUAGE", "value": "es", "data_type": "string", "description": "Idioma por defecto para respuestas", "category": "localization"},
+            {"key": "CLINIC_NAME", "value": "Dra. María Laura Delgado", "data_type": "string", "description": "Nombre de la clínica", "category": "clinic"},
+            {"key": "CLINIC_LOCATION", "value": "Calle Córdoba 431, Neuquén Capital", "data_type": "string", "description": "Dirección de la clínica", "category": "clinic"},
+            {"key": "BUSINESS_HOURS_START", "value": "08:00", "data_type": "string", "description": "Hora de apertura", "category": "clinic"},
+            {"key": "BUSINESS_HOURS_END", "value": "19:00", "data_type": "string", "description": "Hora de cierre", "category": "clinic"},
         ]
-        
         try:
-            import threading
-            def init_config():
-                import asyncio
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                loop.run_until_complete(self._insert_default_config(default_config))
-                loop.close()
-            
-            thread = threading.Thread(target=init_config)
-            thread.start()
-            thread.join(timeout=5)
-            
+            await self._insert_default_config(default_config)
             self.logger.info("✅ Configuración por defecto inicializada")
         except Exception as e:
             self.logger.error(f"❌ Error inicializando configuración: {e}")
