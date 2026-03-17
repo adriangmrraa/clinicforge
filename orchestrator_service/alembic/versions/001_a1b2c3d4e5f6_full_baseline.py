@@ -35,6 +35,9 @@ def upgrade() -> None:
         system_prompt_template TEXT,
         config JSONB DEFAULT '{}',
         timezone VARCHAR(100) DEFAULT 'America/Argentina/Buenos_Aires',
+        address TEXT,
+        google_maps_url TEXT,
+        working_hours JSONB DEFAULT '{}',
         total_tokens_used BIGINT DEFAULT 0,
         total_tool_calls BIGINT DEFAULT 0,
         created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -171,6 +174,8 @@ def upgrade() -> None:
         preferred_schedule TEXT,
         notes TEXT,
         status VARCHAR(20) DEFAULT 'active',
+        urgency_level VARCHAR(20) DEFAULT 'normal',
+        urgency_reason TEXT,
         human_handoff_requested BOOLEAN DEFAULT FALSE,
         human_override_until TIMESTAMPTZ DEFAULT NULL,
         last_derivhumano_at TIMESTAMPTZ DEFAULT NULL,
@@ -507,14 +512,17 @@ def upgrade() -> None:
         id SERIAL PRIMARY KEY,
         tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
         patient_id INTEGER NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
-        filename VARCHAR(255) NOT NULL,
+        file_name VARCHAR(255) NOT NULL,
         file_path VARCHAR(500) NOT NULL,
         file_size INTEGER,
         mime_type VARCHAR(100),
         document_type VARCHAR(50) DEFAULT 'clinical',
         uploaded_by UUID REFERENCES users(id),
+        source VARCHAR(50) DEFAULT 'manual',
+        source_details JSONB DEFAULT '{}',
+        uploaded_at TIMESTAMPTZ DEFAULT NOW(),
         created_at TIMESTAMPTZ DEFAULT NOW(),
-        UNIQUE (tenant_id, patient_id, filename)
+        UNIQUE (tenant_id, patient_id, file_name)
     )
     """)
     op.execute("CREATE INDEX IF NOT EXISTS idx_patient_documents_tenant ON patient_documents(tenant_id)")
@@ -542,21 +550,60 @@ def upgrade() -> None:
     # AUTOMATION LOGS
     # =====================================================================
     op.execute("""
+    CREATE TABLE IF NOT EXISTS automation_rules (
+        id SERIAL PRIMARY KEY,
+        tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        is_active BOOLEAN DEFAULT TRUE,
+        is_system BOOLEAN DEFAULT FALSE,
+        trigger_type TEXT NOT NULL,
+        condition_json JSONB DEFAULT '{}',
+        message_type TEXT NOT NULL DEFAULT 'free_text',
+        free_text_message TEXT,
+        ycloud_template_name TEXT,
+        ycloud_template_lang TEXT DEFAULT 'es',
+        ycloud_template_vars JSONB DEFAULT '{}',
+        channels TEXT[] DEFAULT ARRAY['whatsapp'],
+        send_hour_min INTEGER DEFAULT 8,
+        send_hour_max INTEGER DEFAULT 20,
+        created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+    )
+    """)
+    op.execute("CREATE INDEX IF NOT EXISTS idx_automation_rules_tenant_active ON automation_rules(tenant_id, is_active, trigger_type)")
+
+    op.execute("""
     CREATE TABLE IF NOT EXISTS automation_logs (
         id SERIAL PRIMARY KEY,
         tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
         patient_id INTEGER REFERENCES patients(id) ON DELETE SET NULL,
+        automation_rule_id INTEGER REFERENCES automation_rules(id) ON DELETE SET NULL,
         trigger_type VARCHAR(50) NOT NULL,
         target_id VARCHAR(100),
         status VARCHAR(20) DEFAULT 'pending',
         meta JSONB DEFAULT '{}',
         error_details TEXT,
+        rule_name TEXT,
+        patient_name TEXT,
+        phone_number TEXT,
+        channel TEXT DEFAULT 'whatsapp',
+        message_type TEXT,
+        message_preview TEXT,
+        template_name TEXT,
+        skip_reason TEXT,
+        ycloud_message_id TEXT,
+        sent_at TIMESTAMPTZ,
+        delivered_at TIMESTAMPTZ,
+        triggered_at TIMESTAMPTZ DEFAULT NOW(),
         created_at TIMESTAMPTZ DEFAULT NOW()
     )
     """)
     op.execute("CREATE INDEX IF NOT EXISTS idx_auto_logs_trigger ON automation_logs(trigger_type)")
     op.execute("CREATE INDEX IF NOT EXISTS idx_auto_logs_tenant ON automation_logs(tenant_id)")
     op.execute("CREATE INDEX IF NOT EXISTS idx_auto_logs_target ON automation_logs(target_id)")
+    op.execute("CREATE INDEX IF NOT EXISTS idx_automation_logs_tenant_date ON automation_logs(tenant_id, triggered_at DESC)")
+    op.execute("CREATE INDEX IF NOT EXISTS idx_automation_logs_rule ON automation_logs(automation_rule_id)")
 
     # =====================================================================
     # META FORM LEADS
@@ -753,6 +800,23 @@ def upgrade() -> None:
     op.execute("CREATE INDEX IF NOT EXISTS idx_analytics_tenant_date ON daily_analytics_metrics(tenant_id, metric_date)")
 
     # =====================================================================
+    # CLINIC FAQS
+    # =====================================================================
+    op.execute("""
+    CREATE TABLE IF NOT EXISTS clinic_faqs (
+        id SERIAL PRIMARY KEY,
+        tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        category VARCHAR(100) NOT NULL DEFAULT 'General',
+        question TEXT NOT NULL,
+        answer TEXT NOT NULL,
+        sort_order INTEGER DEFAULT 0,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+    )
+    """)
+    op.execute("CREATE INDEX IF NOT EXISTS idx_clinic_faqs_tenant ON clinic_faqs(tenant_id)")
+
+    # =====================================================================
     # FUNCTION: get_treatment_duration
     # =====================================================================
     op.execute("""
@@ -832,6 +896,7 @@ def downgrade() -> None:
     # Drop in reverse order of creation
     op.execute("DROP VIEW IF EXISTS patient_attribution_complete")
     op.execute("DROP FUNCTION IF EXISTS get_treatment_duration(VARCHAR, INTEGER, VARCHAR)")
+    op.execute("DROP TABLE IF EXISTS clinic_faqs CASCADE")
     op.execute("DROP TABLE IF EXISTS daily_analytics_metrics CASCADE")
     op.execute("DROP TABLE IF EXISTS google_ads_metrics_cache CASCADE")
     op.execute("DROP TABLE IF EXISTS google_ads_accounts CASCADE")
@@ -841,6 +906,7 @@ def downgrade() -> None:
     op.execute("DROP TABLE IF EXISTS lead_status_history CASCADE")
     op.execute("DROP TABLE IF EXISTS meta_form_leads CASCADE")
     op.execute("DROP TABLE IF EXISTS automation_logs CASCADE")
+    op.execute("DROP TABLE IF EXISTS automation_rules CASCADE")
     op.execute("DROP TABLE IF EXISTS channel_configs CASCADE")
     op.execute("DROP TABLE IF EXISTS patient_documents CASCADE")
     op.execute("DROP TABLE IF EXISTS chat_messages CASCADE")

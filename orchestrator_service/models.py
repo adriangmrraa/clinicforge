@@ -109,6 +109,9 @@ class Tenant(Base):
     system_prompt_template = Column(Text)
     config = Column(JSONB, default={})
     timezone = Column(String(100), default='America/Argentina/Buenos_Aires')
+    address = Column(Text)
+    google_maps_url = Column(Text)
+    working_hours = Column(JSONB, default={})
     total_tokens_used = Column(BigInteger, default=0)
     total_tool_calls = Column(BigInteger, default=0)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -234,6 +237,10 @@ class Patient(Base):
 
     # Status
     status = Column(String(20), default='active')
+
+    # Urgency (AI triage)
+    urgency_level = Column(String(20), default='normal')
+    urgency_reason = Column(Text)
 
     # Human Handoff
     human_handoff_requested = Column(Boolean, default=False)
@@ -533,16 +540,19 @@ class PatientDocument(Base):
     id = Column(Integer, primary_key=True)
     tenant_id = Column(Integer, ForeignKey('tenants.id', ondelete='CASCADE'), nullable=False)
     patient_id = Column(Integer, ForeignKey('patients.id', ondelete='CASCADE'), nullable=False)
-    filename = Column(String(255), nullable=False)
+    file_name = Column(String(255), nullable=False)
     file_path = Column(String(500), nullable=False)
     file_size = Column(Integer)
     mime_type = Column(String(100))
     document_type = Column(String(50), server_default='clinical')
     uploaded_by = Column(UUID(as_uuid=True), ForeignKey('users.id'))
+    source = Column(String(50), server_default='manual')
+    source_details = Column(JSONB, default={})
+    uploaded_at = Column(DateTime(timezone=True), server_default=func.now())
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (
-        UniqueConstraint('tenant_id', 'patient_id', 'filename', name='patient_documents_tenant_patient_filename_key'),
+        UniqueConstraint('tenant_id', 'patient_id', 'file_name', name='patient_documents_tenant_patient_filename_key'),
         Index('idx_patient_documents_tenant', 'tenant_id'),
         Index('idx_patient_documents_patient', 'patient_id'),
     )
@@ -570,23 +580,65 @@ class ChannelConfig(Base):
     )
 
 
+class AutomationRule(Base):
+    __tablename__ = 'automation_rules'
+
+    id = Column(Integer, primary_key=True)
+    tenant_id = Column(Integer, ForeignKey('tenants.id', ondelete='CASCADE'), nullable=False)
+    name = Column(Text, nullable=False)
+    is_active = Column(Boolean, default=True)
+    is_system = Column(Boolean, default=False)
+    trigger_type = Column(Text, nullable=False)
+    condition_json = Column(JSONB, default={})
+    message_type = Column(Text, nullable=False, server_default='free_text')
+    free_text_message = Column(Text)
+    ycloud_template_name = Column(Text)
+    ycloud_template_lang = Column(Text, server_default='es')
+    ycloud_template_vars = Column(JSONB, default={})
+    channels = Column(ARRAY(Text), server_default='{whatsapp}')
+    send_hour_min = Column(Integer, default=8)
+    send_hour_max = Column(Integer, default=20)
+    created_by = Column(UUID(as_uuid=True), ForeignKey('users.id', ondelete='SET NULL'))
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        Index('idx_automation_rules_tenant_active', 'tenant_id', 'is_active', 'trigger_type'),
+    )
+
+
 class AutomationLog(Base):
     __tablename__ = 'automation_logs'
 
     id = Column(Integer, primary_key=True)
     tenant_id = Column(Integer, ForeignKey('tenants.id', ondelete='CASCADE'), nullable=False)
     patient_id = Column(Integer, ForeignKey('patients.id', ondelete='SET NULL'))
+    automation_rule_id = Column(Integer, ForeignKey('automation_rules.id', ondelete='SET NULL'))
     trigger_type = Column(String(50), nullable=False)
     target_id = Column(String(100))
     status = Column(String(20), server_default='pending')
     meta = Column(JSONB, default={})
     error_details = Column(Text)
+    rule_name = Column(Text)
+    patient_name = Column(Text)
+    phone_number = Column(Text)
+    channel = Column(Text, server_default='whatsapp')
+    message_type = Column(Text)
+    message_preview = Column(Text)
+    template_name = Column(Text)
+    skip_reason = Column(Text)
+    ycloud_message_id = Column(Text)
+    sent_at = Column(DateTime(timezone=True))
+    delivered_at = Column(DateTime(timezone=True))
+    triggered_at = Column(DateTime(timezone=True), server_default=func.now())
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (
         Index('idx_auto_logs_trigger', 'trigger_type'),
         Index('idx_auto_logs_tenant', 'tenant_id'),
         Index('idx_auto_logs_target', 'target_id'),
+        Index('idx_automation_logs_tenant_date', 'tenant_id', triggered_at.desc()),
+        Index('idx_automation_logs_rule', 'automation_rule_id'),
     )
 
 
@@ -804,4 +856,25 @@ class DailyAnalyticsMetric(Base):
         UniqueConstraint('tenant_id', 'metric_date', 'metric_type',
                          name='daily_analytics_metrics_tenant_date_type_key'),
         Index('idx_analytics_tenant_date', 'tenant_id', 'metric_date'),
+    )
+
+
+# =============================================================================
+# CLINIC FAQS
+# =============================================================================
+
+class ClinicFaq(Base):
+    __tablename__ = 'clinic_faqs'
+
+    id = Column(Integer, primary_key=True)
+    tenant_id = Column(Integer, ForeignKey('tenants.id', ondelete='CASCADE'), nullable=False)
+    category = Column(String(100), nullable=False, server_default='General')
+    question = Column(Text, nullable=False)
+    answer = Column(Text, nullable=False)
+    sort_order = Column(Integer, default=0)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        Index('idx_clinic_faqs_tenant', 'tenant_id'),
     )

@@ -1926,8 +1926,17 @@ async def lifespan(app: FastAPI):
     logger.info("🚀 Iniciando orquestador dental...")
     await db.connect()
     logger.info(f"✅ Base de datos conectada. Version: {await db.pool.fetchval('SELECT version()')}")
-    
-    # await start_automation_service()
+
+    # Inicializar Dashboard CEO (necesita db.pool activo)
+    try:
+        from dashboard import init_dashboard
+        if init_dashboard(app, db.pool):
+            logger.info("✅ Dashboard CEO (Tokens y Métricas) inicializado")
+        else:
+            logger.warning("⚠️ Dashboard CEO no pudo inicializarse")
+    except Exception as e:
+        logger.warning(f"⚠️ Error inicializando dashboard: {e}")
+
     logger.info("✅ Sistema de jobs programados activado (reemplaza AutomationService)")
     
     # Iniciar scheduler de jobs programados
@@ -2097,17 +2106,7 @@ try:
 except ImportError as e:
     logger.warning(f"⚠️ Could not import metrics router: {e}")
 
-# Dashboard CEO (Tokens y Métricas) — /dashboard/status, /dashboard/api/metrics
-try:
-    from dashboard import init_dashboard
-    if init_dashboard(app, db.pool):
-        logger.info("✅ Dashboard CEO (Tokens y Métricas) inicializado: /dashboard/status, /dashboard/api/metrics")
-    else:
-        logger.warning("⚠️ Dashboard CEO no pudo inicializarse")
-except ImportError as e:
-    logger.warning(f"⚠️ Dashboard CEO no disponible: {e}")
-except Exception as e:
-    logger.warning(f"⚠️ Error inicializando dashboard: {e}")
+# Dashboard CEO se inicializa en lifespan (después de db.connect) para evitar db_pool=None
 
 # OpenAPI: inyectar securitySchemes para que en Swagger UI se pueda usar Authorize (JWT + X-Admin-Token)
 _original_openapi = app.openapi

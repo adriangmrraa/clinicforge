@@ -28,15 +28,15 @@ class Database:
             except Exception as e:
                 print(f"❌ ERROR: Failed to create database pool: {e}")
                 return
-            
-            # Auto-Migration: Ejecutar dentalogic_schema.sql si las tablas no existen
-            await self._run_auto_migrations()
     
-    async def _run_auto_migrations(self):
+    async def _run_auto_migrations_REMOVED(self):
         """
-        Sistema de Auto-Migración (Maintenance Robot / Schema Surgeon).
-        Se asegura de que la base de datos esté siempre actualizada y saludable.
+        REMOVED: Schema migrations are now handled by Alembic.
+        See orchestrator_service/alembic/ and models.py.
+        This method is kept as a no-op to avoid breaking any references.
         """
+        return
+        # --- Original code below kept for reference only ---
         try:
             # 1. Auditoría de Salud: ¿Existe la base mínima?
             async with self.pool.acquire() as conn:
