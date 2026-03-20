@@ -148,7 +148,9 @@ async def process_buffer_task(
                 dt = next_apt['appointment_datetime']
                 from main import ARG_TZ
                 if hasattr(dt, 'astimezone'): dt = dt.astimezone(ARG_TZ)
-                dt_str = dt.strftime("%A %d/%m a las %H:%M")
+                dias_semana = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
+                dia_nombre = dias_semana[dt.weekday()]
+                dt_str = f"{dia_nombre} {dt.strftime('%d/%m/%Y')} a las {dt.strftime('%H:%M')}"
                 # Tiempo hasta turno para saludo proactivo
                 now_arg = get_now_arg()
                 delta = dt - now_arg
@@ -164,8 +166,8 @@ async def process_buffer_task(
                     time_until = f"mañana a las {dt.strftime('%H:%M')}"
                 else:
                     time_until = f"el {dt_str}"
-                identity_lines.append(f"• PRÓXIMO TURNO: Tiene un turno de {next_apt['treatment_name'] or 'Consulta'} con el/la Dr/a. {next_apt['professional_name']} el día {dt_str}.")
-                identity_lines.append(f"• TIEMPO HASTA TURNO: {time_until}. Hora exacta: {dt.strftime('%H:%M')}.")
+                identity_lines.append(f"• PRÓXIMO TURNO: Tiene un turno de {next_apt['treatment_name'] or 'Consulta'} con el/la Dr/a. {next_apt['professional_name']} el {dt_str}.")
+                identity_lines.append(f"• FECHA EXACTA DEL TURNO: {dt.strftime('%d/%m/%Y')} a las {dt.strftime('%H:%M')}. {time_until}.")
             
             if identity_lines:
                 patient_context = "\n".join(identity_lines)
