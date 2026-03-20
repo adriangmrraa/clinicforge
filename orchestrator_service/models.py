@@ -508,6 +508,23 @@ class TreatmentType(Base):
     )
 
 
+class TreatmentTypeProfessional(Base):
+    __tablename__ = 'treatment_type_professionals'
+
+    id = Column(Integer, primary_key=True)
+    tenant_id = Column(Integer, ForeignKey('tenants.id', ondelete='CASCADE'), nullable=False)
+    treatment_type_id = Column(Integer, ForeignKey('treatment_types.id', ondelete='CASCADE'), nullable=False)
+    professional_id = Column(Integer, ForeignKey('professionals.id', ondelete='CASCADE'), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint('tenant_id', 'treatment_type_id', 'professional_id', name='ttp_tenant_treatment_professional_key'),
+        Index('idx_ttp_tenant', 'tenant_id'),
+        Index('idx_ttp_treatment', 'treatment_type_id'),
+        Index('idx_ttp_professional', 'professional_id'),
+    )
+
+
 class TreatmentImage(Base):
     __tablename__ = 'treatment_images'
 

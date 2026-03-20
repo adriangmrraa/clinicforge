@@ -569,7 +569,10 @@
     "confirm_delete_image": "Delete image?",
     "error_upload_image": "Error uploading image",
     "error_delete_image": "Error deleting image",
-    "tip_migration": "Tip: Check the 006_treatment_config.sql migration"
+    "tip_migration": "Tip: Check the 006_treatment_config.sql migration",
+    "assigned_professionals": "Assigned Professionals",
+    "all_if_none": "If none selected, all professionals can perform it",
+    "all_professionals": "All professionals"
   },
   "profile": {
     "title": "My Profile",

@@ -1,8 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { Clock, AlertCircle, CheckCircle, Save, X, Zap, Shield, Heart, Activity, Stethoscope, Edit2, Upload, Trash2, Image as ImageIcon } from 'lucide-react';
+import { Clock, AlertCircle, CheckCircle, Save, X, Zap, Shield, Heart, Activity, Stethoscope, Edit2, Upload, Trash2, Image as ImageIcon, Users } from 'lucide-react';
 import api from '../api/axios';
 import { useTranslation } from '../context/LanguageContext';
 import PageHeader from '../components/PageHeader';
+
+interface Professional {
+  id: number;
+  first_name: string;
+  last_name: string;
+  specialty?: string;
+}
 
 interface TreatmentType {
   id: number;
@@ -19,6 +26,7 @@ interface TreatmentType {
   is_active: boolean;
   is_available_for_booking: boolean;
   internal_notes: string;
+  professional_ids?: number[];
 }
 
 // Category icons mapping
@@ -136,6 +144,7 @@ export default function TreatmentsView() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editForm, setEditForm] = useState<Partial<TreatmentType>>({});
   const [saving, setSaving] = useState(false);
+  const [professionals, setProfessionals] = useState<Professional[]>([]);
   const [isCreating, setIsCreating] = useState(false);
   const [newForm, setNewForm] = useState<Partial<TreatmentType>>({
     code: '',
@@ -150,7 +159,8 @@ export default function TreatmentsView() {
     session_gap_days: 0,
     is_active: true,
     is_available_for_booking: true,
-    internal_notes: ''
+    internal_notes: '',
+    professional_ids: []
   });
 
   const fetchTreatments = async () => {
@@ -167,13 +177,23 @@ export default function TreatmentsView() {
     }
   };
 
+  const fetchProfessionals = async () => {
+    try {
+      const response = await api.get('/admin/professionals');
+      setProfessionals(Array.isArray(response?.data) ? response.data : []);
+    } catch (error) {
+      console.error('Error fetching professionals:', error);
+    }
+  };
+
   useEffect(() => {
     fetchTreatments();
+    fetchProfessionals();
   }, []);
 
   const handleEdit = (treatment: TreatmentType) => {
     setEditingId(treatment.id);
-    setEditForm({ ...treatment });
+    setEditForm({ ...treatment, professional_ids: treatment.professional_ids || [] });
   };
 
   const handleCancel = () => {
@@ -187,6 +207,7 @@ export default function TreatmentsView() {
     try {
       setSaving(true);
       await api.put(`/admin/treatment-types/${code}`, editForm);
+      await api.put(`/admin/treatment-types/${code}/professionals`, { professional_ids: editForm.professional_ids || [] });
       await fetchTreatments();
       setEditingId(null);
       setEditForm({});
@@ -222,7 +243,8 @@ export default function TreatmentsView() {
         session_gap_days: 0,
         is_active: true,
         is_available_for_booking: true,
-        internal_notes: ''
+        internal_notes: '',
+        professional_ids: []
       });
     } catch (error: any) {
       console.error('Error creating treatment:', error);
@@ -431,6 +453,44 @@ export default function TreatmentsView() {
                     <span className="text-sm font-medium text-slate-600">{t('treatments.multiple_sessions')}</span>
                   </label>
                 </div>
+
+                {/* Assigned Professionals */}
+                {professionals.length > 0 && (
+                  <div className="mt-6 space-y-3">
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 flex items-center gap-2">
+                        <Users size={16} className="text-medical-600" />
+                        {t('treatments.assigned_professionals')}
+                      </label>
+                      <p className="text-xs text-slate-400 mt-0.5">{t('treatments.all_if_none')}</p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {professionals.map(prof => {
+                        const selected = (newForm.professional_ids || []).includes(prof.id);
+                        return (
+                          <button
+                            key={prof.id}
+                            type="button"
+                            onClick={() => {
+                              const ids = newForm.professional_ids || [];
+                              setNewForm({
+                                ...newForm,
+                                professional_ids: selected ? ids.filter(id => id !== prof.id) : [...ids, prof.id]
+                              });
+                            }}
+                            className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-all ${
+                              selected
+                                ? 'bg-medical-600 text-white border-medical-600 shadow-sm'
+                                : 'bg-white text-slate-600 border-slate-200 hover:border-medical-300 hover:text-medical-600'
+                            }`}
+                          >
+                            {prof.first_name} {prof.last_name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
               <div className="flex justify-end gap-3 p-4 sm:p-6 border-t border-slate-100 shrink-0 bg-slate-50/80">
                 <button
@@ -609,6 +669,44 @@ export default function TreatmentsView() {
                             </div>
                           </div>
 
+                          {/* Assigned Professionals */}
+                          {professionals.length > 0 && (
+                            <div className="space-y-3">
+                              <div>
+                                <label className="block text-xs font-bold text-slate-500 ml-1 uppercase flex items-center gap-2">
+                                  <Users size={14} className="text-medical-600" />
+                                  {t('treatments.assigned_professionals')}
+                                </label>
+                                <p className="text-xs text-slate-400 mt-0.5 ml-1">{t('treatments.all_if_none')}</p>
+                              </div>
+                              <div className="flex flex-wrap gap-2">
+                                {professionals.map(prof => {
+                                  const selected = (editForm.professional_ids || []).includes(prof.id);
+                                  return (
+                                    <button
+                                      key={prof.id}
+                                      type="button"
+                                      onClick={() => {
+                                        const ids = editForm.professional_ids || [];
+                                        setEditForm({
+                                          ...editForm,
+                                          professional_ids: selected ? ids.filter(id => id !== prof.id) : [...ids, prof.id]
+                                        });
+                                      }}
+                                      className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-all ${
+                                        selected
+                                          ? 'bg-medical-600 text-white border-medical-600 shadow-sm'
+                                          : 'bg-white text-slate-600 border-slate-200 hover:border-medical-300 hover:text-medical-600'
+                                      }`}
+                                    >
+                                      {prof.first_name} {prof.last_name}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+
                           <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
                             <button
                               onClick={handleCancel}
@@ -678,6 +776,24 @@ export default function TreatmentsView() {
                                 </div>
                               )}
                             </div>
+
+                            {/* Assigned Professionals Badges */}
+                            {professionals.length > 0 && (
+                              <div className="flex items-center gap-2 mt-3 flex-wrap">
+                                <Users size={14} className="text-slate-400 shrink-0" />
+                                {(treatment.professional_ids || []).length > 0 ? (
+                                  professionals
+                                    .filter(p => (treatment.professional_ids || []).includes(p.id))
+                                    .map(p => (
+                                      <span key={p.id} className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-medical-50 text-medical-700 border border-medical-100">
+                                        {p.first_name} {p.last_name}
+                                      </span>
+                                    ))
+                                ) : (
+                                  <span className="text-xs text-slate-400 font-medium">{t('treatments.all_professionals')}</span>
+                                )}
+                              </div>
+                            )}
 
                             {/* IMAGES GALLERY */}
                             <TreatmentImagesList code={treatment.code} />

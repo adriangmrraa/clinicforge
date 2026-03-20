@@ -537,13 +537,24 @@ async def check_availability(date_query: str, professional_name: Optional[str] =
         duration = 30  # Default cuando no se especifica tratamiento
         if treatment_name:
             t_data = await db.pool.fetchrow("""
-                SELECT default_duration_minutes FROM treatment_types
+                SELECT id, default_duration_minutes FROM treatment_types
                 WHERE tenant_id = $1 AND (name ILIKE $2 OR code ILIKE $2) AND is_active = true AND is_available_for_booking = true
                 LIMIT 1
             """, tenant_id, f"%{treatment_name}%")
             if not t_data:
                 return "❌ Ese tratamiento no está en la lista de servicios de esta clínica. Los horarios solo se pueden consultar para tratamientos que devuelve 'list_services'. Llamá a list_services y usá solo uno de esos nombres para consultar disponibilidad."
             duration = t_data['default_duration_minutes']
+            # Filter professionals by treatment assignment (backward compatible: if none assigned, all can do it)
+            if not clean_name:
+                assigned_ids = await db.pool.fetch(
+                    "SELECT professional_id FROM treatment_type_professionals WHERE tenant_id = $1 AND treatment_type_id = $2",
+                    tenant_id, t_data['id']
+                )
+                if assigned_ids:
+                    assigned_set = {r['professional_id'] for r in assigned_ids}
+                    active_professionals = [p for p in active_professionals if p['id'] in assigned_set]
+                    if not active_professionals:
+                        return "❌ No hay profesionales asignados a este tratamiento con disponibilidad. Contactá a la clínica."
 
         # --- CEREBRO HÍBRIDO: google → gcal_service; local → solo tabla appointments ---
         calendar_provider = await get_tenant_calendar_provider(tenant_id)
@@ -852,6 +863,22 @@ async def book_appointment(date_time: str, treatment_reason: str,
         candidates = await db.pool.fetch(p_query, *p_params)
         if not candidates:
             return f"❌ No encontré al profesional '{professional_name or ''}' disponible. ¿Querés agendar con otro profesional?"
+
+        # Filter candidates by treatment assignment (backward compatible: if none assigned, all can do it)
+        if treatment_code and treatment_code != "CONSULTA":
+            tt_row = await db.pool.fetchrow(
+                "SELECT id FROM treatment_types WHERE tenant_id = $1 AND code = $2", tenant_id, treatment_code
+            )
+            if tt_row:
+                assigned_ids = await db.pool.fetch(
+                    "SELECT professional_id FROM treatment_type_professionals WHERE tenant_id = $1 AND treatment_type_id = $2",
+                    tenant_id, tt_row['id']
+                )
+                if assigned_ids:
+                    assigned_set = {r['professional_id'] for r in assigned_ids}
+                    candidates = [c for c in candidates if c['id'] in assigned_set]
+                    if not candidates:
+                        return f"❌ No hay profesionales asignados a este tratamiento disponibles en ese horario. ¿Querés probar otro horario o tratamiento?"
 
         calendar_provider = await get_tenant_calendar_provider(tenant_id)
         if calendar_provider == "google":
@@ -1365,20 +1392,37 @@ async def list_services(category: str = None):
     """
     tenant_id = current_tenant_id.get()
     try:
-        query = """SELECT code, name
-                   FROM treatment_types
-                   WHERE tenant_id = $1 AND is_active = true AND is_available_for_booking = true"""
+        query = """SELECT tt.id, tt.code, tt.name
+                   FROM treatment_types tt
+                   WHERE tt.tenant_id = $1 AND tt.is_active = true AND tt.is_available_for_booking = true"""
         params = [tenant_id]
         if category:
-            query += " AND category = $2"
+            query += " AND tt.category = $2"
             params.append(category)
-        query += " ORDER BY name"
+        query += " ORDER BY tt.name"
         rows = await db.pool.fetch(query, *params)
         if not rows:
             return "No hay tratamientos disponibles para reservar en esta sede en este momento."
+        # Fetch assigned professionals for all treatments
+        tt_ids = [r['id'] for r in rows]
+        ttp_rows = await db.pool.fetch("""
+            SELECT ttp.treatment_type_id, p.first_name, p.last_name
+            FROM treatment_type_professionals ttp
+            JOIN professionals p ON ttp.professional_id = p.id AND p.is_active = true
+            WHERE ttp.tenant_id = $1 AND ttp.treatment_type_id = ANY($2)
+        """, tenant_id, tt_ids)
+        prof_map: dict = {}
+        for tr in ttp_rows:
+            prof_map.setdefault(tr['treatment_type_id'], []).append(
+                f"{tr['first_name']} {tr['last_name'] or ''}".strip()
+            )
         res = "🦷 Tratamientos disponibles:\n"
         for r in rows:
-            res += f"• {r['name']} (código: {r['code']})\n"
+            profs = prof_map.get(r['id'])
+            if profs:
+                res += f"• {r['name']} (código: {r['code']}) — con: {', '.join(profs)}\n"
+            else:
+                res += f"• {r['name']} (código: {r['code']})\n"
         res += "\n💡 Para más detalles o fotos de un tratamiento, pedimelo usando su nombre o código."
         return res
     except Exception as e:
@@ -1424,8 +1468,22 @@ async def get_service_details(code: str):
             SELECT id FROM treatment_images WHERE tenant_id = $1 AND treatment_code = $2
         """, tenant_id, actual_code)
         
+        # Fetch assigned professionals
+        tt_row = await db.pool.fetchrow("SELECT id FROM treatment_types WHERE tenant_id = $1 AND code = $2", tenant_id, actual_code)
+        assigned_profs = []
+        if tt_row:
+            prof_rows = await db.pool.fetch("""
+                SELECT p.first_name, p.last_name
+                FROM treatment_type_professionals ttp
+                JOIN professionals p ON ttp.professional_id = p.id AND p.is_active = true
+                WHERE ttp.tenant_id = $1 AND ttp.treatment_type_id = $2
+            """, tenant_id, tt_row['id'])
+            assigned_profs = [f"{r['first_name']} {r['last_name'] or ''}".strip() for r in prof_rows]
+
         res = f"Detalles de {row['name']}:\nDescripción: {row['description']}\nDuración: {row['default_duration_minutes']} min\nComplejidad: {row['complexity_level']}\n"
-        
+        if assigned_profs:
+            res += f"Profesionales que realizan este tratamiento: {', '.join(assigned_profs)}\n"
+
         if images:
             # Add an obscure markdown format for the parser
             res += "\n¡IMPORTANTE PARA LA IA! El tratamiento cuenta con imágenes. Agrega obligatoriamente el siguiente texto (invisible para el usuario) en tu respuesta para que el sistema le envíe las imágenes:\n"

@@ -562,7 +562,10 @@
     "confirm_delete_image": "Supprimer l'image ?",
     "error_upload_image": "Erreur lors du téléchargement de l'image",
     "error_delete_image": "Erreur lors de la suppression de l'image",
-    "tip_migration": "Astuce : Vérifiez la migration 006_treatment_config.sql"
+    "tip_migration": "Astuce : Vérifiez la migration 006_treatment_config.sql",
+    "assigned_professionals": "Professionnels Assign\u00e9s",
+    "all_if_none": "Si aucun n'est s\u00e9lectionn\u00e9, tous peuvent le r\u00e9aliser",
+    "all_professionals": "Tous les professionnels"
   },
   "profile": {
     "title": "Mon profil",

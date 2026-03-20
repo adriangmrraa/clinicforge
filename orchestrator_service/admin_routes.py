@@ -63,6 +63,7 @@ class TreatmentTypeResponse(BaseModel):
     is_active: bool
     is_available_for_booking: bool
     internal_notes: Optional[str] = None
+    professional_ids: Optional[List[int]] = []
 
 router = APIRouter(prefix="/admin", tags=["Dental Admin"])
 
@@ -487,6 +488,7 @@ class TreatmentTypeCreate(BaseModel):
     is_active: bool = True
     is_available_for_booking: bool = True
     internal_notes: Optional[str] = ""
+    professional_ids: Optional[List[int]] = None
 
 class TreatmentTypeUpdate(BaseModel):
     name: str
@@ -2813,7 +2815,7 @@ async def delete_patient_document(
 # ==================== ENDPOINTS TRATAMIENTOS ====================
 
 @router.get("/treatment_types", dependencies=[Depends(verify_admin_token)], tags=["Tratamientos"], summary="Listar tipos de tratamiento disponibles")
-async def list_treatment_types(
+async def list_treatment_types_legacy(
     tenant_id: int = Depends(get_resolved_tenant_id),
     only_active: bool = Query(True, description="Solo mostrar tratamientos activos"),
     only_booking: bool = Query(False, description="Solo mostrar tratamientos disponibles para reserva")
@@ -2821,15 +2823,28 @@ async def list_treatment_types(
     """Listar tipos de tratamiento por clínica. Aislado por tenant_id (Regla de Oro)."""
     query = "SELECT * FROM treatment_types WHERE tenant_id = $1"
     params = [tenant_id]
-    
+
     if only_active:
         query += " AND is_active = true"
     if only_booking:
         query += " AND is_available_for_booking = true"
-        
+
     query += " ORDER BY name ASC"
     rows = await db.pool.fetch(query, *params)
-    return [dict(row) for row in rows]
+    treatments = [dict(row) for row in rows]
+    # Batch-fetch professional assignments
+    if treatments:
+        tt_ids = [t['id'] for t in treatments]
+        ttp_rows = await db.pool.fetch(
+            "SELECT treatment_type_id, professional_id FROM treatment_type_professionals WHERE tenant_id = $1 AND treatment_type_id = ANY($2)",
+            tenant_id, tt_ids
+        )
+        prof_map: dict = {}
+        for r in ttp_rows:
+            prof_map.setdefault(r['treatment_type_id'], []).append(r['professional_id'])
+        for t in treatments:
+            t['professional_ids'] = prof_map.get(t['id'], [])
+    return treatments
 
 # ==================== ENDPOINTS TURNOS (AGENDA) ====================
 
@@ -3836,7 +3851,20 @@ async def list_treatment_types(tenant_id: int = Depends(get_resolved_tenant_id))
         WHERE tenant_id = $1
         ORDER BY category, name
     """, tenant_id)
-    return [dict(row) for row in rows]
+    treatments = [dict(row) for row in rows]
+    # Batch-fetch professional assignments
+    if treatments:
+        tt_ids = [t['id'] for t in treatments]
+        ttp_rows = await db.pool.fetch(
+            "SELECT treatment_type_id, professional_id FROM treatment_type_professionals WHERE tenant_id = $1 AND treatment_type_id = ANY($2)",
+            tenant_id, tt_ids
+        )
+        prof_map: dict = {}
+        for r in ttp_rows:
+            prof_map.setdefault(r['treatment_type_id'], []).append(r['professional_id'])
+        for t in treatments:
+            t['professional_ids'] = prof_map.get(t['id'], [])
+    return treatments
 
 
 @router.get("/treatment-types/{code}", dependencies=[Depends(verify_admin_token)], tags=["Tratamientos"], summary="Obtener detalle de un tratamiento por su código")
@@ -3852,25 +3880,40 @@ async def get_treatment_type(code: str, tenant_id: int = Depends(get_resolved_te
     """, tenant_id, code)
     if not row:
         raise HTTPException(status_code=404, detail="Tipo de tratamiento no encontrado")
-    return dict(row)
+    result = dict(row)
+    ttp_rows = await db.pool.fetch(
+        "SELECT professional_id FROM treatment_type_professionals WHERE tenant_id = $1 AND treatment_type_id = $2",
+        tenant_id, row['id']
+    )
+    result['professional_ids'] = [r['professional_id'] for r in ttp_rows]
+    return result
 
 
 @router.post("/treatment-types", dependencies=[Depends(verify_admin_token)], tags=["Tratamientos"], summary="Crear un nuevo tipo de tratamiento")
 async def create_treatment_type(treatment: TreatmentTypeCreate, tenant_id: int = Depends(get_resolved_tenant_id)):
     """Crear un nuevo tipo de tratamiento. Aislado por tenant_id (Regla de Oro)."""
     try:
-        await db.pool.execute("""
+        row = await db.pool.fetchrow("""
             INSERT INTO treatment_types (
                 tenant_id, code, name, description, default_duration_minutes,
                 min_duration_minutes, max_duration_minutes, complexity_level,
                 category, requires_multiple_sessions, session_gap_days,
                 is_active, is_available_for_booking, internal_notes, created_at
             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW())
+            RETURNING id
         """, tenant_id, treatment.code, treatment.name, treatment.description, treatment.default_duration_minutes,
             treatment.min_duration_minutes, treatment.max_duration_minutes,
             treatment.complexity_level, treatment.category, treatment.requires_multiple_sessions,
             treatment.session_gap_days, treatment.is_active, treatment.is_available_for_booking,
             treatment.internal_notes)
+        # Insert professional assignments if provided
+        if treatment.professional_ids and row:
+            tt_id = row['id']
+            for pid in treatment.professional_ids:
+                await db.pool.execute(
+                    "INSERT INTO treatment_type_professionals (tenant_id, treatment_type_id, professional_id) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
+                    tenant_id, tt_id, pid
+                )
         return {"status": "created", "code": treatment.code}
     except asyncpg.UniqueViolationError:
         raise HTTPException(status_code=400, detail=f"El código de tratamiento '{treatment.code}' ya existe.")
@@ -3930,6 +3973,40 @@ async def delete_treatment_type(code: str, tenant_id: int = Depends(get_resolved
     if result == "DELETE 0":
         raise HTTPException(status_code=404, detail="Tipo de tratamiento no encontrado")
     return {"status": "deleted", "code": code}
+
+
+@router.get("/treatment-types/{code}/professionals", dependencies=[Depends(verify_admin_token)], tags=["Tratamientos"], summary="Listar profesionales asignados a un tratamiento")
+async def get_treatment_professionals(code: str, tenant_id: int = Depends(get_resolved_tenant_id)):
+    """Listar profesionales asignados a un tratamiento. Aislado por tenant_id (Regla de Oro)."""
+    tt = await db.pool.fetchrow("SELECT id FROM treatment_types WHERE tenant_id = $1 AND code = $2", tenant_id, code)
+    if not tt:
+        raise HTTPException(status_code=404, detail="Tipo de tratamiento no encontrado")
+    rows = await db.pool.fetch("""
+        SELECT p.id, p.first_name, p.last_name, p.specialty
+        FROM treatment_type_professionals ttp
+        JOIN professionals p ON ttp.professional_id = p.id
+        WHERE ttp.tenant_id = $1 AND ttp.treatment_type_id = $2
+        ORDER BY p.first_name
+    """, tenant_id, tt['id'])
+    return [dict(r) for r in rows]
+
+
+@router.put("/treatment-types/{code}/professionals", dependencies=[Depends(verify_admin_token)], tags=["Tratamientos"], summary="Reemplazar profesionales asignados a un tratamiento")
+async def set_treatment_professionals(code: str, body: dict, tenant_id: int = Depends(get_resolved_tenant_id)):
+    """Reemplazar asignaciones de profesionales para un tratamiento. Aislado por tenant_id (Regla de Oro)."""
+    professional_ids = body.get("professional_ids", [])
+    tt = await db.pool.fetchrow("SELECT id FROM treatment_types WHERE tenant_id = $1 AND code = $2", tenant_id, code)
+    if not tt:
+        raise HTTPException(status_code=404, detail="Tipo de tratamiento no encontrado")
+    tt_id = tt['id']
+    # Delete all current assignments, then insert new ones
+    await db.pool.execute("DELETE FROM treatment_type_professionals WHERE tenant_id = $1 AND treatment_type_id = $2", tenant_id, tt_id)
+    for pid in professional_ids:
+        await db.pool.execute(
+            "INSERT INTO treatment_type_professionals (tenant_id, treatment_type_id, professional_id) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
+            tenant_id, tt_id, pid
+        )
+    return {"status": "updated", "code": code, "professional_ids": professional_ids}
 
 
 @router.get("/treatment-types/{code}/duration", dependencies=[Depends(verify_admin_token)], tags=["Tratamientos"], summary="Obtener duración estimada según nivel de urgencia")

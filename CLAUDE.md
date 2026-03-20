@@ -26,7 +26,7 @@ WhatsApp Service (:8002)  ←→  Orchestrator  ←→  YCloud / Chatwoot
 
 ### Infrastructure
 
-- **Database**: PostgreSQL 13 with SQLAlchemy 2.0 ORM (30 model classes in `orchestrator_service/models.py`)
+- **Database**: PostgreSQL 13 with SQLAlchemy 2.0 ORM (31 model classes in `orchestrator_service/models.py`)
 - **Migrations**: Alembic (`orchestrator_service/alembic/`) — auto-runs `alembic upgrade head` on startup via `start.sh`
 - **Cache**: Redis (deduplication, message buffers, Meta Ads enrichment cache)
 - **Containers**: Docker Compose (`docker-compose.yml`)
@@ -41,7 +41,7 @@ WhatsApp Service (:8002)  ←→  Orchestrator  ←→  YCloud / Chatwoot
 - `admin_routes.py` — All `/admin/*` endpoints (patients, appointments, marketing, staff)
 - `auth_routes.py` — `/auth/*` endpoints (login, register, clinics, profile)
 - `db.py` — Async connection pool (asyncpg)
-- `models.py` — SQLAlchemy ORM models (30 classes)
+- `models.py` — SQLAlchemy ORM models (31 classes)
 - `gcal_service.py` — Google Calendar hybrid integration
 - `analytics_service.py` — Professional metrics and reporting
 - `services/meta_ads_service.py` — Meta Graph API client
@@ -194,9 +194,9 @@ The LangChain agent exposes these tools (defined in `orchestrator_service/main.p
 | Tool | Purpose |
 |------|---------|
 | `list_professionals` | List active professionals for a clinic |
-| `list_services` | List bookable treatment types |
-| `check_availability` | Check real availability for a day (supports `time_preference`) |
-| `book_appointment` | Register an appointment |
+| `list_services` | List bookable treatment types (shows assigned professionals) |
+| `check_availability` | Check real availability for a day (filters by assigned professionals) |
+| `book_appointment` | Register an appointment (validates professional-treatment assignment) |
 | `list_my_appointments` | List patient's upcoming appointments |
 | `cancel_appointment` | Cancel a patient's appointment |
 | `reschedule_appointment` | Reschedule an appointment |
@@ -233,6 +233,9 @@ When a human agent intervenes in a WhatsApp chat, the AI is silenced for 24 hour
 
 ### Meta Ads Attribution
 First-touch model: the first ad that brings a patient is recorded permanently. Background tasks enrich ad data via Meta Graph API with Redis cache (48h TTL).
+
+### Treatment-Professional Assignment
+Many-to-many relationship via `treatment_type_professionals` junction table. Each treatment can be assigned to specific professionals. **Backward compatibility rule**: if a treatment has no professionals assigned, ALL active professionals can perform it. The AI tools (`check_availability`, `book_appointment`, `list_services`, `get_service_details`) all respect this rule. Managed via `GET/PUT /admin/treatment-types/{code}/professionals` endpoints.
 
 ### BFF Proxy Pattern
 Frontend (port 4173) never calls the orchestrator directly. All API calls go through the BFF Express proxy (port 3000), which handles CORS and 60s timeouts.

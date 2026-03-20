@@ -568,7 +568,10 @@
     "confirm_delete_image": "¿Borrar imagen?",
     "error_upload_image": "Error al subir imagen",
     "error_delete_image": "Error al borrar imagen",
-    "tip_migration": "Tip: Revisa la migración 006_treatment_config.sql"
+    "tip_migration": "Tip: Revisa la migración 006_treatment_config.sql",
+    "assigned_professionals": "Profesionales Asignados",
+    "all_if_none": "Si no se selecciona ninguno, todos pueden realizarlo",
+    "all_professionals": "Todos los profesionales"
   },
   "profile": {
     "title": "Mi Perfil",
