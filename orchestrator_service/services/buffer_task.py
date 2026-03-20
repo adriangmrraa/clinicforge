@@ -276,22 +276,20 @@ async def process_buffer_task(
                         channel_type = row["channel"] or "whatsapp"
                         
                         if attrs:
-                            import json
                             if isinstance(attrs, str):
                                 attrs = json.loads(attrs)
-                            
+
                             if isinstance(attrs, list):
                                 for att in attrs:
                                     media_type = att.get("type", "")
                                     if media_type in ["image", "document"]:
                                         has_recent_media = True
                                         media_types.append(media_type)
-                    
+
                     elif row["role"] == "assistant":
                         # Verificar si el último mensaje del asistente fue un seguimiento
                         attrs = row["content_attributes"]
                         if attrs:
-                            import json
                             if isinstance(attrs, str):
                                 attrs = json.loads(attrs)
                             
