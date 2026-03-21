@@ -48,7 +48,7 @@ WhatsApp Service (:8002)  ←→  Orchestrator  ←→  YCloud / Chatwoot
 - `services/meta_ads_service.py` — Meta Graph API client
 - `services/marketing_service.py` — ROI & performance intelligence
 - `jobs/` — Background jobs: lead recovery, reminders, followups
-- `alembic/` — Database migrations (baseline + incremental)
+- `alembic/` — Database migrations (baseline + incremental: 001 baseline → 002 treatment_type_professionals → 003 consultation_price/anamnesis_token → 004 guardian_phone)
 - `requirements.txt` — Python dependencies
 
 ### Frontend (frontend_react/src/)
@@ -198,13 +198,13 @@ The LangChain agent exposes these tools (defined in `orchestrator_service/main.p
 | `list_professionals` | List active professionals for a clinic |
 | `list_services` | List bookable treatment types (shows assigned professionals) |
 | `check_availability` | Check real availability for a day (filters by assigned professionals) |
-| `book_appointment` | Register an appointment (validates professional-treatment assignment) |
+| `book_appointment` | Register an appointment (supports self, third-party adult, and minor bookings) |
 | `list_my_appointments` | List patient's upcoming appointments |
 | `cancel_appointment` | Cancel a patient's appointment |
 | `reschedule_appointment` | Reschedule an appointment |
 | `triage_urgency` | Analyze symptom urgency |
 | `save_patient_anamnesis` | Save medical history from AI chat conversation |
-| `save_patient_email` | Save patient email after appointment confirmation |
+| `save_patient_email` | Save patient email (supports `patient_phone` for third-party bookings) |
 | `get_patient_anamnesis` | Read completed anamnesis form data for verification |
 | `derivhumano` | Hand off to human + 24h silence window |
 
@@ -257,6 +257,15 @@ When a patient mentions implants or prosthetics, the AI activates a commercial t
 
 ### Consultation Price
 Stored in `tenants.consultation_price` (DECIMAL). Configurable from the UI in clinic settings. The AI uses this value dynamically when patients ask about pricing. If NULL, the AI tells the patient to contact the clinic directly.
+
+### Third-Party & Minor Booking
+The AI agent supports booking appointments for third parties (friends, family) and minors (children). Three scenarios:
+- **For self**: standard flow, no extra params.
+- **For adult third party**: agent asks for the third party's phone number. `book_appointment(patient_phone=..., is_minor=false)`. Creates a separate patient record.
+- **For minor (child)**: agent does NOT ask for phone. `book_appointment(is_minor=true)`. Phone is auto-generated as `parent_phone-M{N}` (e.g., `+549111-M1`). The `guardian_phone` column links the minor to the parent. The agent's context (via `buffer_task.py`) includes all linked minors with their anamnesis links and next appointments. **Name protection**: the interlocutor's patient name is NEVER overwritten when booking for someone else. `save_patient_email` accepts optional `patient_phone` to target the correct patient record.
+
+### Bulk Patient Import (CSV/XLSX)
+Two-step flow via `POST /admin/patients/import/preview` and `POST /admin/patients/import/execute`. Supports CSV and XLSX with auto-encoding detection (UTF-8 → latin-1 fallback). Column aliases map Spanish headers to DB fields (e.g., `nombre` → `first_name`, `telefono` → `phone_number`). Max 1000 rows. Missing phone/DNI generates placeholders (`SIN-TEL-XXX`, `SIN-DNI-XXX`). Duplicate detection by phone with user choice: skip or update (COALESCE — only fills empty DB fields). Frontend modal in PatientsView with drag & drop upload → preview → result flow.
 
 ### Public Anamnesis Form
 Unique link to a mobile-optimized anamnesis checklist form (`/anamnesis/{tenant_id}/{token}`). Token is a UUID in `patients.anamnesis_token`. The form page is NOT in the sidebar — only accessible via AI-generated link. Public endpoints: `GET/POST /public/anamnesis/{tenant_id}/{token}` (no auth). **Smart send behavior**: the AI sends the link automatically after booking ONLY if the patient has no completed anamnesis (`medical_history.anamnesis_completed_at` is null). If already completed, the AI only sends the link when the patient explicitly asks to update their data. The form always pre-fills existing data so patients can edit without re-entering everything.
