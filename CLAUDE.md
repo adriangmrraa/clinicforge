@@ -259,7 +259,7 @@ When a patient mentions implants or prosthetics, the AI activates a commercial t
 Stored in `tenants.consultation_price` (DECIMAL). Configurable from the UI in clinic settings. The AI uses this value dynamically when patients ask about pricing. If NULL, the AI tells the patient to contact the clinic directly.
 
 ### Public Anamnesis Form
-After booking an appointment, the AI sends a unique link to a public anamnesis form (`/anamnesis/{tenant_id}/{token}`). The form is mobile-optimized with checkboxes for common dental conditions. The token is a UUID stored in `patients.anamnesis_token`. The form page is NOT accessible from the sidebar — only via the AI-generated link. Public endpoints: `GET/POST /public/anamnesis/{tenant_id}/{token}` (no auth required).
+Unique link to a mobile-optimized anamnesis checklist form (`/anamnesis/{tenant_id}/{token}`). Token is a UUID in `patients.anamnesis_token`. The form page is NOT in the sidebar — only accessible via AI-generated link. Public endpoints: `GET/POST /public/anamnesis/{tenant_id}/{token}` (no auth). **Smart send behavior**: the AI sends the link automatically after booking ONLY if the patient has no completed anamnesis (`medical_history.anamnesis_completed_at` is null). If already completed, the AI only sends the link when the patient explicitly asks to update their data. The form always pre-fills existing data so patients can edit without re-entering everything.
 
 ### BFF Proxy Pattern
 Frontend (port 4173) never calls the orchestrator directly. All API calls go through the BFF Express proxy (port 3000), which handles CORS and 60s timeouts.
