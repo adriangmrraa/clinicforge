@@ -1,0 +1,145 @@
+"""
+Public routes — no authentication required.
+Used for patient-facing forms like the anamnesis checklist.
+"""
+import json
+import logging
+from datetime import datetime, timezone
+from typing import Dict, Any, Optional, List
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
+from db import db
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/public", tags=["Public"])
+
+
+class AnamnesisFormSubmission(BaseModel):
+    base_diseases: Optional[List[str]] = None
+    base_diseases_other: Optional[str] = None
+    habitual_medication: Optional[str] = None
+    allergies: Optional[List[str]] = None
+    allergies_other: Optional[str] = None
+    previous_surgeries: Optional[str] = None
+    is_smoker: Optional[str] = None
+    smoker_amount: Optional[str] = None
+    pregnancy_lactation: Optional[str] = None
+    negative_experiences: Optional[str] = None
+    specific_fears: Optional[List[str]] = None
+    specific_fears_other: Optional[str] = None
+
+
+@router.get("/anamnesis/{tenant_id}/{token}")
+async def get_anamnesis_form(tenant_id: int, token: str):
+    """
+    Get patient info + existing anamnesis data for the public form.
+    No auth required — token is the patient's unique anamnesis_token.
+    """
+    patient = await db.pool.fetchrow(
+        """SELECT id, first_name, last_name, medical_history
+           FROM patients WHERE tenant_id = $1 AND anamnesis_token = $2""",
+        tenant_id, token
+    )
+    if not patient:
+        raise HTTPException(status_code=404, detail="Formulario no encontrado o link inválido.")
+
+    tenant = await db.pool.fetchrow(
+        "SELECT clinic_name FROM tenants WHERE id = $1", tenant_id
+    )
+
+    mh = patient["medical_history"] or {}
+    if isinstance(mh, str):
+        try:
+            mh = json.loads(mh)
+        except Exception:
+            mh = {}
+
+    return {
+        "patient_name": f"{patient['first_name'] or ''} {patient['last_name'] or ''}".strip(),
+        "clinic_name": tenant["clinic_name"] if tenant else "Clínica",
+        "existing_data": mh,
+    }
+
+
+@router.post("/anamnesis/{tenant_id}/{token}")
+async def submit_anamnesis_form(tenant_id: int, token: str, data: AnamnesisFormSubmission):
+    """
+    Save anamnesis from the public form.
+    No auth required — token is the patient's unique anamnesis_token.
+    """
+    patient = await db.pool.fetchrow(
+        "SELECT id FROM patients WHERE tenant_id = $1 AND anamnesis_token = $2",
+        tenant_id, token
+    )
+    if not patient:
+        raise HTTPException(status_code=404, detail="Formulario no encontrado o link inválido.")
+
+    # Build medical_history JSONB
+    mh = {}
+
+    if data.base_diseases:
+        items = list(data.base_diseases)
+        if data.base_diseases_other:
+            items.append(data.base_diseases_other)
+        mh["base_diseases"] = ", ".join(items) if items else "Ninguna"
+
+    if data.habitual_medication is not None:
+        mh["habitual_medication"] = data.habitual_medication or "Ninguna"
+
+    if data.allergies:
+        items = list(data.allergies)
+        if data.allergies_other:
+            items.append(data.allergies_other)
+        mh["allergies"] = ", ".join(items) if items else "Ninguna"
+
+    if data.previous_surgeries is not None:
+        mh["previous_surgeries"] = data.previous_surgeries or "Ninguna"
+
+    if data.is_smoker is not None:
+        mh["is_smoker"] = data.is_smoker
+    if data.smoker_amount is not None:
+        mh["smoker_amount"] = data.smoker_amount
+
+    if data.pregnancy_lactation is not None:
+        mh["pregnancy_lactation"] = data.pregnancy_lactation
+
+    if data.negative_experiences is not None:
+        mh["negative_experiences"] = data.negative_experiences or "Ninguna"
+
+    if data.specific_fears:
+        items = list(data.specific_fears)
+        if data.specific_fears_other:
+            items.append(data.specific_fears_other)
+        mh["specific_fears"] = ", ".join(items) if items else "Ninguno"
+
+    mh["anamnesis_completed_at"] = datetime.now(timezone.utc).isoformat()
+    mh["anamnesis_completed_via"] = "public_form"
+
+    try:
+        await db.pool.execute(
+            """UPDATE patients
+               SET medical_history = COALESCE(medical_history, '{}'::jsonb) || $1::jsonb,
+                   updated_at = NOW()
+               WHERE id = $2 AND tenant_id = $3""",
+            json.dumps(mh), patient["id"], tenant_id
+        )
+
+        # Emit Socket.IO event for real-time UI update
+        try:
+            from main import app
+            sio = getattr(app.state, "sio", None)
+            to_json_safe = getattr(app.state, "to_json_safe", lambda x: x)
+            if sio:
+                await sio.emit('PATIENT_UPDATED', to_json_safe({
+                    'patient_id': patient["id"],
+                    'tenant_id': tenant_id,
+                    'update_type': 'anamnesis_saved',
+                }))
+        except Exception:
+            pass
+
+        return {"status": "ok", "message": "Ficha médica guardada correctamente."}
+    except Exception as e:
+        logger.error(f"Error saving public anamnesis: {e}")
+        raise HTTPException(status_code=500, detail="Error al guardar la ficha médica.")

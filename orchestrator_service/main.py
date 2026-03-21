@@ -2286,6 +2286,12 @@ app.include_router(auth_router)
 # Chatwoot API: Specific routes must come BEFORE generic admin routes to avoid shadowing
 app.include_router(chat_api.router)
 app.include_router(admin_router)
+# Public routes (no auth — anamnesis form)
+try:
+    from public_routes import router as public_router
+    app.include_router(public_router)
+except ImportError:
+    logger.warning("public_routes module not found, skipping public endpoints")
 # Chatwoot Webhooks
 app.include_router(chat_webhooks.router)
 app.include_router(meta_auth.router)

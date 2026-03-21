@@ -19,6 +19,7 @@ import LeadsManagementView from './views/LeadsManagementView';
 import LeadDetailView from './views/LeadDetailView';
 import DashboardStatusView from './views/DashboardStatusView';
 import PrivacyTermsView from './views/PrivacyTermsView';
+import AnamnesisPublicView from './views/AnamnesisPublicView';
 import { AuthProvider } from './context/AuthContext';
 import { LanguageProvider } from './context/LanguageContext';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -33,6 +34,7 @@ function App() {
             <Route path="/demo" element={<LandingView />} />
             <Route path="/privacy" element={<PrivacyTermsView />} />
             <Route path="/terms" element={<PrivacyTermsView />} />
+            <Route path="/anamnesis/:tenantId/:token" element={<AnamnesisPublicView />} />
 
             <Route path="/*" element={
               <ProtectedRoute>
