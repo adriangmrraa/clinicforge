@@ -78,7 +78,6 @@ export default function AnamnesisPublicView() {
           setFears(known);
           if (other.length) setFearsOther(other.join(', '));
         }
-        if (d.anamnesis_completed_at) setSubmitted(true);
       } catch {
         setError('Link inválido o expirado. Pedí un nuevo link al asistente por WhatsApp.');
       } finally {
