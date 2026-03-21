@@ -404,7 +404,28 @@ async def process_buffer_task(
             elif "document" in media_types:
                 media_context += "un documento"
             
-            media_context += f" por {channel_name}. Responde confirmando que recibiste el archivo y que ya lo guardaste en su ficha médica para que la Dra. lo vea. Usa un tono amable y profesional."
+            media_context += f" por {channel_name}. "
+
+            # Check if interlocutor has linked minors — if so, ask who the file belongs to
+            try:
+                minor_count = await pool.fetchval(
+                    "SELECT COUNT(*) FROM patients WHERE tenant_id = $1 AND guardian_phone = $2",
+                    tenant_id, external_user_id
+                ) or 0
+            except Exception:
+                minor_count = 0
+
+            if minor_count > 0:
+                media_context += (
+                    "IMPORTANTE: Este paciente tiene hijos/menores vinculados. "
+                    "ANTES de confirmar que guardaste el archivo, PREGUNTÁ: 'Este archivo es para tu ficha o para la de [nombre del hijo/a]?' "
+                    "Si es para un menor, usá la tool 'reassign_document' con el phone_interno del menor (ej: +549...-M1) "
+                    "que aparece en el contexto de HIJOS/MENORES VINCULADOS. "
+                    "Si es para el interlocutor, no hagas nada extra, ya está guardado."
+                )
+            else:
+                media_context += "Responde confirmando que recibiste el archivo y que ya lo guardaste en su ficha médica para que la Dra. lo vea. Usa un tono amable y profesional."
+
             special_context.append(media_context)
         
         # Contexto de respuesta a seguimiento post-atención

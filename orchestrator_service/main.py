@@ -1820,7 +1820,58 @@ async def get_patient_anamnesis():
         logger.error(f"Error en get_patient_anamnesis: {e}")
         return "Hubo un error al leer la ficha médica."
 
-DENTAL_TOOLS = [list_professionals, list_services, get_service_details, check_availability, book_appointment, list_my_appointments, cancel_appointment, reschedule_appointment, triage_urgency, save_patient_anamnesis, save_patient_email, get_patient_anamnesis, derivhumano]
+@tool
+async def reassign_document(patient_phone: str):
+    """
+    Reasigna el último documento/imagen recibido por chat a otro paciente.
+    Usar SOLO cuando el interlocutor tiene hijos/menores vinculados y confirma que el archivo enviado
+    es para la ficha de su hijo/a u otro paciente, no para la suya.
+    El archivo se mueve de la ficha del interlocutor a la ficha del paciente indicado.
+    patient_phone: El phone_number interno del paciente destino (ej: +549111-M1 para un menor). Usar el phone_interno que aparece en el contexto de HIJOS/MENORES VINCULADOS.
+    """
+    chat_phone = current_customer_phone.get()
+    if not chat_phone:
+        return "❌ No pude identificar tu número."
+    tenant_id = current_tenant_id.get()
+    try:
+        # Find the interlocutor patient
+        phone_digits = normalize_phone_digits(chat_phone)
+        interlocutor = await db.pool.fetchrow(
+            "SELECT id FROM patients WHERE tenant_id = $1 AND REGEXP_REPLACE(phone_number, '[^0-9]', '', 'g') = $2",
+            tenant_id, phone_digits
+        )
+        if not interlocutor:
+            return "❌ No encontré tu ficha de paciente."
+
+        # Find the target patient
+        target = await db.pool.fetchrow(
+            "SELECT id, first_name FROM patients WHERE tenant_id = $1 AND phone_number = $2",
+            tenant_id, patient_phone.strip()
+        )
+        if not target:
+            return f"❌ No encontré al paciente con teléfono {patient_phone}."
+
+        # Get the latest document from the interlocutor
+        last_doc = await db.pool.fetchrow("""
+            SELECT id, file_name FROM patient_documents
+            WHERE tenant_id = $1 AND patient_id = $2 AND source = 'whatsapp'
+            ORDER BY uploaded_at DESC LIMIT 1
+        """, tenant_id, interlocutor["id"])
+        if not last_doc:
+            return "No encontré archivos recientes en tu ficha para reasignar."
+
+        # Move the document to the target patient
+        await db.pool.execute(
+            "UPDATE patient_documents SET patient_id = $1 WHERE id = $2 AND tenant_id = $3",
+            target["id"], last_doc["id"], tenant_id
+        )
+        logger.info(f"📁 Documento reasignado: {last_doc['file_name']} de paciente {interlocutor['id']} a {target['id']} ({target['first_name']})")
+        return f"✅ Listo, moví el archivo a la ficha de {target['first_name']}."
+    except Exception as e:
+        logger.error(f"Error en reassign_document: {e}")
+        return "❌ Hubo un error al reasignar el documento."
+
+DENTAL_TOOLS = [list_professionals, list_services, get_service_details, check_availability, book_appointment, list_my_appointments, cancel_appointment, reschedule_appointment, triage_urgency, save_patient_anamnesis, save_patient_email, get_patient_anamnesis, reassign_document, derivhumano]
 
 # --- DETECCIÓN DE IDIOMA (para respuesta del agente) ---
 def detect_message_language(text: str) -> str:
