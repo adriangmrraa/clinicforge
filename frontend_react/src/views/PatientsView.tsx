@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, Plus, Edit, Trash2, X, FileText, Brain, Calendar, User, Clock, Stethoscope, Mail } from 'lucide-react';
+import { Search, Plus, Edit, Trash2, X, FileText, Brain, Calendar, User, Clock, Stethoscope, Mail, Upload, CheckCircle, AlertTriangle, XCircle } from 'lucide-react';
 import api from '../api/axios';
 import { useTranslation } from '../context/LanguageContext';
 import PageHeader from '../components/PageHeader';
@@ -71,6 +71,16 @@ export default function PatientsView() {
     time: '',
     duration_minutes: 30
   });
+
+  // Import state
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importStep, setImportStep] = useState<'upload' | 'preview' | 'result'>('upload');
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importLoading, setImportLoading] = useState(false);
+  const [importPreview, setImportPreview] = useState<any>(null);
+  const [importResult, setImportResult] = useState<any>(null);
+  const [duplicateAction, setDuplicateAction] = useState<'skip' | 'update'>('skip');
+  const [dragOver, setDragOver] = useState(false);
 
   // Fetch patients on mount
   useEffect(() => {
@@ -257,6 +267,69 @@ export default function PatientsView() {
     setEditingPatient(null);
   };
 
+  // --- Import handlers ---
+  const openImportModal = () => {
+    setShowImportModal(true);
+    setImportStep('upload');
+    setImportFile(null);
+    setImportPreview(null);
+    setImportResult(null);
+    setDuplicateAction('skip');
+  };
+
+  const handleImportFileSelect = (file: File) => {
+    const ext = file.name.split('.').pop()?.toLowerCase();
+    if (ext !== 'csv' && ext !== 'xlsx') {
+      alert(t('patients.import_invalid_format'));
+      return;
+    }
+    setImportFile(file);
+  };
+
+  const handleImportDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    if (e.dataTransfer.files.length > 0) {
+      handleImportFileSelect(e.dataTransfer.files[0]);
+    }
+  };
+
+  const handleImportPreview = async () => {
+    if (!importFile) return;
+    setImportLoading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', importFile);
+      const res = await api.post('/admin/patients/import/preview', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      setImportPreview(res.data);
+      setImportStep('preview');
+    } catch (err: any) {
+      alert(err.response?.data?.detail || t('patients.import_error'));
+    } finally {
+      setImportLoading(false);
+    }
+  };
+
+  const handleImportExecute = async () => {
+    if (!importPreview) return;
+    setImportLoading(true);
+    try {
+      const res = await api.post('/admin/patients/import/execute', {
+        duplicate_action: duplicateAction,
+        rows: importPreview.preview_rows,
+      });
+      setImportResult(res.data);
+      setImportStep('result');
+      fetchPatients();
+    } catch (err: any) {
+      alert(err.response?.data?.detail || t('patients.import_error'));
+    } finally {
+      setImportLoading(false);
+    }
+  };
+
   return (
     <div className="p-4 lg:p-6 h-full overflow-y-auto bg-gray-100">
       <PageHeader
@@ -264,13 +337,22 @@ export default function PatientsView() {
         subtitle={t('patients.subtitle')}
         icon={<User size={22} />}
         action={
-          <button
-            onClick={openCreateModal}
-            className="w-full sm:w-auto flex items-center justify-center gap-2 bg-primary hover:bg-primary-dark text-white px-4 py-2.5 rounded-xl transition-colors text-sm font-medium shadow-md active:scale-[0.98]"
-          >
-            <Plus size={20} />
-            {t('patients.new_patient')}
-          </button>
+          <div className="flex gap-2 w-full sm:w-auto">
+            <button
+              onClick={openImportModal}
+              className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-slate-600 hover:bg-slate-700 text-white px-4 py-2.5 rounded-xl transition-colors text-sm font-medium shadow-md active:scale-[0.98]"
+            >
+              <Upload size={18} />
+              {t('patients.import_button')}
+            </button>
+            <button
+              onClick={openCreateModal}
+              className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-primary hover:bg-primary-dark text-white px-4 py-2.5 rounded-xl transition-colors text-sm font-medium shadow-md active:scale-[0.98]"
+            >
+              <Plus size={20} />
+              {t('patients.new_patient')}
+            </button>
+          </div>
         }
       />
 
@@ -689,6 +771,206 @@ export default function PatientsView() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Import Modal */}
+      {showImportModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={e => e.target === e.currentTarget && setShowImportModal(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
+            {/* Header */}
+            <div className="flex items-center justify-between p-5 border-b border-slate-100 shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-slate-100 rounded-xl"><Upload size={20} className="text-slate-600" /></div>
+                <h3 className="text-lg font-bold text-slate-800">{t('patients.import_title')}</h3>
+              </div>
+              <button onClick={() => setShowImportModal(false)} className="p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100"><X size={20} /></button>
+            </div>
+
+            <div className="flex-1 min-h-0 overflow-y-auto p-5">
+              {/* STEP 1: Upload */}
+              {importStep === 'upload' && (
+                <div className="space-y-5">
+                  {/* Drop zone */}
+                  <div
+                    onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+                    onDragLeave={() => setDragOver(false)}
+                    onDrop={handleImportDrop}
+                    onClick={() => { const input = document.createElement('input'); input.type = 'file'; input.accept = '.csv,.xlsx'; input.onchange = (e: any) => { if (e.target.files[0]) handleImportFileSelect(e.target.files[0]); }; input.click(); }}
+                    className={`border-2 border-dashed rounded-2xl p-10 text-center cursor-pointer transition-all ${
+                      dragOver ? 'border-blue-400 bg-blue-50' : importFile ? 'border-green-300 bg-green-50' : 'border-slate-300 hover:border-slate-400 bg-slate-50'
+                    }`}
+                  >
+                    {importFile ? (
+                      <div className="flex flex-col items-center gap-2">
+                        <CheckCircle size={32} className="text-green-500" />
+                        <p className="text-sm font-semibold text-green-700">{importFile.name}</p>
+                        <p className="text-xs text-slate-400">{(importFile.size / 1024).toFixed(1)} KB</p>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center gap-2">
+                        <Upload size={32} className="text-slate-400" />
+                        <p className="text-sm font-medium text-slate-600">{t('patients.import_drag_drop')}</p>
+                        <p className="text-xs text-slate-400">{t('patients.import_formats')}</p>
+                      </div>
+                    )}
+                  </div>
+
+                  {importFile && (
+                    <button onClick={() => setImportFile(null)} className="text-xs text-red-500 hover:text-red-700 font-medium">{t('patients.import_remove_file')}</button>
+                  )}
+
+                  {/* Column format guide */}
+                  <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
+                    <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">{t('patients.import_columns_title')}</h4>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="border-b border-slate-200">
+                            <th className="text-left py-1.5 pr-3 font-bold text-slate-600">{t('patients.import_column')}</th>
+                            <th className="text-left py-1.5 pr-3 font-bold text-slate-600">{t('patients.import_required')}</th>
+                            <th className="text-left py-1.5 font-bold text-slate-600">{t('patients.import_example')}</th>
+                          </tr>
+                        </thead>
+                        <tbody className="text-slate-500">
+                          <tr className="border-b border-slate-100"><td className="py-1.5 pr-3 font-semibold text-slate-700">nombre</td><td className="pr-3 text-red-500 font-bold">{t('common.yes')}</td><td>María</td></tr>
+                          <tr className="border-b border-slate-100"><td className="py-1.5 pr-3">apellido</td><td className="pr-3">{t('common.no')}</td><td>López</td></tr>
+                          <tr className="border-b border-slate-100"><td className="py-1.5 pr-3">telefono</td><td className="pr-3">{t('common.no')}</td><td>+5491155551234</td></tr>
+                          <tr className="border-b border-slate-100"><td className="py-1.5 pr-3">dni</td><td className="pr-3">{t('common.no')}</td><td>35789456</td></tr>
+                          <tr className="border-b border-slate-100"><td className="py-1.5 pr-3">email</td><td className="pr-3">{t('common.no')}</td><td>maria@mail.com</td></tr>
+                          <tr className="border-b border-slate-100"><td className="py-1.5 pr-3">fecha_nacimiento</td><td className="pr-3">{t('common.no')}</td><td>15/03/1990</td></tr>
+                          <tr className="border-b border-slate-100"><td className="py-1.5 pr-3">obra_social</td><td className="pr-3">{t('common.no')}</td><td>OSDE</td></tr>
+                          <tr className="border-b border-slate-100"><td className="py-1.5 pr-3">ciudad</td><td className="pr-3">{t('common.no')}</td><td>CABA</td></tr>
+                          <tr><td className="py-1.5 pr-3">notas</td><td className="pr-3">{t('common.no')}</td><td>{t('patients.import_notes_example')}</td></tr>
+                        </tbody>
+                      </table>
+                    </div>
+                    <p className="text-[10px] text-slate-400 mt-2">{t('patients.import_max_rows')}</p>
+                  </div>
+                </div>
+              )}
+
+              {/* STEP 2: Preview */}
+              {importStep === 'preview' && importPreview && (
+                <div className="space-y-4">
+                  {/* Summary cards */}
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="bg-green-50 border border-green-200 rounded-xl p-3 text-center">
+                      <div className="text-2xl font-black text-green-700">{importPreview.valid_new}</div>
+                      <div className="text-[10px] font-bold text-green-600 uppercase">{t('patients.import_new')}</div>
+                    </div>
+                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-center">
+                      <div className="text-2xl font-black text-amber-700">{importPreview.duplicates}</div>
+                      <div className="text-[10px] font-bold text-amber-600 uppercase">{t('patients.import_duplicates')}</div>
+                    </div>
+                    <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-center">
+                      <div className="text-2xl font-black text-red-700">{importPreview.errors}</div>
+                      <div className="text-[10px] font-bold text-red-600 uppercase">{t('patients.import_errors')}</div>
+                    </div>
+                  </div>
+
+                  {/* Duplicates section */}
+                  {importPreview.duplicates > 0 && (
+                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+                      <div className="flex items-center gap-2 mb-3">
+                        <AlertTriangle size={16} className="text-amber-600" />
+                        <span className="text-sm font-bold text-amber-800">{t('patients.import_duplicates_found')}</span>
+                      </div>
+                      <div className="max-h-32 overflow-y-auto space-y-1 mb-3">
+                        {importPreview.duplicate_details.slice(0, 10).map((d: any, i: number) => (
+                          <div key={i} className="text-xs text-amber-700 flex gap-2">
+                            <span className="font-mono text-amber-500">#{d.row}</span>
+                            <span>{d.csv_name} ({d.csv_phone})</span>
+                            <span className="text-amber-400">→</span>
+                            <span>{d.existing_name}</span>
+                          </div>
+                        ))}
+                        {importPreview.duplicate_details.length > 10 && (
+                          <div className="text-xs text-amber-500 font-medium">...{t('patients.import_and_more', { count: importPreview.duplicate_details.length - 10 })}</div>
+                        )}
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => setDuplicateAction('skip')}
+                          className={`flex-1 px-3 py-2 rounded-lg text-xs font-bold border-2 transition-all ${
+                            duplicateAction === 'skip' ? 'bg-slate-700 text-white border-slate-700' : 'bg-white text-slate-600 border-slate-300 hover:border-slate-400'
+                          }`}
+                        >{t('patients.import_skip_duplicates')}</button>
+                        <button
+                          onClick={() => setDuplicateAction('update')}
+                          className={`flex-1 px-3 py-2 rounded-lg text-xs font-bold border-2 transition-all ${
+                            duplicateAction === 'update' ? 'bg-amber-600 text-white border-amber-600' : 'bg-white text-amber-600 border-amber-300 hover:border-amber-400'
+                          }`}
+                        >{t('patients.import_update_duplicates')}</button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Errors section */}
+                  {importPreview.errors > 0 && (
+                    <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+                      <div className="flex items-center gap-2 mb-2">
+                        <XCircle size={16} className="text-red-600" />
+                        <span className="text-sm font-bold text-red-800">{t('patients.import_errors_found')}</span>
+                      </div>
+                      <div className="max-h-24 overflow-y-auto space-y-1">
+                        {importPreview.error_details.map((e: any, i: number) => (
+                          <div key={i} className="text-xs text-red-600"><span className="font-mono text-red-400">#{e.row}</span> {e.reason}</div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* STEP 3: Result */}
+              {importStep === 'result' && importResult && (
+                <div className="space-y-4 text-center py-6">
+                  <CheckCircle size={48} className="text-green-500 mx-auto" />
+                  <h4 className="text-lg font-bold text-slate-800">{t('patients.import_complete')}</h4>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 max-w-md mx-auto">
+                    <div className="bg-green-50 rounded-xl p-3"><div className="text-xl font-black text-green-700">{importResult.imported}</div><div className="text-[9px] font-bold text-green-600 uppercase">{t('patients.import_imported')}</div></div>
+                    <div className="bg-blue-50 rounded-xl p-3"><div className="text-xl font-black text-blue-700">{importResult.updated}</div><div className="text-[9px] font-bold text-blue-600 uppercase">{t('patients.import_updated')}</div></div>
+                    <div className="bg-slate-50 rounded-xl p-3"><div className="text-xl font-black text-slate-500">{importResult.skipped}</div><div className="text-[9px] font-bold text-slate-400 uppercase">{t('patients.import_skipped')}</div></div>
+                    <div className="bg-red-50 rounded-xl p-3"><div className="text-xl font-black text-red-600">{importResult.errors}</div><div className="text-[9px] font-bold text-red-500 uppercase">{t('patients.import_errors')}</div></div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="flex justify-end gap-3 p-5 border-t border-slate-100 shrink-0 bg-slate-50/80">
+              {importStep === 'upload' && (
+                <>
+                  <button onClick={() => setShowImportModal(false)} className="px-4 py-2 text-slate-600 font-semibold hover:bg-slate-200 rounded-xl text-sm">{t('common.cancel')}</button>
+                  <button
+                    onClick={handleImportPreview}
+                    disabled={!importFile || importLoading}
+                    className="px-6 py-2 bg-slate-700 text-white rounded-xl font-bold text-sm shadow-sm hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                    {importLoading && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
+                    {t('patients.import_preview_btn')}
+                  </button>
+                </>
+              )}
+              {importStep === 'preview' && (
+                <>
+                  <button onClick={() => { setImportStep('upload'); setImportPreview(null); }} className="px-4 py-2 text-slate-600 font-semibold hover:bg-slate-200 rounded-xl text-sm">{t('common.back')}</button>
+                  <button
+                    onClick={handleImportExecute}
+                    disabled={importLoading || importPreview?.valid_new === 0}
+                    className="px-6 py-2 bg-green-600 text-white rounded-xl font-bold text-sm shadow-sm hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                    {importLoading && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
+                    {t('patients.import_confirm')}
+                  </button>
+                </>
+              )}
+              {importStep === 'result' && (
+                <button onClick={() => setShowImportModal(false)} className="px-6 py-2 bg-slate-700 text-white rounded-xl font-bold text-sm shadow-sm hover:bg-slate-800">{t('common.close')}</button>
+              )}
+            </div>
           </div>
         </div>
       )}

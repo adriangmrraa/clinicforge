@@ -31,3 +31,4 @@ pytz
 jinja2
 alembic
 psycopg2-binary
+openpyxl

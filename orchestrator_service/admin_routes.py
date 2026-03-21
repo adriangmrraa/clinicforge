@@ -1,6 +1,8 @@
 import os
 import uuid
 import json
+import csv
+import io
 import asyncpg
 import httpx
 import logging
@@ -2103,6 +2105,310 @@ async def create_patient(
     except Exception as e:
         logger.error(f"Error creating patient: {e}")
         raise HTTPException(status_code=400, detail=str(e))
+
+
+# ==================== IMPORTACIÓN MASIVA DE PACIENTES ====================
+
+# Mapeo de aliases de columnas (case-insensitive, sin tildes)
+_COLUMN_ALIASES: Dict[str, str] = {}
+for _field, _aliases in {
+    "first_name": ["nombre", "first_name", "name", "primer_nombre"],
+    "last_name": ["apellido", "last_name", "surname", "segundo_nombre"],
+    "phone_number": ["telefono", "teléfono", "phone", "phone_number", "celular", "tel", "whatsapp"],
+    "dni": ["dni", "documento", "document", "id_number", "cedula", "cédula"],
+    "email": ["email", "correo", "mail", "e-mail"],
+    "birth_date": ["fecha_nacimiento", "birth_date", "nacimiento", "birthday", "fecha_nac"],
+    "insurance": ["obra_social", "insurance", "seguro", "prepaga", "mutual"],
+    "city": ["ciudad", "city", "localidad", "domicilio"],
+    "notes": ["notas", "notes", "observaciones", "comentarios"],
+}.items():
+    for _a in _aliases:
+        _COLUMN_ALIASES[_a.lower().strip()] = _field
+
+def _normalize_header(h: str) -> str:
+    """Normaliza un header de CSV/XLSX a un campo conocido."""
+    import unicodedata
+    cleaned = unicodedata.normalize('NFKD', h.lower().strip()).encode('ascii', 'ignore').decode('ascii')
+    return _COLUMN_ALIASES.get(h.lower().strip()) or _COLUMN_ALIASES.get(cleaned) or ""
+
+def _parse_birth_date(val: str):
+    """Parsea fecha de nacimiento en DD/MM/AAAA o AAAA-MM-DD."""
+    if not val or not val.strip():
+        return None
+    val = val.strip()
+    for fmt in ("%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y", "%d/%m/%y"):
+        try:
+            return datetime.strptime(val, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+def _parse_import_file(file_bytes: bytes, filename: str) -> List[Dict[str, Any]]:
+    """Parsea un CSV o XLSX y devuelve lista de dicts normalizados."""
+    rows = []
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+
+    if ext == "xlsx":
+        from openpyxl import load_workbook
+        wb = load_workbook(io.BytesIO(file_bytes), read_only=True, data_only=True)
+        ws = wb.active
+        raw_rows = list(ws.iter_rows(values_only=True))
+        wb.close()
+        if not raw_rows:
+            return []
+        headers = [str(c or "").strip() for c in raw_rows[0]]
+        for vals in raw_rows[1:]:
+            row_dict = {}
+            for i, h in enumerate(headers):
+                v = vals[i] if i < len(vals) else None
+                row_dict[h] = str(v).strip() if v is not None else ""
+            rows.append(row_dict)
+    elif ext == "csv":
+        # Try UTF-8 first, fallback to latin-1
+        text = None
+        for enc in ("utf-8-sig", "utf-8", "latin-1"):
+            try:
+                text = file_bytes.decode(enc)
+                break
+            except (UnicodeDecodeError, ValueError):
+                continue
+        if text is None:
+            raise ValueError("No se pudo decodificar el archivo. Probá guardándolo como UTF-8.")
+        reader = csv.DictReader(io.StringIO(text))
+        for r in reader:
+            rows.append({k: (v or "").strip() for k, v in r.items()})
+    else:
+        raise ValueError(f"Formato no soportado: .{ext}. Usá .csv o .xlsx")
+
+    # Normalizar headers
+    normalized = []
+    for row in rows:
+        mapped = {}
+        for raw_key, val in row.items():
+            field = _normalize_header(raw_key)
+            if field and val:
+                mapped[field] = val
+        normalized.append(mapped)
+    return normalized
+
+
+@router.post("/patients/import/preview", dependencies=[Depends(verify_admin_token)], tags=["Pacientes"], summary="Previsualizar importación de pacientes desde CSV/XLSX")
+async def import_patients_preview(
+    file: UploadFile = File(...),
+    tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    """Parsea un archivo CSV/XLSX y devuelve una previsualización sin insertar datos. Aislado por tenant_id (Regla de Oro)."""
+    # Validar extensión
+    ext = (file.filename or "").rsplit(".", 1)[-1].lower()
+    if ext not in ("csv", "xlsx"):
+        raise HTTPException(status_code=400, detail="Formato no soportado. Usá archivos .csv o .xlsx")
+
+    file_bytes = await file.read()
+    try:
+        rows = _parse_import_file(file_bytes, file.filename or "file.csv")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    if len(rows) > 1000:
+        raise HTTPException(status_code=400, detail=f"El archivo tiene {len(rows)} filas. El máximo permitido es 1000.")
+    if not rows:
+        raise HTTPException(status_code=400, detail="El archivo está vacío o no tiene datos.")
+
+    # Generar placeholders y validar
+    tel_counter = 1
+    dni_counter = 1
+    # Get existing placeholder counters from DB to avoid collisions
+    existing_tel = await db.pool.fetchval(
+        "SELECT COUNT(*) FROM patients WHERE tenant_id = $1 AND phone_number LIKE 'SIN-TEL-%'", tenant_id
+    ) or 0
+    existing_dni = await db.pool.fetchval(
+        "SELECT COUNT(*) FROM patients WHERE tenant_id = $1 AND dni LIKE 'SIN-DNI-%'", tenant_id
+    ) or 0
+    tel_counter = existing_tel + 1
+    dni_counter = existing_dni + 1
+
+    preview_rows = []
+    error_details = []
+    phones_in_file: set = set()
+
+    for i, row in enumerate(rows, start=2):  # Row 2 = first data row (1 is header)
+        first_name = (row.get("first_name") or "").strip()
+        if not first_name:
+            error_details.append({"row": i, "reason": "Falta el campo 'nombre' (obligatorio)"})
+            continue
+
+        phone = re.sub(r"[^\d+]", "", row.get("phone_number") or "")
+        if not phone:
+            phone = f"SIN-TEL-{tel_counter:03d}"
+            tel_counter += 1
+
+        # Dedup within file
+        if phone in phones_in_file and not phone.startswith("SIN-TEL-"):
+            error_details.append({"row": i, "reason": f"Teléfono duplicado dentro del archivo: {phone}"})
+            continue
+        phones_in_file.add(phone)
+
+        dni = re.sub(r"\D", "", row.get("dni") or "")
+        if not dni:
+            dni = f"SIN-DNI-{dni_counter:03d}"
+            dni_counter += 1
+
+        preview_rows.append({
+            "row": i,
+            "first_name": first_name,
+            "last_name": (row.get("last_name") or "").strip(),
+            "phone_number": phone,
+            "dni": dni,
+            "email": (row.get("email") or "").strip() or None,
+            "birth_date": str(_parse_birth_date(row.get("birth_date") or "")) if _parse_birth_date(row.get("birth_date") or "") else None,
+            "insurance": (row.get("insurance") or "").strip() or None,
+            "city": (row.get("city") or "").strip() or None,
+            "notes": (row.get("notes") or "").strip() or None,
+            "status": "new",  # will be updated below if duplicate
+        })
+
+    # Check duplicates against DB (batch query by phone)
+    phones = [r["phone_number"] for r in preview_rows if not r["phone_number"].startswith("SIN-TEL-")]
+    existing_patients = {}
+    if phones:
+        existing_rows = await db.pool.fetch(
+            "SELECT id, first_name, last_name, phone_number, dni, email, insurance_provider, city FROM patients WHERE tenant_id = $1 AND phone_number = ANY($2)",
+            tenant_id, phones
+        )
+        for ep in existing_rows:
+            existing_patients[ep["phone_number"]] = dict(ep)
+
+    duplicate_details = []
+    valid_new = 0
+    for pr in preview_rows:
+        existing = existing_patients.get(pr["phone_number"])
+        if existing:
+            pr["status"] = "duplicate"
+            # Check if CSV has data that DB doesn't
+            has_new = False
+            for csv_field, db_field in [("last_name", "last_name"), ("email", "email"), ("dni", "dni"), ("insurance", "insurance_provider"), ("city", "city")]:
+                if pr.get(csv_field) and not existing.get(db_field):
+                    has_new = True
+                    break
+            duplicate_details.append({
+                "row": pr["row"],
+                "csv_name": f"{pr['first_name']} {pr.get('last_name', '')}".strip(),
+                "csv_phone": pr["phone_number"],
+                "existing_id": existing["id"],
+                "existing_name": f"{existing['first_name']} {existing.get('last_name', '')}".strip(),
+                "existing_phone": existing["phone_number"],
+                "has_new_data": has_new,
+            })
+        else:
+            valid_new += 1
+
+    return {
+        "total_rows": len(rows),
+        "valid_new": valid_new,
+        "duplicates": len(duplicate_details),
+        "errors": len(error_details),
+        "duplicate_details": duplicate_details,
+        "error_details": error_details,
+        "preview_rows": preview_rows,
+    }
+
+
+class ImportExecuteRequest(BaseModel):
+    duplicate_action: str = "skip"  # "skip" or "update"
+    rows: List[Dict[str, Any]]
+
+
+@router.post("/patients/import/execute", dependencies=[Depends(verify_admin_token)], tags=["Pacientes"], summary="Ejecutar importación de pacientes")
+async def import_patients_execute(
+    body: ImportExecuteRequest,
+    tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    """Ejecuta la importación de pacientes previsualizados. Aislado por tenant_id (Regla de Oro)."""
+    imported = 0
+    updated = 0
+    skipped = 0
+    errors = 0
+
+    for row in body.rows:
+        status = row.get("status", "new")
+        first_name = (row.get("first_name") or "").strip()
+        if not first_name:
+            errors += 1
+            continue
+
+        if status == "new":
+            try:
+                birth = None
+                if row.get("birth_date"):
+                    try:
+                        birth = date.fromisoformat(row["birth_date"])
+                    except (ValueError, TypeError):
+                        birth = _parse_birth_date(row["birth_date"])
+                await db.pool.execute("""
+                    INSERT INTO patients (tenant_id, first_name, last_name, phone_number, email, dni, insurance_provider, city, birth_date, notes, status, created_at)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'active', NOW())
+                """,
+                    tenant_id,
+                    first_name,
+                    (row.get("last_name") or "").strip(),
+                    (row.get("phone_number") or "").strip(),
+                    row.get("email") or None,
+                    (row.get("dni") or "").strip() or None,
+                    row.get("insurance") or None,
+                    row.get("city") or None,
+                    birth,
+                    row.get("notes") or None,
+                )
+                imported += 1
+            except asyncpg.UniqueViolationError:
+                skipped += 1
+            except Exception as e:
+                logger.error(f"Error importing patient row: {e}")
+                errors += 1
+
+        elif status == "duplicate":
+            if body.duplicate_action == "skip":
+                skipped += 1
+            elif body.duplicate_action == "update":
+                try:
+                    phone = (row.get("phone_number") or "").strip()
+                    birth = None
+                    if row.get("birth_date"):
+                        try:
+                            birth = date.fromisoformat(row["birth_date"])
+                        except (ValueError, TypeError):
+                            birth = _parse_birth_date(row["birth_date"])
+                    # COALESCE: only fill empty fields, never overwrite existing data
+                    await db.pool.execute("""
+                        UPDATE patients SET
+                            last_name = COALESCE(NULLIF(last_name, ''), $2),
+                            email = COALESCE(email, $3),
+                            dni = COALESCE(dni, $4),
+                            insurance_provider = COALESCE(insurance_provider, $5),
+                            city = COALESCE(city, $6),
+                            birth_date = COALESCE(birth_date, $7),
+                            notes = COALESCE(notes, $8),
+                            updated_at = NOW()
+                        WHERE tenant_id = $1 AND phone_number = $9
+                    """,
+                        tenant_id,
+                        (row.get("last_name") or "").strip() or None,
+                        row.get("email") or None,
+                        (row.get("dni") or "").strip() or None,
+                        row.get("insurance") or None,
+                        row.get("city") or None,
+                        birth,
+                        row.get("notes") or None,
+                        phone,
+                    )
+                    updated += 1
+                except Exception as e:
+                    logger.error(f"Error updating patient during import: {e}")
+                    errors += 1
+        else:
+            errors += 1
+
+    return {"imported": imported, "updated": updated, "skipped": skipped, "errors": errors}
 
 
 @router.get("/patients", dependencies=[Depends(verify_admin_token)], tags=["Pacientes"], summary="Listar pacientes con turnos asociados")
