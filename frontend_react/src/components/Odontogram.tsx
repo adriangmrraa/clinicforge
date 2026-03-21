@@ -26,46 +26,144 @@ interface OdontogramProps {
   readOnly?: boolean;
 }
 
-// FDI standard: Quadrant 1 (upper-right) 18→11, Q2 (upper-left) 21→28, Q3 (lower-left) 31→38, Q4 (lower-right) 48→41
-const UPPER_RIGHT: number[] = [18, 17, 16, 15, 14, 13, 12, 11]; // Q1 - patient's upper right
-const UPPER_LEFT: number[] = [21, 22, 23, 24, 25, 26, 27, 28];  // Q2 - patient's upper left
-const LOWER_LEFT: number[] = [31, 32, 33, 34, 35, 36, 37, 38];  // Q3 - patient's lower left
-const LOWER_RIGHT: number[] = [48, 47, 46, 45, 44, 43, 42, 41]; // Q4 - patient's lower right
+// FDI standard quadrants
+const UPPER_RIGHT: number[] = [18, 17, 16, 15, 14, 13, 12, 11];
+const UPPER_LEFT: number[] = [21, 22, 23, 24, 25, 26, 27, 28];
+const LOWER_RIGHT: number[] = [48, 47, 46, 45, 44, 43, 42, 41];
+const LOWER_LEFT: number[] = [31, 32, 33, 34, 35, 36, 37, 38];
 
-const ALL_TEETH = [...UPPER_RIGHT, ...UPPER_LEFT, ...LOWER_LEFT, ...LOWER_RIGHT];
+const ALL_TEETH = [...UPPER_RIGHT, ...UPPER_LEFT, ...LOWER_RIGHT, ...LOWER_LEFT];
 
-// Colors: filled circle bg + border + text for each state
-const STATE_STYLES: Record<ToothStatus, { bg: string; border: string; text: string; ring: string }> = {
-  healthy:           { bg: 'bg-emerald-50',  border: 'border-emerald-300', text: 'text-emerald-700', ring: 'ring-emerald-400' },
-  caries:            { bg: 'bg-red-100',     border: 'border-red-400',     text: 'text-red-700',     ring: 'ring-red-400' },
-  restoration:       { bg: 'bg-sky-100',     border: 'border-sky-400',     text: 'text-sky-700',     ring: 'ring-sky-400' },
-  extraction:        { bg: 'bg-slate-200',   border: 'border-slate-400',   text: 'text-slate-500',   ring: 'ring-slate-400' },
-  treatment_planned: { bg: 'bg-amber-100',   border: 'border-amber-400',   text: 'text-amber-700',   ring: 'ring-amber-400' },
-  crown:             { bg: 'bg-violet-100',  border: 'border-violet-400',  text: 'text-violet-700',  ring: 'ring-violet-400' },
-  implant:           { bg: 'bg-indigo-100',  border: 'border-indigo-400',  text: 'text-indigo-700',  ring: 'ring-indigo-400' },
-  missing:           { bg: 'bg-slate-100',   border: 'border-dashed border-slate-300', text: 'text-slate-400', ring: 'ring-slate-300' },
-  prosthesis:        { bg: 'bg-teal-100',    border: 'border-teal-400',    text: 'text-teal-700',    ring: 'ring-teal-400' },
-  root_canal:        { bg: 'bg-orange-100',  border: 'border-orange-400',  text: 'text-orange-700',  ring: 'ring-orange-400' },
+// SVG fill colors per state
+const STATE_FILLS: Record<ToothStatus, { fill: string; stroke: string }> = {
+  healthy:           { fill: '#ffffff', stroke: '#94a3b8' },
+  caries:            { fill: '#fecaca', stroke: '#dc2626' },
+  restoration:       { fill: '#bfdbfe', stroke: '#2563eb' },
+  root_canal:        { fill: '#fed7aa', stroke: '#ea580c' },
+  crown:             { fill: '#ddd6fe', stroke: '#7c3aed' },
+  implant:           { fill: '#c7d2fe', stroke: '#4f46e5' },
+  prosthesis:        { fill: '#99f6e4', stroke: '#0d9488' },
+  extraction:        { fill: '#e2e8f0', stroke: '#64748b' },
+  missing:           { fill: '#f1f5f9', stroke: '#cbd5e1' },
+  treatment_planned: { fill: '#fef08a', stroke: '#ca8a04' },
+};
+
+// Tailwind classes for state selector buttons
+const STATE_BTN: Record<ToothStatus, string> = {
+  healthy:           'bg-white border-slate-300 text-slate-600',
+  caries:            'bg-red-100 border-red-400 text-red-700',
+  restoration:       'bg-blue-100 border-blue-400 text-blue-700',
+  root_canal:        'bg-orange-100 border-orange-400 text-orange-700',
+  crown:             'bg-violet-100 border-violet-400 text-violet-700',
+  implant:           'bg-indigo-100 border-indigo-400 text-indigo-700',
+  prosthesis:        'bg-teal-100 border-teal-400 text-teal-700',
+  extraction:        'bg-slate-200 border-slate-400 text-slate-600',
+  missing:           'bg-slate-100 border-slate-300 text-slate-400',
+  treatment_planned: 'bg-yellow-100 border-yellow-500 text-yellow-700',
 };
 
 const STATE_SYMBOLS: Record<ToothStatus, string> = {
-  healthy: '',
-  caries: 'C',
-  restoration: 'R',
-  extraction: '✕',
-  treatment_planned: 'P',
-  crown: 'Co',
-  implant: 'Im',
-  missing: '—',
-  prosthesis: 'Pr',
-  root_canal: 'Tc',
+  healthy: '○', caries: 'C', restoration: 'R', root_canal: 'Tc',
+  crown: 'Co', implant: 'Im', prosthesis: 'Pr', extraction: '✕',
+  missing: '—', treatment_planned: 'P',
 };
+
+// Format tooth ID to FDI display: 18 → "1.8", 21 → "2.1"
+function fdiLabel(id: number): string {
+  return `${Math.floor(id / 10)}.${id % 10}`;
+}
+
+// SVG paths for the 5 surfaces of the classic odontogram tooth diagram
+// ViewBox: 0 0 40 40 — outer circle r=18, inner circle r=7, center (20,20)
+const SURFACE_PATHS = {
+  // Top surface (vestibular for upper, lingual for lower)
+  top: 'M20,2 A18,18 0 0,1 38,20 L27,20 A7,7 0 0,0 20,13 Z',
+  // Right surface
+  right: 'M38,20 A18,18 0 0,1 20,38 L20,27 A7,7 0 0,0 27,20 Z',
+  // Bottom surface (lingual/palatal for upper, vestibular for lower)
+  bottom: 'M20,38 A18,18 0 0,1 2,20 L13,20 A7,7 0 0,0 20,27 Z',
+  // Left surface
+  left: 'M2,20 A18,18 0 0,1 20,2 L20,13 A7,7 0 0,0 13,20 Z',
+};
+
+// Render one tooth as SVG with 5 clickable surfaces
+function ToothSVG({
+  toothId,
+  state,
+  isSelected,
+  readOnly,
+  onClick,
+}: {
+  toothId: number;
+  state: ToothStatus;
+  isSelected: boolean;
+  readOnly: boolean;
+  onClick: () => void;
+}) {
+  const fills = STATE_FILLS[state] || STATE_FILLS.healthy;
+  const isAbsent = state === 'missing' || state === 'extraction';
+
+  return (
+    <svg
+      viewBox="0 0 40 40"
+      className={`w-[38px] h-[38px] sm:w-[42px] sm:h-[42px] shrink-0 transition-transform duration-100 ${
+        readOnly ? 'cursor-default' : 'cursor-pointer hover:scale-110 active:scale-95'
+      } ${isSelected ? 'scale-110 drop-shadow-md' : ''}`}
+      onClick={readOnly ? undefined : onClick}
+    >
+      {/* Selection ring */}
+      {isSelected && (
+        <circle cx="20" cy="20" r="19.5" fill="none" stroke="#2563eb" strokeWidth="1.5" strokeDasharray="3,2" />
+      )}
+
+      {/* 4 outer surfaces */}
+      {(['top', 'right', 'bottom', 'left'] as const).map(surface => (
+        <path
+          key={surface}
+          d={SURFACE_PATHS[surface]}
+          fill={fills.fill}
+          stroke={fills.stroke}
+          strokeWidth="1"
+          opacity={isAbsent ? 0.4 : 1}
+        />
+      ))}
+
+      {/* Center circle (occlusal) */}
+      <circle
+        cx="20" cy="20" r="7"
+        fill={fills.fill}
+        stroke={fills.stroke}
+        strokeWidth="1"
+        opacity={isAbsent ? 0.4 : 1}
+      />
+
+      {/* Cross lines (structural) */}
+      <line x1="20" y1="2" x2="20" y2="13" stroke={fills.stroke} strokeWidth="0.8" opacity={isAbsent ? 0.3 : 0.6} />
+      <line x1="20" y1="27" x2="20" y2="38" stroke={fills.stroke} strokeWidth="0.8" opacity={isAbsent ? 0.3 : 0.6} />
+      <line x1="2" y1="20" x2="13" y2="20" stroke={fills.stroke} strokeWidth="0.8" opacity={isAbsent ? 0.3 : 0.6} />
+      <line x1="27" y1="20" x2="38" y2="20" stroke={fills.stroke} strokeWidth="0.8" opacity={isAbsent ? 0.3 : 0.6} />
+
+      {/* X overlay for extraction */}
+      {state === 'extraction' && (
+        <>
+          <line x1="6" y1="6" x2="34" y2="34" stroke="#dc2626" strokeWidth="2" strokeLinecap="round" />
+          <line x1="34" y1="6" x2="6" y2="34" stroke="#dc2626" strokeWidth="2" strokeLinecap="round" />
+        </>
+      )}
+
+      {/* Dash for missing */}
+      {state === 'missing' && (
+        <line x1="10" y1="20" x2="30" y2="20" stroke="#94a3b8" strokeWidth="2.5" strokeLinecap="round" />
+      )}
+    </svg>
+  );
+}
 
 export default function Odontogram({ patientId, recordId, initialData, onSave, readOnly = false }: OdontogramProps) {
   const { t } = useTranslation();
   const [teeth, setTeeth] = useState<ToothState[]>([]);
   const [selectedTooth, setSelectedTooth] = useState<number | null>(null);
-  const [selectedState, setSelectedState] = useState<string>('healthy');
+  const [selectedState, setSelectedState] = useState<ToothStatus>('healthy');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -93,17 +191,26 @@ export default function Odontogram({ patientId, recordId, initialData, onSave, r
 
   const handleToothClick = (toothId: number) => {
     if (readOnly) return;
-    setSelectedTooth(toothId);
-    const tooth = teeth.find(t => t.id === toothId);
-    if (tooth) setSelectedState(tooth.state);
+    if (selectedTooth === toothId) {
+      // Already selected → apply current state
+      setTeeth(prev => prev.map(tooth =>
+        tooth.id === toothId ? { ...tooth, state: selectedState } : tooth
+      ));
+    } else {
+      setSelectedTooth(toothId);
+      const tooth = teeth.find(t => t.id === toothId);
+      if (tooth) setSelectedState(tooth.state);
+    }
   };
 
-  const handleStateChange = (state: string) => {
-    if (readOnly || !selectedTooth) return;
+  const handleStateChange = (state: ToothStatus) => {
+    if (readOnly) return;
     setSelectedState(state);
-    setTeeth(prev => prev.map(tooth =>
-      tooth.id === selectedTooth ? { ...tooth, state: state as ToothStatus } : tooth
-    ));
+    if (selectedTooth) {
+      setTeeth(prev => prev.map(tooth =>
+        tooth.id === selectedTooth ? { ...tooth, state } : tooth
+      ));
+    }
   };
 
   const handleSave = async () => {
@@ -136,43 +243,32 @@ export default function Odontogram({ patientId, recordId, initialData, onSave, r
     setSelectedState('healthy');
   };
 
-  const renderTooth = (toothId: number) => {
-    const tooth = teeth.find(t => t.id === toothId);
-    const state = (tooth?.state || 'healthy') as ToothStatus;
-    const isSelected = selectedTooth === toothId;
-    const style = STATE_STYLES[state] || STATE_STYLES.healthy;
-    const symbol = STATE_SYMBOLS[state] || '';
-    const hasIssue = state !== 'healthy';
-
-    return (
-      <button
-        key={toothId}
-        onClick={() => handleToothClick(toothId)}
-        disabled={readOnly}
-        className={`
-          relative w-11 h-11 sm:w-12 sm:h-12 rounded-full border-2 flex flex-col items-center justify-center
-          transition-all duration-150 shrink-0
-          ${style.bg} ${style.border} ${style.text}
-          ${isSelected ? `ring-2 ${style.ring} ring-offset-1 scale-110 shadow-md` : ''}
-          ${readOnly ? 'cursor-default' : 'cursor-pointer hover:scale-110 hover:shadow-md active:scale-95'}
-        `}
-        title={`${toothId} - ${tooth ? t('odontogram.states.' + state) : ''}`}
-      >
-        {/* Tooth number */}
-        <span className={`text-[10px] font-bold leading-none ${hasIssue ? '' : 'text-slate-500'}`}>{toothId}</span>
-        {/* State symbol */}
-        {symbol && <span className="text-[9px] font-black leading-none mt-0.5">{symbol}</span>}
-        {/* Dot indicator for non-healthy */}
-        {hasIssue && state !== 'missing' && (
-          <div className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-red-500 border border-white"></div>
-        )}
-      </button>
-    );
-  };
-
-  const renderQuadrant = (teeth: number[], label: string) => (
-    <div className="flex gap-1 sm:gap-1.5">
-      {teeth.map(id => renderTooth(id))}
+  // Render a row of teeth with numbers
+  const renderTeethRow = (ids: number[], numbersBelow: boolean) => (
+    <div className="flex gap-[2px] sm:gap-1">
+      {ids.map(id => {
+        const tooth = teeth.find(t => t.id === id);
+        const state = (tooth?.state || 'healthy') as ToothStatus;
+        const isSelected = selectedTooth === id;
+        const label = fdiLabel(id);
+        return (
+          <div key={id} className="flex flex-col items-center">
+            {!numbersBelow && (
+              <span className={`text-[9px] sm:text-[10px] font-bold mb-0.5 select-none ${isSelected ? 'text-blue-600' : 'text-slate-500'}`}>{label}</span>
+            )}
+            <ToothSVG
+              toothId={id}
+              state={state}
+              isSelected={isSelected}
+              readOnly={readOnly}
+              onClick={() => handleToothClick(id)}
+            />
+            {numbersBelow && (
+              <span className={`text-[9px] sm:text-[10px] font-bold mt-0.5 select-none ${isSelected ? 'text-blue-600' : 'text-slate-500'}`}>{label}</span>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 
@@ -219,35 +315,37 @@ export default function Odontogram({ patientId, recordId, initialData, onSave, r
         </div>
       )}
 
-      {/* State selector panel */}
-      {selectedTooth && !readOnly && (
-        <div className="mb-5 p-4 bg-slate-50/80 rounded-2xl border border-slate-100">
-          <div className="flex items-center gap-2.5 mb-3">
-            <div className={`w-9 h-9 rounded-full flex items-center justify-center font-bold text-sm ${STATE_STYLES[(teeth.find(t => t.id === selectedTooth)?.state || 'healthy') as ToothStatus].bg} ${STATE_STYLES[(teeth.find(t => t.id === selectedTooth)?.state || 'healthy') as ToothStatus].border} border-2`}>
-              {selectedTooth}
-            </div>
-            <span className="text-sm font-semibold text-slate-700">
-              {t('odontogram.selecting_tooth')} {selectedTooth}
+      {/* State selector */}
+      {!readOnly && (
+        <div className="mb-5 p-3 bg-slate-50/80 rounded-2xl border border-slate-100">
+          <div className="flex items-center gap-2 mb-2">
+            {selectedTooth && (
+              <>
+                <span className="text-xs font-bold text-slate-500">{t('odontogram.selecting_tooth')}</span>
+                <span className="text-sm font-black text-blue-600">{fdiLabel(selectedTooth)}</span>
+                <span className="text-[10px] text-slate-400">—</span>
+              </>
+            )}
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+              {selectedTooth ? t('odontogram.states.' + selectedState) : t('odontogram.select_state')}
             </span>
           </div>
-          <div className="grid grid-cols-5 sm:grid-cols-10 gap-1.5">
+          <div className="flex flex-wrap gap-1.5">
             {availableStates.map(s => {
-              const sty = STATE_STYLES[s.id];
               const active = selectedState === s.id;
               return (
                 <button
                   key={s.id}
                   onClick={() => handleStateChange(s.id)}
                   className={`
-                    px-1 py-2 rounded-xl border-2 transition-all text-center
+                    px-2.5 py-1.5 rounded-lg border-2 transition-all text-[10px] font-bold
                     ${active
-                      ? `${sty.bg} ${sty.border} ${sty.text} shadow-sm scale-105`
-                      : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50'
+                      ? `${STATE_BTN[s.id]} ring-2 ring-offset-1 ring-blue-400 scale-105 shadow-sm`
+                      : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300'
                     }
                   `}
                 >
-                  <div className="text-xs font-black">{STATE_SYMBOLS[s.id] || '○'}</div>
-                  <div className="text-[9px] font-semibold mt-0.5 leading-tight truncate">{s.label}</div>
+                  {STATE_SYMBOLS[s.id]} {s.label}
                 </button>
               );
             })}
@@ -255,47 +353,38 @@ export default function Odontogram({ patientId, recordId, initialData, onSave, r
         </div>
       )}
 
-      {/* Dental chart — FDI layout */}
-      <div className="mb-6">
-        {/* Upper arch */}
-        <div className="mb-1">
-          <div className="text-center text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">{t('odontogram.upper_arch')}</div>
-          <div className="overflow-x-auto pb-1">
-            <div className="flex justify-center gap-0 min-w-max mx-auto">
-              {/* Q1: upper-right (18→11) */}
-              <div className="flex gap-1 sm:gap-1.5 pr-2 sm:pr-3 border-r-2 border-slate-300">
-                {UPPER_RIGHT.map(id => renderTooth(id))}
-              </div>
-              {/* Q2: upper-left (21→28) */}
-              <div className="flex gap-1 sm:gap-1.5 pl-2 sm:pl-3">
-                {UPPER_LEFT.map(id => renderTooth(id))}
-              </div>
+      {/* Odontogram chart — FDI layout */}
+      <div className="mb-6 overflow-x-auto">
+        <div className="min-w-max mx-auto flex flex-col items-center gap-0">
+
+          {/* UPPER ARCH — circles on top, numbers below */}
+          <div className="flex gap-0 items-end">
+            {/* Q1: upper-right 1.8 → 1.1 */}
+            <div className="pr-3 sm:pr-4 border-r-2 border-slate-400">
+              {renderTeethRow(UPPER_RIGHT, true)}
+            </div>
+            {/* Q2: upper-left 2.1 → 2.8 */}
+            <div className="pl-3 sm:pl-4">
+              {renderTeethRow(UPPER_LEFT, true)}
             </div>
           </div>
-        </div>
 
-        {/* Midline separator */}
-        <div className="flex items-center gap-2 my-2 px-4">
-          <div className="flex-1 h-px bg-slate-200"></div>
-          <span className="text-[9px] font-bold text-slate-300 uppercase tracking-widest">R / L</span>
-          <div className="flex-1 h-px bg-slate-200"></div>
-        </div>
+          {/* Horizontal divider between arches */}
+          <div className="w-full my-1.5">
+            <div className="h-[2px] bg-slate-400 rounded-full"></div>
+          </div>
 
-        {/* Lower arch */}
-        <div className="mt-1">
-          <div className="overflow-x-auto pb-1">
-            <div className="flex justify-center gap-0 min-w-max mx-auto">
-              {/* Q4: lower-right (48→41) */}
-              <div className="flex gap-1 sm:gap-1.5 pr-2 sm:pr-3 border-r-2 border-slate-300">
-                {LOWER_RIGHT.map(id => renderTooth(id))}
-              </div>
-              {/* Q3: lower-left (31→38) */}
-              <div className="flex gap-1 sm:gap-1.5 pl-2 sm:pl-3">
-                {LOWER_LEFT.map(id => renderTooth(id))}
-              </div>
+          {/* LOWER ARCH — numbers on top, circles below */}
+          <div className="flex gap-0 items-start">
+            {/* Q4: lower-right 4.8 → 4.1 */}
+            <div className="pr-3 sm:pr-4 border-r-2 border-slate-400">
+              {renderTeethRow(LOWER_RIGHT, false)}
+            </div>
+            {/* Q3: lower-left 3.1 → 3.8 */}
+            <div className="pl-3 sm:pl-4">
+              {renderTeethRow(LOWER_LEFT, false)}
             </div>
           </div>
-          <div className="text-center text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-2">{t('odontogram.lower_arch')}</div>
         </div>
       </div>
 
@@ -304,12 +393,24 @@ export default function Odontogram({ patientId, recordId, initialData, onSave, r
         <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">{t('odontogram.legend')}</h4>
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
           {availableStates.map(s => {
-            const sty = STATE_STYLES[s.id];
+            const fills = STATE_FILLS[s.id];
             return (
               <div key={s.id} className="flex items-center gap-2">
-                <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center text-[8px] font-black shrink-0 ${sty.bg} ${sty.border} ${sty.text}`}>
-                  {STATE_SYMBOLS[s.id] || '○'}
-                </div>
+                <svg viewBox="0 0 40 40" className="w-5 h-5 shrink-0">
+                  <circle cx="20" cy="20" r="17" fill={fills.fill} stroke={fills.stroke} strokeWidth="2" />
+                  <line x1="20" y1="3" x2="20" y2="37" stroke={fills.stroke} strokeWidth="1" opacity="0.5" />
+                  <line x1="3" y1="20" x2="37" y2="20" stroke={fills.stroke} strokeWidth="1" opacity="0.5" />
+                  <circle cx="20" cy="20" r="7" fill={fills.fill} stroke={fills.stroke} strokeWidth="1" />
+                  {s.id === 'extraction' && (
+                    <>
+                      <line x1="8" y1="8" x2="32" y2="32" stroke="#dc2626" strokeWidth="2.5" />
+                      <line x1="32" y1="8" x2="8" y2="32" stroke="#dc2626" strokeWidth="2.5" />
+                    </>
+                  )}
+                  {s.id === 'missing' && (
+                    <line x1="10" y1="20" x2="30" y2="20" stroke="#94a3b8" strokeWidth="3" strokeLinecap="round" />
+                  )}
+                </svg>
                 <span className="text-[11px] text-slate-600 font-medium">{s.label}</span>
               </div>
             );
