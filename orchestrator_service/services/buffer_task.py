@@ -189,18 +189,26 @@ async def process_buffer_task(
             else:
                 patient_status = "patient_no_appointment"
 
-            # Generate anamnesis URL if patient has token
+            # Check if anamnesis is already completed
             import os, uuid as uuid_mod
-            anamnesis_token = patient_row.get("anamnesis_token") if patient_row else None
-            if not anamnesis_token:
-                # Generate token for existing patients
-                anamnesis_token = str(uuid_mod.uuid4())
-                await pool.execute(
-                    "UPDATE patients SET anamnesis_token = $1 WHERE id = $2 AND tenant_id = $3",
-                    anamnesis_token, p_id, tenant_id
-                )
-            frontend_url = os.getenv("FRONTEND_URL", "http://localhost:4173").rstrip("/")
-            anamnesis_url = f"{frontend_url}/anamnesis/{tenant_id}/{anamnesis_token}"
+            mh = patient_row.get("medical_history")
+            if isinstance(mh, str):
+                mh = json.loads(mh) if mh else {}
+            anamnesis_completed = bool(mh and isinstance(mh, dict) and mh.get("anamnesis_completed_at"))
+
+            if anamnesis_completed:
+                identity_lines.append("• ANAMNESIS: Ya completó su ficha médica. NO enviar link de anamnesis.")
+            else:
+                # Generate anamnesis URL only if not yet completed
+                anamnesis_token = patient_row.get("anamnesis_token") if patient_row else None
+                if not anamnesis_token:
+                    anamnesis_token = str(uuid_mod.uuid4())
+                    await pool.execute(
+                        "UPDATE patients SET anamnesis_token = $1 WHERE id = $2 AND tenant_id = $3",
+                        anamnesis_token, p_id, tenant_id
+                    )
+                frontend_url = os.getenv("FRONTEND_URL", "http://localhost:4173").rstrip("/")
+                anamnesis_url = f"{frontend_url}/anamnesis/{tenant_id}/{anamnesis_token}"
 
             if identity_lines:
                 patient_context = "\n".join(identity_lines)

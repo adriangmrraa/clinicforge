@@ -1919,7 +1919,20 @@ Si YA mencionaste el turno en esta conversación, NO lo repitas.
     # Anamnesis URL
     anamnesis_section = ""
     if anamnesis_url:
-        anamnesis_section = f"\n\nLINK DE FICHA MÉDICA: {anamnesis_url}\nDespués de confirmar un turno, enviá este link al paciente con el mensaje:\n\"Para ahorrar tiempo en tu consulta podés completar tu ficha médica aquí:\n{anamnesis_url}\nCuando termines avisame para corroborar los datos.\"\nSi el paciente dice que ya completó el formulario, llamá 'get_patient_anamnesis' para verificar y confirmá los datos."
+        anamnesis_section = (
+            f"\n\nLINK DE FICHA MÉDICA: {anamnesis_url}\n"
+            "Después de confirmar un turno, enviá este link al paciente con el mensaje:\n"
+            f"\"Para ahorrar tiempo en tu consulta podés completar tu ficha médica aquí:\n{anamnesis_url}\n"
+            "Cuando termines avisame para corroborar los datos.\"\n"
+            "Si el paciente dice que ya completó el formulario, llamá 'get_patient_anamnesis' para verificar y confirmá los datos."
+        )
+    elif patient_status != "new_lead":
+        # Patient exists but anamnesis already completed — no URL needed
+        anamnesis_section = (
+            "\n\nFICHA MÉDICA: El paciente ya tiene su ficha médica completada. "
+            "NO enviar link de anamnesis después de agendar. "
+            "Si el paciente pide actualizar su ficha médica, podés llamar 'get_patient_anamnesis' para mostrarle los datos actuales."
+        )
 
     price_text = f"${int(consultation_price):,}".replace(",", ".") if consultation_price and float(consultation_price) > 0 else ""
 
