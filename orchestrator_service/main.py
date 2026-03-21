@@ -1073,6 +1073,20 @@ async def book_appointment(date_time: str, treatment_reason: str,
         dias = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
         dia_nombre = dias[apt_datetime.weekday()]
         patient_label = f"{first_name or ''} {last_name or ''}".strip() or "Paciente"
+        # Generate anamnesis URL for the patient (not the interlocutor)
+        import uuid as uuid_mod_book
+        patient_anamnesis_token = await db.pool.fetchval(
+            "SELECT anamnesis_token FROM patients WHERE id = $1", patient_id
+        )
+        if not patient_anamnesis_token:
+            patient_anamnesis_token = str(uuid_mod_book.uuid4())
+            await db.pool.execute(
+                "UPDATE patients SET anamnesis_token = $1 WHERE id = $2",
+                patient_anamnesis_token, patient_id
+            )
+        frontend_url = os.getenv("FRONTEND_URL", "http://localhost:4173").split(",")[0].strip().rstrip("/")
+        patient_anamnesis_url = f"{frontend_url}/anamnesis/{tenant_id}/{patient_anamnesis_token}"
+
         if is_third_party:
             # Get interlocutor name for the confirmation
             interlocutor = await db.pool.fetchrow(
@@ -1080,9 +1094,18 @@ async def book_appointment(date_time: str, treatment_reason: str,
                 tenant_id, chat_phone,
             )
             interlocutor_name = f"{interlocutor['first_name']} {interlocutor.get('last_name', '')}".strip() if interlocutor else "el interlocutor"
-            return f"✅ Turno confirmado para {patient_label} (solicitado por {interlocutor_name}) con el/la Dr/a. {target_prof['first_name']}! {dia_nombre} {apt_datetime.strftime('%d/%m')} a las {apt_datetime.strftime('%H:%M')} ({final_duration} min)."
+            return (
+                f"✅ Turno confirmado para {patient_label} (solicitado por {interlocutor_name}) con el/la Dr/a. {target_prof['first_name']}! "
+                f"{dia_nombre} {apt_datetime.strftime('%d/%m')} a las {apt_datetime.strftime('%H:%M')} ({final_duration} min).\n"
+                f"[INTERNAL_PATIENT_PHONE:{phone}]\n"
+                f"[INTERNAL_ANAMNESIS_URL:{patient_anamnesis_url}]"
+            )
         else:
-            return f"✅ ¡Turno confirmado con el/la Dr/a. {target_prof['first_name']}! {dia_nombre} {apt_datetime.strftime('%d/%m')} a las {apt_datetime.strftime('%H:%M')} ({final_duration} min)."
+            return (
+                f"✅ ¡Turno confirmado con el/la Dr/a. {target_prof['first_name']}! "
+                f"{dia_nombre} {apt_datetime.strftime('%d/%m')} a las {apt_datetime.strftime('%H:%M')} ({final_duration} min).\n"
+                f"[INTERNAL_ANAMNESIS_URL:{patient_anamnesis_url}]"
+            )
 
     except Exception as e:
         import traceback
@@ -1706,11 +1729,12 @@ async def save_patient_anamnesis(
         return "⚠️ Hubo un problema al guardar tu historial médico. Por favor, intenta de nuevo o comunícate con la clínica."
 
 @tool
-async def save_patient_email(email: str):
+async def save_patient_email(email: str, patient_phone: Optional[str] = None):
     """
     Guarda el email del paciente en su ficha. Usar SOLO cuando el paciente responde con su email tras haber agendado un turno.
     El flujo: tras confirmar el turno, ofrecer "Si me pasás tu mail te mantenemos al tanto 😊". Cuando responda con un email válido, llamar esta tool.
     email: Dirección de correo electrónico del paciente.
+    patient_phone: (Opcional) Teléfono del paciente si el turno fue para un TERCERO o MENOR. Usar el phone_number que devolvió book_appointment en su confirmación. Si el turno fue para el interlocutor, no pasar este parámetro.
     """
     phone = current_customer_phone.get()
     if not phone:
@@ -1722,20 +1746,30 @@ async def save_patient_email(email: str):
     if not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', email_clean):
         return "❌ Ese formato no parece un email válido. Revisalo y escribilo de nuevo."
     try:
-        phone_digits = normalize_phone_digits(phone)
+        # If patient_phone provided (third party / minor), use that to find the patient
+        target_phone = patient_phone.strip() if patient_phone and patient_phone.strip() else phone
+        phone_digits = normalize_phone_digits(target_phone)
         row = await db.pool.fetchrow("""
             UPDATE patients
             SET email = $1, updated_at = NOW()
             WHERE tenant_id = $2 AND REGEXP_REPLACE(phone_number, '[^0-9]', '', 'g') = $3
             RETURNING id
         """, email_clean, tenant_id, phone_digits)
+        # Fallback: if third party phone didn't match (e.g. minor with -M1 suffix), try exact match
+        if not row and patient_phone:
+            row = await db.pool.fetchrow("""
+                UPDATE patients
+                SET email = $1, updated_at = NOW()
+                WHERE tenant_id = $2 AND phone_number = $3
+                RETURNING id
+            """, email_clean, tenant_id, target_phone)
         if not row:
-            return "No encontré tu ficha. Asegurate de haber agendado primero; si ya lo hiciste, contactá a la clínica por otro medio."
-        logger.info(f"✅ save_patient_email OK phone_digits={phone_digits} tenant={tenant_id} patient_id={row['id']}")
-        return "✅ Guardé tu email. Te vamos a mantener al tanto por ahí."
+            return "No encontré la ficha del paciente. Asegurate de haber agendado primero."
+        logger.info(f"✅ save_patient_email OK target_phone={target_phone} tenant={tenant_id} patient_id={row['id']}")
+        return "✅ Guardé el email correctamente."
     except Exception as e:
         logger.error(f"Error en save_patient_email: {e}")
-        return "Hubo un problema al guardar tu email. Probá de nuevo o avisá a la clínica."
+        return "Hubo un problema al guardar el email. Probá de nuevo o avisá a la clínica."
 
 @tool
 async def get_patient_anamnesis():
@@ -2135,8 +2169,9 @@ PASO 2b: PARA QUIÉN ES EL TURNO (OBLIGATORIO SIEMPRE) — Preguntá: "El turno 
     • En book_appointment pasá: patient_phone=teléfono del tercero, is_minor=false.
     • NUNCA uses el teléfono del chat como teléfono del tercero adulto.
   ESCENARIO C — PARA UN MENOR (hijo/a del interlocutor):
-    • Sinónimos de detección: "hijo/a", "nene/a", "menor", "niño/a", "bebé", "chico/a"
-    • NO pedir teléfono. El sistema usa el del padre/madre automáticamente.
+    • Sinónimos de detección: "hijo/a", "nene/a", "menor", "niño/a", "bebé", "chico/a", "tiene X años" (edad menor a 18)
+    • NUNCA pidas teléfono para un menor. El sistema usa el del padre/madre automáticamente.
+    • Si el interlocutor dice que el paciente no tiene teléfono, es menor de edad, o tiene menos de 18 años → tratalo como MENOR.
     • Pedir nombre, apellido y DNI del menor.
     • En book_appointment pasá: is_minor=true. NO pasar patient_phone.
   REGLA DE NOMBRE (CRÍTICO): NUNCA cambies el nombre de la conversación/paciente del interlocutor cuando el turno es para un tercero o menor. El nombre de la conversación se mantiene como viene de WhatsApp/Instagram/Facebook.
@@ -2154,11 +2189,17 @@ PASO 7: CONFIRMACIÓN.
   • Para sí mismo: "Turno confirmado para [nombre], [tratamiento], [día], [hora], con [profesional], en [sede]."
   • Para tercero/menor: "Turno confirmado para [nombre del paciente] (solicitado por [nombre del interlocutor]): [tratamiento], [día], [hora], con [profesional], en [sede]."
   Ofrecer enviar recordatorio y pedir mail opcionalmente.
-PASO 7b: Si el paciente da su email, llamá 'save_patient_email'.
-PASO 8: FICHA MÉDICA:
-  • Para sí mismo: enviá el link de ficha médica. Decí: "Para ahorrar tiempo en tu consulta podés completar tu ficha médica aquí: [link]."
-  • Para menor: enviá el link de ficha médica del MENOR al padre/madre. Decí: "Te paso el link para completar la ficha médica de [nombre hijo/a]: [link]."
-  • Para adulto tercero: decí: "Te paso el link de ficha médica para que se lo reenvíes a [nombre]: [link]."
+  IMPORTANTE: La respuesta de book_appointment incluye etiquetas internas:
+  - [INTERNAL_PATIENT_PHONE:xxx] → es el teléfono del paciente en la BD. Usalo en save_patient_email(patient_phone=xxx) si el turno fue para un tercero/menor.
+  - [INTERNAL_ANAMNESIS_URL:xxx] → es el link de ficha médica DEL PACIENTE (no del interlocutor). Usá ESTE link para el PASO 8.
+  NUNCA muestres estas etiquetas al paciente. Son datos internos para que uses en los pasos siguientes.
+PASO 7b: Si dan un email:
+  • Si el turno fue para SÍ MISMO → llamá save_patient_email(email=...) sin patient_phone.
+  • Si el turno fue para un TERCERO o MENOR → llamá save_patient_email(email=..., patient_phone=...) usando el [INTERNAL_PATIENT_PHONE] que devolvió book_appointment. Esto guarda el email en la ficha del paciente correcto, no en la del interlocutor.
+PASO 8: FICHA MÉDICA — Usá SIEMPRE el link de [INTERNAL_ANAMNESIS_URL] que devolvió book_appointment:
+  • Para sí mismo: "Para ahorrar tiempo en tu consulta podés completar tu ficha médica aquí: [link del INTERNAL_ANAMNESIS_URL]."
+  • Para menor: "Te paso el link para completar la ficha médica de [nombre hijo/a]: [link del INTERNAL_ANAMNESIS_URL]."
+  • Para adulto tercero: "Te paso el link de ficha médica para que se lo reenvíes a [nombre]: [link del INTERNAL_ANAMNESIS_URL]."
 
 PACIENTES EXISTENTES: Solo PASOS 1-4 y 6-8. NO pedir datos de admisión (PASO 5).
 MÚLTIPLES TURNOS: El interlocutor puede sacar varios turnos para distintas personas en la misma conversación. Cada vez que pide un turno nuevo, volver a PASO 2b para preguntar "para quién es".
