@@ -209,6 +209,35 @@ async def process_buffer_task(
             if anamnesis_completed:
                 identity_lines.append("• ANAMNESIS: Ya completó su ficha médica (NO enviar link automáticamente al agendar, SOLO si el paciente pide actualizar).")
 
+            # Load linked minor patients (children) via guardian_phone
+            minor_rows = await pool.fetch(
+                "SELECT id, first_name, last_name, dni, phone_number, anamnesis_token FROM patients WHERE tenant_id = $1 AND guardian_phone = $2",
+                tenant_id, external_user_id
+            )
+            if minor_rows:
+                identity_lines.append("• HIJOS/MENORES VINCULADOS:")
+                for minor in minor_rows:
+                    m_name = f"{minor['first_name']} {minor.get('last_name', '')}".strip()
+                    m_token = minor.get('anamnesis_token')
+                    if not m_token:
+                        m_token = str(uuid_mod.uuid4())
+                        await pool.execute("UPDATE patients SET anamnesis_token = $1 WHERE id = $2", m_token, minor['id'])
+                    m_anamnesis = f"{frontend_url}/anamnesis/{tenant_id}/{m_token}"
+                    identity_lines.append(f"  - {m_name} (DNI: {minor.get('dni', 'N/A')}, phone_interno: {minor['phone_number']}, link ficha: {m_anamnesis})")
+                    # Check minor's next appointment
+                    minor_apt = await pool.fetchrow("""
+                        SELECT a.appointment_datetime, tt.name as treatment_name, prof.first_name as professional_name
+                        FROM appointments a
+                        LEFT JOIN treatment_types tt ON a.appointment_type = tt.code
+                        LEFT JOIN professionals prof ON a.professional_id = prof.id
+                        WHERE a.tenant_id = $1 AND a.patient_id = $2 AND a.appointment_datetime >= NOW() AND a.status IN ('scheduled', 'confirmed')
+                        ORDER BY a.appointment_datetime ASC LIMIT 1
+                    """, tenant_id, minor['id'])
+                    if minor_apt:
+                        mdt = minor_apt['appointment_datetime']
+                        if hasattr(mdt, 'astimezone'): mdt = mdt.astimezone(ARG_TZ)
+                        identity_lines.append(f"    Próximo turno: {minor_apt['treatment_name'] or 'Consulta'} el {dias_semana[mdt.weekday()]} {mdt.strftime('%d/%m')} a las {mdt.strftime('%H:%M')}")
+
             if identity_lines:
                 patient_context = "\n".join(identity_lines)
 
