@@ -675,10 +675,12 @@
       "caries": "Caries",
       "restoration": "Restoration",
       "extraction": "Extraction",
-      "treatment_planned": "Treatment Planned",
+      "treatment_planned": "Planned",
       "crown": "Crown",
       "implant": "Implant",
-      "missing": "Missing"
+      "missing": "Missing",
+      "prosthesis": "Prosthesis",
+      "root_canal": "Root Canal"
     }
   },
   "document_gallery": {

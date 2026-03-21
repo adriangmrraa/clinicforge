@@ -665,10 +665,12 @@
       "caries": "Carie",
       "restoration": "Restauration",
       "extraction": "Extraction",
-      "treatment_planned": "Traitement Planifié",
+      "treatment_planned": "Planifi\u00e9",
       "crown": "Couronne",
       "implant": "Implant",
-      "missing": "Absent"
+      "missing": "Absent",
+      "prosthesis": "Proth\u00e8se",
+      "root_canal": "Traitement Canalaire"
     }
   },
   "document_gallery": {
