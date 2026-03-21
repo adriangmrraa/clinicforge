@@ -198,7 +198,7 @@ async def process_buffer_task(
                     "UPDATE patients SET anamnesis_token = $1 WHERE id = $2 AND tenant_id = $3",
                     anamnesis_token, p_id, tenant_id
                 )
-            frontend_url = os.getenv("FRONTEND_URL", "http://localhost:4173").rstrip("/")
+            frontend_url = os.getenv("FRONTEND_URL", "http://localhost:4173").split(",")[0].strip().rstrip("/")
             anamnesis_url = f"{frontend_url}/anamnesis/{tenant_id}/{anamnesis_token}"
 
             # Check if anamnesis is already completed
