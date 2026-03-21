@@ -1651,7 +1651,7 @@ async def get_tenants(user_data=Depends(verify_admin_token)):
     if user_data.role != 'ceo':
         raise HTTPException(status_code=403, detail="Solo el CEO puede gestionar clínicas.")
     rows = await db.pool.fetch(
-        "SELECT id, clinic_name, bot_phone_number, config, address, google_maps_url, working_hours, created_at, updated_at FROM tenants ORDER BY id ASC"
+        "SELECT id, clinic_name, bot_phone_number, config, address, google_maps_url, working_hours, consultation_price, created_at, updated_at FROM tenants ORDER BY id ASC"
     )
     return [dict(r) for r in rows]
 
@@ -1710,6 +1710,10 @@ async def update_tenant(tenant_id: int, data: Dict[str, Any], user_data=Depends(
     if "working_hours" in data and data["working_hours"] is not None:
         params.append(json.dumps(data["working_hours"]))
         updates.append(f"working_hours = ${len(params)}::jsonb")
+    if "consultation_price" in data:
+        val = data.get("consultation_price")
+        params.append(float(val) if val is not None and val != '' else None)
+        updates.append(f"consultation_price = ${len(params)}")
     if not updates:
         return {"status": "updated"}
     params.append(tenant_id)

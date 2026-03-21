@@ -6,7 +6,7 @@ import {
     AlertTriangle, User, Users, Lock, Unlock, X, Building2, Stethoscope, BarChart3, MessageSquare, Plus, Phone, Save, Settings, ChevronDown, ChevronUp, Edit
 } from 'lucide-react';
 
-interface DayConfig { enabled: boolean; slots: { start: string; end: string }[]; }
+interface DayConfig { enabled: boolean; slots: { start: string; end: string }[]; location?: string; address?: string; maps_url?: string; }
 interface WorkingHours {
   monday: DayConfig; tuesday: DayConfig; wednesday: DayConfig; thursday: DayConfig;
   friday: DayConfig; saturday: DayConfig; sunday: DayConfig;
@@ -29,10 +29,13 @@ function parseWorkingHours(raw: unknown): WorkingHours {
     const base = createDefaultWorkingHours();
     (Object.keys(base) as (keyof WorkingHours)[]).forEach(k => {
       if (o[k] && typeof o[k] === 'object' && !Array.isArray(o[k])) {
-        const d = o[k] as { enabled?: boolean; slots?: { start?: string; end?: string }[] };
+        const d = o[k] as { enabled?: boolean; slots?: { start?: string; end?: string }[]; location?: string; address?: string; maps_url?: string };
         base[k] = {
           enabled: d.enabled ?? base[k].enabled,
           slots: Array.isArray(d.slots) ? d.slots.map(s => ({ start: s?.start ?? '09:00', end: s?.end ?? '18:00' })) : base[k].slots,
+          location: d.location ?? '',
+          address: d.address ?? '',
+          maps_url: d.maps_url ?? '',
         };
       }
     });
@@ -290,6 +293,15 @@ const UserApprovalView: React.FC = () => {
                         i === index ? { ...slot, [field]: value } : slot
                     ),
                 },
+            },
+        }));
+    };
+    const updateEditDayField = (dayKey: keyof WorkingHours, field: 'location' | 'address' | 'maps_url', value: string) => {
+        setEditFormData(prev => ({
+            ...prev,
+            working_hours: {
+                ...prev.working_hours,
+                [dayKey]: { ...prev.working_hours[dayKey], [field]: value },
             },
         }));
     };
@@ -821,6 +833,21 @@ const UserApprovalView: React.FC = () => {
                                                                 </div>
                                                             ))}
                                                             <button type="button" onClick={() => addEditTimeSlot(dayKey)} className="text-sm font-medium text-blue-600 hover:text-blue-800">+ {t('approvals.add_schedule')}</button>
+
+                                                            {/* Sede / Ubicación por día (opcional, hereda del tenant) */}
+                                                            <div className="mt-3 pt-3 border-t border-gray-200 space-y-2">
+                                                                <p className="text-xs font-semibold text-gray-500">{t('clinics.day_location_title')}</p>
+                                                                <input type="text" placeholder={t('clinics.day_location_name')}
+                                                                    className="edit-profile-input w-full"
+                                                                    value={config.location || ''} onChange={(e) => updateEditDayField(dayKey, 'location', e.target.value)} />
+                                                                <input type="text" placeholder={t('clinics.day_location_address')}
+                                                                    className="edit-profile-input w-full"
+                                                                    value={config.address || ''} onChange={(e) => updateEditDayField(dayKey, 'address', e.target.value)} />
+                                                                <input type="url" placeholder={t('clinics.day_location_maps')}
+                                                                    className="edit-profile-input w-full"
+                                                                    value={config.maps_url || ''} onChange={(e) => updateEditDayField(dayKey, 'maps_url', e.target.value)} />
+                                                                <p className="text-xs text-gray-400">{t('clinics.day_location_help')}</p>
+                                                            </div>
                                                         </div>
                                                     )}
                                                 </div>

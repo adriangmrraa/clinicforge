@@ -5,7 +5,7 @@ import { useTranslation } from '../context/LanguageContext';
 import PageHeader from '../components/PageHeader';
 
 /* ── Types ── */
-interface DayConfig { enabled: boolean; slots: { start: string; end: string }[]; }
+interface DayConfig { enabled: boolean; slots: { start: string; end: string }[]; location?: string; address?: string; maps_url?: string; }
 interface WorkingHours {
   monday: DayConfig; tuesday: DayConfig; wednesday: DayConfig; thursday: DayConfig;
   friday: DayConfig; saturday: DayConfig; sunday: DayConfig;
@@ -25,10 +25,13 @@ function parseWorkingHours(raw: unknown): WorkingHours {
     const base = createDefaultWorkingHours();
     (Object.keys(base) as (keyof WorkingHours)[]).forEach(k => {
       if (o[k] && typeof o[k] === 'object' && !Array.isArray(o[k])) {
-        const d = o[k] as { enabled?: boolean; slots?: { start?: string; end?: string }[] };
+        const d = o[k] as { enabled?: boolean; slots?: { start?: string; end?: string }[]; location?: string; address?: string; maps_url?: string };
         base[k] = {
           enabled: d.enabled ?? base[k].enabled,
           slots: Array.isArray(d.slots) ? d.slots.map(s => ({ start: s?.start ?? '09:00', end: s?.end ?? '18:00' })) : base[k].slots,
+          location: d.location ?? '',
+          address: d.address ?? '',
+          maps_url: d.maps_url ?? '',
         };
       }
     });
@@ -44,6 +47,7 @@ export interface Clinica {
     address?: string;
     google_maps_url?: string;
     working_hours?: unknown;
+    consultation_price?: number | null;
     config?: { calendar_provider?: 'local' | 'google' };
     created_at: string;
     updated_at?: string;
@@ -75,6 +79,7 @@ export default function ClinicsView() {
         calendar_provider: 'local' as 'local' | 'google',
         address: '',
         google_maps_url: '',
+        consultation_price: '' as string,
         working_hours: createDefaultWorkingHours(),
     });
     const [expandedDays, setExpandedDays] = useState<string[]>([]);
@@ -115,11 +120,12 @@ export default function ClinicsView() {
                 calendar_provider: (clinica.config?.calendar_provider === 'google' ? 'google' : 'local'),
                 address: clinica.address || '',
                 google_maps_url: clinica.google_maps_url || '',
+                consultation_price: clinica.consultation_price != null ? String(clinica.consultation_price) : '',
                 working_hours: parseWorkingHours(clinica.working_hours),
             });
         } else {
             setEditingClinica(null);
-            setFormData({ clinic_name: '', bot_phone_number: '', calendar_provider: 'local', address: '', google_maps_url: '', working_hours: createDefaultWorkingHours() });
+            setFormData({ clinic_name: '', bot_phone_number: '', calendar_provider: 'local', address: '', google_maps_url: '', consultation_price: '', working_hours: createDefaultWorkingHours() });
         }
         setExpandedDays([]);
         setError(null);
@@ -137,6 +143,7 @@ export default function ClinicsView() {
                 calendar_provider: formData.calendar_provider,
                 address: formData.address || null,
                 google_maps_url: formData.google_maps_url || null,
+                consultation_price: formData.consultation_price ? parseFloat(formData.consultation_price) : null,
                 working_hours: formData.working_hours,
             };
             if (editingClinica) {
@@ -208,6 +215,16 @@ export default function ClinicsView() {
                     ...prev.working_hours[dayKey],
                     slots: prev.working_hours[dayKey].slots.map((slot, i) => i === index ? { ...slot, [field]: value } : slot),
                 },
+            },
+        }));
+    };
+
+    const updateDayField = (dayKey: keyof WorkingHours, field: 'location' | 'address' | 'maps_url', value: string) => {
+        setFormData(prev => ({
+            ...prev,
+            working_hours: {
+                ...prev.working_hours,
+                [dayKey]: { ...prev.working_hours[dayKey], [field]: value },
             },
         }));
     };
@@ -413,6 +430,15 @@ export default function ClinicsView() {
                                     value={formData.google_maps_url} onChange={(e) => setFormData({ ...formData, google_maps_url: e.target.value })} />
                             </div>
 
+                            {/* Valor de consulta */}
+                            <div className="space-y-1">
+                                <label className="text-sm font-semibold text-medical-700">{t('clinics.consultation_price_label')}</label>
+                                <input type="number" step="0.01" min="0" placeholder={t('clinics.consultation_price_placeholder')}
+                                    className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-medical-500 outline-none"
+                                    value={formData.consultation_price} onChange={(e) => setFormData({ ...formData, consultation_price: e.target.value })} />
+                                <p className="text-xs text-medical-400">{t('clinics.consultation_price_help')}</p>
+                            </div>
+
                             {/* Calendar provider */}
                             <div className="space-y-1">
                                 <label className="text-sm font-semibold text-medical-700 flex items-center gap-2"><Calendar size={14} /> {t('clinics.calendar_provider_label')}</label>
@@ -462,6 +488,21 @@ export default function ClinicsView() {
                                                             </div>
                                                         ))}
                                                         <button type="button" onClick={() => addTimeSlot(dayKey)} className="text-sm font-medium text-medical-600 hover:text-medical-800">+ {t('approvals.add_schedule')}</button>
+
+                                                        {/* Sede / Ubicación por día */}
+                                                        <div className="mt-3 pt-3 border-t border-gray-200 space-y-2">
+                                                            <p className="text-xs font-semibold text-gray-500 flex items-center gap-1"><MapPin size={12} /> {t('clinics.day_location_title')}</p>
+                                                            <input type="text" placeholder={t('clinics.day_location_name')}
+                                                                className="w-full px-3 py-1.5 border rounded-lg text-sm"
+                                                                value={config.location || ''} onChange={(e) => updateDayField(dayKey, 'location', e.target.value)} />
+                                                            <input type="text" placeholder={t('clinics.day_location_address')}
+                                                                className="w-full px-3 py-1.5 border rounded-lg text-sm"
+                                                                value={config.address || ''} onChange={(e) => updateDayField(dayKey, 'address', e.target.value)} />
+                                                            <input type="url" placeholder={t('clinics.day_location_maps')}
+                                                                className="w-full px-3 py-1.5 border rounded-lg text-sm"
+                                                                value={config.maps_url || ''} onChange={(e) => updateDayField(dayKey, 'maps_url', e.target.value)} />
+                                                            <p className="text-xs text-gray-400">{t('clinics.day_location_help')}</p>
+                                                        </div>
                                                     </div>
                                                 )}
                                             </div>

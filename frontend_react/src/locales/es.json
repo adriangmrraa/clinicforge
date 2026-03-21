@@ -508,7 +508,15 @@
     "faq_answer": "Respuesta",
     "faq_answer_placeholder": "Ej: No, atendemos de forma particular...",
     "faq_empty": "No hay FAQs configuradas. Agregá la primera.",
-    "faq_confirm_delete": "Eliminar esta FAQ?"
+    "faq_confirm_delete": "Eliminar esta FAQ?",
+    "consultation_price_label": "Valor de la consulta ($)",
+    "consultation_price_placeholder": "Ej: 15000",
+    "consultation_price_help": "El agente de IA usará este valor cuando el paciente pregunte por precio. Dejá vacío para no informar precio.",
+    "day_location_title": "Sede / Ubicación para este día",
+    "day_location_name": "Nombre de sede (ej: Sede Salta)",
+    "day_location_address": "Dirección de la sede",
+    "day_location_maps": "Link Google Maps de la sede",
+    "day_location_help": "Si está vacío, se usa la dirección general de la clínica."
   },
   "treatments": {
     "title": "Tratamientos",

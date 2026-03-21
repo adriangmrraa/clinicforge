@@ -502,7 +502,15 @@
     "faq_answer": "Réponse",
     "faq_answer_placeholder": "Ex : Non, nous proposons des soins privés...",
     "faq_empty": "Aucune FAQ configurée. Ajoutez la première.",
-    "faq_confirm_delete": "Supprimer cette FAQ ?"
+    "faq_confirm_delete": "Supprimer cette FAQ ?",
+    "consultation_price_label": "Tarif de la consultation ($)",
+    "consultation_price_placeholder": "Ex : 15000",
+    "consultation_price_help": "L'agent IA utilisera cette valeur quand le patient demande le prix. Laissez vide pour ne pas communiquer le prix.",
+    "day_location_title": "Emplacement pour ce jour",
+    "day_location_name": "Nom du site (ex : Siège principal)",
+    "day_location_address": "Adresse du site",
+    "day_location_maps": "Lien Google Maps",
+    "day_location_help": "Si vide, l'adresse par défaut de la clinique sera utilisée."
   },
   "treatments": {
     "title": "Traitements",

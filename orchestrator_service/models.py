@@ -114,6 +114,7 @@ class Tenant(Base):
     working_hours = Column(JSONB, default={})
     total_tokens_used = Column(BigInteger, default=0)
     total_tool_calls = Column(BigInteger, default=0)
+    consultation_price = Column(DECIMAL(12, 2), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
@@ -273,6 +274,7 @@ class Patient(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     last_visit = Column(DateTime(timezone=True))
+    anamnesis_token = Column(UUID(as_uuid=True), nullable=True)
 
     __table_args__ = (
         UniqueConstraint('tenant_id', 'phone_number', name='patients_tenant_id_phone_number_key'),
@@ -287,6 +289,7 @@ class Patient(Base):
         Index('idx_patients_first_touch_campaign_id', 'first_touch_campaign_id'),
         Index('idx_patients_first_touch_adset_id', 'first_touch_adset_id'),
         Index('idx_patients_city', 'city'),
+        Index('idx_patients_anamnesis_token', 'anamnesis_token', unique=True, postgresql_where=(anamnesis_token != None)),
     )
 
 

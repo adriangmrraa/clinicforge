@@ -509,7 +509,15 @@
     "faq_answer": "Answer",
     "faq_answer_placeholder": "e.g. No, we offer private care...",
     "faq_empty": "No FAQs configured. Add the first one.",
-    "faq_confirm_delete": "Delete this FAQ?"
+    "faq_confirm_delete": "Delete this FAQ?",
+    "consultation_price_label": "Consultation fee ($)",
+    "consultation_price_placeholder": "E.g.: 15000",
+    "consultation_price_help": "The AI agent will use this value when the patient asks about pricing. Leave empty to not disclose price.",
+    "day_location_title": "Location for this day",
+    "day_location_name": "Location name (e.g.: Main Office)",
+    "day_location_address": "Location address",
+    "day_location_maps": "Google Maps link",
+    "day_location_help": "If empty, the clinic's default address will be used."
   },
   "treatments": {
     "title": "Treatments",
