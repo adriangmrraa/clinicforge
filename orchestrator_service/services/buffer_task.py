@@ -80,11 +80,12 @@ async def process_buffer_task(
         current_tenant_id.set(tenant_id)
         
         tenant_row = await pool.fetchrow(
-            "SELECT clinic_name, address, google_maps_url, working_hours FROM tenants WHERE id = $1", tenant_id
+            "SELECT clinic_name, address, google_maps_url, working_hours, consultation_price FROM tenants WHERE id = $1", tenant_id
         )
         clinic_name = (tenant_row["clinic_name"] or CLINIC_NAME) if tenant_row else CLINIC_NAME
         clinic_address = (tenant_row["address"] or "") if tenant_row else ""
         clinic_maps_url = (tenant_row["google_maps_url"] or "") if tenant_row else ""
+        consultation_price = float(tenant_row["consultation_price"]) if tenant_row and tenant_row.get("consultation_price") else None
         clinic_working_hours = None
         if tenant_row and tenant_row.get("working_hours"):
             wh = tenant_row["working_hours"]
@@ -101,14 +102,16 @@ async def process_buffer_task(
         # Fetch patient data (normalized phone for consistency with tools)
         phone_digits = normalize_phone_digits(external_user_id)
         patient_row = await pool.fetchrow(
-            """SELECT id, first_name, last_name, dni, acquisition_source FROM patients
+            """SELECT id, first_name, last_name, dni, acquisition_source, anamnesis_token, medical_history FROM patients
                WHERE tenant_id = $1 AND REGEXP_REPLACE(phone_number, '[^0-9]', '', 'g') = $2""",
             tenant_id, phone_digits
         )
         
         patient_context = ""
         ad_context = ""
-        
+        patient_status = "new_lead"
+        anamnesis_url = ""
+
         if patient_row:
             p_id = patient_row["id"]
             p_first = patient_row["first_name"] or ""
@@ -169,6 +172,36 @@ async def process_buffer_task(
                 identity_lines.append(f"• PRÓXIMO TURNO: Tiene un turno de {next_apt['treatment_name'] or 'Consulta'} con el/la Dr/a. {next_apt['professional_name']} el {dt_str}.")
                 identity_lines.append(f"• FECHA EXACTA DEL TURNO: {dt.strftime('%d/%m/%Y')} a las {dt.strftime('%H:%M')}. {time_until}.")
             
+            # Determine patient_status
+            if next_apt:
+                patient_status = "patient_with_appointment"
+                # Resolve sede for appointment day
+                if clinic_working_hours:
+                    days_en = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+                    apt_day_en = days_en[dt.weekday()]
+                    apt_day_cfg = clinic_working_hours.get(apt_day_en, {})
+                    if apt_day_cfg.get("location"):
+                        identity_lines.append(f"• SEDE DEL TURNO: {apt_day_cfg['location']}")
+                        if apt_day_cfg.get("address"):
+                            identity_lines.append(f"• DIRECCIÓN SEDE: {apt_day_cfg['address']}")
+                        if apt_day_cfg.get("maps_url"):
+                            identity_lines.append(f"• MAPS SEDE: {apt_day_cfg['maps_url']}")
+            else:
+                patient_status = "patient_no_appointment"
+
+            # Generate anamnesis URL if patient has token
+            import os, uuid as uuid_mod
+            anamnesis_token = patient_row.get("anamnesis_token") if patient_row else None
+            if not anamnesis_token:
+                # Generate token for existing patients
+                anamnesis_token = str(uuid_mod.uuid4())
+                await pool.execute(
+                    "UPDATE patients SET anamnesis_token = $1 WHERE id = $2 AND tenant_id = $3",
+                    anamnesis_token, p_id, tenant_id
+                )
+            frontend_url = os.getenv("FRONTEND_URL", "http://localhost:4173").rstrip("/")
+            anamnesis_url = f"{frontend_url}/anamnesis/{tenant_id}/{anamnesis_token}"
+
             if identity_lines:
                 patient_context = "\n".join(identity_lines)
 
@@ -187,6 +220,9 @@ async def process_buffer_task(
             clinic_maps_url=clinic_maps_url,
             clinic_working_hours=clinic_working_hours,
             faqs=faqs,
+            patient_status=patient_status,
+            consultation_price=consultation_price,
+            anamnesis_url=anamnesis_url,
         )
 
         chat_history = []

@@ -1676,7 +1676,56 @@ async def save_patient_email(email: str):
         logger.error(f"Error en save_patient_email: {e}")
         return "Hubo un problema al guardar tu email. Probá de nuevo o avisá a la clínica."
 
-DENTAL_TOOLS = [list_professionals, list_services, get_service_details, check_availability, book_appointment, list_my_appointments, cancel_appointment, reschedule_appointment, triage_urgency, save_patient_anamnesis, save_patient_email, derivhumano]
+@tool
+async def get_patient_anamnesis():
+    """
+    Obtiene la ficha médica (anamnesis) del paciente actual.
+    Usar cuando el paciente dice que ya completó el formulario de ficha médica, para verificar y confirmar los datos guardados.
+    """
+    phone = current_customer_phone.get()
+    if not phone:
+        return "No pude identificar tu número."
+    tenant_id = current_tenant_id.get()
+    phone_digits = normalize_phone_digits(phone)
+    try:
+        row = await db.pool.fetchrow("""
+            SELECT first_name, last_name, medical_history FROM patients
+            WHERE tenant_id = $1 AND REGEXP_REPLACE(phone_number, '[^0-9]', '', 'g') = $2
+        """, tenant_id, phone_digits)
+        if not row:
+            return "No encontré tu ficha. Asegurate de estar registrado/a."
+        mh = row["medical_history"]
+        if not mh:
+            return "Todavía no completaste tu ficha médica. Podés hacerlo desde el link que te envié."
+        if isinstance(mh, str):
+            mh = json.loads(mh)
+        if not isinstance(mh, dict) or not any(v for k, v in mh.items() if k not in ('anamnesis_completed_at', 'anamnesis_completed_via', 'anamnesis_last_edited_by', 'anamnesis_last_edited_at')):
+            return "Todavía no completaste tu ficha médica. Podés hacerlo desde el link que te envié."
+        name = f"{row['first_name'] or ''} {row['last_name'] or ''}".strip()
+        lines = [f"Ficha médica de {name}:"]
+        field_labels = {
+            "base_diseases": "Enfermedades de base",
+            "habitual_medication": "Medicación habitual",
+            "allergies": "Alergias",
+            "previous_surgeries": "Cirugías previas",
+            "is_smoker": "Fumador",
+            "smoker_amount": "Cantidad cigarrillos",
+            "pregnancy_lactation": "Embarazo/Lactancia",
+            "negative_experiences": "Experiencias negativas",
+            "specific_fears": "Miedos dentales",
+        }
+        for key, label in field_labels.items():
+            val = mh.get(key)
+            if val:
+                if isinstance(val, list):
+                    val = ", ".join(val)
+                lines.append(f"• {label}: {val}")
+        return "\n".join(lines) if len(lines) > 1 else "La ficha está vacía. Pedile al paciente que la complete desde el link."
+    except Exception as e:
+        logger.error(f"Error en get_patient_anamnesis: {e}")
+        return "Hubo un error al leer la ficha médica."
+
+DENTAL_TOOLS = [list_professionals, list_services, get_service_details, check_availability, book_appointment, list_my_appointments, cancel_appointment, reschedule_appointment, triage_urgency, save_patient_anamnesis, save_patient_email, get_patient_anamnesis, derivhumano]
 
 # --- DETECCIÓN DE IDIOMA (para respuesta del agente) ---
 def detect_message_language(text: str) -> str:
@@ -1764,12 +1813,17 @@ def build_system_prompt(
     clinic_maps_url: str = "",
     clinic_working_hours: dict = None,
     faqs: list = None,
+    patient_status: str = "new_lead",
+    consultation_price: float = None,
+    sede_info: dict = None,
+    anamnesis_url: str = "",
 ) -> str:
     """
     Construye el system prompt del agente de forma dinámica.
-    Todos los datos de la clínica vienen de DB (dirección, horarios, FAQs).
-    ad_context: (Spec 06) Directiva contextual del anuncio de Meta Ads, si aplica.
-    patient_context: (v7.6) Datos de identidad y turnos del paciente.
+    patient_status: 'new_lead' | 'patient_no_appointment' | 'patient_with_appointment'
+    consultation_price: valor de la consulta desde tenants.consultation_price
+    sede_info: {location, address, maps_url} resuelto para el día actual desde working_hours
+    anamnesis_url: URL base del formulario público de anamnesis (si el paciente tiene token)
     """
     lang_instructions = {
         "es": "RESPONDE ÚNICAMENTE EN ESPAÑOL. Todo tu mensaje debe estar en español. Mantené el voseo rioplatense cuando sea natural.",
@@ -1787,31 +1841,95 @@ def build_system_prompt(
         extra_context += f"\n\nCONTEXTO DE ANUNCIO (Meta Ads):\n{safe_ad_context}\n"
     if patient_context:
         extra_context += f"\n\nCONTEXTO DEL PACIENTE (Identidad y Turnos):\n{patient_context}\n"
-        extra_context += (
-            "SALUDO PROACTIVO (con anti-repetición): Si el paciente saluda brevemente y en su contexto figura PRÓXIMO TURNO, "
-            "respondé con un saludo personalizado que mencione su turno. Si YA enviaste un mensaje que menciona su turno "
-            "próximo, NO repitas esa información. Respondé breve sin repetir el recordatorio."
-        )
 
     # Secciones dinámicas desde DB
     hours_section = _format_working_hours(clinic_working_hours) if clinic_working_hours else f"Lunes a Viernes de {hours_start} a {hours_end}. Sábados y Domingos: CERRADO."
     faqs_section = _format_faqs(faqs or [])
 
-    # Dirección dinámica
+    # Dirección dinámica (fallback global)
     address_info = ""
     if clinic_address:
-        address_info = f"• Dirección: {clinic_address}"
+        address_info = f"• Dirección principal: {clinic_address}"
         if clinic_maps_url:
             address_info += f"\n• Google Maps: {clinic_maps_url}"
         address_info += "\n• REGLA: Si el paciente pregunta dónde están, la dirección o cómo llegar, SIEMPRE respondé con la dirección y el link. NUNCA digas que no podés brindar esa información."
 
-    return f"""REGLA DE IDIOMA (OBLIGATORIA): {lang_rule}{extra_context}
+    # Multi-sede: info de sedes por día
+    sede_section = ""
+    if clinic_working_hours and isinstance(clinic_working_hours, dict):
+        sede_lines = []
+        dias_es = {"monday": "Lunes", "tuesday": "Martes", "wednesday": "Miércoles", "thursday": "Jueves", "friday": "Viernes", "saturday": "Sábado", "sunday": "Domingo"}
+        for day_en, day_es in dias_es.items():
+            day_cfg = clinic_working_hours.get(day_en, {})
+            if day_cfg.get("enabled") and day_cfg.get("location"):
+                loc = day_cfg["location"]
+                addr = day_cfg.get("address", "")
+                maps = day_cfg.get("maps_url", "")
+                line = f"• {day_es}: {loc}"
+                if addr:
+                    line += f" — {addr}"
+                if maps:
+                    line += f" ({maps})"
+                sede_lines.append(line)
+        if sede_lines:
+            sede_section = "\n\n## SEDES POR DÍA (MULTI-SEDE)\nLa clínica opera en diferentes ubicaciones según el día. SIEMPRE usá la sede correcta según el día del turno:\n" + "\n".join(sede_lines)
+            sede_section += "\nREGLA CRÍTICA: La sede se determina por el DÍA del turno, NO por elección del paciente. Incluí la sede correcta en la confirmación del turno."
 
+    # Precio de consulta
+    price_section = ""
+    if consultation_price and float(consultation_price) > 0:
+        price_section = f"\n\nVALOR DE LA CONSULTA: ${int(consultation_price):,}".replace(",", ".")
+    else:
+        price_section = "\n\nVALOR DE LA CONSULTA: No configurado. Si preguntan precio, decí que se comuniquen directamente con la clínica."
+
+    # Greeting diferenciado
+    greeting_rule = ""
+    if patient_status == "new_lead":
+        greeting_rule = """
+GREETING (PRIMERA INTERACCIÓN CON LEAD NUEVO):
+Usá EXACTAMENTE este mensaje de saludo (respetá el emoji):
+"Hola 😊
+Soy la asistente virtual del {clinic_name}.
+La Dra. se especializa en rehabilitación oral con implantes, prótesis y cirugía guiada.
+
+En qué tipo de consulta estás interesado?"
+""".format(clinic_name=clinic_name)
+    elif patient_status == "patient_no_appointment":
+        greeting_rule = """
+GREETING (PACIENTE EXISTENTE SIN TURNO FUTURO):
+Usá EXACTAMENTE este mensaje de saludo (respetá el emoji):
+"Hola 😊
+Soy la asistente virtual del {clinic_name}.
+La Dra. se especializa en rehabilitación oral con implantes, prótesis y cirugía guiada.
+
+En qué podemos ayudarte hoy?"
+""".format(clinic_name=clinic_name)
+    elif patient_status == "patient_with_appointment":
+        greeting_rule = """
+GREETING (PACIENTE CON TURNO FUTURO):
+Usá este formato de saludo (respetá el emoji). Mencioná su turno próximo con fecha, hora, tratamiento y sede:
+"Hola 😊
+Soy la asistente virtual del {clinic_name}.
+La Dra. se especializa en rehabilitación oral con implantes, prótesis y cirugía guiada.
+
+[Comentario personalizado sobre su próximo turno: fecha, hora, sede, tratamiento. Ej: 'Te esperamos el Jueves 26/03 a las 16:00 en Sede Salta para tu consulta de blanqueamiento!']"
+Si YA mencionaste el turno en esta conversación, NO lo repitas.
+""".format(clinic_name=clinic_name)
+
+    # Anamnesis URL
+    anamnesis_section = ""
+    if anamnesis_url:
+        anamnesis_section = f"\n\nLINK DE FICHA MÉDICA: {anamnesis_url}\nDespués de confirmar un turno, enviá este link al paciente con el mensaje:\n\"Para ahorrar tiempo en tu consulta podés completar tu ficha médica aquí:\n{anamnesis_url}\nCuando termines avisame para corroborar los datos.\"\nSi el paciente dice que ya completó el formulario, llamá 'get_patient_anamnesis' para verificar y confirmá los datos."
+
+    price_text = f"${int(consultation_price):,}".replace(",", ".") if consultation_price and float(consultation_price) > 0 else ""
+
+    return f"""REGLA DE IDIOMA (OBLIGATORIA): {lang_rule}{extra_context}
+{greeting_rule}
 IDENTIDAD Y TONO:
-Sos la secretaria virtual de {clinic_name}. En tu primer mensaje de cada conversación, presentate como tal.
+Sos la asistente virtual del {clinic_name}.
 • TONO: Usá voseo argentino rioplatense profesional pero cálido. Ejemplos: "Qué necesitás?", "Podés", "Tenés", "Contame", "Dale", "Mirá".
 • PERSONALIDAD: Sos una persona real, cálida, que se preocupa por el paciente. Si está de acuerdo, usá su nombre.
-• TU ÚNICA FUNCIÓN es ser secretaria virtual de esta clínica. Cualquier tema ajeno debe ser declinado.
+• TU ÚNICA FUNCIÓN es ser asistente virtual de esta clínica. Cualquier tema ajeno debe ser declinado.
 • Ante dudas clínicas, decí que el profesional tendrá que evaluar en consultorio para un diagnóstico certero.
 
 POLÍTICA DE PUNTUACIÓN (ESTRICTA):
@@ -1821,6 +1939,53 @@ INFORMACIÓN DEL CONSULTORIO:
 {address_info}
 • Horarios de atención:
 {hours_section}
+{sede_section}
+{price_section}
+
+## TRIAGE COMERCIAL DE IMPLANTES Y PRÓTESIS
+Si el paciente menciona implantes, prótesis, dentadura, diente postizo, o tratamientos relacionados → ACTIVAR este flujo:
+
+PASO A — OPCIONES DE TRIAGE (OBLIGATORIO enviar estas opciones con emojis):
+"Para orientarte mejor, cuál de estas situaciones se parece más a tu caso?
+
+🦷 Perdí un diente
+🦷🦷 Perdí varios dientes
+🔄 Uso prótesis removible
+🔧 Necesito cambiar una prótesis
+😣 Tengo una prótesis que se mueve
+🤔 No estoy seguro"
+
+PASO B — PROFUNDIZACIÓN:
+"Hace cuánto tiempo tenés este problema?"
+
+PASO C — POSICIONAMIENTO:
+"Perfecto 😊
+La Dra. Laura Delgado se especializa en rehabilitación oral con implantes y prótesis, incluyendo técnicas avanzadas como cirugía guiada e implantes inmediatos.
+
+Muchos pacientes que han perdido varios dientes o usan prótesis logran mejorar mucho su calidad de vida con estos tratamientos."
+
+Luego continuá con el flujo de conversión a consulta (PASO D).
+
+PASO D — CONVERSIÓN A CONSULTA:
+"Querés que coordinemos una consulta de evaluación con la Dra. Laura Delgado?"
+NO envíes opciones visibles. Esperá la respuesta del paciente.
+Si dice sí → pasar al flujo de agendamiento.
+
+## MANEJO DE OBJECIONES
+
+OBJECIÓN DE PRECIO:
+Si el paciente pregunta cuánto sale, cuánto cuesta, o pide referencia de precio:
+"Entiendo que quieras tener una referencia 😊
+En tratamientos de implantes cada caso es diferente porque depende de la cantidad de hueso y del tipo de prótesis.
+Por eso la Dra. primero realiza una evaluación personalizada.
+La consulta tiene un valor de {price_text}."
+Si el valor de consulta no está configurado, omití la línea del precio y decí "consultá directamente con la clínica para conocer el valor de la consulta".
+
+OBJECIÓN DE MIEDO:
+Si el paciente expresa miedo, ansiedad o nervios:
+"Es totalmente normal sentir un poco de miedo al tratamiento odontológico.
+En la clínica trabajamos con tecnología moderna para que la experiencia sea más cómoda, incluyendo sistemas anestésicos sin agujas que ayudan a reducir la ansiedad y el dolor durante el procedimiento.
+Muchos pacientes que tenían miedo al dentista nos cuentan que la experiencia fue mucho más cómoda de lo que esperaban."
 
 ## DICCIONARIO DE SINÓNIMOS MÉDICOS
 Ayuda a entender lo que dice el paciente. NO reemplaza la validación con `list_services`.
@@ -1889,7 +2054,7 @@ Para agendar solo se necesitan 3 datos (el teléfono ya lo tenemos por WhatsApp)
 Los demás datos son OPCIONALES y se completan en consultorio. NUNCA envíes lista de preguntas juntas.
 
 FLUJO DE AGENDAMIENTO (ORDEN ESTRICTO):
-PASO 1: SALUDO E IDENTIDAD - Presentate como secretaria virtual de {clinic_name}.
+PASO 1: SALUDO E IDENTIDAD - Usá el GREETING correspondiente al tipo de paciente.
 PASO 2: DEFINIR SERVICIO - Si el paciente ya lo dijo, NO lo volvás a preguntar.
 PASO 3: PROFESIONAL ASIGNADO — Según lo que devolvió 'list_services' o 'get_service_details':
   • Si el tratamiento tiene UN SOLO profesional asignado → informá al paciente: "Este tratamiento lo realiza el/la Dr/a. X". NO preguntes preferencia. Usá ese profesional directamente.
@@ -1898,12 +2063,11 @@ PASO 3: PROFESIONAL ASIGNADO — Según lo que devolvió 'list_services' o 'get_
 PASO 4: CONSULTAR DISPONIBILIDAD - 'check_availability' UNA vez con treatment_name y, si el paciente eligió profesional, con professional_name. Transmitir rangos al paciente.
 PASO 5: DATOS DE ADMISIÓN (PACIENTES NUEVOS) - DE A UN DATO POR MENSAJE: a) nombre, b) apellido, c) DNI.
 PASO 6: AGENDAR - 'book_appointment' con los datos. Para campos opcionales faltantes, pasar NULL. Si el paciente eligió profesional, pasá professional_name. Si no eligió, el sistema asigna automáticamente al que tenga disponibilidad.
-PASO 7: CONFIRMACIÓN - Mensaje con: nombre, tratamiento, día, hora, profesional, dirección y link maps. Ofrecer enviar recordatorio y pedir mail opcionalmente.
+PASO 7: CONFIRMACIÓN - Mensaje con: nombre, tratamiento, día, hora, profesional, SEDE del día (nombre + dirección + link maps). Ofrecer enviar recordatorio y pedir mail opcionalmente.
 PASO 7b: Si el paciente da su email, llamá 'save_patient_email'.
-PASO 8: ANAMNESIS (SOLO PACIENTES NUEVOS) - De a una pregunta por mensaje: a) enfermedades de base, b) medicación, c) alergias, d) cirugías previas, e) fumador, f) embarazo (solo si aplica), g) experiencias negativas previas, h) miedos dentales.
-PASO 9: GUARDAR ANAMNESIS - 'save_patient_anamnesis' UNA vez al final con lo que tengas.
+PASO 8: FICHA MÉDICA - Después de confirmar el turno, enviá el link de ficha médica (si está disponible en tu contexto). Decí: "Para ahorrar tiempo en tu consulta podés completar tu ficha médica aquí: [link]. Cuando termines avisame para corroborar los datos."
 
-PACIENTES EXISTENTES: Solo PASOS 1-4 y 6-7. NO pedir datos de admisión (PASO 5) ni anamnesis (PASOS 8-9).
+PACIENTES EXISTENTES: Solo PASOS 1-4 y 6-8. NO pedir datos de admisión (PASO 5).
 
 GESTIÓN DE TURNOS EXISTENTES:
 • CONSULTAR: Llamar PRIMERO 'list_my_appointments' antes de responder.
@@ -1929,13 +2093,13 @@ NUNCA DAR POR PERDIDA UNA RESERVA: Si una tool devuelve ❌ o ⚠️, corregí e
 ## CTAS NATURALES
 • Tratamiento definido sin fecha → ejecutar 'check_availability' directo, no preguntar "querés consultar?"
 • Info general sin tratamiento → "Sobre cuál querés más info?"
-• Turno agendado → "Te enviaremos recordatorio. Alguna otra consulta?"
-• Paciente pregunta dirección → dar dirección + link maps.
+• Turno agendado → enviar link de ficha médica si está disponible.
+• Paciente pregunta dirección → dar dirección + link maps (según día si hay multi-sede).
 
 SEGUIMIENTO POST-ATENCIÓN: Si el paciente responde a seguimiento, preguntar por síntomas. Evaluar con 'triage_urgency' si hay molestias. Si es emergency/high, activar protocolo inmediatamente. Si es normal/low, tranquilizar.
 
 TRIAJE Y URGENCIAS: Solo llamar a 'triage_urgency' si el paciente describe dolor, inflamación, sangrado o accidente. NO por rutina.
-
+{anamnesis_section}
 Usá solo las tools proporcionadas. Siempre terminá con una pregunta o frase que invite a seguir la charla.
 """
 
