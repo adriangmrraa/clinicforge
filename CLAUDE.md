@@ -39,6 +39,7 @@ WhatsApp Service (:8002)  ←→  Orchestrator  ←→  YCloud / Chatwoot
 ### Backend (orchestrator_service/)
 - `main.py` — FastAPI app, LangChain agent, AI tools (`DENTAL_TOOLS`), Socket.IO, system prompt
 - `admin_routes.py` — All `/admin/*` endpoints (patients, appointments, marketing, staff)
+- `public_routes.py` — Public endpoints without auth (`/public/anamnesis/{tenant_id}/{token}`)
 - `auth_routes.py` — `/auth/*` endpoints (login, register, clinics, profile)
 - `db.py` — Async connection pool (asyncpg)
 - `models.py` — SQLAlchemy ORM models (31 classes)
@@ -56,6 +57,7 @@ WhatsApp Service (:8002)  ←→  Orchestrator  ←→  YCloud / Chatwoot
 - `context/` — AuthContext, LanguageContext
 - `locales/` — i18n translations: `es.json`, `en.json`, `fr.json`
 - `views/` — Page components (AgendaView, ChatsView, DashboardView, PatientsView, etc.)
+- `views/AnamnesisPublicView.tsx` — Public anamnesis form (mobile-optimized checklist, no auth)
 - `components/` — Shared UI components
 
 ### Config
@@ -201,6 +203,9 @@ The LangChain agent exposes these tools (defined in `orchestrator_service/main.p
 | `cancel_appointment` | Cancel a patient's appointment |
 | `reschedule_appointment` | Reschedule an appointment |
 | `triage_urgency` | Analyze symptom urgency |
+| `save_patient_anamnesis` | Save medical history from AI chat conversation |
+| `save_patient_email` | Save patient email after appointment confirmation |
+| `get_patient_anamnesis` | Read completed anamnesis form data for verification |
 | `derivhumano` | Hand off to human + 24h silence window |
 
 ---
@@ -218,6 +223,7 @@ The LangChain agent exposes these tools (defined in `orchestrator_service/main.p
 | `CREDENTIALS_FERNET_KEY` | Orchestrator | Credential encryption |
 | `META_ADS_TOKEN` | Orchestrator | Meta Graph API for ad enrichment |
 | `VITE_API_URL` | Frontend | BFF proxy URL |
+| `FRONTEND_URL` | Orchestrator | Public-facing frontend URL (for anamnesis form links) |
 
 See `.env.production.example` for the complete list.
 
@@ -236,6 +242,24 @@ First-touch model: the first ad that brings a patient is recorded permanently. B
 
 ### Treatment-Professional Assignment
 Many-to-many relationship via `treatment_type_professionals` junction table. Each treatment can be assigned to specific professionals. **Backward compatibility rule**: if a treatment has no professionals assigned, ALL active professionals can perform it. The AI tools (`check_availability`, `book_appointment`, `list_services`, `get_service_details`) all respect this rule. Managed via `GET/PUT /admin/treatment-types/{code}/professionals` endpoints.
+
+### Multi-Sede (Location per Day)
+The clinic can operate from different locations depending on the day of the week. This is configured in `tenants.working_hours` JSONB with per-day `location`, `address`, and `maps_url` fields. Professionals can optionally override location per day in their own `working_hours`. **Resolution chain**: professional.working_hours[day].location → tenant.working_hours[day].location → tenant.address (fallback). The AI agent includes the correct sede in appointment confirmations.
+
+### Differentiated AI Greeting
+The AI agent uses different greetings based on patient status:
+- **New lead** (not in patients table): "En qué tipo de consulta estás interesado?"
+- **Patient without future appointment**: "En qué podemos ayudarte hoy?"
+- **Patient with future appointment**: Personalized comment about their upcoming appointment + sede
+
+### Implant/Prosthesis Commercial Triage
+When a patient mentions implants or prosthetics, the AI activates a commercial triage flow with 6 emoji options (mandatory visible), followed by profundization and positioning messages about the doctor's specialties.
+
+### Consultation Price
+Stored in `tenants.consultation_price` (DECIMAL). Configurable from the UI in clinic settings. The AI uses this value dynamically when patients ask about pricing. If NULL, the AI tells the patient to contact the clinic directly.
+
+### Public Anamnesis Form
+After booking an appointment, the AI sends a unique link to a public anamnesis form (`/anamnesis/{tenant_id}/{token}`). The form is mobile-optimized with checkboxes for common dental conditions. The token is a UUID stored in `patients.anamnesis_token`. The form page is NOT accessible from the sidebar — only via the AI-generated link. Public endpoints: `GET/POST /public/anamnesis/{tenant_id}/{token}` (no auth required).
 
 ### BFF Proxy Pattern
 Frontend (port 4173) never calls the orchestrator directly. All API calls go through the BFF Express proxy (port 3000), which handles CORS and 60s timeouts.

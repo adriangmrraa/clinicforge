@@ -34,6 +34,7 @@ Sustituye `localhost:8000` por la URL del Orchestrator en tu entorno (ej. en pro
 14. [Marketing Hub (Meta Ads)](#marketing-hub-meta-ads)
 15. [Automatizaciones y Handoffs](#automatizaciones-y-handoffs)
 16. [Otros (health, chat IA)](#otros)
+17. [Endpoints Públicos (anamnesis)](#endpoints-públicos-sin-autenticación)
 
 ---
 
@@ -190,7 +191,7 @@ Devuelve todas las clínicas/sedes del CEO.
 ### Actualizar sede
 `PUT /admin/tenants/{tenant_id}`
 
-Actualiza nombre y/o configuración de la sede.
+Actualiza nombre, configuración, working_hours (con location/address/maps_url por día) y `consultation_price` de la sede.
 
 ### Eliminar sede
 `DELETE /admin/tenants/{tenant_id}`
@@ -745,3 +746,39 @@ En rutas de listado administrativas suelen soportarse:
 | **422 (AI)** | **DNI_MALFORMED**: El DNI enviado no contiene números. |
 | **422 (AI)** | **NAME_TOO_SHORT**: El nombre o apellido enviado tiene menos de 2 caracteres. |
 | **500** | Error interno del servidor. |
+
+---
+
+## Endpoints Públicos (sin autenticación)
+
+Estos endpoints NO requieren JWT ni X-Admin-Token. Accesibles por pacientes via links generados por el agente de IA.
+
+### Obtener formulario de anamnesis
+`GET /public/anamnesis/{tenant_id}/{token}`
+
+Devuelve nombre del paciente, nombre de la clínica, y datos de anamnesis existentes (si hay). El `token` es un UUID único por paciente (`patients.anamnesis_token`).
+
+**Response:** `{ patient_name, clinic_name, existing_data }`
+
+### Enviar formulario de anamnesis
+`POST /public/anamnesis/{tenant_id}/{token}`
+
+Guarda las respuestas del formulario de anamnesis en `patients.medical_history` JSONB. Emite evento Socket.IO `PATIENT_UPDATED` con `update_type: "anamnesis_saved"`.
+
+**Payload:**
+```json
+{
+  "base_diseases": ["Diabetes", "Hipertensión"],
+  "base_diseases_other": "Artritis",
+  "habitual_medication": "Metformina 850mg",
+  "allergies": ["Penicilina"],
+  "allergies_other": null,
+  "previous_surgeries": "Apendicectomía 2019",
+  "is_smoker": "no",
+  "smoker_amount": null,
+  "pregnancy_lactation": "no_aplica",
+  "negative_experiences": "Ninguna",
+  "specific_fears": ["Agujas", "Dolor"],
+  "specific_fears_other": null
+}
+```
