@@ -4,6 +4,7 @@ CLINICASV1.0 - integrado con chat_conversations; usa get_agent_executable_for_te
 """
 import logging
 import json
+import os
 from typing import List
 
 from db import get_pool
@@ -442,15 +443,22 @@ async def process_buffer_task(
         response_text = ""
         media_urls = []
         max_retries = 3
+        token_cb = None
         for attempt in range(max_retries):
             try:
-                response = await executor.ainvoke({
-                    "input": user_input,
-                    "chat_history": chat_history,
-                    "system_prompt": system_prompt,
-                })
+                try:
+                    from langchain_community.callbacks import get_openai_callback
+                except ImportError:
+                    from langchain.callbacks import get_openai_callback
+                with get_openai_callback() as cb:
+                    response = await executor.ainvoke({
+                        "input": user_input,
+                        "chat_history": chat_history,
+                        "system_prompt": system_prompt,
+                    })
+                    token_cb = cb
                 response_text = response.get("output", "") or "[Sin respuesta]"
-                logger.info(f"🤖 Agent Response: {response_text[:50]}...")
+                logger.info(f"🤖 Agent Response: {response_text[:50]}... | tokens={cb.total_tokens} cost=${cb.total_cost:.6f}")
                 break
             except Exception as e:
                 logger.warning(f"⚠️ process_buffer_task_agent_error (intento {attempt + 1}/{max_retries}): {str(e)}")
@@ -460,6 +468,34 @@ async def process_buffer_task(
                 else:
                     logger.exception("process_buffer_task_agent_error_final", exc_info=e)
                     response_text = "Disculpas, estoy experimentando intermitencias técnicas. Consultame de nuevo en unos minutos."
+
+        # --- Token Tracking ---
+        if token_cb and token_cb.total_tokens > 0:
+            try:
+                from dashboard.token_tracker import token_tracker, TokenUsage
+                from datetime import datetime, timezone as tz
+                if token_tracker:
+                    model_name = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+                    usage = TokenUsage(
+                        conversation_id=conversation_id,
+                        patient_phone=external_user_id,
+                        model=model_name,
+                        input_tokens=token_cb.prompt_tokens,
+                        output_tokens=token_cb.completion_tokens,
+                        total_tokens=token_cb.total_tokens,
+                        cost_usd=token_tracker.calculate_cost(model_name, token_cb.prompt_tokens, token_cb.completion_tokens),
+                        timestamp=datetime.now(tz.utc),
+                        tenant_id=tenant_id,
+                    )
+                    await token_tracker.track_usage(usage)
+                    # Update tenant totals
+                    await pool.execute(
+                        "UPDATE tenants SET total_tokens_used = COALESCE(total_tokens_used, 0) + $1, total_tool_calls = COALESCE(total_tool_calls, 0) + 1 WHERE id = $2",
+                        token_cb.total_tokens, tenant_id
+                    )
+                    logger.info(f"📊 Tokens tracked: {token_cb.total_tokens} | cost: ${usage.cost_usd}")
+            except Exception as tk_err:
+                logger.warning(f"⚠️ Token tracking error (non-fatal): {tk_err}")
                     
         # --- Extracción Multimedia Oculta ---
         if "[LOCAL_IMAGE:" in response_text:
