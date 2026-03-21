@@ -267,6 +267,9 @@ class Patient(Base):
     last_touch_campaign_name = Column(Text)
     last_touch_timestamp = Column(DateTime)
 
+    # Guardian (for minors — links to parent/mother phone)
+    guardian_phone = Column(String(20), nullable=True)
+
     # Location
     city = Column(String(100))
 
@@ -289,6 +292,7 @@ class Patient(Base):
         Index('idx_patients_first_touch_campaign_id', 'first_touch_campaign_id'),
         Index('idx_patients_first_touch_adset_id', 'first_touch_adset_id'),
         Index('idx_patients_city', 'city'),
+        Index('idx_patients_guardian', 'guardian_phone', postgresql_where=(guardian_phone != None)),
         Index('idx_patients_anamnesis_token', 'anamnesis_token', unique=True, postgresql_where=(anamnesis_token != None)),
     )
 

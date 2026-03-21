@@ -705,39 +705,70 @@ async def check_availability(date_query: str, professional_name: Optional[str] =
         return f"No pude consultar la disponibilidad para {date_query}. ¿Probamos una fecha diferente?"
 
 @tool
-async def book_appointment(date_time: str, treatment_reason: str, 
-                         first_name: Optional[str] = None, last_name: Optional[str] = None, 
+async def book_appointment(date_time: str, treatment_reason: str,
+                         first_name: Optional[str] = None, last_name: Optional[str] = None,
                          dni: Optional[str] = None,
                          birth_date: Optional[str] = None,
                          email: Optional[str] = None,
                          city: Optional[str] = None,
                          acquisition_source: Optional[str] = None,
                          duration_minutes: Optional[int] = 30,
-                         professional_name: Optional[str] = None):
+                         professional_name: Optional[str] = None,
+                         patient_phone: Optional[str] = None,
+                         is_minor: Optional[bool] = False):
     """
-    Registra un turno en la BD. 
+    Registra un turno en la BD.
     Para pacientes NUEVOS (status='guest'), OBLIGATORIAMENTE debes recolectar estos datos ANTES de ejecutar:
     1. Nombre (first_name)
-    2. Apellido (last_name) 
+    2. Apellido (last_name)
     3. DNI (solo números)
-    
-    NO ES OBLIGATORIO pedir fecha de nacimiento, email, ciudad o cómo nos conoció. Dejalas vacíos si el paciente no los proporciona, el personal de recepción los completará luego. No insistas pidiendo estos últimos 4 datos si el paciente quiere agendar rápido.
-    
+
+    TURNO PARA TERCEROS: Si el turno NO es para la persona que chatea:
+    - Para un ADULTO tercero (amigo, esposa, conocido): OBLIGATORIAMENTE pasá patient_phone con el teléfono del paciente real. is_minor=false.
+    - Para un MENOR (hijo/a): NO pases patient_phone. Pasá is_minor=true. El sistema usa el teléfono del padre/madre automáticamente.
+    - Para SÍ MISMO: no pases patient_phone ni is_minor. Flujo normal.
+
+    NO ES OBLIGATORIO pedir fecha de nacimiento, email, ciudad o cómo nos conoció.
+
     date_time: Fecha y hora en un solo string. Soporta términos relativos: 'hoy 17:00', 'mañana a las 10', 'lunes 15:30', 'miércoles 17:00'.
     treatment_reason: Nombre del tratamiento tal como en list_services (ej. limpieza profunda, consulta).
-    first_name, last_name: Nombre y apellido por separado.
-    dni: Documento (solo números).
+    first_name, last_name: Nombre y apellido del PACIENTE (no del interlocutor si es un tercero).
+    dni: Documento del PACIENTE (solo números).
     birth_date: (Opcional) Fecha de nacimiento DD/MM/AAAA.
     email: (Opcional) Email del paciente.
     city: (Opcional) Ciudad o barrio.
     acquisition_source: (Opcional) Cómo nos conoció.
     duration_minutes: (Opcional) Duración del turno en minutos. Por defecto 30 minutos.
     professional_name: (Opcional) Nombre del profesional.
+    patient_phone: (Opcional) Teléfono del paciente real si es un ADULTO TERCERO. NO usar para menores.
+    is_minor: (Opcional) True si el paciente es menor de edad (hijo/a del interlocutor). El sistema vincula al padre/madre automáticamente.
     """
-    phone = current_customer_phone.get()
-    if not phone:
+    chat_phone = current_customer_phone.get()
+    if not chat_phone:
         return "❌ Error: No pude identificar tu teléfono. Reinicia la conversación."
     tenant_id = current_tenant_id.get()
+
+    # --- Resolve patient phone based on booking type ---
+    is_third_party = bool(patient_phone) or bool(is_minor)
+    guardian_phone_value = None
+    if is_minor:
+        # Minor: use parent phone + -M{N} suffix
+        minor_count = await db.pool.fetchval(
+            "SELECT COUNT(*) FROM patients WHERE tenant_id = $1 AND guardian_phone = $2",
+            tenant_id, chat_phone
+        ) or 0
+        phone = f"{chat_phone}-M{minor_count + 1}"
+        guardian_phone_value = chat_phone
+    elif patient_phone:
+        # Adult third party: use their phone
+        phone = re.sub(r"[^\d+]", "", str(patient_phone).strip())
+        if not phone:
+            return "❌ El teléfono del paciente no es válido. Pedile el número correcto."
+        if not phone.startswith('+'):
+            phone = '+' + phone
+    else:
+        # For themselves: current flow
+        phone = chat_phone
     try:
         apt_datetime = parse_datetime(date_time)
         # No agendar en el pasado
@@ -829,15 +860,31 @@ async def book_appointment(date_time: str, treatment_reason: str,
 
         # 2a. Lectura temprana: verificar si paciente existe (read-only, sin persistir aún)
         # Spec 2026-03-13: No crear paciente hasta confirmar disponibilidad
-        existing_patient = await db.pool.fetchrow(
-            "SELECT id, status, phone_number FROM patients WHERE tenant_id = $1 AND phone_number = $2",
-            tenant_id, phone,
-        )
-        if not existing_patient and dni:
+        existing_patient = None
+        if is_minor and guardian_phone_value:
+            # Minor: search by guardian_phone + DNI or guardian_phone + name
+            if dni:
+                existing_patient = await db.pool.fetchrow(
+                    "SELECT id, status, phone_number FROM patients WHERE tenant_id = $1 AND guardian_phone = $2 AND dni = $3",
+                    tenant_id, guardian_phone_value, dni,
+                )
+            if not existing_patient and first_name:
+                existing_patient = await db.pool.fetchrow(
+                    "SELECT id, status, phone_number FROM patients WHERE tenant_id = $1 AND guardian_phone = $2 AND first_name = $3",
+                    tenant_id, guardian_phone_value, first_name,
+                )
+            if existing_patient:
+                phone = existing_patient['phone_number']  # Reuse existing -M{N}
+        else:
             existing_patient = await db.pool.fetchrow(
-                "SELECT id, status, phone_number FROM patients WHERE tenant_id = $1 AND dni = $2",
-                tenant_id, dni,
+                "SELECT id, status, phone_number FROM patients WHERE tenant_id = $1 AND phone_number = $2",
+                tenant_id, phone,
             )
+            if not existing_patient and dni:
+                existing_patient = await db.pool.fetchrow(
+                    "SELECT id, status, phone_number FROM patients WHERE tenant_id = $1 AND dni = $2",
+                    tenant_id, dni,
+                )
         # Validación temprana para pacientes nuevos: fallar antes de buscar profesionales
         if not existing_patient:
             required_fields = [
@@ -956,10 +1003,11 @@ async def book_appointment(date_time: str, treatment_reason: str,
             return f"❌ Lo siento, no hay disponibilidad a las {apt_datetime.strftime('%H:%M')} para el tratamiento de {final_duration} min. ¿Probamos otro horario?"
 
         # 4. Crear/actualizar paciente SOLO cuando hay disponibilidad confirmada (Spec 2026-03-13)
+        # PROTECCIÓN: Si es turno para tercero, NO tocar el registro del interlocutor
         if existing_patient:
             await db.pool.execute("""
                 UPDATE patients
-                SET first_name = COALESCE($1, first_name), 
+                SET first_name = COALESCE($1, first_name),
                     last_name = COALESCE($2, last_name),
                     dni = COALESCE($3, dni),
                     birth_date = COALESCE($4, birth_date),
@@ -967,21 +1015,24 @@ async def book_appointment(date_time: str, treatment_reason: str,
                     city = COALESCE($6, city),
                     first_touch_source = COALESCE($7, first_touch_source),
                     phone_number = COALESCE($9, phone_number),
-                    status = 'active', 
+                    guardian_phone = COALESCE($10, guardian_phone),
+                    status = 'active',
                     updated_at = NOW()
                 WHERE id = $8
-            """, first_name, last_name, dni, birth_date_parsed, email_clean, 
-                city_clean, acquisition_source_clean, existing_patient["id"], phone)
+            """, first_name, last_name, dni, birth_date_parsed, email_clean,
+                city_clean, acquisition_source_clean, existing_patient["id"], phone,
+                guardian_phone_value)
             patient_id = existing_patient["id"]
         else:
             row = await db.pool.fetchrow("""
                 INSERT INTO patients (
-                    tenant_id, phone_number, first_name, last_name, dni, 
-                    birth_date, email, city, first_touch_source, status, created_at
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'active', NOW())
+                    tenant_id, phone_number, first_name, last_name, dni,
+                    birth_date, email, city, first_touch_source, guardian_phone, status, created_at
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'active', NOW())
                 RETURNING id
-            """, tenant_id, phone, first_name, last_name, dni, 
-                birth_date_parsed, email_clean, city_clean, acquisition_source_clean)
+            """, tenant_id, phone, first_name, last_name, dni,
+                birth_date_parsed, email_clean, city_clean, acquisition_source_clean,
+                guardian_phone_value)
             patient_id = row["id"]
 
         apt_id = str(uuid.uuid4())
@@ -1021,7 +1072,17 @@ async def book_appointment(date_time: str, treatment_reason: str,
 
         dias = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
         dia_nombre = dias[apt_datetime.weekday()]
-        return f"✅ ¡Turno confirmado con el/la Dr/a. {target_prof['first_name']}! {dia_nombre} {apt_datetime.strftime('%d/%m')} a las {apt_datetime.strftime('%H:%M')} ({final_duration} min)."
+        patient_label = f"{first_name or ''} {last_name or ''}".strip() or "Paciente"
+        if is_third_party:
+            # Get interlocutor name for the confirmation
+            interlocutor = await db.pool.fetchrow(
+                "SELECT first_name, last_name FROM patients WHERE tenant_id = $1 AND phone_number = $2",
+                tenant_id, chat_phone,
+            )
+            interlocutor_name = f"{interlocutor['first_name']} {interlocutor.get('last_name', '')}".strip() if interlocutor else "el interlocutor"
+            return f"✅ Turno confirmado para {patient_label} (solicitado por {interlocutor_name}) con el/la Dr/a. {target_prof['first_name']}! {dia_nombre} {apt_datetime.strftime('%d/%m')} a las {apt_datetime.strftime('%H:%M')} ({final_duration} min)."
+        else:
+            return f"✅ ¡Turno confirmado con el/la Dr/a. {target_prof['first_name']}! {dia_nombre} {apt_datetime.strftime('%d/%m')} a las {apt_datetime.strftime('%H:%M')} ({final_duration} min)."
 
     except Exception as e:
         import traceback
@@ -2065,18 +2126,42 @@ Los demás datos son OPCIONALES y se completan en consultorio. NUNCA envíes lis
 FLUJO DE AGENDAMIENTO (ORDEN ESTRICTO):
 PASO 1: SALUDO E IDENTIDAD - Usá el GREETING correspondiente al tipo de paciente.
 PASO 2: DEFINIR SERVICIO - Si el paciente ya lo dijo, NO lo volvás a preguntar.
+PASO 2b: PARA QUIÉN ES EL TURNO (OBLIGATORIO SIEMPRE) — Preguntá: "El turno es para vos o para otra persona?"
+  ESCENARIO A — PARA SÍ MISMO: El interlocutor dice "para mí", "sí", o similar → flujo normal. NO pasar patient_phone ni is_minor a book_appointment.
+  ESCENARIO B — PARA UN ADULTO TERCERO (amigo, esposa, conocido, familiar adulto):
+    • Sinónimos de detección: "amigo/a", "esposo/a", "pareja", "familiar", "conocido/a", "padre", "madre", "abuelo/a", "hermano/a", "cuñado/a", "vecino/a"
+    • OBLIGATORIO pedir el TELÉFONO del paciente real (el interlocutor debe darlo). Si no lo tiene, sugerí que se lo pida.
+    • Pedir nombre, apellido y DNI del paciente (los datos son DEL TERCERO, no del interlocutor).
+    • En book_appointment pasá: patient_phone=teléfono del tercero, is_minor=false.
+    • NUNCA uses el teléfono del chat como teléfono del tercero adulto.
+  ESCENARIO C — PARA UN MENOR (hijo/a del interlocutor):
+    • Sinónimos de detección: "hijo/a", "nene/a", "menor", "niño/a", "bebé", "chico/a"
+    • NO pedir teléfono. El sistema usa el del padre/madre automáticamente.
+    • Pedir nombre, apellido y DNI del menor.
+    • En book_appointment pasá: is_minor=true. NO pasar patient_phone.
+  REGLA DE NOMBRE (CRÍTICO): NUNCA cambies el nombre de la conversación/paciente del interlocutor cuando el turno es para un tercero o menor. El nombre de la conversación se mantiene como viene de WhatsApp/Instagram/Facebook.
 PASO 3: PROFESIONAL ASIGNADO — Según lo que devolvió 'list_services' o 'get_service_details':
   • Si el tratamiento tiene UN SOLO profesional asignado → informá al paciente: "Este tratamiento lo realiza el/la Dr/a. X". NO preguntes preferencia. Usá ese profesional directamente.
   • Si tiene VARIOS profesionales asignados → preguntá: "Este tratamiento lo realizan [nombres]. Tenés preferencia por alguno/a, o te agendo con el primero que tenga disponibilidad?". Si el paciente elige uno, usá ese. Si dice que no tiene preferencia o "cualquiera", dejá que el sistema asigne automáticamente al que tenga disponibilidad.
   • Si NO tiene profesionales asignados (no aparece "con: ...") → preguntá preferencia de profesional o asigná el primero disponible, como siempre.
 PASO 4: CONSULTAR DISPONIBILIDAD - 'check_availability' UNA vez con treatment_name y, si el paciente eligió profesional, con professional_name. Transmitir rangos al paciente.
-PASO 5: DATOS DE ADMISIÓN (PACIENTES NUEVOS) - DE A UN DATO POR MENSAJE: a) nombre, b) apellido, c) DNI.
-PASO 6: AGENDAR - 'book_appointment' con los datos. Para campos opcionales faltantes, pasar NULL. Si el paciente eligió profesional, pasá professional_name. Si no eligió, el sistema asigna automáticamente al que tenga disponibilidad.
-PASO 7: CONFIRMACIÓN - Mensaje con: nombre, tratamiento, día, hora, profesional, SEDE del día (nombre + dirección + link maps). Ofrecer enviar recordatorio y pedir mail opcionalmente.
+PASO 5: DATOS DE ADMISIÓN (PACIENTES NUEVOS) - DE A UN DATO POR MENSAJE: a) nombre, b) apellido, c) DNI. IMPORTANTE: Si el turno es para un TERCERO o MENOR, los datos son del PACIENTE (tercero/menor), NO del interlocutor.
+PASO 6: AGENDAR - 'book_appointment' con los datos del paciente. Para campos opcionales faltantes, pasar NULL.
+  • Para sí mismo: flujo normal (sin patient_phone ni is_minor).
+  • Para adulto tercero: pasá patient_phone con el teléfono del tercero.
+  • Para menor: pasá is_minor=true.
+PASO 7: CONFIRMACIÓN.
+  • Para sí mismo: "Turno confirmado para [nombre], [tratamiento], [día], [hora], con [profesional], en [sede]."
+  • Para tercero/menor: "Turno confirmado para [nombre del paciente] (solicitado por [nombre del interlocutor]): [tratamiento], [día], [hora], con [profesional], en [sede]."
+  Ofrecer enviar recordatorio y pedir mail opcionalmente.
 PASO 7b: Si el paciente da su email, llamá 'save_patient_email'.
-PASO 8: FICHA MÉDICA - Después de confirmar el turno, enviá el link de ficha médica (si está disponible en tu contexto). Decí: "Para ahorrar tiempo en tu consulta podés completar tu ficha médica aquí: [link]. Cuando termines avisame para corroborar los datos."
+PASO 8: FICHA MÉDICA:
+  • Para sí mismo: enviá el link de ficha médica. Decí: "Para ahorrar tiempo en tu consulta podés completar tu ficha médica aquí: [link]."
+  • Para menor: enviá el link de ficha médica del MENOR al padre/madre. Decí: "Te paso el link para completar la ficha médica de [nombre hijo/a]: [link]."
+  • Para adulto tercero: decí: "Te paso el link de ficha médica para que se lo reenvíes a [nombre]: [link]."
 
 PACIENTES EXISTENTES: Solo PASOS 1-4 y 6-8. NO pedir datos de admisión (PASO 5).
+MÚLTIPLES TURNOS: El interlocutor puede sacar varios turnos para distintas personas en la misma conversación. Cada vez que pide un turno nuevo, volver a PASO 2b para preguntar "para quién es".
 
 GESTIÓN DE TURNOS EXISTENTES:
 • CONSULTAR: Llamar PRIMERO 'list_my_appointments' antes de responder.
