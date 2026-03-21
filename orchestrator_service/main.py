@@ -1916,22 +1916,18 @@ La Dra. se especializa en rehabilitación oral con implantes, prótesis y cirug�
 Si YA mencionaste el turno en esta conversación, NO lo repitas.
 """.format(clinic_name=clinic_name)
 
-    # Anamnesis URL
+    # Anamnesis URL — always available for the AI, but behavior differs
     anamnesis_section = ""
     if anamnesis_url:
         anamnesis_section = (
             f"\n\nLINK DE FICHA MÉDICA: {anamnesis_url}\n"
-            "Después de confirmar un turno, enviá este link al paciente con el mensaje:\n"
-            f"\"Para ahorrar tiempo en tu consulta podés completar tu ficha médica aquí:\n{anamnesis_url}\n"
-            "Cuando termines avisame para corroborar los datos.\"\n"
-            "Si el paciente dice que ya completó el formulario, llamá 'get_patient_anamnesis' para verificar y confirmá los datos."
-        )
-    elif patient_status != "new_lead":
-        # Patient exists but anamnesis already completed — no URL needed
-        anamnesis_section = (
-            "\n\nFICHA MÉDICA: El paciente ya tiene su ficha médica completada. "
-            "NO enviar link de anamnesis después de agendar. "
-            "Si el paciente pide actualizar su ficha médica, podés llamar 'get_patient_anamnesis' para mostrarle los datos actuales."
+            "REGLAS DE ENVÍO DEL LINK:\n"
+            "• Si el paciente NO tiene anamnesis completada → enviar link AUTOMÁTICAMENTE después de confirmar turno:\n"
+            f"  \"Para ahorrar tiempo en tu consulta podés completar tu ficha médica aquí:\n  {anamnesis_url}\n  Cuando termines avisame para corroborar los datos.\"\n"
+            "• Si el paciente YA tiene anamnesis completada (aparece en su contexto) → NO enviar link automáticamente.\n"
+            "  PERO si el paciente pide actualizar o corregir su ficha médica → enviá el link diciendo:\n"
+            f"  \"Podés actualizar tu ficha médica desde aquí: {anamnesis_url}\"\n"
+            "• Si el paciente dice que ya completó o actualizó el formulario → llamá 'get_patient_anamnesis' para verificar y confirmá los datos."
         )
 
     price_text = f"${int(consultation_price):,}".replace(",", ".") if consultation_price and float(consultation_price) > 0 else ""
