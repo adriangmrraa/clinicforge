@@ -267,6 +267,34 @@ async def process_buffer_task(
         audio_context_str = ""
         seen_multimodal = set()
 
+        # --- Wait for pending audio transcriptions before processing ---
+        # Check if recent messages have audio without transcription and wait up to 15s
+        try:
+            pending_audio = await pool.fetch("""
+                SELECT id, content_attributes FROM chat_messages
+                WHERE conversation_id = $1 AND tenant_id = $2
+                AND content_attributes::text LIKE '%audio%'
+                AND content_attributes::text NOT LIKE '%transcription%'
+                ORDER BY created_at DESC LIMIT 3
+            """, conversation_id, tenant_id)
+            if pending_audio:
+                import asyncio as _asyncio
+                logger.info(f"🎙️ Esperando transcripción de {len(pending_audio)} audio(s)...")
+                for attempt in range(6):  # Max 15 seconds (6 x 2.5s)
+                    await _asyncio.sleep(2.5)
+                    # Re-check if transcriptions are now available
+                    still_pending = await pool.fetchval("""
+                        SELECT COUNT(*) FROM chat_messages
+                        WHERE id = ANY($1) AND content_attributes::text NOT LIKE '%transcription%'
+                    """, [r['id'] for r in pending_audio])
+                    if not still_pending or still_pending == 0:
+                        logger.info(f"✅ Transcripciones completadas tras {(attempt+1)*2.5}s")
+                        break
+                else:
+                    logger.warning(f"⚠️ Timeout esperando transcripciones. Procesando sin audio.")
+        except Exception as audio_wait_err:
+            logger.warning(f"⚠️ Error checking pending transcriptions: {audio_wait_err}")
+
         def extract_multimodal(msg_attrs):
             nonlocal vision_context_str, audio_context_str
             if not msg_attrs: return
@@ -291,6 +319,7 @@ async def process_buffer_task(
 
         # 4. Fetching Recent History (Spec 23)
         # We fetch the last 20 messages to ensure the agent has enough context
+        # Re-fetch AFTER transcription wait to get updated content_attributes
         db_history_dicts = await db.get_chat_history(external_user_id, limit=20, tenant_id=tenant_id)
 
         # --- EXTRACT CONTEXT BEFORE DEDUPLICATION (VISION FIX) ---
