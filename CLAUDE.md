@@ -197,8 +197,8 @@ The LangChain agent exposes these tools (defined in `orchestrator_service/main.p
 |------|---------|
 | `list_professionals` | List active professionals for a clinic |
 | `list_services` | List bookable treatment types (shows assigned professionals) |
-| `check_availability` | Check real availability for a day (filters by assigned professionals) |
-| `book_appointment` | Register an appointment (supports self, third-party adult, and minor bookings) |
+| `check_availability` | Check real availability for a day (uses tenant `working_hours` per-day slots + sede info) |
+| `book_appointment` | Register an appointment (supports self, third-party adult, and minor bookings; includes sede in confirmation) |
 | `list_my_appointments` | List patient's upcoming appointments |
 | `cancel_appointment` | Cancel a patient's appointment |
 | `reschedule_appointment` | Reschedule an appointment |
@@ -245,6 +245,10 @@ Many-to-many relationship via `treatment_type_professionals` junction table. Eac
 
 ### Multi-Sede (Location per Day)
 The clinic can operate from different locations depending on the day of the week. This is configured in `tenants.working_hours` JSONB with per-day `location`, `address`, and `maps_url` fields. Professionals can optionally override location per day in their own `working_hours`. **Resolution chain**: professional.working_hours[day].location → tenant.working_hours[day].location → tenant.address (fallback). The AI agent includes the correct sede in appointment confirmations.
+
+**AI Tools integration**: `check_availability` reads `tenants.working_hours` to determine per-day time slots (instead of env vars `CLINIC_HOURS_START/END`). If a day is disabled, it returns "clinic closed". The response includes the sede/address/Maps link for the queried day. `book_appointment` also resolves and includes the sede in the confirmation message.
+
+**JSONB handling**: asyncpg may return JSONB columns as strings. The `GET /admin/tenants` endpoint applies `json.loads` defensively, and the frontend's `parseWorkingHours()` also handles string input via `JSON.parse`.
 
 ### Differentiated AI Greeting
 The AI agent uses different greetings based on patient status:

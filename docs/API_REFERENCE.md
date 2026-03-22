@@ -181,17 +181,40 @@ Solo **CEO** puede gestionar sedes. Requieren autenticación admin.
 ### Listar sedes
 `GET /admin/tenants`
 
-Devuelve todas las clínicas/sedes del CEO.
+Devuelve todas las clínicas/sedes del CEO. Los campos JSONB (`config`, `working_hours`) se devuelven como objetos parseados (el backend aplica `json.loads` defensivo para compatibilidad con asyncpg).
+
+**Response:**
+```json
+[
+  {
+    "id": 1,
+    "clinic_name": "Clínica Centro",
+    "bot_phone_number": "+549...",
+    "config": { "calendar_provider": "local" },
+    "address": "Salta 123",
+    "google_maps_url": "https://maps.app.goo.gl/...",
+    "working_hours": {
+      "monday": { "enabled": true, "slots": [{"start": "09:00", "end": "18:00"}], "location": "", "address": "", "maps_url": "" },
+      "wednesday": { "enabled": true, "slots": [{"start": "12:00", "end": "18:00"}], "location": "Cordoba", "address": "Córdoba 431", "maps_url": "https://maps.app.goo.gl/..." }
+    },
+    "consultation_price": 5000.00,
+    "created_at": "...",
+    "updated_at": "..."
+  }
+]
+```
 
 ### Crear sede
 `POST /admin/tenants`
 
-**Payload:** Incluye `clinic_name`, `config` (JSON, ej. `calendar_provider`, `ui_language`), etc.
+**Payload:** `clinic_name`, `bot_phone_number`, `calendar_provider` (`'local'` | `'google'`), `address`, `google_maps_url`, `working_hours` (JSONB con config por día), `consultation_price`.
+
+Todos los campos se persisten en el INSERT (incluyendo `working_hours`, `address`, `google_maps_url` y `consultation_price`).
 
 ### Actualizar sede
 `PUT /admin/tenants/{tenant_id}`
 
-Actualiza nombre, configuración, working_hours (con location/address/maps_url por día) y `consultation_price` de la sede.
+Actualiza nombre, configuración, `working_hours` (con `location`/`address`/`maps_url` por día), y `consultation_price` de la sede. Solo se actualizan los campos presentes en el payload. `working_hours` se persiste como `::jsonb`.
 
 ### Eliminar sede
 `DELETE /admin/tenants/{tenant_id}`

@@ -108,6 +108,35 @@ ON CONFLICT (tenant_id, name) DO UPDATE SET value = EXCLUDED.value;
 
 ---
 
+## 7. Configuración de Clínica (Working Hours / Multi-Sede)
+
+### 7.1. Working hours no persisten al crear o editar clínica
+**Síntoma**: Se configuran horarios por día en el modal de editar clínica, se guarda con éxito (200 OK), pero al reabrir el modal los horarios vuelven a los valores por defecto (Lun-Vie 09:00-18:00).
+
+**Causas (corregidas en v2026-03-21)**:
+1. **POST /admin/tenants** no incluía `working_hours`, `address`, `google_maps_url` ni `consultation_price` en el INSERT SQL. Los datos se enviaban desde el frontend pero se descartaban silenciosamente.
+2. **asyncpg devuelve JSONB como strings**: Dependiendo de la versión de asyncpg, los campos JSONB se devuelven como strings en vez de objetos parseados. `parseWorkingHours()` en el frontend rechazaba strings (`typeof raw === 'object'` → false) y retornaba defaults.
+
+**Solución**:
+- Backend: `POST /admin/tenants` ahora incluye todos los campos en el INSERT.
+- Backend: `GET /admin/tenants` aplica `json.loads` defensivo a campos JSONB (`config`, `working_hours`).
+- Frontend: `parseWorkingHours()` ahora intenta `JSON.parse()` si recibe un string.
+- Frontend: Todos los `onChange` del modal usan `setFormData(prev => ...)` (functional updater) en vez de closure directa para evitar pérdida de estado por stale closures.
+
+### 7.2. Agente IA no respeta horarios ni sede configurados por día
+**Síntoma**: Se configura miércoles 12:00-18:00 con sede "Córdoba", pero el agente IA responde con disponibilidad 09:00-18:00 y sede incorrecta.
+
+**Causa**: `check_availability` usaba env vars hardcodeadas (`CLINIC_HOURS_START=08:00`, `CLINIC_HOURS_END=19:00`) para TODOS los días, ignorando `tenants.working_hours`. La respuesta no incluía información de sede.
+
+**Solución**: `check_availability` ahora:
+1. Lee `tenants.working_hours` para el día consultado.
+2. Usa los slots del día como rango horario (en vez de env vars globales).
+3. Si el día está deshabilitado, responde "la clínica no atiende ese día".
+4. Incluye sede, dirección y link de Maps en la respuesta.
+`book_appointment` también incluye la sede del día en el mensaje de confirmación.
+
+---
+
 ## 5. Base de Datos & Maintenance Robot
 
 ### 5.1. Error: Prepared statement "S_X" already exists / Transaction Error [NEW v8.1]
