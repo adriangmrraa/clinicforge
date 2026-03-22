@@ -145,7 +145,7 @@ class TokenTracker:
                         COUNT(*) as conversations
                     FROM token_usage
                     WHERE tenant_id = $1 
-                    AND timestamp >= NOW() - INTERVAL '$2 days'
+                    AND timestamp >= NOW() - make_interval(days => $2)
                     GROUP BY DATE(timestamp)
                     ORDER BY date DESC
                 """, tenant_id, days)
@@ -180,7 +180,7 @@ class TokenTracker:
                         COUNT(*) as conversations
                     FROM token_usage
                     WHERE tenant_id = $1 
-                    AND timestamp >= NOW() - INTERVAL '$2 days'
+                    AND timestamp >= NOW() - make_interval(days => $2)
                     GROUP BY model
                     ORDER BY total_tokens DESC
                 """, tenant_id, days)
@@ -218,7 +218,7 @@ class TokenTracker:
                         AVG(cost_usd) as avg_cost_per_conversation
                     FROM token_usage
                     WHERE tenant_id = $1 
-                    AND timestamp >= NOW() - INTERVAL '$2 days'
+                    AND timestamp >= NOW() - make_interval(days => $2)
                 """, tenant_id, days)
                 
                 # Hoy

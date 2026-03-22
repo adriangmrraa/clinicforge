@@ -216,7 +216,7 @@ async def get_database_stats() -> Dict[str, Any]:
             stats["total_patients"] = patients_row["count"] if patients_row else 0
             
             # Contar conversaciones
-            convs_row = await conn.fetchrow("SELECT COUNT(*) as count FROM conversations WHERE tenant_id = 1")
+            convs_row = await conn.fetchrow("SELECT COUNT(*) as count FROM chat_conversations WHERE tenant_id = 1")
             stats["total_conversations"] = convs_row["count"] if convs_row else 0
             
             # Contar turnos
