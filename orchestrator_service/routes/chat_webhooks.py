@@ -307,10 +307,13 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
 
             # Tasks
             for m_item in msg.media:
+                # Preserve original URL before it gets rewritten to local path
+                original_media_url = m_item.url
+
                 if m_item.type == MediaType.AUDIO:
                      try:
                         from services.whisper_service import transcribe_audio_url
-                        background_tasks.add_task(transcribe_audio_url, url=m_item.url, tenant_id=tenant_id, conversation_id=str(conv_id), external_user_id=msg.external_user_id)
+                        background_tasks.add_task(transcribe_audio_url, url=original_media_url, tenant_id=tenant_id, conversation_id=str(conv_id), external_user_id=msg.external_user_id)
                      except: logger.warning("whisper_service not available")
                 elif m_item.type == MediaType.IMAGE:
                     try:

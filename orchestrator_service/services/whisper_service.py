@@ -11,30 +11,66 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 async def transcribe_audio_url(url: str, tenant_id: int, conversation_id: str, external_user_id: str):
     """
-    Downloads audio from url, transcribes it via Whisper, and updates chat_messages.
+    Downloads audio from url (or reads from local disk), transcribes it via Whisper, and updates chat_messages.
     """
     if not OPENAI_API_KEY:
         logger.warning("❌ OPENAI_API_KEY not set. Skipping transcription.")
         return
 
+    original_url = url  # Preserve for DB lookup
+
     try:
-        # 1. Download audio
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            resp = await client.get(url)
-            if resp.status_code != 200:
-                logger.error(f"❌ Failed to download audio from {url}: {resp.status_code}")
+        # 1. Get audio data — from local file or remote URL
+        audio_data = None
+
+        if url.startswith("/media/") or url.startswith("/uploads/"):
+            # Local file — read from disk
+            stripped = url
+            for prefix in ("/media/", "/uploads/"):
+                if stripped.startswith(prefix):
+                    stripped = stripped[len(prefix):]
+                    break
+            # Try multiple candidate paths
+            candidates = [
+                os.path.join(os.getcwd(), "media", stripped),
+                os.path.join(os.getcwd(), "uploads", stripped),
+                os.path.join("/media", stripped),
+                os.path.join("/uploads", stripped),
+            ]
+            for path in candidates:
+                if os.path.exists(path):
+                    with open(path, "rb") as f:
+                        audio_data = f.read()
+                    logger.info(f"📁 Audio leído desde disco: {path} ({len(audio_data)} bytes)")
+                    break
+            if not audio_data:
+                logger.error(f"❌ Local audio file not found. Tried: {candidates}")
                 return
-            audio_data = resp.content
+        else:
+            # Remote URL — download
+            headers = {}
+            ycloud_key = os.getenv("YCLOUD_API_KEY")
+            if ycloud_key and "ycloud" in url.lower():
+                headers["X-API-Key"] = ycloud_key
+            async with httpx.AsyncClient(timeout=30.0, headers=headers) as client:
+                resp = await client.get(url)
+                if resp.status_code != 200:
+                    logger.error(f"❌ Failed to download audio from {url}: {resp.status_code}")
+                    return
+                audio_data = resp.content
+
+        if not audio_data or len(audio_data) == 0:
+            logger.warning(f"⚠️ Audio data is empty for {url}")
+            return
 
         # 2. Transcribe via Whisper
-        # Note: Whisper requires a file-like object with a filename (for format detection)
-        # We'll use a multipart form request
-        filename = url.split("?")[0].split("/")[-1] or "audio.mp4"
-        if "." not in filename: filename += ".mp4"
+        filename = url.split("?")[0].split("/")[-1] or "audio.ogg"
+        if "." not in filename:
+            filename += ".ogg"
 
         files = {"file": (filename, audio_data)}
         headers = {"Authorization": f"Bearer {OPENAI_API_KEY}"}
-        
+
         async with httpx.AsyncClient(timeout=60.0) as client:
             whisper_resp = await client.post(
                 "https://api.openai.com/v1/audio/transcriptions",
@@ -42,56 +78,67 @@ async def transcribe_audio_url(url: str, tenant_id: int, conversation_id: str, e
                 data={"model": "whisper-1"},
                 files=files
             )
-            
+
             if whisper_resp.status_code != 200:
                 logger.error(f"❌ Whisper API error: {whisper_resp.text}")
                 return
-            
+
             transcription = whisper_resp.json().get("text", "")
             if not transcription:
                 logger.warning("⚠️ Transcription resulted in empty string.")
                 return
 
-        # 3. Update DB
-        # We search for the message that contains this attachment URL in its content_attributes
-        # Or better: search for the latest incoming audio message for this conversation
-        # Since we have the URL, we can be precise.
-        
-        # chat_messages: content_attributes is JSONB (array of objects for Chatwoot, usually object/array for internal)
-        # In Chatwoot/YCloud, it might be inside a list.
-        
-        # Update logic: If transcription found, merge it into content_attributes
-        logger.info(f"🎙️ Transcription successful: '{transcription[:50]}...'")
-        
-        # We update the message where the URL matches in content_attributes
-        # Since content_attributes can be complex, we use jsonb_set or simple filter if we can find the ID
-        
-        # Let's find the message ID first
+        logger.info(f"🎙️ Transcription successful: '{transcription[:80]}...'")
+
+        # 3. Update DB — find the message by conversation + audio type (most recent)
+        # Try multiple search strategies since the URL in DB may differ from the original
+        msg = None
+
+        # Strategy 1: Search by original URL
         msg = await db.fetchrow("""
-            SELECT id, content_attributes FROM chat_messages 
-            WHERE conversation_id = $1::uuid 
+            SELECT id, content_attributes FROM chat_messages
+            WHERE conversation_id = $1::uuid
             AND content_attributes::text LIKE $2
             ORDER BY created_at DESC LIMIT 1
-        """, conversation_id, f"%{url}%")
+        """, conversation_id, f"%{original_url}%")
+
+        # Strategy 2: Search by local URL (if URL was rewritten to local path)
+        if not msg and not url.startswith("http"):
+            msg = await db.fetchrow("""
+                SELECT id, content_attributes FROM chat_messages
+                WHERE conversation_id = $1::uuid
+                AND content_attributes::text LIKE $2
+                ORDER BY created_at DESC LIMIT 1
+            """, conversation_id, f"%{url}%")
+
+        # Strategy 3: Find the most recent audio message without transcription
+        if not msg:
+            msg = await db.fetchrow("""
+                SELECT id, content_attributes FROM chat_messages
+                WHERE conversation_id = $1::uuid
+                AND content_attributes::text LIKE '%audio%'
+                AND content_attributes::text NOT LIKE '%transcription%'
+                ORDER BY created_at DESC LIMIT 1
+            """, conversation_id)
 
         if msg:
             attrs = msg["content_attributes"] or {}
-            # Si es Chatwoot, suele ser una lista de adjuntos
+            if isinstance(attrs, str):
+                attrs = json.loads(attrs)
             if isinstance(attrs, list):
                 for item in attrs:
-                    if item.get("url") == url or item.get("data_url") == url:
+                    if isinstance(item, dict) and item.get("type") in ("audio", "voice"):
                         item["transcription"] = transcription
-            # Si es objeto directo
             elif isinstance(attrs, dict):
                 attrs["transcription"] = transcription
-            
+
             await db.execute("""
                 UPDATE chat_messages SET content_attributes = $1::jsonb
                 WHERE id = $2
             """, json.dumps(attrs), msg["id"])
             logger.info(f"✅ DB updated with transcription for message {msg['id']}")
         else:
-            logger.warning(f"⚠️ Could not find message in DB for URL {url} / Conv {conversation_id}")
+            logger.warning(f"⚠️ Could not find audio message in DB for Conv {conversation_id}")
 
     except Exception as e:
         logger.error(f"❌ Error in transcribe_audio_url: {str(e)}")
