@@ -473,21 +473,38 @@ async def process_buffer_task(
         media_urls = []
         max_retries = 3
         token_cb = None
+
+        # Try to import callback (non-fatal if unavailable)
+        _get_cb = None
+        try:
+            from langchain_community.callbacks import get_openai_callback as _get_cb_fn
+            _get_cb = _get_cb_fn
+        except ImportError:
+            try:
+                from langchain.callbacks import get_openai_callback as _get_cb_fn
+                _get_cb = _get_cb_fn
+            except ImportError:
+                logger.warning("⚠️ get_openai_callback not available, tokens will be estimated")
+
         for attempt in range(max_retries):
             try:
-                try:
-                    from langchain_community.callbacks import get_openai_callback
-                except ImportError:
-                    from langchain.callbacks import get_openai_callback
-                with get_openai_callback() as cb:
+                if _get_cb:
+                    with _get_cb() as cb:
+                        response = await executor.ainvoke({
+                            "input": user_input,
+                            "chat_history": chat_history,
+                            "system_prompt": system_prompt,
+                        })
+                        token_cb = cb
+                else:
                     response = await executor.ainvoke({
                         "input": user_input,
                         "chat_history": chat_history,
                         "system_prompt": system_prompt,
                     })
-                    token_cb = cb
                 response_text = response.get("output", "") or "[Sin respuesta]"
-                logger.info(f"🤖 Agent Response: {response_text[:50]}... | tokens={cb.total_tokens} cost=${cb.total_cost:.6f}")
+                cb_tokens = token_cb.total_tokens if token_cb else 0
+                logger.info(f"🤖 Agent Response: {response_text[:50]}... | cb_tokens={cb_tokens}")
                 break
             except Exception as e:
                 logger.warning(f"⚠️ process_buffer_task_agent_error (intento {attempt + 1}/{max_retries}): {str(e)}")
@@ -498,21 +515,36 @@ async def process_buffer_task(
                     logger.exception("process_buffer_task_agent_error_final", exc_info=e)
                     response_text = "Disculpas, estoy experimentando intermitencias técnicas. Consultame de nuevo en unos minutos."
 
-        # --- Token Tracking ---
-        if token_cb and token_cb.total_tokens > 0:
+        # --- Token Tracking (dual: callback or estimate) ---
+        if response_text and response_text != "Disculpas, estoy experimentando intermitencias técnicas. Consultame de nuevo en unos minutos.":
             try:
                 from dashboard.token_tracker import token_tracker, TokenUsage
                 from datetime import datetime, timezone as tz
                 if token_tracker:
                     model_name = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+
+                    # Use callback tokens if available, otherwise estimate
+                    if token_cb and token_cb.total_tokens > 0:
+                        input_t = token_cb.prompt_tokens
+                        output_t = token_cb.completion_tokens
+                        total_t = token_cb.total_tokens
+                        logger.info(f"📊 Token source: callback | in={input_t} out={output_t} total={total_t}")
+                    else:
+                        # Estimate: ~1 token per 4 chars (conservative for Spanish)
+                        input_text = (system_prompt or "") + (user_input or "")
+                        input_t = max(len(input_text) // 4, 100)
+                        output_t = max(len(response_text) // 4, 20)
+                        total_t = input_t + output_t
+                        logger.info(f"📊 Token source: estimate | in={input_t} out={output_t} total={total_t}")
+
                     usage = TokenUsage(
                         conversation_id=conversation_id,
                         patient_phone=external_user_id,
                         model=model_name,
-                        input_tokens=token_cb.prompt_tokens,
-                        output_tokens=token_cb.completion_tokens,
-                        total_tokens=token_cb.total_tokens,
-                        cost_usd=token_tracker.calculate_cost(model_name, token_cb.prompt_tokens, token_cb.completion_tokens),
+                        input_tokens=input_t,
+                        output_tokens=output_t,
+                        total_tokens=total_t,
+                        cost_usd=token_tracker.calculate_cost(model_name, input_t, output_t),
                         timestamp=datetime.now(tz.utc),
                         tenant_id=tenant_id,
                     )
@@ -520,9 +552,11 @@ async def process_buffer_task(
                     # Update tenant totals
                     await pool.execute(
                         "UPDATE tenants SET total_tokens_used = COALESCE(total_tokens_used, 0) + $1, total_tool_calls = COALESCE(total_tool_calls, 0) + 1 WHERE id = $2",
-                        token_cb.total_tokens, tenant_id
+                        total_t, tenant_id
                     )
-                    logger.info(f"📊 Tokens tracked: {token_cb.total_tokens} | cost: ${usage.cost_usd}")
+                    logger.info(f"📊 Tokens tracked: {total_t} | cost: ${usage.cost_usd}")
+                else:
+                    logger.warning("⚠️ token_tracker is None, skipping tracking")
             except Exception as tk_err:
                 logger.warning(f"⚠️ Token tracking error (non-fatal): {tk_err}")
                     
