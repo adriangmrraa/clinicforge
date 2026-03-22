@@ -12,6 +12,9 @@ ENV VITE_BFF_URL=""
 ENV VITE_WS_URL=""
 ENV VITE_ADMIN_TOKEN=""
 ENV VITE_APP_NAME=ClinicForge
+ENV VITE_FACEBOOK_APP_ID=""
+ENV VITE_META_CONFIG_ID=""
+ENV VITE_META_EMBEDDED_SIGNUP=false
 
 # Skip tsc (strict mode breaks CI). Vite handles TS fine.
 RUN npx vite build
@@ -22,7 +25,7 @@ COPY --from=builder /app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 # Template for runtime env injection — envsubst replaces $VARS at container start
-RUN echo 'window.__ENV__={VITE_API_URL:"$VITE_API_URL",VITE_API_BASE_URL:"$VITE_API_BASE_URL",VITE_BFF_URL:"$VITE_BFF_URL",VITE_WS_URL:"$VITE_WS_URL",VITE_ADMIN_TOKEN:"$VITE_ADMIN_TOKEN",VITE_APP_NAME:"$VITE_APP_NAME"};' \
+RUN echo 'window.__ENV__={VITE_API_URL:"$VITE_API_URL",VITE_API_BASE_URL:"$VITE_API_BASE_URL",VITE_BFF_URL:"$VITE_BFF_URL",VITE_WS_URL:"$VITE_WS_URL",VITE_ADMIN_TOKEN:"$VITE_ADMIN_TOKEN",VITE_APP_NAME:"$VITE_APP_NAME",VITE_FACEBOOK_APP_ID:"$VITE_FACEBOOK_APP_ID",VITE_META_CONFIG_ID:"$VITE_META_CONFIG_ID",VITE_META_EMBEDDED_SIGNUP:"$VITE_META_EMBEDDED_SIGNUP"};' \
     > /usr/share/nginx/html/env-config.js.template
 
 # Entrypoint: envsubst replaces $VARS in template, then starts nginx

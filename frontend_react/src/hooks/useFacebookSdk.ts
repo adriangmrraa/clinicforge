@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { getEnv } from '../utils/env';
 
 declare global {
     interface Window {
@@ -11,17 +12,20 @@ export const useFacebookSdk = () => {
     const [isReady, setIsReady] = useState(false);
 
     useEffect(() => {
-        const appId = import.meta.env.VITE_FACEBOOK_APP_ID;
+        // Use runtime injection (Docker/EasyPanel) with Vite build-time fallback
+        const appId = getEnv('VITE_FACEBOOK_APP_ID');
         if (!appId) {
-            console.error("[Meta SDK] VITE_FACEBOOK_APP_ID missing");
+            console.error("[Meta SDK] VITE_FACEBOOK_APP_ID missing (checked window.__ENV__ and import.meta.env)");
             return;
         }
+
+        console.log("[Meta SDK] App ID found, loading SDK...");
 
         const initParams = {
             appId,
             cookie: true,
             xfbml: true,
-            version: import.meta.env.VITE_FACEBOOK_API_VERSION || 'v22.0'
+            version: 'v22.0'
         };
 
         // If already loaded, force init

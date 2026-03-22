@@ -16,6 +16,9 @@ interface RuntimeEnv {
     VITE_ADMIN_TOKEN?: string;
     VITE_APP_NAME?: string;
     VITE_DEFAULT_TENANT_ID?: string;
+    VITE_FACEBOOK_APP_ID?: string;
+    VITE_META_CONFIG_ID?: string;
+    VITE_META_EMBEDDED_SIGNUP?: string;
 }
 
 declare global {

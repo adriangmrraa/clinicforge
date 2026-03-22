@@ -3,6 +3,7 @@ import { useTranslation } from '../../context/LanguageContext';
 import { Facebook, Instagram, MessageCircle, Check, Loader2, AlertTriangle, Trash2, RefreshCw } from 'lucide-react';
 import { useFacebookSdk } from '../../hooks/useFacebookSdk';
 import api from '../../api/axios';
+import { getEnv } from '../../utils/env';
 
 interface MetaAssets {
     pages: Array<{ id: string; name: string }>;
@@ -49,12 +50,12 @@ const MetaConnectionTab: React.FC = () => {
         setErrorMsg('');
 
         const loginParams: any = {
-            config_id: import.meta.env.VITE_META_CONFIG_ID,
+            config_id: getEnv('VITE_META_CONFIG_ID'),
             response_type: 'code',
             override_default_response_type: true,
         };
 
-        if (import.meta.env.VITE_META_EMBEDDED_SIGNUP === 'true') {
+        if (getEnv('VITE_META_EMBEDDED_SIGNUP') === 'true') {
             loginParams.extras = {
                 feature: 'whatsapp_embedded_signup',
                 setup: {}
