@@ -1666,9 +1666,15 @@ async def create_tenant(data: Dict[str, Any], user_data=Depends(verify_admin_tok
     if calendar_provider not in ("local", "google"):
         calendar_provider = "local"
     config_json = json.dumps({"calendar_provider": calendar_provider})
+    wh = data.get("working_hours")
+    wh_json = json.dumps(wh) if wh else "{}"
+    address = data.get("address") or None
+    maps_url = data.get("google_maps_url") or None
+    cp_raw = data.get("consultation_price")
+    consultation_price = float(cp_raw) if cp_raw is not None and cp_raw != '' else None
     query = """
-    INSERT INTO tenants (clinic_name, bot_phone_number, config, created_at)
-    VALUES ($1, $2, $3::jsonb, NOW())
+    INSERT INTO tenants (clinic_name, bot_phone_number, config, address, google_maps_url, working_hours, consultation_price, created_at)
+    VALUES ($1, $2, $3::jsonb, $4, $5, $6::jsonb, $7, NOW())
     RETURNING id
     """
     try:
@@ -1677,6 +1683,10 @@ async def create_tenant(data: Dict[str, Any], user_data=Depends(verify_admin_tok
             data.get("clinic_name"),
             data.get("bot_phone_number"),
             config_json,
+            address,
+            maps_url,
+            wh_json,
+            consultation_price,
         )
         return {"id": new_id, "status": "created"}
     except Exception as e:

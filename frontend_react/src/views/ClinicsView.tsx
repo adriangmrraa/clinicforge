@@ -406,13 +406,13 @@ export default function ClinicsView() {
                                     <label className="text-sm font-semibold text-medical-700">{t('clinics.clinic_name_label')}</label>
                                     <input required type="text" placeholder={t('clinics.clinic_name_placeholder')}
                                         className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-medical-500 outline-none"
-                                        value={formData.clinic_name} onChange={(e) => setFormData({ ...formData, clinic_name: e.target.value })} />
+                                        value={formData.clinic_name} onChange={(e) => { const v = e.target.value; setFormData(prev => ({ ...prev, clinic_name: v })); }} />
                                 </div>
                                 <div className="space-y-1">
                                     <label className="text-sm font-semibold text-medical-700">{t('clinics.bot_phone_label')}</label>
                                     <input required type="text" placeholder={t('clinics.bot_phone_placeholder')}
                                         className="w-full px-4 py-2 border rounded-lg font-mono focus:ring-2 focus:ring-medical-500 outline-none"
-                                        value={formData.bot_phone_number} onChange={(e) => setFormData({ ...formData, bot_phone_number: e.target.value })} />
+                                        value={formData.bot_phone_number} onChange={(e) => { const v = e.target.value; setFormData(prev => ({ ...prev, bot_phone_number: v })); }} />
                                 </div>
                             </div>
 
@@ -421,13 +421,13 @@ export default function ClinicsView() {
                                 <label className="text-sm font-semibold text-medical-700 flex items-center gap-2"><MapPin size={14} /> {t('clinics.address_label')}</label>
                                 <input type="text" placeholder={t('clinics.address_placeholder')}
                                     className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-medical-500 outline-none"
-                                    value={formData.address} onChange={(e) => setFormData({ ...formData, address: e.target.value })} />
+                                    value={formData.address} onChange={(e) => { const v = e.target.value; setFormData(prev => ({ ...prev, address: v })); }} />
                             </div>
                             <div className="space-y-1">
                                 <label className="text-sm font-semibold text-medical-700">{t('clinics.maps_url_label')}</label>
                                 <input type="url" placeholder={t('clinics.maps_url_placeholder')}
                                     className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-medical-500 outline-none text-sm"
-                                    value={formData.google_maps_url} onChange={(e) => setFormData({ ...formData, google_maps_url: e.target.value })} />
+                                    value={formData.google_maps_url} onChange={(e) => { const v = e.target.value; setFormData(prev => ({ ...prev, google_maps_url: v })); }} />
                             </div>
 
                             {/* Valor de consulta */}
@@ -435,7 +435,7 @@ export default function ClinicsView() {
                                 <label className="text-sm font-semibold text-medical-700">{t('clinics.consultation_price_label')}</label>
                                 <input type="number" step="0.01" min="0" placeholder={t('clinics.consultation_price_placeholder')}
                                     className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-medical-500 outline-none"
-                                    value={formData.consultation_price} onChange={(e) => setFormData({ ...formData, consultation_price: e.target.value })} />
+                                    value={formData.consultation_price} onChange={(e) => { const v = e.target.value; setFormData(prev => ({ ...prev, consultation_price: v })); }} />
                                 <p className="text-xs text-medical-400">{t('clinics.consultation_price_help')}</p>
                             </div>
 
@@ -444,7 +444,7 @@ export default function ClinicsView() {
                                 <label className="text-sm font-semibold text-medical-700 flex items-center gap-2"><Calendar size={14} /> {t('clinics.calendar_provider_label')}</label>
                                 <select className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-medical-500 outline-none"
                                     value={formData.calendar_provider}
-                                    onChange={(e) => setFormData({ ...formData, calendar_provider: e.target.value as 'local' | 'google' })}>
+                                    onChange={(e) => { const v = e.target.value as 'local' | 'google'; setFormData(prev => ({ ...prev, calendar_provider: v })); }}>
                                     {CALENDAR_PROVIDER_OPTIONS(t).map((opt) => (
                                         <option key={opt.value} value={opt.value}>{opt.label}</option>
                                     ))}
