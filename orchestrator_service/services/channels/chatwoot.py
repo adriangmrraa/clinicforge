@@ -43,8 +43,11 @@ class ChatwootAdapter(ChannelAdapter):
         msg_type = payload.get("message_type", "incoming")
         content = payload.get("content") or ""
         
-        sender = payload.get("sender", {})
-        sender_id = str(sender.get("id"))
+        sender = payload.get("sender") or {}
+        if not sender:
+            # Some Chatwoot events (system, status) have no sender — skip
+            return []
+        sender_id = str(sender.get("id", ""))
         
         # Extraer metadatos ricos del sender
         import re
