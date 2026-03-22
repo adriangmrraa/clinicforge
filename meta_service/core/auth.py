@@ -202,18 +202,35 @@ class MetaAuthService:
             return assets
 
     async def subscribe_page(self, client: httpx.AsyncClient, page_id: str, page_token: str):
-        """Subscribes app to page messaging webhook events."""
+        """Subscribes app to page webhook events for both Messenger AND Instagram."""
         url = f"{self.base_url}/{page_id}/subscribed_apps"
-        params = {
+
+        # Subscribe Messenger fields
+        messenger_params = {
             "access_token": page_token,
             "subscribed_fields": "messages,messaging_postbacks,message_reads,message_deliveries"
         }
         try:
-            resp = await client.post(url, params=params)
+            resp = await client.post(url, params=messenger_params)
             data = resp.json()
             if resp.status_code == 200 and data.get("success"):
-                logger.info("webhook_subscribed", page_id=page_id)
+                logger.info("messenger_webhook_subscribed", page_id=page_id)
             else:
-                logger.warning("webhook_subscribe_failed", page_id=page_id, response=data)
+                logger.warning("messenger_webhook_subscribe_failed", page_id=page_id, response=data)
         except Exception as e:
-            logger.error("webhook_subscribe_error", page_id=page_id, error=str(e))
+            logger.error("messenger_webhook_subscribe_error", page_id=page_id, error=str(e))
+
+        # Subscribe Instagram fields (IG DMs come through page subscription too)
+        ig_params = {
+            "access_token": page_token,
+            "subscribed_fields": "messages,messaging_postbacks,message_reads,message_deliveries,feed"
+        }
+        try:
+            resp_ig = await client.post(url, params=ig_params)
+            data_ig = resp_ig.json()
+            if resp_ig.status_code == 200 and data_ig.get("success"):
+                logger.info("instagram_webhook_subscribed", page_id=page_id)
+            else:
+                logger.warning("instagram_webhook_subscribe_failed", page_id=page_id, response=data_ig)
+        except Exception as e:
+            logger.error("instagram_webhook_subscribe_error", page_id=page_id, error=str(e))
