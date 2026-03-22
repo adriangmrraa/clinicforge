@@ -2532,6 +2532,20 @@ except ImportError as e:
 except Exception as e:
     logger.warning(f"⚠️ Error registrando dashboard: {e}")
 
+# Static file mounts for media persistence (uploads and media directories)
+try:
+    from fastapi.staticfiles import StaticFiles
+    uploads_dir = os.getenv("UPLOADS_DIR", os.path.join(os.getcwd(), "uploads"))
+    media_dir = os.path.join(os.getcwd(), "media")
+    if os.path.isdir(uploads_dir):
+        app.mount("/uploads", StaticFiles(directory=uploads_dir), name="uploads")
+        logger.info(f"✅ Static mount /uploads -> {uploads_dir}")
+    if os.path.isdir(media_dir):
+        app.mount("/media", StaticFiles(directory=media_dir), name="media")
+        logger.info(f"✅ Static mount /media -> {media_dir}")
+except Exception as e:
+    logger.warning(f"⚠️ Could not mount static media directories: {e}")
+
 # OpenAPI: inyectar securitySchemes para que en Swagger UI se pueda usar Authorize (JWT + X-Admin-Token)
 _original_openapi = app.openapi
 

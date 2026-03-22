@@ -59,7 +59,9 @@ export const MessageMedia = ({ attachments, message }: { attachments: any[], mes
 
     const getProxyUrl = (url: string) => {
         if (!url || typeof url !== 'string') return '';
-        if (url.startsWith('/media/') || url.startsWith('/admin/')) return `${BACKEND_URL}${url}`;
+        // Already a signed proxy URL or admin endpoint — prepend backend base
+        if (url.startsWith('/admin/') || url.startsWith('/media/') || url.startsWith('/uploads/')) return `${BACKEND_URL}${url}`;
+        // External URLs — route through proxy
         return `${BACKEND_URL}/admin/chat/media/proxy?url=${encodeURIComponent(url)}`;
     };
 
