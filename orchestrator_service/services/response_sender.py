@@ -141,6 +141,81 @@ class ResponseSender:
                 except Exception as e:
                     logger.error(f"❌ Error sending ycloud bubble: {e}")
 
+        elif provider == "meta_direct":
+            import httpx
+            import json
+            page_token = await get_tenant_credential(tenant_id, "meta_page_token")
+            if not page_token:
+                logger.error(f"Missing meta_page_token for tenant {tenant_id}")
+                return
+
+            async with httpx.AsyncClient(timeout=10.0) as http_client:
+                if channel == "whatsapp":
+                    # Find phone_number_id from business_assets
+                    wa_asset = await pool.fetchrow(
+                        "SELECT content FROM business_assets WHERE tenant_id = $1 AND asset_type = 'whatsapp_waba' AND is_active = true LIMIT 1",
+                        tenant_id
+                    )
+                    phone_number_id = None
+                    wa_token = page_token
+                    if wa_asset:
+                        wa_content = wa_asset["content"] if isinstance(wa_asset["content"], dict) else json.loads(wa_asset["content"])
+                        phones = wa_content.get("phone_numbers", [])
+                        if phones:
+                            phone_number_id = phones[0].get("id")
+                        waba_token = await get_tenant_credential(tenant_id, f"META_WA_TOKEN_{wa_content.get('id')}")
+                        if waba_token:
+                            wa_token = waba_token
+
+                    if not phone_number_id:
+                        logger.error(f"Missing WA phone_number_id for tenant {tenant_id}")
+                        return
+
+                    for bubble in bot_bubbles:
+                        await asyncio.sleep(delay)
+                        try:
+                            resp = await http_client.post(
+                                f"https://graph.facebook.com/v22.0/{phone_number_id}/messages",
+                                headers={"Authorization": f"Bearer {wa_token}", "Content-Type": "application/json"},
+                                json={
+                                    "messaging_product": "whatsapp",
+                                    "recipient_type": "individual",
+                                    "to": external_user_id,
+                                    "type": "text",
+                                    "text": {"body": bubble}
+                                }
+                            )
+                            meta_json = json.dumps({"provider": "meta_direct", "status": resp.status_code})
+                            await pool.execute(
+                                "INSERT INTO chat_messages (tenant_id, conversation_id, role, content, from_number, platform_metadata) VALUES ($1, $2, 'assistant', $3, $4, $5::jsonb)",
+                                tenant_id, conversation_id, bubble, external_user_id, meta_json
+                            )
+                        except Exception as e:
+                            logger.error(f"Error sending meta_direct WA bubble: {e}")
+                else:
+                    # Facebook Messenger / Instagram DM
+                    for bubble in bot_bubbles:
+                        await asyncio.sleep(delay)
+                        try:
+                            resp = await http_client.post(
+                                "https://graph.facebook.com/v22.0/me/messages",
+                                params={"access_token": page_token},
+                                json={
+                                    "recipient": {"id": external_user_id},
+                                    "message": {"text": bubble},
+                                    "messaging_type": "RESPONSE"
+                                }
+                            )
+                            meta_json = json.dumps({"provider": "meta_direct", "status": resp.status_code})
+                            await pool.execute(
+                                "INSERT INTO chat_messages (tenant_id, conversation_id, role, content, from_number, platform_metadata) VALUES ($1, $2, 'assistant', $3, $4, $5::jsonb)",
+                                tenant_id, conversation_id, bubble, external_user_id, meta_json
+                            )
+                        except Exception as e:
+                            logger.error(f"Error sending meta_direct IG/FB bubble: {e}")
+
+            logger.info(f"Meta Direct response sent: channel={channel} to={external_user_id} bubbles={len(bot_bubbles)}")
+
     @staticmethod
     def _split_into_bubbles(text: str, max_length: int = 400) -> List[str]:
         """Fragmenta inteligentemente un mensaje basado en saltos de línea y puntuación final."""

@@ -1,13 +1,14 @@
 import React, { useState, useEffect, lazy, Suspense } from 'react';
-import { Settings, Globe, Loader2, CheckCircle2, Copy, Trash2, Edit2, Zap, MessageCircle, Key, User, Plus, Info, Database, AlertTriangle, Clock, MessageSquare, AlertCircle } from 'lucide-react';
+import { Settings, Globe, Loader2, CheckCircle2, Copy, Trash2, Edit2, Zap, MessageCircle, Key, User, Plus, Info, Database, AlertTriangle, Clock, MessageSquare, AlertCircle, Facebook } from 'lucide-react';
 import api from '../api/axios';
 import { useTranslation } from '../context/LanguageContext';
 import PageHeader from '../components/PageHeader';
 import { useAuth } from '../context/AuthContext';
 import { Modal } from '../components/Modal';
 
-// Lazy load the LeadsFormsTab component
+// Lazy load integration tabs
 const LeadsFormsTab = lazy(() => import('../components/integrations/LeadsFormsTab'));
+const MetaConnectionTab = lazy(() => import('../components/integrations/MetaConnectionTab'));
 
 type UiLanguage = 'es' | 'en' | 'fr';
 
@@ -58,7 +59,7 @@ interface IntegrationConfig {
 export default function ConfigView() {
     const { t, language, setLanguage } = useTranslation();
     const { user } = useAuth();
-    const [activeTab, setActiveTab] = useState<'general' | 'ycloud' | 'chatwoot' | 'others' | 'maintenance' | 'leads'>('general');
+    const [activeTab, setActiveTab] = useState<'general' | 'ycloud' | 'chatwoot' | 'others' | 'maintenance' | 'leads' | 'meta'>('general');
 
     // General Settings State
     const [settings, setSettings] = useState<ClinicSettings | null>(null);
@@ -722,6 +723,12 @@ export default function ConfigView() {
                             >
                                 <MessageSquare size={18} /> Leads Forms
                             </button>
+                            <button
+                                onClick={() => setActiveTab('meta')}
+                                className={`px-6 py-4 font-medium text-sm whitespace-nowrap border-b-2 transition-all flex items-center gap-2 ${activeTab === 'meta' ? 'border-blue-600 text-blue-600 font-semibold' : 'border-transparent text-gray-500 hover:text-blue-600 hover:border-blue-200'}`}
+                            >
+                                <Facebook size={18} /> Meta
+                            </button>
                         </>
                     )}
                 </div>
@@ -736,6 +743,11 @@ export default function ConfigView() {
                     {activeTab === 'others' && user?.role === 'ceo' && renderOthersTab()}
                     {activeTab === 'maintenance' && user?.role === 'ceo' && renderMaintenanceTab()}
                     {activeTab === 'leads' && user?.role === 'ceo' && renderLeadsTab()}
+                    {activeTab === 'meta' && user?.role === 'ceo' && (
+                        <Suspense fallback={<div className="flex justify-center py-20"><Loader2 size={24} className="animate-spin text-blue-600" /></div>}>
+                            <MetaConnectionTab />
+                        </Suspense>
+                    )}
                 </div>
             </div>
 

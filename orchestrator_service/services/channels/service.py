@@ -3,6 +3,7 @@ import logging
 from .types import CanonicalMessage
 from .chatwoot import ChatwootAdapter
 from .ycloud import YCloudAdapter
+from .meta_direct import MetaDirectAdapter
 
 logger = logging.getLogger(__name__)
 
@@ -14,7 +15,8 @@ class ChannelService:
     
     _adapters = {
         "chatwoot": ChatwootAdapter(),
-        "ycloud": YCloudAdapter()
+        "ycloud": YCloudAdapter(),
+        "meta_direct": MetaDirectAdapter(),
     }
 
     @classmethod
@@ -23,7 +25,7 @@ class ChannelService:
         Ingesta y normaliza un webhook raw.
         
         Args:
-            provider: 'chatwoot' | 'ycloud'
+            provider: 'chatwoot' | 'ycloud' | 'meta_direct'
             payload: Dict con el body del request
             tenant_id: ID del tenant (resolución previa)
             

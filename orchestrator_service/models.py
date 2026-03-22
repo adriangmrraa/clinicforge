@@ -82,6 +82,9 @@ class ChatConversation(Base):
     last_read_at = Column(DateTime(timezone=True), server_default='1970-01-01 00:00:00+00')
     last_user_message_at = Column(DateTime(timezone=True))
     last_derivhumano_at = Column(DateTime(timezone=True))
+    # Meta Direct enrichment
+    source_entity_id = Column(Text, nullable=True)
+    platform_origin = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
@@ -270,6 +273,10 @@ class Patient(Base):
     # Guardian (for minors — links to parent/mother phone)
     guardian_phone = Column(String(20), nullable=True)
 
+    # Meta Direct PSIDs (for IG/FB identity linkage)
+    instagram_psid = Column(Text, nullable=True)
+    facebook_psid = Column(Text, nullable=True)
+
     # Location
     city = Column(String(100))
 
@@ -293,6 +300,8 @@ class Patient(Base):
         Index('idx_patients_first_touch_adset_id', 'first_touch_adset_id'),
         Index('idx_patients_city', 'city'),
         Index('idx_patients_guardian', 'guardian_phone', postgresql_where=(guardian_phone != None)),
+        Index('idx_patients_ig_psid', 'tenant_id', 'instagram_psid'),
+        Index('idx_patients_fb_psid', 'tenant_id', 'facebook_psid'),
         Index('idx_patients_anamnesis_token', 'anamnesis_token', unique=True, postgresql_where=(anamnesis_token != None)),
     )
 

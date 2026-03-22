@@ -2567,6 +2567,18 @@ app.include_router(chat_webhooks.router)
 app.include_router(meta_auth.router)
 app.include_router(marketing.router)
 
+# Meta Direct (Native Connection)
+try:
+    from routes.meta_direct_webhook import router as meta_direct_router
+    from routes.meta_credentials_sync import router as meta_cred_sync_router
+    from routes.meta_connect import router as meta_connect_router
+    app.include_router(meta_direct_router)
+    app.include_router(meta_cred_sync_router)
+    app.include_router(meta_connect_router)
+    logger.info("Meta Direct routers registered (webhook + credentials sync + connect/disconnect)")
+except ImportError as e:
+    logger.warning(f"Meta Direct routers not available: {e}")
+
 # Incluir rutas de jobs programados
 try:
     from jobs.admin_routes import router as jobs_router

@@ -463,6 +463,17 @@ async def process_buffer_task(
             special_context.append(followup_context)
             logger.info("✅ Contexto de seguimiento post-atención inyectado")
         
+        # Meta Direct channel rule: agent must request phone for IG/FB patients
+        if channel_type in ("instagram", "facebook") and provider == "meta_direct":
+            special_context.append(
+                f"REGLA CANAL ({channel_type.upper()}): El paciente escribe por {channel_type.capitalize()}. "
+                "En este canal NO tenemos su numero de telefono. "
+                "ANTES de poder agendar un turno, registrar datos o buscar turnos, DEBES pedirle su numero de telefono con codigo de area. "
+                "Sin telefono no podes usar ninguna herramienta de gestion de pacientes. "
+                'Ejemplo: "Para poder ayudarte con turnos, necesito tu numero de telefono con codigo de area. Me lo compartes?"'
+            )
+            logger.info(f"Injected Meta Direct phone-request rule for {channel_type}")
+
         # Aplicar todos los contextos especiales
         if special_context:
             context_block = "\n\n".join(special_context)
@@ -606,7 +617,21 @@ async def process_buffer_task(
                 provider=provider,
                 channel="whatsapp",
                 account_id="", # Irrelevant for ycloud
-                cw_conv_id="", 
+                cw_conv_id="",
+                messages_text=response_text,
+                media_urls=media_urls
+        )
+
+    elif provider == "meta_direct":
+        logger.info(f"🚀 Sending Meta Direct Response | tenant={tenant_id} to={external_user_id} channel={row.get('channel')} media={len(media_urls)}")
+        await ResponseSender.send_sequence(
+                tenant_id=tenant_id,
+                external_user_id=external_user_id,
+                conversation_id=conversation_id,
+                provider=provider,
+                channel=row.get("channel") or "facebook",
+                account_id="",
+                cw_conv_id="",
                 messages_text=response_text,
                 media_urls=media_urls
         )

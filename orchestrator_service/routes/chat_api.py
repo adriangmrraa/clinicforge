@@ -402,6 +402,59 @@ async def unified_send_message(
             # En YCloud, external_user_id es el teléfono (phone_number)
             await client.send_text_message(to=external_user_id, text=message, from_number=from_number)
             
+        elif provider == "meta_direct":
+            page_token = await get_tenant_credential(tenant_id, "meta_page_token")
+            if not page_token:
+                raise HTTPException(status_code=503, detail="Meta page token not configured. Connect Meta first in Settings.")
+
+            import httpx as _httpx
+            async with _httpx.AsyncClient(timeout=10.0) as meta_client:
+                if channel == "whatsapp":
+                    # WhatsApp Cloud API delivery
+                    # Find phone_number_id from business_assets
+                    wa_asset = await pool.fetchrow(
+                        "SELECT content FROM business_assets WHERE tenant_id = $1 AND asset_type = 'whatsapp_waba' AND is_active = true LIMIT 1",
+                        tenant_id
+                    )
+                    phone_number_id = None
+                    if wa_asset:
+                        wa_content = wa_asset["content"] if isinstance(wa_asset["content"], dict) else json.loads(wa_asset["content"])
+                        phones = wa_content.get("phone_numbers", [])
+                        if phones:
+                            phone_number_id = phones[0].get("id")
+
+                    wa_token = await get_tenant_credential(tenant_id, f"META_WA_TOKEN_{wa_content.get('id')}") if wa_asset else page_token
+
+                    if not phone_number_id:
+                        raise HTTPException(status_code=503, detail="WhatsApp phone number ID not found in business assets")
+
+                    resp = await meta_client.post(
+                        f"https://graph.facebook.com/v22.0/{phone_number_id}/messages",
+                        headers={"Authorization": f"Bearer {wa_token}", "Content-Type": "application/json"},
+                        json={
+                            "messaging_product": "whatsapp",
+                            "recipient_type": "individual",
+                            "to": external_user_id,
+                            "type": "text",
+                            "text": {"body": message}
+                        }
+                    )
+                    resp.raise_for_status()
+                else:
+                    # Facebook Messenger / Instagram DM
+                    resp = await meta_client.post(
+                        "https://graph.facebook.com/v22.0/me/messages",
+                        params={"access_token": page_token},
+                        json={
+                            "recipient": {"id": external_user_id},
+                            "message": {"text": message},
+                            "messaging_type": "RESPONSE"
+                        }
+                    )
+                    resp.raise_for_status()
+
+            logger.info(f"Meta Direct message sent: channel={channel}, to={external_user_id}")
+
         else:
             raise HTTPException(status_code=400, detail=f"Unknown provider: {provider}")
 

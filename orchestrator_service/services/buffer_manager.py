@@ -54,6 +54,12 @@ class BufferManager:
             "bubble_delay": 3,
             "max_message_length": 350,
             "typing_indicator": False
+        },
+        "meta_direct": {
+            "debounce_seconds": 8,
+            "bubble_delay": 3,
+            "max_message_length": 300,
+            "typing_indicator": True
         }
     }
     
