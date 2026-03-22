@@ -591,7 +591,8 @@ async def process_buffer_task(
     if provider == "chatwoot":
         account_id = row.get("external_account_id")
         cw_conv_id = row.get("external_chatwoot_id")
-        
+        logger.info(f"📋 Chatwoot delivery check | conv={conversation_id} | account_id={account_id} | cw_conv_id={cw_conv_id} | row_keys={list(row.keys()) if row else 'None'}")
+
         if account_id and cw_conv_id:
             logger.info(f"🚀 Sending Chatwoot Response | tenant={tenant_id} to={external_user_id} media={len(media_urls)}")
             await ResponseSender.send_sequence(
@@ -606,7 +607,12 @@ async def process_buffer_task(
                 media_urls=media_urls
             )
         else:
-            logger.warning("process_buffer_task_chatwoot_missing_ids", conv_id=conversation_id)
+            logger.warning(f"Chatwoot IDs missing for conv {conversation_id}. Persisting response locally only.")
+            # Persist the agent response in DB even if we can't send via Chatwoot
+            await pool.execute(
+                "INSERT INTO chat_messages (tenant_id, conversation_id, role, content, from_number) VALUES ($1, $2, 'assistant', $3, $4)",
+                tenant_id, conversation_id, response_text, external_user_id
+            )
 
     elif provider == "ycloud":
         logger.info(f"🚀 Sending YCloud Response | tenant={tenant_id} to={external_user_id} media={len(media_urls)}")
