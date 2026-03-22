@@ -373,11 +373,11 @@ async def process_buffer_task(
             """, conversation_id)
             
             if context_rows:
-                for row in context_rows:
-                    if row["role"] == "user":
+                for ctx_row in context_rows:
+                    if ctx_row["role"] == "user":
                         # Verificar archivos multimedia en mensaje del usuario
-                        attrs = row["content_attributes"]
-                        channel_type = row["channel"] or "whatsapp"
+                        attrs = ctx_row["content_attributes"]
+                        channel_type = ctx_row["channel"] or "whatsapp"
                         
                         if attrs:
                             if isinstance(attrs, str):
@@ -390,9 +390,9 @@ async def process_buffer_task(
                                         has_recent_media = True
                                         media_types.append(media_type)
 
-                    elif row["role"] == "assistant":
+                    elif ctx_row["role"] == "assistant":
                         # Verificar si el último mensaje del asistente fue un seguimiento
-                        attrs = row["content_attributes"]
+                        attrs = ctx_row["content_attributes"]
                         if attrs:
                             if isinstance(attrs, str):
                                 attrs = json.loads(attrs)
