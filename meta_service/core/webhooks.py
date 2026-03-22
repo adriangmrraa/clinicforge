@@ -17,10 +17,12 @@ class MetaWebhookService:
         self.verify_token = verify_token
         self.app_secret = app_secret
 
-    def verify_challenge(self, mode: str, token: str, challenge: str) -> int:
+    def verify_challenge(self, mode: str, token: str, challenge: str):
         """Handles the GET /webhook verification challenge."""
         if mode == "subscribe" and token == self.verify_token:
-            return int(challenge)
+            # Meta sends numeric challenges, but return as plain text to be safe
+            from fastapi.responses import PlainTextResponse
+            return PlainTextResponse(content=challenge)
         raise HTTPException(status_code=403, detail="Verification failed")
 
     async def verify_signature(self, request: Request):
