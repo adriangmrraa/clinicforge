@@ -1655,7 +1655,18 @@ async def get_tenants(user_data=Depends(verify_admin_token)):
     rows = await db.pool.fetch(
         "SELECT id, clinic_name, bot_phone_number, config, address, google_maps_url, working_hours, consultation_price, created_at, updated_at FROM tenants ORDER BY id ASC"
     )
-    return [dict(r) for r in rows]
+    result = []
+    for r in rows:
+        d = dict(r)
+        # asyncpg puede devolver JSONB como string; asegurar que sean objetos
+        for jfield in ('config', 'working_hours'):
+            if isinstance(d.get(jfield), str):
+                try:
+                    d[jfield] = json.loads(d[jfield])
+                except (json.JSONDecodeError, TypeError):
+                    pass
+        result.append(d)
+    return result
 
 @router.post("/tenants", tags=["Sedes"], summary="Crear una nueva sede")
 async def create_tenant(data: Dict[str, Any], user_data=Depends(verify_admin_token)):
