@@ -523,7 +523,7 @@ async def media_proxy(
         "storage.googleapis.com",  # Google Cloud Storage
     ]
     
-    is_allowed = any(domain in url for domain in allowed_domains) or url.startswith("/media/")
+    is_allowed = any(domain in url for domain in allowed_domains) or url.startswith("/media/") or url.startswith("/uploads/")
     if not is_allowed:  
         logger.warning(f"❌ Dominio no permitido: {url}")
         raise HTTPException(status_code=403, detail="Dominio no permitido")
@@ -549,23 +549,40 @@ async def media_proxy(
 
     # --- Spec 33: Mejorar serving de archivos locales ---
     # Si es una URL local del servidor, usar FileResponse (soporta Range headers nativamente)
-    if url.startswith("/media/"):
+    if url.startswith("/media/") or url.startswith("/uploads/"):
         # Normalizar path para evitar traversal
-        path_parts = url.replace("/media/", "").split("/")
+        stripped = url
+        for prefix in ("/media/", "/uploads/"):
+            if stripped.startswith(prefix):
+                stripped = stripped[len(prefix):]
+                break
+        path_parts = stripped.split("/")
         if ".." in path_parts:
              raise HTTPException(status_code=400, detail="Invalid path")
-            
-        local_path = os.path.join(os.getcwd(), "media", *path_parts)
-        if os.path.exists(local_path) and os.path.isfile(local_path):
+
+        # Try multiple candidate paths
+        candidates = [
+            os.path.join(os.getcwd(), "media", *path_parts),
+            os.path.join(os.getcwd(), "uploads", *path_parts),
+            os.path.join("/media", *path_parts),
+            os.path.join("/uploads", *path_parts),
+        ]
+        local_path = None
+        for c in candidates:
+            if os.path.exists(c) and os.path.isfile(c):
+                local_path = c
+                break
+
+        if local_path:
             from fastapi.responses import FileResponse
             logger.info(f"📁 Serving local media via FileResponse: {local_path} (Range Support)")
             return FileResponse(
-                local_path, 
+                local_path,
                 media_type=media_content_type,
                 filename=os.path.basename(local_path)
             )
         else:
-            logger.error(f"❌ Local media not found: {local_path}")
+            logger.error(f"❌ Local media not found. Tried: {candidates}")
             raise HTTPException(status_code=404, detail="File not found")
 
     # De lo contrario (URLs externas), mantener StreamingResponse

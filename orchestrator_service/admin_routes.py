@@ -3060,10 +3060,20 @@ async def download_patient_document_proxy(
 
     # Intentar múltiples paths para encontrar el archivo en disco
     uploads_dir = os.getenv("UPLOADS_DIR", os.path.join(os.getcwd(), "uploads"))
+    # Strip leading /media/ or /uploads/ prefix for recombination
+    stripped = clean_path
+    for prefix in ('/media/', '/uploads/'):
+        if stripped.startswith(prefix):
+            stripped = stripped[len(prefix):]
+            break
     candidates = [
-        os.path.join(os.getcwd(), clean_path.lstrip('/')),      # /app/uploads/1/file.jpg
-        clean_path,                                                # path absoluto directo
-        os.path.join(uploads_dir, clean_path.replace('/uploads/', '').lstrip('/')),  # UPLOADS_DIR/1/file.jpg
+        os.path.join(os.getcwd(), clean_path.lstrip('/')),           # /app/media/1/file.jpg or /app/uploads/1/file.jpg
+        clean_path,                                                    # absolute path as-is
+        os.path.join(uploads_dir, stripped),                           # UPLOADS_DIR/1/file.jpg
+        os.path.join(os.getcwd(), "media", stripped),                  # /app/media/1/file.jpg (explicit)
+        os.path.join(os.getcwd(), "uploads", stripped),                # /app/uploads/1/file.jpg (explicit)
+        os.path.join("/media", stripped),                               # /media/1/file.jpg (volume mount)
+        os.path.join("/uploads", stripped),                             # /uploads/1/file.jpg (volume mount)
     ]
 
     full_path = None
