@@ -488,8 +488,20 @@ async def check_availability(date_query: str, professional_name: Optional[str] =
         if professional_name:
             # Remover títulos comunes y normalizar
             clean_name = re.sub(r'^(dr|dra|doctor|doctora)\.?\s+', '', professional_name, flags=re.IGNORECASE).strip()
-        
+
         tenant_id = current_tenant_id.get()
+
+        # 0. Pre) Cargar working_hours del tenant para horarios y sede por día
+        tenant_row = await db.pool.fetchrow(
+            "SELECT working_hours, address, google_maps_url FROM tenants WHERE id = $1", tenant_id
+        )
+        tenant_wh_raw = tenant_row["working_hours"] if tenant_row else None
+        if isinstance(tenant_wh_raw, str):
+            try:
+                tenant_wh_raw = json.loads(tenant_wh_raw)
+            except Exception:
+                tenant_wh_raw = {}
+        tenant_wh = tenant_wh_raw if isinstance(tenant_wh_raw, dict) else {}
         # Solo profesionales aprobados (users.status = 'active') y activos en la sede
         query = """SELECT p.id, p.first_name, p.last_name, p.google_calendar_id, p.working_hours
                    FROM professionals p
@@ -530,7 +542,13 @@ async def check_availability(date_query: str, professional_name: Optional[str] =
             if not day_config.get("enabled"):
                 return f"Lo siento, el/la Dr/a. {prof['first_name']} no atiende los {target_date.strftime('%A')}. ¿Querés que busquemos disponibilidad con otros profesionales?"
 
-        if day_idx == 6:
+        # Validar contra working_hours del tenant (si están configurados)
+        tenant_day_cfg = tenant_wh.get(day_name_en, {}) if tenant_wh else {}
+        if tenant_wh and tenant_day_cfg:
+            if not tenant_day_cfg.get("enabled", True):
+                dias_es = {"monday": "lunes", "tuesday": "martes", "wednesday": "miércoles", "thursday": "jueves", "friday": "viernes", "saturday": "sábado", "sunday": "domingo"}
+                return f"Lo siento, la clínica no atiende los {dias_es.get(day_name_en, day_name_en)}. ¿Probamos otro día?"
+        elif day_idx == 6:
             return f"Lo siento, el {date_query} es domingo y la clínica está cerrada. Atendemos Lunes a Sábados."
 
         # 0. B) Obtener duración del tratamiento (solo los cargados en Tratamientos)
@@ -676,21 +694,64 @@ async def check_availability(date_query: str, professional_name: Optional[str] =
         for pid in busy_map:
             busy_map[pid].update(global_busy)
 
-        # 3. Generar slots libres
+        # 3. Determinar rango horario del día desde tenant working_hours
+        day_start = CLINIC_HOURS_START
+        day_end = CLINIC_HOURS_END
+        tenant_day_slots = tenant_day_cfg.get("slots", []) if tenant_day_cfg.get("enabled") else []
+        if tenant_day_slots:
+            # Usar el rango más amplio de los slots del tenant para este día
+            day_start = min(s["start"] for s in tenant_day_slots)
+            day_end = max(s["end"] for s in tenant_day_slots)
+            # Marcar huecos entre slots del tenant como ocupados para todos los profesionales
+            if len(tenant_day_slots) > 1:
+                sorted_slots = sorted(tenant_day_slots, key=lambda s: s["start"])
+                for i in range(len(sorted_slots) - 1):
+                    gap_start = sorted_slots[i]["end"]
+                    gap_end = sorted_slots[i + 1]["start"]
+                    gs_h, gs_m = map(int, gap_start.split(':'))
+                    ge_h, ge_m = map(int, gap_end.split(':'))
+                    gap_t = datetime.combine(target_date, datetime.min.time()).replace(hour=gs_h, minute=gs_m)
+                    gap_end_t = datetime.combine(target_date, datetime.min.time()).replace(hour=ge_h, minute=ge_m)
+                    while gap_t < gap_end_t:
+                        gap_hm = gap_t.strftime("%H:%M")
+                        for pid in busy_map:
+                            busy_map[pid].add(gap_hm)
+                        gap_t += timedelta(minutes=30)
+
         available_slots = generate_free_slots(
-            target_date, 
-            busy_map, 
+            target_date,
+            busy_map,
             duration_minutes=duration,
-            start_time_str=CLINIC_HOURS_START, 
-            end_time_str=CLINIC_HOURS_END,
+            start_time_str=day_start,
+            end_time_str=day_end,
             time_preference=time_preference,
             limit=50
         )
-        
+
+        # Resolver sede del día
+        sede_text = ""
+        day_location = tenant_day_cfg.get("location", "") if tenant_day_cfg else ""
+        day_address = tenant_day_cfg.get("address", "") if tenant_day_cfg else ""
+        day_maps = tenant_day_cfg.get("maps_url", "") if tenant_day_cfg else ""
+        if day_location:
+            sede_text = f" Sede: {day_location}."
+            if day_address:
+                sede_text += f" Dirección: {day_address}."
+            if day_maps:
+                sede_text += f" Maps: {day_maps}"
+        elif tenant_row:
+            # Fallback a dirección general del tenant
+            t_addr = tenant_row.get("address", "")
+            t_maps = tenant_row.get("google_maps_url", "")
+            if t_addr:
+                sede_text = f" Dirección: {t_addr}."
+                if t_maps:
+                    sede_text += f" Maps: {t_maps}"
+
         if available_slots:
             ranges_str = slots_to_ranges(available_slots, interval_minutes=30)
             logger.info(f"📅 check_availability OK slots={len(available_slots)} for {date_query} -> ranges: {ranges_str}")
-            resp = f"Para {date_query} ({duration} min), tenemos disponibilidad {ranges_str}. "
+            resp = f"Para {date_query} ({duration} min), tenemos disponibilidad {ranges_str}.{sede_text} "
             if professional_name:
                 resp += f"Consultando con Dr/a. {professional_name}."
             return resp
@@ -1073,6 +1134,29 @@ async def book_appointment(date_time: str, treatment_reason: str,
         dias = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
         dia_nombre = dias[apt_datetime.weekday()]
         patient_label = f"{first_name or ''} {last_name or ''}".strip() or "Paciente"
+
+        # Resolver sede del día del turno
+        booking_sede = ""
+        try:
+            t_row = await db.pool.fetchrow("SELECT working_hours, address FROM tenants WHERE id = $1", tenant_id)
+            if t_row:
+                b_wh = t_row["working_hours"]
+                if isinstance(b_wh, str):
+                    try: b_wh = json.loads(b_wh)
+                    except: b_wh = {}
+                if isinstance(b_wh, dict):
+                    days_en = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+                    b_day_cfg = b_wh.get(days_en[apt_datetime.weekday()], {})
+                    if b_day_cfg.get("location"):
+                        booking_sede = f"\nSede: {b_day_cfg['location']}"
+                        if b_day_cfg.get("address"):
+                            booking_sede += f" — {b_day_cfg['address']}"
+                        if b_day_cfg.get("maps_url"):
+                            booking_sede += f"\nMaps: {b_day_cfg['maps_url']}"
+                    elif t_row.get("address"):
+                        booking_sede = f"\nDirección: {t_row['address']}"
+        except Exception:
+            pass
         # Generate anamnesis URL for the patient (not the interlocutor)
         import uuid as uuid_mod_book
         patient_anamnesis_token = await db.pool.fetchval(
@@ -1096,14 +1180,14 @@ async def book_appointment(date_time: str, treatment_reason: str,
             interlocutor_name = f"{interlocutor['first_name']} {interlocutor.get('last_name', '')}".strip() if interlocutor else "el interlocutor"
             return (
                 f"✅ Turno confirmado para {patient_label} (solicitado por {interlocutor_name}) con el/la Dr/a. {target_prof['first_name']}! "
-                f"{dia_nombre} {apt_datetime.strftime('%d/%m')} a las {apt_datetime.strftime('%H:%M')} ({final_duration} min).\n"
+                f"{dia_nombre} {apt_datetime.strftime('%d/%m')} a las {apt_datetime.strftime('%H:%M')} ({final_duration} min).{booking_sede}\n"
                 f"[INTERNAL_PATIENT_PHONE:{phone}]\n"
                 f"[INTERNAL_ANAMNESIS_URL:{patient_anamnesis_url}]"
             )
         else:
             return (
                 f"✅ ¡Turno confirmado con el/la Dr/a. {target_prof['first_name']}! "
-                f"{dia_nombre} {apt_datetime.strftime('%d/%m')} a las {apt_datetime.strftime('%H:%M')} ({final_duration} min).\n"
+                f"{dia_nombre} {apt_datetime.strftime('%d/%m')} a las {apt_datetime.strftime('%H:%M')} ({final_duration} min).{booking_sede}\n"
                 f"[INTERNAL_ANAMNESIS_URL:{patient_anamnesis_url}]"
             )
 
