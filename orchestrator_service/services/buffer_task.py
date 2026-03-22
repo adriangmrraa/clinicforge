@@ -191,7 +191,7 @@ async def process_buffer_task(
                 patient_status = "patient_no_appointment"
 
             # Generate anamnesis URL (always — patient may need to update)
-            import os, uuid as uuid_mod
+            import uuid as uuid_mod
             anamnesis_token = patient_row.get("anamnesis_token") if patient_row else None
             if not anamnesis_token:
                 anamnesis_token = str(uuid_mod.uuid4())
