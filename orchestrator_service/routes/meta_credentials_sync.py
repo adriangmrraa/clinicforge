@@ -6,7 +6,7 @@ import json
 import logging
 import os
 
-from fastapi import APIRouter, HTTPException, Header
+from fastapi import APIRouter, HTTPException, Header, Request
 from pydantic import BaseModel
 from typing import Optional, Dict, Any
 
@@ -18,14 +18,14 @@ router = APIRouter()
 
 
 class MetaSyncRequest(BaseModel):
-    tenant_id: str
+    tenant_id: Any  # Accept both int and str
     provider: str
     credentials: Dict[str, Any]
 
 
 @router.post("/admin/credentials/internal-sync")
 async def internal_credential_sync(
-    data: MetaSyncRequest,
+    request: Request,
     x_internal_secret: str = Header(None)
 ):
     """
@@ -37,11 +37,18 @@ async def internal_credential_sync(
         raise HTTPException(401, "Unauthorized Internal Call")
 
     try:
-        tenant_id = int(data.tenant_id)
-        creds = data.credentials
+        body = await request.json()
+        tenant_id = int(body.get("tenant_id", 0))
+        provider = body.get("provider", "")
+        creds = body.get("credentials", {})
         pool = get_pool()
 
-        if data.provider == "meta":
+        if not tenant_id:
+            raise HTTPException(400, "Missing tenant_id")
+
+        logger.info(f"internal_credential_sync received: tenant={tenant_id} provider={provider}")
+
+        if provider == "meta":
             # 1. Store long-lived user token
             user_token = creds.get("user_access_token")
             if user_token:
