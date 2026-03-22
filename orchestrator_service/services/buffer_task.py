@@ -589,8 +589,8 @@ async def process_buffer_task(
     from response_sender import ResponseSender
     
     if provider == "chatwoot":
-        account_id = row["external_account_id"]
-        cw_conv_id = row["external_chatwoot_id"]
+        account_id = row.get("external_account_id")
+        cw_conv_id = row.get("external_chatwoot_id")
         
         if account_id and cw_conv_id:
             logger.info(f"🚀 Sending Chatwoot Response | tenant={tenant_id} to={external_user_id} media={len(media_urls)}")
