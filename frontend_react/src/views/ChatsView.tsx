@@ -1199,7 +1199,15 @@ export default function ChatsView() {
                               {platform.label}
                             </span>
                           </h3>
-                          <p className="text-xs text-gray-500 truncate">{selectedChatwoot.external_user_id || ''}</p>
+                          <p className="text-xs text-gray-500 truncate">{
+                            // Hide short numeric IDs (Chatwoot contact IDs like "1", "2")
+                            // Show username/phone if meaningful, otherwise show channel name
+                            (() => {
+                              const extId = selectedChatwoot.external_user_id || '';
+                              if (/^\d{1,5}$/.test(extId)) return platform.label;
+                              return extId;
+                            })()
+                          }</p>
                         </div>
                       </>
                     );

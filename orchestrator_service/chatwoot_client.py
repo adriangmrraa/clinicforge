@@ -103,6 +103,21 @@ class ChatwootClient:
                     body=e.response.text[:200],
                 )
                 raise
+
+    async def send_action(
+        self, account_id: int, conversation_id: int, action: str
+    ) -> dict[str, Any]:
+        """Send typing indicator (typing_on/typing_off) to a Chatwoot conversation."""
+        url = f"{self.base_url}/api/v1/accounts/{account_id}/conversations/{conversation_id}/toggle_typing_status"
+        payload = {"typing_status": "on" if "on" in action else "off"}
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.post(
+                    url, json=payload, headers=self.headers, timeout=5.0
+                )
+                return response.json() if response.status_code == 200 else {}
+            except Exception:
+                return {}
             except Exception as e:
                 logger.error(
                     "chatwoot_attachment_error",

@@ -318,9 +318,39 @@ async def process_buffer_task(
             except Exception: pass
 
         # 4. Fetching Recent History (Spec 23)
-        # We fetch the last 20 messages to ensure the agent has enough context
         # Re-fetch AFTER transcription wait to get updated content_attributes
         db_history_dicts = await db.get_chat_history(external_user_id, limit=20, tenant_id=tenant_id)
+
+        # --- WAIT FOR VISION if recent images lack description ---
+        import asyncio
+        try:
+            pending_vision = await pool.fetchval("""
+                SELECT COUNT(*) FROM chat_messages
+                WHERE conversation_id = $1 AND tenant_id = $2
+                AND content_attributes::text LIKE '%image%'
+                AND content_attributes::text NOT LIKE '%description%'
+                AND created_at > NOW() - INTERVAL '30 seconds'
+            """, conversation_id, tenant_id)
+            if pending_vision and pending_vision > 0:
+                logger.info(f"👁️ Waiting for vision analysis ({pending_vision} pending)...")
+                for attempt in range(6):  # Wait up to 15s
+                    await asyncio.sleep(2.5)
+                    still_pending = await pool.fetchval("""
+                        SELECT COUNT(*) FROM chat_messages
+                        WHERE conversation_id = $1 AND tenant_id = $2
+                        AND content_attributes::text LIKE '%image%'
+                        AND content_attributes::text NOT LIKE '%description%'
+                        AND created_at > NOW() - INTERVAL '30 seconds'
+                    """, conversation_id, tenant_id)
+                    if not still_pending or still_pending == 0:
+                        logger.info(f"✅ Vision analysis completed after {(attempt+1)*2.5}s")
+                        break
+                else:
+                    logger.warning("⚠️ Timeout waiting for vision. Proceeding without image description.")
+                # Re-fetch history with updated descriptions
+                db_history_dicts = await db.get_chat_history(external_user_id, limit=20, tenant_id=tenant_id)
+        except Exception as vision_wait_err:
+            logger.warning(f"⚠️ Error checking pending vision: {vision_wait_err}")
 
         # --- EXTRACT CONTEXT BEFORE DEDUPLICATION (VISION FIX) ---
         for msg in db_history_dicts:
@@ -445,7 +475,21 @@ async def process_buffer_task(
             except Exception:
                 minor_count = 0
 
-            if minor_count > 0:
+            # Check if patient exists before mentioning medical record
+            has_patient = False
+            try:
+                clean_ext = external_user_id.replace("+", "") if external_user_id else ""
+                patient_exists = await pool.fetchval("""
+                    SELECT id FROM patients WHERE tenant_id = $1 AND (
+                        phone_number = $2 OR phone_number = $3 OR
+                        instagram_psid = $2 OR facebook_psid = $2
+                    ) LIMIT 1
+                """, tenant_id, external_user_id, clean_ext)
+                has_patient = patient_exists is not None
+            except Exception:
+                has_patient = False
+
+            if has_patient and minor_count > 0:
                 media_context += (
                     "IMPORTANTE: Este paciente tiene hijos/menores vinculados. "
                     "ANTES de confirmar que guardaste el archivo, PREGUNTÁ: 'Este archivo es para tu ficha o para la de [nombre del hijo/a]?' "
@@ -453,8 +497,15 @@ async def process_buffer_task(
                     "que aparece en el contexto de HIJOS/MENORES VINCULADOS. "
                     "Si es para el interlocutor, no hagas nada extra, ya está guardado."
                 )
-            else:
+            elif has_patient:
                 media_context += "Responde confirmando que recibiste el archivo y que ya lo guardaste en su ficha médica para que la Dra. lo vea. Usa un tono amable y profesional."
+            else:
+                media_context += (
+                    "NOTA: Este contacto AUN NO tiene ficha de paciente registrada. "
+                    "NO digas que guardaste el archivo en su ficha porque no existe. "
+                    "Si hay CONTEXTO VISUAL disponible, usalo para responder sobre la imagen. "
+                    "Si el contacto necesita agendar un turno, pedile sus datos (nombre, telefono, DNI) primero."
+                )
 
             special_context.append(media_context)
         

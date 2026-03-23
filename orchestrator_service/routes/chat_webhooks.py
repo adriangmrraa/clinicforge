@@ -357,15 +357,17 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
                             clean_ext_id = msg.external_user_id.replace("+", "") if msg.external_user_id else ""
                             
                             patient_row = await pool.fetchrow("""
-                                SELECT id FROM patients 
+                                SELECT id FROM patients
                                 WHERE tenant_id = $1 AND (
-                                    phone_number = $2 OR 
+                                    phone_number = $2 OR
                                     phone_number = $3 OR
+                                    instagram_psid = $2 OR
+                                    facebook_psid = $2 OR
                                     external_ids @> $4::jsonb OR
                                     external_ids @> $5::jsonb
                                 )
                                 LIMIT 1
-                            """, tenant_id, msg.external_user_id, clean_ext_id, 
+                            """, tenant_id, msg.external_user_id, clean_ext_id,
                             json.dumps({"whatsapp_id": msg.external_user_id}),
                             json.dumps({"whatsapp_id": clean_ext_id}))
                             
