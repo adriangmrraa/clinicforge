@@ -147,3 +147,59 @@ ON CONFLICT (tenant_id, name) DO UPDATE SET value = EXCLUDED.value;
 **Solución**: Refactorizar `_run_evolution_pipeline` para adquirir una conexión fresca del pool por cada comando mayor, ejecutando los parches en sesiones aisladas. Esto evita que el estado fallido de un comando bloquee el canal del pool.
 
 ---
+
+## Meta Native Connection (Agregado 2026-03-22)
+
+### El popup de Facebook SDK no carga / queda "Cargando SDK..."
+
+**Sintoma**: En Settings > Meta, el boton queda en "Cargando SDK..." y la consola muestra `VITE_FACEBOOK_APP_ID missing`.
+
+**Causa**: Las variables `VITE_*` se inyectan en runtime via `env-config.js`, no en build time. Si las variables no estan en el template del Dockerfile, no se inyectan.
+
+**Solucion**: Verificar que `frontend_react/Dockerfile` tiene las variables en el `env-config.js.template` y que `utils/env.ts` tiene las variables en `RuntimeEnv`. El hook `useFacebookSdk.ts` debe usar `getEnv('VITE_FACEBOOK_APP_ID')` (no `import.meta.env`).
+
+### Error 422 al conectar (internal-sync)
+
+**Sintoma**: El popup completa pero muestra "Meta Service Connection Failed". En logs del meta_service: `422 Unprocessable Entity`.
+
+**Causa**: El endpoint `/admin/credentials/internal-sync` esperaba un body con tipos estrictos de Pydantic. `tenant_id` llegaba como int pero se esperaba str.
+
+**Solucion**: El endpoint ahora parsea `request.json()` directamente sin modelo Pydantic estricto (fix aplicado 2026-03-22).
+
+### Webhook challenge falla con "invalid literal for int()"
+
+**Sintoma**: Meta no puede verificar la URL del webhook. En logs: `ValueError: invalid literal for int() with base 10`.
+
+**Causa**: `verify_challenge()` hacia `int(challenge)` pero el challenge puede no ser numerico.
+
+**Solucion**: Ahora retorna `PlainTextResponse(content=challenge)` sin conversion (fix aplicado 2026-03-22).
+
+### Mensajes de Instagram no llegan (webhooks)
+
+**Sintoma**: Facebook Messenger funciona pero Instagram DMs no generan webhooks.
+
+**Causas posibles**:
+1. El permiso `instagram_manage_messages` no esta en **Advanced Access** (solo Standard). Requiere App Review de Meta.
+2. La cuenta de Instagram no tiene habilitado "Allow access to messages" en Instagram Settings > Privacy > Connected Tools.
+3. Los webhooks de Instagram DM en realidad requieren la page subscription correcta (no solo el producto Instagram).
+
+**Solucion**: Solicitar Advanced Access para `instagram_manage_messages` via App Review. Mientras tanto, usar Chatwoot para Instagram.
+
+### Agente no envia respuesta (Chatwoot IDs missing)
+
+**Sintoma**: El agente genera respuesta pero en logs aparece `Chatwoot IDs missing for conv X`.
+
+**Causa**: La variable `row` (con datos de la conversacion) era sobreescrita por un loop `for row in context_rows` en `buffer_task.py`.
+
+**Solucion**: Renombrada variable del loop a `ctx_row` (fix aplicado 2026-03-22).
+
+### Token tracking error: "cannot access local variable 'os'"
+
+**Sintoma**: Warning en logs: `Token tracking error (non-fatal): cannot access local variable 'os'`.
+
+**Causa**: `import os` local dentro de un bloque condicional en `buffer_task.py` shadowed el import global.
+
+**Solucion**: Eliminado el `import os` local redundante (fix aplicado 2026-03-22).
+
+---
+

@@ -137,6 +137,120 @@ El sistema de marketing integra datos de Meta Ads con la facturación real de la
 - **Ingresos (Revenue)**: Se suman los tratamientos completados (`billing`) de pacientes cuya `source` sea "Meta Ads" o provengan de un `ad_id` rastreado.
 - **ROI**: `((Revenue - Spend) / Spend) * 100`.
 
+## 8. Meta Native Connection (Sesion 2026-03-22)
+
+### Arquitectura
+
+Tercer provider de mensajeria (`meta_direct`) que conecta Facebook Messenger e Instagram DM directamente via Meta Graph API, sin depender de Chatwoot como intermediario. Coexiste con YCloud y Chatwoot.
+
+```
+YCloud (WhatsApp)       → whatsapp_service → POST /chat
+Chatwoot (IG/FB/WA)     → POST /admin/chatwoot/webhook
+Meta Direct (IG/FB/WA)  → meta_service → POST /admin/meta-direct/webhook
+                                ↓
+                    ChannelService.normalize_webhook()
+                                ↓
+                    _process_canonical_messages() (pipeline compartido)
+                                ↓
+                    BufferManager → AI Agent → ResponseSender
+```
+
+### Microservicio: meta_service
+
+Servicio independiente (`meta_service/`) desplegado en EasyPanel como `dentalforge-metaservice`.
+
+**Endpoints:**
+- `POST /connect` — Recibe code/token del popup de FB Login, exchange a long-lived token, descubre assets, sync credenciales al orchestrator
+- `GET /webhook` — Verificacion challenge de Meta
+- `POST /webhook` — Recibe webhooks de Meta, normaliza a SimpleEvent, reenvia al orchestrator
+- `POST /messages/send` — Proxy para enviar mensajes via Graph API (FB/IG)
+- `POST /whatsapp/send` — Proxy para WhatsApp Cloud API
+- `POST /privacy/data-deletion` — Callback GDPR obligatorio
+
+**Filtro de Echo**: `webhooks.py` filtra `message.is_echo: true` para evitar loops infinitos.
+
+### Orchestrator: MetaDirectAdapter
+
+Archivo: `services/channels/meta_direct.py`
+
+Registrado en `ChannelService._adapters["meta_direct"]`. Convierte `SimpleEvent` a `CanonicalMessage` para pasar por el mismo pipeline que YCloud y Chatwoot.
+
+**Resolucion de nombre**: `routes/meta_direct_webhook.py` busca el nombre real del sender via Graph API Conversations endpoint antes de normalizar.
+
+### Endpoints del Orchestrator (Meta)
+
+| Metodo | Ruta | Proposito |
+|--------|------|-----------|
+| POST | `/admin/meta/connect` | Proxy al meta_service para conexion via popup |
+| DELETE | `/admin/meta/disconnect` | Limpieza total: credentials + assets + conversaciones + mensajes + PSIDs |
+| GET | `/admin/meta/status` | Verifica si Meta esta conectado para el tenant |
+| POST | `/admin/meta-direct/webhook` | Recibe SimpleEvents del meta_service |
+| POST | `/admin/credentials/internal-sync` | Almacena tokens encriptados del meta_service |
+
+### Credenciales (tabla `credentials`)
+
+| name | category | Descripcion |
+|------|----------|-------------|
+| `META_USER_LONG_TOKEN` | meta | Token long-lived (~60 dias) |
+| `META_PAGE_TOKEN_{page_id}` | meta | Token por Facebook Page |
+| `meta_page_token` | meta | Primer Page Token (fallback) |
+| `META_IG_TOKEN_{ig_id}` | meta | Token por cuenta Instagram |
+| `META_WA_TOKEN_{waba_id}` | meta | Token por WABA |
+
+### Frontend: Tab Meta en Settings
+
+`ConfigView.tsx` tiene una nueva tab "Meta" (lazy-loaded `MetaConnectionTab.tsx`) con:
+- Popup de Facebook Login for Business (`useFacebookSdk.ts`)
+- Estados: idle → connecting → connected (con assets) → disconnect
+- Selector de sede/tenant para multi-clinica
+
+### Delivery
+
+`ResponseSender` en `response_sender.py` tiene case `meta_direct`:
+- Instagram/Facebook: `POST /me/messages` con page_token
+- WhatsApp Cloud API: `POST /{phone_number_id}/messages` con WA token
+
+### Migracion DB (Alembic 005)
+
+- Tabla `business_assets` (Pages, IG accounts, WABAs descubiertos)
+- Columnas `instagram_psid`, `facebook_psid` en `patients`
+- Columnas `source_entity_id`, `platform_origin` en `chat_conversations`
+
+### Limitaciones Actuales
+
+- **Instagram via Meta Direct**: requiere `instagram_manage_messages` en Advanced Access (App Review de Meta). Mientras tanto, Instagram funciona via Chatwoot.
+- **WhatsApp via Meta Direct**: requiere status de Tech Provider. Se sigue usando YCloud.
+
+---
+
+## 9. Fixes Chatwoot (Sesion 2026-03-22)
+
+### Bugs Corregidos
+
+1. **`sender` None en webhooks**: Chatwoot envia eventos de sistema sin `sender`. El adapter ahora retorna `[]` en vez de crashear con `AttributeError`.
+
+2. **`services/redis_client.py` faltante**: El modulo no existia, causando `ImportError` al encolar buffer. Creado con `get_redis()` singleton.
+
+3. **ChatwootAdapter retornaba `[]` siempre**: El adapter encolaba el buffer internamente con el Chatwoot conversation ID (int) en vez del UUID de la DB, causando `'int' has no attribute bytes'`. Fix: el adapter ahora retorna `[CanonicalMessage]` y deja que `_process_canonical_messages` maneje todo.
+
+4. **Variable `row` sobreescrita por loop**: `for row in context_rows` en `buffer_task.py` sobreescribia la variable `row` original (con datos de la conversacion: provider, chatwoot IDs). Fix: renombrada a `ctx_row`.
+
+5. **Token tracking `os` shadowing**: `import os` local dentro de un bloque condicional shadowed el `import os` global, causando `UnboundLocalError` cuando el bloque no se ejecutaba.
+
+6. **Logger kwargs crash**: `logger.warning("msg", conv_id=x)` usaba kwargs que el logger standard de Python no acepta. Fix: usar f-string.
+
+### Mejoras de Paridad Chatwoot ↔ YCloud
+
+1. **Typing indicator**: `ChatwootClient.send_action()` agregado para mostrar "escribiendo..." en conversaciones de Chatwoot.
+
+2. **Patient lookup ampliado**: Query de `patient_documents` ahora busca por `instagram_psid` y `facebook_psid` ademas de `phone_number`.
+
+3. **Subtitulo de contacto en UI**: IDs numericos cortos (1-5 digitos) de Chatwoot se reemplazan por el nombre del canal ("Instagram", "Facebook") en la lista de chats.
+
+4. **Vision context con espera**: El buffer task ahora espera hasta 15s para que el vision service termine de analizar imagenes antes de invocar al agente. Re-fetcha historial despues de la espera.
+
+5. **Media sin paciente**: Si no existe ficha de paciente, el agente NO dice "lo guarde en tu ficha". En su lugar, usa el contexto visual para responder sobre la imagen.
+
 ### 7.1. Estrategia "Master Ad List" (Mission 6)
 Para resolver la limitación de la Meta Graph API que oculta anuncios con gasto 0 al solicitar `insights` expandidos, el sistema implementa un protocolo de dos pasos:
 

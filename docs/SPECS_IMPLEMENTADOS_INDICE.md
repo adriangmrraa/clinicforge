@@ -52,4 +52,27 @@ Cualquier criterio de aceptación o detalle técnico de los specs anteriores que
 
 ---
 
-*Índice generado en el marco del workflow Update Docs (Non-Destructive Fusion).*
+## Especificaciones agregadas (2026-03-22)
+
+| Especificacion | Estado | Donde esta documentado |
+|----------------|--------|------------------------|
+| **2026-03-22_meta-native-connection.spec.md** | Implementado | `specs/2026-03-22_meta-native-connection.spec.md`, `specs/2026-03-22_meta-native-connection.plan.md`, `docs/META_NATIVE_CONNECTION_CLINICFORGE.md`, `docs/INTEGRATIONS_LOGIC_DEEP_DIVE.md` (seccion 8) |
+| **2026-03-22_chatwoot-ycloud-parity.spec.md** | Implementado | `specs/2026-03-22_chatwoot-ycloud-parity.spec.md`, `docs/INTEGRATIONS_LOGIC_DEEP_DIVE.md` (seccion 9) |
+
+### Archivos creados en esta sesion
+
+| Archivo | Tipo | Proposito |
+|---------|------|-----------|
+| `meta_service/` (6 archivos) | Microservicio | Conexion nativa de Meta (OAuth, webhooks, Graph API) |
+| `orchestrator_service/services/channels/meta_direct.py` | Adapter | MetaDirectAdapter para ChannelService |
+| `orchestrator_service/routes/meta_direct_webhook.py` | Route | Webhook endpoint para meta_service |
+| `orchestrator_service/routes/meta_credentials_sync.py` | Route | Sync de credenciales encriptadas |
+| `orchestrator_service/routes/meta_connect.py` | Route | Connect/disconnect/status de Meta |
+| `orchestrator_service/alembic/versions/005_add_meta_direct_support.py` | Migration | business_assets, PSIDs, enrichment columns |
+| `orchestrator_service/services/redis_client.py` | Service | Singleton Redis client (faltaba) |
+| `frontend_react/src/hooks/useFacebookSdk.ts` | Hook | Carga SDK de Facebook |
+| `frontend_react/src/components/integrations/MetaConnectionTab.tsx` | Component | Tab Meta en Settings |
+
+---
+
+*Indice generado en el marco del workflow Update Docs (Non-Destructive Fusion).*

@@ -185,6 +185,34 @@ VITE_API_BASE_URL=http://localhost:8000
 VITE_DEMO_WHATSAPP=5493435256815
 ```
 
+## 7. Meta Service — Meta Native Connection (8004)
+
+> Agregado en sesion 2026-03-22. Microservicio independiente para conexion nativa de Facebook Messenger e Instagram DM.
+
+| Variable | Descripcion | Ejemplo | Requerida |
+| :--- | :--- | :--- | :--- |
+| `META_APP_ID` | App ID de Meta Developer | `1649264159562011` | SI |
+| `META_APP_SECRET` | App Secret de Meta Developer | `abc123def456...` | SI |
+| `META_VERIFY_TOKEN` | Token de verificacion para webhook challenge | `clinicforge-meta-verify-xyz` | SI |
+| `META_GRAPH_API_VERSION` | Version de Graph API | `v22.0` | NO (default v22.0) |
+| `ORCHESTRATOR_URL` | URL interna del orchestrator | `http://orchestrator_service:8000` | SI |
+| `INTERNAL_SECRET_KEY` | Mismo valor que `INTERNAL_API_TOKEN` | (igual al global) | SI |
+| `FRONTEND_URL` | URL del frontend (fallback redirect) | `https://dentalforge-frontend.gvdlcu.easypanel.host` | NO |
+
+### Variables adicionales en Orchestrator
+
+| Variable | Descripcion | Ejemplo |
+| :--- | :--- | :--- |
+| `META_SERVICE_URL` | URL interna del meta_service | `http://meta_service:8000` |
+
+### Variables adicionales en Frontend (Runtime via env-config.js)
+
+| Variable | Descripcion | Ejemplo |
+| :--- | :--- | :--- |
+| `VITE_FACEBOOK_APP_ID` | App ID para SDK de Facebook (popup) | `1649264159562011` |
+| `VITE_META_CONFIG_ID` | Config ID de Facebook Login for Business | `4335626786693650` |
+| `VITE_META_EMBEDDED_SIGNUP` | Habilita WhatsApp Embedded Signup (solo Tech Providers) | `false` |
+
 ---
 
 *Guía de Variables © 2026*

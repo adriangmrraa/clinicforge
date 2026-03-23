@@ -35,6 +35,7 @@ Sustituye `localhost:8000` por la URL del Orchestrator en tu entorno (ej. en pro
 15. [Automatizaciones y Handoffs](#automatizaciones-y-handoffs)
 16. [Otros (health, chat IA)](#otros)
 17. [Endpoints Públicos (anamnesis)](#endpoints-públicos-sin-autenticación)
+18. [Meta Native Connection](#meta-native-connection)
 
 ---
 
@@ -805,3 +806,66 @@ Guarda las respuestas del formulario de anamnesis en `patients.medical_history` 
   "specific_fears_other": null
 }
 ```
+
+---
+
+## Meta Native Connection
+
+> Agregado 2026-03-22. Endpoints para conectar canales de Facebook Messenger e Instagram DM via Meta Graph API.
+
+### `POST /admin/meta/connect`
+**Auth**: JWT + X-Admin-Token (CEO only)
+
+Proxy al `meta_service`. Recibe code/token del popup de Facebook Login for Business, ejecuta OAuth exchange, descubre assets (Pages, IG, WABA), suscribe webhooks, y sync credenciales.
+
+**Body**:
+```json
+{ "code": "AQD...", "redirect_uri": "https://...", "tenant_id": 1 }
+```
+
+**Response (200)**:
+```json
+{
+  "status": "success",
+  "connected": { "facebook": true, "instagram": true, "whatsapp": false },
+  "assets": {
+    "pages": [{ "id": "625737910615884", "name": "Dr. Maria Laura Delgado" }],
+    "instagram": [{ "id": "189563590905695", "username": "dra.lauradelgado" }],
+    "whatsapp": []
+  }
+}
+```
+
+### `DELETE /admin/meta/disconnect`
+**Auth**: JWT + X-Admin-Token (CEO only)
+
+Limpieza total: desuscribe webhooks en Meta, elimina credenciales, business_assets, conversaciones meta_direct, mensajes, y limpia PSIDs en patients.
+
+**Response (200)**: `{ "status": "disconnected", "tenant_id": 1 }`
+
+### `GET /admin/meta/status`
+**Auth**: JWT + X-Admin-Token
+
+Verifica si Meta esta conectado para el tenant actual.
+
+**Response (200)**:
+```json
+{
+  "connected": true,
+  "assets": {
+    "pages": [{ "id": "...", "name": "..." }],
+    "instagram": [{ "id": "...", "username": "..." }],
+    "whatsapp": []
+  }
+}
+```
+
+### `POST /admin/meta-direct/webhook`
+**Auth**: X-Internal-Secret header (inter-service)
+
+Recibe SimpleEvents del meta_service. Resuelve tenant via `business_assets`, normaliza a CanonicalMessage, procesa por pipeline compartido.
+
+### `POST /admin/credentials/internal-sync`
+**Auth**: X-Internal-Secret header (inter-service)
+
+Recibe credenciales encriptadas del meta_service y las almacena en la tabla `credentials` + `business_assets`.
