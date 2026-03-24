@@ -118,6 +118,10 @@ class Tenant(Base):
     total_tokens_used = Column(BigInteger, default=0)
     total_tool_calls = Column(BigInteger, default=0)
     consultation_price = Column(DECIMAL(12, 2), nullable=True)
+    bank_cbu = Column(Text)
+    bank_alias = Column(Text)
+    bank_holder_name = Column(Text)
+    derivation_email = Column(Text)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
@@ -196,6 +200,7 @@ class Professional(Base):
     registration_id = Column(String(50))
     google_calendar_id = Column(String(255))
     working_hours = Column(JSONB, default={})
+    consultation_price = Column(DECIMAL(12, 2), nullable=True)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
@@ -366,6 +371,11 @@ class Appointment(Base):
     feedback_sent = Column(Boolean, default=False)
     followup_sent = Column(Boolean, default=False)
     followup_sent_at = Column(DateTime(timezone=True))
+    billing_amount = Column(DECIMAL(12, 2), nullable=True)
+    billing_installments = Column(Integer, nullable=True)
+    billing_notes = Column(Text)
+    payment_status = Column(String(20), default='pending')
+    payment_receipt_data = Column(JSONB, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     completed_at = Column(DateTime(timezone=True))
@@ -380,6 +390,7 @@ class Appointment(Base):
         Index('idx_appointments_urgency', 'urgency_level'),
         Index('idx_appointments_google_sync', 'google_calendar_sync_status'),
         Index('idx_appointments_source', 'source'),
+        Index('idx_appointments_payment_status', 'payment_status'),
     )
 
 

@@ -461,6 +461,7 @@ class ProfessionalUpdate(BaseModel):
     availability: Dict[str, Any]
     working_hours: Optional[Dict[str, Any]] = None
     google_calendar_id: Optional[str] = None
+    consultation_price: Optional[float] = None
 
 def generate_default_working_hours():
     """Genera el JSON de horarios por defecto (Mon-Sat, 09:00-18:00)"""
@@ -1653,7 +1654,7 @@ async def get_tenants(user_data=Depends(verify_admin_token)):
     if user_data.role != 'ceo':
         raise HTTPException(status_code=403, detail="Solo el CEO puede gestionar clínicas.")
     rows = await db.pool.fetch(
-        "SELECT id, clinic_name, bot_phone_number, config, address, google_maps_url, working_hours, consultation_price, created_at, updated_at FROM tenants ORDER BY id ASC"
+        "SELECT id, clinic_name, bot_phone_number, config, address, google_maps_url, working_hours, consultation_price, bank_cbu, bank_alias, bank_holder_name, derivation_email, created_at, updated_at FROM tenants ORDER BY id ASC"
     )
     result = []
     for r in rows:
@@ -1737,6 +1738,18 @@ async def update_tenant(tenant_id: int, data: Dict[str, Any], user_data=Depends(
         val = data.get("consultation_price")
         params.append(float(val) if val is not None and val != '' else None)
         updates.append(f"consultation_price = ${len(params)}")
+    if "bank_cbu" in data:
+        params.append(data.get("bank_cbu") or None)
+        updates.append(f"bank_cbu = ${len(params)}")
+    if "bank_alias" in data:
+        params.append(data.get("bank_alias") or None)
+        updates.append(f"bank_alias = ${len(params)}")
+    if "bank_holder_name" in data:
+        params.append(data.get("bank_holder_name") or None)
+        updates.append(f"bank_holder_name = ${len(params)}")
+    if "derivation_email" in data:
+        params.append(data.get("derivation_email") or None)
+        updates.append(f"derivation_email = ${len(params)}")
     if not updates:
         return {"status": "updated"}
     params.append(tenant_id)
@@ -2656,35 +2669,36 @@ async def update_professional(
         if prof_row['tenant_id'] not in allowed_ids:
             raise HTTPException(status_code=403, detail="No tienes acceso a esta sede")
 
-        # Actualizar datos básicos, disponibilidad y google_calendar_id
+        # Actualizar datos básicos, disponibilidad, google_calendar_id y consultation_price
         current_wh = payload.working_hours
         gcal_id = (payload.google_calendar_id or "").strip() or None
+        cp = payload.consultation_price
         if current_wh:
              sql_update = """
                 UPDATE professionals SET
                     first_name = $1, specialty = $2, license_number = $3,
                     phone_number = $4, email = $5, is_active = $6,
                     availability = $7::jsonb, working_hours = $8::jsonb,
-                    google_calendar_id = $9,
+                    google_calendar_id = $9, consultation_price = $10,
                     updated_at = NOW()
-                WHERE id = $10
+                WHERE id = $11
             """
-             params = [payload.name, payload.specialty, payload.license_number, 
-                      payload.phone, payload.email, payload.is_active, 
-                      json.dumps(payload.availability), json.dumps(current_wh), gcal_id, id]
+             params = [payload.name, payload.specialty, payload.license_number,
+                      payload.phone, payload.email, payload.is_active,
+                      json.dumps(payload.availability), json.dumps(current_wh), gcal_id, cp, id]
         else:
              sql_update = """
                 UPDATE professionals SET
                     first_name = $1, specialty = $2, license_number = $3,
                     phone_number = $4, email = $5, is_active = $6,
                     availability = $7::jsonb,
-                    google_calendar_id = $8,
+                    google_calendar_id = $8, consultation_price = $9,
                     updated_at = NOW()
-                WHERE id = $9
+                WHERE id = $10
             """
-             params = [payload.name, payload.specialty, payload.license_number, 
-                      payload.phone, payload.email, payload.is_active, 
-                      json.dumps(payload.availability), gcal_id, id]
+             params = [payload.name, payload.specialty, payload.license_number,
+                      payload.phone, payload.email, payload.is_active,
+                      json.dumps(payload.availability), gcal_id, cp, id]
 
         try:
             await db.pool.execute(sql_update, *params)
@@ -3205,8 +3219,9 @@ async def list_appointments(
     query = """
         SELECT a.id, a.patient_id, a.appointment_datetime, a.duration_minutes, a.status, a.urgency_level,
                a.source, a.appointment_type, a.notes,
+               a.billing_amount, a.billing_installments, a.billing_notes, a.payment_status, a.payment_receipt_data,
                (a.appointment_datetime + (COALESCE(a.duration_minutes, 30) || ' minutes')::interval) AS end_datetime,
-               (p.first_name || ' ' || COALESCE(p.last_name, '')) as patient_name, 
+               (p.first_name || ' ' || COALESCE(p.last_name, '')) as patient_name,
                p.phone_number as patient_phone,
                prof.first_name as professional_name, prof.id as professional_id,
                COALESCE(tt.name, a.appointment_type, 'Consulta') as appointment_name
@@ -3614,6 +3629,66 @@ async def update_appointment(id: str, apt: AppointmentCreate, request: Request, 
         logger.error(f"Error updating appointment: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.put("/appointments/{id}/billing", dependencies=[Depends(verify_admin_token)], tags=["Turnos"], summary="Actualizar facturación de un turno")
+async def update_appointment_billing(
+    id: str,
+    data: Dict[str, Any],
+    request: Request,
+    tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    """Actualizar datos de facturación de un turno (monto, cuotas, notas, estado de pago)."""
+    updates = []
+    params = []
+    if "billing_amount" in data:
+        val = data.get("billing_amount")
+        params.append(float(val) if val is not None and val != '' else None)
+        updates.append(f"billing_amount = ${len(params)}")
+    if "billing_installments" in data:
+        val = data.get("billing_installments")
+        params.append(int(val) if val is not None and val != '' else None)
+        updates.append(f"billing_installments = ${len(params)}")
+    if "billing_notes" in data:
+        params.append(data.get("billing_notes") or None)
+        updates.append(f"billing_notes = ${len(params)}")
+    if "payment_status" in data:
+        ps = data.get("payment_status") or 'pending'
+        if ps not in ('pending', 'partial', 'paid'):
+            ps = 'pending'
+        params.append(ps)
+        updates.append(f"payment_status = ${len(params)}")
+    if not updates:
+        return {"status": "no_changes"}
+    updates.append("updated_at = NOW()")
+    params.append(id)
+    params.append(tenant_id)
+    query = f"UPDATE appointments SET {', '.join(updates)} WHERE id = ${len(params) - 1} AND tenant_id = ${len(params)}"
+    result = await db.pool.execute(query, *params)
+    if result == "UPDATE 0":
+        raise HTTPException(status_code=404, detail="Turno no encontrado")
+
+    # Emit update event
+    full_data = await db.pool.fetchrow("""
+        SELECT a.id, a.patient_id, a.professional_id, a.appointment_datetime,
+               a.appointment_type, a.status, a.urgency_level, a.billing_amount,
+               a.billing_installments, a.billing_notes, a.payment_status,
+               (p.first_name || ' ' || COALESCE(p.last_name, '')) as patient_name,
+               p.phone_number as patient_phone, prof.first_name as professional_name
+        FROM appointments a
+        JOIN patients p ON a.patient_id = p.id
+        JOIN professionals prof ON a.professional_id = prof.id
+        WHERE a.id = $1
+    """, id)
+    if full_data:
+        full_data_dict = dict(full_data)
+        if full_data_dict.get('appointment_datetime'):
+            full_data_dict['appointment_datetime'] = full_data_dict['appointment_datetime'].isoformat()
+        try:
+            await emit_appointment_event("APPOINTMENT_UPDATED", full_data_dict, request)
+        except Exception as emit_err:
+            logger.warning(f"Socket emit failed for billing update {id}: {emit_err}")
+
+    return {"status": "updated", "id": id}
+
 @router.delete("/appointments/{id}", dependencies=[Depends(verify_admin_token)], tags=["Turnos"], summary="Eliminar físicamente un turno de la agenda")
 async def delete_appointment(id: str, request: Request, tenant_id: int = Depends(get_resolved_tenant_id)):
     """Eliminar turno físicamente de la base de datos y de GCal. Aislado por tenant_id (Regla de Oro)."""
@@ -3858,7 +3933,7 @@ async def get_professionals_by_user(
         rows = await db.pool.fetch(
             """
             SELECT id, tenant_id, user_id, first_name, last_name, email, specialty,
-                   is_active, working_hours, created_at, phone_number, registration_id, google_calendar_id
+                   is_active, working_hours, created_at, phone_number, registration_id, google_calendar_id, consultation_price
             FROM professionals
             WHERE user_id = $1 AND tenant_id = ANY($2::int[])
             ORDER BY tenant_id
@@ -3918,6 +3993,74 @@ async def get_professional_analytics(
     if result is None:
         raise HTTPException(status_code=404, detail="Profesional no encontrado en esta sede.")
     return result
+
+
+@router.post("/professionals/{id}/conversation-insights", dependencies=[Depends(verify_admin_token)], tags=["Profesionales"], summary="Generar insights de conversaciones con IA (beta)")
+async def get_professional_conversation_insights(
+    id: int,
+    tenant_id: int,
+    allowed_ids: List[int] = Depends(get_allowed_tenant_ids),
+):
+    """
+    Analiza conversaciones recientes de pacientes del profesional usando IA.
+    Extrae sentimiento, temas comunes y calidad de atención. Beta/experimental.
+    """
+    if tenant_id not in allowed_ids:
+        raise HTTPException(status_code=403, detail="No tienes acceso a esta sede.")
+
+    # Fetch recent patients for this professional
+    patient_ids = await db.pool.fetch("""
+        SELECT DISTINCT patient_id FROM appointments
+        WHERE professional_id = $1 AND tenant_id = $2
+        AND created_at > NOW() - INTERVAL '60 days'
+        ORDER BY patient_id
+        LIMIT 20
+    """, id, tenant_id)
+
+    if not patient_ids:
+        return {"insights": "No hay suficientes datos de pacientes para generar insights."}
+
+    pids = [r['patient_id'] for r in patient_ids]
+
+    # Get conversation snippets (first 200 chars of last messages)
+    snippets = []
+    for pid in pids[:10]:
+        phone = await db.pool.fetchval(
+            "SELECT phone_number FROM patients WHERE id = $1 AND tenant_id = $2", pid, tenant_id
+        )
+        if not phone:
+            continue
+        messages = await db.pool.fetch("""
+            SELECT role, LEFT(content, 200) as content FROM chat_messages
+            WHERE from_number = $1 AND tenant_id = $2
+            ORDER BY created_at DESC LIMIT 6
+        """, phone, tenant_id)
+        if messages:
+            conv_text = " | ".join([f"{m['role']}: {m['content']}" for m in reversed(messages)])
+            snippets.append(conv_text)
+
+    if not snippets:
+        return {"insights": "No se encontraron conversaciones recientes para analizar."}
+
+    # Call OpenAI for analysis
+    try:
+        import openai
+        client = openai.AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        all_snippets = "\n---\n".join(snippets[:10])
+        response = await client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "Sos un analista de experiencia del paciente en una clínica dental. Analizá los fragmentos de conversaciones y generá un resumen conciso en español con: 1) Sentimiento general (positivo/negativo/neutro), 2) Temas positivos recurrentes, 3) Quejas o preocupaciones frecuentes, 4) Puntuación de calidad de atención (1-10), 5) Recomendaciones breves. Respondé en formato estructurado, máximo 300 palabras."},
+                {"role": "user", "content": f"Fragmentos de {len(snippets)} conversaciones recientes:\n\n{all_snippets}"}
+            ],
+            max_tokens=500,
+            temperature=0.3,
+        )
+        insights_text = response.choices[0].message.content
+        return {"insights": insights_text, "conversations_analyzed": len(snippets)}
+    except Exception as e:
+        logger.error(f"Error generating conversation insights: {e}")
+        return {"insights": f"Error al generar insights: {str(e)}", "conversations_analyzed": 0}
 
 
 # ==================== ENDPOINTS GOOGLE CALENDAR ====================

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Building2, Plus, Edit, Trash2, Phone, Loader2, AlertCircle, CheckCircle2, Calendar, Clock, MapPin, HelpCircle, ChevronDown, X } from 'lucide-react';
+import { Building2, Plus, Edit, Trash2, Phone, Loader2, AlertCircle, CheckCircle2, Calendar, Clock, MapPin, HelpCircle, ChevronDown, X, DollarSign } from 'lucide-react';
 import api from '../api/axios';
 import { useTranslation } from '../context/LanguageContext';
 import PageHeader from '../components/PageHeader';
@@ -53,6 +53,10 @@ export interface Clinica {
     google_maps_url?: string;
     working_hours?: unknown;
     consultation_price?: number | null;
+    bank_cbu?: string;
+    bank_alias?: string;
+    bank_holder_name?: string;
+    derivation_email?: string;
     config?: { calendar_provider?: 'local' | 'google' };
     created_at: string;
     updated_at?: string;
@@ -85,6 +89,10 @@ export default function ClinicsView() {
         address: '',
         google_maps_url: '',
         consultation_price: '' as string,
+        bank_cbu: '',
+        bank_alias: '',
+        bank_holder_name: '',
+        derivation_email: '',
         working_hours: createDefaultWorkingHours(),
     });
     const [expandedDays, setExpandedDays] = useState<string[]>([]);
@@ -126,11 +134,15 @@ export default function ClinicsView() {
                 address: clinica.address || '',
                 google_maps_url: clinica.google_maps_url || '',
                 consultation_price: clinica.consultation_price != null ? String(clinica.consultation_price) : '',
+                bank_cbu: clinica.bank_cbu || '',
+                bank_alias: clinica.bank_alias || '',
+                bank_holder_name: clinica.bank_holder_name || '',
+                derivation_email: clinica.derivation_email || '',
                 working_hours: parseWorkingHours(clinica.working_hours),
             });
         } else {
             setEditingClinica(null);
-            setFormData({ clinic_name: '', bot_phone_number: '', calendar_provider: 'local', address: '', google_maps_url: '', consultation_price: '', working_hours: createDefaultWorkingHours() });
+            setFormData({ clinic_name: '', bot_phone_number: '', calendar_provider: 'local', address: '', google_maps_url: '', consultation_price: '', bank_cbu: '', bank_alias: '', bank_holder_name: '', derivation_email: '', working_hours: createDefaultWorkingHours() });
         }
         setExpandedDays([]);
         setError(null);
@@ -149,6 +161,10 @@ export default function ClinicsView() {
                 address: formData.address || null,
                 google_maps_url: formData.google_maps_url || null,
                 consultation_price: formData.consultation_price ? parseFloat(formData.consultation_price) : null,
+                bank_cbu: formData.bank_cbu || null,
+                bank_alias: formData.bank_alias || null,
+                bank_holder_name: formData.bank_holder_name || null,
+                derivation_email: formData.derivation_email || null,
                 working_hours: formData.working_hours,
             };
             if (editingClinica) {
@@ -442,6 +458,41 @@ export default function ClinicsView() {
                                     className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-medical-500 outline-none"
                                     value={formData.consultation_price} onChange={(e) => { const v = e.target.value; setFormData(prev => ({ ...prev, consultation_price: v })); }} />
                                 <p className="text-xs text-medical-400">{t('clinics.consultation_price_help')}</p>
+                            </div>
+
+                            {/* Datos Bancarios */}
+                            <div className="space-y-3 border-t pt-4 mt-4">
+                                <h3 className="text-sm font-bold text-medical-700 flex items-center gap-2"><DollarSign size={14} /> {t('clinics.bank_section')}</h3>
+                                <p className="text-xs text-medical-400">{t('clinics.bank_help')}</p>
+                                <div className="space-y-2">
+                                    <div className="space-y-1">
+                                        <label className="text-xs font-medium text-medical-600">{t('clinics.bank_cbu')}</label>
+                                        <input type="text" placeholder="0000003100010000000001"
+                                            className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-medical-500 outline-none text-sm font-mono"
+                                            value={formData.bank_cbu} onChange={(e) => setFormData(prev => ({ ...prev, bank_cbu: e.target.value }))} />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-xs font-medium text-medical-600">{t('clinics.bank_alias')}</label>
+                                        <input type="text" placeholder="clinica.delgado"
+                                            className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-medical-500 outline-none text-sm"
+                                            value={formData.bank_alias} onChange={(e) => setFormData(prev => ({ ...prev, bank_alias: e.target.value }))} />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-xs font-medium text-medical-600">{t('clinics.bank_holder_name')}</label>
+                                        <input type="text" placeholder="Laura Delgado"
+                                            className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-medical-500 outline-none text-sm"
+                                            value={formData.bank_holder_name} onChange={(e) => setFormData(prev => ({ ...prev, bank_holder_name: e.target.value }))} />
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Email de derivación */}
+                            <div className="space-y-1 border-t pt-4 mt-4">
+                                <label className="text-sm font-semibold text-medical-700">{t('clinics.derivation_email_label')}</label>
+                                <input type="email" placeholder="consultorio@ejemplo.com"
+                                    className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-medical-500 outline-none text-sm"
+                                    value={formData.derivation_email} onChange={(e) => setFormData(prev => ({ ...prev, derivation_email: e.target.value }))} />
+                                <p className="text-xs text-medical-400">{t('clinics.derivation_email_help')}</p>
                             </div>
 
                             {/* Calendar provider */}

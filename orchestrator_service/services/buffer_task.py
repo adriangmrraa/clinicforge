@@ -81,12 +81,15 @@ async def process_buffer_task(
         current_tenant_id.set(tenant_id)
         
         tenant_row = await pool.fetchrow(
-            "SELECT clinic_name, address, google_maps_url, working_hours, consultation_price FROM tenants WHERE id = $1", tenant_id
+            "SELECT clinic_name, address, google_maps_url, working_hours, consultation_price, bank_cbu, bank_alias, bank_holder_name FROM tenants WHERE id = $1", tenant_id
         )
         clinic_name = (tenant_row["clinic_name"] or CLINIC_NAME) if tenant_row else CLINIC_NAME
         clinic_address = (tenant_row["address"] or "") if tenant_row else ""
         clinic_maps_url = (tenant_row["google_maps_url"] or "") if tenant_row else ""
         consultation_price = float(tenant_row["consultation_price"]) if tenant_row and tenant_row.get("consultation_price") else None
+        bank_cbu = (tenant_row["bank_cbu"] or "") if tenant_row else ""
+        bank_alias = (tenant_row["bank_alias"] or "") if tenant_row else ""
+        bank_holder_name = (tenant_row["bank_holder_name"] or "") if tenant_row else ""
         clinic_working_hours = None
         if tenant_row and tenant_row.get("working_hours"):
             wh = tenant_row["working_hours"]
@@ -260,6 +263,9 @@ async def process_buffer_task(
             patient_status=patient_status,
             consultation_price=consultation_price,
             anamnesis_url=anamnesis_url,
+            bank_cbu=bank_cbu,
+            bank_alias=bank_alias,
+            bank_holder_name=bank_holder_name,
         )
 
         chat_history = []

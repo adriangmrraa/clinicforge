@@ -52,6 +52,16 @@ export default function AppointmentForm({
     const [anamnesisRefreshKey, setAnamnesisRefreshKey] = useState(0);
     const socketRef = useRef<Socket | null>(null);
 
+    // Billing state
+    const [billingData, setBillingData] = useState({
+        billing_amount: '',
+        billing_installments: '',
+        billing_notes: '',
+        payment_status: 'pending',
+    });
+    const [billingSaving, setBillingSaving] = useState(false);
+    const [billingSuccess, setBillingSuccess] = useState<string | null>(null);
+
     // Fetch treatment types
     useEffect(() => {
         const fetchTreatmentTypes = async () => {
@@ -92,6 +102,13 @@ export default function AppointmentForm({
                 duration_minutes: initialData.duration_minutes || 30
             });
             setAppointmentStatus((initialData as any).status || 'scheduled');
+            setBillingData({
+                billing_amount: (initialData as any).billing_amount != null ? String((initialData as any).billing_amount) : '',
+                billing_installments: (initialData as any).billing_installments != null ? String((initialData as any).billing_installments) : '',
+                billing_notes: (initialData as any).billing_notes || '',
+                payment_status: (initialData as any).payment_status || 'pending',
+            });
+            setBillingSuccess(null);
             setStatusSuccess(null);
             setError(null);
             setCollisionWarning(null);
@@ -463,9 +480,90 @@ export default function AppointmentForm({
                     )}
 
                     {activeTab === 'billing' && (
-                        <div className="text-center py-10 text-gray-400">
-                            <DollarSign size={48} className="mx-auto mb-3 opacity-20" />
-                            <p className="text-sm">{t('agenda.billing_coming')}</p>
+                        <div className="space-y-4 p-1">
+                            {!isEditing ? (
+                                <div className="text-center py-10 text-gray-400">
+                                    <DollarSign size={48} className="mx-auto mb-3 opacity-20" />
+                                    <p className="text-sm">{t('agenda.billing_save_first')}</p>
+                                </div>
+                            ) : (
+                                <>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="space-y-1">
+                                            <label className="text-xs font-semibold text-gray-600">{t('agenda.billing_amount')}</label>
+                                            <div className="relative">
+                                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+                                                <input type="number" step="0.01" min="0" placeholder="0.00"
+                                                    className="w-full pl-7 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                                                    value={billingData.billing_amount}
+                                                    onChange={(e) => setBillingData(prev => ({ ...prev, billing_amount: e.target.value }))} />
+                                            </div>
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-xs font-semibold text-gray-600">{t('agenda.billing_installments')}</label>
+                                            <input type="number" min="1" max="48" placeholder="1"
+                                                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                                                value={billingData.billing_installments}
+                                                onChange={(e) => setBillingData(prev => ({ ...prev, billing_installments: e.target.value }))} />
+                                        </div>
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-xs font-semibold text-gray-600">{t('agenda.billing_notes')}</label>
+                                        <textarea rows={3} placeholder={t('agenda.billing_notes_placeholder')}
+                                            className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm resize-none"
+                                            value={billingData.billing_notes}
+                                            onChange={(e) => setBillingData(prev => ({ ...prev, billing_notes: e.target.value }))} />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-xs font-semibold text-gray-600">{t('agenda.payment_status')}</label>
+                                        <div className="flex gap-2">
+                                            {(['pending', 'partial', 'paid'] as const).map((ps) => (
+                                                <button key={ps} type="button"
+                                                    onClick={() => setBillingData(prev => ({ ...prev, payment_status: ps }))}
+                                                    className={`px-4 py-2 text-xs font-semibold rounded-lg border transition-colors ${
+                                                        billingData.payment_status === ps
+                                                            ? ps === 'paid' ? 'bg-green-100 border-green-300 text-green-700'
+                                                              : ps === 'partial' ? 'bg-yellow-100 border-yellow-300 text-yellow-700'
+                                                              : 'bg-gray-100 border-gray-300 text-gray-700'
+                                                            : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'
+                                                    }`}>
+                                                    {t(`agenda.payment_${ps}`)}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    {billingSuccess && (
+                                        <div className="flex items-center gap-2 text-green-600 text-xs bg-green-50 px-3 py-2 rounded-lg">
+                                            <Check size={14} /> {billingSuccess}
+                                        </div>
+                                    )}
+                                    <button type="button"
+                                        disabled={billingSaving}
+                                        onClick={async () => {
+                                            if (!initialData.id) return;
+                                            setBillingSaving(true);
+                                            setBillingSuccess(null);
+                                            try {
+                                                await api.put(`/admin/appointments/${initialData.id}/billing`, {
+                                                    billing_amount: billingData.billing_amount ? parseFloat(billingData.billing_amount) : null,
+                                                    billing_installments: billingData.billing_installments ? parseInt(billingData.billing_installments) : null,
+                                                    billing_notes: billingData.billing_notes || null,
+                                                    payment_status: billingData.payment_status,
+                                                });
+                                                setBillingSuccess(t('agenda.billing_saved'));
+                                                setTimeout(() => setBillingSuccess(null), 3000);
+                                            } catch (err) {
+                                                console.error('Error saving billing:', err);
+                                            } finally {
+                                                setBillingSaving(false);
+                                            }
+                                        }}
+                                        className="w-full px-4 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 rounded-lg shadow-lg shadow-blue-500/20 transition-all flex items-center justify-center gap-2">
+                                        {billingSaving ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <DollarSign size={16} />}
+                                        {t('agenda.billing_save')}
+                                    </button>
+                                </>
+                            )}
                         </div>
                     )}
                 </div>

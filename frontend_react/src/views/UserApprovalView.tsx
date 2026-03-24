@@ -3,7 +3,7 @@ import api from '../api/axios';
 import { useTranslation } from '../context/LanguageContext';
 import {
     UserCheck, UserX, Clock, ShieldCheck, Mail,
-    AlertTriangle, User, Users, Lock, Unlock, X, Building2, Stethoscope, BarChart3, MessageSquare, Plus, Phone, Save, Settings, ChevronDown, ChevronUp, Edit
+    AlertTriangle, User, Users, Lock, Unlock, X, Building2, Stethoscope, BarChart3, MessageSquare, Plus, Phone, Save, Settings, ChevronDown, ChevronUp, Edit, Activity
 } from 'lucide-react';
 
 interface DayConfig { enabled: boolean; slots: { start: string; end: string }[]; location?: string; address?: string; maps_url?: string; }
@@ -97,8 +97,8 @@ const UserApprovalView: React.FC = () => {
     const [staffForEditModal, setStaffForEditModal] = useState<StaffUser | null>(null);
     const [editFormData, setEditFormData] = useState<{
         name: string; email: string; phone: string; specialty: string; license_number: string;
-        google_calendar_id: string; is_active: boolean; working_hours: WorkingHours;
-    }>({ name: '', email: '', phone: '', specialty: '', license_number: '', google_calendar_id: '', is_active: true, working_hours: createDefaultWorkingHours() });
+        google_calendar_id: string; consultation_price: string; is_active: boolean; working_hours: WorkingHours;
+    }>({ name: '', email: '', phone: '', specialty: '', license_number: '', google_calendar_id: '', consultation_price: '', is_active: true, working_hours: createDefaultWorkingHours() });
     const [editFormSubmitting, setEditFormSubmitting] = useState(false);
     const [expandedEditDays, setExpandedEditDays] = useState<string[]>([]);
     const [expandedAccordion, setExpandedAccordion] = useState<'pacientes' | 'uso' | 'mensajes' | null>(null);
@@ -107,6 +107,10 @@ const UserApprovalView: React.FC = () => {
         chatCountByTenant: Record<string, number>;
     }>({ analytics: {}, chatCountByTenant: {} });
     const [accordionLoading, setAccordionLoading] = useState<'pacientes' | 'uso' | 'mensajes' | null>(null);
+
+    // AI Conversation Insights (beta)
+    const [insightsLoading, setInsightsLoading] = useState(false);
+    const [insightsResult, setInsightsResult] = useState<{ insights: string; conversations_analyzed?: number } | null>(null);
 
     useEffect(() => {
         fetchAllUsers();
@@ -230,6 +234,7 @@ const UserApprovalView: React.FC = () => {
                 specialty: row.specialty || '',
                 license_number: row.registration_id || '',
                 google_calendar_id: row.google_calendar_id ?? '',
+                consultation_price: row.consultation_price != null ? String(row.consultation_price) : '',
                 is_active: row.is_active ?? true,
                 working_hours: parseWorkingHours(row.working_hours),
             });
@@ -318,6 +323,7 @@ const UserApprovalView: React.FC = () => {
                 specialty: editFormData.specialty || undefined,
                 license_number: editFormData.license_number || undefined,
                 google_calendar_id: editFormData.google_calendar_id?.trim() || undefined,
+                consultation_price: editFormData.consultation_price ? parseFloat(editFormData.consultation_price) : null,
                 is_active: editFormData.is_active,
                 availability: {},
                 working_hours: editFormData.working_hours,
@@ -717,6 +723,49 @@ const UserApprovalView: React.FC = () => {
                                                             );
                                                         })}
                                                     </div>
+                                                    {/* AI Conversation Insights (Beta) */}
+                                                    <div className="mt-4 pt-3 border-t border-gray-100">
+                                                        <button
+                                                            type="button"
+                                                            disabled={insightsLoading}
+                                                            onClick={async () => {
+                                                                if (!professionalRows[0]) return;
+                                                                setInsightsLoading(true);
+                                                                setInsightsResult(null);
+                                                                try {
+                                                                    const row = professionalRows[0];
+                                                                    const res = await api.post(`/admin/professionals/${row.id}/conversation-insights?tenant_id=${row.tenant_id}`);
+                                                                    setInsightsResult(res.data);
+                                                                } catch (err) {
+                                                                    console.error('Error loading insights:', err);
+                                                                    setInsightsResult({ insights: 'Error al generar insights.' });
+                                                                } finally {
+                                                                    setInsightsLoading(false);
+                                                                }
+                                                            }}
+                                                            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-semibold text-purple-700 bg-purple-50 hover:bg-purple-100 rounded-lg border border-purple-200 transition-colors"
+                                                        >
+                                                            {insightsLoading ? (
+                                                                <div className="w-4 h-4 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
+                                                            ) : (
+                                                                <Activity size={14} />
+                                                            )}
+                                                            {insightsLoading ? t('approvals.insights_loading') : t('approvals.analyze_conversations')}
+                                                            <span className="px-1.5 py-0.5 text-[10px] bg-purple-200 text-purple-700 rounded-full">{t('approvals.insights_beta')}</span>
+                                                        </button>
+                                                        {insightsResult && (
+                                                            <div className="mt-3 p-3 bg-purple-50/50 border border-purple-100 rounded-lg">
+                                                                <p className="text-xs font-semibold text-purple-700 mb-2 flex items-center gap-1.5">
+                                                                    <Activity size={12} />
+                                                                    {t('approvals.insights_title')}
+                                                                    {insightsResult.conversations_analyzed != null && (
+                                                                        <span className="text-purple-400 font-normal"> ({insightsResult.conversations_analyzed} conv.)</span>
+                                                                    )}
+                                                                </p>
+                                                                <p className="text-xs text-gray-600 whitespace-pre-wrap leading-relaxed">{insightsResult.insights}</p>
+                                                            </div>
+                                                        )}
+                                                    </div>
                                                 )}
                                             </div>
                                         )}
@@ -779,6 +828,14 @@ const UserApprovalView: React.FC = () => {
                                     <div>
                                         <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">{t('approvals.license_number')}</label>
                                         <input type="text" value={editFormData.license_number} onChange={(e) => setEditFormData((p) => ({ ...p, license_number: e.target.value }))} className="edit-profile-input" placeholder={t('approvals.license_placeholder')} />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">{t('approvals.consultation_price')}</label>
+                                        <div className="relative">
+                                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+                                            <input type="number" step="0.01" min="0" placeholder={t('approvals.consultation_price_placeholder')} value={editFormData.consultation_price} onChange={(e) => setEditFormData((p) => ({ ...p, consultation_price: e.target.value }))} className="edit-profile-input pl-7" />
+                                        </div>
+                                        <p className="text-xs text-gray-400 mt-1">{t('approvals.consultation_price_help')}</p>
                                     </div>
                                 </div>
                                 <div className="lg:col-span-4 space-y-5">

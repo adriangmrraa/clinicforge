@@ -1862,7 +1862,7 @@ async def list_professionals():
     tenant_id = current_tenant_id.get()
     try:
         rows = await db.pool.fetch("""
-            SELECT p.first_name, p.last_name, p.specialty
+            SELECT p.first_name, p.last_name, p.specialty, p.consultation_price
             FROM professionals p
             INNER JOIN users u ON p.user_id = u.id AND u.role = 'professional' AND u.status = 'active'
             WHERE p.tenant_id = $1 AND p.is_active = true
@@ -1874,7 +1874,9 @@ async def list_professionals():
         for r in rows:
             name = f"{r['first_name'] or ''} {r['last_name'] or ''}".strip() or "Profesional"
             specialty = (r['specialty'] or "Odontología general").strip()
-            res += f"• {name} - {specialty}\n"
+            price = r.get('consultation_price')
+            price_str = f" (consulta: ${int(price):,})".replace(",", ".") if price and float(price) > 0 else ""
+            res += f"• {name} - {specialty}{price_str}\n"
         return res
     except Exception as e:
         logger.error(f"Error en list_professionals: {e}")
@@ -2030,8 +2032,11 @@ async def derivhumano(reason: str):
         
         history_text = "<br>".join([f"<b>{msg['role']}:</b> {msg['content']}" for msg in reversed(history)])
         
-        # Obtener email destino (del tenant o env var)
-        destination_email = os.getenv("NOTIFICATIONS_EMAIL", "gamarradrian200@gmail.com")
+        # Obtener email destino: primero del tenant, luego env var
+        tenant_email = await db.pool.fetchval(
+            "SELECT derivation_email FROM tenants WHERE id = $1", tenant_id
+        )
+        destination_email = tenant_email or os.getenv("NOTIFICATIONS_EMAIL", "gamarradrian200@gmail.com")
         
         email_sent = email_service.send_handoff_email(
             to_email=destination_email, 
@@ -2348,7 +2353,173 @@ async def confirm_slot(date_time: str, professional_name: Optional[str] = None, 
         return "❌ No pude reservar el turno. Intentá de nuevo."
 
 
-DENTAL_TOOLS = [list_professionals, list_services, get_service_details, check_availability, confirm_slot, book_appointment, list_my_appointments, cancel_appointment, reschedule_appointment, triage_urgency, save_patient_anamnesis, save_patient_email, get_patient_anamnesis, reassign_document, derivhumano]
+@tool
+async def verify_payment_receipt(
+    receipt_description: str,
+    amount_detected: Optional[str] = None,
+    appointment_id: Optional[str] = None,
+):
+    """
+    Verifica un comprobante de pago (transferencia bancaria) enviado como imagen o PDF.
+    El agente usa la descripción de la imagen/PDF ya procesada por vision para verificar que:
+    1. El titular de la cuenta destino coincide con el configurado por la clínica
+    2. El monto coincide con lo que se debe cobrar (seña, cuota, etc.)
+
+    receipt_description: Descripción completa del comprobante extraída por vision (texto de la imagen/PDF)
+    amount_detected: Monto detectado en el comprobante (string con número, ej: "5000", "5.000")
+    appointment_id: ID del turno que se está pagando (opcional, si no se pasa busca el próximo scheduled)
+    """
+    phone = current_customer_phone.get()
+    tenant_id = current_tenant_id.get()
+    try:
+        # 1. Get tenant bank config
+        tenant = await db.pool.fetchrow("""
+            SELECT bank_cbu, bank_alias, bank_holder_name, consultation_price
+            FROM tenants WHERE id = $1
+        """, tenant_id)
+
+        if not tenant or not tenant['bank_holder_name']:
+            return "⚠️ La clínica no tiene configurados los datos bancarios para verificación. Contactá a la clínica directamente."
+
+        bank_holder = tenant['bank_holder_name'].strip().lower()
+
+        # 2. Find the appointment
+        if appointment_id:
+            apt = await db.pool.fetchrow("""
+                SELECT a.id, a.status, a.billing_amount, a.payment_status, a.appointment_datetime,
+                       a.appointment_type, a.professional_id, p.first_name, p.last_name,
+                       prof.first_name as prof_name
+                FROM appointments a
+                JOIN patients p ON a.patient_id = p.id
+                LEFT JOIN professionals prof ON a.professional_id = prof.id
+                WHERE a.id = $1 AND a.tenant_id = $2
+            """, appointment_id, tenant_id)
+        else:
+            # Find next scheduled appointment for this patient
+            apt = await db.pool.fetchrow("""
+                SELECT a.id, a.status, a.billing_amount, a.payment_status, a.appointment_datetime,
+                       a.appointment_type, a.professional_id, p.first_name, p.last_name,
+                       prof.first_name as prof_name
+                FROM appointments a
+                JOIN patients p ON a.patient_id = p.id
+                LEFT JOIN professionals prof ON a.professional_id = prof.id
+                WHERE p.phone_number = $1 AND a.tenant_id = $2
+                AND a.status IN ('scheduled', 'confirmed')
+                AND a.appointment_datetime > NOW()
+                ORDER BY a.appointment_datetime ASC
+                LIMIT 1
+            """, phone, tenant_id)
+
+        if not apt:
+            return "No encontré un turno pendiente asociado a tu número. Verificá con la clínica."
+
+        # 3. Determine expected amount (priority: billing_amount > professional price > tenant price)
+        expected_amount = None
+        if apt['billing_amount']:
+            expected_amount = float(apt['billing_amount'])
+        else:
+            # Check professional-specific price
+            prof_id = apt.get('professional_id') if isinstance(apt, dict) else apt['professional_id']
+            if prof_id:
+                prof_price = await db.pool.fetchval(
+                    "SELECT consultation_price FROM professionals WHERE id = $1", prof_id
+                )
+                if prof_price and float(prof_price) > 0:
+                    expected_amount = float(prof_price)
+            if expected_amount is None and tenant['consultation_price']:
+                expected_amount = float(tenant['consultation_price'])
+
+        # 4. Verify holder name in receipt
+        receipt_lower = receipt_description.lower()
+        holder_match = bank_holder in receipt_lower
+
+        # Also try matching parts of the name (first name + last name separately)
+        holder_parts = bank_holder.split()
+        if not holder_match and len(holder_parts) >= 2:
+            holder_match = all(part in receipt_lower for part in holder_parts)
+
+        # 5. Verify amount
+        amount_match = True  # Default if no amount configured
+        amount_value = None
+        if amount_detected:
+            # Clean amount string: remove dots as thousands separator, handle commas
+            clean_amount = amount_detected.replace(".", "").replace(",", ".").replace("$", "").strip()
+            try:
+                amount_value = float(clean_amount)
+            except ValueError:
+                pass
+
+        if expected_amount and amount_value:
+            # Allow 5% tolerance for rounding
+            tolerance = expected_amount * 0.05
+            amount_match = abs(amount_value - expected_amount) <= tolerance
+
+        # 6. Build result
+        receipt_data = {
+            "description": receipt_description[:500],
+            "amount_detected": amount_detected,
+            "holder_match": holder_match,
+            "amount_match": amount_match,
+            "verified_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+        if holder_match and amount_match:
+            # SUCCESS - Update appointment
+            new_status = 'confirmed' if apt['status'] == 'scheduled' else apt['status']
+            payment_status = 'paid'
+
+            await db.pool.execute("""
+                UPDATE appointments SET
+                    status = $1,
+                    payment_status = $2,
+                    payment_receipt_data = $3::jsonb,
+                    updated_at = NOW()
+                WHERE id = $4 AND tenant_id = $5
+            """, new_status, payment_status, json.dumps(receipt_data), str(apt['id']), tenant_id)
+
+            # Emit WebSocket events
+            try:
+                from main import sio
+                dias = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
+                apt_dt = apt['appointment_datetime']
+                dia_nombre = dias[apt_dt.weekday()]
+                safe_data = to_json_safe({
+                    "id": str(apt['id']),
+                    "patient_name": f"{apt['first_name']} {apt['last_name'] or ''}".strip(),
+                    "appointment_datetime": apt_dt.isoformat(),
+                    "professional_name": apt['prof_name'],
+                    "tenant_id": tenant_id,
+                    "status": new_status,
+                    "payment_status": payment_status,
+                })
+                await sio.emit("PAYMENT_CONFIRMED", safe_data)
+                await sio.emit("APPOINTMENT_UPDATED", safe_data)
+            except Exception:
+                pass
+
+            patient_name = f"{apt['first_name']} {apt['last_name'] or ''}".strip()
+            apt_dt = apt['appointment_datetime']
+            dias = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
+            dia_nombre = dias[apt_dt.weekday()]
+            fecha = apt_dt.strftime(f"{dia_nombre} %d/%m a las %H:%M")
+
+            return f"✅ Comprobante verificado correctamente! Tu turno de {apt['appointment_type']} el {fecha} con {apt['prof_name'] or 'el profesional'} queda CONFIRMADO. Te esperamos! 😊"
+
+        elif not holder_match:
+            return f"⚠️ No pude verificar el comprobante: el titular de la cuenta destino no coincide con los datos de la clínica. Verificá que la transferencia se haya realizado a la cuenta correcta y reenviá el comprobante."
+
+        elif not amount_match:
+            expected_str = f"${int(expected_amount):,}".replace(",", ".") if expected_amount else "el monto acordado"
+            return f"⚠️ El monto del comprobante no coincide con {expected_str}. Verificá el monto y reenviá el comprobante, o contactá a la clínica."
+
+        return "⚠️ No pude verificar el comprobante. Contactá a la clínica para confirmar tu pago."
+
+    except Exception as e:
+        logger.error(f"Error en verify_payment_receipt: {e}")
+        return "Hubo un error al verificar el comprobante. Contactá a la clínica directamente."
+
+
+DENTAL_TOOLS = [list_professionals, list_services, get_service_details, check_availability, confirm_slot, book_appointment, list_my_appointments, cancel_appointment, reschedule_appointment, triage_urgency, save_patient_anamnesis, save_patient_email, get_patient_anamnesis, reassign_document, derivhumano, verify_payment_receipt]
 
 # --- DETECCIÓN DE IDIOMA (para respuesta del agente) ---
 def detect_message_language(text: str) -> str:
@@ -2440,6 +2611,9 @@ def build_system_prompt(
     consultation_price: float = None,
     sede_info: dict = None,
     anamnesis_url: str = "",
+    bank_cbu: str = "",
+    bank_alias: str = "",
+    bank_holder_name: str = "",
 ) -> str:
     """
     Construye el system prompt del agente de forma dinámica.
@@ -2501,9 +2675,10 @@ def build_system_prompt(
     # Precio de consulta
     price_section = ""
     if consultation_price and float(consultation_price) > 0:
-        price_section = f"\n\nVALOR DE LA CONSULTA: ${int(consultation_price):,}".replace(",", ".")
+        price_section = f"\n\nVALOR DE CONSULTA (GENERAL): ${int(consultation_price):,}".replace(",", ".")
+        price_section += "\nNOTA: Cada profesional puede tener un precio diferente. Usá 'list_professionals' para ver el precio de consulta de cada uno. Si el profesional tiene precio propio, usá ese en vez del general."
     else:
-        price_section = "\n\nVALOR DE LA CONSULTA: No configurado. Si preguntan precio, decí que se comuniquen directamente con la clínica."
+        price_section = "\n\nVALOR DE LA CONSULTA: No configurado como valor general. Cada profesional puede tener su propio precio — consultá con 'list_professionals'. Si ninguno tiene precio, decí que se comuniquen directamente con la clínica."
 
     # Greeting diferenciado
     greeting_rule = ""
@@ -2552,6 +2727,27 @@ Si YA mencionaste el turno en esta conversación, NO lo repitas.
             f"  \"Podés actualizar tu ficha médica desde aquí: {anamnesis_url}\"\n"
             "• Si el paciente dice que ya completó o actualizó el formulario → llamá 'get_patient_anamnesis' para verificar y confirmá los datos."
         )
+
+    # Bank info for payments
+    bank_section = ""
+    if bank_holder_name:
+        bank_lines = ["\n\n## DATOS BANCARIOS PARA PAGOS"]
+        if bank_cbu:
+            bank_lines.append(f"CBU: {bank_cbu}")
+        if bank_alias:
+            bank_lines.append(f"Alias: {bank_alias}")
+        bank_lines.append(f"Titular: {bank_holder_name}")
+        bank_lines.append("")
+        bank_lines.append("FLUJO DE PAGO:")
+        bank_lines.append("1. Cuando el paciente pregunte cómo pagar, cómo abonar la seña, o la conversación lo amerite (después de agendar un turno, si hay un monto configurado), compartí los datos bancarios de arriba.")
+        bank_lines.append("2. Cuando el paciente envíe un comprobante de pago (imagen o PDF de transferencia), usá la herramienta 'verify_payment_receipt' pasando:")
+        bank_lines.append("   - receipt_description: la descripción completa de la imagen (lo que aparece en [IMAGEN: ...])")
+        bank_lines.append("   - amount_detected: el monto que detectes en el comprobante (solo el número)")
+        bank_lines.append("   - appointment_id: el ID del turno si lo tenés (opcional)")
+        bank_lines.append("3. Si la verificación es exitosa, el turno pasa a CONFIRMADO automáticamente. Agradecé y recordá los datos del turno.")
+        bank_lines.append("4. Si falla la verificación, explicá amablemente el problema y pedí que reenvíe o se comunique con la clínica.")
+        bank_lines.append("5. NUNCA inventes datos bancarios. Solo compartí los que están configurados arriba.")
+        bank_section = "\n".join(bank_lines)
 
     price_text = f"${int(consultation_price):,}".replace(",", ".") if consultation_price and float(consultation_price) > 0 else ""
 
@@ -2789,6 +2985,7 @@ SEGUIMIENTO POST-ATENCIÓN: Si el paciente responde a seguimiento, preguntar por
 
 TRIAJE Y URGENCIAS: Llamar a 'triage_urgency' si el paciente describe CUALQUIERA de: dolor, inflamación, sangrado, accidente, traumatismo, rotura de diente, pérdida de diente/pieza, fiebre, "se me cayó", "se me rompió", "se me partió", "se me salió", "urgente", "emergencia", "no puedo comer", "no puedo hablar". NO llamar por consultas de rutina (limpieza, blanqueamiento, control).
 {anamnesis_section}
+{bank_section}
 Usá solo las tools proporcionadas. Siempre terminá con una pregunta o frase que invite a seguir la charla.
 """
 

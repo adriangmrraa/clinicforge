@@ -115,6 +115,13 @@ export default function DashboardView() {
       });
     });
 
+    socketRef.current.on('PAYMENT_CONFIRMED', () => {
+      setStats((prev: AnalyticsStats | null) => {
+        if (!prev) return prev;
+        return { ...prev };
+      });
+    });
+
     socketRef.current.on('PATIENT_UPDATED', (data: any) => {
       // Actualizar contador
       setStats((prev: AnalyticsStats | null) => {
