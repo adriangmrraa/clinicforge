@@ -2676,7 +2676,7 @@ async def update_professional(
         if current_wh:
              sql_update = """
                 UPDATE professionals SET
-                    first_name = $1, specialty = $2, license_number = $3,
+                    first_name = $1, specialty = $2, registration_id = $3,
                     phone_number = $4, email = $5, is_active = $6,
                     availability = $7::jsonb, working_hours = $8::jsonb,
                     google_calendar_id = $9, consultation_price = $10,
@@ -2689,7 +2689,7 @@ async def update_professional(
         else:
              sql_update = """
                 UPDATE professionals SET
-                    first_name = $1, specialty = $2, license_number = $3,
+                    first_name = $1, specialty = $2, registration_id = $3,
                     phone_number = $4, email = $5, is_active = $6,
                     availability = $7::jsonb,
                     google_calendar_id = $8, consultation_price = $9,
@@ -2709,7 +2709,7 @@ async def update_professional(
                 if current_wh:
                     await db.pool.execute("""
                         UPDATE professionals SET
-                            first_name = $1, specialty = $2, license_number = $3,
+                            first_name = $1, specialty = $2, registration_id = $3,
                             phone_number = $4, email = $5, is_active = $6,
                             availability = $7::jsonb, working_hours = $8::jsonb,
                             updated_at = NOW()
@@ -2720,7 +2720,7 @@ async def update_professional(
                 else:
                     await db.pool.execute("""
                         UPDATE professionals SET
-                            first_name = $1, specialty = $2, license_number = $3,
+                            first_name = $1, specialty = $2, registration_id = $3,
                             phone_number = $4, email = $5, is_active = $6,
                             availability = $7::jsonb,
                             updated_at = NOW()
@@ -2733,7 +2733,7 @@ async def update_professional(
                 if current_wh:
                     await db.pool.execute("""
                         UPDATE professionals SET
-                            first_name = $1, specialty = $2, license_number = $3,
+                            first_name = $1, specialty = $2, registration_id = $3,
                             email = $4, is_active = $5,
                             availability = $6::jsonb, working_hours = $7::jsonb,
                             updated_at = NOW()
@@ -2744,7 +2744,7 @@ async def update_professional(
                 else:
                     await db.pool.execute("""
                         UPDATE professionals SET
-                            first_name = $1, specialty = $2, license_number = $3,
+                            first_name = $1, specialty = $2, registration_id = $3,
                             email = $4, is_active = $5,
                             availability = $6::jsonb,
                             updated_at = NOW()
