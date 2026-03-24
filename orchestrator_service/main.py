@@ -2020,14 +2020,24 @@ async def derivhumano(reason: str):
         from main import sio
         await sio.emit("HUMAN_HANDOFF", to_json_safe({"phone_number": phone, "tenant_id": tenant_id, "reason": reason}))
 
-        # 1. Full patient data
+        # 1. Full patient data + PSIDs for social links
         patient = await db.pool.fetchrow("""
             SELECT first_name, last_name, email, dni, city, urgency_level, urgency_reason,
-                   first_touch_source, medical_history
+                   first_touch_source, medical_history, instagram_psid, facebook_psid
             FROM patients WHERE tenant_id = $1 AND phone_number = $2
         """, tenant_id, phone)
         patient_name = f"{patient['first_name'] or ''} {patient['last_name'] or ''}".strip() if patient else "Desconocido"
         patient_info = dict(patient) if patient else {}
+
+        # Detect channel from conversation
+        conv_row = await db.pool.fetchrow("""
+            SELECT channel, channel_source, external_user_id FROM chat_conversations
+            WHERE tenant_id = $1 AND external_user_id = $2
+            ORDER BY updated_at DESC LIMIT 1
+        """, tenant_id, phone)
+        channel = (conv_row['channel'] if conv_row else 'whatsapp') or 'whatsapp'
+        patient_info['_channel'] = channel
+        patient_info['_external_user_id'] = conv_row['external_user_id'] if conv_row else phone
 
         # 2. Anamnesis data from medical_history JSONB
         anamnesis_data = None

@@ -49,8 +49,49 @@ class EmailService:
             return False
 
         try:
-            wa_link = f"https://wa.me/{phone.replace('+', '').replace(' ', '')}"
             pi = patient_info or {}
+            channel = pi.get('_channel', 'whatsapp')
+
+            # Build contact links based on channel
+            phone_digits = phone.replace('+', '').replace(' ', '').replace('-', '')
+            wa_link = f"https://wa.me/{phone_digits}"
+            ig_psid = pi.get('instagram_psid', '')
+            fb_psid = pi.get('facebook_psid', '')
+
+            contact_buttons = []
+            # WhatsApp is always available if we have a phone
+            if phone_digits and not phone_digits.startswith('ig_') and not phone_digits.startswith('fb_'):
+                contact_buttons.append(
+                    f'<a href="{wa_link}" style="display:inline-block; background-color:#25D366; color:white; '
+                    f'padding:12px 24px; text-decoration:none; border-radius:8px; font-weight:bold; font-size:14px; margin:4px;">'
+                    f'📱 WhatsApp</a>'
+                )
+            # Instagram
+            if ig_psid or channel == 'instagram':
+                ig_url = f"https://www.instagram.com/direct/t/{ig_psid}" if ig_psid else "https://www.instagram.com/direct/inbox/"
+                contact_buttons.append(
+                    f'<a href="{ig_url}" style="display:inline-block; background:linear-gradient(45deg,#f09433,#e6683c,#dc2743,#cc2366,#bc1888); '
+                    f'color:white; padding:12px 24px; text-decoration:none; border-radius:8px; font-weight:bold; font-size:14px; margin:4px;">'
+                    f'📷 Instagram DM</a>'
+                )
+            # Facebook
+            if fb_psid or channel == 'facebook':
+                fb_url = f"https://www.facebook.com/messages/t/{fb_psid}" if fb_psid else "https://www.facebook.com/messages/"
+                contact_buttons.append(
+                    f'<a href="{fb_url}" style="display:inline-block; background-color:#1877F2; color:white; '
+                    f'padding:12px 24px; text-decoration:none; border-radius:8px; font-weight:bold; font-size:14px; margin:4px;">'
+                    f'💬 Facebook Messenger</a>'
+                )
+
+            if not contact_buttons:
+                contact_buttons.append(
+                    f'<a href="{wa_link}" style="display:inline-block; background-color:#25D366; color:white; '
+                    f'padding:12px 24px; text-decoration:none; border-radius:8px; font-weight:bold; font-size:14px; margin:4px;">'
+                    f'📱 Contactar por WhatsApp</a>'
+                )
+
+            contact_buttons_html = "\n".join(contact_buttons)
+            channel_label = {'whatsapp': 'WhatsApp', 'instagram': 'Instagram', 'facebook': 'Facebook Messenger'}.get(channel, channel.title())
 
             # --- Build patient info section ---
             patient_section = f"""
@@ -62,6 +103,7 @@ class EmailService:
                 <tr><td style="padding:6px 12px; background:#f0f4ff; font-weight:bold;">Ciudad</td><td style="padding:6px 12px; background:#f8f9ff;">{pi.get('city', 'No registrada')}</td></tr>
                 <tr><td style="padding:6px 12px; background:#f0f4ff; font-weight:bold;">Nivel urgencia</td><td style="padding:6px 12px; background:#f8f9ff;">{pi.get('urgency_level', 'normal')}</td></tr>
                 <tr><td style="padding:6px 12px; background:#f0f4ff; font-weight:bold;">Fuente</td><td style="padding:6px 12px; background:#f8f9ff;">{pi.get('first_touch_source', 'No registrada')}</td></tr>
+                <tr><td style="padding:6px 12px; background:#f0f4ff; font-weight:bold;">Canal</td><td style="padding:6px 12px; background:#f8f9ff;">{channel_label}</td></tr>
             </table>
             """
 
@@ -153,10 +195,9 @@ class EmailService:
 
                     {suggestions_section}
 
-                    <div style="text-align: center; margin-top: 25px;">
-                        <a href="{wa_link}" style="display:inline-block; background-color: #25D366; color: white; padding: 14px 30px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 15px;">
-                            📱 Abrir Chat en WhatsApp
-                        </a>
+                    <h3 style="color:#0369a1; margin-top:20px; border-bottom:2px solid #0369a1; padding-bottom:5px;">🔗 Contactar al paciente</h3>
+                    <div style="text-align: center; margin-top: 15px; padding: 15px; background: #f8fafc; border-radius: 8px;">
+                        {contact_buttons_html}
                     </div>
 
                     <p style="margin-top: 25px; font-size: 11px; color: #999; text-align: center; border-top: 1px solid #eee; padding-top: 15px;">
