@@ -185,10 +185,10 @@ async def update_dashboard_config(
         if config_manager is None:
             raise HTTPException(status_code=503, detail="Config manager no inicializado")
         tenant_id = 1
-        allowed = {"OPENAI_MODEL", "OPENAI_TEMPERATURE", "MAX_TOKENS_PER_RESPONSE"}
+        allowed = {"OPENAI_MODEL", "MODEL_INSIGHTS", "OPENAI_TEMPERATURE", "MAX_TOKENS_PER_RESPONSE"}
         for key, value in payload.items():
             if key in allowed:
-                if isinstance(value, str) and key == "OPENAI_MODEL":
+                if isinstance(value, str) and key in ("OPENAI_MODEL", "MODEL_INSIGHTS"):
                     await config_manager.set_config(key, value.strip(), data_type="string", category="ai", tenant_id=tenant_id)
                 elif key == "OPENAI_TEMPERATURE":
                     await config_manager.set_config(key, str(float(value)), data_type="float", category="ai", tenant_id=tenant_id)

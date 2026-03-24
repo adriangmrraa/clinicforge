@@ -4044,7 +4044,23 @@ async def get_professional_conversation_insights(
         import openai
         client = openai.AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         all_snippets = "\n---\n".join(snippets[:10])
+        # Get configurable model for insights (from system_config)
         model_name = "gpt-4o-mini"
+        try:
+            model_row = await db.pool.fetchrow(
+                "SELECT value FROM system_config WHERE key = 'MODEL_INSIGHTS' AND tenant_id = $1", tenant_id
+            )
+            if model_row and model_row.get("value"):
+                model_name = str(model_row["value"]).strip()
+            else:
+                # Fallback to main OPENAI_MODEL
+                model_row = await db.pool.fetchrow(
+                    "SELECT value FROM system_config WHERE key = 'OPENAI_MODEL' AND tenant_id = $1", tenant_id
+                )
+                if model_row and model_row.get("value"):
+                    model_name = str(model_row["value"]).strip()
+        except Exception:
+            pass
         response = await client.chat.completions.create(
             model=model_name,
             messages=[

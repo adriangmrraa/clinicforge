@@ -12,7 +12,11 @@ import {
   Cpu,
   RefreshCw,
   AlertCircle,
-  BarChart3
+  BarChart3,
+  Settings,
+  Check,
+  MessageSquare,
+  Brain
 } from 'lucide-react';
 import api from '../api/axios';
 import PageHeader from '../components/PageHeader';
@@ -76,11 +80,41 @@ const StatCard = ({
   </div>
 );
 
+const AVAILABLE_MODELS = [
+  { id: 'gpt-5.4', label: 'GPT-5.4 — Flagship (1M ctx)', tier: 'premium' },
+  { id: 'gpt-5', label: 'GPT-5 — Chat principal (400K ctx)', tier: 'premium' },
+  { id: 'gpt-5.3', label: 'GPT-5.3 — Balanceado (400K ctx)', tier: 'premium' },
+  { id: 'gpt-5.2', label: 'GPT-5.2 — Estándar (400K ctx)', tier: 'standard' },
+  { id: 'gpt-5.2-thinking', label: 'GPT-5.2 Thinking — Razonamiento', tier: 'standard' },
+  { id: 'gpt-5-mini', label: 'GPT-5 Mini — Económico (400K ctx)', tier: 'economy' },
+  { id: 'gpt-4o', label: 'GPT-4o — Balanceado (128K ctx)', tier: 'standard' },
+  { id: 'gpt-4o-mini', label: 'GPT-4o Mini — Más económico (128K ctx)', tier: 'economy' },
+  { id: 'gpt-4-turbo', label: 'GPT-4 Turbo (128K ctx)', tier: 'standard' },
+  { id: 'o1-preview', label: 'o1 Preview — Razonamiento avanzado', tier: 'premium' },
+  { id: 'o1-mini', label: 'o1 Mini — Razonamiento económico', tier: 'economy' },
+  { id: 'gpt-3.5-turbo', label: 'GPT-3.5 Turbo — Más barato (16K ctx)', tier: 'economy' },
+];
+
+interface ModelAction {
+  key: string;
+  label: string;
+  description: string;
+  icon: any;
+}
+
+const MODEL_ACTIONS: ModelAction[] = [
+  { key: 'OPENAI_MODEL', label: 'Chat con pacientes', description: 'Modelo para el agente principal que conversa con pacientes por WhatsApp/Instagram/Facebook', icon: MessageSquare },
+  { key: 'MODEL_INSIGHTS', label: 'Análisis de conversaciones', description: 'Modelo para generar insights y análisis de sentimiento de conversaciones', icon: Brain },
+];
+
 export default function DashboardStatusView() {
   const [data, setData] = useState<MetricsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [days, setDays] = useState(30);
+  const [modelConfig, setModelConfig] = useState<Record<string, string>>({});
+  const [modelSaving, setModelSaving] = useState<string | null>(null);
+  const [modelSaved, setModelSaved] = useState<string | null>(null);
 
   const fetchMetrics = async () => {
     setLoading(true);
@@ -102,6 +136,32 @@ export default function DashboardStatusView() {
   useEffect(() => {
     fetchMetrics();
   }, [days]);
+
+  // Sync model config from fetched data
+  useEffect(() => {
+    if (data?.current_config) {
+      const cfg: Record<string, string> = {};
+      for (const action of MODEL_ACTIONS) {
+        cfg[action.key] = data.current_config[action.key] || 'gpt-4o-mini';
+      }
+      setModelConfig(cfg);
+    }
+  }, [data?.current_config]);
+
+  const saveModelConfig = async (key: string, value: string) => {
+    setModelSaving(key);
+    setModelSaved(null);
+    try {
+      await api.post('/admin/dashboard/api/config', { [key]: value });
+      setModelConfig(prev => ({ ...prev, [key]: value }));
+      setModelSaved(key);
+      setTimeout(() => setModelSaved(null), 2000);
+    } catch (e) {
+      console.error('Error saving model config:', e);
+    } finally {
+      setModelSaving(null);
+    }
+  };
 
   if (loading && !data) {
     return (
@@ -240,6 +300,52 @@ export default function DashboardStatusView() {
                 </div>
               </div>
             )}
+
+            {/* Model Configuration */}
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+              <h2 className="text-lg font-semibold text-slate-800 mb-1 flex items-center gap-2">
+                <Settings size={20} className="text-medical-600" />
+                Configuración de modelos por acción
+              </h2>
+              <p className="text-sm text-slate-500 mb-5">Seleccioná qué modelo usar para cada funcionalidad. Los cambios se aplican inmediatamente.</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {MODEL_ACTIONS.map((action) => {
+                  const ActionIcon = action.icon;
+                  const currentModel = modelConfig[action.key] || 'gpt-4o-mini';
+                  return (
+                    <div key={action.key} className="border border-slate-200 rounded-xl p-4 hover:border-blue-200 transition-colors">
+                      <div className="flex items-start gap-3 mb-3">
+                        <div className="p-2 rounded-lg bg-blue-50 text-blue-600 shrink-0">
+                          <ActionIcon size={18} />
+                        </div>
+                        <div className="min-w-0">
+                          <h3 className="text-sm font-semibold text-slate-800">{action.label}</h3>
+                          <p className="text-xs text-slate-400 mt-0.5">{action.description}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <select
+                          value={currentModel}
+                          onChange={(e) => saveModelConfig(action.key, e.target.value)}
+                          disabled={modelSaving === action.key}
+                          className="flex-1 px-3 py-2 rounded-lg border border-slate-200 text-sm font-medium bg-white focus:ring-2 focus:ring-blue-500 outline-none disabled:opacity-50"
+                        >
+                          {AVAILABLE_MODELS.map((m) => (
+                            <option key={m.id} value={m.id}>{m.label}</option>
+                          ))}
+                        </select>
+                        {modelSaving === action.key && (
+                          <div className="w-5 h-5 border-2 border-blue-400 border-t-transparent rounded-full animate-spin shrink-0" />
+                        )}
+                        {modelSaved === action.key && (
+                          <Check size={18} className="text-green-500 shrink-0" />
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
 
             {/* Config & Projections */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

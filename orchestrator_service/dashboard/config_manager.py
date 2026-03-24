@@ -52,7 +52,8 @@ class ConfigManager:
     async def _initialize_default_config(self):
         """Inicializa configuración por defecto"""
         default_config = [
-            {"key": "OPENAI_MODEL", "value": "gpt-4o-mini", "data_type": "string", "description": "Modelo OpenAI a utilizar por el agente", "category": "ai"},
+            {"key": "OPENAI_MODEL", "value": "gpt-4o-mini", "data_type": "string", "description": "Modelo OpenAI para chats con pacientes (agente principal)", "category": "ai"},
+            {"key": "MODEL_INSIGHTS", "value": "gpt-4o-mini", "data_type": "string", "description": "Modelo OpenAI para análisis de conversaciones (insights)", "category": "ai"},
             {"key": "OPENAI_TEMPERATURE", "value": "0.7", "data_type": "float", "description": "Temperatura para generación (0-2)", "category": "ai"},
             {"key": "MAX_TOKENS_PER_RESPONSE", "value": "1000", "data_type": "integer", "description": "Máximo de tokens por respuesta", "category": "ai"},
             {"key": "ENABLE_TOKEN_TRACKING", "value": "true", "data_type": "boolean", "description": "Habilitar tracking de tokens", "category": "monitoring"},
