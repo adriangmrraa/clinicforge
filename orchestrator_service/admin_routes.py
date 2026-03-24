@@ -4047,8 +4047,9 @@ async def get_professional_conversation_insights(
         import openai
         client = openai.AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         all_snippets = "\n---\n".join(snippets[:10])
+        model_name = "gpt-4o-mini"
         response = await client.chat.completions.create(
-            model="gpt-4o-mini",
+            model=model_name,
             messages=[
                 {"role": "system", "content": "Sos un analista de experiencia del paciente en una clínica dental. Analizá los fragmentos de conversaciones y generá un resumen conciso en español con: 1) Sentimiento general (positivo/negativo/neutro), 2) Temas positivos recurrentes, 3) Quejas o preocupaciones frecuentes, 4) Puntuación de calidad de atención (1-10), 5) Recomendaciones breves. Respondé en formato estructurado, máximo 300 palabras."},
                 {"role": "user", "content": f"Fragmentos de {len(snippets)} conversaciones recientes:\n\n{all_snippets}"}
@@ -4057,7 +4058,47 @@ async def get_professional_conversation_insights(
             temperature=0.3,
         )
         insights_text = response.choices[0].message.content
-        return {"insights": insights_text, "conversations_analyzed": len(snippets)}
+
+        # Track token usage
+        usage = response.usage
+        input_tokens = usage.prompt_tokens if usage else 0
+        output_tokens = usage.completion_tokens if usage else 0
+        total_tokens = input_tokens + output_tokens
+        cost_usd = 0.0
+
+        if total_tokens > 0:
+            try:
+                from dashboard.token_tracker import token_tracker, TokenUsage
+                from datetime import timezone as tz
+                if token_tracker:
+                    cost_usd = float(token_tracker.calculate_cost(model_name, input_tokens, output_tokens))
+                    token_usage = TokenUsage(
+                        conversation_id=f"insights-prof-{id}",
+                        patient_phone="system-insights",
+                        model=model_name,
+                        input_tokens=input_tokens,
+                        output_tokens=output_tokens,
+                        total_tokens=total_tokens,
+                        cost_usd=token_tracker.calculate_cost(model_name, input_tokens, output_tokens),
+                        timestamp=datetime.now(tz.utc),
+                        tenant_id=tenant_id,
+                    )
+                    await token_tracker.track_usage(token_usage)
+                # Update tenant totals
+                await db.pool.execute(
+                    "UPDATE tenants SET total_tokens_used = COALESCE(total_tokens_used, 0) + $1, total_tool_calls = COALESCE(total_tool_calls, 0) + 1 WHERE id = $2",
+                    total_tokens, tenant_id
+                )
+                logger.info(f"📊 Insights tokens tracked: {total_tokens} (in={input_tokens}, out={output_tokens}) cost=${cost_usd:.4f} tenant={tenant_id}")
+            except Exception as tk_err:
+                logger.warning(f"⚠️ Insights token tracking error (non-fatal): {tk_err}")
+
+        return {
+            "insights": insights_text,
+            "conversations_analyzed": len(snippets),
+            "tokens_used": total_tokens,
+            "cost_usd": round(cost_usd, 6),
+        }
     except Exception as e:
         logger.error(f"Error generating conversation insights: {e}")
         return {"insights": f"Error al generar insights: {str(e)}", "conversations_analyzed": 0}

@@ -488,6 +488,7 @@
     "insights_loading": "Analyzing conversations...",
     "insights_title": "Conversation Insights",
     "insights_beta": "Beta",
+    "insights_tokens": "Usage",
     "messages_interactions": "Messages and interactions",
     "not_linked_hint": "Not linked to any location yet. Use the **Link to location** button above to choose a clinic and save their contact details so they can use the calendar and platform.",
     "edit_profile_title": "Edit profile",

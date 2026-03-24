@@ -110,7 +110,7 @@ const UserApprovalView: React.FC = () => {
 
     // AI Conversation Insights (beta)
     const [insightsLoading, setInsightsLoading] = useState(false);
-    const [insightsResult, setInsightsResult] = useState<{ insights: string; conversations_analyzed?: number } | null>(null);
+    const [insightsResult, setInsightsResult] = useState<{ insights: string; conversations_analyzed?: number; tokens_used?: number; cost_usd?: number } | null>(null);
 
     useEffect(() => {
         fetchAllUsers();
@@ -764,6 +764,12 @@ const UserApprovalView: React.FC = () => {
                                                                     )}
                                                                 </p>
                                                                 <p className="text-xs text-gray-600 whitespace-pre-wrap leading-relaxed">{insightsResult.insights}</p>
+                                                                {(insightsResult.tokens_used != null && insightsResult.tokens_used > 0) && (
+                                                                    <p className="text-[10px] text-gray-400 mt-2 pt-2 border-t border-purple-100">
+                                                                        {t('approvals.insights_tokens')}: {insightsResult.tokens_used.toLocaleString()} tokens
+                                                                        {insightsResult.cost_usd != null && ` · ~$${insightsResult.cost_usd.toFixed(4)} USD`}
+                                                                    </p>
+                                                                )}
                                                             </div>
                                                         )}
                                                     </div>

@@ -480,6 +480,7 @@
     "insights_loading": "Analyse des conversations...",
     "insights_title": "Aperçu des conversations",
     "insights_beta": "Bêta",
+    "insights_tokens": "Consommation",
     "messages_interactions": "Messages et interactions",
     "not_linked_hint": "Pas encore lié à un site. Utilisez le bouton Lier à un site ci-dessus pour choisir une clinique et enregistrer les coordonnées.",
     "edit_profile_title": "Modifier le profil",

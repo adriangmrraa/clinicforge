@@ -487,6 +487,7 @@
     "insights_loading": "Analizando conversaciones...",
     "insights_title": "Insights de Conversaciones",
     "insights_beta": "Beta",
+    "insights_tokens": "Consumo",
     "messages_interactions": "Mensajes e interacciones",
     "not_linked_hint": "Aún no está vinculado a ninguna sede. Usá el botón Vincular a sede arriba para elegir una clínica y guardar sus datos de contacto; así podrá usar la agenda y la plataforma.",
     "edit_profile_title": "Editar Perfil",
