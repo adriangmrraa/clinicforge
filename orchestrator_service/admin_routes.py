@@ -2669,7 +2669,7 @@ async def update_professional(
         if prof_row['tenant_id'] not in allowed_ids:
             raise HTTPException(status_code=403, detail="No tienes acceso a esta sede")
 
-        # Actualizar datos básicos, disponibilidad, google_calendar_id y consultation_price
+        # Actualizar datos básicos, working_hours, google_calendar_id y consultation_price
         current_wh = payload.working_hours
         gcal_id = (payload.google_calendar_id or "").strip() or None
         cp = payload.consultation_price
@@ -2678,80 +2678,77 @@ async def update_professional(
                 UPDATE professionals SET
                     first_name = $1, specialty = $2, registration_id = $3,
                     phone_number = $4, email = $5, is_active = $6,
-                    availability = $7::jsonb, working_hours = $8::jsonb,
-                    google_calendar_id = $9, consultation_price = $10,
-                    updated_at = NOW()
-                WHERE id = $11
-            """
-             params = [payload.name, payload.specialty, payload.license_number,
-                      payload.phone, payload.email, payload.is_active,
-                      json.dumps(payload.availability), json.dumps(current_wh), gcal_id, cp, id]
-        else:
-             sql_update = """
-                UPDATE professionals SET
-                    first_name = $1, specialty = $2, registration_id = $3,
-                    phone_number = $4, email = $5, is_active = $6,
-                    availability = $7::jsonb,
+                    working_hours = $7::jsonb,
                     google_calendar_id = $8, consultation_price = $9,
                     updated_at = NOW()
                 WHERE id = $10
             """
              params = [payload.name, payload.specialty, payload.license_number,
                       payload.phone, payload.email, payload.is_active,
-                      json.dumps(payload.availability), gcal_id, cp, id]
+                      json.dumps(current_wh), gcal_id, cp, id]
+        else:
+             sql_update = """
+                UPDATE professionals SET
+                    first_name = $1, specialty = $2, registration_id = $3,
+                    phone_number = $4, email = $5, is_active = $6,
+                    google_calendar_id = $7, consultation_price = $8,
+                    updated_at = NOW()
+                WHERE id = $9
+            """
+             params = [payload.name, payload.specialty, payload.license_number,
+                      payload.phone, payload.email, payload.is_active,
+                      gcal_id, cp, id]
 
         try:
             await db.pool.execute(sql_update, *params)
         except asyncpg.UndefinedColumnError as e:
             err_str = str(e).lower()
-            if "google_calendar_id" in err_str:
-                # BD sin columna google_calendar_id: actualizar sin ella
+            if "consultation_price" in err_str:
+                # DB without consultation_price column yet (migration not run)
                 if current_wh:
                     await db.pool.execute("""
                         UPDATE professionals SET
                             first_name = $1, specialty = $2, registration_id = $3,
                             phone_number = $4, email = $5, is_active = $6,
-                            availability = $7::jsonb, working_hours = $8::jsonb,
+                            working_hours = $7::jsonb, google_calendar_id = $8,
                             updated_at = NOW()
                         WHERE id = $9
                     """, payload.name, payload.specialty, payload.license_number,
                          payload.phone, payload.email, payload.is_active,
-                         json.dumps(payload.availability), json.dumps(current_wh), id)
+                         json.dumps(current_wh), gcal_id, id)
                 else:
                     await db.pool.execute("""
                         UPDATE professionals SET
                             first_name = $1, specialty = $2, registration_id = $3,
                             phone_number = $4, email = $5, is_active = $6,
-                            availability = $7::jsonb,
+                            google_calendar_id = $7,
                             updated_at = NOW()
                         WHERE id = $8
                     """, payload.name, payload.specialty, payload.license_number,
                          payload.phone, payload.email, payload.is_active,
-                         json.dumps(payload.availability), id)
-            elif "phone_number" in err_str:
-                # BD sin columna phone_number: actualizar sin ella
+                         gcal_id, id)
+            elif "google_calendar_id" in err_str:
+                # DB without google_calendar_id column
                 if current_wh:
                     await db.pool.execute("""
                         UPDATE professionals SET
                             first_name = $1, specialty = $2, registration_id = $3,
-                            email = $4, is_active = $5,
-                            availability = $6::jsonb, working_hours = $7::jsonb,
+                            phone_number = $4, email = $5, is_active = $6,
+                            working_hours = $7::jsonb,
                             updated_at = NOW()
                         WHERE id = $8
                     """, payload.name, payload.specialty, payload.license_number,
-                         payload.email, payload.is_active,
-                         json.dumps(payload.availability), json.dumps(current_wh), id)
+                         payload.phone, payload.email, payload.is_active,
+                         json.dumps(current_wh), id)
                 else:
                     await db.pool.execute("""
                         UPDATE professionals SET
                             first_name = $1, specialty = $2, registration_id = $3,
-                            email = $4, is_active = $5,
-                            availability = $6::jsonb,
+                            phone_number = $4, email = $5, is_active = $6,
                             updated_at = NOW()
                         WHERE id = $7
                     """, payload.name, payload.specialty, payload.license_number,
-                         payload.email, payload.is_active,
-                         json.dumps(payload.availability), id)
+                         payload.phone, payload.email, payload.is_active, id)
             else:
                 raise
              
