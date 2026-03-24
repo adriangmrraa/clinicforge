@@ -24,7 +24,8 @@ except ImportError:
         return None
 
 
-BUFFER_TTL_SECONDS = 10
+BUFFER_TTL_SECONDS = 12
+MIN_REMAINING_TTL = 4  # Extensión mínima si llega un mensaje cuando quedan < 4s
 
 
 async def enqueue_buffer_and_schedule_task(tenant_id: int, conversation_id: str, external_user_id: str):
@@ -39,7 +40,7 @@ async def enqueue_buffer_and_schedule_task(tenant_id: int, conversation_id: str,
     from db import get_pool
     import json
     pool = get_pool()
-    
+
     # Spec 24/25: Dynamic TTL (Sliding Window)
     row = await pool.fetchrow(
         "SELECT content, content_attributes FROM chat_messages WHERE conversation_id = $1 ORDER BY created_at DESC LIMIT 1",
@@ -48,7 +49,7 @@ async def enqueue_buffer_and_schedule_task(tenant_id: int, conversation_id: str,
     if not row:
         return
     content = row["content"] or ""
-    
+
     # 1. Determine Target TTL for THIS message
     req_ttl = BUFFER_TTL_SECONDS
     try:
@@ -64,14 +65,18 @@ async def enqueue_buffer_and_schedule_task(tenant_id: int, conversation_id: str,
         logger.warning(f"Error checking attributes for TTL: {e}")
 
     await r.rpush(buffer_key, content)
-    
-    # 2. Sliding Window Calculation
-    # If active timer exists, we want to extend it, but NEVER reduce it below what's currently remaining.
+
+    # 2. Sliding Window Calculation con MIN_REMAINING_TTL
+    # Si queda poco tiempo en el timer y llega un mensaje nuevo, extender al mínimo
     current_ttl = await r.ttl(timer_key)
     if current_ttl < 0:
         current_ttl = 0
-        
-    final_ttl = max(current_ttl, req_ttl)
+
+    # Si el timer está activo pero por vencer, garantizar al menos MIN_REMAINING_TTL
+    if current_ttl > 0 and current_ttl < MIN_REMAINING_TTL:
+        final_ttl = max(MIN_REMAINING_TTL, req_ttl)
+    else:
+        final_ttl = max(current_ttl, req_ttl)
     await r.setex(timer_key, final_ttl, "1")
     
     # 3. Ensure Consumer Task is running

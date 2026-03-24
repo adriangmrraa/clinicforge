@@ -368,11 +368,6 @@ def generate_free_slots(target_date: date, busy_intervals_by_prof: Dict[int, set
             current += timedelta(minutes=interval_minutes)
             continue
 
-        # Saltar almuerzo (opcional)
-        if current.hour >= 13 and current.hour < 14 and not time_preference:
-            current += timedelta(minutes=interval_minutes)
-            continue
-        
         # Verificar si algún profesional tiene el hueco libre
         time_needed = current + timedelta(minutes=duration_minutes)
         if time_needed > end_limit: # No cabe al final del día
@@ -440,6 +435,293 @@ def slots_to_ranges(slots: List[str], interval_minutes: int = 30) -> str:
         return ", ".join(slots)
 
 
+def _resolve_sede_text(tenant_day_cfg, tenant_row) -> str:
+    """Resuelve el texto de sede para un día específico."""
+    sede_text = ""
+    day_location = tenant_day_cfg.get("location", "") if tenant_day_cfg else ""
+    day_address = tenant_day_cfg.get("address", "") if tenant_day_cfg else ""
+    day_maps = tenant_day_cfg.get("maps_url", "") if tenant_day_cfg else ""
+    if day_location:
+        sede_text = f"Sede: {day_location}."
+        if day_address:
+            sede_text += f" Dirección: {day_address}."
+        if day_maps:
+            sede_text += f" Maps: {day_maps}"
+    elif tenant_row:
+        t_addr = tenant_row.get("address", "")
+        t_maps = tenant_row.get("google_maps_url", "")
+        if t_addr:
+            sede_text = f"Dirección: {t_addr}."
+            if t_maps:
+                sede_text += f" Maps: {t_maps}"
+    return sede_text
+
+
+DIAS_ES = {
+    "monday": "Lunes", "tuesday": "Martes", "wednesday": "Miércoles",
+    "thursday": "Jueves", "friday": "Viernes", "saturday": "Sábado", "sunday": "Domingo"
+}
+DAYS_EN = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+
+
+def _pick_from_slots(slots: List[str], max_picks: int = 3) -> List[str]:
+    """Selecciona hasta max_picks slots representativos (mañana, tarde, comodín)."""
+    if not slots:
+        return []
+    if len(slots) <= max_picks:
+        return list(slots)
+
+    morning = [s for s in slots if int(s.split(":")[0]) < 13]
+    afternoon = [s for s in slots if int(s.split(":")[0]) >= 13]
+
+    picks = []
+    # Opción A: primer slot de mañana
+    if morning:
+        picks.append(morning[0])
+    # Opción B: primer slot de tarde
+    if afternoon:
+        picks.append(afternoon[0])
+    # Opción C: comodín (slot espaciado del bloque más largo)
+    if len(picks) < max_picks:
+        larger_block = afternoon if len(afternoon) >= len(morning) else morning
+        if larger_block:
+            mid_idx = len(larger_block) // 2
+            candidate = larger_block[mid_idx]
+            if candidate not in picks:
+                picks.append(candidate)
+    # Si aún faltan, agregar el último disponible
+    if len(picks) < max_picks and slots[-1] not in picks:
+        picks.append(slots[-1])
+
+    return picks[:max_picks]
+
+
+async def _get_slots_for_extra_day(
+    target_date, tenant_id: int, tenant_wh: dict,
+    professional_name: Optional[str], treatment_name: Optional[str],
+    duration: int = 30
+) -> List[str]:
+    """Obtiene slots libres para un día extra (para completar opciones multi-día). Versión simplificada."""
+    day_name_en = DAYS_EN[target_date.weekday()]
+    tenant_day_cfg = tenant_wh.get(day_name_en, {})
+
+    # Validar que el día esté habilitado
+    if tenant_day_cfg and not tenant_day_cfg.get("enabled", True):
+        return []
+    if not tenant_day_cfg and target_date.weekday() == 6:  # domingo sin config
+        return []
+
+    # Obtener profesionales activos
+    clean_name = None
+    if professional_name:
+        clean_name = re.sub(r'^(dr|dra|doctor|doctora)\.?\s+', '', professional_name, flags=re.IGNORECASE).strip()
+
+    query = """SELECT p.id, p.first_name, p.last_name, p.google_calendar_id, p.working_hours
+               FROM professionals p
+               INNER JOIN users u ON p.user_id = u.id AND u.role = 'professional' AND u.status = 'active'
+               WHERE p.is_active = true AND p.tenant_id = $1"""
+    params = [tenant_id]
+    if clean_name:
+        query += " AND (p.first_name ILIKE $2 OR p.last_name ILIKE $2 OR (p.first_name || ' ' || COALESCE(p.last_name, '')) ILIKE $2)"
+        params.append(f"%{clean_name}%")
+
+    active_professionals = await db.pool.fetch(query, *params)
+    if not active_professionals:
+        return []
+
+    # Filtrar por tratamiento si aplica
+    if treatment_name and not clean_name:
+        t_data = await db.pool.fetchrow("""
+            SELECT id, default_duration_minutes FROM treatment_types
+            WHERE tenant_id = $1 AND (name ILIKE $2 OR code ILIKE $2) AND is_active = true AND is_available_for_booking = true
+            LIMIT 1
+        """, tenant_id, f"%{treatment_name}%")
+        if t_data:
+            duration = t_data['default_duration_minutes']
+            assigned_ids = await db.pool.fetch(
+                "SELECT professional_id FROM treatment_type_professionals WHERE tenant_id = $1 AND treatment_type_id = $2",
+                tenant_id, t_data['id']
+            )
+            if assigned_ids:
+                assigned_set = {r['professional_id'] for r in assigned_ids}
+                active_professionals = [p for p in active_professionals if p['id'] in assigned_set]
+                if not active_professionals:
+                    return []
+
+    # Construir busy_map (simplificado: solo appointments, sin GCal sync)
+    prof_ids = [p["id"] for p in active_professionals]
+    start_day = datetime.combine(target_date, datetime.min.time(), tzinfo=ARG_TZ)
+    end_day = datetime.combine(target_date, datetime.max.time(), tzinfo=ARG_TZ)
+
+    appointments = await db.pool.fetch("""
+        SELECT professional_id, appointment_datetime as start, duration_minutes
+        FROM appointments
+        WHERE tenant_id = $1 AND professional_id = ANY($2) AND status IN ('scheduled', 'confirmed')
+        AND (appointment_datetime < $4 AND (appointment_datetime + interval '1 minute' * COALESCE(duration_minutes, 60)) > $3)
+    """, tenant_id, prof_ids, start_day, end_day)
+
+    # GCal blocks (si existen en DB, sin JIT fetch para no ralentizar)
+    gcal_blocks = await db.pool.fetch("""
+        SELECT professional_id, start_datetime as start, end_datetime as end
+        FROM google_calendar_blocks
+        WHERE tenant_id = $1 AND (professional_id = ANY($2) OR professional_id IS NULL)
+        AND (start_datetime < $4 AND end_datetime > $3)
+    """, tenant_id, prof_ids, start_day, end_day)
+
+    busy_map = {pid: set() for pid in prof_ids}
+
+    for prof in active_professionals:
+        wh = prof.get('working_hours')
+        if isinstance(wh, str):
+            try: wh = json.loads(wh) if wh else {}
+            except Exception: wh = {}
+        if not isinstance(wh, dict): wh = {}
+        day_config = wh.get(day_name_en, {"enabled": False, "slots": []})
+        if day_config.get("enabled") and day_config.get("slots"):
+            check_time = datetime.combine(target_date, datetime.min.time()).replace(hour=8, minute=0)
+            for _ in range(24):
+                h_m = check_time.strftime("%H:%M")
+                if not is_time_in_working_hours(h_m, day_config):
+                    busy_map[prof['id']].add(h_m)
+                check_time += timedelta(minutes=30)
+                if check_time.hour >= 20:
+                    break
+
+    global_busy = set()
+    for b in gcal_blocks:
+        it = b['start'].astimezone(ARG_TZ)
+        while it < b['end'].astimezone(ARG_TZ):
+            h_m = it.strftime("%H:%M")
+            if b['professional_id']:
+                if b['professional_id'] in busy_map:
+                    busy_map[b['professional_id']].add(h_m)
+            else:
+                global_busy.add(h_m)
+            it += timedelta(minutes=30)
+
+    for appt in appointments:
+        it = appt['start'].astimezone(ARG_TZ)
+        end_it = it + timedelta(minutes=appt['duration_minutes'])
+        while it < end_it:
+            if appt['professional_id'] in busy_map:
+                busy_map[appt['professional_id']].add(it.strftime("%H:%M"))
+            it += timedelta(minutes=30)
+
+    for pid in busy_map:
+        busy_map[pid].update(global_busy)
+
+    # Determinar rango horario
+    day_start = CLINIC_HOURS_START
+    day_end = CLINIC_HOURS_END
+    tenant_day_slots = tenant_day_cfg.get("slots", []) if tenant_day_cfg.get("enabled") else []
+    if tenant_day_slots:
+        day_start = min(s["start"] for s in tenant_day_slots)
+        day_end = max(s["end"] for s in tenant_day_slots)
+        if len(tenant_day_slots) > 1:
+            sorted_slots = sorted(tenant_day_slots, key=lambda s: s["start"])
+            for i in range(len(sorted_slots) - 1):
+                gap_start = sorted_slots[i]["end"]
+                gap_end = sorted_slots[i + 1]["start"]
+                gs_h, gs_m = map(int, gap_start.split(':'))
+                ge_h, ge_m = map(int, gap_end.split(':'))
+                gap_t = datetime.combine(target_date, datetime.min.time()).replace(hour=gs_h, minute=gs_m)
+                gap_end_t = datetime.combine(target_date, datetime.min.time()).replace(hour=ge_h, minute=ge_m)
+                while gap_t < gap_end_t:
+                    for pid in busy_map:
+                        busy_map[pid].add(gap_t.strftime("%H:%M"))
+                    gap_t += timedelta(minutes=30)
+
+    return generate_free_slots(
+        target_date, busy_map, duration_minutes=duration,
+        start_time_str=day_start, end_time_str=day_end, limit=50
+    )
+
+
+async def pick_representative_slots(
+    slots: List[str],
+    target_date,
+    tenant_id: int,
+    tenant_wh: dict,
+    tenant_row,
+    professional_name: Optional[str] = None,
+    treatment_name: Optional[str] = None,
+    duration: int = 30,
+    max_options: int = 3
+) -> tuple:
+    """
+    Selecciona hasta max_options slots representativos. Si el día pedido tiene menos,
+    busca en los próximos 7 días para completar.
+    Returns: (options: list[dict], total_today: int)
+    """
+    options = []
+    total_today = len(slots)
+
+    # Resolver sede del día pedido
+    day_name_en = DAYS_EN[target_date.weekday()]
+    tenant_day_cfg = tenant_wh.get(day_name_en, {})
+    sede_text = _resolve_sede_text(tenant_day_cfg, tenant_row)
+    date_display = f"{DIAS_ES.get(day_name_en, '')} {target_date.strftime('%d/%m')}"
+
+    # Seleccionar del día pedido
+    picked = _pick_from_slots(slots, max_options)
+    for time_str in picked:
+        hour = int(time_str.split(":")[0])
+        options.append({
+            "time": time_str,
+            "date": target_date,
+            "date_display": date_display,
+            "sede": sede_text,
+            "period": "mañana" if hour < 13 else "tarde"
+        })
+
+    # Si faltan opciones, buscar en días siguientes (máx 7)
+    if len(options) < max_options:
+        for day_offset in range(1, 8):
+            if len(options) >= max_options:
+                break
+            extra_date = target_date + timedelta(days=day_offset)
+            extra_day_en = DAYS_EN[extra_date.weekday()]
+            extra_day_cfg = tenant_wh.get(extra_day_en, {})
+
+            # Validar día habilitado
+            if extra_day_cfg and not extra_day_cfg.get("enabled", True):
+                continue
+            if not extra_day_cfg and extra_date.weekday() == 6:
+                continue
+
+            try:
+                extra_slots = await _get_slots_for_extra_day(
+                    extra_date, tenant_id, tenant_wh,
+                    professional_name, treatment_name, duration
+                )
+            except Exception as e:
+                logger.warning(f"Error getting extra day slots for {extra_date}: {e}")
+                continue
+
+            if not extra_slots:
+                continue
+
+            extra_sede = _resolve_sede_text(extra_day_cfg, tenant_row)
+            extra_display = f"{DIAS_ES.get(extra_day_en, '')} {extra_date.strftime('%d/%m')}"
+
+            # Tomar 1 slot del día extra (el primero disponible)
+            remaining = max_options - len(options)
+            extra_picked = _pick_from_slots(extra_slots, remaining)
+            for time_str in extra_picked:
+                if len(options) >= max_options:
+                    break
+                hour = int(time_str.split(":")[0])
+                options.append({
+                    "time": time_str,
+                    "date": extra_date,
+                    "date_display": extra_display,
+                    "sede": extra_sede,
+                    "period": "mañana" if hour < 13 else "tarde"
+                })
+
+    return options, total_today
+
+
 # --- CEREBRO HÍBRIDO: calendar_provider por clínica ---
 async def get_tenant_calendar_provider(tenant_id: int) -> str:
     """
@@ -478,7 +760,7 @@ async def check_availability(date_query: str, professional_name: Optional[str] =
     professional_name: (Opcional) Nombre del profesional (uno de list_professionals).
     treatment_name: (Opcional) Tratamiento ya definido (ej. limpieza profunda, consulta).
     time_preference: OBLIGATORIO cuando el paciente pide horarios de un momento del día: si pide 'a la tarde', 'por la tarde', 'tarde' -> 'tarde'; si pide 'a la mañana', 'por la mañana', 'mañana' (en sentido horario) -> 'mañana'; si no especifica -> 'todo' o no pasar.
-    La tool devuelve rangos (ej. "de 09:00 a 12:00 y de 14:00 a 17:00"). Responde al paciente UNA sola vez con ese texto; no repitas ni des variaciones.
+    La tool devuelve 2-3 opciones concretas de horario con sede. Presentá las opciones al paciente tal cual las recibís.
     """
     try:
         tid = current_tenant_id.get()
@@ -728,32 +1010,59 @@ async def check_availability(date_query: str, professional_name: Optional[str] =
             limit=50
         )
 
-        # Resolver sede del día
-        sede_text = ""
-        day_location = tenant_day_cfg.get("location", "") if tenant_day_cfg else ""
-        day_address = tenant_day_cfg.get("address", "") if tenant_day_cfg else ""
-        day_maps = tenant_day_cfg.get("maps_url", "") if tenant_day_cfg else ""
-        if day_location:
-            sede_text = f" Sede: {day_location}."
-            if day_address:
-                sede_text += f" Dirección: {day_address}."
-            if day_maps:
-                sede_text += f" Maps: {day_maps}"
-        elif tenant_row:
-            # Fallback a dirección general del tenant
-            t_addr = tenant_row.get("address", "")
-            t_maps = tenant_row.get("google_maps_url", "")
-            if t_addr:
-                sede_text = f" Dirección: {t_addr}."
-                if t_maps:
-                    sede_text += f" Maps: {t_maps}"
+        # Filtrar slots con soft lock activo de otro paciente
+        my_phone = current_customer_phone.get()
+        try:
+            from services.relay import get_redis
+            r = get_redis()
+            if r and available_slots:
+                date_str = target_date.strftime("%Y-%m-%d")
+                filtered = []
+                for slot_time in available_slots:
+                    # Chequear lock para cualquier profesional (prof_id=0 es genérico)
+                    is_locked = False
+                    for pid in prof_ids:
+                        lock_key = f"slot_lock:{tenant_id}:{pid}:{date_str}:{slot_time}"
+                        lock_owner = await r.get(lock_key)
+                        if lock_owner and lock_owner != my_phone:
+                            is_locked = True
+                            break
+                    # También chequear lock genérico (prof_id=0)
+                    if not is_locked:
+                        lock_key = f"slot_lock:{tenant_id}:0:{date_str}:{slot_time}"
+                        lock_owner = await r.get(lock_key)
+                        if lock_owner and lock_owner != my_phone:
+                            is_locked = True
+                    if not is_locked:
+                        filtered.append(slot_time)
+                available_slots = filtered
+        except Exception as e:
+            logger.warning(f"Soft lock check failed (non-blocking): {e}")
 
-        if available_slots:
-            ranges_str = slots_to_ranges(available_slots, interval_minutes=30)
-            logger.info(f"📅 check_availability OK slots={len(available_slots)} for {date_query} -> ranges: {ranges_str}")
-            resp = f"Para {date_query} ({duration} min), tenemos disponibilidad {ranges_str}.{sede_text} "
+        # Seleccionar 2-3 opciones representativas (con multi-día si hace falta)
+        options, total_today = await pick_representative_slots(
+            available_slots, target_date, tenant_id, tenant_wh, tenant_row,
+            professional_name=professional_name, treatment_name=treatment_name,
+            duration=duration, max_options=3
+        )
+
+        if options:
+            lines = [f"Para {date_query} ({duration} min), te propongo estas opciones:"]
+            for i, opt in enumerate(options, 1):
+                line = f"{i}) {opt['date_display']} a las {opt['time']}"
+                if opt['sede']:
+                    line += f" — {opt['sede']}"
+                lines.append(line)
+
+            if total_today > 3:
+                lines.append(f"Hay {total_today - 3} turnos más disponibles para {date_query} si preferís otro horario.")
+            lines.append("Si preferís otro horario o día, decime y verifico disponibilidad.")
+
             if professional_name:
-                resp += f"Consultando con Dr/a. {professional_name}."
+                lines.append(f"Consultando con Dr/a. {professional_name}.")
+
+            resp = "\n".join(lines)
+            logger.info(f"📅 check_availability OK options={len(options)} total_today={total_today} for {date_query}")
             return resp
         else:
             logger.info(f"📅 check_availability no slots for {date_query} (duration={duration} min)")
@@ -1103,6 +1412,19 @@ async def book_appointment(date_time: str, treatment_reason: str,
         """, apt_id, tenant_id, patient_id, target_prof["id"], apt_datetime, final_duration, treatment_code)
         logger.info(f"✅ book_appointment OK phone={phone} tenant={tenant_id} apt_id={apt_id} patient_id={patient_id} prof={target_prof['first_name']} datetime={apt_datetime}")
 
+        # Limpiar soft lock si existe (booking exitoso)
+        try:
+            from services.relay import get_redis
+            r = get_redis()
+            if r:
+                date_str = apt_datetime.strftime("%Y-%m-%d")
+                time_str = apt_datetime.strftime("%H:%M")
+                for lock_prof_id in [target_prof["id"], 0]:
+                    lock_key = f"slot_lock:{tenant_id}:{lock_prof_id}:{date_str}:{time_str}"
+                    await r.delete(lock_key)
+        except Exception as e:
+            logger.warning(f"Soft lock cleanup failed (non-blocking): {e}")
+
         if calendar_provider == "google" and target_prof.get("google_calendar_id"):
             try:
                 summary = f"Cita Dental AI: {first_name or 'Paciente'} - {treatment_code}"
@@ -1228,13 +1550,22 @@ async def triage_urgency(symptoms: str):
          'presión local no funciona', 'sangre mucho', 'no se detiene el sangrado'],
         # 4. Traumatismo facial/bucal
         ['traumatismo', 'golpe en la cara', 'caída', 'accidente', 'choque', 'impacto facial',
-         'me golpeé', 'me caí', 'golpe facial', 'trauma facial'],
+         'me golpeé', 'me caí', 'golpe facial', 'trauma facial',
+         'se me cayó', 'se me rompió', 'se me partió'],
         # 5. Fiebre asociada a dolor/inflamación
         ['fiebre y dolor dental', 'fiebre con inflamación', 'temperatura alta y dolor',
          'fiebre y muela', 'calentura y dolor', 'fiebre dental'],
         # 6. Pérdida prótesis/fractura funcional
-        ['prótesis se cayó', 'corona se despegó', 'puente roto', 'fractura diente', 
-         'no puedo comer', 'no puedo hablar', 'diente roto', 'corona rota', 'puente despegado']
+        ['prótesis se cayó', 'corona se despegó', 'puente roto', 'fractura diente',
+         'no puedo comer', 'no puedo hablar', 'diente roto', 'corona rota', 'puente despegado',
+         'se me cayó un diente', 'se me cayó el diente', 'se cayó un diente',
+         'se me partió un diente', 'diente partido', 'se me partió el diente',
+         'se me rompió un diente', 'se me rompió el diente',
+         'se me salió un diente', 'se me salió el diente', 'se salió un diente',
+         'perdí un diente', 'se me perdió un diente',
+         'se me quebró', 'diente quebrado',
+         'se me aflojó un diente', 'diente flojo', 'diente suelto',
+         'se me movió un diente']
     ]
     
     high_criteria = [
@@ -1955,7 +2286,69 @@ async def reassign_document(patient_phone: str):
         logger.error(f"Error en reassign_document: {e}")
         return "❌ Hubo un error al reasignar el documento."
 
-DENTAL_TOOLS = [list_professionals, list_services, get_service_details, check_availability, book_appointment, list_my_appointments, cancel_appointment, reschedule_appointment, triage_urgency, save_patient_anamnesis, save_patient_email, get_patient_anamnesis, reassign_document, derivhumano]
+@tool
+async def confirm_slot(date_time: str, professional_name: Optional[str] = None, treatment_name: Optional[str] = None):
+    """
+    Confirma y reserva temporalmente un turno por 30 segundos mientras se recopilan datos del paciente.
+    Llamar SIEMPRE cuando el paciente elige una de las opciones de check_availability, ANTES de pedir datos de admisión.
+    date_time: Fecha y hora elegida (ej. "lunes 09:00", "2026-03-25 15:00", "hoy 14:00").
+    professional_name: (Opcional) Profesional elegido.
+    treatment_name: (Opcional) Tratamiento definido.
+    Si la reserva temporal fue exitosa, procedé a recopilar datos de admisión (nombre, DNI).
+    """
+    try:
+        tenant_id = current_tenant_id.get()
+        phone = current_customer_phone.get()
+        if not phone:
+            return "❌ No pude identificar tu número para reservar el turno."
+
+        # Parsear fecha/hora
+        apt_datetime = parse_datetime(date_time)
+        now = get_now_arg()
+        if apt_datetime <= now:
+            return "❌ Ese horario ya pasó. Pedí otro horario o día."
+
+        # Resolver profesional (si se especificó)
+        prof_id = 0
+        if professional_name:
+            clean_name = re.sub(r'^(dr|dra|doctor|doctora)\.?\s+', '', professional_name, flags=re.IGNORECASE).strip()
+            prof_row = await db.pool.fetchrow("""
+                SELECT p.id FROM professionals p
+                INNER JOIN users u ON p.user_id = u.id AND u.role = 'professional' AND u.status = 'active'
+                WHERE p.is_active = true AND p.tenant_id = $1
+                AND (p.first_name ILIKE $2 OR p.last_name ILIKE $2 OR (p.first_name || ' ' || COALESCE(p.last_name, '')) ILIKE $2)
+                LIMIT 1
+            """, tenant_id, f"%{clean_name}%")
+            if prof_row:
+                prof_id = prof_row['id']
+
+        # Crear soft lock en Redis
+        date_str = apt_datetime.strftime("%Y-%m-%d")
+        time_str = apt_datetime.strftime("%H:%M")
+        lock_key = f"slot_lock:{tenant_id}:{prof_id}:{date_str}:{time_str}"
+
+        try:
+            from services.relay import get_redis
+            r = get_redis()
+            if r:
+                existing_lock = await r.get(lock_key)
+                if existing_lock and existing_lock != phone:
+                    return f"⚠️ El turno de las {time_str} del {date_str} acaba de ser reservado por otro paciente. Consultemos otra opción."
+                await r.setex(lock_key, 30, phone)
+                logger.info(f"🔒 Soft lock created: {lock_key} for {phone} (30s)")
+        except Exception as e:
+            logger.warning(f"Redis soft lock failed (non-blocking): {e}")
+            # No bloquear el flujo si Redis falla
+
+        dia_name = DIAS_ES.get(DAYS_EN[apt_datetime.weekday()], "")
+        return f"✅ Reservé temporalmente el turno de las {time_str} del {dia_name} {apt_datetime.strftime('%d/%m')} por 30 segundos. Necesito tus datos para confirmar la reserva."
+
+    except Exception as e:
+        logger.error(f"Error en confirm_slot: {e}")
+        return "❌ No pude reservar el turno. Intentá de nuevo."
+
+
+DENTAL_TOOLS = [list_professionals, list_services, get_service_details, check_availability, confirm_slot, book_appointment, list_my_appointments, cancel_appointment, reschedule_appointment, triage_urgency, save_patient_anamnesis, save_patient_email, get_patient_anamnesis, reassign_document, derivhumano]
 
 # --- DETECCIÓN DE IDIOMA (para respuesta del agente) ---
 def detect_message_language(text: str) -> str:
@@ -2314,9 +2707,18 @@ PASO 3: PROFESIONAL ASIGNADO — Según lo que devolvió 'list_services' o 'get_
   • Si el tratamiento tiene UN SOLO profesional asignado → informá al paciente: "Este tratamiento lo realiza el/la Dr/a. X". NO preguntes preferencia. Usá ese profesional directamente.
   • Si tiene VARIOS profesionales asignados → preguntá: "Este tratamiento lo realizan [nombres]. Tenés preferencia por alguno/a, o te agendo con el primero que tenga disponibilidad?". Si el paciente elige uno, usá ese. Si dice que no tiene preferencia o "cualquiera", dejá que el sistema asigne automáticamente al que tenga disponibilidad.
   • Si NO tiene profesionales asignados (no aparece "con: ...") → preguntá preferencia de profesional o asigná el primero disponible, como siempre.
-PASO 4: CONSULTAR DISPONIBILIDAD - 'check_availability' UNA vez con treatment_name y, si el paciente eligió profesional, con professional_name. Transmitir rangos al paciente.
-PASO 5: DATOS DE ADMISIÓN (PACIENTES NUEVOS) - DE A UN DATO POR MENSAJE: a) nombre, b) apellido, c) DNI. IMPORTANTE: Si el turno es para un TERCERO o MENOR, los datos son del PACIENTE (tercero/menor), NO del interlocutor.
-PASO 6: AGENDAR - 'book_appointment' con los datos del paciente. Para campos opcionales faltantes, pasar NULL.
+PASO 4: CONSULTAR DISPONIBILIDAD — Llamá 'check_availability' UNA vez con treatment_name y, si el paciente eligió profesional, con professional_name.
+  La tool devuelve 2-3 opciones concretas con horario, fecha y sede. Presentá las opciones al paciente TAL CUAL las recibís, numeradas.
+  Si el paciente elige una opción → pasar a PASO 4b.
+  Si el paciente pide otro horario distinto a las opciones → volver a llamar 'check_availability' para verificar ese horario específico.
+    - Si está libre → pasar a PASO 4b con ese horario.
+    - Si está ocupado → decir honestamente que está ocupado y ofrecer el más cercano disponible.
+  Si NINGUNA opción funciona → ofrecer otro día o profesional.
+PASO 4b: RESERVA TEMPORAL — Cuando el paciente confirma un horario, llamá 'confirm_slot(date_time, professional_name, treatment_name)'.
+  Esto reserva el turno por 30 segundos mientras recopilás datos. Si falla (otro paciente lo reservó), volver a PASO 4.
+PASO 5: DATOS DE ADMISIÓN (SOLO PACIENTES NUEVOS) — DE A UN DATO POR MENSAJE: a) nombre y apellido, b) DNI.
+  IMPORTANTE: Si el turno es para un TERCERO o MENOR, los datos son del PACIENTE (tercero/menor), NO del interlocutor.
+PASO 6: AGENDAR — 'book_appointment' con los datos del paciente. Para campos opcionales faltantes, pasar NULL.
   • Para sí mismo: flujo normal (sin patient_phone ni is_minor).
   • Para adulto tercero: pasá patient_phone con el teléfono del tercero.
   • Para menor: pasá is_minor=true.
@@ -2336,8 +2738,21 @@ PASO 8: FICHA MÉDICA — Usá SIEMPRE el link de [INTERNAL_ANAMNESIS_URL] que d
   • Para menor: "Te paso el link para completar la ficha médica de [nombre hijo/a]: [link del INTERNAL_ANAMNESIS_URL]."
   • Para adulto tercero: "Te paso el link de ficha médica para que se lo reenvíes a [nombre]: [link del INTERNAL_ANAMNESIS_URL]."
 
-PACIENTES EXISTENTES: Solo PASOS 1-4 y 6-8. NO pedir datos de admisión (PASO 5).
+REGLA DE NO-REPETICIÓN DE DATOS (CRÍTICO):
+• Si el paciente ya dio nombre, apellido o DNI en esta conversación, NUNCA volver a pedirlos aunque cambie el horario, día o tratamiento.
+• Reutilizá los datos que ya tenés del historial de chat.
+• CAMBIO DE HORARIO/DÍA: Si el paciente cambia de opinión sobre horario o día DESPUÉS de haber dado sus datos, volver SOLO a PASO 4 (consultar disponibilidad). NO repetir PASOS 2, 2b, 3 ni 5.
+
+PACIENTES EXISTENTES: Solo PASOS 1-4b y 6-8. NO pedir datos de admisión (PASO 5).
 MÚLTIPLES TURNOS: El interlocutor puede sacar varios turnos para distintas personas en la misma conversación. Cada vez que pide un turno nuevo, volver a PASO 2b para preguntar "para quién es".
+
+FAST TRACK (COMBINACIÓN DE PASOS):
+• Si el paciente dice tratamiento + "para mí" en el mismo mensaje (ej: "Quiero un blanqueamiento para mí") → saltá PASO 2b, ir directo a PASO 3/4.
+• Si el paciente dice "quiero un turno" sin especificar tratamiento → preguntar tratamiento. NO hagas preguntas adicionales innecesarias.
+• Si el paciente dice tratamiento + día/hora → ejecutar check_availability directo sin preguntar "querés que busque disponibilidad?".
+• PROHIBIDO preguntar "querés que busque disponibilidad?" o "querés agendar?". Si el contexto lo indica, HACELO directamente.
+• Si el paciente da nombre + apellido + DNI juntos → procesá los 3 datos sin pedir de a uno.
+• Combiná preguntas cuando sea natural: "Genial! El turno es para vos? Y tenés preferencia de día?"
 
 GESTIÓN DE TURNOS EXISTENTES:
 • CONSULTAR: Llamar PRIMERO 'list_my_appointments' antes de responder.
@@ -2350,15 +2765,19 @@ FORMATO CANÓNICO PARA TOOLS:
 • birth_date, email, city, acquisition_source: Si no los tenés, NO envíes placeholders. Pasá NULL o no incluyas el campo.
 • treatment_reason: Nombre exacto de 'list_services'.
 
-NUNCA DAR POR PERDIDA UNA RESERVA: Si una tool devuelve ❌ o ⚠️, corregí el parámetro y reintentá. Solo tras reintento fallido, pedí al paciente que repita el dato.
+RE-INTENTO INTELIGENTE (BOOKING FAILURES):
+• Si book_appointment devuelve ❌ o ⚠️ por turno ocupado o conflicto:
+  1) Llamá check_availability DE NUEVO para ese día (la disponibilidad pudo cambiar).
+  2) Presentá las nuevas opciones al paciente.
+  3) NO adivinés horarios. NO iterés hora por hora.
+• Si falla por datos incorrectos (DNI inválido, nombre vacío): pedí SOLO el dato que falló, no todos de nuevo.
+• Máximo 2 reintentos automáticos. Al 3er fallo → llamá derivhumano("No pude agendar tras 2 intentos").
 
 ## FALLBACK INTELIGENTE (HORARIOS NO DISPONIBLES)
-• `check_availability` con 0 resultados = HORARIO LIBRE. No digas "no hay".
-• Horario específico no disponible → ofrecer alternativas concretas:
+• Horario específico no disponible → ofrecer alternativas concretas vía check_availability:
   1) Otros horarios el MISMO día
   2) Siguiente día disponible
   3) Otro profesional ASIGNADO al tratamiento (si hay más de uno según 'list_services'). NUNCA sugieras un profesional que no esté asignado al tratamiento.
-  4) Próximos 3 días
 
 ## CTAS NATURALES
 • Tratamiento definido sin fecha → ejecutar 'check_availability' directo, no preguntar "querés consultar?"
@@ -2368,7 +2787,7 @@ NUNCA DAR POR PERDIDA UNA RESERVA: Si una tool devuelve ❌ o ⚠️, corregí e
 
 SEGUIMIENTO POST-ATENCIÓN: Si el paciente responde a seguimiento, preguntar por síntomas. Evaluar con 'triage_urgency' si hay molestias. Si es emergency/high, activar protocolo inmediatamente. Si es normal/low, tranquilizar.
 
-TRIAJE Y URGENCIAS: Solo llamar a 'triage_urgency' si el paciente describe dolor, inflamación, sangrado o accidente. NO por rutina.
+TRIAJE Y URGENCIAS: Llamar a 'triage_urgency' si el paciente describe CUALQUIERA de: dolor, inflamación, sangrado, accidente, traumatismo, rotura de diente, pérdida de diente/pieza, fiebre, "se me cayó", "se me rompió", "se me partió", "se me salió", "urgente", "emergencia", "no puedo comer", "no puedo hablar". NO llamar por consultas de rutina (limpieza, blanqueamiento, control).
 {anamnesis_section}
 Usá solo las tools proporcionadas. Siempre terminá con una pregunta o frase que invite a seguir la charla.
 """
@@ -2416,6 +2835,35 @@ agent_executor = get_agent_executable()
 
 # --- API ENDPOINTS ---
 
+async def recover_orphaned_buffers():
+    """Escanea Redis por buffers huérfanos (sin timer ni task activa) al startup."""
+    try:
+        from services.relay import get_redis
+        r = get_redis()
+        if not r:
+            return
+        cursor = 0
+        cleaned = 0
+        while True:
+            cursor, keys = await r.scan(cursor, match="buffer:*", count=100)
+            for buf_key in keys:
+                parts = buf_key.replace("buffer:", "", 1)
+                timer_key = f"timer:{parts}"
+                lock_key = f"active_task:{parts}"
+                if not await r.exists(timer_key) and not await r.exists(lock_key):
+                    msg_count = await r.llen(buf_key)
+                    await r.delete(buf_key)
+                    if msg_count > 0:
+                        logger.warning(f"♻️ Cleaned orphaned buffer {buf_key} ({msg_count} msgs)")
+                        cleaned += 1
+            if cursor == 0:
+                break
+        if cleaned:
+            logger.info(f"♻️ Cleaned {cleaned} orphaned buffer(s) at startup")
+    except Exception as e:
+        logger.warning(f"recover_orphaned_buffers error: {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Manage app lifecycle: startup and shutdown."""
@@ -2423,6 +2871,9 @@ async def lifespan(app: FastAPI):
     logger.info("🚀 Iniciando orquestador dental...")
     await db.connect()
     logger.info(f"✅ Base de datos conectada. Version: {await db.pool.fetchval('SELECT version()')}")
+
+    # Recovery de buffers huérfanos (mensajes perdidos por restart previo)
+    await recover_orphaned_buffers()
 
     # Inicializar componentes del dashboard que requieren DB
     try:
@@ -2432,7 +2883,7 @@ async def lifespan(app: FastAPI):
         logger.warning(f"⚠️ Dashboard async init: {e}")
 
     logger.info("✅ Sistema de jobs programados activado (reemplaza AutomationService)")
-    
+
     # Iniciar scheduler de jobs programados
     try:
         from jobs.scheduler import start_scheduler
