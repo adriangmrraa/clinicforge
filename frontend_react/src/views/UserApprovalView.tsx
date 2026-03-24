@@ -711,6 +711,7 @@ const UserApprovalView: React.FC = () => {
                                                 {accordionLoading === 'mensajes' ? (
                                                     <p className="text-sm text-gray-500">{t('approvals.loading_short')}</p>
                                                 ) : (
+                                                    <>
                                                     <div className="space-y-2 text-sm text-gray-600">
                                                         {professionalRows.map((row) => {
                                                             const tid = row.tenant_id ?? 0;
@@ -766,6 +767,7 @@ const UserApprovalView: React.FC = () => {
                                                             </div>
                                                         )}
                                                     </div>
+                                                    </>
                                                 )}
                                             </div>
                                         )}
