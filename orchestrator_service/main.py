@@ -2000,7 +2000,7 @@ async def get_service_details(code: str):
 @tool
 async def derivhumano(reason: str):
     """
-    Deriva la conversación a un humano cuando la IA no puede ayudar, el paciente lo solicita 
+    Deriva la conversación a un humano cuando la IA no puede ayudar, el paciente lo solicita
     o hay una situación que requiere atención personalizada.
     reason: El motivo de la derivación.
     """
@@ -2019,38 +2019,129 @@ async def derivhumano(reason: str):
         logger.info(f"👤 Derivación humana solicitada para {phone} (tenant={tenant_id}): {reason}")
         from main import sio
         await sio.emit("HUMAN_HANDOFF", to_json_safe({"phone_number": phone, "tenant_id": tenant_id, "reason": reason}))
-        patient = await db.pool.fetchrow(
-            "SELECT first_name, last_name, email FROM patients WHERE tenant_id = $1 AND phone_number = $2",
-            tenant_id, phone,
-        )
-        patient_name = f"{patient['first_name']} {patient['last_name'] or ''}".strip()
-        
+
+        # 1. Full patient data
+        patient = await db.pool.fetchrow("""
+            SELECT first_name, last_name, email, dni, city, urgency_level, urgency_reason,
+                   first_touch_source, medical_history
+            FROM patients WHERE tenant_id = $1 AND phone_number = $2
+        """, tenant_id, phone)
+        patient_name = f"{patient['first_name'] or ''} {patient['last_name'] or ''}".strip() if patient else "Desconocido"
+        patient_info = dict(patient) if patient else {}
+
+        # 2. Anamnesis data from medical_history JSONB
+        anamnesis_data = None
+        if patient and patient.get('medical_history'):
+            mh = patient['medical_history']
+            if isinstance(mh, str):
+                try:
+                    mh = json.loads(mh)
+                except Exception:
+                    mh = {}
+            if isinstance(mh, dict):
+                anamnesis_data = mh
+
+        # 3. Next appointment
+        next_appointment = None
+        apt_row = await db.pool.fetchrow("""
+            SELECT a.appointment_datetime, a.appointment_type, a.status,
+                   prof.first_name as prof_name
+            FROM appointments a
+            LEFT JOIN professionals prof ON a.professional_id = prof.id
+            JOIN patients p ON a.patient_id = p.id
+            WHERE p.phone_number = $1 AND a.tenant_id = $2
+            AND a.status IN ('scheduled', 'confirmed')
+            AND a.appointment_datetime > NOW()
+            ORDER BY a.appointment_datetime ASC LIMIT 1
+        """, phone, tenant_id)
+        if apt_row:
+            dias = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
+            dt = apt_row['appointment_datetime']
+            next_appointment = {
+                "datetime": f"{dias[dt.weekday()]} {dt.strftime('%d/%m/%Y %H:%M')}",
+                "type": apt_row['appointment_type'] or '—',
+                "professional": apt_row['prof_name'] or '—',
+                "status": apt_row['status'] or '—',
+            }
+
+        # 4. Chat history (last 15 messages for full context)
         history = await db.pool.fetch("""
             SELECT role, content, created_at FROM chat_messages
-            WHERE from_number = $1 AND tenant_id = $2 ORDER BY created_at DESC LIMIT 5
+            WHERE from_number = $1 AND tenant_id = $2 ORDER BY created_at DESC LIMIT 15
         """, phone, tenant_id)
-        
-        history_text = "<br>".join([f"<b>{msg['role']}:</b> {msg['content']}" for msg in reversed(history)])
-        
-        # Obtener email destino: primero del tenant, luego env var
-        tenant_email = await db.pool.fetchval(
-            "SELECT derivation_email FROM tenants WHERE id = $1", tenant_id
+        history_html_parts = []
+        for msg in reversed(history):
+            role = msg['role']
+            content = (msg['content'] or '').replace('<', '&lt;').replace('>', '&gt;')
+            ts = msg['created_at'].strftime('%H:%M') if msg.get('created_at') else ''
+            if role == 'user':
+                history_html_parts.append(
+                    f'<div style="margin:6px 0; padding:8px 12px; background:#dbeafe; border-radius:8px 8px 8px 2px;">'
+                    f'<span style="font-size:11px; color:#1e40af; font-weight:bold;">👤 Paciente</span> '
+                    f'<span style="font-size:10px; color:#93c5fd;">{ts}</span>'
+                    f'<p style="margin:4px 0 0; font-size:13px;">{content}</p></div>'
+                )
+            else:
+                history_html_parts.append(
+                    f'<div style="margin:6px 0; padding:8px 12px; background:#f3e8ff; border-radius:8px 8px 2px 8px;">'
+                    f'<span style="font-size:11px; color:#7c3aed; font-weight:bold;">🤖 Asistente</span> '
+                    f'<span style="font-size:10px; color:#c4b5fd;">{ts}</span>'
+                    f'<p style="margin:4px 0 0; font-size:13px;">{content}</p></div>'
+                )
+        chat_history_html = "\n".join(history_html_parts) if history_html_parts else "<p style='color:#999;'>Sin historial disponible</p>"
+
+        # 5. Build suggestions based on reason
+        suggestions_parts = []
+        if patient and patient.get('urgency_level') in ('emergency', 'high'):
+            suggestions_parts.append(f"<p>⚡ <strong>Paciente con urgencia {patient['urgency_level']}</strong>: {patient.get('urgency_reason', 'sin detalle')}. Contactar lo antes posible.</p>")
+        if next_appointment:
+            suggestions_parts.append(f"<p>📅 El paciente tiene turno próximo ({next_appointment['datetime']}). Verificar si la derivación afecta el turno agendado.</p>")
+        if not anamnesis_data:
+            suggestions_parts.append("<p>📋 El paciente no completó la ficha médica. Solicitar que la complete antes de la consulta.</p>")
+        suggestions_parts.append(f"<p>💬 Motivo reportado por la IA: <em>{reason}</em></p>")
+        suggestions = "\n".join(suggestions_parts)
+
+        # 6. Collect all destination emails: clinic derivation email + all active professionals
+        emails = set()
+        tenant_data = await db.pool.fetchrow(
+            "SELECT derivation_email, clinic_name FROM tenants WHERE id = $1", tenant_id
         )
-        destination_email = tenant_email or os.getenv("NOTIFICATIONS_EMAIL", "gamarradrian200@gmail.com")
-        
+        if tenant_data and tenant_data.get('derivation_email'):
+            emails.add(tenant_data['derivation_email'].strip())
+
+        # Add all active professionals' emails
+        prof_rows = await db.pool.fetch("""
+            SELECT p.email FROM professionals p
+            INNER JOIN users u ON p.user_id = u.id AND u.status = 'active'
+            WHERE p.tenant_id = $1 AND p.is_active = true AND p.email IS NOT NULL AND p.email != ''
+        """, tenant_id)
+        for pr in prof_rows:
+            if pr['email'] and pr['email'].strip():
+                emails.add(pr['email'].strip())
+
+        # Fallback to env var if no emails found
+        if not emails:
+            fallback = os.getenv("NOTIFICATIONS_EMAIL")
+            if fallback:
+                emails.add(fallback)
+
         email_sent = email_service.send_handoff_email(
-            to_email=destination_email, 
-            patient_name=patient_name, 
-            phone=phone, 
+            to_emails=list(emails),
+            patient_name=patient_name,
+            phone=phone,
             reason=reason,
-            chat_history_preview=history_text
+            chat_history_html=chat_history_html,
+            patient_info=patient_info,
+            anamnesis_data=anamnesis_data,
+            next_appointment=next_appointment,
+            suggestions=suggestions,
         )
-        
+
         if email_sent:
-            return "He notificado a un asesor humano. Te contactará por WhatsApp en breve."
+            return "He notificado al equipo de la clínica. Un profesional te contactará por WhatsApp en breve."
         else:
             return "Ya he solicitado que un humano revise tu caso. Aguardanos un momento."
-            
+
     except Exception as e:
         logger.error(f"Error en derivhumano: {e}")
         return "Hubo un problema al derivarte, pero ya he dejado el aviso en el sistema."
