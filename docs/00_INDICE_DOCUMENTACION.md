@@ -26,6 +26,7 @@ Estos documentos explican el funcionamiento actual, la arquitectura y los proces
 | 17 | [ESTADO_ACTUAL_SISTEMA.md](ESTADO_ACTUAL_SISTEMA.md) | **NUEVO** - Estado actual del sistema, documentación vs código real, desfases corregidos (Marzo 2026). |
 | 18 | [GUIA_IMPLEMENTACION_BUFFER_WHATSAPP_CHATWOOT.md](GUIA_IMPLEMENTACION_BUFFER_WHATSAPP_CHATWOOT.md) | **NUEVO** - Guía completa para implementar sistema robusto de buffer/debounce de Dentalogic en ClinicForge, soportando WhatsApp (YCloud) y Chatwoot (IG/FB) (Marzo 2026). |
 | 32 | [32_SECURITY_AUDIT_REPORT.md](32_SECURITY_AUDIT_REPORT.md) | **Reporte de Seguridad Actualizado (Misión 8 + Feb 2026).** |
+| -- | [LOGICA_AGENTE_IA_COMPLETA.md](LOGICA_AGENTE_IA_COMPLETA.md) | **NUEVO (2026-03-24)** — Documentación exhaustiva de la lógica del agente IA: flujo completo webhook→respuesta, 16 tools, system prompt, buffer, booking v2, triage, pagos, derivación. |
 | -- | [API_REFERENCE.md](API_REFERENCE.md) | Referencia completa de endpoints de la API. |
 | -- | [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | Guía activa de problemas comunes y soluciones. |
 
