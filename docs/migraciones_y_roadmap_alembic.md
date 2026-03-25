@@ -170,3 +170,20 @@ Alembic funciona con ambos. Con `--autogenerate` necesita modelos SQLAlchemy def
 - Fase 3 (primeras migraciones nuevas): inmediato
 - Fase 4 (deprecar Robot): ~2-3 días de pruebas
 - Fase 5 (CI/CD): ~1 día
+
+---
+
+## 7. Migraciones Alembic Implementadas (Estado actual)
+
+La migración a Alembic se completó. Las migraciones viven en `orchestrator_service/alembic/versions/`:
+
+| Rev | Archivo | Descripción |
+|-----|---------|-------------|
+| 001 | `001_baseline.py` | Schema base existente (stamp) |
+| 002 | `002_treatment_type_professionals.py` | Junction table `treatment_type_professionals` (many-to-many) |
+| 003 | `003_consultation_price_anamnesis_token.py` | `tenants.consultation_price` + `patients.anamnesis_token` |
+| 004 | `004_guardian_phone.py` | `patients.guardian_phone` para menores |
+| 005 | `005_meta_native_connection.py` | Tabla `business_assets`, columnas `instagram_psid`/`facebook_psid` en patients, `source_entity_id`/`platform_origin` en conversations |
+| **006** | **`006_add_billing_bank_derivation.py`** | **(NUEVO 2026-03-24)** Billing: `bank_cbu`/`bank_alias`/`bank_holder_name`/`derivation_email` en tenants. `billing_amount`/`billing_installments`/`billing_notes`/`payment_status`/`payment_receipt_data` en appointments. `consultation_price` en professionals. |
+
+El startup script (`start.sh`) ejecuta `alembic upgrade head` automáticamente al iniciar el servicio.

@@ -1,4 +1,41 @@
-# 📚 RESUMEN DE ACTUALIZACIÓN DE DOCUMENTACIÓN - YCLOUD V2 Y BUFFER FIX 
+# 📚 RESUMEN DE ACTUALIZACIÓN DE DOCUMENTACIÓN
+
+---
+
+## 📅 SESIÓN 2026-03-24: Billing, Smart Booking v2, Handoff Emails, Token Tracking
+
+### Commits cubiertos (desde 2b20807):
+- `45c3769` feat: multi-channel contact links in handoff emails (WhatsApp, Instagram, Facebook)
+- `09b4b86` feat: comprehensive handoff emails to clinic + all professionals
+- `a0e5b74` feat: configurable AI models per action from tokens/metrics dashboard
+- `ed6fdf3` fix: remove non-existent availability column from professionals update SQL
+- `92fc3c3` feat: track token usage for AI conversation insights
+- `e864941` fix: use registration_id instead of license_number in professionals SQL queries
+- `c56ea09` fix: wrap JSX siblings in fragment to fix UserApprovalView build error
+- `49a6827` feat: payment verification via vision, bank config, per-professional pricing, billing tab & AI insights
+- `f1784de` feat: smart booking flow v2 — slots concretos, soft lock, triage ampliado, buffer resiliente
+
+### Documentos actualizados:
+
+| Documento | Cambios |
+|-----------|---------|
+| **API_REFERENCE.md** | +2 secciones: Facturación y Pagos (Billing), Dashboard de Tokens y Modelos IA. Índice expandido a 20 entradas. Sección Automatizaciones actualizada (deprecar motor monolítico). |
+| **04_agent_logic_and_persona.md** | +2 tools en tabla (confirm_slot, verify_payment_receipt). +Sección 3.4 Smart Booking Flow v2 (flujo reordenado, soft-lock, multi-day search, triage ampliado). +Sección 3.5 Verificación de Pagos via Visión. |
+| **INTEGRATIONS_LOGIC_DEEP_DIVE.md** | +Sección 10 Handoff Email System (arquitectura, destinatarios, contenido, links multi-canal). +Sección 11 Payment Verification via Vision (flujo, migración 006). +Sección 12 Configurable AI Models & Token Tracking. |
+| **01_architecture.md** | +Secciones C.1 Email Service, C.2 Billing System, C.3 Token Tracking. +3 tablas nuevas (token_usage, system_config, business_assets). Tablas appointments y tenants actualizadas con campos billing. |
+| **migraciones_y_roadmap_alembic.md** | +Sección 7 con tabla completa de migraciones Alembic 001-006. |
+| **CLAUDE.md** | +2 tools (confirm_slot, verify_payment_receipt). Actualizados check_availability, derivhumano, triage_urgency. +Archivos clave (email_service, config_manager, token_tracker). Cadena de migraciones actualizada a 006. Sección Consultation Price expandida a Billing. |
+| **00_INDICE_DOCUMENTACION.md** | +Tabla de últimas actualizaciones 2026-03-24. |
+
+### Protocolo: Non-Destructive Fusion
+- ✅ Ninguna sección existente eliminada
+- ✅ Formato markdown preservado
+- ✅ Nuevas secciones agregadas al final de bloques relacionados
+- ✅ Contenido obsoleto marcado con WARNING DEPRECATED
+
+---
+
+# 📚 HISTORIAL ANTERIOR — YCLOUD V2 Y BUFFER FIX
 
 ## 📅 **FECHA:** 10 de Marzo 2026
 ## 🎯 **WORKFLOW:** `/update-docs` completado

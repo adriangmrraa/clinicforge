@@ -73,6 +73,8 @@ El bot actúa como la primera línea de atención de la clínica de la Dra. Laur
 | `triage_urgency` | `symptoms` | Analiza el texto/audio para determinar la gravedad. |
 | `derivhumano` | `reason` | Pasa la conversación a un operador y activa el silencio de 24h. |
 | `save_patient_anamnesis` | `anamnesis_data` | Guarda el cuestionario médico en `patients.medical_history` (JSONB). La UI muestra estos datos via `AnamnesisPanel.tsx` en ChatsView, PatientDetail y AppointmentForm. |
+| **`confirm_slot`** | `date_time, professional_name, treatment_name` | **(Smart Booking v2)** Soft-lock de un slot por 30 segundos via Redis. Se llama ANTES de recoger datos del paciente para evitar conflictos de concurrencia. Retorna confirmación o conflicto. |
+| **`verify_payment_receipt`** | `receipt_description, amount_detected, appointment_id` | **(Billing v1)** Verifica comprobante de pago via análisis de visión. Compara titular y monto contra datos bancarios del tenant. Cambia estado de cita a "confirmed" y emite evento `PAYMENT_CONFIRMED`. |
 
 ---
 
@@ -132,6 +134,65 @@ Se incorporaron 13 FAQs específicas del consultorio. El agente las responde dir
 
 **Restricción:** Las FAQs son fijas. Si la consulta no está cubierta, derivar con `derivhumano`.
 
+
+## 3.4. Smart Booking Flow v2 (Sprint v2 — 2026-03-24)
+
+El flujo de agendamiento ha sido reordenado para ofrecer **slots concretos** (en vez de rangos abiertos) y evitar conflictos de concurrencia con **soft-locking**.
+
+### Flujo reordenado:
+
+| Paso | Acción | Tool |
+|:---|:---|:---|
+| 1 | Paciente indica servicio deseado | `list_services` / contexto |
+| 2 | Agente consulta disponibilidad (hasta 7 días hacia adelante) | `check_availability` |
+| 3 | Paciente elige slot concreto | — |
+| 4 | **Soft-lock del slot** (30s Redis lock) | `confirm_slot` |
+| 5 | Recoger datos del paciente (nombre, DNI, OS) | — |
+| 6 | Confirmar y crear turno | `book_appointment` |
+
+### Cambios clave en `check_availability`:
+- **Multi-day search**: Si el día solicitado no tiene huecos, busca hasta 7 días hacia adelante.
+- **Concrete slots**: Devuelve 2-3 opciones de horario específicas (ej. "10:00", "14:30") en vez de rangos abiertos ("de 10:00 a 17:00").
+- **Sin filtro de almuerzo hardcodeado**: Eliminado el bloqueo 13-14h. Los horarios son 100% configurables via `tenants.working_hours`.
+
+### Soft-lock (`confirm_slot`):
+- Crea lock Redis: `slot_lock:{tenant_id}:{prof_id}:{date}:{time}` con TTL de 30 segundos.
+- Si el slot ya está reservado por otro paciente, retorna mensaje de conflicto.
+- **Non-blocking on Redis failure**: Si Redis no está disponible, el flujo continúa sin lock.
+
+### Triage ampliado:
+- Detecta escenarios de pérdida de pieza dental: "se me cayó un diente", "se me partió", "diente flojo".
+- Multi-condition detection para fasttrack de emergencia.
+
+### Buffer resiliente:
+- TTL: **12 segundos** (ajustado desde 10s para mejor agrupación).
+- Sliding window mínimo: **4 segundos**.
+- Auto-recovery de buffers huérfanos al reiniciar.
+
+---
+
+## 3.5. Verificación de Pagos via Visión (Billing v1 — 2026-03-24)
+
+El agente puede verificar comprobantes de pago (capturas de transferencia bancaria) usando el servicio de visión.
+
+### Flujo:
+1. Paciente envía imagen del comprobante de pago.
+2. Vision Service analiza la imagen y extrae titular y monto.
+3. Tool `verify_payment_receipt` compara:
+   - **Titular** contra `tenants.bank_holder_name`.
+   - **Monto** contra el precio esperado (cadena: `billing_amount` → `professional.consultation_price` → `tenant.consultation_price`).
+4. Si coincide: cambia `payment_status` a `paid`, emite `PAYMENT_CONFIRMED` via WebSocket.
+5. Si no coincide: informa al paciente el motivo del rechazo.
+
+### Datos bancarios del tenant (Migration 006):
+| Campo | Tabla | Propósito |
+|:---|:---|:---|
+| `bank_cbu` | `tenants` | CBU/CVU para transferencias |
+| `bank_alias` | `tenants` | Alias bancario |
+| `bank_holder_name` | `tenants` | Nombre del titular (para verificación) |
+| `derivation_email` | `tenants` | Email para notificaciones de handoff |
+
+---
 
 ## 4. Mecanismo de Silencio y Ventana de WhatsApp (24h)
 

@@ -258,6 +258,91 @@ Para resolver la limitación de la Meta Graph API que oculta anuncios con gasto 
 2. **Enriquecimiento**: Se obtienen los `insights` por separado y se reconcilian en memoria.
 3. **Visibilidad Total**: Esto garantiza que el 100% de los anuncios creados sean visibles en el Marketing Hub, permitiendo al CEO ver incluso campañas pausadas o sin rendimiento.
 
+## 10. Handoff Email System (Sesión 2026-03-24)
+
+### Arquitectura
+
+Cuando el agente ejecuta `derivhumano()`, además de silenciar el bot 24h, ahora envía un **email comprehensivo** a la clínica y todos los profesionales activos con el contexto completo de la conversación.
+
+### Destinatarios (Resolución)
+1. **Email de derivación del tenant**: `tenants.derivation_email` (configurado en Settings).
+2. **Todos los profesionales activos**: Query `professionals.email` WHERE `users.status='active'` AND `is_active=true`.
+3. **Fallback**: Variable de entorno `NOTIFICATIONS_EMAIL`.
+
+### Contenido del Email (6 secciones)
+
+| Sección | Contenido |
+|:---|:---|
+| **Alerta** | Reason del handoff destacada |
+| **Datos del paciente** | Nombre, teléfono, DNI, email, ciudad, urgencia, fuente, canal |
+| **Anamnesis** | Historial médico completo (medical_history JSONB) |
+| **Próximo turno** | Fecha, tratamiento, profesional, estado |
+| **Chat** | Últimos 15 mensajes estilizados como burbujas con timestamps |
+| **Sugerencias IA** | Alertas de urgencia, impacto en cita, datos faltantes |
+
+### Links de Contacto Multi-Canal (v2)
+El email incluye botones de acción directa según el canal del paciente:
+- **WhatsApp**: `https://wa.me/{phone_digits}` (botón verde)
+- **Instagram DM**: `https://www.instagram.com/direct/t/{ig_psid}` (botón gradient)
+- **Facebook Messenger**: `https://www.facebook.com/messages/t/{fb_psid}` (botón azul)
+
+Los PSIDs se resuelven desde `patients.instagram_psid` y `patients.facebook_psid`.
+
+### Servicio: `email_service.py`
+- Función principal: `send_handoff_email(to_emails, patient_name, phone, reason, chat_history_html, patient_info, anamnesis_data, next_appointment, suggestions)`
+- Template HTML profesional con gradient header y secciones formateadas.
+- Detección de canal desde `chat_conversations.channel`.
+
+---
+
+## 11. Payment Verification via Vision (Billing v1 — 2026-03-24)
+
+### Arquitectura
+El sistema de billing integra el servicio de visión para verificar comprobantes de pago (transferencias bancarias).
+
+### Flujo
+```
+Paciente envía foto de comprobante
+        ↓
+Vision Service (GPT-4o) → extrae titular + monto
+        ↓
+Tool verify_payment_receipt()
+  ├── Compara titular vs tenants.bank_holder_name
+  ├── Compara monto vs precio esperado (billing_amount → professional.consultation_price → tenant.consultation_price)
+  ├── Si OK → payment_status='paid', emit PAYMENT_CONFIRMED
+  └── Si falla → informa razón al paciente
+```
+
+### Migración DB (Alembic 006: `add_billing_bank_derivation`)
+- **tenants**: +`bank_cbu`, +`bank_alias`, +`bank_holder_name`, +`derivation_email`
+- **appointments**: +`billing_amount`, +`billing_installments`, +`billing_notes`, +`payment_status` (default 'pending'), +`payment_receipt_data` (JSONB), +índice `idx_appointments_payment_status`
+- **professionals**: +`consultation_price` (DECIMAL)
+
+---
+
+## 12. Configurable AI Models & Token Tracking (2026-03-24)
+
+### Modelos Configurables por Acción
+Cada acción del sistema de IA puede usar un modelo diferente, configurable desde el Dashboard de Tokens/Métricas:
+
+| Acción | Config Key | Default |
+|:---|:---|:---|
+| Chat Agent (conversaciones) | `OPENAI_MODEL` | `gpt-4o-mini` |
+| Insights (análisis) | `MODEL_INSIGHTS` | `gpt-4o-mini` |
+
+La configuración se persiste en la tabla `system_config` (categoría `ai`). Los cambios aplican inmediatamente sin reinicio.
+
+### Token Tracking
+Cada invocación al LLM registra:
+- Modelo utilizado
+- Tokens de entrada/salida/total
+- Costo USD (calculado desde diccionario de pricing por modelo)
+- Conversación y paciente asociados
+
+El `TokenTracker` soporta 30+ modelos OpenAI con pricing actualizado. Actualiza `tenants.total_tokens_used` en cada llamada.
+
+---
+
 ## 8. AI Guardrails & Prompt Security (Spec 27)
 
 Para proteger al Agente de ataques de inyección y garantizar la integridad de los datos clínicos, se ha implementado una capa de defensa híbrida.

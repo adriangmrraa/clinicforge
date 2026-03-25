@@ -48,7 +48,10 @@ WhatsApp Service (:8002)  ←→  Orchestrator  ←→  YCloud / Chatwoot
 - `services/meta_ads_service.py` — Meta Graph API client
 - `services/marketing_service.py` — ROI & performance intelligence
 - `jobs/` — Background jobs: lead recovery, reminders, followups
-- `alembic/` — Database migrations (baseline + incremental: 001 baseline → 002 treatment_type_professionals → 003 consultation_price/anamnesis_token → 004 guardian_phone)
+- `alembic/` — Database migrations (001 baseline → 002 treatment_type_professionals → 003 consultation_price/anamnesis_token → 004 guardian_phone → 005 meta_native_connection → 006 billing_bank_derivation)
+- `email_service.py` — Handoff email service (multi-channel, multi-recipient)
+- `dashboard/config_manager.py` — Dynamic AI model configuration (system_config table)
+- `dashboard/token_tracker.py` — Token usage tracking per conversation
 - `requirements.txt` — Python dependencies
 
 ### Frontend (frontend_react/src/)
@@ -197,16 +200,18 @@ The LangChain agent exposes these tools (defined in `orchestrator_service/main.p
 |------|---------|
 | `list_professionals` | List active professionals for a clinic |
 | `list_services` | List bookable treatment types (shows assigned professionals) |
-| `check_availability` | Check real availability for a day (uses tenant `working_hours` per-day slots + sede info) |
+| `check_availability` | Check real availability (multi-day search up to 7 days, returns 2-3 concrete slots + sede info) |
+| `confirm_slot` | **(NEW)** Soft-lock a slot for 30s via Redis before collecting patient data |
 | `book_appointment` | Register an appointment (supports self, third-party adult, and minor bookings; includes sede in confirmation) |
 | `list_my_appointments` | List patient's upcoming appointments |
 | `cancel_appointment` | Cancel a patient's appointment |
 | `reschedule_appointment` | Reschedule an appointment |
-| `triage_urgency` | Analyze symptom urgency |
+| `triage_urgency` | Analyze symptom urgency (expanded: tooth loss, multi-condition detection) |
 | `save_patient_anamnesis` | Save medical history from AI chat conversation |
 | `save_patient_email` | Save patient email (supports `patient_phone` for third-party bookings) |
 | `get_patient_anamnesis` | Read completed anamnesis form data for verification |
-| `derivhumano` | Hand off to human + 24h silence window |
+| `verify_payment_receipt` | **(NEW)** Verify bank transfer receipt via vision (matches holder name + amount) |
+| `derivhumano` | Hand off to human + 24h silence window + comprehensive email to clinic & professionals |
 
 ---
 
@@ -259,8 +264,8 @@ The AI agent uses different greetings based on patient status:
 ### Implant/Prosthesis Commercial Triage
 When a patient mentions implants or prosthetics, the AI activates a commercial triage flow with 6 emoji options (mandatory visible), followed by profundization and positioning messages about the doctor's specialties.
 
-### Consultation Price
-Stored in `tenants.consultation_price` (DECIMAL). Configurable from the UI in clinic settings. The AI uses this value dynamically when patients ask about pricing. If NULL, the AI tells the patient to contact the clinic directly.
+### Consultation Price & Billing
+Stored in `tenants.consultation_price` (DECIMAL). Configurable from the UI in clinic settings. The AI uses this value dynamically when patients ask about pricing. If NULL, the AI tells the patient to contact the clinic directly. **Per-professional override**: `professionals.consultation_price` takes precedence over tenant price. **Billing fields** on appointments: `billing_amount`, `billing_installments`, `billing_notes`, `payment_status` (pending/partial/paid), `payment_receipt_data` (JSONB). **Bank config** on tenants: `bank_cbu`, `bank_alias`, `bank_holder_name` for payment verification via vision.
 
 ### Third-Party & Minor Booking
 The AI agent supports booking appointments for third parties (friends, family) and minors (children). Three scenarios:

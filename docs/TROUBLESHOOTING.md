@@ -203,3 +203,28 @@ ON CONFLICT (tenant_id, name) DO UPDATE SET value = EXCLUDED.value;
 
 ---
 
+## Profesionales y Aprobaciones (Fixes 2026-03-24)
+
+### Error: column "availability" does not exist
+**Síntoma**: Al actualizar un profesional desde Personal Activo, el backend retorna `500` con error SQL `column "availability" does not exist`.
+
+**Causa**: El SQL de `PUT /admin/professionals/{id}` referenciaba una columna `availability` que nunca fue creada en la tabla `professionals`. Era vestigio de un diseño previo.
+
+**Solución**: Eliminada la referencia a `availability` del UPDATE SQL en `admin_routes.py` (fix commit `ed6fdf3`).
+
+### Error: column "license_number" does not exist
+**Síntoma**: Queries de profesionales fallan con `column "license_number" does not exist`.
+
+**Causa**: La columna se renombró a `registration_id` en una migración previa, pero algunos queries seguían usando el nombre antiguo.
+
+**Solución**: Actualizados todos los queries SQL para usar `registration_id` en lugar de `license_number` (fix commit `e864941`).
+
+### Build error: JSX sibling elements
+**Síntoma**: `npm run build` falla en `UserApprovalView.tsx` con error de JSX siblings sin wrapper.
+
+**Causa**: Componentes JSX adyacentes sin fragmento `<>...</>` envolvente.
+
+**Solución**: Wrapped en `<React.Fragment>` (fix commit `c56ea09`).
+
+---
+

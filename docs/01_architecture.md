@@ -121,6 +121,44 @@ AgendaView / Odontograma
   - **Filtrado Dinámico**: Soporte nativo para rangos `weekly` (7 días) y `monthly` (30 días).
   - **Triage Monitoring**: Integración directa con el flujo de detección de urgencias IA.
 
+### C.1. Email Service (Handoff Emails — 2026-03-24)
+
+**Tecnología:** SMTP (aiosmtplib) + HTML Templates
+
+**Función:** Envío de emails comprehensivos al equipo clínico cuando el agente IA ejecuta `derivhumano()`.
+
+**Responsabilidades:**
+- **Resolución de destinatarios**: Email de derivación del tenant + todos los profesionales activos.
+- **Contenido completo**: Datos del paciente, anamnesis, próxima cita, últimos 15 mensajes del chat, sugerencias de la IA.
+- **Links multi-canal**: Botones de contacto directo por WhatsApp (`wa.me`), Instagram DM, Facebook Messenger según canal del paciente.
+- **Resolución de PSIDs**: Detecta canal desde `chat_conversations.channel` y resuelve `instagram_psid`/`facebook_psid` desde tabla `patients`.
+
+### C.2. Sistema de Billing y Verificación de Pagos (2026-03-24)
+
+**Tecnología:** Vision Service (GPT-4o) + PostgreSQL
+
+**Función:** Verificación automática de comprobantes de pago y gestión de facturación por turno.
+
+**Componentes:**
+- **Configuración bancaria**: `bank_cbu`, `bank_alias`, `bank_holder_name` en tabla `tenants` (UI en ClinicsView).
+- **Precio por profesional**: `professionals.consultation_price` como override. Cadena: `billing_amount` → `professional.consultation_price` → `tenant.consultation_price`.
+- **Verificación via visión**: El paciente envía foto del comprobante → GPT-4o extrae datos → `verify_payment_receipt` valida titular y monto → actualiza `payment_status`.
+- **Estados de pago**: `pending` (default) → `partial` → `paid`.
+
+### C.3. Token Tracking & Modelos Configurables (2026-03-24)
+
+**Tecnología:** ConfigManager + TokenTracker
+
+**Función:** Monitoreo de consumo de tokens IA y configuración dinámica de modelos por acción.
+
+**Componentes:**
+- **`system_config` table**: Almacena `OPENAI_MODEL`, `MODEL_INSIGHTS`, `OPENAI_TEMPERATURE`, `MAX_TOKENS_PER_RESPONSE` por tenant.
+- **`token_usage` table**: Registro de cada invocación al LLM con modelo, tokens, costo USD.
+- **Frontend**: DashboardStatusView con cards por acción (Chat, Insights) y selector de 30+ modelos OpenAI.
+- **Aplicación inmediata**: Los cambios de modelo se aplican sin reinicio del servicio.
+
+---
+
 ### D. Sistema de Layout y Scroll (SaaS-style)
 
 **Tecnología:** Flexbox + `min-h-0` + Overflow Isolation
@@ -247,10 +285,10 @@ Para optimizar el rendimiento en conversaciones extensas, Dentalogic utiliza un 
 | **professionals** | Datos de los odontólogos y sus especialidades. |
 | **patients** | Registro demográfico y antecedentes médicos (JSONB). |
 | **clinical_records** | Evoluciones clínicas, diagnósticos y odontogramas. |
-| **appointments** | Gestión de turnos, estados y sincronización GCalendar. |
+| **appointments** | Gestión de turnos, estados, sincronización GCalendar, y campos de billing (`billing_amount`, `payment_status`, `payment_receipt_data`). |
 | **accounting_transactions** | Liquidaciones y cobros de prestaciones. |
 | **users** | Credenciales, roles y estado de aprobación. |
-| **tenants** | Sedes/clínicas; `config` (JSONB) con `ui_language`, `calendar_provider`, etc. |
+| **tenants** | Sedes/clínicas; `config` (JSONB) con `ui_language`, `calendar_provider`, etc. Incluye `bank_cbu`, `bank_alias`, `bank_holder_name` (billing) y `derivation_email` (handoff). |
 | **chat_messages** | Mensajes de chat por conversación; incluye `tenant_id` para aislamiento por sede; para Chatwoot: `conversation_id`, `content_attributes`, `platform_metadata`. |
 | **chat_conversations** | Conversaciones omnicanal (Chatwoot/YCloud): tenant_id, channel, provider, external_user_id, human_override_until, etc. |
 | **credentials** | Credenciales por tenant (Vault): OPENAI_API_KEY, WEBHOOK_ACCESS_TOKEN, CHATWOOT_*, YCLOUD_*, META_*, GOOGLE_*, etc. |
@@ -262,6 +300,9 @@ Para optimizar el rendimiento en conversaciones extensas, Dentalogic utiliza un 
 | **google_oauth_tokens** | **(NUEVA)** Tokens OAuth 2.0 de Google para Ads y Login. |
 | **google_ads_accounts** | **(NUEVA)** Cuentas de Google Ads accesibles por tenant. |
 | **google_ads_metrics_cache** | **(NUEVA)** Cache de métricas de Google Ads para performance. |
+| **token_usage** | **(NUEVA 2026-03)** Registro detallado de consumo de tokens por conversación, modelo y costo USD. |
+| **system_config** | **(NUEVA 2026-03)** Configuración dinámica del sistema (modelos IA, temperaturas, limits). Categorías: ai, monitoring, limits, clinic, features. |
+| **business_assets** | **(NUEVA 2026-03)** Assets descubiertos via Meta: Pages, IG accounts, WABAs. |
 
 ### 3.2 Maintenance Robot (Self-Healing)
 El sistema utiliza un **Robot de Mantenimiento** integrado en `orchestrator_service/db.py` que garantiza la integridad del esquema en cada arranque:

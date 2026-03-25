@@ -84,4 +84,19 @@ Documentos usados durante el desarrollo, auditorías cerradas y especificaciones
 
 ---
 
+---
+
+## 🔄 Últimas Actualizaciones (2026-03-24)
+
+| Documento | Cambio |
+|-----------|--------|
+| `API_REFERENCE.md` | +Sección Facturación y Pagos (Billing), +Dashboard de Tokens y Modelos IA, actualización de Automatizaciones |
+| `04_agent_logic_and_persona.md` | +Smart Booking Flow v2, +Verificación de Pagos, +tools `confirm_slot` y `verify_payment_receipt` |
+| `INTEGRATIONS_LOGIC_DEEP_DIVE.md` | +Handoff Email System, +Payment Verification via Vision, +Configurable AI Models & Token Tracking |
+| `01_architecture.md` | +Email Service, +Billing System, +Token Tracking, +tablas `token_usage`/`system_config`/`business_assets` |
+| `migraciones_y_roadmap_alembic.md` | +Tabla completa de migraciones Alembic 001-006 |
+| `CLAUDE.md` | +tools `confirm_slot`/`verify_payment_receipt`, actualización `derivhumano`/`check_availability`, +archivos clave |
+
+---
+
 **Total:** 37+ documentos organizados. Para auditoría de contrato API, ver Swagger en `/docs`.

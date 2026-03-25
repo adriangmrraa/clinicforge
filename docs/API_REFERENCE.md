@@ -36,6 +36,8 @@ Sustituye `localhost:8000` por la URL del Orchestrator en tu entorno (ej. en pro
 16. [Otros (health, chat IA)](#otros)
 17. [Endpoints Públicos (anamnesis)](#endpoints-públicos-sin-autenticación)
 18. [Meta Native Connection](#meta-native-connection)
+19. [Facturación y Pagos (Billing)](#facturación-y-pagos-billing)
+20. [Dashboard de Tokens y Modelos IA](#dashboard-de-tokens-y-modelos-ia)
 
 ---
 
@@ -674,11 +676,21 @@ Gestión de procesos automáticos y transición a humano.
 `POST /admin/conversations/{conversation_id}/human-override` — Activa/Desactiva el bot por 24h para intervención manual.  
 `GET /admin/chat/urgencies` — Lista casos críticos detectados por el triaje IA.
 
-### Motor de Automatización ("Maintenance Robot")
-El servicio `automation_service.py` corre tareas en segundo plano para:
-1. **Recordatorios**: HSM de WhatsApp 24h antes de la cita.
-2. **Feedback**: Solicitud de reseña 45m después del turno.
-3. **Lead Recovery**: Reactivación de leads de Meta Ads tras 2h de inactividad.
+### Motor de Automatización (Jobs Modulares)
+
+> [!WARNING]
+> **DEPRECATED (Marzo 2026)**: El motor monolítico `automation_service.py` ha sido retirado. Ver nueva arquitectura modular.
+
+La automatización ahora opera con módulos independientes en `jobs/`:
+1. **`jobs/reminders.py`**: Recordatorio HSM 24h antes de la cita.
+2. **`jobs/lead_recovery.py`**: Reactivación inteligente de leads (lee historial, evalúa servicios, revisa disponibilidad JIT).
+3. **`jobs/followups.py`**: Seguimiento clínico post-atención (cirugías).
+
+### Handoff con Email Comprehensivo (2026-03-24)
+Al ejecutarse `derivhumano()` via el agente IA, se envía email con contexto completo a:
+- Email de derivación del tenant (`tenants.derivation_email`)
+- Todos los profesionales activos
+- Links multi-canal (WhatsApp, Instagram DM, Facebook Messenger) según canal del paciente
 
 ---
 
@@ -869,3 +881,119 @@ Recibe SimpleEvents del meta_service. Resuelve tenant via `business_assets`, nor
 **Auth**: X-Internal-Secret header (inter-service)
 
 Recibe credenciales encriptadas del meta_service y las almacena en la tabla `credentials` + `business_assets`.
+
+---
+
+## Facturación y Pagos (Billing)
+
+> Agregado 2026-03-24. Sistema de facturación por turno con verificación de pagos via visión IA.
+
+### Actualizar datos de facturación del turno
+`PUT /admin/appointments/{id}`
+
+Además de los campos de turno estándar, ahora soporta campos de billing:
+
+**Campos adicionales (billing):**
+```json
+{
+  "billing_amount": 5000.00,
+  "billing_installments": 1,
+  "billing_notes": "Pago en efectivo",
+  "payment_status": "paid"
+}
+```
+
+| Campo | Tipo | Descripción |
+|-------|------|-------------|
+| `billing_amount` | DECIMAL | Monto cobrado (override por turno). Si no se indica, se resuelve: `professional.consultation_price` → `tenant.consultation_price`. |
+| `billing_installments` | INTEGER | Cantidad de cuotas. |
+| `billing_notes` | TEXT | Notas de facturación. |
+| `payment_status` | VARCHAR(20) | Estado de pago: `pending` (default), `partial`, `paid`. |
+| `payment_receipt_data` | JSONB | Datos del comprobante verificado por la IA (automático). |
+
+### Configuración bancaria del Tenant
+La configuración bancaria se gestiona via los endpoints de Sedes existentes:
+
+`PUT /admin/tenants/{tenant_id}` — Actualiza `bank_cbu`, `bank_alias`, `bank_holder_name`, `derivation_email`.
+
+**Payload adicional:**
+```json
+{
+  "bank_cbu": "0000003100000000000001",
+  "bank_alias": "clinica.dental.mp",
+  "bank_holder_name": "Dra. Laura Delgado",
+  "derivation_email": "contacto@clinica.com"
+}
+```
+
+### Precio por profesional
+`PUT /admin/professionals/{id}` — Ahora soporta `consultation_price` (DECIMAL) para override de precio por profesional.
+
+**Cadena de resolución de precio:** `appointment.billing_amount` → `professional.consultation_price` → `tenant.consultation_price`.
+
+---
+
+## Dashboard de Tokens y Modelos IA
+
+> Agregado 2026-03-24. Panel de monitoreo de consumo de tokens y configuración de modelos IA por acción.
+
+### Métricas de tokens
+`GET /admin/dashboard/metrics?days=30`
+
+Retorna métricas de consumo de tokens de IA del tenant.
+
+**Response:**
+```json
+{
+  "total_tokens": 125000,
+  "total_cost_usd": 0.45,
+  "by_model": {
+    "gpt-4o-mini": { "tokens": 100000, "cost": 0.15 },
+    "gpt-4o": { "tokens": 25000, "cost": 0.30 }
+  },
+  "daily_breakdown": [...]
+}
+```
+
+### Configuración de modelos IA
+`POST /dashboard/api/config`
+
+Actualiza la configuración de modelos IA y parámetros. Persiste en tabla `system_config`.
+
+**Payload:**
+```json
+{
+  "OPENAI_MODEL": "gpt-4o-mini",
+  "MODEL_INSIGHTS": "gpt-4o",
+  "OPENAI_TEMPERATURE": "0.7",
+  "MAX_TOKENS_PER_RESPONSE": "1000"
+}
+```
+
+| Key | Default | Descripción |
+|-----|---------|-------------|
+| `OPENAI_MODEL` | `gpt-4o-mini` | Modelo para el agente de chat principal |
+| `MODEL_INSIGHTS` | `gpt-4o-mini` | Modelo para análisis/insights de conversaciones |
+| `OPENAI_TEMPERATURE` | `0.7` | Temperatura de generación |
+| `MAX_TOKENS_PER_RESPONSE` | `1000` | Máximo de tokens por respuesta |
+
+Los cambios aplican inmediatamente sin necesidad de reiniciar el servicio.
+
+### Tabla `system_config`
+| Columna | Tipo | Descripción |
+|---------|------|-------------|
+| `key` | VARCHAR(255) UNIQUE | Nombre de la configuración |
+| `value` | TEXT | Valor actual |
+| `data_type` | VARCHAR(50) | Tipo: string/integer/float/boolean/json |
+| `category` | VARCHAR(50) | Categoría: ai/monitoring/limits/clinic/features |
+| `tenant_id` | INTEGER | Tenant asociado |
+
+### Tabla `token_usage`
+| Columna | Tipo | Descripción |
+|---------|------|-------------|
+| `conversation_id` | VARCHAR(255) | ID de conversación o `insights-prof-{id}` |
+| `patient_phone` | VARCHAR(50) | Teléfono del paciente |
+| `model` | VARCHAR(50) | Modelo utilizado |
+| `input_tokens` / `output_tokens` / `total_tokens` | INTEGER | Conteo de tokens |
+| `cost_usd` | DECIMAL | Costo calculado |
+| `tenant_id` | INTEGER | Tenant aislado |
