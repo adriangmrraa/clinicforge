@@ -106,7 +106,7 @@ async def process_buffer_task(
         # Fetch patient data (normalized phone for consistency with tools)
         phone_digits = normalize_phone_digits(external_user_id)
         patient_row = await pool.fetchrow(
-            """SELECT id, first_name, last_name, dni, acquisition_source, anamnesis_token, medical_history FROM patients
+            """SELECT id, first_name, last_name, dni, email, acquisition_source, anamnesis_token, medical_history FROM patients
                WHERE tenant_id = $1 AND REGEXP_REPLACE(phone_number, '[^0-9]', '', 'g') = $2""",
             tenant_id, phone_digits
         )
@@ -128,6 +128,11 @@ async def process_buffer_task(
                 identity_lines.append(f"• Nombre registrado: {p_first} {p_last}".strip())
             if p_dni:
                 identity_lines.append(f"• DNI registrado: {p_dni}")
+
+            # Email
+            p_email = patient_row.get("email") or ""
+            if p_email:
+                identity_lines.append(f"• Email registrado: {p_email}")
             
             # 2. Building Ad Context (Spec 06)
             meta_headline = "" # Already in patient_row if we joined or updated, checking current db state
@@ -176,6 +181,41 @@ async def process_buffer_task(
                 identity_lines.append(f"• PRÓXIMO TURNO: Tiene un turno de {next_apt['treatment_name'] or 'Consulta'} con el/la Dr/a. {next_apt['professional_name']} el {dt_str}.")
                 identity_lines.append(f"• FECHA EXACTA DEL TURNO: {dt.strftime('%d/%m/%Y')} a las {dt.strftime('%H:%M')}. {time_until}.")
             
+            # 3b. Fetch LAST completed appointment (for post-treatment follow-up)
+            last_apt = await pool.fetchrow("""
+                SELECT a.appointment_datetime, tt.name as treatment_name,
+                       prof.first_name as professional_name, a.status
+                FROM appointments a
+                LEFT JOIN treatment_types tt ON a.appointment_type = tt.code
+                LEFT JOIN professionals prof ON a.professional_id = prof.id
+                WHERE a.tenant_id = $1 AND a.patient_id = $2
+                AND a.appointment_datetime < NOW()
+                AND a.status IN ('completed', 'confirmed', 'scheduled')
+                ORDER BY a.appointment_datetime DESC
+                LIMIT 1
+            """, tenant_id, p_id)
+
+            if last_apt:
+                ldt = last_apt['appointment_datetime']
+                if hasattr(ldt, 'astimezone'): ldt = ldt.astimezone(ARG_TZ)
+                ldias = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
+                ldt_str = f"{ldias[ldt.weekday()]} {ldt.strftime('%d/%m/%Y')} a las {ldt.strftime('%H:%M')}"
+                days_since = (now_arg - ldt).days if 'now_arg' in dir() else (get_now_arg() - ldt).days
+                identity_lines.append(f"• ÚLTIMO TURNO: {last_apt['treatment_name'] or 'Consulta'} con Dr/a. {last_apt['professional_name']} el {ldt_str} (hace {days_since} días). Estado: {last_apt['status']}.")
+                if days_since <= 7:
+                    identity_lines.append(f"• SEGUIMIENTO POST-TRATAMIENTO: El paciente tuvo un turno hace {days_since} días. Si escribe, preguntale cómo se siente después del tratamiento.")
+
+            # 3c. Count total visits (recurrent vs first-timer)
+            visit_count = await pool.fetchval("""
+                SELECT COUNT(*) FROM appointments
+                WHERE tenant_id = $1 AND patient_id = $2
+                AND status IN ('completed', 'confirmed', 'scheduled')
+            """, tenant_id, p_id)
+            if visit_count and visit_count > 1:
+                identity_lines.append(f"• HISTORIAL: Paciente recurrente ({visit_count} turnos registrados).")
+            elif visit_count == 1:
+                identity_lines.append("• HISTORIAL: Primera visita del paciente.")
+
             # Determine patient_status
             if next_apt:
                 patient_status = "patient_with_appointment"

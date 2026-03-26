@@ -2679,7 +2679,7 @@ def _sanitize_ad_context(text: str) -> str:
 
 
 def _format_working_hours(working_hours: dict) -> str:
-    """Genera texto legible de horarios por día desde JSONB de la sede."""
+    """Genera texto legible de horarios por día desde JSONB de la sede, incluyendo ubicación si es multi-sede."""
     if not working_hours:
         return "Consultar horarios directamente con la clínica."
     day_names = {
@@ -2694,7 +2694,14 @@ def _format_working_hours(working_hours: dict) -> str:
             lines.append(f"  - {name}: CERRADO")
         else:
             slots_str = ", ".join(f"{s['start']} a {s['end']}" for s in day["slots"])
-            lines.append(f"  - {name}: {slots_str}")
+            location = day.get("location", "")
+            address = day.get("address", "")
+            if location and address:
+                lines.append(f"  - {name}: {slots_str} — 📍 {location}, {address}")
+            elif location:
+                lines.append(f"  - {name}: {slots_str} — 📍 {location}")
+            else:
+                lines.append(f"  - {name}: {slots_str}")
     return "\n".join(lines)
 
 
@@ -2753,6 +2760,18 @@ def build_system_prompt(
         extra_context += f"\n\nCONTEXTO DE ANUNCIO (Meta Ads):\n{safe_ad_context}\n"
     if patient_context:
         extra_context += f"\n\nCONTEXTO DEL PACIENTE (Identidad y Turnos):\n{patient_context}\n"
+        extra_context += """
+REGLAS DE USO DEL CONTEXTO DEL PACIENTE:
+• Si tiene "Nombre registrado" → usá su nombre en el saludo y durante toda la conversación.
+• Si tiene "ÚLTIMO TURNO" → mencionalo en el saludo si escribió pocos días después: "Cómo te fue con {tratamiento}?" o "Cómo te estás recuperando?"
+• Si tiene "SEGUIMIENTO POST-TRATAMIENTO" → SIEMPRE preguntá cómo se siente. Es la prioridad del saludo.
+• Si tiene "PRÓXIMO TURNO" → mencionalo si es relevante: "Te esperamos el {día}!" o "Recordá que tenés turno el {día}."
+• Si tiene "DNI registrado" y "Email registrado" → NUNCA volver a pedir estos datos.
+• Si tiene "Paciente recurrente" → tratalo con familiaridad, no como un desconocido.
+• Si tiene "Primera visita" → ser más explicativo y guiarlo con más detalle.
+• Si tiene "HIJOS/MENORES" → recordar que puede agendar para sus hijos.
+• NUNCA ignores el contexto del paciente. Es información REAL de la base de datos.
+"""
 
     # Secciones dinámicas desde DB
     hours_section = _format_working_hours(clinic_working_hours) if clinic_working_hours else f"Lunes a Viernes de {hours_start} a {hours_end}. Sábados y Domingos: CERRADO."
@@ -2765,6 +2784,7 @@ def build_system_prompt(
         if clinic_maps_url:
             address_info += f"\n• Google Maps: {clinic_maps_url}"
         address_info += "\n• REGLA: Si el paciente pregunta dónde están, la dirección o cómo llegar, SIEMPRE respondé con la dirección y el link. NUNCA digas que no podés brindar esa información."
+        address_info += "\n• MULTI-SEDE: Si la clínica opera en diferentes sedes según el día, y el paciente pregunta 'dónde queda?' sin especificar día, respondé: 'Dependemos del día! Te cuento las ubicaciones:' y listá las sedes por día de los horarios de arriba. Si el paciente tiene turno agendado, dar la dirección del DÍA de su turno."
 
     # Multi-sede: info de sedes por día
     sede_section = ""
@@ -2855,15 +2875,27 @@ Si YA mencionaste el turno en esta conversación, NO lo repitas.
             bank_lines.append(f"Alias: {bank_alias}")
         bank_lines.append(f"Titular: {bank_holder_name}")
         bank_lines.append("")
-        bank_lines.append("FLUJO DE PAGO:")
-        bank_lines.append("1. Cuando el paciente pregunte cómo pagar, cómo abonar la seña, o la conversación lo amerite (después de agendar un turno, si hay un monto configurado), compartí los datos bancarios de arriba.")
-        bank_lines.append("2. Cuando el paciente envíe un comprobante de pago (imagen o PDF de transferencia), usá la herramienta 'verify_payment_receipt' pasando:")
+        bank_lines.append("FLUJO DE PAGO Y SEÑA (CRÍTICO):")
+        bank_lines.append("REGLA PRINCIPAL: Si hay precio de consulta configurado Y datos bancarios → el paciente DEBE abonar la seña ANTES de que el turno quede confirmado.")
+        bank_lines.append("")
+        bank_lines.append("PASO 7 MODIFICADO — DESPUÉS DE AGENDAR:")
+        bank_lines.append("1. Inmediatamente después de confirmar el turno (PASO 7), informar el monto de la seña y compartir los datos bancarios:")
+        bank_lines.append("   'Para confirmar tu turno, te pedimos una seña de {precio_consulta}. Podés transferir a:'")
+        bank_lines.append("   → Compartir CBU/Alias/Titular de arriba.")
+        bank_lines.append("   'Una vez que hagas la transferencia, enviame el comprobante por acá y queda confirmado!'")
+        bank_lines.append("2. Si el paciente pregunta si es obligatorio → 'La seña es necesaria para reservar el turno. Sin ella, el turno queda pendiente de confirmación.'")
+        bank_lines.append("3. Si el paciente dice que no puede pagar ahora → 'No hay problema, podés enviar el comprobante hasta 24 horas antes del turno. Te lo reservo mientras tanto.'")
+        bank_lines.append("")
+        bank_lines.append("VERIFICACIÓN DE COMPROBANTE:")
+        bank_lines.append("4. Cuando el paciente envíe un comprobante de pago (imagen o PDF de transferencia), usá la herramienta 'verify_payment_receipt' pasando:")
         bank_lines.append("   - receipt_description: la descripción completa de la imagen (lo que aparece en [IMAGEN: ...])")
         bank_lines.append("   - amount_detected: el monto que detectes en el comprobante (solo el número)")
         bank_lines.append("   - appointment_id: el ID del turno si lo tenés (opcional)")
-        bank_lines.append("3. Si la verificación es exitosa, el turno pasa a CONFIRMADO automáticamente. Agradecé y recordá los datos del turno.")
-        bank_lines.append("4. Si falla la verificación, explicá amablemente el problema y pedí que reenvíe o se comunique con la clínica.")
-        bank_lines.append("5. NUNCA inventes datos bancarios. Solo compartí los que están configurados arriba.")
+        bank_lines.append("5. Si la verificación es exitosa, el turno pasa a CONFIRMADO automáticamente. Agradecé y recordá los datos del turno.")
+        bank_lines.append("6. Si falla la verificación, explicá amablemente el problema y pedí que reenvíe o se comunique con la clínica.")
+        bank_lines.append("7. NUNCA inventes datos bancarios. Solo compartí los que están configurados arriba.")
+        bank_lines.append("")
+        bank_lines.append("SI NO HAY PRECIO CONFIGURADO: No pedir seña. Agendar normalmente.")
         bank_section = "\n".join(bank_lines)
 
     price_text = f"${int(consultation_price):,}".replace(",", ".") if consultation_price and float(consultation_price) > 0 else ""
@@ -2934,17 +2966,27 @@ Muchos pacientes que tenían miedo al dentista nos cuentan que la experiencia fu
 
 ## DICCIONARIO DE SINÓNIMOS MÉDICOS
 Ayuda a entender lo que dice el paciente. NO reemplaza la validación con `list_services`.
-• LIMPIEZA DENTAL: "limpieza", "profilaxis", "higiene dental"
-• BLANQUEAMIENTO: "blanqueamiento", "blanqueo", "dientes blancos"
-• IMPLANTE: "implante", "diente postizo", "tornillo dental"
-• ORTOPANTOMOGRAFÍA: "radiografía", "panorámica", "placa", "rayos x"
-• CONSULTA: "consulta", "evaluación", "primera visita", "revisión"
-• URGENCIA: "dolor", "emergencia", "hinchazón", "sangrado", "fiebre"
-• EXTRACCIÓN: "sacar muela", "extraer", "muela del juicio"
-• CARIES: "caries", "agujero", "picadura", "diente picado"
-• ENDODONCIA: "tratamiento de conducto", "matar nervio"
-• PRÓTESIS: "prótesis", "dentadura postiza", "puente", "corona"
-REGLAS: 1) Mapear término coloquial al canónico. 2) SIEMPRE validar con `list_services`. 3) Si no existe, NO inventar.
+• LIMPIEZA DENTAL: "limpieza", "profilaxis", "higiene dental", "destartraje", "sarro"
+• BLANQUEAMIENTO: "blanqueamiento", "blanqueo", "dientes blancos", "aclarar dientes"
+• IMPLANTE: "implante", "diente postizo", "tornillo dental", "diente fijo"
+• ORTOPANTOMOGRAFÍA: "radiografía", "panorámica", "placa", "rayos x", "rx"
+• CONSULTA: "consulta", "evaluación", "primera visita", "revisión", "control", "chequeo"
+• URGENCIA: "dolor", "emergencia", "hinchazón", "sangrado", "fiebre", "me duele mucho"
+• EXTRACCIÓN: "sacar muela", "extraer", "muela del juicio", "sacar diente", "extracción"
+• CARIES: "caries", "agujero", "picadura", "diente picado", "diente negro", "arreglar diente", "empaste", "relleno"
+• ENDODONCIA: "tratamiento de conducto", "matar nervio", "conducto"
+• PRÓTESIS: "prótesis", "dentadura postiza", "puente", "corona", "funda"
+• CIRUGÍA: "cirugía", "operación", "cirugía dental", "cirugía oral", "cirugía guiada", "operar"
+• ORTODONCIA: "ortodoncia", "brackets", "aparatos", "alinear dientes", "dientes torcidos", "invisalign"
+• PERIODONCIA: "encías", "enfermedad de encías", "periodontitis", "gingivitis", "encías sangrantes"
+• ODONTOPEDIATRÍA: "dentista para niños", "odontopediatra", "dientes de leche"
+• ESTÉTICA DENTAL: "carillas", "diseño de sonrisa", "estética", "sonrisa"
+REGLAS:
+1) Mapear término coloquial al canónico.
+2) SIEMPRE validar con `list_services` ANTES de llamar check_availability.
+3) Si el término mapeado no existe en list_services, mostrar los servicios disponibles y preguntar cuál necesita.
+4) NUNCA asumir que un tratamiento no está disponible sin verificar con list_services.
+5) Si el paciente dice algo genérico como "cirugía" u "operación", preguntar: "Qué tipo de tratamiento necesitás? Te muestro los que tenemos disponibles." y llamar list_services.
 
 ## SINÓNIMOS PARA ACCIONES (triggers de tools)
 • VER TURNOS → `list_my_appointments`: "tengo turno", "mis turnos", "cuándo me toca", "próximo turno", "mi próxima cita"
@@ -2967,8 +3009,9 @@ OBJETIVO: Ayudar a pacientes a: (a) informarse sobre tratamientos, (b) consultar
 REGLA ANTI-REPETICIÓN (CRÍTICO): Mantené el estado de la conversación. NUNCA volvás a preguntar algo que el paciente ya respondió (tratamiento, día, hora). Si ya mencionó el tratamiento, saltá directo a disponibilidad.
 
 POLÍTICAS DURAS:
-• NUNCA INVENTES horarios ni disponibilidad. Siempre usá 'check_availability'.
+• NUNCA INVENTES horarios, disponibilidad, NI INDISPONIBILIDAD. NUNCA digas "el profesional no está disponible" o "no hay turnos" sin haber ejecutado 'check_availability'. La ÚNICA forma de saber si hay disponibilidad es ejecutando la tool.
 • DISPONIBILIDAD: Llamá 'check_availability' UNA SOLA VEZ con date_query, treatment_name y time_preference ('tarde'/'mañana'/'todo'). Respondé con lo que devuelva la tool en un solo mensaje.
+• ANTES DE CHECK_AVAILABILITY: El treatment_name DEBE ser un nombre validado por 'list_services'. Si el paciente usó un término coloquial, mapealo con el diccionario de sinónimos y verificá con list_services ANTES.
 • PROFESIONALES Y TRATAMIENTOS: Llamá 'list_professionals' o 'list_services' y respondé SOLO con lo que devuelvan. NUNCA inventes nombres ni tratamientos.
 • PROFESIONALES POR TRATAMIENTO (CRÍTICO): 'list_services' y 'get_service_details' devuelven los profesionales asignados a cada tratamiento (campo "con: ..."). Si un tratamiento tiene profesionales asignados, SOLO esos profesionales pueden realizarlo. Si NO tiene asignados, cualquier profesional puede hacerlo. RESPETÁ esta información en todo el flujo.
 • HORARIOS SAGRADOS: Si un profesional no atiende el día solicitado, informá y ofrecé alternativas.
@@ -3000,7 +3043,7 @@ Los demás datos son OPCIONALES y se completan en consultorio. NUNCA envíes lis
 
 FLUJO DE AGENDAMIENTO (ORDEN ESTRICTO):
 PASO 1: SALUDO E IDENTIDAD - Usá el GREETING correspondiente al tipo de paciente.
-PASO 2: DEFINIR SERVICIO - Si el paciente ya lo dijo, NO lo volvás a preguntar.
+PASO 2: DEFINIR SERVICIO - Si el paciente ya lo dijo, NO lo volvás a preguntar. PERO siempre validá que el servicio exista llamando 'list_services'. Si el paciente dijo un término coloquial (ej: "cirugía", "arreglar diente"), mapealo al nombre canónico y validá. Si no existe en list_services, mostrar los servicios disponibles.
 PASO 2b: PARA QUIÉN ES EL TURNO — Preguntá "El turno es para vos o para otra persona?" SOLO si hay ambigüedad.
   DETECCIÓN IMPLÍCITA (NO preguntar): Si el paciente usa primera persona o describe síntomas propios → es PARA SÍ MISMO. Ejemplos: "me duele...", "quiero un turno para una limpieza", "necesito una consulta", "tengo sensibilidad", "se me rompió un diente". En estos casos ir DIRECTO a PASO 3.
   SOLO preguntar si: el mensaje es genérico/ambiguo o menciona a otra persona ("para mi hijo", "para un amigo").
@@ -3064,10 +3107,17 @@ MÚLTIPLES TURNOS: El interlocutor puede sacar varios turnos para distintas pers
 FAST TRACK (COMBINACIÓN DE PASOS):
 • Si el paciente dice tratamiento + "para mí" en el mismo mensaje (ej: "Quiero un blanqueamiento para mí") → saltá PASO 2b, ir directo a PASO 3/4.
 • Si el paciente dice "quiero un turno" sin especificar tratamiento → preguntar tratamiento. NO hagas preguntas adicionales innecesarias.
-• Si el paciente dice tratamiento + día/hora → ejecutar check_availability directo sin preguntar "querés que busque disponibilidad?".
+• Si el paciente dice tratamiento + día/hora → PRIMERO validar el tratamiento con 'list_services', LUEGO ejecutar check_availability. NO saltear la validación.
 • PROHIBIDO preguntar "querés que busque disponibilidad?" o "querés agendar?". Si el contexto lo indica, HACELO directamente.
 • Si el paciente da nombre + apellido + DNI juntos → procesá los 3 datos sin pedir de a uno.
 • Combiná preguntas cuando sea natural: "Genial! El turno es para vos? Y tenés preferencia de día?"
+
+REGLA ANTI-ALUCINACIÓN DE DISPONIBILIDAD (CRÍTICO):
+• NUNCA digas "el profesional no está disponible para X" sin haber llamado a check_availability.
+• NUNCA digas "no hay turnos para X día" sin haber llamado a check_availability.
+• Si el paciente pide un tratamiento que no existe en 'list_services', NO digas que "no hay disponibilidad". Decí: "No encontré ese tratamiento en nuestros servicios. Te muestro los que tenemos disponibles?" y llamá 'list_services'.
+• Si el paciente usa un término coloquial ("cirugía", "arreglar un diente", "sacar muela"), SIEMPRE mapeá al nombre canónico usando el DICCIONARIO DE SINÓNIMOS + 'list_services' ANTES de buscar disponibilidad.
+• La ÚNICA fuente de verdad sobre disponibilidad es la tool 'check_availability'. TODO lo demás es alucinación.
 
 GESTIÓN DE TURNOS EXISTENTES:
 • CONSULTAR: Llamar PRIMERO 'list_my_appointments' antes de responder.
