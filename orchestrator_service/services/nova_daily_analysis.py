@@ -253,7 +253,7 @@ async def _get_operational_stats(pool, tenant_id: int) -> dict:
 async def _get_conversation_summary(pool, tenant_id: int) -> str:
     """Fetch last 24h chat messages, format as compact summary."""
     rows = await pool.fetch(
-        "SELECT cm.content, cm.role, cc.channel, cc.customer_phone "
+        "SELECT cm.content, cm.role, cc.channel, cc.external_user_id "
         "FROM chat_messages cm "
         "JOIN chat_conversations cc ON cc.id = cm.conversation_id "
         "WHERE cm.tenant_id = $1 "
