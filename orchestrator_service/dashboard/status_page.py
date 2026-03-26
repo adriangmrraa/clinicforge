@@ -139,6 +139,7 @@ async def fetch_dashboard_metrics(days: int = 30, tenant_id: int = 1) -> Dict[st
         token_metrics = await token_tracker.get_total_metrics(tenant_id=tenant_id, days=days)
         daily_usage = await token_tracker.get_daily_usage(tenant_id=tenant_id, days=days)
         model_usage = await token_tracker.get_model_usage(tenant_id=tenant_id, days=days)
+        service_breakdown = await token_tracker.get_service_breakdown(tenant_id=tenant_id, days=days)
         current_config = await config_manager.get_all_config(tenant_id=tenant_id)
         system_metrics = await enhanced_system.get_system_metrics(days=days)
         db_stats = await get_database_stats()
@@ -147,6 +148,7 @@ async def fetch_dashboard_metrics(days: int = 30, tenant_id: int = 1) -> Dict[st
             "token_metrics": token_metrics,
             "daily_usage": daily_usage,
             "model_usage": model_usage,
+            "service_breakdown": service_breakdown,
             "current_config": current_config,
             "system_metrics": system_metrics,
             "db_stats": db_stats,
@@ -184,7 +186,14 @@ async def update_dashboard_config(
         from .config_manager import config_manager
         if config_manager is None:
             raise HTTPException(status_code=503, detail="Config manager no inicializado")
+        # Resolve tenant_id from JWT or X-Tenant-ID header
         tenant_id = 1
+        try:
+            tid_header = request.headers.get("X-Tenant-ID")
+            if tid_header and tid_header.isdigit():
+                tenant_id = int(tid_header)
+        except Exception:
+            pass
         allowed = {"OPENAI_MODEL", "MODEL_INSIGHTS", "OPENAI_TEMPERATURE", "MAX_TOKENS_PER_RESPONSE"}
         for key, value in payload.items():
             if key in allowed:

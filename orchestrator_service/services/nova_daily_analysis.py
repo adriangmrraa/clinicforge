@@ -113,7 +113,7 @@ async def _analyze_tenant(pool, redis, tenant_id: int, clinic_name: str):
         revenue=stats["facturacion"] or 0,
     )
 
-    analysis = await _analyze_with_gpt(prompt, OPENAI_API_KEY)
+    analysis = await _analyze_with_gpt(prompt, OPENAI_API_KEY, tenant_id=tenant_id)
     if analysis is None:
         logger.warning(f"nova_analysis_tenant_{tenant_id}: GPT returned no result")
         return
@@ -161,7 +161,7 @@ async def _analyze_consolidated(pool, redis, tenants):
         per_sede_json=json.dumps(per_sede_stats, indent=2, ensure_ascii=False),
     )
 
-    analysis = await _analyze_with_gpt(prompt, OPENAI_API_KEY)
+    analysis = await _analyze_with_gpt(prompt, OPENAI_API_KEY, tenant_id=tenant_id)
     if analysis:
         payload = {
             **analysis,
@@ -281,7 +281,7 @@ async def _get_conversation_summary(pool, tenant_id: int) -> str:
 # GPT call
 # ---------------------------------------------------------------------------
 
-async def _analyze_with_gpt(prompt: str, api_key: str) -> dict | None:
+async def _analyze_with_gpt(prompt: str, api_key: str, tenant_id: int = 0) -> dict | None:
     """Call GPT-4o-mini and return parsed JSON response."""
     if not api_key:
         logger.warning("nova_analysis: OPENAI_API_KEY not set, skipping")
@@ -308,6 +308,19 @@ async def _analyze_with_gpt(prompt: str, api_key: str) -> dict | None:
             response.raise_for_status()
             data = response.json()
             content = data["choices"][0]["message"]["content"]
+            # Track token usage
+            usage = data.get("usage", {})
+            if usage:
+                try:
+                    from dashboard.token_tracker import track_service_usage
+                    from db import db
+                    await track_service_usage(
+                        db.pool, tenant_id, "gpt-4o-mini",
+                        usage.get("prompt_tokens", 0), usage.get("completion_tokens", 0),
+                        source="nova_daily_analysis"
+                    )
+                except Exception:
+                    pass
             return json.loads(content)
     except Exception as e:
         logger.error(f"nova_analysis_gpt_error: {e}")

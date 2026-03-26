@@ -42,6 +42,14 @@ interface TokenMetrics {
   current_month?: { cost_usd: number };
 }
 
+interface ServiceBreakdown {
+  service: string;
+  model: string;
+  total_tokens: number;
+  cost_usd: number;
+  calls: number;
+}
+
 interface MetricsResponse {
   timestamp: string;
   status?: string;
@@ -49,6 +57,7 @@ interface MetricsResponse {
   token_metrics?: TokenMetrics;
   daily_usage?: { date: string; total_tokens: number; cost_usd: number }[];
   model_usage?: { model: string; total_tokens: number }[];
+  service_breakdown?: ServiceBreakdown[];
   db_stats?: Record<string, number>;
   projections?: Record<string, number>;
   current_config?: Record<string, string>;
@@ -152,7 +161,7 @@ export default function DashboardStatusView() {
     setModelSaving(key);
     setModelSaved(null);
     try {
-      await api.post('/admin/dashboard/api/config', { [key]: value });
+      await api.post('/dashboard/api/config', { [key]: value });
       setModelConfig(prev => ({ ...prev, [key]: value }));
       setModelSaved(key);
       setTimeout(() => setModelSaved(null), 2000);

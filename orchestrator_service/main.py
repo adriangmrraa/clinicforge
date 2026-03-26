@@ -4227,6 +4227,22 @@ async def _nova_realtime_handler(websocket: WebSocket, session_id: str):
 
                         elif etype == "response.done":
                             await websocket.send_text(json_mod.dumps({"type": "response_done"}))
+                            # Track Realtime API token usage
+                            try:
+                                resp_usage = event.get("response", {}).get("usage", {})
+                                if resp_usage:
+                                    in_tokens = resp_usage.get("input_tokens", 0) or resp_usage.get("total_tokens", 0) // 2
+                                    out_tokens = resp_usage.get("output_tokens", 0) or resp_usage.get("total_tokens", 0) // 2
+                                    from dashboard.token_tracker import track_service_usage
+                                    await track_service_usage(
+                                        db.pool, config.get("tenant_id", 1),
+                                        "gpt-4o-mini-realtime-preview",
+                                        in_tokens, out_tokens,
+                                        source="nova_voice",
+                                        phone=config.get("user_id", "system")
+                                    )
+                            except Exception:
+                                pass
 
                         elif etype == "response.function_call_arguments.done":
                             tool_name = event.get("name", "")

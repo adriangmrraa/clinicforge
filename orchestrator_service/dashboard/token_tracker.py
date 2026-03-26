@@ -36,7 +36,43 @@ OPENAI_PRICING = {
     # --- o1 Serie (razonamiento) ---
     "o1-preview": {"input": Decimal("0.01500"), "output": Decimal("0.06000"), "context": 128000, "description": "o1-preview - Razonamiento avanzado"},
     "o1-mini": {"input": Decimal("0.00300"), "output": Decimal("0.01200"), "context": 128000, "description": "o1-mini - Razonamiento económico"},
+    # --- Realtime API (voice) ---
+    "gpt-4o-mini-realtime-preview": {"input": Decimal("0.00060"), "output": Decimal("0.00240"), "context": 128000, "description": "GPT-4o Mini Realtime - Voz bidireccional"},
+    "gpt-4o-realtime-preview": {"input": Decimal("0.00500"), "output": Decimal("0.02000"), "context": 128000, "description": "GPT-4o Realtime - Voz premium"},
 }
+
+
+async def track_service_usage(pool, tenant_id: int, model: str, input_tokens: int, output_tokens: int, source: str = "unknown", phone: str = "system"):
+    """
+    Helper function to track token usage from ANY service (nova voice, daily analysis, memory extraction).
+    Can be called from anywhere without importing the full TokenTracker class.
+    """
+    try:
+        from dashboard.token_tracker import token_tracker
+        if not token_tracker:
+            return
+        cost = token_tracker.calculate_cost(model, input_tokens, output_tokens)
+        total = input_tokens + output_tokens
+        usage = TokenUsage(
+            conversation_id=f"{source}_{tenant_id}",
+            patient_phone=phone,
+            model=model,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            total_tokens=total,
+            cost_usd=cost,
+            timestamp=datetime.utcnow(),
+            tenant_id=tenant_id,
+        )
+        await token_tracker.track_usage(usage)
+        # Update tenant totals
+        await pool.execute(
+            "UPDATE tenants SET total_tokens_used = COALESCE(total_tokens_used, 0) + $1, total_tool_calls = COALESCE(total_tool_calls, 0) + 1 WHERE id = $2",
+            total, tenant_id
+        )
+        logger.info(f"📊 Service tokens tracked: {source} | {model} | {total} tokens | ${cost}")
+    except Exception as e:
+        logger.warning(f"⚠️ Service token tracking failed (non-fatal): {e}")
 
 @dataclass
 class TokenUsage:
@@ -270,6 +306,47 @@ class TokenTracker:
             self.logger.error(f"❌ Error obteniendo métricas totales: {e}")
             return {}
     
+    async def get_service_breakdown(self, tenant_id: int, days: int = 30) -> List[Dict]:
+        """Obtiene desglose de consumo por servicio (agente WhatsApp, Nova voice, daily analysis, memory)"""
+        try:
+            async with self.db_pool.acquire() as conn:
+                rows = await conn.fetch("""
+                    SELECT
+                        CASE
+                            WHEN conversation_id LIKE 'nova_voice_%' THEN 'Nova Voz'
+                            WHEN conversation_id LIKE 'nova_daily_analysis_%' THEN 'Análisis Diario'
+                            WHEN conversation_id LIKE 'patient_memory_%' THEN 'Memoria Pacientes'
+                            ELSE 'Agente WhatsApp/IG/FB'
+                        END as service,
+                        model,
+                        SUM(input_tokens) as total_input,
+                        SUM(output_tokens) as total_output,
+                        SUM(total_tokens) as total_tokens,
+                        SUM(cost_usd) as total_cost,
+                        COUNT(*) as calls
+                    FROM token_usage
+                    WHERE tenant_id = $1
+                    AND timestamp >= NOW() - make_interval(days => $2)
+                    GROUP BY service, model
+                    ORDER BY total_cost DESC
+                """, tenant_id, days)
+
+                result = []
+                for row in rows:
+                    result.append({
+                        "service": row["service"],
+                        "model": row["model"],
+                        "input_tokens": row["total_input"] or 0,
+                        "output_tokens": row["total_output"] or 0,
+                        "total_tokens": row["total_tokens"] or 0,
+                        "cost_usd": float(row["total_cost"] or 0),
+                        "calls": row["calls"] or 0,
+                    })
+                return result
+        except Exception as e:
+            self.logger.error(f"❌ Error obteniendo desglose por servicio: {e}")
+            return []
+
     async def get_available_models(self) -> List[Dict]:
         """Obtiene lista completa de modelos OpenAI para selector en dashboard (fuente de verdad: DB)"""
         models = []

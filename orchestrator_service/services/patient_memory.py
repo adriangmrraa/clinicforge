@@ -130,6 +130,18 @@ Solo JSON, sin explicaciones."""
                 }
             )
             result = resp.json()
+            # Track token usage
+            usage_data = result.get("usage", {})
+            if usage_data:
+                try:
+                    from dashboard.token_tracker import track_service_usage
+                    await track_service_usage(
+                        pool, tenant_id, "gpt-4o-mini",
+                        usage_data.get("prompt_tokens", 0), usage_data.get("completion_tokens", 0),
+                        source="patient_memory", phone=patient_phone
+                    )
+                except Exception:
+                    pass
             content = result.get("choices", [{}])[0].get("message", {}).get("content", "{}")
             data = json.loads(content)
             new_memories = data.get("memories", [])
