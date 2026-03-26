@@ -34,11 +34,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle, onCloseMo
   const location = useLocation();
   const { user, logout } = useAuth();
   const { t } = useTranslation();
-  const [clinicName, setClinicName] = useState<string>('');
+  const [clinicName, setClinicName] = useState<string>(localStorage.getItem('CLINIC_NAME') || '');
+  const [logoUrl, setLogoUrl] = useState<string>(localStorage.getItem('CLINIC_LOGO') || '');
 
   useEffect(() => {
-    const cached = localStorage.getItem('CLINIC_NAME');
-    if (cached) { setClinicName(cached); return; }
     api.get('/admin/chat/tenants').then(res => {
       const tenants = res.data;
       if (tenants?.length > 0) {
@@ -47,6 +46,19 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle, onCloseMo
         localStorage.setItem('CLINIC_NAME', name);
       }
     }).catch(() => {});
+    // Load logo
+    const tid = localStorage.getItem('X-Tenant-ID') || '1';
+    const logoPath = `/admin/public/tenant-logo/${tid}`;
+    api.get(logoPath, { responseType: 'blob' }).then(res => {
+      const url = URL.createObjectURL(res.data);
+      setLogoUrl(url);
+      localStorage.setItem('CLINIC_LOGO', logoPath);
+      // Set favicon dynamically
+      const link = document.querySelector("link[rel~='icon']") as HTMLLinkElement;
+      if (link) { link.href = url; }
+    }).catch(() => {
+      localStorage.removeItem('CLINIC_LOGO');
+    });
   }, []);
 
   const menuItems = [
@@ -79,8 +91,12 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle, onCloseMo
       {/* Logo Area */}
       <div className={`h-16 flex items-center ${collapsed && !onCloseMobile ? 'justify-center' : 'px-6'} border-b border-medical-800 shrink-0`}>
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center shrink-0">
-            <Stethoscope size={18} className="text-white" />
+          <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center shrink-0 overflow-hidden">
+            {logoUrl ? (
+              <img src={logoUrl} alt="Logo" className="w-full h-full object-cover rounded-lg" />
+            ) : (
+              <Stethoscope size={18} className="text-white" />
+            )}
           </div>
           {(!collapsed || onCloseMobile) && (
             <span className="font-semibold text-lg truncate whitespace-nowrap">{clinicName || t('nav.app_name')}</span>

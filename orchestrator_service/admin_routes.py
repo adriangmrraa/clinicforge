@@ -1654,7 +1654,7 @@ async def get_tenants(user_data=Depends(verify_admin_token)):
     if user_data.role != 'ceo':
         raise HTTPException(status_code=403, detail="Solo el CEO puede gestionar clínicas.")
     rows = await db.pool.fetch(
-        "SELECT id, clinic_name, bot_phone_number, config, address, google_maps_url, working_hours, consultation_price, bank_cbu, bank_alias, bank_holder_name, derivation_email, created_at, updated_at FROM tenants ORDER BY id ASC"
+        "SELECT id, clinic_name, bot_phone_number, config, address, google_maps_url, working_hours, consultation_price, bank_cbu, bank_alias, bank_holder_name, derivation_email, logo_url, created_at, updated_at FROM tenants ORDER BY id ASC"
     )
     result = []
     for r in rows:
@@ -1758,6 +1758,32 @@ async def update_tenant(tenant_id: int, data: Dict[str, Any], user_data=Depends(
     await db.pool.execute(query, *params)
     logger.info(f"Tenant {tenant_id} updated: calendar_provider={data.get('calendar_provider')} (persisted)")
     return {"status": "updated"}
+
+@router.post("/tenants/{tenant_id}/logo", tags=["Sedes"], summary="Subir logo de la clínica")
+async def upload_tenant_logo(tenant_id: int, file: UploadFile = File(...), user_data=Depends(verify_admin_token)):
+    """Sube un logo para la clínica. Solo CEO. Acepta PNG, JPG, SVG, WebP. Max 2MB."""
+    if user_data.role != 'ceo':
+        raise HTTPException(status_code=403, detail="Solo el CEO puede gestionar clínicas.")
+    if not file.content_type or not file.content_type.startswith(('image/', 'image/svg')):
+        raise HTTPException(status_code=400, detail="Solo se aceptan archivos de imagen (PNG, JPG, SVG, WebP).")
+    content = await file.read()
+    if len(content) > 2 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="El archivo no puede superar 2MB.")
+    ext = file.filename.rsplit('.', 1)[-1].lower() if file.filename and '.' in file.filename else 'png'
+    if ext not in ('png', 'jpg', 'jpeg', 'svg', 'webp', 'ico'):
+        ext = 'png'
+    upload_dir = Path(f"/app/uploads/tenants/{tenant_id}")
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    # Remove old logos
+    for old in upload_dir.glob("logo.*"):
+        old.unlink(missing_ok=True)
+    file_path = upload_dir / f"logo.{ext}"
+    file_path.write_bytes(content)
+    logo_url = f"/public/tenant-logo/{tenant_id}"
+    await db.pool.execute("UPDATE tenants SET logo_url = $1 WHERE id = $2", logo_url, tenant_id)
+    # Clear frontend cache
+    return {"status": "ok", "logo_url": logo_url}
+
 
 @router.delete("/tenants/{tenant_id}", tags=["Sedes"], summary="Eliminar una sede")
 async def delete_tenant(tenant_id: int, user_data=Depends(verify_admin_token)):
@@ -4684,6 +4710,19 @@ async def get_public_media(image_id: str):
     except Exception as e:
         logger.error(f"Error fetching media: {e}")
         raise HTTPException(status_code=400, detail="ID Invalido o error interno")
+
+
+@router.get("/public/tenant-logo/{tenant_id}", tags=["Media"], summary="Logo público de la clínica")
+async def get_tenant_logo(tenant_id: int):
+    """Endpoint público para servir el logo de la clínica (usado como favicon y en sidebar)."""
+    upload_dir = Path(f"/app/uploads/tenants/{tenant_id}")
+    if upload_dir.exists():
+        for ext in ('png', 'jpg', 'jpeg', 'svg', 'webp', 'ico'):
+            logo_path = upload_dir / f"logo.{ext}"
+            if logo_path.exists():
+                mime_map = {'png': 'image/png', 'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'svg': 'image/svg+xml', 'webp': 'image/webp', 'ico': 'image/x-icon'}
+                return FileResponse(str(logo_path), media_type=mime_map.get(ext, 'image/png'))
+    raise HTTPException(status_code=404, detail="Logo no encontrado")
 
 
 # ==================== ENDPOINTS ANALYTICS ====================
