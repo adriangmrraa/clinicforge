@@ -92,19 +92,26 @@ const StatCard = ({
 );
 
 const AVAILABLE_MODELS = [
-  { id: 'gpt-5.4', label: 'GPT-5.4 — Flagship (1M ctx)', tier: 'premium' },
-  { id: 'gpt-5', label: 'GPT-5 — Chat principal (400K ctx)', tier: 'premium' },
-  { id: 'gpt-5.3', label: 'GPT-5.3 — Balanceado (400K ctx)', tier: 'premium' },
-  { id: 'gpt-5.2', label: 'GPT-5.2 — Estándar (400K ctx)', tier: 'standard' },
-  { id: 'gpt-5.2-thinking', label: 'GPT-5.2 Thinking — Razonamiento', tier: 'standard' },
-  { id: 'gpt-5-mini', label: 'GPT-5 Mini — Económico (400K ctx)', tier: 'economy' },
-  { id: 'gpt-4o', label: 'GPT-4o — Balanceado (128K ctx)', tier: 'standard' },
-  { id: 'gpt-4o-mini', label: 'GPT-4o Mini — Más económico (128K ctx)', tier: 'economy' },
-  { id: 'gpt-4-turbo', label: 'GPT-4 Turbo (128K ctx)', tier: 'standard' },
-  { id: 'o1-preview', label: 'o1 Preview — Razonamiento avanzado', tier: 'premium' },
-  { id: 'o1-mini', label: 'o1 Mini — Razonamiento económico', tier: 'economy' },
-  { id: 'gpt-3.5-turbo', label: 'GPT-3.5 Turbo — Más barato (16K ctx)', tier: 'economy' },
+  // Text models (chat, analysis, memory)
+  { id: 'gpt-5.4', label: 'GPT-5.4 — Flagship (1M ctx)', tier: 'premium', type: 'text' },
+  { id: 'gpt-5', label: 'GPT-5 — Chat principal (400K ctx)', tier: 'premium', type: 'text' },
+  { id: 'gpt-5.3', label: 'GPT-5.3 — Balanceado (400K ctx)', tier: 'premium', type: 'text' },
+  { id: 'gpt-5.2', label: 'GPT-5.2 — Estándar (400K ctx)', tier: 'standard', type: 'text' },
+  { id: 'gpt-5.2-thinking', label: 'GPT-5.2 Thinking — Razonamiento', tier: 'standard', type: 'text' },
+  { id: 'gpt-5-mini', label: 'GPT-5 Mini — Económico (400K ctx)', tier: 'economy', type: 'text' },
+  { id: 'gpt-4o', label: 'GPT-4o — Balanceado (128K ctx)', tier: 'standard', type: 'text' },
+  { id: 'gpt-4o-mini', label: 'GPT-4o Mini — Más económico (128K ctx)', tier: 'economy', type: 'text' },
+  { id: 'gpt-4-turbo', label: 'GPT-4 Turbo (128K ctx)', tier: 'standard', type: 'text' },
+  { id: 'o1-preview', label: 'o1 Preview — Razonamiento avanzado', tier: 'premium', type: 'text' },
+  { id: 'o1-mini', label: 'o1 Mini — Razonamiento económico', tier: 'economy', type: 'text' },
+  { id: 'gpt-3.5-turbo', label: 'GPT-3.5 Turbo — Más barato (16K ctx)', tier: 'economy', type: 'text' },
+  // Realtime models (voice only)
+  { id: 'gpt-4o-mini-realtime-preview', label: 'GPT-4o Mini Realtime — Voz económica', tier: 'economy', type: 'realtime' },
+  { id: 'gpt-4o-realtime-preview', label: 'GPT-4o Realtime — Voz premium', tier: 'premium', type: 'realtime' },
 ];
+
+// Nova Voice only works with realtime models, others only with text models
+const VOICE_KEYS = new Set(['MODEL_NOVA_VOICE']);
 
 interface ModelAction {
   key: string;
@@ -155,7 +162,9 @@ export default function DashboardStatusView() {
     if (data?.current_config) {
       const cfg: Record<string, string> = {};
       for (const action of MODEL_ACTIONS) {
-        cfg[action.key] = data.current_config[action.key] || 'gpt-4o-mini';
+        const isVoice = VOICE_KEYS.has(action.key);
+        const defaultModel = isVoice ? 'gpt-4o-mini-realtime-preview' : 'gpt-4o-mini';
+        cfg[action.key] = data.current_config[action.key] || defaultModel;
       }
       setModelConfig(cfg);
     }
@@ -324,11 +333,14 @@ export default function DashboardStatusView() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {MODEL_ACTIONS.map((action) => {
                   const ActionIcon = action.icon;
-                  const currentModel = modelConfig[action.key] || 'gpt-4o-mini';
+                  const isVoice = VOICE_KEYS.has(action.key);
+                  const defaultModel = isVoice ? 'gpt-4o-mini-realtime-preview' : 'gpt-4o-mini';
+                  const currentModel = modelConfig[action.key] || defaultModel;
+                  const filteredModels = AVAILABLE_MODELS.filter(m => isVoice ? m.type === 'realtime' : m.type === 'text');
                   return (
                     <div key={action.key} className="border border-slate-200 rounded-xl p-4 hover:border-blue-200 transition-colors">
                       <div className="flex items-start gap-3 mb-3">
-                        <div className="p-2 rounded-lg bg-blue-50 text-blue-600 shrink-0">
+                        <div className={`p-2 rounded-lg shrink-0 ${isVoice ? 'bg-violet-50 text-violet-600' : 'bg-blue-50 text-blue-600'}`}>
                           <ActionIcon size={18} />
                         </div>
                         <div className="min-w-0">
@@ -341,9 +353,9 @@ export default function DashboardStatusView() {
                           value={currentModel}
                           onChange={(e) => saveModelConfig(action.key, e.target.value)}
                           disabled={modelSaving === action.key}
-                          className="flex-1 px-3 py-2 rounded-lg border border-slate-200 text-sm font-medium bg-white focus:ring-2 focus:ring-blue-500 outline-none disabled:opacity-50"
+                          className={`flex-1 px-3 py-2 rounded-lg border text-sm font-medium bg-white outline-none disabled:opacity-50 ${isVoice ? 'border-violet-200 focus:ring-2 focus:ring-violet-500' : 'border-slate-200 focus:ring-2 focus:ring-blue-500'}`}
                         >
-                          {AVAILABLE_MODELS.map((m) => (
+                          {filteredModels.map((m) => (
                             <option key={m.id} value={m.id}>{m.label}</option>
                           ))}
                         </select>
@@ -354,6 +366,7 @@ export default function DashboardStatusView() {
                           <Check size={18} className="text-green-500 shrink-0" />
                         )}
                       </div>
+                      {isVoice && <p className="text-[10px] text-violet-400 mt-1.5">Solo modelos Realtime (audio bidireccional)</p>}
                     </div>
                   );
                 })}
