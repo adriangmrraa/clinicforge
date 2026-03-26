@@ -364,14 +364,9 @@ class TokenTracker:
                         data = resp.json().get("data", [])
                         for m in data:
                             mid = m.get("id", "")
-                            # Only show GPT chat models (not embeddings, tts, dall-e, etc.)
-                            if not (mid.startswith("gpt-") or mid.startswith("o1") or mid.startswith("o3") or mid.startswith("o4")):
-                                continue
-                            # Skip internal/dated snapshots unless they're the main model
-                            if mid.count("-202") > 0 and mid not in MODEL_PRICING:
-                                continue
-                            # Skip audio/tts/whisper/embedding models
-                            if any(x in mid for x in ["audio", "tts", "whisper", "embedding", "dall-e", "davinci", "babbage", "moderation"]):
+                            # ONLY show models in our curated MODEL_PRICING list
+                            # This prevents showing retired/legacy/snapshot models
+                            if mid not in MODEL_PRICING:
                                 continue
 
                             known = MODEL_PRICING.get(mid, {})
