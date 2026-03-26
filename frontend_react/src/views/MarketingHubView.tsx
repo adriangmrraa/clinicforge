@@ -808,7 +808,6 @@ export default function MarketingHubView() {
                 />
             </div>
             </div>
-            </div>
         </div>
     );
 }
