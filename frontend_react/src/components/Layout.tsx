@@ -225,7 +225,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }: LayoutProps) => {
               </div>
             </button>
             <h1 className="text-lg lg:text-xl font-semibold text-medical-900 truncate max-w-[150px] md:max-w-none">
-              {t('layout.app_title')}
+              {localStorage.getItem('CLINIC_NAME') || t('layout.app_title')}
             </h1>
           </div>
 

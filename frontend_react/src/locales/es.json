@@ -18,7 +18,7 @@
     "close_menu": "Cerrar menú",
     "expand": "Expandir",
     "collapse": "Contraer",
-    "app_name": "Nombre de Clínica",
+    "app_name": "Dentalogic",
     "credentials": "Credenciales",
     "status_connected": "Conectado",
     "status_reconnecting": "Reconectando..."
@@ -818,7 +818,7 @@
     "edit_profile": "Editar Perfil"
   },
   "layout": {
-    "app_title": "Sistema Dental",
+    "app_title": "Dentalogic",
     "branch": "Sucursal",
     "branch_principal": "Principal",
     "notification_handoff": "Derivación Humana",

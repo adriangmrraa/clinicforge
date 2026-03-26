@@ -18,7 +18,7 @@
     "close_menu": "Close menu",
     "expand": "Expand",
     "collapse": "Collapse",
-    "app_name": "Clinic Name",
+    "app_name": "Dentalogic",
     "credentials": "Credentials"
   },
   "common": {
@@ -819,7 +819,7 @@
     "edit_profile": "Edit profile"
   },
   "layout": {
-    "app_title": "Dental System",
+    "app_title": "Dentalogic",
     "branch": "Branch",
     "branch_principal": "Main",
     "notification_handoff": "Human handoff",

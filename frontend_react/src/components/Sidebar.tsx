@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Calendar,
@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTranslation } from '../context/LanguageContext';
+import api from '../api/axios';
 
 interface SidebarProps {
   collapsed: boolean;
@@ -33,6 +34,20 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle, onCloseMo
   const location = useLocation();
   const { user, logout } = useAuth();
   const { t } = useTranslation();
+  const [clinicName, setClinicName] = useState<string>('');
+
+  useEffect(() => {
+    const cached = localStorage.getItem('CLINIC_NAME');
+    if (cached) { setClinicName(cached); return; }
+    api.get('/admin/chat/tenants').then(res => {
+      const tenants = res.data;
+      if (tenants?.length > 0) {
+        const name = tenants[0].name || tenants[0].clinic_name || '';
+        setClinicName(name);
+        localStorage.setItem('CLINIC_NAME', name);
+      }
+    }).catch(() => {});
+  }, []);
 
   const menuItems = [
     { id: 'dashboard', labelKey: 'nav.dashboard' as const, icon: <Home size={20} />, path: '/', roles: ['ceo', 'professional', 'secretary'] },
@@ -68,7 +83,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle, onCloseMo
             <Stethoscope size={18} className="text-white" />
           </div>
           {(!collapsed || onCloseMobile) && (
-            <span className="font-semibold text-lg truncate whitespace-nowrap">{t('nav.app_name')}</span>
+            <span className="font-semibold text-lg truncate whitespace-nowrap">{clinicName || t('nav.app_name')}</span>
           )}
         </div>
 

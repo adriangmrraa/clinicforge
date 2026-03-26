@@ -17,7 +17,7 @@
     "close_menu": "Fermer le menu",
     "expand": "Développer",
     "collapse": "Réduire",
-    "app_name": "Clinic Name"
+    "app_name": "Dentalogic"
   },
   "common": {
     "save": "Enregistrer",
@@ -809,7 +809,7 @@
     "sign_medical_alta": "Signer l'incorporation médicale"
   },
   "layout": {
-    "app_title": "Système dentaire",
+    "app_title": "Dentalogic",
     "branch": "Succursale",
     "branch_principal": "Principal",
     "notification_handoff": "Dérivation humaine",
