@@ -303,23 +303,43 @@ export default function DashboardStatusView() {
                   <Activity size={20} className="text-medical-600" />
                   Uso diario de tokens
                 </h2>
-                <div className="h-[280px]">
+                <div className="h-[260px]">
                   <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
-                    <BarChart data={dailyUsage}>
+                    <BarChart data={dailyUsage} margin={{ top: 5, right: 5, left: -10, bottom: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-                      <XAxis dataKey="date" tick={{ fill: '#64748b', fontSize: 12 }} />
-                      <YAxis tick={{ fill: '#64748b', fontSize: 12 }} />
-                      <Tooltip
-                        contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                        formatter={(value: number, name: string) =>
-                          [name === 'cost_usd' ? `$${value.toFixed(4)}` : value.toLocaleString(), name === 'cost_usd' ? 'Costo USD' : 'Tokens']
-                        }
+                      <XAxis
+                        dataKey="date"
+                        tick={{ fill: '#64748b', fontSize: 10 }}
+                        tickLine={false}
+                        axisLine={false}
+                        tickFormatter={(v) => { const d = new Date(v + 'T00:00:00'); return `${d.getDate()}/${d.getMonth()+1}`; }}
                       />
-                      <Bar dataKey="total_tokens" fill="#3b82f6" radius={[4, 4, 0, 0]} name="Tokens" />
-                      <Bar dataKey="cost_usd" fill="#10b981" radius={[4, 4, 0, 0]} name="Costo USD" />
+                      <YAxis
+                        tick={{ fill: '#64748b', fontSize: 10 }}
+                        tickLine={false}
+                        axisLine={false}
+                        width={45}
+                        tickFormatter={(v) => v >= 1000 ? `${(v/1000).toFixed(0)}K` : v}
+                      />
+                      <Tooltip
+                        contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)', fontSize: 13 }}
+                        labelFormatter={(v) => { const d = new Date(v + 'T00:00:00'); return d.toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric', month: 'short' }); }}
+                        formatter={(value: number, name: string) => {
+                          if (name === 'Tokens') return [value.toLocaleString('es-AR'), 'Tokens'];
+                          return [value, name];
+                        }}
+                      />
+                      <Bar dataKey="total_tokens" fill="#3b82f6" radius={[6, 6, 0, 0]} name="Tokens" barSize={20} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
+                {/* Cost summary below chart */}
+                {dailyUsage.length > 0 && (
+                  <div className="mt-3 flex items-center justify-between text-xs text-slate-500 px-1">
+                    <span>Costo total periodo: <strong className="text-emerald-600">${dailyUsage.reduce((s, d) => s + (d.cost_usd || 0), 0).toFixed(4)}</strong></span>
+                    <span>Promedio diario: <strong className="text-blue-600">{Math.round(dailyUsage.reduce((s, d) => s + (d.total_tokens || 0), 0) / dailyUsage.length).toLocaleString('es-AR')} tokens</strong></span>
+                  </div>
+                )}
               </div>
             )}
 

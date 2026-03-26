@@ -270,28 +270,40 @@ export default function DashboardView() {
                 <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-emerald-500"></div> {t('dashboard.completed')}</span>
               </div>
             </div>
-            <div className="h-[300px] w-full">
+            <div className="h-[220px] sm:h-[300px] w-full">
               {stats?.growth_data ? (
                 <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
-                  <AreaChart data={stats.growth_data}>
+                  <AreaChart data={stats.growth_data} margin={{ top: 5, right: 5, left: -15, bottom: 0 }}>
                     <defs>
                       <linearGradient id="colorIA" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.1} />
+                        <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.15} />
                         <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
                       </linearGradient>
                       <linearGradient id="colorDone" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.1} />
+                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.15} />
                         <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
                       </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                    <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 12 }} dy={10} />
-                    <YAxis axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 12 }} />
-                    <Tooltip
-                      contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                    <XAxis
+                      dataKey="date"
+                      axisLine={false}
+                      tickLine={false}
+                      tick={{ fill: '#94a3b8', fontSize: 10 }}
+                      dy={10}
+                      tickFormatter={(v) => { const d = new Date(v + 'T00:00:00'); return `${d.getDate()}/${d.getMonth()+1}`; }}
                     />
-                    <Area type="monotone" dataKey="ia_referrals" stroke="#3b82f6" strokeWidth={3} fillOpacity={1} fill="url(#colorIA)" />
-                    <Area type="monotone" dataKey="completed_appointments" stroke="#10b981" strokeWidth={3} fillOpacity={1} fill="url(#colorDone)" />
+                    <YAxis axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 10 }} width={30} allowDecimals={false} />
+                    <Tooltip
+                      contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)', fontSize: 13 }}
+                      labelFormatter={(v) => { const d = new Date(v + 'T00:00:00'); return d.toLocaleDateString('es-AR', { day: 'numeric', month: 'short' }); }}
+                      formatter={(value: number, name: string) => [
+                        value,
+                        name === 'ia_referrals' ? 'Derivaciones IA' : name === 'completed_appointments' ? 'Turnos completados' : name
+                      ]}
+                    />
+                    <Area type="monotone" dataKey="ia_referrals" stroke="#3b82f6" strokeWidth={2.5} fillOpacity={1} fill="url(#colorIA)" name="Derivaciones IA" />
+                    <Area type="monotone" dataKey="completed_appointments" stroke="#10b981" strokeWidth={2.5} fillOpacity={1} fill="url(#colorDone)" name="Turnos completados" />
                   </AreaChart>
                 </ResponsiveContainer>
               ) : (
