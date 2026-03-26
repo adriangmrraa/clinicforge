@@ -363,7 +363,7 @@ export default function AgendaView() {
     list = list.filter((apt: Appointment) => apt.status !== 'cancelled');
     
     if (!selectedProfessionalId || selectedProfessionalId === 'all') return list;
-    return list.filter((apt: Appointment) => apt.professional_id.toString() === selectedProfessionalId);
+    return list.filter((apt: Appointment) => apt.professional_id?.toString() === selectedProfessionalId);
   }, [appointments, selectedProfessionalId]);
 
   const filteredBlocks = useMemo(() => {
@@ -433,7 +433,7 @@ export default function AgendaView() {
       backgroundColor: getSourceColor(apt.source),
       borderColor: getSourceColor(apt.source),
       extendedProps: { ...apt, eventType: 'appointment' },
-      resourceId: apt.professional_id.toString(),
+      resourceId: apt.professional_id?.toString() || '0',
     })),
     ...filteredBlocks.map((block) => ({
       id: block.id,
