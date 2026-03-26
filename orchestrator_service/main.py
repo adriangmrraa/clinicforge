@@ -335,12 +335,13 @@ def is_time_in_working_hours(time_str: str, day_config: Dict[str, Any]) -> bool:
         pass
     return False
 
-def generate_free_slots(target_date: date, busy_intervals_by_prof: Dict[int, set], 
-                        start_time_str="09:00", end_time_str="18:00", interval_minutes=30, 
+def generate_free_slots(target_date: date, busy_intervals_by_prof: Dict[int, set],
+                        start_time_str="09:00", end_time_str="18:00", interval_minutes=30,
                         duration_minutes=30, limit=20, time_preference: Optional[str] = None) -> List[str]:
-    """Genera lista de horarios disponibles (si al menos un profesional tiene el hueco completo)."""
+    """Genera lista de horarios disponibles (si al menos un profesional tiene el hueco COMPLETO
+    para la duración del tratamiento). Verificación con granularidad de 15 min para evitar solapamientos."""
     slots = []
-    
+
     # Parse start and end times
     try:
         sh, sm = map(int, start_time_str.split(':'))
@@ -351,10 +352,10 @@ def generate_free_slots(target_date: date, busy_intervals_by_prof: Dict[int, set
 
     current = datetime.combine(target_date, datetime.min.time()).replace(hour=sh, minute=sm, tzinfo=ARG_TZ)
     end_limit = datetime.combine(target_date, datetime.min.time()).replace(hour=eh, minute=em, tzinfo=ARG_TZ)
-    
+
     now = get_now_arg()
-    
-    # Un horario está libre si AL MENOS UN profesional está libre durante toda la duración solicitada
+
+    # Un horario está libre si AL MENOS UN profesional está libre durante TODA la duración solicitada
     while current < end_limit:
         # No ofrecer turnos en el pasado (si es hoy)
         if target_date == now.date() and current <= now:
@@ -369,7 +370,7 @@ def generate_free_slots(target_date: date, busy_intervals_by_prof: Dict[int, set
             current += timedelta(minutes=interval_minutes)
             continue
 
-        # Verificar si algún profesional tiene el hueco libre
+        # Verificar si algún profesional tiene el hueco libre para TODA la duración
         time_needed = current + timedelta(minutes=duration_minutes)
         if time_needed > end_limit: # No cabe al final del día
             current += timedelta(minutes=interval_minutes)
@@ -378,26 +379,26 @@ def generate_free_slots(target_date: date, busy_intervals_by_prof: Dict[int, set
         any_prof_free = False
         for prof_id, busy_set in busy_intervals_by_prof.items():
             slot_free = True
-            # Revisar cada intervalo de 30 min dentro de la duración
+            # Verificar cada bloque de 15 min dentro de la duración del tratamiento
             check_time = current
             while check_time < time_needed:
                 if check_time.strftime("%H:%M") in busy_set:
                     slot_free = False
                     break
-                check_time += timedelta(minutes=30)
-            
+                check_time += timedelta(minutes=15)
+
             if slot_free:
                 any_prof_free = True
                 break
-        
+
         if any_prof_free:
             slots.append(current.strftime("%H:%M"))
-        
+
         if len(slots) >= limit:
             break
 
         current += timedelta(minutes=interval_minutes)
-    
+
     return slots
 
 
@@ -946,35 +947,39 @@ async def check_availability(date_query: str, professional_name: Optional[str] =
             # Solo marcar como ocupados los horarios fuera de working_hours cuando el día tiene slots configurados
             if day_config.get("enabled") and day_config.get("slots"):
                 check_time = datetime.combine(target_date, datetime.min.time()).replace(hour=8, minute=0)
-                for _ in range(24):
+                while check_time.hour < 20:
                     h_m = check_time.strftime("%H:%M")
                     if not is_time_in_working_hours(h_m, day_config):
                         busy_map[prof_id].add(h_m)
-                    check_time += timedelta(minutes=30)
-                    if check_time.hour >= 20:
-                        break
+                    check_time += timedelta(minutes=15)
             # Si enabled=False o slots=[], no añadimos ocupación → profesional disponible en horario clínica
 
-        # Agregar bloqueos de GCal
+        # Agregar bloqueos de GCal (granularidad 15 min)
         global_busy = set()
         for b in gcal_blocks:
             it = b['start'].astimezone(ARG_TZ)
-            while it < b['end'].astimezone(ARG_TZ):
+            b_end = b['end'].astimezone(ARG_TZ)
+            while it < b_end:
                 h_m = it.strftime("%H:%M")
                 if b['professional_id']:
                     if b['professional_id'] in busy_map:
                         busy_map[b['professional_id']].add(h_m)
                 else:
                     global_busy.add(h_m)
-                it += timedelta(minutes=30)
+                it += timedelta(minutes=15)
         
         for appt in appointments:
             it = appt['start'].astimezone(ARG_TZ)
-            end_it = it + timedelta(minutes=appt['duration_minutes'])
-            while it < end_it:
+            appt_duration = appt['duration_minutes'] or 60  # Default 60 if NULL
+            end_it = it + timedelta(minutes=appt_duration)
+            # Mark ALL 15-min granularity slots as busy to prevent overlap
+            # Round start DOWN to nearest 15-min boundary
+            rounded_start = it.replace(minute=(it.minute // 15) * 15, second=0, microsecond=0)
+            check = rounded_start
+            while check < end_it:
                 if appt['professional_id'] in busy_map:
-                    busy_map[appt['professional_id']].add(it.strftime("%H:%M"))
-                it += timedelta(minutes=30)
+                    busy_map[appt['professional_id']].add(check.strftime("%H:%M"))
+                check += timedelta(minutes=15)
         
         # Unir globales a todos
         for pid in busy_map:
@@ -1002,7 +1007,7 @@ async def check_availability(date_query: str, professional_name: Optional[str] =
                         gap_hm = gap_t.strftime("%H:%M")
                         for pid in busy_map:
                             busy_map[pid].add(gap_hm)
-                        gap_t += timedelta(minutes=30)
+                        gap_t += timedelta(minutes=15)
 
         available_slots = generate_free_slots(
             target_date,
@@ -1816,7 +1821,7 @@ async def reschedule_appointment(original_date: str, new_date_time: str):
         orig_date = parse_date(original_date)
         new_dt = parse_datetime(new_date_time)
         apt = await db.pool.fetchrow("""
-            SELECT a.id, a.google_calendar_event_id, a.professional_id
+            SELECT a.id, a.google_calendar_event_id, a.professional_id, a.duration_minutes
             FROM appointments a
             JOIN patients p ON a.patient_id = p.id
             WHERE p.tenant_id = $1 AND REGEXP_REPLACE(p.phone_number, '[^0-9]', '', 'g') = $2 AND DATE(a.appointment_datetime) = $3
@@ -1826,13 +1831,14 @@ async def reschedule_appointment(original_date: str, new_date_time: str):
         if not apt:
             return f"No encontré tu turno para el {original_date}. ¿Podrías confirmarme la fecha original?"
 
+        apt_dur = apt['duration_minutes'] or 60
         overlap = await db.pool.fetchval("""
             SELECT COUNT(*) FROM appointments
             WHERE tenant_id = $1 AND professional_id = $2 AND status IN ('scheduled', 'confirmed') AND id != $3
-            AND appointment_datetime < $4 + interval '30 minutes'
-            AND appointment_datetime + interval '30 minutes' > $4
-        """, tenant_id, apt["professional_id"], apt["id"], new_dt)
-        
+            AND appointment_datetime < $4 + interval '1 minute' * $5
+            AND (appointment_datetime + interval '1 minute' * COALESCE(duration_minutes, 60)) > $4
+        """, tenant_id, apt["professional_id"], apt["id"], new_dt, apt_dur)
+
         if overlap and overlap > 0:
             return f"Lo siento, el horario {new_date_time} ya está ocupado. ¿Probamos con otro?"
 
