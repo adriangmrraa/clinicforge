@@ -68,18 +68,15 @@ function NovaVoiceBar({ tenantId, token, patientName }: { tenantId: string; toke
   const startVoice = useCallback(async () => {
     try {
       setVoiceState('connecting');
-      // 1. Create session
-      const sessionResp = await api.post('/admin/nova/session', {
-        page: 'anamnesis',
-        context_summary: `Paciente ${patientName} completando ficha médica via voz. Guialo pregunta por pregunta por el formulario de anamnesis.`,
-      });
+      // 1. Create PUBLIC session (no auth needed)
+      const sessionResp = await api.post(`/public/anamnesis/${tenantId}/${token}/voice-session`);
       const sessionId = sessionResp.data.session_id;
 
       // 2. Get mic
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
 
-      // 3. Connect WS
+      // 3. Connect WS (public endpoint)
       const wsUrl = `${BACKEND_URL.replace('http', 'ws')}/public/nova/voice?tenant_id=${tenantId}&token=${sessionId}&page=anamnesis`;
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
@@ -398,20 +395,22 @@ export default function AnamnesisPublicView() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white">
-      {/* Header */}
+      {/* Header + Nova Voice (sticky) */}
       <div className="bg-white shadow-sm sticky top-0 z-10">
-        <div className="max-w-lg mx-auto px-4 py-4">
-          <h1 className="text-lg font-bold text-blue-900 flex items-center gap-2">
-            <HeartPulse size={20} className="text-blue-600" />
-            Ficha Médica
-          </h1>
-          <p className="text-sm text-gray-500">{clinicName} — {patientName}</p>
+        <div className="max-w-lg mx-auto px-4 py-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-lg font-bold text-blue-900 flex items-center gap-2">
+                <HeartPulse size={20} className="text-blue-600" />
+                Ficha Médica
+              </h1>
+              <p className="text-sm text-gray-500">{clinicName} — {patientName}</p>
+            </div>
+          </div>
+          <div className="mt-2">
+            <NovaVoiceBar tenantId={tenantId || ''} token={token || ''} patientName={patientName} />
+          </div>
         </div>
-      </div>
-
-      {/* Nova Voice Bar */}
-      <div className="max-w-lg mx-auto px-4 pt-4">
-        <NovaVoiceBar tenantId={tenantId || ''} token={token || ''} patientName={patientName} />
       </div>
 
       <form onSubmit={handleSubmit} className="max-w-lg mx-auto px-4 py-6 space-y-6">

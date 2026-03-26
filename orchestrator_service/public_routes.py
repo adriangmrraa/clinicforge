@@ -101,6 +101,60 @@ async def verify_anamnesis_dni(tenant_id: int, token: str, body: DniVerification
     }
 
 
+@router.post("/anamnesis/{tenant_id}/{token}/voice-session")
+async def create_anamnesis_voice_session(tenant_id: int, token: str):
+    """Create a Nova voice session for guided anamnesis. Public — validated by anamnesis token."""
+    import uuid
+    patient = await db.pool.fetchrow(
+        "SELECT id, first_name, last_name FROM patients WHERE tenant_id = $1 AND anamnesis_token = $2",
+        tenant_id, token
+    )
+    if not patient:
+        raise HTTPException(status_code=404, detail="Token inválido.")
+
+    tenant = await db.pool.fetchrow("SELECT clinic_name FROM tenants WHERE id = $1", tenant_id)
+    clinic_name = tenant["clinic_name"] if tenant else "Clínica"
+    patient_name = f"{patient['first_name'] or ''} {patient['last_name'] or ''}".strip()
+
+    session_id = uuid.uuid4().hex
+    session_config = {
+        "tenant_id": tenant_id,
+        "user_role": "patient",
+        "user_id": str(patient["id"]),
+        "page": "anamnesis",
+        "system_prompt": (
+            f"IDIOMA OBLIGATORIO: Español argentino. Voseo.\n"
+            f"Sos Nova, asistente de voz de {clinic_name}.\n"
+            f"Estás ayudando a {patient_name} a completar su ficha médica (anamnesis) por voz.\n\n"
+            "FLUJO: Guiá al paciente pregunta por pregunta:\n"
+            "1. Enfermedades de base (diabetes, hipertensión, cardiopatía, problemas de coagulación, hepatitis, HIV/SIDA, osteoporosis, tiroides, epilepsia, asma, enfermedad renal, artritis reumatoidea)\n"
+            "2. Medicación habitual\n"
+            "3. Alergias (penicilina, amoxicilina, látex, anestesia local, AINES, aspirina, metales)\n"
+            "4. Cirugías previas\n"
+            "5. Si fuma y cuánto\n"
+            "6. Embarazo o lactancia (si aplica)\n"
+            "7. Experiencias negativas previas en el dentista\n"
+            "8. Miedos específicos (agujas, dolor, ruido del torno, asfixia, sangre, anestesia, sillón dental)\n\n"
+            "REGLAS:\n"
+            "- Preguntá DE A UNA categoría por vez\n"
+            "- Sé conciso: máximo 2 oraciones por pregunta\n"
+            "- Si dice 'no' o 'ninguna', avanzá a la siguiente\n"
+            "- Al final, resumí lo que registraste y preguntá si está todo bien\n"
+            "- Tono cálido y tranquilizador — es info médica sensible\n"
+        ),
+    }
+
+    try:
+        from services.relay import get_redis
+        redis = await get_redis()
+        await redis.setex(f"nova_session:{session_id}", 600, json.dumps(session_config))
+    except Exception as e:
+        logger.error(f"Redis error creating anamnesis voice session: {e}")
+        raise HTTPException(status_code=500, detail="Error creando sesión de voz.")
+
+    return {"session_id": session_id}
+
+
 @router.post("/anamnesis/{tenant_id}/{token}")
 async def submit_anamnesis_form(tenant_id: int, token: str, data: AnamnesisFormSubmission):
     """
