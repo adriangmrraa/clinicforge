@@ -110,12 +110,16 @@ async def process_buffer_task(
             logger.warning(f"⚠️ Patient memory init (non-fatal): {mem_init_err}")
 
         # Spec 24 / Spec 06 / v7.6: Patient Identity & Appointment Context
-        # Fetch patient data (normalized phone for consistency with tools)
+        # Fetch patient data — search by phone (WhatsApp) or PSID (Instagram/Facebook)
         phone_digits = normalize_phone_digits(external_user_id)
         patient_row = await pool.fetchrow(
-            """SELECT id, first_name, last_name, dni, email, acquisition_source, anamnesis_token, medical_history FROM patients
-               WHERE tenant_id = $1 AND REGEXP_REPLACE(phone_number, '[^0-9]', '', 'g') = $2""",
-            tenant_id, phone_digits
+            """SELECT id, first_name, last_name, dni, email, phone_number, acquisition_source, anamnesis_token, medical_history FROM patients
+               WHERE tenant_id = $1 AND (
+                   REGEXP_REPLACE(phone_number, '[^0-9]', '', 'g') = $2
+                   OR instagram_psid = $3
+                   OR facebook_psid = $3
+               )""",
+            tenant_id, phone_digits, external_user_id
         )
         
         patient_context = ""
@@ -135,6 +139,12 @@ async def process_buffer_task(
                 identity_lines.append(f"• Nombre registrado: {p_first} {p_last}".strip())
             if p_dni:
                 identity_lines.append(f"• DNI registrado: {p_dni}")
+
+            # Phone — check if patient has a real phone number in DB
+            p_phone = patient_row.get("phone_number") or ""
+            p_phone_is_real = p_phone and not p_phone.startswith("SIN-TEL")
+            if p_phone_is_real:
+                identity_lines.append(f"• Teléfono registrado: {p_phone}")
 
             # Email
             p_email = patient_row.get("email") or ""
@@ -598,16 +608,30 @@ async def process_buffer_task(
             special_context.append(followup_context)
             logger.info("✅ Contexto de seguimiento post-atención inyectado")
         
-        # Meta Direct channel rule: agent must request phone for IG/FB patients
-        if channel_type in ("instagram", "facebook") and provider == "meta_direct":
-            special_context.append(
-                f"REGLA CANAL ({channel_type.upper()}): El paciente escribe por {channel_type.capitalize()}. "
-                "En este canal NO tenemos su numero de telefono. "
-                "ANTES de poder agendar un turno, registrar datos o buscar turnos, DEBES pedirle su numero de telefono con codigo de area. "
-                "Sin telefono no podes usar ninguna herramienta de gestion de pacientes. "
-                'Ejemplo: "Para poder ayudarte con turnos, necesito tu numero de telefono con codigo de area. Me lo compartes?"'
-            )
-            logger.info(f"Injected Meta Direct phone-request rule for {channel_type}")
+        # Meta Direct channel rule: only ask phone if patient doesn't have one
+        if channel_type in ("instagram", "facebook"):
+            # Check if this patient already has a real phone number in DB
+            patient_has_phone = False
+            if patient_row:
+                existing_phone = patient_row.get("phone_number") or ""
+                patient_has_phone = bool(existing_phone) and not existing_phone.startswith("SIN-TEL")
+
+            if patient_has_phone:
+                special_context.append(
+                    f"REGLA CANAL ({channel_type.upper()}): El paciente escribe por {channel_type.capitalize()} "
+                    f"pero YA tiene teléfono registrado ({patient_row.get('phone_number')}). "
+                    "NO le pidas teléfono, ya lo tenés. Podés usar todas las herramientas normalmente."
+                )
+                logger.info(f"IG/FB patient already has phone, skipping phone-request rule")
+            else:
+                special_context.append(
+                    f"REGLA CANAL ({channel_type.upper()}): El paciente escribe por {channel_type.capitalize()}. "
+                    "En este canal NO tenemos su numero de telefono. "
+                    "ANTES de poder agendar un turno, registrar datos o buscar turnos, DEBES pedirle su numero de telefono con codigo de area. "
+                    "Sin telefono no podes usar ninguna herramienta de gestion de pacientes. "
+                    'Ejemplo: "Para poder ayudarte con turnos, necesito tu numero de telefono con codigo de area. Me lo compartes?"'
+                )
+                logger.info(f"Injected Meta Direct phone-request rule for {channel_type}")
 
         # INYECCIÓN FORZADA: Si el paciente ya existe, meter sus datos en el input
         # para que sea IMPOSIBLE que el agente los ignore y los pida de nuevo
