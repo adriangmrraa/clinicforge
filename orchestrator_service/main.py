@@ -1128,16 +1128,17 @@ async def book_appointment(date_time: str, treatment_reason: str,
     - Para un MENOR (hijo/a): NO pases patient_phone. Pasá is_minor=true. El sistema usa el teléfono del padre/madre automáticamente.
     - Para SÍ MISMO: no pases patient_phone ni is_minor. Flujo normal.
 
-    NO ES OBLIGATORIO pedir fecha de nacimiento, email, ciudad o cómo nos conoció.
+    PROHIBIDO pedir fecha de nacimiento, email o ciudad al paciente. Solo pasá esos campos si el paciente los dio ESPONTÁNEAMENTE.
+    Si el paciente dice de dónde los conoció espontáneamente, pasá acquisition_source. Pero NUNCA lo preguntes.
 
     date_time: Fecha y hora en un solo string. Soporta términos relativos: 'hoy 17:00', 'mañana a las 10', 'lunes 15:30', 'miércoles 17:00'.
     treatment_reason: Nombre del tratamiento tal como en list_services (ej. limpieza profunda, consulta).
     first_name, last_name: Nombre y apellido del PACIENTE (no del interlocutor si es un tercero).
     dni: Documento del PACIENTE (solo números).
-    birth_date: (Opcional) Fecha de nacimiento DD/MM/AAAA.
-    email: (Opcional) Email del paciente.
-    city: (Opcional) Ciudad o barrio.
-    acquisition_source: (Opcional) Cómo nos conoció.
+    birth_date: (NO PEDIR — solo si el paciente lo dio espontáneamente).
+    email: (NO PEDIR — solo si el paciente lo dio espontáneamente).
+    city: (NO PEDIR — solo si el paciente lo dio espontáneamente).
+    acquisition_source: (NO PEDIR — solo si el paciente dijo espontáneamente cómo los conoció).
     duration_minutes: (Opcional) Duración del turno en minutos. Por defecto 30 minutos.
     professional_name: (Opcional) Nombre del profesional.
     patient_phone: (Opcional) Teléfono del paciente real si es un ADULTO TERCERO. NO usar para menores.
@@ -2938,35 +2939,49 @@ Si YA mencionaste el turno en esta conversación, NO lo repitas.
     # Bank info for payments
     bank_section = ""
     if bank_holder_name:
-        bank_lines = ["\n\n## DATOS BANCARIOS PARA PAGOS"]
-        if bank_cbu:
-            bank_lines.append(f"CBU: {bank_cbu}")
+        # Calculate seña amount (50% of consultation price)
+        sena_amount = ""
+        if consultation_price and float(consultation_price) > 0:
+            sena_val = float(consultation_price) / 2
+            sena_amount = f"${int(sena_val):,}".replace(",", ".")
+
+        bank_data_block = ""
         if bank_alias:
-            bank_lines.append(f"Alias: {bank_alias}")
-        bank_lines.append(f"Titular: {bank_holder_name}")
-        bank_lines.append("")
-        bank_lines.append("FLUJO DE PAGO Y SEÑA (CRÍTICO):")
-        bank_lines.append("REGLA PRINCIPAL: Si hay precio de consulta configurado Y datos bancarios → el paciente DEBE abonar la seña ANTES de que el turno quede confirmado.")
-        bank_lines.append("")
-        bank_lines.append("PASO 7 MODIFICADO — DESPUÉS DE AGENDAR:")
-        bank_lines.append("1. Inmediatamente después de confirmar el turno (PASO 7), informar el monto de la seña y compartir los datos bancarios:")
-        bank_lines.append("   'Para confirmar tu turno, te pedimos una seña de {precio_consulta}. Podés transferir a:'")
-        bank_lines.append("   → Compartir CBU/Alias/Titular de arriba.")
-        bank_lines.append("   'Una vez que hagas la transferencia, enviame el comprobante por acá y queda confirmado!'")
-        bank_lines.append("2. Si el paciente pregunta si es obligatorio → 'La seña es necesaria para reservar el turno. Sin ella, el turno queda pendiente de confirmación.'")
-        bank_lines.append("3. Si el paciente dice que no puede pagar ahora → 'No hay problema, podés enviar el comprobante hasta 24 horas antes del turno. Te lo reservo mientras tanto.'")
-        bank_lines.append("")
-        bank_lines.append("VERIFICACIÓN DE COMPROBANTE:")
-        bank_lines.append("4. Cuando el paciente envíe un comprobante de pago (imagen o PDF de transferencia), usá la herramienta 'verify_payment_receipt' pasando:")
-        bank_lines.append("   - receipt_description: la descripción completa de la imagen (lo que aparece en [IMAGEN: ...])")
-        bank_lines.append("   - amount_detected: el monto que detectes en el comprobante (solo el número)")
-        bank_lines.append("   - appointment_id: el ID del turno si lo tenés (opcional)")
-        bank_lines.append("5. Si la verificación es exitosa, el turno pasa a CONFIRMADO automáticamente. Agradecé y recordá los datos del turno.")
-        bank_lines.append("6. Si falla la verificación, explicá amablemente el problema y pedí que reenvíe o se comunique con la clínica.")
-        bank_lines.append("7. NUNCA inventes datos bancarios. Solo compartí los que están configurados arriba.")
-        bank_lines.append("")
-        bank_lines.append("SI NO HAY PRECIO CONFIGURADO: No pedir seña. Agendar normalmente.")
-        bank_section = "\n".join(bank_lines)
+            bank_data_block += f"Alias: {bank_alias}\n"
+        if bank_cbu:
+            bank_data_block += f"CBU: {bank_cbu}\n"
+        bank_data_block += f"Titular: {bank_holder_name}"
+
+        bank_section = f"""
+
+## DATOS BANCARIOS PARA COBRO DE SEÑA
+{bank_data_block}
+
+FLUJO DE PAGO Y SEÑA (CRÍTICO — OBLIGATORIO DESPUÉS DE CADA TURNO CONFIRMADO):
+La seña es el 50% del valor de la consulta del profesional que atenderá al paciente.
+{f'Valor de consulta base: ${int(consultation_price):,}'.replace(',', '.') + f' → Seña: {sena_amount}' if sena_amount else 'Si el profesional tiene consultation_price configurado, la seña es el 50% de ese valor.'}
+
+PASO 7 MODIFICADO — INMEDIATAMENTE DESPUÉS DE CONFIRMAR EL TURNO:
+1. Confirmá el turno normalmente (tratamiento, profesional, fecha, hora, sede).
+2. EN EL MISMO MENSAJE, agregá los datos de pago:
+   "Para confirmar definitivamente tu turno, te pedimos una seña de {sena_amount or '[50% del valor de consulta]'}."
+   "Podés transferir a:"
+   "{bank_data_block}"
+   "Una vez que hagas la transferencia, enviame el comprobante por acá y queda confirmado!"
+3. NUNCA omitas este paso. Si tenés datos bancarios configurados, SIEMPRE debés enviarlos después de agendar.
+4. Si el paciente pregunta si es obligatorio → "La seña es necesaria para reservar el turno. Sin ella, el turno queda pendiente de confirmación."
+5. Si el paciente dice que no puede pagar ahora → "No hay problema, podés enviar el comprobante hasta 24 horas antes del turno. Te lo reservo mientras tanto."
+
+VERIFICACIÓN DE COMPROBANTE:
+6. Cuando el paciente envíe un comprobante de pago (imagen o PDF), usá 'verify_payment_receipt' pasando:
+   - receipt_description: la descripción completa de la imagen
+   - amount_detected: el monto que detectes (solo el número)
+   - appointment_id: el ID del turno si lo tenés (opcional)
+7. Si la verificación es exitosa → turno CONFIRMADO automáticamente. Agradecé y recordá los datos del turno.
+8. Si falla → explicá el problema y pedí que reenvíe.
+9. NUNCA inventes datos bancarios. Solo compartí los configurados arriba.
+
+SI NO HAY PRECIO CONFIGURADO: No pedir seña. Agendar normalmente."""
 
     price_text = f"${int(consultation_price):,}".replace(",", ".") if consultation_price and float(consultation_price) > 0 else ""
 
@@ -3120,10 +3135,13 @@ SERVICIOS — REGLA CRÍTICA:
 {faqs_section}
 
 ADMISIÓN — DATOS MÍNIMOS (INQUEBRANTABLE):
-Para agendar solo se necesitan 3 datos (el teléfono ya lo tenemos por WhatsApp):
-• Nombre y Apellido (de a uno por mensaje)
+Para agendar solo se necesitan 2 datos (el teléfono ya lo tenemos por WhatsApp):
+• Nombre y Apellido
 • DNI (solo los números)
-Los demás datos son OPCIONALES y se completan en consultorio. NUNCA envíes lista de preguntas juntas.
+PROHIBIDO pedir: fecha de nacimiento, email, ciudad. Esos datos NO se piden durante el agendamiento.
+EXCEPCIÓN: Si el paciente dice espontáneamente de dónde los conoció (ej: "los vi por redes"), guardá eso como acquisition_source en book_appointment. Pero NUNCA lo preguntes activamente.
+Los demás datos se completan en la ficha médica (anamnesis) o en consultorio. NUNCA envíes lista de preguntas juntas.
+Si el paciente da nombre + apellido + DNI en un solo mensaje → procesá todo junto sin pedir más datos.
 
 FLUJO DE AGENDAMIENTO (ORDEN ESTRICTO):
 PASO 1: SALUDO E IDENTIDAD - Usá el GREETING correspondiente al tipo de paciente.
