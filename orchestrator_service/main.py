@@ -778,9 +778,9 @@ async def check_availability(date_query: str, professional_name: Optional[str] =
 
         tenant_id = current_tenant_id.get()
 
-        # 0. Pre) Cargar working_hours del tenant para horarios y sede por día
+        # 0. Pre) Cargar working_hours y max_chairs del tenant
         tenant_row = await db.pool.fetchrow(
-            "SELECT working_hours, address, google_maps_url FROM tenants WHERE id = $1", tenant_id
+            "SELECT working_hours, address, google_maps_url, max_chairs FROM tenants WHERE id = $1", tenant_id
         )
         tenant_wh_raw = tenant_row["working_hours"] if tenant_row else None
         if isinstance(tenant_wh_raw, str):
@@ -1018,6 +1018,35 @@ async def check_availability(date_query: str, professional_name: Optional[str] =
                         for pid in busy_map:
                             busy_map[pid].add(gap_hm)
                         gap_t += timedelta(minutes=15)
+
+        # 3b. CHAIR CONSTRAINT — limit concurrent appointments across ALL professionals
+        max_chairs = tenant_row.get("max_chairs") or 99 if tenant_row else 99
+        if max_chairs < 99:
+            # Count concurrent appointments at each 15-min slot across ALL professionals
+            all_day_apts = await db.pool.fetch("""
+                SELECT appointment_datetime as start, COALESCE(duration_minutes, 60) as duration
+                FROM appointments
+                WHERE tenant_id = $1 AND status IN ('scheduled', 'confirmed')
+                AND DATE(appointment_datetime AT TIME ZONE 'America/Argentina/Buenos_Aires') = $2
+            """, tenant_id, target_date)
+
+            # Build a counter per 15-min slot
+            chair_usage: dict[str, int] = {}
+            for apt in all_day_apts:
+                apt_start = apt['start'].astimezone(ARG_TZ)
+                apt_end = apt_start + timedelta(minutes=apt['duration'])
+                t = apt_start.replace(second=0, microsecond=0)
+                while t < apt_end:
+                    hm = t.strftime("%H:%M")
+                    chair_usage[hm] = chair_usage.get(hm, 0) + 1
+                    t += timedelta(minutes=15)
+
+            # Mark slots where chairs are full as globally busy for ALL professionals
+            chairs_full_slots = {hm for hm, count in chair_usage.items() if count >= max_chairs}
+            if chairs_full_slots:
+                for pid in busy_map:
+                    busy_map[pid].update(chairs_full_slots)
+                logger.info(f"🪑 Chair constraint: max_chairs={max_chairs}, full_slots={sorted(chairs_full_slots)}")
 
         available_slots = generate_free_slots(
             target_date,
@@ -1424,6 +1453,22 @@ async def book_appointment(date_time: str, treatment_reason: str,
             logger.info(f"book_appointment: sin disponibilidad phone={phone} tenant={tenant_id} datetime={apt_datetime} tratamiento={treatment_code} (paciente no creado por spec)")
             return f"❌ Lo siento, no hay disponibilidad a las {apt_datetime.strftime('%H:%M')} para el tratamiento de {final_duration} min. ¿Probamos otro horario?"
 
+        # 3b. CHAIR CONSTRAINT — check total concurrent appointments doesn't exceed max_chairs
+        try:
+            max_chairs = await db.pool.fetchval("SELECT COALESCE(max_chairs, 99) FROM tenants WHERE id = $1", tenant_id)
+            if max_chairs and max_chairs < 99:
+                concurrent = await db.pool.fetchval("""
+                    SELECT COUNT(*) FROM appointments
+                    WHERE tenant_id = $1 AND status IN ('scheduled', 'confirmed')
+                    AND appointment_datetime < $3
+                    AND (appointment_datetime + interval '1 minute' * COALESCE(duration_minutes, 60)) > $2
+                """, tenant_id, apt_datetime, end_apt)
+                if concurrent and concurrent >= max_chairs:
+                    logger.info(f"🪑 book_appointment: CHAIRS FULL at {apt_datetime} (concurrent={concurrent}, max={max_chairs})")
+                    return f"❌ Lo siento, todos los sillones están ocupados a las {apt_datetime.strftime('%H:%M')}. La clínica tiene {max_chairs} sillones y ya hay {concurrent} turnos simultáneos. ¿Probamos otro horario?"
+        except Exception as chair_err:
+            logger.warning(f"Chair check (non-fatal): {chair_err}")
+
         # 4. Crear/actualizar paciente SOLO cuando hay disponibilidad confirmada (Spec 2026-03-13)
         # PROTECCIÓN: Si es turno para tercero, NO tocar el registro del interlocutor
         if existing_patient:
@@ -1545,10 +1590,46 @@ async def book_appointment(date_time: str, treatment_reason: str,
         frontend_url = os.getenv("FRONTEND_URL", "http://localhost:4173").split(",")[0].strip().rstrip("/")
         patient_anamnesis_url = f"{frontend_url}/anamnesis/{tenant_id}/{patient_anamnesis_token}"
 
-        # Build price line
+        # Build price + seña lines
         price_line = ""
         if treatment_price and treatment_price > 0:
-            price_line = f"\nValor: ${treatment_price:,.0f}"
+            price_line = f"\n💰 Valor: ${treatment_price:,.0f}"
+
+        # Build seña/bank info to include in response
+        sena_block = ""
+        try:
+            t_bank = await db.pool.fetchrow(
+                "SELECT bank_cbu, bank_alias, bank_holder_name, consultation_price FROM tenants WHERE id = $1",
+                tenant_id
+            )
+            if t_bank and t_bank.get("bank_holder_name"):
+                # Seña = 50% of professional price or tenant price
+                sena_price = None
+                prof_price = await db.pool.fetchval("SELECT consultation_price FROM professionals WHERE id = $1", target_prof["id"])
+                if prof_price and float(prof_price) > 0:
+                    sena_price = float(prof_price) / 2
+                elif t_bank.get("consultation_price") and float(t_bank["consultation_price"]) > 0:
+                    sena_price = float(t_bank["consultation_price"]) / 2
+
+                if sena_price:
+                    sena_str = f"${int(sena_price):,}".replace(",", ".")
+                    bank_lines = [f"\n\n[INTERNAL_SEÑA_DATA]"]
+                    bank_lines.append(f"Seña: {sena_str}")
+                    if t_bank.get("bank_alias"):
+                        bank_lines.append(f"Alias: {t_bank['bank_alias']}")
+                    if t_bank.get("bank_cbu"):
+                        bank_lines.append(f"CBU: {t_bank['bank_cbu']}")
+                    bank_lines.append(f"Titular: {t_bank['bank_holder_name']}")
+                    bank_lines.append("[/INTERNAL_SEÑA_DATA]")
+                    sena_block = "\n".join(bank_lines)
+        except Exception:
+            pass
+
+        # Build sede line with emoji
+        sede_line = ""
+        if booking_sede:
+            sede_clean = booking_sede.strip().replace("\nSede: ", "").replace("\nDirección: ", "")
+            sede_line = f"\n📍 {sede_clean}"
 
         if is_third_party:
             interlocutor = await db.pool.fetchrow(
@@ -1558,20 +1639,22 @@ async def book_appointment(date_time: str, treatment_reason: str,
             interlocutor_name = f"{interlocutor['first_name']} {interlocutor.get('last_name', '')}".strip() if interlocutor else "el interlocutor"
             return (
                 f"✅ Turno confirmado para {patient_label} (solicitado por {interlocutor_name}):\n"
-                f"Tratamiento: {treatment_display_name}\n"
-                f"Profesional: Dr/a. {target_prof['first_name']}\n"
-                f"Fecha: {dia_nombre} {apt_datetime.strftime('%d/%m')} a las {apt_datetime.strftime('%H:%M')} ({final_duration} min)"
-                f"{booking_sede}{price_line}\n"
+                f"🦷 {treatment_display_name}\n"
+                f"📅 {dia_nombre} {apt_datetime.strftime('%d/%m')} a las {apt_datetime.strftime('%H:%M')}\n"
+                f"👩‍⚕️ Con {target_prof['first_name']}"
+                f"{sede_line}{price_line}"
+                f"{sena_block}\n"
                 f"[INTERNAL_PATIENT_PHONE:{phone}]\n"
                 f"[INTERNAL_ANAMNESIS_URL:{patient_anamnesis_url}]"
             )
         else:
             return (
-                f"✅ ¡Turno confirmado!\n"
-                f"Tratamiento: {treatment_display_name}\n"
-                f"Profesional: Dr/a. {target_prof['first_name']}\n"
-                f"Fecha: {dia_nombre} {apt_datetime.strftime('%d/%m')} a las {apt_datetime.strftime('%H:%M')} ({final_duration} min)"
-                f"{booking_sede}{price_line}\n"
+                f"✅ Turno confirmado para {patient_label}:\n"
+                f"🦷 {treatment_display_name}\n"
+                f"📅 {dia_nombre} {apt_datetime.strftime('%d/%m')} a las {apt_datetime.strftime('%H:%M')}\n"
+                f"👩‍⚕️ Con {target_prof['first_name']}"
+                f"{sede_line}{price_line}"
+                f"{sena_block}\n"
                 f"[INTERNAL_ANAMNESIS_URL:{patient_anamnesis_url}]"
             )
 
@@ -3014,14 +3097,19 @@ FLUJO DE PAGO Y SEÑA (CRÍTICO — OBLIGATORIO DESPUÉS DE CADA TURNO CONFIRMAD
 La seña es el 50% del valor de la consulta del profesional que atenderá al paciente.
 {f'Valor de consulta base: ${int(consultation_price):,}'.replace(',', '.') + f' → Seña: {sena_amount}' if sena_amount else 'Si el profesional tiene consultation_price configurado, la seña es el 50% de ese valor.'}
 
-PASO 7 MODIFICADO — INMEDIATAMENTE DESPUÉS DE CONFIRMAR EL TURNO:
-1. Confirmá el turno normalmente (tratamiento, profesional, fecha, hora, sede).
-2. EN EL MISMO MENSAJE, agregá los datos de pago:
-   "Para confirmar definitivamente tu turno, te pedimos una seña de {sena_amount or '[50% del valor de consulta]'}."
-   "Podés transferir a:"
-   "{bank_data_block}"
-   "Una vez que hagas la transferencia, enviame el comprobante por acá y queda confirmado!"
-3. NUNCA omitas este paso. Si tenés datos bancarios configurados, SIEMPRE debés enviarlos después de agendar.
+PASO 7 MODIFICADO — SEÑA EN LA RESPUESTA DE BOOK_APPOINTMENT:
+La tool book_appointment ahora incluye [INTERNAL_SEÑA_DATA]...[/INTERNAL_SEÑA_DATA] con los datos bancarios y el monto de la seña.
+TU TRABAJO es presentar esos datos al paciente EN UNA SEGUNDA BURBUJA (mensaje separado):
+
+"Para confirmar tu turno, te pedimos una seña de [monto de INTERNAL_SEÑA_DATA].
+Podés transferir a:
+[Alias/CBU/Titular de INTERNAL_SEÑA_DATA]
+Una vez que hagas la transferencia, enviame el comprobante por acá!"
+
+REGLAS:
+- NUNCA omitas los datos de seña si aparecen en INTERNAL_SEÑA_DATA.
+- NUNCA muestres las etiquetas [INTERNAL_SEÑA_DATA] al paciente.
+- Si NO hay [INTERNAL_SEÑA_DATA] en la respuesta → no pedir seña.
 4. Si el paciente pregunta si es obligatorio → "La seña es necesaria para confirmar el turno. Sin ella, el turno queda agendado pero pendiente de confirmación."
 5. Si el paciente dice que no puede pagar ahora o no responde sobre el pago:
    → "No hay problema, podés enviar el comprobante hasta 24 horas antes del turno. Te lo reservo mientras tanto."
@@ -3147,7 +3235,8 @@ Si el mensaje coincide con alguna variante, ejecutá la tool. No esperes palabra
 ## WHATSAPP (EXPERIENCIA MOBILE)
 • Máximo 3-4 líneas por mensaje. Mejor 3 mensajes cortos que 1 largo.
 • Emojis estratégicos: 🦷 tratamientos, 📅 turnos, 📍 dirección, ⏰ horarios, ✅ confirmaciones.
-• URLs limpias (sin markdown). NUNCA uses `[link](url)` ni `![img](url)`.
+• URLs limpias (sin markdown). NUNCA uses `[link](url)` ni `![img](url)` ni `[Link de Anamnesis](url)`. Solo pegá la URL directa.
+• PROHIBIDO pedir email. PROHIBIDO pedir fecha de nacimiento. PROHIBIDO pedir ciudad. Solo nombre + DNI para agendar.
 • Usá saltos de línea para separar ideas.
 
 REGLA ANTI-MENSAJE-VACÍO (CRÍTICO):

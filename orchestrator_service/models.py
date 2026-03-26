@@ -122,6 +122,7 @@ class Tenant(Base):
     bank_alias = Column(Text)
     bank_holder_name = Column(Text)
     derivation_email = Column(Text)
+    max_chairs = Column(Integer, default=2)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 

@@ -57,6 +57,7 @@ export interface Clinica {
     bank_alias?: string;
     bank_holder_name?: string;
     derivation_email?: string;
+    max_chairs?: number;
     config?: { calendar_provider?: 'local' | 'google' };
     created_at: string;
     updated_at?: string;
@@ -93,6 +94,7 @@ export default function ClinicsView() {
         bank_alias: '',
         bank_holder_name: '',
         derivation_email: '',
+        max_chairs: '2',
         working_hours: createDefaultWorkingHours(),
     });
     const [expandedDays, setExpandedDays] = useState<string[]>([]);
@@ -138,11 +140,12 @@ export default function ClinicsView() {
                 bank_alias: clinica.bank_alias || '',
                 bank_holder_name: clinica.bank_holder_name || '',
                 derivation_email: clinica.derivation_email || '',
+                max_chairs: clinica.max_chairs != null ? String(clinica.max_chairs) : '2',
                 working_hours: parseWorkingHours(clinica.working_hours),
             });
         } else {
             setEditingClinica(null);
-            setFormData({ clinic_name: '', bot_phone_number: '', calendar_provider: 'local', address: '', google_maps_url: '', consultation_price: '', bank_cbu: '', bank_alias: '', bank_holder_name: '', derivation_email: '', working_hours: createDefaultWorkingHours() });
+            setFormData({ clinic_name: '', bot_phone_number: '', calendar_provider: 'local', address: '', google_maps_url: '', consultation_price: '', bank_cbu: '', bank_alias: '', bank_holder_name: '', derivation_email: '', max_chairs: '2', working_hours: createDefaultWorkingHours() });
         }
         setExpandedDays([]);
         setError(null);
@@ -165,6 +168,7 @@ export default function ClinicsView() {
                 bank_alias: formData.bank_alias || null,
                 bank_holder_name: formData.bank_holder_name || null,
                 derivation_email: formData.derivation_email || null,
+                max_chairs: formData.max_chairs ? parseInt(formData.max_chairs) : 2,
                 working_hours: formData.working_hours,
             };
             if (editingClinica) {
@@ -458,6 +462,15 @@ export default function ClinicsView() {
                                     className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-medical-500 outline-none"
                                     value={formData.consultation_price} onChange={(e) => { const v = e.target.value; setFormData(prev => ({ ...prev, consultation_price: v })); }} />
                                 <p className="text-xs text-medical-400">{t('clinics.consultation_price_help')}</p>
+                            </div>
+
+                            {/* Sillones / Chairs */}
+                            <div className="space-y-1">
+                                <label className="text-sm font-semibold text-medical-700">Sillones disponibles</label>
+                                <input type="number" min="1" max="20" placeholder="2"
+                                    className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-medical-500 outline-none"
+                                    value={formData.max_chairs} onChange={(e) => { const v = e.target.value; setFormData(prev => ({ ...prev, max_chairs: v })); }} />
+                                <p className="text-xs text-medical-400">Cantidad de sillones en la clinica. Limita cuantos turnos pueden ocurrir al mismo tiempo.</p>
                             </div>
 
                             {/* Datos Bancarios */}
