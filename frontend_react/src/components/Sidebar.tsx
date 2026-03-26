@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Calendar,
@@ -61,22 +61,24 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle, onCloseMo
     });
   }, []);
 
-  const menuItems = [
-    { id: 'dashboard', labelKey: 'nav.dashboard' as const, icon: <Home size={20} />, path: '/', roles: ['ceo', 'professional', 'secretary'] },
-    { id: 'agenda', labelKey: 'nav.agenda' as const, icon: <Calendar size={20} />, path: '/agenda', roles: ['ceo', 'professional', 'secretary'] },
-    { id: 'patients', labelKey: 'nav.patients' as const, icon: <Users size={20} />, path: '/pacientes', roles: ['ceo', 'professional', 'secretary'] },
-    { id: 'chats', labelKey: 'nav.chats' as const, icon: <MessageSquare size={20} />, path: '/chats', roles: ['ceo', 'professional', 'secretary'] },
-    { id: 'approvals', labelKey: 'nav.staff' as const, icon: <ShieldCheck size={20} />, path: '/aprobaciones', roles: ['ceo'] },
-    { id: 'tenants', labelKey: 'nav.clinics' as const, icon: <ShieldCheck size={20} />, path: '/sedes', roles: ['ceo'] },
-    { id: 'analytics', labelKey: 'nav.strategy' as const, icon: <BarChart3 size={20} />, path: '/analytics/professionals', roles: ['ceo'] },
-    { id: 'tokens', labelKey: 'nav.tokens' as const, icon: <Zap size={20} />, path: '/dashboard/status', roles: ['ceo'] },
-    { id: 'treatments', labelKey: 'nav.treatments' as const, icon: <Clock size={20} />, path: '/tratamientos', roles: ['ceo', 'secretary'] },
-    { id: 'profile', labelKey: 'nav.profile' as const, icon: <User size={20} />, path: '/perfil', roles: ['ceo', 'professional', 'secretary'] },
-    { id: 'marketing', labelKey: 'nav.marketing' as const, icon: <Megaphone size={20} />, path: '/marketing', roles: ['ceo'] },
-    { id: 'leads', labelKey: 'nav.leads' as const, icon: <Users size={20} />, path: '/leads', roles: ['ceo'] },
-    { id: 'templates', labelKey: 'nav.hsm' as const, icon: <Layout size={20} />, path: '/templates', roles: ['ceo'] },
-    { id: 'settings', labelKey: 'nav.settings' as const, icon: <Settings size={20} />, path: '/configuracion', roles: ['ceo'] },
+  const [tooltipId, setTooltipId] = useState<string | null>(null);
+  const tooltipTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const menuItems = [
+    { id: 'dashboard', labelKey: 'nav.dashboard' as const, icon: <Home size={18} />, emoji: '📊', path: '/', roles: ['ceo', 'professional', 'secretary'], hint: 'Centro de mando con KPIs en tiempo real de la clinica' },
+    { id: 'agenda', labelKey: 'nav.agenda' as const, icon: <Calendar size={18} />, emoji: '🗓️', path: '/agenda', roles: ['ceo', 'professional', 'secretary'], hint: 'Agenda interactiva de turnos por profesional y sede' },
+    { id: 'patients', labelKey: 'nav.patients' as const, icon: <Users size={18} />, emoji: '🦷', path: '/pacientes', roles: ['ceo', 'professional', 'secretary'], hint: 'Base de pacientes con ficha clinica, odontograma y anamnesis' },
+    { id: 'chats', labelKey: 'nav.chats' as const, icon: <MessageSquare size={18} />, emoji: '💬', path: '/chats', roles: ['ceo', 'professional', 'secretary'], hint: 'Conversaciones de WhatsApp, Instagram y Facebook en un solo lugar' },
+    { id: 'approvals', labelKey: 'nav.staff' as const, icon: <ShieldCheck size={18} />, emoji: '👥', path: '/aprobaciones', roles: ['ceo'], hint: 'Aprobar o suspender acceso de profesionales y secretarias' },
+    { id: 'tenants', labelKey: 'nav.clinics' as const, icon: <ShieldCheck size={18} />, emoji: '🏥', path: '/sedes', roles: ['ceo'], hint: 'Configurar sedes, horarios por dia, direcciones y datos bancarios' },
+    { id: 'analytics', labelKey: 'nav.strategy' as const, icon: <BarChart3 size={18} />, emoji: '📈', path: '/analytics/professionals', roles: ['ceo'], hint: 'Rendimiento de cada profesional: turnos, retención, facturación' },
+    { id: 'tokens', labelKey: 'nav.tokens' as const, icon: <Zap size={18} />, emoji: '⚡', path: '/dashboard/status', roles: ['ceo'], hint: 'Consumo de IA por servicio, costos y seleccion de modelos' },
+    { id: 'treatments', labelKey: 'nav.treatments' as const, icon: <Clock size={18} />, emoji: '🩺', path: '/tratamientos', roles: ['ceo', 'secretary'], hint: 'Tipos de tratamiento con precios, duracion e imagenes' },
+    { id: 'profile', labelKey: 'nav.profile' as const, icon: <User size={18} />, emoji: '👤', path: '/perfil', roles: ['ceo', 'professional', 'secretary'], hint: 'Tu perfil y datos de cuenta' },
+    { id: 'marketing', labelKey: 'nav.marketing' as const, icon: <Megaphone size={18} />, emoji: '📣', path: '/marketing', roles: ['ceo'], hint: 'ROI real de Meta Ads y Google Ads con atribución de pacientes' },
+    { id: 'leads', labelKey: 'nav.leads' as const, icon: <Users size={18} />, emoji: '🎯', path: '/leads', roles: ['ceo'], hint: 'Leads de formularios de Meta con estado y seguimiento' },
+    { id: 'templates', labelKey: 'nav.hsm' as const, icon: <Layout size={18} />, emoji: '📝', path: '/templates', roles: ['ceo'], hint: 'Plantillas HSM de WhatsApp y reglas de automatización' },
+    { id: 'settings', labelKey: 'nav.settings' as const, icon: <Settings size={18} />, emoji: '⚙️', path: '/configuracion', roles: ['ceo'], hint: 'Configuración general, integraciones y credenciales' },
   ];
 
   const filteredItems = menuItems.filter(item => user && item.roles.includes(user.role));
@@ -127,32 +129,63 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle, onCloseMo
       )}
 
       {/* Navigation */}
-      <nav className={`flex-1 py-4 overflow-y-auto overflow-x-hidden ${collapsed && !onCloseMobile ? 'px-2' : 'px-3'}`}>
+      <nav className={`flex-1 py-3 overflow-y-auto overflow-x-hidden ${collapsed && !onCloseMobile ? 'px-2' : 'px-2.5'}`}>
         {filteredItems.map((item) => (
-          <button
-            key={item.id}
-            onClick={() => {
-              navigate(item.path);
-              onCloseMobile?.();
-            }}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 mb-1 group ${isActive(item.path)
-              ? 'bg-white/10 text-white'
-              : 'text-gray-400 hover:bg-white/5 hover:text-white'
-              }`}
-            title={collapsed && !onCloseMobile ? t(item.labelKey) : undefined}
-          >
-            <span className="flex-shrink-0 group-hover:scale-110 transition-transform">{item.icon}</span>
-            {(!collapsed || onCloseMobile) && <span className="font-medium text-sm truncate">{t(item.labelKey)}</span>}
-          </button>
+          <div key={item.id} className="relative mb-0.5">
+            <button
+              onClick={() => {
+                navigate(item.path);
+                setTooltipId(null);
+                onCloseMobile?.();
+              }}
+              onMouseEnter={() => {
+                if (tooltipTimer.current) clearTimeout(tooltipTimer.current);
+                tooltipTimer.current = setTimeout(() => setTooltipId(item.id), 500);
+              }}
+              onMouseLeave={() => {
+                if (tooltipTimer.current) clearTimeout(tooltipTimer.current);
+                setTooltipId(null);
+              }}
+              onTouchStart={() => {
+                if (tooltipTimer.current) clearTimeout(tooltipTimer.current);
+                tooltipTimer.current = setTimeout(() => setTooltipId(item.id), 400);
+              }}
+              onTouchEnd={() => {
+                if (tooltipTimer.current) clearTimeout(tooltipTimer.current);
+              }}
+              className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl transition-all duration-200 group ${isActive(item.path)
+                ? 'bg-white/15 text-white shadow-sm shadow-white/5'
+                : 'text-gray-400 hover:bg-white/5 hover:text-white'
+                }`}
+              title={collapsed && !onCloseMobile ? t(item.labelKey) : undefined}
+            >
+              <span className="text-base leading-none shrink-0">{item.emoji}</span>
+              {(!collapsed || onCloseMobile) && (
+                <span className="font-medium text-[13px] truncate">{t(item.labelKey)}</span>
+              )}
+            </button>
+
+            {/* Tooltip popup — appears on hover/long-press */}
+            {tooltipId === item.id && (!collapsed || onCloseMobile) && item.hint && (
+              <div
+                className="absolute left-full top-0 ml-2 z-50 w-56 bg-slate-900 text-white rounded-xl px-3 py-2.5 shadow-xl border border-white/10 pointer-events-none animate-in fade-in slide-in-from-left-1 duration-150"
+                style={{ animationDuration: '150ms' }}
+              >
+                <p className="text-[11px] font-semibold text-white/90 mb-0.5">{t(item.labelKey)}</p>
+                <p className="text-[10px] text-white/60 leading-relaxed">{item.hint}</p>
+                <div className="absolute right-full top-2.5 w-0 h-0 border-t-[5px] border-t-transparent border-r-[6px] border-r-slate-900 border-b-[5px] border-b-transparent" />
+              </div>
+            )}
+          </div>
         ))}
 
         <button
           onClick={logout}
-          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 mt-4 text-red-400 hover:bg-red-500/10 group`}
+          className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl transition-all duration-200 mt-3 text-red-400 hover:bg-red-500/10 group`}
           title={collapsed && !onCloseMobile ? t('nav.logout') : undefined}
         >
-          <LogOut size={20} className="group-hover:rotate-12 transition-transform" />
-          {(!collapsed || onCloseMobile) && <span className="font-medium text-sm">{t('nav.logout')}</span>}
+          <span className="text-base leading-none shrink-0">🚪</span>
+          {(!collapsed || onCloseMobile) && <span className="font-medium text-[13px]">{t('nav.logout')}</span>}
         </button>
       </nav>
 
