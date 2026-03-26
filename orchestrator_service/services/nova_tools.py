@@ -495,6 +495,199 @@ NOVA_TOOLS_SCHEMA: List[Dict[str, Any]] = [
             },
         },
     },
+
+    # === G. TOOLS QUE FALTAN — Staff operations ===
+
+    {
+        "type": "function",
+        "function": {
+            "name": "listar_profesionales",
+            "description": "Lista dentistas/profesionales activos con especialidad, horarios y precio de consulta.",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "reprogramar_turno",
+            "description": "Reprograma un turno existente a nueva fecha/hora.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "appointment_id": {"type": "string", "description": "UUID del turno"},
+                    "new_date": {"type": "string", "description": "Nueva fecha YYYY-MM-DD"},
+                    "new_time": {"type": "string", "description": "Nueva hora HH:MM (24h)"},
+                },
+                "required": ["appointment_id", "new_date", "new_time"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "ver_configuracion",
+            "description": "Ver configuracion de la clinica: nombre, direccion, horarios, datos bancarios, precio consulta.",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "actualizar_configuracion",
+            "description": "Actualizar configuracion de la clinica. Solo CEO.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "field": {"type": "string", "enum": ["clinic_name", "clinic_location", "clinic_phone", "working_hours_start", "working_hours_end", "bank_cbu", "bank_alias", "bank_holder_name", "consultation_price", "website"]},
+                    "value": {"type": "string"},
+                },
+                "required": ["field", "value"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "crear_tratamiento",
+            "description": "Crear nuevo tipo de tratamiento. Solo CEO.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"},
+                    "code": {"type": "string", "description": "Codigo unico (ej: blanqueamiento, ortodoncia)"},
+                    "duration_minutes": {"type": "integer"},
+                    "base_price": {"type": "number"},
+                    "category": {"type": "string", "enum": ["prevention", "restorative", "surgical", "orthodontics", "emergency"]},
+                },
+                "required": ["name", "code", "duration_minutes"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "editar_tratamiento",
+            "description": "Editar un tipo de tratamiento existente. Solo CEO.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "code": {"type": "string"},
+                    "field": {"type": "string", "enum": ["name", "duration_minutes", "base_price", "category", "is_active"]},
+                    "value": {"type": "string"},
+                },
+                "required": ["code", "field", "value"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "ver_chats_recientes",
+            "description": "Ver ultimas conversaciones de WhatsApp/Instagram/Facebook con pacientes.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "limit": {"type": "integer", "description": "Cantidad de chats (default 10)"},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "enviar_mensaje",
+            "description": "Enviar mensaje de WhatsApp a un paciente.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "phone": {"type": "string", "description": "Telefono del paciente con codigo de area"},
+                    "message": {"type": "string", "description": "Texto del mensaje"},
+                },
+                "required": ["phone", "message"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "ver_estadisticas",
+            "description": "Estadisticas generales: turnos, pacientes, facturacion, cancelaciones. Acepta periodo.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "period": {"type": "string", "enum": ["hoy", "semana", "mes", "año"], "description": "Periodo (default: semana)"},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "bloquear_agenda",
+            "description": "Crear bloque de horario no disponible en la agenda (reunion, descanso, etc).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "professional_id": {"type": "integer"},
+                    "start_datetime": {"type": "string", "description": "Inicio YYYY-MM-DD HH:MM"},
+                    "end_datetime": {"type": "string", "description": "Fin YYYY-MM-DD HH:MM"},
+                    "reason": {"type": "string"},
+                },
+                "required": ["professional_id", "start_datetime", "end_datetime"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "eliminar_paciente",
+            "description": "Desactivar un paciente (soft delete). Solo CEO.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "patient_id": {"type": "integer"},
+                },
+                "required": ["patient_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "ver_faqs",
+            "description": "Lista las FAQs configuradas para el chatbot de WhatsApp.",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "eliminar_faq",
+            "description": "Eliminar una FAQ por ID.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "faq_id": {"type": "integer"},
+                },
+                "required": ["faq_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "cambiar_estado_turno",
+            "description": "Cambiar estado de un turno: completed, no-show, in-progress.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "appointment_id": {"type": "string"},
+                    "status": {"type": "string", "enum": ["completed", "no-show", "in-progress", "confirmed"]},
+                },
+                "required": ["appointment_id", "status"],
+            },
+        },
+    },
 ]
 
 
@@ -1766,9 +1959,264 @@ async def execute_nova_tool(
         elif name == "onboarding_status":
             return await _onboarding_status(args, tenant_id, user_role)
 
+        # G. New staff tools
+        elif name == "listar_profesionales":
+            return await _listar_profesionales(tenant_id)
+        elif name == "reprogramar_turno":
+            return await _reprogramar_turno(args, tenant_id)
+        elif name == "ver_configuracion":
+            return await _ver_configuracion(tenant_id)
+        elif name == "actualizar_configuracion":
+            return await _actualizar_configuracion(args, tenant_id, user_role)
+        elif name == "crear_tratamiento":
+            return await _crear_tratamiento(args, tenant_id, user_role)
+        elif name == "editar_tratamiento":
+            return await _editar_tratamiento(args, tenant_id, user_role)
+        elif name == "ver_chats_recientes":
+            return await _ver_chats_recientes(args, tenant_id)
+        elif name == "enviar_mensaje":
+            return await _enviar_mensaje(args, tenant_id, user_role)
+        elif name == "ver_estadisticas":
+            return await _ver_estadisticas(args, tenant_id)
+        elif name == "bloquear_agenda":
+            return await _bloquear_agenda(args, tenant_id)
+        elif name == "eliminar_paciente":
+            return await _eliminar_paciente(args, tenant_id, user_role)
+        elif name == "ver_faqs":
+            return await _ver_faqs(tenant_id)
+        elif name == "eliminar_faq":
+            return await _eliminar_faq(args, tenant_id)
+        elif name == "cambiar_estado_turno":
+            return await _cambiar_estado_turno(args, tenant_id)
+
         else:
             return f"Tool '{name}' no reconocida."
 
     except Exception as e:
         logger.error(f"Error executing nova tool '{name}': {e}", exc_info=True)
         return f"Error al ejecutar '{name}': {str(e)}"
+
+
+# =============================================================================
+# G. NEW STAFF TOOLS IMPLEMENTATIONS
+# =============================================================================
+
+async def _listar_profesionales(tenant_id: int) -> str:
+    rows = await db.pool.fetch(
+        "SELECT id, first_name, last_name, specialty, consultation_price, is_active FROM professionals WHERE tenant_id = $1 ORDER BY first_name",
+        tenant_id,
+    )
+    if not rows:
+        return "No hay profesionales registrados."
+    lines = ["Profesionales:"]
+    for r in rows:
+        status = "activo" if r["is_active"] else "inactivo"
+        price = f" — ${r['consultation_price']}" if r.get("consultation_price") else ""
+        lines.append(f"• {r['first_name']} {r['last_name']} ({r.get('specialty') or 'general'}) [{status}]{price} (ID: {r['id']})")
+    return "\n".join(lines)
+
+
+async def _reprogramar_turno(args: Dict, tenant_id: int) -> str:
+    apt_id = args.get("appointment_id", "")
+    new_date = args.get("new_date", "")
+    new_time = args.get("new_time", "")
+    if not apt_id or not new_date or not new_time:
+        return "Necesito appointment_id, new_date (YYYY-MM-DD) y new_time (HH:MM)."
+    new_dt = f"{new_date} {new_time}:00"
+    await db.pool.execute(
+        "UPDATE appointments SET appointment_datetime = $1, status = 'scheduled', updated_at = NOW() WHERE id = $2 AND tenant_id = $3",
+        new_dt, apt_id, tenant_id,
+    )
+    return f"Turno {apt_id} reprogramado para {new_date} a las {new_time}."
+
+
+async def _ver_configuracion(tenant_id: int) -> str:
+    row = await db.pool.fetchrow("SELECT * FROM tenants WHERE id = $1", tenant_id)
+    if not row:
+        return "Clinica no encontrada."
+    lines = [f"Configuracion de {row.get('clinic_name', 'Clinica')}:"]
+    for field in ["clinic_name", "clinic_location", "clinic_phone", "website", "working_hours_start", "working_hours_end", "bank_cbu", "bank_alias", "bank_holder_name", "consultation_price", "owner_email"]:
+        val = row.get(field)
+        if val:
+            lines.append(f"• {field}: {val}")
+    return "\n".join(lines)
+
+
+async def _actualizar_configuracion(args: Dict, tenant_id: int, user_role: str) -> str:
+    if user_role != "ceo":
+        return _role_error("actualizar_configuracion", ["ceo"])
+    field = args.get("field", "")
+    value = args.get("value", "")
+    if not field:
+        return "Necesito field y value."
+    allowed = ["clinic_name", "clinic_location", "clinic_phone", "working_hours_start", "working_hours_end", "bank_cbu", "bank_alias", "bank_holder_name", "consultation_price", "website"]
+    if field not in allowed:
+        return f"Campo '{field}' no permitido. Opciones: {', '.join(allowed)}"
+    await db.pool.execute(f"UPDATE tenants SET {field} = $1, updated_at = NOW() WHERE id = $2", value, tenant_id)
+    return f"Configuracion actualizada: {field} = {value}"
+
+
+async def _crear_tratamiento(args: Dict, tenant_id: int, user_role: str) -> str:
+    if user_role != "ceo":
+        return _role_error("crear_tratamiento", ["ceo"])
+    name = args.get("name", "")
+    code = args.get("code", "")
+    duration = args.get("duration_minutes", 30)
+    price = args.get("base_price", 0)
+    category = args.get("category", "prevention")
+    if not name or not code:
+        return "Necesito name y code."
+    await db.pool.execute(
+        """INSERT INTO treatment_types (tenant_id, name, code, default_duration_minutes, base_price, category, is_active, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, true, NOW())""",
+        tenant_id, name, code, duration, price, category,
+    )
+    return f"Tratamiento '{name}' ({code}) creado — {duration} min, ${price}, categoria: {category}."
+
+
+async def _editar_tratamiento(args: Dict, tenant_id: int, user_role: str) -> str:
+    if user_role != "ceo":
+        return _role_error("editar_tratamiento", ["ceo"])
+    code = args.get("code", "")
+    field = args.get("field", "")
+    value = args.get("value", "")
+    if not code or not field:
+        return "Necesito code, field y value."
+    field_map = {"name": "name", "duration_minutes": "default_duration_minutes", "base_price": "base_price", "category": "category", "is_active": "is_active"}
+    db_field = field_map.get(field)
+    if not db_field:
+        return f"Campo '{field}' no valido. Opciones: {', '.join(field_map.keys())}"
+    await db.pool.execute(f"UPDATE treatment_types SET {db_field} = $1 WHERE tenant_id = $2 AND code = $3", value, tenant_id, code)
+    return f"Tratamiento '{code}' actualizado: {field} = {value}"
+
+
+async def _ver_chats_recientes(args: Dict, tenant_id: int) -> str:
+    limit = args.get("limit", 10)
+    rows = await db.pool.fetch(
+        """SELECT cc.customer_phone, cc.channel, cc.updated_at,
+                  (SELECT content FROM chat_messages WHERE conversation_id = cc.id ORDER BY created_at DESC LIMIT 1) as last_msg
+           FROM chat_conversations cc WHERE cc.tenant_id = $1 ORDER BY cc.updated_at DESC LIMIT $2""",
+        tenant_id, limit,
+    )
+    if not rows:
+        return "No hay conversaciones recientes."
+    lines = ["Conversaciones recientes:"]
+    for r in rows:
+        phone = r["customer_phone"] or "?"
+        channel = r["channel"] or "whatsapp"
+        last = (r["last_msg"] or "")[:60]
+        when = r["updated_at"].strftime("%d/%m %H:%M") if r["updated_at"] else "?"
+        lines.append(f"• {phone} ({channel}) — {when}: {last}")
+    return "\n".join(lines)
+
+
+async def _enviar_mensaje(args: Dict, tenant_id: int, user_role: str) -> str:
+    if user_role not in ("ceo", "secretary"):
+        return _role_error("enviar_mensaje", ["ceo", "secretary"])
+    phone = args.get("phone", "")
+    message = args.get("message", "")
+    if not phone or not message:
+        return "Necesito phone y message."
+    try:
+        import httpx
+        from core.credentials import get_tenant_credential
+        ycloud_key = await get_tenant_credential(tenant_id, "YCLOUD_API_KEY")
+        if not ycloud_key:
+            return "No hay YCloud API key configurada para este tenant."
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.post(
+                "https://api.ycloud.com/v2/whatsapp/messages/sendDirectly",
+                headers={"X-API-Key": ycloud_key, "Content-Type": "application/json"},
+                json={"from": os.getenv("BOT_PHONE_NUMBER", ""), "to": phone, "type": "text", "text": {"body": message}},
+            )
+        if resp.status_code == 200:
+            return f"Mensaje enviado a {phone}: '{message[:50]}...'"
+        return f"Error enviando mensaje: {resp.status_code}"
+    except Exception as e:
+        return f"Error: {e}"
+
+
+async def _ver_estadisticas(args: Dict, tenant_id: int) -> str:
+    period = args.get("period", "semana")
+    days_map = {"hoy": 0, "semana": 7, "mes": 30, "año": 365}
+    days = days_map.get(period, 7)
+
+    if days == 0:
+        date_filter = "AND DATE(appointment_datetime) = CURRENT_DATE"
+    else:
+        date_filter = f"AND appointment_datetime >= NOW() - make_interval(days => {days})"
+
+    total = await db.pool.fetchval(f"SELECT COUNT(*) FROM appointments WHERE tenant_id = $1 {date_filter}", tenant_id) or 0
+    completed = await db.pool.fetchval(f"SELECT COUNT(*) FROM appointments WHERE tenant_id = $1 AND status = 'completed' {date_filter}", tenant_id) or 0
+    cancelled = await db.pool.fetchval(f"SELECT COUNT(*) FROM appointments WHERE tenant_id = $1 AND status = 'cancelled' {date_filter}", tenant_id) or 0
+    no_shows = await db.pool.fetchval(f"SELECT COUNT(*) FROM appointments WHERE tenant_id = $1 AND status = 'no-show' {date_filter}", tenant_id) or 0
+    new_patients = await db.pool.fetchval(f"SELECT COUNT(*) FROM patients WHERE tenant_id = $1 AND created_at >= NOW() - make_interval(days => {max(days, 1)})", tenant_id) or 0
+    revenue = await db.pool.fetchval(f"SELECT COALESCE(SUM(billing_amount), 0) FROM appointments WHERE tenant_id = $1 AND payment_status = 'paid' {date_filter}", tenant_id) or 0
+
+    return f"""Estadisticas ({period}):
+• Turnos totales: {total}
+• Completados: {completed}
+• Cancelados: {cancelled}
+• No-shows: {no_shows}
+• Pacientes nuevos: {new_patients}
+• Facturacion: ${revenue:,.0f}
+• Tasa completitud: {(completed/total*100) if total > 0 else 0:.1f}%"""
+
+
+async def _bloquear_agenda(args: Dict, tenant_id: int) -> str:
+    prof_id = args.get("professional_id")
+    start = args.get("start_datetime", "")
+    end = args.get("end_datetime", "")
+    reason = args.get("reason", "Bloqueado")
+    if not prof_id or not start or not end:
+        return "Necesito professional_id, start_datetime y end_datetime."
+    await db.pool.execute(
+        """INSERT INTO google_calendar_blocks (tenant_id, professional_id, start_time, end_time, title, source, created_at)
+           VALUES ($1, $2, $3, $4, $5, 'manual', NOW())""",
+        tenant_id, prof_id, start, end, reason,
+    )
+    return f"Agenda bloqueada: {start} a {end} — {reason}"
+
+
+async def _eliminar_paciente(args: Dict, tenant_id: int, user_role: str) -> str:
+    if user_role != "ceo":
+        return _role_error("eliminar_paciente", ["ceo"])
+    patient_id = args.get("patient_id")
+    if not patient_id:
+        return "Necesito patient_id."
+    await db.pool.execute("UPDATE patients SET status = 'archived' WHERE id = $1 AND tenant_id = $2", patient_id, tenant_id)
+    return f"Paciente {patient_id} archivado."
+
+
+async def _ver_faqs(tenant_id: int) -> str:
+    rows = await db.pool.fetch("SELECT id, question, answer FROM clinic_faqs WHERE tenant_id = $1 ORDER BY id", tenant_id)
+    if not rows:
+        return "No hay FAQs configuradas."
+    lines = ["FAQs del chatbot:"]
+    for r in rows:
+        lines.append(f"• [{r['id']}] {r['question']}\n  → {(r['answer'] or '')[:80]}")
+    return "\n".join(lines)
+
+
+async def _eliminar_faq(args: Dict, tenant_id: int) -> str:
+    faq_id = args.get("faq_id")
+    if not faq_id:
+        return "Necesito faq_id."
+    await db.pool.execute("DELETE FROM clinic_faqs WHERE id = $1 AND tenant_id = $2", faq_id, tenant_id)
+    return f"FAQ {faq_id} eliminada."
+
+
+async def _cambiar_estado_turno(args: Dict, tenant_id: int) -> str:
+    apt_id = args.get("appointment_id", "")
+    status = args.get("status", "")
+    if not apt_id or not status:
+        return "Necesito appointment_id y status."
+    allowed = ["completed", "no-show", "in-progress", "confirmed", "cancelled"]
+    if status not in allowed:
+        return f"Estado '{status}' no valido. Opciones: {', '.join(allowed)}"
+    updates = {"status": status}
+    if status == "completed":
+        await db.pool.execute("UPDATE appointments SET status = $1, completed_at = NOW(), updated_at = NOW() WHERE id = $2 AND tenant_id = $3", status, apt_id, tenant_id)
+    else:
+        await db.pool.execute("UPDATE appointments SET status = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3", status, apt_id, tenant_id)
+    return f"Turno {apt_id} → estado: {status}"
