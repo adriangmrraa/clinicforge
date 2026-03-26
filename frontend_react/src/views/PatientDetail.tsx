@@ -551,49 +551,52 @@ export default function PatientDetail() {
           <div className="flex overflow-x-auto hide-scrollbar">
             <button
               onClick={() => setActiveTab('summary')}
-              className={`flex-1 py-3 px-4 text-sm font-medium transition-colors ${activeTab === 'summary'
+              className={`flex-shrink-0 py-3 px-3 lg:px-4 text-xs lg:text-sm font-medium transition-colors whitespace-nowrap ${activeTab === 'summary'
                 ? 'text-primary border-b-2 border-primary'
                 : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
                 }`}
             >
-              <div className="flex items-center justify-center gap-2">
-                <ClipboardList size={18} />
-                {t('patient_detail.tabs.summary')}
+              <div className="flex items-center justify-center gap-1.5">
+                <ClipboardList size={16} />
+                <span className="hidden sm:inline">{t('patient_detail.tabs.summary')}</span>
+                <span className="sm:hidden">Resumen</span>
               </div>
             </button>
             <button
               onClick={() => setActiveTab('history')}
-              className={`flex-1 py-3 px-4 text-sm font-medium transition-colors ${activeTab === 'history'
+              className={`flex-shrink-0 py-3 px-3 lg:px-4 text-xs lg:text-sm font-medium transition-colors whitespace-nowrap ${activeTab === 'history'
                 ? 'text-primary border-b-2 border-primary'
                 : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
                 }`}
             >
-              <div className="flex items-center justify-center gap-2">
-                <History size={18} />
-                {t('patient_detail.tabs.history')}
+              <div className="flex items-center justify-center gap-1.5">
+                <History size={16} />
+                <span className="hidden sm:inline">{t('patient_detail.tabs.history')}</span>
+                <span className="sm:hidden">Historia</span>
               </div>
             </button>
             <button
               onClick={() => setActiveTab('documents')}
-              className={`flex-1 py-3 px-4 text-sm font-medium transition-colors ${activeTab === 'documents'
+              className={`flex-shrink-0 py-3 px-3 lg:px-4 text-xs lg:text-sm font-medium transition-colors whitespace-nowrap ${activeTab === 'documents'
                 ? 'text-primary border-b-2 border-primary'
                 : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
                 }`}
             >
-              <div className="flex items-center justify-center gap-2">
-                <Folder size={18} />
-                {t('patient_detail.tabs.documents')}
+              <div className="flex items-center justify-center gap-1.5">
+                <Folder size={16} />
+                <span className="hidden sm:inline">{t('patient_detail.tabs.documents')}</span>
+                <span className="sm:hidden">Archivos</span>
               </div>
             </button>
             <button
               onClick={() => setActiveTab('anamnesis')}
-              className={`flex-1 py-3 px-4 text-sm font-medium transition-colors ${activeTab === 'anamnesis'
+              className={`flex-shrink-0 py-3 px-3 lg:px-4 text-xs lg:text-sm font-medium transition-colors whitespace-nowrap ${activeTab === 'anamnesis'
                 ? 'text-primary border-b-2 border-primary'
                 : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
                 }`}
             >
-              <div className="flex items-center justify-center gap-2">
-                <HeartPulse size={18} />
+              <div className="flex items-center justify-center gap-1.5">
+                <HeartPulse size={16} />
                 Anamnesis
               </div>
             </button>

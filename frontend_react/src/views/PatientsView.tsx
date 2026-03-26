@@ -574,7 +574,7 @@ export default function PatientsView() {
               <div className="flex-1 p-6 space-y-6">
                 {/* Datos personales */}
                 <div className="space-y-5">
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-1.5">
                       <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{t('patients.first_name_req')}</label>
                       <div className="relative">
@@ -649,7 +649,7 @@ export default function PatientsView() {
                       className="w-full px-4 py-2.5 bg-gray-50 border border-transparent rounded-lg focus:bg-white focus:border-blue-500 focus:ring-0 transition-all text-sm"
                     />
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-1.5">
                       <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{t('patients.city_neighborhood')}</label>
                       <input
