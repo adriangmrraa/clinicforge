@@ -431,127 +431,66 @@ export default function MarketingHubView() {
 
             case 'google':
                 return (
-                    <div className="space-y-6">
+                    <div className="space-y-4">
+                        {/* Google KPIs — same card style as Meta */}
                         {googleStats && (
-                            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-                                <div className="rounded-lg border border-gray-200 bg-white p-4">
-                                    <h4 className="text-sm font-medium text-gray-900">
-                                        {t('marketing_google.impressions')}
-                                    </h4>
-                                    <p className="mt-2 text-2xl font-semibold text-gray-900">
-                                        {GoogleAdsApi.formatNumber(googleStats.impressions || 0)}
-                                    </p>
+                            <div className="bg-white border border-gray-200 rounded-2xl p-4 sm:p-6">
+                                <div className="grid grid-cols-2 gap-3 mb-4">
+                                    <div className="bg-blue-50 rounded-xl p-3 text-center">
+                                        <p className="text-lg sm:text-2xl font-bold text-blue-700">{GoogleAdsApi.formatNumber(googleStats.impressions || 0)}</p>
+                                        <p className="text-[10px] text-blue-500 font-semibold uppercase">Impresiones</p>
+                                    </div>
+                                    <div className="bg-indigo-50 rounded-xl p-3 text-center">
+                                        <p className="text-lg sm:text-2xl font-bold text-indigo-700">{GoogleAdsApi.formatNumber(googleStats.clicks || 0)}</p>
+                                        <p className="text-[10px] text-indigo-500 font-semibold uppercase">Clicks</p>
+                                    </div>
                                 </div>
-                                <div className="rounded-lg border border-gray-200 bg-white p-4">
-                                    <h4 className="text-sm font-medium text-gray-900">
-                                        {t('marketing_google.clicks')}
-                                    </h4>
-                                    <p className="mt-2 text-2xl font-semibold text-gray-900">
-                                        {GoogleAdsApi.formatNumber(googleStats.clicks || 0)}
-                                    </p>
-                                </div>
-                                <div className="rounded-lg border border-gray-200 bg-white p-4">
-                                    <h4 className="text-sm font-medium text-gray-900">
-                                        {t('marketing_google.cost')}
-                                    </h4>
-                                    <p className="mt-2 text-2xl font-semibold text-gray-900">
-                                        {GoogleAdsApi.formatCurrency(googleStats.cost || 0, googleStats.currency)}
-                                    </p>
-                                </div>
-                                <div className="rounded-lg border border-gray-200 bg-white p-4">
-                                    <h4 className="text-sm font-medium text-gray-900">
-                                        {t('marketing_google.conversions')}
-                                    </h4>
-                                    <p className="mt-2 text-2xl font-semibold text-gray-900">
-                                        {GoogleAdsApi.formatNumber(googleStats.conversions || 0)}
-                                    </p>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div className="bg-amber-50 rounded-xl p-3 text-center">
+                                        <p className="text-lg sm:text-2xl font-bold text-amber-700">{GoogleAdsApi.formatCurrency(googleStats.cost || 0, googleStats.currency)}</p>
+                                        <p className="text-[10px] text-amber-500 font-semibold uppercase">Costo</p>
+                                    </div>
+                                    <div className="bg-emerald-50 rounded-xl p-3 text-center">
+                                        <p className="text-lg sm:text-2xl font-bold text-emerald-700">{GoogleAdsApi.formatNumber(googleStats.conversions || 0)}</p>
+                                        <p className="text-[10px] text-emerald-500 font-semibold uppercase">Conversiones</p>
+                                    </div>
                                 </div>
                             </div>
                         )}
 
-                        {/* Google campaigns table would go here */}
-                        <div className="rounded-lg border border-gray-200 bg-white p-4">
-                            <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                                {t('marketing_google.active_campaigns')}
-                            </h3>
-                            {googleStats?.campaign_count > 0 ? (
-                                <div className="overflow-x-auto">
-                                    <table className="min-w-full divide-y divide-gray-200">
-                                        <thead>
-                                            <tr>
-                                                <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                                    {t('marketing_google.table_campaign')}
-                                                </th>
-                                                <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                                    {t('marketing_google.table_type')}
-                                                </th>
-                                                <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                                    {t('marketing_google.table_status')}
-                                                </th>
-                                                <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                                    {t('marketing_google.table_cost')}
-                                                </th>
-                                                <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                                    {t('marketing_google.table_conversions')}
-                                                </th>
-                                                <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                                    {t('marketing_google.table_roas')}
-                                                </th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-gray-200">
-                                            {/* Demo campaigns - in real implementation, fetch from API */}
-                                            <tr>
-                                                <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900">
-                                                    Clínica Dental - Búsqueda Branded
-                                                </td>
-                                                <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900">
-                                                    {t('marketing_google.type.search')}
-                                                </td>
-                                                <td className="px-3 py-4 whitespace-nowrap">
-                                                    <span className="inline-flex rounded-full px-2 text-xs font-semibold leading-5 bg-green-100 text-green-800">
-                                                        {t('marketing_google.status.enabled')}
-                                                    </span>
-                                                </td>
-                                                <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900">
-                                                    $42.00
-                                                </td>
-                                                <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900">
-                                                    12
-                                                </td>
-                                                <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900">
-                                                    5.71
-                                                </td>
-                                            </tr>
-                                            <tr>
-                                                <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900">
-                                                    Ortodoncia - Display Remarketing
-                                                </td>
-                                                <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900">
-                                                    {t('marketing_google.type.display')}
-                                                </td>
-                                                <td className="px-3 py-4 whitespace-nowrap">
-                                                    <span className="inline-flex rounded-full px-2 text-xs font-semibold leading-5 bg-green-100 text-green-800">
-                                                        {t('marketing_google.status.enabled')}
-                                                    </span>
-                                                </td>
-                                                <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900">
-                                                    $28.00
-                                                </td>
-                                                <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900">
-                                                    8
-                                                </td>
-                                                <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900">
-                                                    5.71
-                                                </td>
-                                            </tr>
-                                        </tbody>
-                                    </table>
-                                </div>
+                        {/* Google campaigns as cards */}
+                        <div className="space-y-3">
+                            <h3 className="text-sm font-semibold text-slate-600 uppercase tracking-wider px-1">{t('marketing_google.active_campaigns')}</h3>
+                            {googleStats?.campaigns?.length > 0 ? (
+                                googleStats.campaigns.map((c: any, i: number) => (
+                                    <div key={i} className="bg-white border border-slate-100 rounded-xl p-3 sm:p-4">
+                                        <div className="flex items-start justify-between gap-2 mb-3">
+                                            <div className="min-w-0 flex-1">
+                                                <h4 className="text-sm font-semibold text-slate-800 truncate">{c.name || c.campaign_name || '—'}</h4>
+                                                <p className="text-xs text-slate-400 mt-0.5">{c.type || 'Campaña'} · {GoogleAdsApi.formatCurrency(c.cost || c.spend || 0, googleStats.currency)}</p>
+                                            </div>
+                                            <span className={`shrink-0 inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold ${c.status === 'ENABLED' || c.status === 'active' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
+                                                {c.status === 'ENABLED' || c.status === 'active' ? '● Activo' : c.status || '—'}
+                                            </span>
+                                        </div>
+                                        <div className="grid grid-cols-3 gap-2">
+                                            <div className="text-center bg-blue-50 rounded-lg py-2">
+                                                <p className="text-lg font-bold text-blue-700">{GoogleAdsApi.formatNumber(c.clicks || 0)}</p>
+                                                <p className="text-[10px] text-blue-500 font-medium">Clicks</p>
+                                            </div>
+                                            <div className="text-center bg-emerald-50 rounded-lg py-2">
+                                                <p className="text-lg font-bold text-emerald-700">{GoogleAdsApi.formatNumber(c.conversions || 0)}</p>
+                                                <p className="text-[10px] text-emerald-500 font-medium">Conversiones</p>
+                                            </div>
+                                            <div className="text-center bg-slate-50 rounded-lg py-2">
+                                                <p className="text-lg font-bold text-slate-700">{c.roas?.toFixed(1) || '0.0'}</p>
+                                                <p className="text-[10px] text-slate-500 font-medium">ROAS</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))
                             ) : (
-                                <p className="text-gray-500 text-center py-4">
-                                    {t('marketing_google.no_campaigns')}
-                                </p>
+                                <p className="text-gray-400 text-center py-6 text-sm">{t('marketing_google.no_campaigns')}</p>
                             )}
                         </div>
                     </div>
@@ -559,136 +498,93 @@ export default function MarketingHubView() {
 
             case 'combined':
                 return (
-                    <div className="space-y-6">
+                    <div className="space-y-4">
+                        {/* Combined KPIs */}
                         {combinedStats && (
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                <div className="rounded-lg border border-gray-200 bg-white p-4">
-                                    <h4 className="text-sm font-medium text-gray-900">
-                                        {t('marketing_google.combined_stats.total_impressions')}
-                                    </h4>
-                                    <p className="mt-2 text-2xl font-semibold text-gray-900">
-                                        {GoogleAdsApi.formatNumber(combinedStats.combined?.total_impressions || 0)}
-                                    </p>
+                            <div className="bg-white border border-gray-200 rounded-2xl p-4 sm:p-6">
+                                <div className="grid grid-cols-2 gap-3 mb-3">
+                                    <div className="bg-blue-50 rounded-xl p-3 text-center">
+                                        <p className="text-lg sm:text-2xl font-bold text-blue-700">{GoogleAdsApi.formatNumber(combinedStats.combined?.total_impressions || 0)}</p>
+                                        <p className="text-[10px] text-blue-500 font-semibold uppercase">Impresiones</p>
+                                    </div>
+                                    <div className="bg-indigo-50 rounded-xl p-3 text-center">
+                                        <p className="text-lg sm:text-2xl font-bold text-indigo-700">{GoogleAdsApi.formatNumber(combinedStats.combined?.total_clicks || 0)}</p>
+                                        <p className="text-[10px] text-indigo-500 font-semibold uppercase">Clicks</p>
+                                    </div>
                                 </div>
-                                <div className="rounded-lg border border-gray-200 bg-white p-4">
-                                    <h4 className="text-sm font-medium text-gray-900">
-                                        {t('marketing_google.combined_stats.total_clicks')}
-                                    </h4>
-                                    <p className="mt-2 text-2xl font-semibold text-gray-900">
-                                        {GoogleAdsApi.formatNumber(combinedStats.combined?.total_clicks || 0)}
-                                    </p>
-                                </div>
-                                <div className="rounded-lg border border-gray-200 bg-white p-4">
-                                    <h4 className="text-sm font-medium text-gray-900">
-                                        {t('marketing_google.combined_stats.total_cost')}
-                                    </h4>
-                                    <p className="mt-2 text-2xl font-semibold text-gray-900">
-                                        {GoogleAdsApi.formatCurrency(combinedStats.combined?.total_cost || 0, 'ARS')}
-                                    </p>
-                                </div>
-                                <div className="rounded-lg border border-gray-200 bg-white p-4">
-                                    <h4 className="text-sm font-medium text-gray-900">
-                                        {t('marketing_google.combined_stats.total_conversions')}
-                                    </h4>
-                                    <p className="mt-2 text-2xl font-semibold text-gray-900">
-                                        {GoogleAdsApi.formatNumber(combinedStats.combined?.total_conversions || 0)}
-                                    </p>
-                                </div>
-                                <div className="rounded-lg border border-gray-200 bg-white p-4">
-                                    <h4 className="text-sm font-medium text-gray-900">
-                                        {t('marketing_google.combined_stats.total_revenue')}
-                                    </h4>
-                                    <p className="mt-2 text-2xl font-semibold text-gray-900">
-                                        {GoogleAdsApi.formatCurrency(combinedStats.combined?.total_conversions_value || 0, 'ARS')}
-                                    </p>
-                                </div>
-                                <div className="rounded-lg border border-gray-200 bg-white p-4">
-                                    <h4 className="text-sm font-medium text-gray-900">
-                                        {t('marketing_google.combined_stats.platform_distribution')}
-                                    </h4>
-                                    <p className="mt-2 text-lg font-semibold text-gray-900">
-                                        {combinedStats.combined?.platforms?.join(', ') || 'Ninguna'}
-                                    </p>
+                                <div className="grid grid-cols-3 gap-2">
+                                    <div className="bg-amber-50 rounded-xl p-2.5 text-center">
+                                        <p className="text-base sm:text-lg font-bold text-amber-700">{GoogleAdsApi.formatCurrency(combinedStats.combined?.total_cost || 0, 'ARS')}</p>
+                                        <p className="text-[10px] text-amber-500 font-semibold uppercase">Costo</p>
+                                    </div>
+                                    <div className="bg-emerald-50 rounded-xl p-2.5 text-center">
+                                        <p className="text-base sm:text-lg font-bold text-emerald-700">{GoogleAdsApi.formatNumber(combinedStats.combined?.total_conversions || 0)}</p>
+                                        <p className="text-[10px] text-emerald-500 font-semibold uppercase">Conversiones</p>
+                                    </div>
+                                    <div className="bg-violet-50 rounded-xl p-2.5 text-center">
+                                        <p className="text-base sm:text-lg font-bold text-violet-700">{GoogleAdsApi.formatCurrency(combinedStats.combined?.total_conversions_value || 0, 'ARS')}</p>
+                                        <p className="text-[10px] text-violet-500 font-semibold uppercase">Ingresos</p>
+                                    </div>
                                 </div>
                             </div>
                         )}
 
-                        <div className="rounded-lg border border-gray-200 bg-white p-4">
-                            <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                                Comparación de Plataformas
-                            </h3>
-                            <div className="overflow-x-auto">
-                                <table className="min-w-full divide-y divide-gray-200">
-                                    <thead>
-                                        <tr>
-                                            <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                                Plataforma
-                                            </th>
-                                            <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                                Estado
-                                            </th>
-                                            <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                                Inversión
-                                            </th>
-                                            <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                                Ingresos
-                                            </th>
-                                            <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                                ROI
-                                            </th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-gray-200">
-                                        <tr>
-                                            <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900">
-                                                <div className="flex items-center">
-                                                    <Megaphone className="h-4 w-4 mr-2 text-blue-600" />
-                                                    Meta Ads
-                                                </div>
-                                            </td>
-                                            <td className="px-3 py-4 whitespace-nowrap">
-                                                <span className={`inline-flex rounded-full px-2 text-xs font-semibold leading-5 ${isMetaConnected ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
-                                                    }`}>
-                                                    {isMetaConnected ? 'Conectado' : 'Desconectado'}
-                                                </span>
-                                            </td>
-                                            <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900">
-                                                ${metaStats?.roi?.total_spend?.toLocaleString('es-AR', { minimumFractionDigits: 2 }) || '0.00'}
-                                            </td>
-                                            <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900">
-                                                ${metaStats?.roi?.total_revenue?.toLocaleString('es-AR', { minimumFractionDigits: 2 }) || '0.00'}
-                                            </td>
-                                            <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900">
-                                                {metaStats?.roi?.total_spend > 0
-                                                    ? `${((metaStats.roi.total_revenue / metaStats.roi.total_spend) * 100).toFixed(2)}%`
-                                                    : '0.00%'}
-                                            </td>
-                                        </tr>
-                                        <tr>
-                                            <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900">
-                                                <div className="flex items-center">
-                                                    <Globe className="h-4 w-4 mr-2 text-red-600" />
-                                                    Google Ads
-                                                </div>
-                                            </td>
-                                            <td className="px-3 py-4 whitespace-nowrap">
-                                                <span className={`inline-flex rounded-full px-2 text-xs font-semibold leading-5 ${isGoogleConnected ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
-                                                    }`}>
-                                                    {isGoogleConnected ? 'Conectado' : 'Desconectado'}
-                                                </span>
-                                            </td>
-                                            <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900">
-                                                {GoogleAdsApi.formatCurrency(googleStats?.cost || 0, googleStats?.currency)}
-                                            </td>
-                                            <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900">
-                                                {GoogleAdsApi.formatCurrency(googleStats?.conversions_value || 0, googleStats?.currency)}
-                                            </td>
-                                            <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900">
-                                                {googleStats?.roas ? `${googleStats.roas.toFixed(2)}` : '0.00'}
-                                            </td>
-                                        </tr>
-                                    </tbody>
-                                </table>
+                        {/* Platform comparison as cards (not table) */}
+                        <div className="space-y-3">
+                            <h3 className="text-sm font-semibold text-slate-600 uppercase tracking-wider px-1">Comparación de Plataformas</h3>
+
+                            {/* Meta Ads card */}
+                            <div className="bg-white border border-slate-100 rounded-xl p-3 sm:p-4">
+                                <div className="flex items-center justify-between mb-3">
+                                    <div className="flex items-center gap-2">
+                                        <Megaphone size={16} className="text-blue-600" />
+                                        <span className="text-sm font-semibold text-slate-800">Meta Ads</span>
+                                    </div>
+                                    <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold ${isMetaConnected ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                                        {isMetaConnected ? '● Conectado' : 'Desconectado'}
+                                    </span>
+                                </div>
+                                <div className="grid grid-cols-3 gap-2">
+                                    <div className="text-center bg-blue-50 rounded-lg py-2">
+                                        <p className="text-lg font-bold text-blue-700">${metaStats?.roi?.total_spend?.toLocaleString('es-AR', { maximumFractionDigits: 0 }) || '0'}</p>
+                                        <p className="text-[10px] text-blue-500 font-medium">Inversión</p>
+                                    </div>
+                                    <div className="text-center bg-emerald-50 rounded-lg py-2">
+                                        <p className="text-lg font-bold text-emerald-700">${metaStats?.roi?.total_revenue?.toLocaleString('es-AR', { maximumFractionDigits: 0 }) || '0'}</p>
+                                        <p className="text-[10px] text-emerald-500 font-medium">Ingresos</p>
+                                    </div>
+                                    <div className="text-center bg-slate-50 rounded-lg py-2">
+                                        <p className="text-lg font-bold text-slate-700">{metaStats?.roi?.total_spend > 0 ? `${((metaStats.roi.total_revenue / metaStats.roi.total_spend) * 100).toFixed(0)}%` : '0%'}</p>
+                                        <p className="text-[10px] text-slate-500 font-medium">ROI</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Google Ads card */}
+                            <div className="bg-white border border-slate-100 rounded-xl p-3 sm:p-4">
+                                <div className="flex items-center justify-between mb-3">
+                                    <div className="flex items-center gap-2">
+                                        <Globe size={16} className="text-red-600" />
+                                        <span className="text-sm font-semibold text-slate-800">Google Ads</span>
+                                    </div>
+                                    <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold ${isGoogleConnected ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                                        {isGoogleConnected ? '● Conectado' : 'Desconectado'}
+                                    </span>
+                                </div>
+                                <div className="grid grid-cols-3 gap-2">
+                                    <div className="text-center bg-blue-50 rounded-lg py-2">
+                                        <p className="text-lg font-bold text-blue-700">{GoogleAdsApi.formatCurrency(googleStats?.cost || 0, googleStats?.currency)}</p>
+                                        <p className="text-[10px] text-blue-500 font-medium">Inversión</p>
+                                    </div>
+                                    <div className="text-center bg-emerald-50 rounded-lg py-2">
+                                        <p className="text-lg font-bold text-emerald-700">{GoogleAdsApi.formatCurrency(googleStats?.conversions_value || 0, googleStats?.currency)}</p>
+                                        <p className="text-[10px] text-emerald-500 font-medium">Ingresos</p>
+                                    </div>
+                                    <div className="text-center bg-slate-50 rounded-lg py-2">
+                                        <p className="text-lg font-bold text-slate-700">{googleStats?.roas ? `${googleStats.roas.toFixed(1)}x` : '0x'}</p>
+                                        <p className="text-[10px] text-slate-500 font-medium">ROAS</p>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
