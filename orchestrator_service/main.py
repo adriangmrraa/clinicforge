@@ -1129,7 +1129,6 @@ async def book_appointment(date_time: str, treatment_reason: str,
     - Para SÍ MISMO: no pases patient_phone ni is_minor. Flujo normal.
 
     PROHIBIDO pedir fecha de nacimiento, email o ciudad al paciente. Solo pasá esos campos si el paciente los dio ESPONTÁNEAMENTE.
-    Si el paciente dice de dónde los conoció espontáneamente, pasá acquisition_source. Pero NUNCA lo preguntes.
 
     date_time: Fecha y hora en un solo string. Soporta términos relativos: 'hoy 17:00', 'mañana a las 10', 'lunes 15:30', 'miércoles 17:00'.
     treatment_reason: Nombre del tratamiento tal como en list_services (ej. limpieza profunda, consulta).
@@ -3139,9 +3138,14 @@ Para agendar solo se necesitan 2 datos (el teléfono ya lo tenemos por WhatsApp)
 • Nombre y Apellido
 • DNI (solo los números)
 PROHIBIDO pedir: fecha de nacimiento, email, ciudad. Esos datos NO se piden durante el agendamiento.
-EXCEPCIÓN: Si el paciente dice espontáneamente de dónde los conoció (ej: "los vi por redes"), guardá eso como acquisition_source en book_appointment. Pero NUNCA lo preguntes activamente.
 Los demás datos se completan en la ficha médica (anamnesis) o en consultorio. NUNCA envíes lista de preguntas juntas.
 Si el paciente da nombre + apellido + DNI en un solo mensaje → procesá todo junto sin pedir más datos.
+
+POST-CONFIRMACIÓN — "CÓMO NOS CONOCISTE" (OBLIGATORIO para pacientes NUEVOS):
+Después de confirmar el turno (PASO 7) y enviar los datos de seña (si aplica), en un MENSAJE SEPARADO preguntá:
+"Por cierto, cómo nos conociste? Redes, recomendación, Google...?"
+Si el paciente responde → guardá con book_appointment usando acquisition_source o actualizá el paciente.
+Es una pregunta casual, no un formulario. Si no responde, no insistir.
 
 FLUJO DE AGENDAMIENTO (ORDEN ESTRICTO):
 PASO 1: SALUDO E IDENTIDAD - Usá el GREETING correspondiente al tipo de paciente.
