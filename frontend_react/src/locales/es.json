@@ -1462,6 +1462,39 @@
       "edit": "Editar",
       "delete": "Eliminar"
     }
+  },
+  "meta_wizard": {
+    "title": "Conexión con Meta Ads",
+    "subtitle": "Configurá tu cuenta de anuncios en segundos.",
+    "loading_meta": "Obteniendo datos de Meta...",
+    "step1_title": "Paso 1: Qué clínica conectar?",
+    "already_connected": "Ya conectada",
+    "step2_title": "Paso 2: Seleccioná el Portfolio",
+    "no_portfolios": "No se encontraron Business Managers.",
+    "list_all_accounts": "Listar todas las cuentas",
+    "back": "← Volver",
+    "step3_title": "Paso 3: Elegí la cuenta de anuncios",
+    "no_accounts": "No hay cuentas disponibles",
+    "no_accounts_desc": "Asegurate de haber seleccionado tus cuentas en el popup de Meta Ads.",
+    "search_outside_portfolio": "Buscar fuera del portfolio",
+    "reconnect_all": "Reconectar eligiendo todas las cuentas",
+    "dont_see_account": "No ves tu cuenta?",
+    "paste_id": "Pegá el ID manualmente (ej: 120218...)",
+    "manual_account": "Cuenta manual ({{id}})",
+    "paste_id_desc": "Si tenés permisos pero Meta no lista la cuenta, pegá el ID acá.",
+    "btn_back": "Volver",
+    "btn_confirm": "Confirmar conexión",
+    "success_title": "Conexión exitosa!",
+    "success_desc1": "La cuenta",
+    "success_desc2": "está lista.",
+    "syncing": "Sincronizando datos...",
+    "close_wizard": "Cerrar asistente",
+    "errors": {
+      "load_clinics": "Error al cargar clínicas",
+      "load_portfolios": "Error al cargar portfolios",
+      "load_accounts": "Error al cargar cuentas",
+      "connect_account": "Error al conectar cuenta"
+    }
   }
 }
 

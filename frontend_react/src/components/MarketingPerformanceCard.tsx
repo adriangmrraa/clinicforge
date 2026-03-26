@@ -46,50 +46,51 @@ export default function MarketingPerformanceCard({ stats: externalStats, loading
     const roi = investment > 0 ? ((revenue - investment) / investment) * 100 : 0;
 
     return (
-        <div className="bg-white border border-gray-200 rounded-3xl p-8 shadow-sm h-full flex flex-col justify-between overflow-hidden relative">
-            <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-50 rounded-full blur-3xl -mr-32 -mt-32 opacity-50"></div>
+        <div className="bg-white border border-gray-200 rounded-2xl p-4 sm:p-6 shadow-sm overflow-hidden relative">
+            <div className="absolute top-0 right-0 w-48 h-48 bg-indigo-50 rounded-full blur-3xl -mr-24 -mt-24 opacity-40"></div>
 
             <div className="relative z-10">
-                <div className="flex justify-between items-start mb-8">
-                    <div>
-                        <h3 className="text-gray-500 font-medium text-xs sm:text-sm mb-1 uppercase tracking-wider">{t('marketing.roi_card_title')}</h3>
-                        <p className="text-3xl sm:text-4xl font-black text-gray-900 leading-tight">
+                {/* ROI + Investment/Return in a compact row */}
+                <div className="flex items-center gap-4 mb-4">
+                    <div className="flex-1">
+                        <h3 className="text-gray-400 font-medium text-[10px] uppercase tracking-wider">{t('marketing.roi_card_title')}</h3>
+                        <p className="text-2xl sm:text-3xl font-black text-gray-900 leading-tight">
                             {roi >= 0 ? '+' : ''}{roi.toFixed(1)}%
                         </p>
                     </div>
-                    <div className={`p-2 sm:p-3 rounded-2xl ${roi >= 0 ? 'bg-green-100 text-green-600' : 'bg-rose-100 text-rose-600'}`}>
-                        {roi >= 0 ? <TrendingUp size={20} className="sm:w-6 sm:h-6" /> : <TrendingDown size={20} className="sm:w-6 sm:h-6" />}
+                    <div className={`p-2 rounded-xl ${roi >= 0 ? 'bg-green-100 text-green-600' : 'bg-rose-100 text-rose-600'}`}>
+                        {roi >= 0 ? <TrendingUp size={18} /> : <TrendingDown size={18} />}
                     </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-8 mb-8">
-                    <div className="space-y-1">
-                        <div className="flex items-center gap-1.5 text-gray-500 text-[10px] sm:text-xs font-bold uppercase tracking-widest">
-                            <DollarSign size={14} className="text-indigo-500" /> {t('marketing.investment')}
+                <div className="grid grid-cols-2 gap-3 mb-4">
+                    <div className="bg-slate-50 rounded-xl p-2.5">
+                        <div className="flex items-center gap-1 text-gray-400 text-[10px] font-bold uppercase tracking-wider mb-1">
+                            <DollarSign size={12} className="text-indigo-500" /> {t('marketing.investment')}
                         </div>
-                        <p className="text-xl sm:text-2xl font-bold text-gray-800 break-words">{stats?.currency === 'USD' ? '$' : stats?.currency || ''}{investment.toLocaleString()}</p>
+                        <p className="text-base sm:text-lg font-bold text-gray-800 break-words">{stats?.currency === 'USD' ? '$' : stats?.currency || ''}{investment.toLocaleString()}</p>
                     </div>
-                    <div className="space-y-1">
-                        <div className="flex items-center gap-1.5 text-gray-500 text-[10px] sm:text-xs font-bold uppercase tracking-widest">
-                            <Target size={14} className="text-emerald-500" /> {t('marketing.return')}
+                    <div className="bg-emerald-50 rounded-xl p-2.5">
+                        <div className="flex items-center gap-1 text-gray-400 text-[10px] font-bold uppercase tracking-wider mb-1">
+                            <Target size={12} className="text-emerald-500" /> {t('marketing.return')}
                         </div>
-                        <p className="text-xl sm:text-2xl font-bold text-gray-800 break-words">{stats?.currency === 'USD' ? '$' : stats?.currency || ''}{revenue.toLocaleString()}</p>
+                        <p className="text-base sm:text-lg font-bold text-gray-800 break-words">{stats?.currency === 'USD' ? '$' : stats?.currency || ''}{revenue.toLocaleString()}</p>
                     </div>
                 </div>
             </div>
 
-            <div className="relative z-10 grid grid-cols-3 gap-1 sm:gap-4 pt-6 border-t border-gray-100">
-                <div className="text-center">
-                    <p className="text-gray-400 text-[9px] sm:text-[10px] font-bold uppercase mb-1">CPA</p>
-                    <p className="text-[10px] sm:text-sm font-bold text-gray-700">{stats?.currency === 'USD' ? '$' : stats?.currency || ''}{stats?.cpa > 999 ? Math.round(stats.cpa).toLocaleString() : stats?.cpa?.toFixed(2) || '0.00'}</p>
+            <div className="relative z-10 grid grid-cols-3 gap-2 pt-3 border-t border-gray-100">
+                <div className="text-center bg-gray-50 rounded-lg py-2">
+                    <p className="text-lg font-bold text-gray-700">{stats?.currency === 'USD' ? '$' : ''}{stats?.cpa > 999 ? Math.round(stats.cpa).toLocaleString() : stats?.cpa?.toFixed(0) || '0'}</p>
+                    <p className="text-[10px] text-gray-400 font-semibold uppercase">CPA</p>
                 </div>
-                <div className="text-center border-x border-gray-50 px-1">
-                    <p className="text-gray-400 text-[9px] sm:text-[10px] font-bold uppercase mb-1">Leads</p>
-                    <p className="text-[10px] sm:text-sm font-bold text-gray-700">{stats?.leads || 0}</p>
+                <div className="text-center bg-blue-50 rounded-lg py-2">
+                    <p className="text-lg font-bold text-blue-700">{stats?.leads || 0}</p>
+                    <p className="text-[10px] text-blue-400 font-semibold uppercase">Leads</p>
                 </div>
-                <div className="text-center">
-                    <p className="text-gray-400 text-[9px] sm:text-[10px] font-bold uppercase mb-1 truncate px-1">{t('marketing.patients')}</p>
-                    <p className="text-[10px] sm:text-sm font-bold text-gray-700">{stats?.patients_converted || 0}</p>
+                <div className="text-center bg-emerald-50 rounded-lg py-2">
+                    <p className="text-lg font-bold text-emerald-700">{stats?.patients_converted || 0}</p>
+                    <p className="text-[10px] text-emerald-400 font-semibold uppercase">{t('marketing.patients')}</p>
                 </div>
             </div>
         </div>

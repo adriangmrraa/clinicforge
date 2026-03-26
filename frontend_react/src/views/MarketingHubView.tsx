@@ -700,65 +700,36 @@ export default function MarketingHubView() {
     };
 
     return (
-        <div className="min-h-screen bg-gray-50">
-            <PageHeader
-                title={activePlatform === 'combined'
-                    ? t('marketing_google.combined_stats.title')
-                    : activePlatform === 'google'
-                        ? t('marketing_google.title')
-                        : t('nav.marketing')}
-                subtitle={activePlatform === 'combined'
-                    ? t('marketing_google.combined_stats.description')
-                    : activePlatform === 'google'
-                        ? t('marketing_google.subtitle')
-                        : t('marketing.subtitle')}
-                icon={activePlatform === 'combined' ? <BarChart3 className="w-6 h-6" /> : activePlatform === 'google' ? <Globe className="w-6 h-6" /> : <Megaphone className="w-6 h-6" />}
-            />
+        <div className="h-screen flex flex-col bg-gray-50 overflow-hidden">
+            {/* Compact Header */}
+            <div className="shrink-0 bg-white border-b px-4 pt-4 pb-0">
+                <h1 className="text-lg font-bold text-slate-800 mb-1">Marketing Hub</h1>
 
-            <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6">
-                {/* Platform selector */}
-                <div className="mb-6">
-                    <div className="border-b border-gray-200">
-                        <nav className="-mb-px flex space-x-8">
-                            <button
-                                onClick={() => setActivePlatform('meta')}
-                                className={`py-2 px-1 border-b-2 font-medium text-sm ${activePlatform === 'meta'
-                                    ? 'border-blue-500 text-blue-600'
-                                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                                    }`}
-                            >
-                                <div className="flex items-center">
-                                    <Megaphone className="h-4 w-4 mr-2" />
-                                    {t('marketing_google.platform_tabs.meta')}
-                                </div>
-                            </button>
-                            <button
-                                onClick={() => setActivePlatform('google')}
-                                className={`py-2 px-1 border-b-2 font-medium text-sm ${activePlatform === 'google'
-                                    ? 'border-blue-500 text-blue-600'
-                                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                                    }`}
-                            >
-                                <div className="flex items-center">
-                                    <Globe className="h-4 w-4 mr-2" />
-                                    {t('marketing_google.platform_tabs.google')}
-                                </div>
-                            </button>
-                            <button
-                                onClick={() => setActivePlatform('combined')}
-                                className={`py-2 px-1 border-b-2 font-medium text-sm ${activePlatform === 'combined'
-                                    ? 'border-blue-500 text-blue-600'
-                                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                                    }`}
-                            >
-                                <div className="flex items-center">
-                                    <BarChart3 className="h-4 w-4 mr-2" />
-                                    {t('marketing_google.platform_tabs.combined')}
-                                </div>
-                            </button>
-                        </nav>
-                    </div>
-                </div>
+                {/* Platform Tabs */}
+                <nav className="flex gap-4 -mb-px">
+                    {([
+                        { key: 'meta' as Platform, icon: Megaphone, label: 'Meta Ads' },
+                        { key: 'google' as Platform, icon: Globe, label: 'Google Ads' },
+                        { key: 'combined' as Platform, icon: BarChart3, label: 'Combinado' },
+                    ] as const).map(tab => (
+                        <button
+                            key={tab.key}
+                            onClick={() => setActivePlatform(tab.key)}
+                            className={`flex items-center gap-1.5 py-2.5 px-1 border-b-2 text-xs sm:text-sm font-medium transition-colors ${activePlatform === tab.key
+                                ? 'border-blue-500 text-blue-600'
+                                : 'border-transparent text-gray-400 hover:text-gray-600'
+                                }`}
+                        >
+                            <tab.icon size={14} />
+                            {tab.label}
+                        </button>
+                    ))}
+                </nav>
+            </div>
+
+            {/* Scrollable Content */}
+            <div className="flex-1 min-h-0 overflow-y-auto">
+            <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-4">
 
                 {/* Time range selector */}
                 <div className="mb-6 flex justify-between items-center">
@@ -835,6 +806,8 @@ export default function MarketingHubView() {
                         loadCombinedStats();
                     }}
                 />
+            </div>
+            </div>
             </div>
         </div>
     );
