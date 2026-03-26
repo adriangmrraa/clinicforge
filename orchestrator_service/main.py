@@ -4122,7 +4122,7 @@ async def _nova_realtime_handler(websocket: WebSocket, session_id: str):
 
         async with websockets.connect(
             openai_url,
-            extra_headers={
+            additional_headers={
                 "Authorization": f"Bearer {api_key}",
                 "OpenAI-Beta": "realtime=v1"
             }

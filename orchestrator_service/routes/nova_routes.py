@@ -651,9 +651,12 @@ async def _get_onboarding_status(tenant_id: int) -> Dict[str, Any]:
         "SELECT COUNT(*) FROM credentials WHERE tenant_id = $1 AND category = 'ycloud'", tenant_id,
     ) or 0) > 0
 
-    has_google_calendar = (await db.pool.fetchval(
-        "SELECT COUNT(*) FROM google_oauth_tokens WHERE tenant_id = $1", tenant_id,
-    ) or 0) > 0
+    try:
+        has_google_calendar = (await db.pool.fetchval(
+            "SELECT COUNT(*) FROM google_oauth_tokens WHERE tenant_id = $1", tenant_id,
+        ) or 0) > 0
+    except Exception:
+        has_google_calendar = False
 
     has_faqs = (await db.pool.fetchval(
         "SELECT COUNT(*) FROM clinic_faqs WHERE tenant_id = $1 AND answer IS NOT NULL AND answer != ''",
