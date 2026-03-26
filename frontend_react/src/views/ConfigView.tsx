@@ -255,7 +255,7 @@ export default function ConfigView() {
 
     const renderGeneralTab = () => (
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-            <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
+            <div className="bg-white border border-gray-200 rounded-2xl p-4 sm:p-6 shadow-sm">
                 <div className="flex items-center gap-2 mb-4">
                     <Globe size={20} className="text-gray-600" />
                     <h2 className="text-lg font-semibold text-gray-800">{t('config.language_label')}</h2>
@@ -288,7 +288,7 @@ export default function ConfigView() {
     const renderYCloudTab = () => (
         <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-300">
             {/* 1. Webhook Info */}
-            <div className="bg-green-50 border border-green-200 rounded-2xl p-6 shadow-sm">
+            <div className="bg-green-50 border border-green-200 rounded-2xl p-4 sm:p-6 shadow-sm">
                 <div className="flex items-center gap-2 mb-2 text-green-800">
                     <Zap className="w-5 h-5" />
                     <h3 className="font-semibold">{t('config.webhook_title_ycloud')}</h3>
@@ -304,7 +304,7 @@ export default function ConfigView() {
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
                 {/* 2. Form */}
-                <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
+                <div className="bg-white border border-gray-200 rounded-2xl p-4 sm:p-6 shadow-sm">
                     <h2 className="text-lg font-semibold text-gray-900 mb-6 flex items-center gap-2">
                         <MessageCircle className="text-green-600" size={20} />
                         {t('config.configure_credential')}
@@ -356,7 +356,7 @@ export default function ConfigView() {
                 </div>
 
                 {/* 3. Table */}
-                <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm flex flex-col min-h-[400px]">
+                <div className="bg-white border border-gray-200 rounded-2xl p-4 sm:p-6 shadow-sm flex flex-col min-h-[400px] overflow-x-hidden">
                     <h2 className="text-lg font-semibold text-gray-900 mb-4">{t('config.active_credentials')}</h2>
                     <div className="overflow-x-auto flex-1">
                         <table className="w-full text-left text-sm">
@@ -410,7 +410,7 @@ export default function ConfigView() {
     const renderChatwootTab = () => (
         <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-300">
             {/* 1. Webhook Info */}
-            <div className="bg-blue-50 border border-blue-200 rounded-2xl p-6 shadow-sm">
+            <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 sm:p-6 shadow-sm">
                 <div className="flex items-center gap-2 mb-2 text-blue-800">
                     <MessageCircle className="w-5 h-5" />
                     <h3 className="font-semibold">{t('config.webhook_title_chatwoot')}</h3>
@@ -426,7 +426,7 @@ export default function ConfigView() {
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
                 {/* 2. Form */}
-                <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
+                <div className="bg-white border border-gray-200 rounded-2xl p-4 sm:p-6 shadow-sm">
                     <h2 className="text-lg font-semibold text-gray-900 mb-6 flex items-center gap-2">
                         <User className="text-blue-600" size={20} />
                         {t('config.configure_credential')}
@@ -489,7 +489,7 @@ export default function ConfigView() {
                 </div>
 
                 {/* 3. Table */}
-                <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm flex flex-col min-h-[400px]">
+                <div className="bg-white border border-gray-200 rounded-2xl p-4 sm:p-6 shadow-sm flex flex-col min-h-[400px] overflow-x-hidden">
                     <h2 className="text-lg font-semibold text-gray-900 mb-4">{t('config.active_credentials')}</h2>
                     <div className="overflow-x-auto flex-1">
                         <table className="w-full text-left text-sm">
@@ -539,7 +539,7 @@ export default function ConfigView() {
 
     const renderOthersTab = () => (
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-            <div className="flex justify-between items-center bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
+            <div className="flex justify-between items-center bg-white border border-gray-200 rounded-2xl p-4 sm:p-6 shadow-sm">
                 <div>
                     <h2 className="text-lg font-semibold text-gray-900">{t('config.other_integrations')}</h2>
                     <p className="text-sm text-gray-500">{t('config.other_integrations_hint')}</p>
@@ -591,7 +591,7 @@ export default function ConfigView() {
 
     const renderMaintenanceTab = () => (
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-            <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
+            <div className="bg-white border border-gray-200 rounded-2xl p-4 sm:p-6 shadow-sm">
                 <div className="flex items-center gap-2 mb-4">
                     <Database size={20} className="text-gray-600" />
                     <h2 className="text-lg font-semibold text-gray-800">{t('config.media_maintenance')}</h2>
@@ -655,7 +655,7 @@ export default function ConfigView() {
 
     if (loading && !settings) {
         return (
-            <div className="p-6 flex items-center justify-center min-h-[400px]">
+            <div className="p-4 sm:p-6 flex items-center justify-center min-h-[400px]">
                 <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
             </div>
         );
@@ -664,7 +664,7 @@ export default function ConfigView() {
     return (
         <div className="h-screen flex flex-col bg-gray-50 overflow-hidden">
             {/* Header & Tabs Area (Fixed) */}
-            <div className="flex-none p-6 pb-0 max-w-6xl mx-auto w-full">
+            <div className="flex-none p-4 sm:p-6 pb-0 max-w-6xl mx-auto w-full">
                 <PageHeader
                     title={t('config.title')}
                     subtitle={t('config.main_subtitle')}
@@ -736,7 +736,7 @@ export default function ConfigView() {
 
             {/* Content Area (Scrollable) */}
             <div className="flex-1 overflow-y-auto bg-gray-50/50 scrollbar-thin scrollbar-thumb-gray-200">
-                <div className="p-6 max-w-6xl mx-auto pb-32">
+                <div className="p-4 sm:p-6 max-w-6xl mx-auto pb-32">
                     {activeTab === 'general' && renderGeneralTab()}
                     {activeTab === 'ycloud' && user?.role === 'ceo' && renderYCloudTab()}
                     {activeTab === 'chatwoot' && user?.role === 'ceo' && renderChatwootTab()}

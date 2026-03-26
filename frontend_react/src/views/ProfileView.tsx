@@ -88,7 +88,7 @@ const ProfileView: React.FC = () => {
                 {/* Left: Summary Card */}
                 <div className="md:col-span-1">
                     <div className="bg-white rounded-2xl shadow-card p-6 border border-gray-100 flex flex-col items-center text-center">
-                        <div className="w-24 h-24 rounded-full bg-medical-100 flex items-center justify-center text-medical-600 font-bold text-3xl mb-4 border-4 border-white shadow-sm">
+                        <div className="w-24 h-24 rounded-full bg-medical-100 flex items-center justify-center text-medical-600 font-bold text-2xl sm:text-3xl mb-4 border-4 border-white shadow-sm">
                             {firstName?.[0]?.toUpperCase() || profile?.email?.[0]?.toUpperCase()}
                         </div>
                         <h2 className="text-xl font-bold text-gray-800">{firstName} {lastName}</h2>

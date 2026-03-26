@@ -684,7 +684,7 @@ export default function MetaTemplatesView() {
         padding: '3px',
         marginBottom: '22px',
         width: isMobile ? '100%' : 'fit-content',
-        overflowX: 'auto',
+        overflowX: 'hidden',
         WebkitOverflowScrolling: 'touch'
       }}>
         {(['rules', 'logs', 'templates'] as const).map(tab => (

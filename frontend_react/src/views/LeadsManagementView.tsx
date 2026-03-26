@@ -285,12 +285,12 @@ export default function LeadsManagementView() {
       {/* Summary Stats */}
       {summary && (
         <div className="px-6 pb-6">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="bg-white border border-gray-200 rounded-xl p-5">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-gray-500 font-medium">{t('leads.stats.total')}</p>
-                  <p className="text-2xl font-black text-gray-900">{summary.totals.total_leads}</p>
+                  <p className="text-lg sm:text-2xl font-black text-gray-900">{summary.totals.total_leads}</p>
                 </div>
                 <Users className="w-8 h-8 text-blue-500" />
               </div>
@@ -300,7 +300,7 @@ export default function LeadsManagementView() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-gray-500 font-medium">{t('leads.stats.converted')}</p>
-                  <p className="text-2xl font-black text-green-600">{summary.totals.converted_leads}</p>
+                  <p className="text-lg sm:text-2xl font-black text-green-600">{summary.totals.converted_leads}</p>
                 </div>
                 <CheckCircle2 className="w-8 h-8 text-green-500" />
               </div>
@@ -310,7 +310,7 @@ export default function LeadsManagementView() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-gray-500 font-medium">{t('leads.stats.conversion_rate')}</p>
-                  <p className="text-2xl font-black text-indigo-600">{summary.totals.conversion_rate}%</p>
+                  <p className="text-lg sm:text-2xl font-black text-indigo-600">{summary.totals.conversion_rate}%</p>
                 </div>
                 <BarChart3 className="w-8 h-8 text-indigo-500" />
               </div>
@@ -320,7 +320,7 @@ export default function LeadsManagementView() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-gray-500 font-medium">{t('leads.stats.active')}</p>
-                  <p className="text-2xl font-black text-amber-600">{summary.totals.active_leads}</p>
+                  <p className="text-lg sm:text-2xl font-black text-amber-600">{summary.totals.active_leads}</p>
                 </div>
                 <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center">
                   <span className="text-amber-600 font-bold">!</span>

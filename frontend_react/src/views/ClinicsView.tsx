@@ -406,7 +406,7 @@ export default function ClinicsView() {
             {isModalOpen && (
                 <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
                     <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl animate-scale-in max-h-[90vh] flex flex-col">
-                        <div className="p-6 border-b shrink-0 flex justify-between items-center">
+                        <div className="p-4 sm:p-6 border-b shrink-0 flex justify-between items-center">
                             <h2 className="text-xl font-bold flex items-center gap-2">
                                 {editingClinica ? <Edit className="text-medical-600" /> : <Plus className="text-medical-600" />}
                                 {editingClinica ? t('clinics.edit_clinic') : t('clinics.create_clinic')}
@@ -414,7 +414,7 @@ export default function ClinicsView() {
                             <button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-gray-100 rounded-lg"><X size={20} /></button>
                         </div>
 
-                        <form onSubmit={handleSubmit} className="flex-1 min-h-0 overflow-y-auto p-6 space-y-5">
+                        <form onSubmit={handleSubmit} className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 space-y-5">
                             {error && (
                                 <div className="bg-red-50 text-red-600 p-3 rounded-lg flex items-center gap-2 text-sm border border-red-100">
                                     <AlertCircle size={16} /> {error}
@@ -586,7 +586,7 @@ export default function ClinicsView() {
             {faqModalOpen && (
                 <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
                     <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl animate-scale-in max-h-[90vh] flex flex-col">
-                        <div className="p-6 border-b shrink-0 flex justify-between items-center">
+                        <div className="p-4 sm:p-6 border-b shrink-0 flex justify-between items-center">
                             <h2 className="text-xl font-bold flex items-center gap-2">
                                 <HelpCircle className="text-amber-600" />
                                 {t('clinics.faq_title')} - {faqClinicName}
@@ -594,7 +594,7 @@ export default function ClinicsView() {
                             <button onClick={() => setFaqModalOpen(false)} className="p-2 hover:bg-gray-100 rounded-lg"><X size={20} /></button>
                         </div>
 
-                        <div className="flex-1 min-h-0 overflow-y-auto p-6 space-y-6">
+                        <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 space-y-6">
                             {/* Formulario agregar/editar FAQ */}
                             <form onSubmit={handleFaqSubmit} className="space-y-3 bg-gray-50 p-4 rounded-xl border">
                                 <h3 className="text-sm font-bold text-gray-700">

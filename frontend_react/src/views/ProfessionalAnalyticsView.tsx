@@ -166,7 +166,7 @@ export default function ProfessionalAnalyticsView() {
                 </div>
 
                 {/* Detailed Table */}
-                <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+                <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden overflow-x-hidden">
                 <div className="p-4 sm:p-6 border-b border-slate-100">
                     <h3 className="text-lg font-bold text-slate-800">{t('analytics.operational_detail')}</h3>
                 </div>

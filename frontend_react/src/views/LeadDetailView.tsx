@@ -319,7 +319,7 @@ export default function LeadDetailView() {
               </button>
               
               <div>
-                <h1 className="text-2xl font-black text-gray-900">
+                <h1 className="text-lg sm:text-2xl font-black text-gray-900">
                   {lead.full_name || t('leads.unnamed_lead')}
                 </h1>
                 <p className="text-gray-500">

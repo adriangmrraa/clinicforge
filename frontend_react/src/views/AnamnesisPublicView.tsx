@@ -329,7 +329,7 @@ export default function AnamnesisPublicView() {
   if (error && !patientName) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-red-50 to-white flex items-center justify-center p-6">
-        <div className="bg-white rounded-2xl shadow-lg p-8 max-w-md text-center space-y-4">
+        <div className="bg-white rounded-2xl shadow-lg p-5 sm:p-8 max-w-md text-center space-y-4">
           <XCircle className="mx-auto text-red-500" size={48} />
           <h1 className="text-xl font-bold text-gray-800">Link inválido</h1>
           <p className="text-gray-600">{error}</p>
@@ -341,7 +341,7 @@ export default function AnamnesisPublicView() {
   if (submitted) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-green-50 to-white flex items-center justify-center p-6">
-        <div className="bg-white rounded-2xl shadow-lg p-8 max-w-md text-center space-y-4">
+        <div className="bg-white rounded-2xl shadow-lg p-5 sm:p-8 max-w-md text-center space-y-4">
           <CheckCircle2 className="mx-auto text-green-500" size={48} />
           <h1 className="text-xl font-bold text-gray-800">Ficha médica guardada</h1>
           <p className="text-gray-600">Gracias {patientName}! Tu ficha fue guardada correctamente.</p>
@@ -355,7 +355,7 @@ export default function AnamnesisPublicView() {
   if (requiresDni && !isUnlocked) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white flex items-center justify-center p-6">
-        <div className="bg-white rounded-2xl shadow-lg p-8 max-w-sm w-full space-y-6 text-center">
+        <div className="bg-white rounded-2xl shadow-lg p-5 sm:p-8 max-w-sm w-full space-y-6 text-center">
           <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto">
             <Lock size={28} className="text-blue-600" />
           </div>

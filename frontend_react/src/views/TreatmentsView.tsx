@@ -518,7 +518,7 @@ export default function TreatmentsView() {
 
         {/* Treatments by Category */}
         {loading ? (
-          <div className="p-20 text-center flex flex-col items-center">
+          <div className="p-8 sm:p-12 lg:p-20 text-center flex flex-col items-center">
             <div className="w-16 h-16 border-4 border-medical-100 border-t-medical-600 rounded-full animate-spin mb-6"></div>
             <p className="font-bold text-slate-400 text-lg">{t('treatments.syncing_services')}</p>
           </div>
@@ -827,7 +827,7 @@ export default function TreatmentsView() {
 
         {/* Empty State */}
         {!loading && treatments.length === 0 && (
-          <div className="p-20 text-center bg-white/40 backdrop-blur-xl rounded-[2.5rem] border border-white/40 shadow-soft animate-in fade-in duration-700">
+          <div className="p-8 sm:p-12 lg:p-20 text-center bg-white/40 backdrop-blur-xl rounded-[2.5rem] border border-white/40 shadow-soft animate-in fade-in duration-700">
             <div className="w-24 h-24 bg-medical-50 text-medical-200 rounded-full flex items-center justify-center mx-auto mb-8">
               <Activity size={48} strokeWidth={1.5} />
             </div>
