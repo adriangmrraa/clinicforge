@@ -1,0 +1,539 @@
+import React, { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
+import {
+  X, ChevronRight, ChevronLeft, CheckCircle, Sparkles,
+  Home, Calendar, Users, MessageSquare, ShieldCheck, BarChart3,
+  Zap, Clock, User, Megaphone, Layout, Settings, Stethoscope,
+  Target, BookOpen
+} from 'lucide-react';
+
+interface GuideStep {
+  title: string;
+  description: string;
+  benefit: string;
+  tip?: string;
+}
+
+interface PageGuide {
+  icon: React.ReactNode;
+  title: string;
+  subtitle: string;
+  steps: GuideStep[];
+}
+
+const GUIDES: Record<string, PageGuide> = {
+  '/': {
+    icon: <Home size={22} />,
+    title: 'Dashboard',
+    subtitle: 'Tu centro de mando en tiempo real',
+    steps: [
+      {
+        title: 'KPIs en tiempo real',
+        description: 'Ves los numeros mas importantes de tu clinica de un vistazo: turnos del dia, pacientes nuevos, ingresos y tasa de asistencia.',
+        benefit: 'Toma decisiones rapidas sin tener que buscar en multiples pantallas.',
+        tip: 'Los numeros se actualizan automaticamente cuando la IA agenda turnos.',
+      },
+      {
+        title: 'Actividad reciente',
+        description: 'Muestra las ultimas acciones: turnos agendados, pacientes nuevos, cancelaciones y derivaciones humanas.',
+        benefit: 'Nunca te pierdas nada de lo que pasa en tu clinica, incluso fuera de horario.',
+      },
+      {
+        title: 'Vista rapida de agenda',
+        description: 'Resumen de los turnos de hoy y manana con el profesional asignado.',
+        benefit: 'Planifica tu dia sin salir del dashboard.',
+      },
+    ],
+  },
+  '/agenda': {
+    icon: <Calendar size={22} />,
+    title: 'Agenda',
+    subtitle: 'Gestion visual de turnos por profesional',
+    steps: [
+      {
+        title: 'Vista de calendario',
+        description: 'Agenda interactiva con vista diaria, semanal y mensual. Cada turno muestra paciente, tratamiento y duracion.',
+        benefit: 'Ve de un vistazo la carga de trabajo de cada profesional.',
+        tip: 'Hace click en un horario vacio para crear un turno manual rapido.',
+      },
+      {
+        title: 'Filtro por profesional',
+        description: 'Selecciona un profesional para ver solo sus turnos, o "Todos" para ver la agenda completa.',
+        benefit: 'Cada profesional puede ver solo su propia agenda.',
+      },
+      {
+        title: 'Edicion de turnos',
+        description: 'Click en un turno para ver detalles, editar, reprogramar o cancelar. Incluye info del paciente y ficha medica.',
+        benefit: 'Gestiona cambios de ultimo momento sin complicaciones.',
+        tip: 'Los turnos creados por la IA aparecen con un badge especial.',
+      },
+      {
+        title: 'Sincronizacion con Google Calendar',
+        description: 'Si esta configurado, los turnos se sincronizan automaticamente con el Google Calendar del profesional.',
+        benefit: 'El profesional ve sus turnos en su celular sin entrar a la plataforma.',
+      },
+    ],
+  },
+  '/pacientes': {
+    icon: <Users size={22} />,
+    title: 'Pacientes',
+    subtitle: 'Base de datos clinica completa',
+    steps: [
+      {
+        title: 'Lista de pacientes',
+        description: 'Todos los pacientes registrados con nombre, telefono, DNI, email y fecha de creacion. Busqueda instantanea.',
+        benefit: 'Encontra cualquier paciente en segundos.',
+        tip: 'Podes importar pacientes masivamente con CSV/Excel desde el boton "Importar".',
+      },
+      {
+        title: 'Ficha del paciente',
+        description: 'Click en un paciente para ver su ficha completa: datos personales, historial de turnos, anamnesis, odontograma y notas.',
+        benefit: 'Toda la info clinica en un solo lugar, accesible antes de cada consulta.',
+      },
+      {
+        title: 'Anamnesis digital',
+        description: 'Cada paciente tiene un link unico de anamnesis que la IA envia automaticamente al agendar. El paciente completa su historial medico desde el celular.',
+        benefit: 'Ahorra 10 minutos de consulta porque el paciente llega con la ficha completa.',
+      },
+      {
+        title: 'Historial de turnos',
+        description: 'Ve todos los turnos pasados y futuros del paciente, con tratamiento, profesional y estado de pago.',
+        benefit: 'Contexto completo antes de cada atencion.',
+      },
+    ],
+  },
+  '/chats': {
+    icon: <MessageSquare size={22} />,
+    title: 'Conversaciones',
+    subtitle: 'WhatsApp, Instagram y Facebook en un solo lugar',
+    steps: [
+      {
+        title: 'Bandeja unificada',
+        description: 'Todas las conversaciones de WhatsApp, Instagram y Facebook en una sola bandeja. Ves el canal de cada conversacion con su icono.',
+        benefit: 'No necesitas tener 3 apps abiertas. Todo llega aca.',
+      },
+      {
+        title: 'IA conversacional',
+        description: 'La IA responde automaticamente a los pacientes: agenda turnos, responde preguntas, hace triage de urgencias y envia fichas medicas.',
+        benefit: 'Atencion 24/7 sin que vos tengas que estar conectada.',
+        tip: 'La IA aprende de cada conversacion y recuerda las preferencias del paciente.',
+      },
+      {
+        title: 'Modo manual',
+        description: 'Podes tomar control de cualquier conversacion con el boton "Manual". La IA se silencia por 24 horas para ese paciente.',
+        benefit: 'Interveni cuando sea necesario sin que la IA interfiera.',
+      },
+      {
+        title: 'Derivacion humana',
+        description: 'Cuando la IA detecta una urgencia o el paciente pide hablar con una persona, te llega una notificacion y un email con todo el contexto.',
+        benefit: 'Nunca te pierdas un caso critico.',
+      },
+      {
+        title: 'Panel lateral del paciente',
+        description: 'Al lado derecho de cada conversacion ves la ficha del paciente: proximo turno, anamnesis, historial y datos de contacto.',
+        benefit: 'Contexto completo mientras hablas con el paciente.',
+      },
+    ],
+  },
+  '/aprobaciones': {
+    icon: <ShieldCheck size={22} />,
+    title: 'Staff',
+    subtitle: 'Control de acceso de tu equipo',
+    steps: [
+      {
+        title: 'Solicitudes pendientes',
+        description: 'Cuando un profesional o secretaria se registra, su solicitud aparece aca para que la apruebes o rechaces.',
+        benefit: 'Control total sobre quien accede a la plataforma.',
+      },
+      {
+        title: 'Roles y permisos',
+        description: 'CEO: acceso total. Profesional: ve su agenda y pacientes. Secretaria: gestiona turnos de todos.',
+        benefit: 'Cada rol ve solo lo que necesita.',
+      },
+      {
+        title: 'Suspender acceso',
+        description: 'Podes suspender temporalmente el acceso de un miembro del equipo sin eliminar sus datos.',
+        benefit: 'Gestion flexible del equipo.',
+      },
+    ],
+  },
+  '/sedes': {
+    icon: <Stethoscope size={22} />,
+    title: 'Sedes',
+    subtitle: 'Configuracion de clinicas y horarios',
+    steps: [
+      {
+        title: 'Datos de la clinica',
+        description: 'Nombre, direccion, Google Maps, logo, telefono y datos bancarios para cobro de senas.',
+        benefit: 'La IA usa estos datos para informar a los pacientes automaticamente.',
+      },
+      {
+        title: 'Horarios por dia',
+        description: 'Configura en que dias y horarios atiende la clinica. Podes tener diferentes horarios por dia y multiples turnos (manana y tarde).',
+        benefit: 'La IA solo ofrece turnos dentro de estos horarios.',
+      },
+      {
+        title: 'Multi-sede',
+        description: 'Si operas en distintas ubicaciones segun el dia, configura la sede por dia con su direccion y link de Maps.',
+        benefit: 'El paciente recibe automaticamente la direccion correcta segun el dia de su turno.',
+      },
+      {
+        title: 'Precio de consulta',
+        description: 'Configura el precio base de consulta. La IA lo informa automaticamente cuando el paciente pregunta.',
+        benefit: 'Transparencia de precios sin intervencion manual.',
+      },
+    ],
+  },
+  '/analytics/professionals': {
+    icon: <BarChart3 size={22} />,
+    title: 'Analytics Estrategico',
+    subtitle: 'Rendimiento de tu equipo con datos reales',
+    steps: [
+      {
+        title: 'KPIs por profesional',
+        description: 'Turnos totales, tasa de asistencia, no-shows, retencion de pacientes y facturacion estimada por cada profesional.',
+        benefit: 'Identifica quien rinde mas y quien necesita atencion.',
+      },
+      {
+        title: 'Tags inteligentes',
+        description: 'El sistema asigna automaticamente tags como "High Performance", "Retention Master" o "Risk: Cancellations" basado en los datos reales.',
+        benefit: 'Alertas tempranas de problemas y reconocimiento de excelencia.',
+      },
+      {
+        title: 'Filtros de periodo',
+        description: 'Selecciona rango de fechas y profesionales especificos para analizar.',
+        benefit: 'Compara rendimiento mes a mes o trimestre a trimestre.',
+      },
+      {
+        title: 'Tratamiento top y dia mas activo',
+        description: 'Ve cual es el tratamiento que mas hace cada profesional y que dia de la semana tiene mas actividad.',
+        benefit: 'Optimiza la agenda sabiendo cuando y que se demanda mas.',
+      },
+    ],
+  },
+  '/dashboard/status': {
+    icon: <Zap size={22} />,
+    title: 'Consumo de IA',
+    subtitle: 'Tokens, costos y seleccion de modelos',
+    steps: [
+      {
+        title: 'Consumo por servicio',
+        description: 'Ve cuantos tokens consume cada servicio de IA: agente conversacional, memoria de pacientes, vision de comprobantes, etc.',
+        benefit: 'Controla costos y optimiza el uso de IA.',
+      },
+      {
+        title: 'Selector de modelos',
+        description: 'Cambia el modelo de IA que usa cada servicio. Modelos mas baratos para tareas simples, mas potentes para las complejas.',
+        benefit: 'Balancea calidad vs costo segun tu presupuesto.',
+      },
+    ],
+  },
+  '/tratamientos': {
+    icon: <Clock size={22} />,
+    title: 'Tratamientos',
+    subtitle: 'Catalogo de servicios de tu clinica',
+    steps: [
+      {
+        title: 'Lista de tratamientos',
+        description: 'Todos los tratamientos disponibles con nombre, duracion, precio y profesionales asignados.',
+        benefit: 'La IA usa esta lista para ofrecer servicios a los pacientes.',
+      },
+      {
+        title: 'Duracion y precio',
+        description: 'Cada tratamiento tiene una duracion estimada que determina cuanto espacio ocupa en la agenda, y un precio que la IA muestra al paciente.',
+        benefit: 'Turnos correctamente dimensionados, sin solapamientos.',
+      },
+      {
+        title: 'Asignacion de profesionales',
+        description: 'Asigna que profesionales pueden realizar cada tratamiento. Si no asignas ninguno, todos pueden.',
+        benefit: 'La IA solo ofrece turnos con el profesional correcto para cada tratamiento.',
+      },
+    ],
+  },
+  '/perfil': {
+    icon: <User size={22} />,
+    title: 'Mi Perfil',
+    subtitle: 'Tus datos y configuracion personal',
+    steps: [
+      {
+        title: 'Datos personales',
+        description: 'Tu nombre, email, especialidad, telefono y matricula profesional.',
+        benefit: 'Mantene tus datos actualizados para que aparezcan correctamente en las confirmaciones de turnos.',
+      },
+      {
+        title: 'Horario laboral',
+        description: 'Configura tus propios horarios de atencion por dia. La IA respeta estos horarios al ofrecer turnos.',
+        benefit: 'No recibis turnos fuera de tu horario.',
+      },
+    ],
+  },
+  '/marketing': {
+    icon: <Megaphone size={22} />,
+    title: 'Marketing Hub',
+    subtitle: 'ROI real de tus campanas publicitarias',
+    steps: [
+      {
+        title: 'Atribucion de pacientes',
+        description: 'Ve de que anuncio de Meta/Google llego cada paciente. First-touch attribution: el primer anuncio que trajo al paciente queda registrado permanentemente.',
+        benefit: 'Sabe exactamente cuanto retorno genera cada peso invertido en publicidad.',
+      },
+      {
+        title: 'Metricas por campana',
+        description: 'Costo por lead, costo por paciente convertido, ROI por campana y por canal.',
+        benefit: 'Deja de adivinar que anuncios funcionan. Los datos te lo dicen.',
+      },
+      {
+        title: 'Conexion con Meta Ads',
+        description: 'Conecta tu cuenta de Meta Ads para importar automaticamente datos de campanas, gastos y leads.',
+        benefit: 'Los datos se actualizan solos, sin carga manual.',
+      },
+    ],
+  },
+  '/leads': {
+    icon: <Target size={22} />,
+    title: 'Leads',
+    subtitle: 'Seguimiento de prospectos',
+    steps: [
+      {
+        title: 'Lista de leads',
+        description: 'Todos los contactos que llegaron por Meta Ads, formularios o redes sociales, con su estado de conversion.',
+        benefit: 'No pierdas ningun prospecto. Cada contacto tiene seguimiento.',
+      },
+      {
+        title: 'Estado de conversion',
+        description: 'Cada lead tiene un estado: nuevo, contactado, en seguimiento, convertido o perdido.',
+        benefit: 'Visualiza tu embudo de ventas en tiempo real.',
+      },
+      {
+        title: 'Recuperacion automatica',
+        description: 'El sistema envia automaticamente mensajes de recuperacion a leads que no agendaron turno.',
+        benefit: 'Recupera pacientes que se iban a perder, sin esfuerzo manual.',
+      },
+    ],
+  },
+  '/templates': {
+    icon: <Layout size={22} />,
+    title: 'Automatizacion & HSM',
+    subtitle: 'Reglas automaticas y plantillas de mensajes',
+    steps: [
+      {
+        title: 'Reglas del sistema',
+        description: 'Recordatorios de turno (24h antes), recuperacion de leads y feedback post-cita. Funcionan automaticamente.',
+        benefit: 'Reduce no-shows y recupera pacientes sin hacer nada.',
+      },
+      {
+        title: 'Reglas personalizadas',
+        description: 'Crea tus propias reglas de automatizacion: mensajes por evento, canal, horario y tipo de mensaje.',
+        benefit: 'Automatiza cualquier comunicacion repetitiva.',
+      },
+      {
+        title: 'Plantillas HSM',
+        description: 'Gestiona las plantillas de WhatsApp Business (HSM) para enviar mensajes fuera de la ventana de 24h.',
+        benefit: 'Comunicate con pacientes que no escribieron recientemente.',
+      },
+      {
+        title: 'Logs de envio',
+        description: 'Historial completo de mensajes automaticos enviados: quien, cuando, por que canal y si fue entregado.',
+        benefit: 'Auditoria completa de las automatizaciones.',
+      },
+    ],
+  },
+  '/configuracion': {
+    icon: <Settings size={22} />,
+    title: 'Configuracion',
+    subtitle: 'Integraciones y ajustes avanzados',
+    steps: [
+      {
+        title: 'Credenciales de integracion',
+        description: 'Conecta WhatsApp (YCloud), Google Calendar, Meta Ads y otros servicios externos.',
+        benefit: 'Todo conectado desde un solo panel.',
+      },
+      {
+        title: 'Configuracion de IA',
+        description: 'Ajusta el comportamiento del agente de IA: tono, idioma, reglas especiales y modelos.',
+        benefit: 'Personaliza la IA a la identidad de tu clinica.',
+      },
+      {
+        title: 'Datos bancarios',
+        description: 'Configura CBU, alias y titular para que la IA envie los datos de pago automaticamente al confirmar turnos.',
+        benefit: 'Cobro de senas automatizado sin intervencion manual.',
+      },
+    ],
+  },
+};
+
+interface OnboardingGuideProps {
+  isOpen: boolean;
+  onClose: () => void;
+}
+
+const OnboardingGuide: React.FC<OnboardingGuideProps> = ({ isOpen, onClose }) => {
+  const location = useLocation();
+  const [currentStep, setCurrentStep] = useState(0);
+  const [completedPages, setCompletedPages] = useState<string[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('onboarding_completed') || '[]');
+    } catch { return []; }
+  });
+
+  // Find the guide for current page
+  const currentPath = Object.keys(GUIDES).find(path => {
+    if (path === '/') return location.pathname === '/';
+    return location.pathname.startsWith(path);
+  }) || '/';
+
+  const guide = GUIDES[currentPath];
+
+  useEffect(() => {
+    setCurrentStep(0);
+  }, [currentPath]);
+
+  if (!isOpen || !guide) return null;
+
+  const step = guide.steps[currentStep];
+  const isLastStep = currentStep === guide.steps.length - 1;
+  const isCompleted = completedPages.includes(currentPath);
+
+  const handleComplete = () => {
+    const updated = [...new Set([...completedPages, currentPath])];
+    setCompletedPages(updated);
+    localStorage.setItem('onboarding_completed', JSON.stringify(updated));
+    onClose();
+  };
+
+  const progress = ((currentStep + 1) / guide.steps.length) * 100;
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[200]" onClick={onClose} />
+
+      {/* Guide Panel */}
+      <div className="fixed inset-y-0 right-0 w-full sm:w-[420px] bg-white shadow-2xl z-[201] flex flex-col" style={{ animation: 'slideInRight 0.3s ease-out' }}>
+        {/* Header */}
+        <div className="p-5 border-b border-slate-100 shrink-0">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center text-blue-600">
+                {guide.icon}
+              </div>
+              <div>
+                <h2 className="text-lg font-bold text-slate-900">{guide.title}</h2>
+                <p className="text-xs text-slate-500">{guide.subtitle}</p>
+              </div>
+            </div>
+            <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-xl transition-colors text-slate-400 hover:text-slate-600">
+              <X size={20} />
+            </button>
+          </div>
+
+          {/* Progress bar */}
+          <div className="flex items-center gap-3">
+            <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-gradient-to-r from-blue-500 to-cyan-400 rounded-full transition-all duration-500"
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+            <span className="text-xs font-semibold text-slate-400">{currentStep + 1}/{guide.steps.length}</span>
+          </div>
+        </div>
+
+        {/* Step Content */}
+        <div className="flex-1 overflow-y-auto p-5">
+          <div key={currentStep} style={{ animation: 'fadeSlideUp 0.3s ease-out' }}>
+            {/* Step number */}
+            <div className="flex items-center gap-2 mb-4">
+              <div className="w-7 h-7 rounded-lg bg-blue-500 text-white flex items-center justify-center text-sm font-bold">
+                {currentStep + 1}
+              </div>
+              <h3 className="text-base font-bold text-slate-900">{step.title}</h3>
+            </div>
+
+            {/* Description */}
+            <p className="text-sm text-slate-600 leading-relaxed mb-4">
+              {step.description}
+            </p>
+
+            {/* Benefit */}
+            <div className="bg-green-50 border border-green-100 rounded-xl p-4 mb-4">
+              <div className="flex items-start gap-2">
+                <Sparkles size={16} className="text-green-600 mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-xs font-semibold text-green-800 mb-1">Beneficio</p>
+                  <p className="text-sm text-green-700">{step.benefit}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Tip */}
+            {step.tip && (
+              <div className="bg-amber-50 border border-amber-100 rounded-xl p-4">
+                <div className="flex items-start gap-2">
+                  <BookOpen size={16} className="text-amber-600 mt-0.5 shrink-0" />
+                  <div>
+                    <p className="text-xs font-semibold text-amber-800 mb-1">Tip</p>
+                    <p className="text-sm text-amber-700">{step.tip}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Step indicators */}
+            <div className="flex items-center justify-center gap-1.5 mt-6">
+              {guide.steps.map((_, i) => (
+                <button
+                  key={i}
+                  onClick={() => setCurrentStep(i)}
+                  className={`h-1.5 rounded-full transition-all duration-300 ${
+                    i === currentStep ? 'w-6 bg-blue-500' : i < currentStep ? 'w-1.5 bg-blue-300' : 'w-1.5 bg-slate-200'
+                  }`}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Navigation */}
+        <div className="p-5 border-t border-slate-100 shrink-0 flex items-center justify-between">
+          <button
+            onClick={() => setCurrentStep(Math.max(0, currentStep - 1))}
+            disabled={currentStep === 0}
+            className="flex items-center gap-1 px-4 py-2 rounded-xl text-sm font-medium text-slate-500 hover:bg-slate-100 transition-colors disabled:opacity-30 disabled:pointer-events-none"
+          >
+            <ChevronLeft size={16} /> Anterior
+          </button>
+
+          {isLastStep ? (
+            <button
+              onClick={handleComplete}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold bg-gradient-to-r from-blue-500 to-cyan-400 text-white hover:shadow-lg hover:shadow-blue-500/25 transition-all"
+            >
+              <CheckCircle size={16} /> Entendido
+            </button>
+          ) : (
+            <button
+              onClick={() => setCurrentStep(currentStep + 1)}
+              className="flex items-center gap-1 px-5 py-2.5 rounded-xl text-sm font-semibold bg-blue-500 text-white hover:bg-blue-600 transition-colors"
+            >
+              Siguiente <ChevronRight size={16} />
+            </button>
+          )}
+        </div>
+      </div>
+
+      <style>{`
+        @keyframes slideInRight {
+          from { transform: translateX(100%); }
+          to { transform: translateX(0); }
+        }
+        @keyframes fadeSlideUp {
+          from { opacity: 0; transform: translateY(12px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
+    </>
+  );
+};
+
+export default OnboardingGuide;

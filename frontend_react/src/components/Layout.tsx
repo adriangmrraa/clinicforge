@@ -5,9 +5,10 @@ import { useAuth } from '../context/AuthContext';
 import { useTranslation } from '../context/LanguageContext';
 import { io, Socket } from 'socket.io-client';
 import { BACKEND_URL } from '../api/axios';
-import { X, Wifi, WifiOff, Bell, UserPlus, Calendar, AlertTriangle } from 'lucide-react';
+import { X, Wifi, WifiOff, Bell, UserPlus, Calendar, AlertTriangle, HelpCircle } from 'lucide-react';
 import MetaTokenBanner from './MetaTokenBanner';
 import { NovaWidget } from './NovaWidget';
+import OnboardingGuide from './OnboardingGuide';
 
 interface LayoutProps {
   children: ReactNode;
@@ -20,8 +21,9 @@ export const Layout: React.FC<LayoutProps> = ({ children }: LayoutProps) => {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const socketRef = useRef<Socket | null>(null);
-  const [isConnected, setIsConnected] = useState(true); // Default true to avoid flash
+  const [isConnected, setIsConnected] = useState(true);
   const [isReconnecting, setIsReconnecting] = useState(false);
+  const [showGuide, setShowGuide] = useState(false);
 
   // Notification State
   const [notification, setNotification] = useState<{
@@ -230,6 +232,16 @@ export const Layout: React.FC<LayoutProps> = ({ children }: LayoutProps) => {
           </div>
 
           <div className="flex items-center gap-2 lg:gap-4">
+            {/* Guide Button */}
+            <button
+              onClick={() => setShowGuide(true)}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors border border-blue-100"
+              title="Guia de la pagina"
+            >
+              <HelpCircle size={14} />
+              <span className="hidden sm:inline">Guia</span>
+            </button>
+
             {/* Connection Status Chip */}
             <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] lg:text-xs font-medium transition-colors ${isReconnecting ? 'bg-orange-100 text-orange-700 animate-pulse' :
                 isConnected ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
@@ -268,6 +280,9 @@ export const Layout: React.FC<LayoutProps> = ({ children }: LayoutProps) => {
 
       {/* Nova AI Widget */}
       <NovaWidget />
+
+      {/* Onboarding Guide */}
+      <OnboardingGuide isOpen={showGuide} onClose={() => setShowGuide(false)} />
 
       {/* GLOBAL PREMIUM NOTIFICATION TOAST */}
       {notification && (
