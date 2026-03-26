@@ -930,7 +930,7 @@ export default function ChatsView() {
   // ============================================
 
   return (
-    <div className="h-full flex relative overflow-hidden bg-white">
+    <div className="h-full flex relative overflow-hidden bg-white max-w-full">
       {/* Audio para notificaciones */}
       <audio ref={audioRef} src="/notification.mp3" preload="auto" />
 
@@ -1306,7 +1306,7 @@ export default function ChatsView() {
                 )}
 
               {/* Messages Area */}
-              <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50 flex flex-col min-h-0">
+              <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 space-y-4 bg-gray-50 flex flex-col min-h-0">
                 {selectedSession && hasMoreMessages && (
                   <button
                     onClick={handleLoadMore}
@@ -1337,7 +1337,7 @@ export default function ChatsView() {
                       className={`flex ${message.role === 'user' ? 'justify-start' : 'justify-end'}`}
                     >
                       <div
-                        className={`max-w-[70%] rounded-lg px-4 py-3 ${message.role === 'user'
+                        className={`max-w-[70%] rounded-lg px-4 py-3 break-words overflow-hidden ${message.role === 'user'
                           ? 'bg-white shadow-sm'
                           : message.is_derivhumano
                             ? 'bg-orange-100 border border-orange-300 shadow-sm text-gray-800'
@@ -1381,7 +1381,7 @@ export default function ChatsView() {
                       key={msg.id}
                       className={`flex ${msg.role === 'user' ? 'justify-start' : 'justify-end'}`}
                     >
-                      <div className={`max-w-[70%] rounded-lg px-4 py-3 ${msg.role === 'user' ? 'bg-white shadow-sm' : `${platform.bgColor} text-white shadow-sm`}`}>
+                      <div className={`max-w-[70%] rounded-lg px-4 py-3 break-words overflow-hidden ${msg.role === 'user' ? 'bg-white shadow-sm' : `${platform.bgColor} text-white shadow-sm`}`}>
                         <MessageContent message={msg} />
                         <p className={`text-xs mt-1 ${msg.role === 'user' ? 'text-gray-400' : 'opacity-70'}`}>
                           {msg.timestamp ? safeFormatTime(msg.timestamp) : ''}
@@ -1397,7 +1397,7 @@ export default function ChatsView() {
               {/* Input */}
               <form
                 onSubmit={selectedChatwoot ? handleSendChatwootMessage : handleSendMessage}
-                className="p-4 border-t bg-white"
+                className="p-4 border-t bg-white relative z-10 pb-safe"
               >
                 <div className="flex flex-col flex-1 gap-2">
                   {selectedFiles.length > 0 && (
