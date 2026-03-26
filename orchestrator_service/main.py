@@ -4275,31 +4275,37 @@ async def nova_realtime_ws_endpoint(websocket: WebSocket, session_id: str):
 
 @app.websocket("/public/nova/voice")
 async def nova_voice_direct(websocket: WebSocket):
-    """Nova voice — direct connection with JWT auth from query params."""
+    """Nova voice — supports both JWT auth (admin) and session_id (public anamnesis)."""
     await websocket.accept()
     try:
         tenant_id = int(websocket.query_params.get("tenant_id", "1"))
         token = websocket.query_params.get("token", "")
         page = websocket.query_params.get("page", "dashboard")
 
-        # Verify token
-        from auth_service import AuthService
-        user_data = AuthService.decode_token(token)
-        if not user_data:
-            await websocket.send_text(json.dumps({"type": "error", "message": "Invalid token"}))
-            await websocket.close()
-            return
-
-        user_role = user_data.role
-        user_id = str(user_data.user_id)
-
-        # Build session and delegate to existing handler
         import json as json_mod
         from services.relay import get_redis
-        redis = get_redis()
-        session_id = f"direct_{tenant_id}_{int(time.time())}"
+        redis = await get_redis()
 
-        system_prompt = f"""IDIOMA OBLIGATORIO: Espanol argentino. Voseo (vos, sos, tenes). NUNCA cambies de idioma.
+        # Strategy 1: Check if token is a Redis session_id (public anamnesis)
+        session_data = await redis.get(f"nova_session:{token}")
+        if session_data:
+            # It's a pre-created session (from public voice-session endpoint)
+            logger.info(f"nova_voice: using pre-created session {token}")
+            await _nova_realtime_handler(websocket, token)
+            return
+
+        # Strategy 2: Try JWT auth (admin widget)
+        try:
+            from auth_service import AuthService
+            user_data = AuthService.decode_token(token)
+            if not user_data:
+                raise ValueError("Invalid token")
+
+            user_role = user_data.role
+            user_id = str(user_data.user_id)
+
+            session_id = f"direct_{tenant_id}_{int(time.time())}"
+            system_prompt = f"""IDIOMA OBLIGATORIO: Espanol argentino. Voseo (vos, sos, tenes). NUNCA cambies de idioma.
 
 Sos Nova, la asistente inteligente de ClinicForge para la clinica dental.
 Estas en la pagina: {page}. Rol del usuario: {user_role}.
@@ -4313,16 +4319,19 @@ REGLAS:
 - Fechas: formato argentino (dd/mm/yyyy). Horarios: 24h.
 """
 
-        await redis.setex(f"nova_session:{session_id}", 360, json_mod.dumps({
-            "system_prompt": system_prompt,
-            "tenant_id": tenant_id,
-            "user_role": user_role,
-            "user_id": user_id,
-            "page": page,
-        }))
+            await redis.setex(f"nova_session:{session_id}", 360, json_mod.dumps({
+                "system_prompt": system_prompt,
+                "tenant_id": tenant_id,
+                "user_role": user_role,
+                "user_id": user_id,
+                "page": page,
+            }))
 
-        # Reuse the inner handler (websocket already accepted)
-        await _nova_realtime_handler(websocket, session_id)
+            await _nova_realtime_handler(websocket, session_id)
+        except Exception as auth_err:
+            logger.warning(f"nova_voice_auth_failed: {auth_err}")
+            await websocket.send_text(json.dumps({"type": "error", "message": "Session expired or invalid"}))
+            await websocket.close()
 
     except Exception as e:
         logger.error(f"nova_voice_direct_error: {e}")
