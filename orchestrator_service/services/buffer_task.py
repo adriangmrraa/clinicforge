@@ -613,6 +613,44 @@ async def process_buffer_task(
                 response_text = response.get("output", "") or "[Sin respuesta]"
                 cb_tokens = token_cb.total_tokens if token_cb else 0
                 logger.info(f"🤖 Agent Response: {response_text[:50]}... | cb_tokens={cb_tokens}")
+
+                # SAFETY NET: Detect "un momento" / "voy a buscar" dead-end responses
+                # If agent said it will do something but didn't actually execute a tool,
+                # re-invoke with a nudge to actually complete the action
+                dead_end_phrases = [
+                    "un momento", "un instante", "dejame buscar", "voy a buscar",
+                    "voy a verificar", "voy a consultar", "voy a agendar", "voy a proceder",
+                    "ya verifico", "ya busco", "permití", "dame un segundo"
+                ]
+                response_lower = response_text.lower()
+                is_dead_end = any(phrase in response_lower for phrase in dead_end_phrases)
+                # Only trigger if the response is short (< 200 chars) — real results are longer
+                if is_dead_end and len(response_text) < 200 and attempt < max_retries - 1:
+                    logger.warning(f"⚠️ Dead-end response detected: '{response_text[:80]}...' — re-invoking agent")
+                    # Re-invoke with the same input + nudge
+                    nudge_input = f"{user_input}\n\n[SISTEMA: Ejecutá la tool ahora y respondé con el resultado. NO digas 'un momento'.]"
+                    try:
+                        if _get_cb:
+                            with _get_cb() as cb2:
+                                response2 = await executor.ainvoke({
+                                    "input": nudge_input,
+                                    "chat_history": chat_history,
+                                    "system_prompt": system_prompt,
+                                })
+                                token_cb = cb2
+                        else:
+                            response2 = await executor.ainvoke({
+                                "input": nudge_input,
+                                "chat_history": chat_history,
+                                "system_prompt": system_prompt,
+                            })
+                        retry_text = response2.get("output", "")
+                        if retry_text and len(retry_text) > len(response_text):
+                            response_text = retry_text
+                            logger.info(f"🔄 Dead-end recovery successful: {response_text[:50]}...")
+                    except Exception as e2:
+                        logger.warning(f"⚠️ Dead-end recovery failed: {e2}")
+
                 break
             except Exception as e:
                 logger.warning(f"⚠️ process_buffer_task_agent_error (intento {attempt + 1}/{max_retries}): {str(e)}")
