@@ -7,6 +7,7 @@ import { io, Socket } from 'socket.io-client';
 import { BACKEND_URL } from '../api/axios';
 import { X, Wifi, WifiOff, Bell, UserPlus, Calendar, AlertTriangle } from 'lucide-react';
 import MetaTokenBanner from './MetaTokenBanner';
+import { NovaWidget } from './NovaWidget';
 
 interface LayoutProps {
   children: ReactNode;
@@ -264,6 +265,9 @@ export const Layout: React.FC<LayoutProps> = ({ children }: LayoutProps) => {
           {children}
         </div>
       </main>
+
+      {/* Nova AI Widget */}
+      <NovaWidget />
 
       {/* GLOBAL PREMIUM NOTIFICATION TOAST */}
       {notification && (

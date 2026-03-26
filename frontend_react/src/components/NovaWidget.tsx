@@ -401,10 +401,11 @@ export const NovaWidget: React.FC = () => {
 
   const playRealtimeAudio = useCallback((arrayBuffer: ArrayBuffer) => {
     if (!playbackCtxRef.current || playbackCtxRef.current.state === 'closed') {
-      playbackCtxRef.current = new AudioContext({ sampleRate: 24000 });
+      playbackCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
       nextPlayTimeRef.current = 0;
     }
     const ctx = playbackCtxRef.current;
+    if (ctx.state === 'suspended') ctx.resume().catch(() => {});
 
     const pcm16 = new Int16Array(arrayBuffer);
     const float32 = new Float32Array(pcm16.length);
@@ -452,8 +453,9 @@ export const NovaWidget: React.FC = () => {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
 
-      const captureCtx = new AudioContext();
+      const captureCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
       captureCtxRef.current = captureCtx;
+      if (captureCtx.state === 'suspended') captureCtx.resume().catch(() => {});
       const nativeSampleRate = captureCtx.sampleRate;
 
       // Build WS URL
@@ -596,8 +598,12 @@ export const NovaWidget: React.FC = () => {
     micPausedRef.current = next;
   };
 
-  // Cleanup on widget close
+  // Auto-start voice when widget opens, cleanup on close
   useEffect(() => {
+    if (isOpen && !voiceActive) {
+      const t = setTimeout(() => startVoice(), 500);
+      return () => clearTimeout(t);
+    }
     if (!isOpen && voiceActive) {
       stopRealtimeAudio();
     }

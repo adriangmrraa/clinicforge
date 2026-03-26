@@ -15,9 +15,10 @@ import mimetypes
 import hmac
 import hashlib
 import time
+import base64
 from urllib.parse import urlparse
 
-from fastapi import BackgroundTasks, FastAPI, Request, HTTPException, Depends, Query, Header
+from fastapi import BackgroundTasks, FastAPI, Request, HTTPException, Depends, Query, Header, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 from pydantic import BaseModel, Field
@@ -1047,19 +1048,32 @@ async def check_availability(date_query: str, professional_name: Optional[str] =
         )
 
         if options:
-            lines = [f"Para {date_query} ({duration} min), te propongo estas opciones:"]
-            for i, opt in enumerate(options, 1):
-                line = f"{i}) {opt['date_display']} a las {opt['time']}"
-                if opt['sede']:
-                    line += f" — {opt['sede']}"
-                lines.append(line)
+            # Emoji numbers for WhatsApp-friendly format
+            emoji_nums = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣"]
+
+            # Header with treatment name
+            treatment_display = treatment_name or "tu turno"
+            lines = [f"🗓️ Opciones disponibles para tu {treatment_display}:\n"]
+
+            for i, opt in enumerate(options):
+                lines.append(f"{emoji_nums[i]}  {opt['date_display']} — {opt['time']} hs")
 
             if total_today > 3:
-                lines.append(f"Hay {total_today - 3} turnos más disponibles para {date_query} si preferís otro horario.")
-            lines.append("Si preferís otro horario o día, decime y verifico disponibilidad.")
+                lines.append(f"\nHay {total_today - 3} turnos más disponibles si preferís otro horario.")
 
             if professional_name:
-                lines.append(f"Consultando con Dr/a. {professional_name}.")
+                lines.append(f"\nConsultando con Dr/a. {professional_name}.")
+
+            # Sede info grouped at the end (only once if all same)
+            sedes = [opt['sede'] for opt in options if opt.get('sede')]
+            unique_sedes = list(dict.fromkeys(sedes))  # preserve order, deduplicate
+            if unique_sedes:
+                if len(unique_sedes) == 1:
+                    lines.append(f"\n📍 {unique_sedes[0]}")
+                else:
+                    # Multi-sede: show each sede with its corresponding options
+                    for sede in unique_sedes:
+                        lines.append(f"📍 {sede}")
 
             resp = "\n".join(lines)
             logger.info(f"📅 check_availability OK options={len(options)} total_today={total_today} for {date_query}")
@@ -2826,7 +2840,9 @@ Si YA mencionaste el turno en esta conversación, NO lo repitas.
             "• Si el paciente YA tiene anamnesis completada (aparece en su contexto) → NO enviar link automáticamente.\n"
             "  PERO si el paciente pide actualizar o corregir su ficha médica → enviá el link diciendo:\n"
             f"  \"Podés actualizar tu ficha médica desde aquí: {anamnesis_url}\"\n"
-            "• Si el paciente dice que ya completó o actualizó el formulario → llamá 'get_patient_anamnesis' para verificar y confirmá los datos."
+            "• VERIFICACIÓN OBLIGATORIA: Si el paciente dice que ya completó, terminó, llenó o actualizó el formulario (ej: 'listo', 'ya lo llené', 'terminé', 'completé') → SIEMPRE llamá 'get_patient_anamnesis' ANTES de responder. "
+            "Si la tool dice que no hay datos o está vacío → decile al paciente: 'Parece que la ficha aún no tiene datos guardados. Asegurate de completar todos los campos y presionar Enviar.' "
+            "NUNCA digas que la ficha está completa sin haber llamado a la tool y verificado que devolvió datos reales."
         )
 
     # Bank info for payments
@@ -2985,8 +3001,10 @@ Los demás datos son OPCIONALES y se completan en consultorio. NUNCA envíes lis
 FLUJO DE AGENDAMIENTO (ORDEN ESTRICTO):
 PASO 1: SALUDO E IDENTIDAD - Usá el GREETING correspondiente al tipo de paciente.
 PASO 2: DEFINIR SERVICIO - Si el paciente ya lo dijo, NO lo volvás a preguntar.
-PASO 2b: PARA QUIÉN ES EL TURNO (OBLIGATORIO SIEMPRE) — Preguntá: "El turno es para vos o para otra persona?"
-  ESCENARIO A — PARA SÍ MISMO: El interlocutor dice "para mí", "sí", o similar → flujo normal. NO pasar patient_phone ni is_minor a book_appointment.
+PASO 2b: PARA QUIÉN ES EL TURNO — Preguntá "El turno es para vos o para otra persona?" SOLO si hay ambigüedad.
+  DETECCIÓN IMPLÍCITA (NO preguntar): Si el paciente usa primera persona o describe síntomas propios → es PARA SÍ MISMO. Ejemplos: "me duele...", "quiero un turno para una limpieza", "necesito una consulta", "tengo sensibilidad", "se me rompió un diente". En estos casos ir DIRECTO a PASO 3.
+  SOLO preguntar si: el mensaje es genérico/ambiguo o menciona a otra persona ("para mi hijo", "para un amigo").
+  ESCENARIO A — PARA SÍ MISMO: El interlocutor dice "para mí", "sí", o similar, O se detectó implícitamente → flujo normal. NO pasar patient_phone ni is_minor a book_appointment.
   ESCENARIO B — PARA UN ADULTO TERCERO (amigo, esposa, conocido, familiar adulto):
     • Sinónimos de detección: "amigo/a", "esposo/a", "pareja", "familiar", "conocido/a", "padre", "madre", "abuelo/a", "hermano/a", "cuñado/a", "vecino/a"
     • OBLIGATORIO pedir el TELÉFONO del paciente real (el interlocutor debe darlo). Si no lo tiene, sugerí que se lo pida.
@@ -3005,7 +3023,7 @@ PASO 3: PROFESIONAL ASIGNADO — Según lo que devolvió 'list_services' o 'get_
   • Si tiene VARIOS profesionales asignados → preguntá: "Este tratamiento lo realizan [nombres]. Tenés preferencia por alguno/a, o te agendo con el primero que tenga disponibilidad?". Si el paciente elige uno, usá ese. Si dice que no tiene preferencia o "cualquiera", dejá que el sistema asigne automáticamente al que tenga disponibilidad.
   • Si NO tiene profesionales asignados (no aparece "con: ...") → preguntá preferencia de profesional o asigná el primero disponible, como siempre.
 PASO 4: CONSULTAR DISPONIBILIDAD — Llamá 'check_availability' UNA vez con treatment_name y, si el paciente eligió profesional, con professional_name.
-  La tool devuelve 2-3 opciones concretas con horario, fecha y sede. Presentá las opciones al paciente TAL CUAL las recibís, numeradas.
+  La tool devuelve 2-3 opciones con emojis numerados (1️⃣ 2️⃣ 3️⃣) y la sede al final. Presentá el resultado TAL CUAL lo recibís, sin reformatear. NO agregues la dirección ni sede entre las opciones — ya viene al final del mensaje de la tool.
   Si el paciente elige una opción → pasar a PASO 4b.
   Si el paciente pide otro horario distinto a las opciones → volver a llamar 'check_availability' para verificar ese horario específico.
     - Si está libre → pasar a PASO 4b con ese horario.
@@ -3040,7 +3058,7 @@ REGLA DE NO-REPETICIÓN DE DATOS (CRÍTICO):
 • Reutilizá los datos que ya tenés del historial de chat.
 • CAMBIO DE HORARIO/DÍA: Si el paciente cambia de opinión sobre horario o día DESPUÉS de haber dado sus datos, volver SOLO a PASO 4 (consultar disponibilidad). NO repetir PASOS 2, 2b, 3 ni 5.
 
-PACIENTES EXISTENTES: Solo PASOS 1-4b y 6-8. NO pedir datos de admisión (PASO 5).
+PACIENTES EXISTENTES (CRÍTICO): Si el CONTEXTO DEL PACIENTE contiene "Nombre registrado" y/o "DNI registrado", el paciente YA EXISTE en el sistema. SALTEAR PASO 5 COMPLETAMENTE — NO pedir nombre, apellido ni DNI. Usar los datos del contexto directamente. Solo ejecutar PASOS 1-4b y 6-8.
 MÚLTIPLES TURNOS: El interlocutor puede sacar varios turnos para distintas personas en la misma conversación. Cada vez que pide un turno nuevo, volver a PASO 2b para preguntar "para quién es".
 
 FAST TRACK (COMBINACIÓN DE PASOS):
@@ -3191,7 +3209,17 @@ async def lifespan(app: FastAPI):
         logger.warning(f"⚠️ No se pudo importar JobScheduler: {e}")
     except Exception as e:
         logger.error(f"❌ Error al iniciar JobScheduler: {e}")
-    
+
+    # Iniciar Nova daily analysis loop
+    try:
+        from services.nova_daily_analysis import nova_daily_analysis_loop
+        from services.relay import get_redis
+        redis_client = get_redis()
+        asyncio.create_task(nova_daily_analysis_loop(db.pool, redis_client))
+        logger.info("nova_daily_analysis_started")
+    except Exception as e:
+        logger.error(f"nova_daily_analysis_start_failed: {e}")
+
     yield
     
     # Shutdown
@@ -3366,6 +3394,13 @@ try:
     logger.info("✅ Metrics router registered successfully")
 except ImportError as e:
     logger.warning(f"⚠️ Could not import metrics router: {e}")
+
+try:
+    from routes.nova_routes import router as nova_router
+    app.include_router(nova_router)
+    logger.info("nova_routes_registered")
+except Exception as e:
+    logger.error(f"nova_routes_registration_failed: {e}")
 
 # Dashboard CEO: router y middleware se registran aquí (antes de startup)
 try:
@@ -4012,6 +4047,289 @@ async def debug_health():
         "service": "orchestrator",
         "version": os.getenv("API_VERSION", "1.0.0"),
     }
+
+@app.websocket("/public/nova/realtime-ws/{session_id}")
+async def nova_realtime_ws(websocket: WebSocket, session_id: str):
+    """Nova voice assistant WebSocket bridge to OpenAI Realtime API."""
+    await websocket.accept()
+
+    # Get session config from Redis
+    try:
+        from services.relay import get_redis
+        redis = get_redis()
+        session_data = await redis.get(f"nova_session:{session_id}")
+        if not session_data:
+            await websocket.send_text(json.dumps({"type": "error", "message": "Session expired"}))
+            await websocket.close()
+            return
+
+        import json as json_mod
+        config = json_mod.loads(session_data)
+
+        # Connect to OpenAI Realtime
+        import websockets
+        api_key = os.getenv("OPENAI_API_KEY")
+        openai_url = "wss://api.openai.com/v1/realtime?model=gpt-4o-mini-realtime-preview"
+
+        async with websockets.connect(
+            openai_url,
+            extra_headers={
+                "Authorization": f"Bearer {api_key}",
+                "OpenAI-Beta": "realtime=v1"
+            }
+        ) as openai_ws:
+            # Send session update
+            await openai_ws.send(json_mod.dumps({
+                "type": "session.update",
+                "session": {
+                    "instructions": config.get("system_prompt", ""),
+                    "voice": os.getenv("NOVA_VOICE", "coral"),
+                    "input_audio_format": "pcm16",
+                    "output_audio_format": "pcm16",
+                    "input_audio_transcription": {"model": "whisper-1"},
+                    "tools": NOVA_TOOLS_SCHEMA,
+                    "tool_choice": "auto",
+                    "turn_detection": {
+                        "type": "server_vad",
+                        "threshold": 0.5,
+                        "prefix_padding_ms": 800,
+                        "silence_duration_ms": 5000
+                    }
+                }
+            }))
+
+            # Import nova tools for execution
+            from services.nova_tools import execute_nova_tool, NOVA_TOOLS_SCHEMA
+
+            async def client_to_openai():
+                """Forward browser audio/text to OpenAI."""
+                try:
+                    while True:
+                        data = await websocket.receive()
+                        if "bytes" in data and data["bytes"]:
+                            audio_b64 = base64.b64encode(data["bytes"]).decode()
+                            await openai_ws.send(json_mod.dumps({
+                                "type": "input_audio_buffer.append",
+                                "audio": audio_b64
+                            }))
+                        elif "text" in data and data["text"]:
+                            msg = json_mod.loads(data["text"])
+                            if msg.get("type") == "text_message":
+                                await openai_ws.send(json_mod.dumps({
+                                    "type": "conversation.item.create",
+                                    "item": {
+                                        "type": "message",
+                                        "role": "user",
+                                        "content": [{"type": "input_text", "text": msg["text"]}]
+                                    }
+                                }))
+                                await openai_ws.send(json_mod.dumps({"type": "response.create"}))
+                except Exception:
+                    pass
+
+            async def openai_to_client():
+                """Forward OpenAI responses to browser."""
+                try:
+                    async for message in openai_ws:
+                        event = json_mod.loads(message)
+                        etype = event.get("type", "")
+
+                        if etype == "response.audio.delta":
+                            audio_b64 = event.get("delta", "")
+                            if audio_b64:
+                                await websocket.send_bytes(base64.b64decode(audio_b64))
+
+                        elif etype == "response.audio.done":
+                            await websocket.send_text(json_mod.dumps({"type": "nova_audio_done"}))
+
+                        elif etype == "response.audio_transcript.delta":
+                            text = event.get("delta", "")
+                            if text:
+                                await websocket.send_text(json_mod.dumps({
+                                    "type": "transcript", "role": "assistant", "text": text
+                                }))
+
+                        elif etype == "conversation.item.input_audio_transcription.completed":
+                            text = event.get("transcript", "")
+                            if text:
+                                await websocket.send_text(json_mod.dumps({
+                                    "type": "transcript", "role": "user", "text": text
+                                }))
+
+                        elif etype == "input_audio_buffer.speech_started":
+                            await websocket.send_text(json_mod.dumps({"type": "user_speech_started"}))
+
+                        elif etype == "response.done":
+                            await websocket.send_text(json_mod.dumps({"type": "response_done"}))
+
+                        elif etype == "response.function_call_arguments.done":
+                            tool_name = event.get("name", "")
+                            tool_args = json_mod.loads(event.get("arguments", "{}"))
+                            call_id = event.get("call_id", "")
+
+                            tenant_id = config.get("tenant_id", 1)
+                            user_role = config.get("user_role", "secretary")
+                            user_id = config.get("user_id", "")
+
+                            result = await execute_nova_tool(tool_name, tool_args, tenant_id, user_role, user_id)
+
+                            await websocket.send_text(json_mod.dumps({
+                                "type": "tool_call", "name": tool_name, "args": tool_args, "result": result
+                            }))
+
+                            await openai_ws.send(json_mod.dumps({
+                                "type": "conversation.item.create",
+                                "item": {
+                                    "type": "function_call_output",
+                                    "call_id": call_id,
+                                    "output": result
+                                }
+                            }))
+                            await openai_ws.send(json_mod.dumps({"type": "response.create"}))
+
+                except Exception:
+                    pass
+
+            await asyncio.gather(client_to_openai(), openai_to_client())
+
+    except Exception as e:
+        logger.error(f"nova_ws_error: {e}")
+    finally:
+        try:
+            await websocket.close()
+        except Exception:
+            pass
+
+@app.websocket("/public/nova/voice")
+async def nova_voice_direct(websocket: WebSocket):
+    """Nova voice — direct connection (no pre-created session). Builds session from query params."""
+    await websocket.accept()
+    try:
+        tenant_id = int(websocket.query_params.get("tenant_id", "1"))
+        token = websocket.query_params.get("token", "")
+        page = websocket.query_params.get("page", "dashboard")
+
+        # Verify token
+        from core.auth import decode_token
+        user_data = decode_token(token)
+        if not user_data:
+            await websocket.send_text(json.dumps({"type": "error", "message": "Invalid token"}))
+            await websocket.close()
+            return
+
+        # Build system prompt
+        system_prompt = f"""IDIOMA OBLIGATORIO: Espanol argentino. Voseo (vos, sos, tenes). NUNCA cambies de idioma.
+
+Sos Nova, la asistente inteligente de ClinicForge para la clinica dental.
+Estas en la pagina: {page}. Rol del usuario: {user_data.get('role', 'secretary')}.
+
+PERSONALIDAD: Sos proactiva, directa y profesional. Hablás con confianza y calidez. Usas terminologia dental cuando corresponde.
+
+REGLAS:
+- Se BREVE. Maximo 3 oraciones por respuesta.
+- Cada respuesta termina con una sugerencia o accion concreta.
+- Si el usuario pide algo fuera de su rol, deci "No tenes permiso para eso".
+- NUNCA inventes datos de pacientes — siempre usa las tools.
+- Fechas: formato argentino (dd/mm/yyyy). Horarios: 24h (14:00).
+"""
+
+        # Fake a session config for the existing handler
+        import json as json_mod
+        from services.relay import get_redis
+        redis = get_redis()
+        session_id = f"direct_{tenant_id}_{int(time.time())}"
+        await redis.setex(f"nova_session:{session_id}", 360, json_mod.dumps({
+            "system_prompt": system_prompt,
+            "tenant_id": tenant_id,
+            "user_role": user_data.get("role", "secretary"),
+            "user_id": str(user_data.get("sub", "")),
+            "page": page,
+        }))
+
+        # Reuse the existing handler
+        await nova_realtime_ws.__wrapped__(websocket, session_id) if hasattr(nova_realtime_ws, '__wrapped__') else None
+
+        # If __wrapped__ doesn't work, inline the logic
+        session_data = await redis.get(f"nova_session:{session_id}")
+        if not session_data:
+            await websocket.close()
+            return
+        config = json_mod.loads(session_data)
+
+        import websockets
+        api_key = os.getenv("OPENAI_API_KEY")
+        openai_url = "wss://api.openai.com/v1/realtime?model=gpt-4o-mini-realtime-preview"
+
+        from services.nova_tools import execute_nova_tool, NOVA_TOOLS_SCHEMA
+
+        async with websockets.connect(openai_url, extra_headers={"Authorization": f"Bearer {api_key}", "OpenAI-Beta": "realtime=v1"}) as openai_ws:
+            await openai_ws.send(json_mod.dumps({
+                "type": "session.update",
+                "session": {
+                    "instructions": config.get("system_prompt", ""),
+                    "voice": os.getenv("NOVA_VOICE", "coral"),
+                    "input_audio_format": "pcm16",
+                    "output_audio_format": "pcm16",
+                    "input_audio_transcription": {"model": "whisper-1"},
+                    "tools": NOVA_TOOLS_SCHEMA,
+                    "tool_choice": "auto",
+                    "turn_detection": {"type": "server_vad", "threshold": 0.5, "prefix_padding_ms": 800, "silence_duration_ms": 5000}
+                }
+            }))
+
+            async def c2o():
+                try:
+                    while True:
+                        data = await websocket.receive()
+                        if "bytes" in data and data["bytes"]:
+                            await openai_ws.send(json_mod.dumps({"type": "input_audio_buffer.append", "audio": base64.b64encode(data["bytes"]).decode()}))
+                        elif "text" in data and data["text"]:
+                            msg = json_mod.loads(data["text"])
+                            if msg.get("type") == "text_message":
+                                await openai_ws.send(json_mod.dumps({"type": "conversation.item.create", "item": {"type": "message", "role": "user", "content": [{"type": "input_text", "text": msg["text"]}]}}))
+                                await openai_ws.send(json_mod.dumps({"type": "response.create"}))
+                except Exception:
+                    pass
+
+            async def o2c():
+                try:
+                    async for message in openai_ws:
+                        event = json_mod.loads(message)
+                        etype = event.get("type", "")
+                        if etype == "response.audio.delta":
+                            audio_b64 = event.get("delta", "")
+                            if audio_b64: await websocket.send_bytes(base64.b64decode(audio_b64))
+                        elif etype == "response.audio.done":
+                            await websocket.send_text(json_mod.dumps({"type": "nova_audio_done"}))
+                        elif etype == "response.audio_transcript.delta":
+                            t = event.get("delta", "")
+                            if t: await websocket.send_text(json_mod.dumps({"type": "transcript", "role": "assistant", "text": t}))
+                        elif etype == "conversation.item.input_audio_transcription.completed":
+                            t = event.get("transcript", "")
+                            if t: await websocket.send_text(json_mod.dumps({"type": "transcript", "role": "user", "text": t}))
+                        elif etype == "input_audio_buffer.speech_started":
+                            await websocket.send_text(json_mod.dumps({"type": "user_speech_started"}))
+                        elif etype == "response.done":
+                            await websocket.send_text(json_mod.dumps({"type": "response_done"}))
+                        elif etype == "response.function_call_arguments.done":
+                            tool_name = event.get("name", "")
+                            tool_args = json_mod.loads(event.get("arguments", "{}"))
+                            call_id = event.get("call_id", "")
+                            result = await execute_nova_tool(tool_name, tool_args, config.get("tenant_id", 1), config.get("user_role", "secretary"), config.get("user_id", ""))
+                            await websocket.send_text(json_mod.dumps({"type": "tool_call", "name": tool_name, "args": tool_args, "result": result}))
+                            await openai_ws.send(json_mod.dumps({"type": "conversation.item.create", "item": {"type": "function_call_output", "call_id": call_id, "output": result}}))
+                            await openai_ws.send(json_mod.dumps({"type": "response.create"}))
+                except Exception:
+                    pass
+
+            await asyncio.gather(c2o(), o2c())
+
+    except Exception as e:
+        logger.error(f"nova_voice_direct_error: {e}")
+    finally:
+        try: await websocket.close()
+        except: pass
+
 
 if __name__ == "__main__":
     import uvicorn
