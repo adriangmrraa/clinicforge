@@ -54,15 +54,25 @@ class AnalyticsService:
                 completion_rate = (completed_apts / total_apts) * 100 if total_apts > 0 else 0
                 cancellation_rate = (cancelled_apts / total_apts) * 100 if total_apts > 0 else 0
 
-                # 3. Revenue Estimation (Real Data from Treatments)
-                # Assumes 'cost' field exists in treatments JSONB or clinical_records
-                # If not currently populated, this will return 0 but logic is "Real"
+                # 3. Revenue Estimation — multi-source: billing_amount > treatment base_price > clinical_records
                 revenue_row = await db.pool.fetchrow("""
-                    SELECT SUM(COALESCE((treatment->>'cost')::numeric, 0)) as total_revenue
-                    FROM clinical_records, jsonb_array_elements(treatments) as treatment
-                    WHERE professional_id = $1
-                    AND created_at BETWEEN $2 AND $3
-                    AND tenant_id = $4
+                    SELECT
+                        COALESCE(SUM(
+                            CASE
+                                WHEN a.billing_amount IS NOT NULL AND a.billing_amount > 0 THEN a.billing_amount
+                                WHEN tt.base_price IS NOT NULL AND tt.base_price > 0 THEN tt.base_price
+                                ELSE 0
+                            END
+                        ), 0) as total_revenue,
+                        COUNT(*) FILTER (WHERE a.payment_status = 'paid') as paid_count,
+                        COUNT(*) FILTER (WHERE a.payment_status = 'partial') as partial_count,
+                        COUNT(*) FILTER (WHERE a.billing_amount > 0) as with_billing
+                    FROM appointments a
+                    LEFT JOIN treatment_types tt ON a.appointment_type = tt.code AND tt.tenant_id = a.tenant_id
+                    WHERE a.professional_id = $1
+                    AND a.appointment_datetime BETWEEN $2 AND $3
+                    AND a.tenant_id = $4
+                    AND a.status IN ('completed', 'confirmed', 'scheduled')
                 """, prof_id, start_date, end_date, tenant_id)
                 estimated_revenue = float(revenue_row['total_revenue'] or 0)
 
@@ -82,16 +92,49 @@ class AnalyticsService:
                 
                 retention_rate = (returning_patients_count / stats['unique_patients']) * 100 if stats['unique_patients'] > 0 else 0
 
-                # 5. Strategic Tags Logic (The "Cosas Estratégicas")
+                no_show_count = stats['no_show'] or 0
+                no_show_rate = (no_show_count / total_apts) * 100 if total_apts > 0 else 0
+                avg_revenue = estimated_revenue / total_apts if total_apts > 0 else 0
+
+                # 5. Top treatment for this professional
+                top_treatment = await db.pool.fetchrow("""
+                    SELECT a.appointment_type, tt.name, COUNT(*) as cnt
+                    FROM appointments a
+                    LEFT JOIN treatment_types tt ON a.appointment_type = tt.code AND tt.tenant_id = a.tenant_id
+                    WHERE a.professional_id = $1
+                    AND a.appointment_datetime BETWEEN $2 AND $3
+                    AND a.tenant_id = $4
+                    AND a.status IN ('completed', 'confirmed', 'scheduled')
+                    GROUP BY a.appointment_type, tt.name
+                    ORDER BY cnt DESC LIMIT 1
+                """, prof_id, start_date, end_date, tenant_id)
+
+                # 6. Busiest day of the week
+                busiest_day = await db.pool.fetchrow("""
+                    SELECT EXTRACT(DOW FROM appointment_datetime)::int as dow, COUNT(*) as cnt
+                    FROM appointments
+                    WHERE professional_id = $1
+                    AND appointment_datetime BETWEEN $2 AND $3
+                    AND tenant_id = $4
+                    AND status IN ('completed', 'confirmed', 'scheduled')
+                    GROUP BY dow ORDER BY cnt DESC LIMIT 1
+                """, prof_id, start_date, end_date, tenant_id)
+                days_es = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado']
+
+                # 7. Strategic Tags
                 tags = []
-                if completion_rate > 90 and total_apts > 10:
+                if completion_rate > 90 and total_apts > 5:
                     tags.append("High Performance")
                 if retention_rate > 60:
                     tags.append("Retention Master")
                 if cancellation_rate > 20:
                     tags.append("Risk: Cancellations")
-                if estimated_revenue > 100000: # Adjust threshold
-                     tags.append("Top Revenue")
+                if no_show_rate > 15:
+                    tags.append("Risk: No-Shows")
+                if estimated_revenue > 50000:
+                    tags.append("Top Revenue")
+                if total_apts > 0 and avg_revenue > 5000:
+                    tags.append("High Ticket")
 
                 results.append({
                     "id": prof_id,
@@ -102,9 +145,18 @@ class AnalyticsService:
                         "unique_patients": stats['unique_patients'] or 0,
                         "completion_rate": round(completion_rate, 1),
                         "cancellation_rate": round(cancellation_rate, 1),
+                        "no_show_rate": round(no_show_rate, 1),
                         "revenue": estimated_revenue,
-                        "retention_rate": round(retention_rate, 1)
+                        "avg_revenue_per_appointment": round(avg_revenue, 0),
+                        "retention_rate": round(retention_rate, 1),
+                        "paid_appointments": revenue_row['paid_count'] or 0,
+                        "partial_payments": revenue_row['partial_count'] or 0,
                     },
+                    "top_treatment": {
+                        "name": (top_treatment['name'] or top_treatment['appointment_type'] or 'N/A') if top_treatment else 'N/A',
+                        "count": top_treatment['cnt'] if top_treatment else 0
+                    },
+                    "busiest_day": days_es[busiest_day['dow']] if busiest_day else 'N/A',
                     "tags": tags
                 })
 

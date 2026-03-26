@@ -1130,10 +1130,10 @@ export default function ChatsView() {
       {/* Chat Detail: YCloud o Chatwoot */}
       {selectedSession || selectedChatwoot ? (
         <>
-          <div className="flex-1 flex flex-col min-w-0 bg-gray-50 h-full min-h-0">
-            <div className="flex-1 flex flex-col min-h-0 relative">
+          <div className="flex-1 flex flex-col min-w-0 bg-gray-50 h-full min-h-0 overflow-hidden">
+            <div className="flex-1 flex flex-col min-h-0 relative overflow-hidden">
               {/* Header */}
-              <div className="p-4 border-b bg-white flex justify-between items-center">
+              <div className="p-4 border-b bg-white flex justify-between items-center shrink-0 sticky top-0 z-10">
                 <div className="flex items-center gap-3 min-w-0">
                   <button
                     onClick={() => {
