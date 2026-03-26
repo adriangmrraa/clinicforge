@@ -663,8 +663,11 @@ async def pick_representative_slots(
     sede_text = _resolve_sede_text(tenant_day_cfg, tenant_row)
     date_display = f"{DIAS_ES.get(day_name_en, '')} {target_date.strftime('%d/%m')}"
 
-    # Seleccionar del día pedido
-    picked = _pick_from_slots(slots, max_options)
+    # Seleccionar del día pedido — máximo 2 del mismo día, reservar 1 para comodín de otro día
+    slots_from_today = min(max_options - 1, len(slots)) if len(slots) > 0 else 0  # 2 del día pedido, 1 comodín
+    if slots_from_today < 1:
+        slots_from_today = min(max_options, len(slots))  # Si solo hay 1 slot, tomarlo
+    picked = _pick_from_slots(slots, slots_from_today)
     for time_str in picked:
         hour = int(time_str.split(":")[0])
         options.append({
@@ -675,7 +678,7 @@ async def pick_representative_slots(
             "period": "mañana" if hour < 13 else "tarde"
         })
 
-    # Si faltan opciones, buscar en días siguientes (máx 7)
+    # SIEMPRE buscar 1 comodín de otro día (incluso si el día pedido tiene slots de sobra)
     if len(options) < max_options:
         for day_offset in range(1, 8):
             if len(options) >= max_options:
