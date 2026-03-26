@@ -440,8 +440,8 @@ const UserApprovalView: React.FC = () => {
                     <p className="text-red-400">{error}</p>
                 </div>
             ) : (
-                <div className="flex-1 min-h-0 overflow-y-auto pb-4">
-                    <div className="grid gap-4">
+                <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden pb-4">
+                    <div className="grid gap-4 max-w-full">
                         {activeTab === 'requests' ? (
                             requests.length === 0 ? (
                                 <div className="glass p-12 text-center">
@@ -1083,7 +1083,7 @@ interface UserCardProps {
 const UserCard: React.FC<UserCardProps> = ({ user, onAction, isRequest, onCardClick, onConfigClick }) => {
     const { t } = useTranslation();
     return (
-    <div className="glass p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 animate-fadeIn">
+    <div className="glass p-4 sm:p-5 flex flex-col gap-4 animate-fadeIn overflow-hidden">
         <div
             className={`flex items-start sm:items-center gap-4 flex-1 min-w-0 ${onCardClick ? 'cursor-pointer hover:opacity-90' : ''}`}
             onClick={onCardClick}
@@ -1110,7 +1110,7 @@ const UserCard: React.FC<UserCardProps> = ({ user, onAction, isRequest, onCardCl
             </div>
         </div>
 
-        <div className="flex items-center justify-end sm:justify-start gap-2 shrink-0 flex-wrap" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-2 flex-wrap" onClick={(e) => e.stopPropagation()}>
             {!isRequest && onConfigClick && (
                 <button
                     type="button"
