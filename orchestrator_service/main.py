@@ -4048,10 +4048,9 @@ async def debug_health():
         "version": os.getenv("API_VERSION", "1.0.0"),
     }
 
-@app.websocket("/public/nova/realtime-ws/{session_id}")
-async def nova_realtime_ws(websocket: WebSocket, session_id: str):
-    """Nova voice assistant WebSocket bridge to OpenAI Realtime API."""
-    await websocket.accept()
+async def _nova_realtime_handler(websocket: WebSocket, session_id: str):
+    """Nova voice assistant WebSocket bridge to OpenAI Realtime API (inner handler)."""
+    from services.nova_tools import execute_nova_tool, NOVA_TOOLS_SCHEMA
 
     # Get session config from Redis
     try:
@@ -4097,9 +4096,6 @@ async def nova_realtime_ws(websocket: WebSocket, session_id: str):
                     }
                 }
             }))
-
-            # Import nova tools for execution
-            from services.nova_tools import execute_nova_tool, NOVA_TOOLS_SCHEMA
 
             async def client_to_openai():
                 """Forward browser audio/text to OpenAI."""
@@ -4200,9 +4196,16 @@ async def nova_realtime_ws(websocket: WebSocket, session_id: str):
         except Exception:
             pass
 
+@app.websocket("/public/nova/realtime-ws/{session_id}")
+async def nova_realtime_ws_endpoint(websocket: WebSocket, session_id: str):
+    """Nova voice — session-based endpoint."""
+    await websocket.accept()
+    await _nova_realtime_handler(websocket, session_id)
+
+
 @app.websocket("/public/nova/voice")
 async def nova_voice_direct(websocket: WebSocket):
-    """Nova voice — direct connection (no pre-created session). Builds session from query params."""
+    """Nova voice — direct connection with JWT auth from query params."""
     await websocket.accept()
     try:
         tenant_id = int(websocket.query_params.get("tenant_id", "1"))
@@ -4210,123 +4213,49 @@ async def nova_voice_direct(websocket: WebSocket):
         page = websocket.query_params.get("page", "dashboard")
 
         # Verify token
-        from core.auth import decode_token
-        user_data = decode_token(token)
+        from auth_service import AuthService
+        user_data = AuthService.decode_token(token)
         if not user_data:
             await websocket.send_text(json.dumps({"type": "error", "message": "Invalid token"}))
             await websocket.close()
             return
 
-        # Build system prompt
-        system_prompt = f"""IDIOMA OBLIGATORIO: Espanol argentino. Voseo (vos, sos, tenes). NUNCA cambies de idioma.
+        user_role = user_data.role
+        user_id = str(user_data.user_id)
 
-Sos Nova, la asistente inteligente de ClinicForge para la clinica dental.
-Estas en la pagina: {page}. Rol del usuario: {user_data.get('role', 'secretary')}.
-
-PERSONALIDAD: Sos proactiva, directa y profesional. Hablás con confianza y calidez. Usas terminologia dental cuando corresponde.
-
-REGLAS:
-- Se BREVE. Maximo 3 oraciones por respuesta.
-- Cada respuesta termina con una sugerencia o accion concreta.
-- Si el usuario pide algo fuera de su rol, deci "No tenes permiso para eso".
-- NUNCA inventes datos de pacientes — siempre usa las tools.
-- Fechas: formato argentino (dd/mm/yyyy). Horarios: 24h (14:00).
-"""
-
-        # Fake a session config for the existing handler
+        # Build session and delegate to existing handler
         import json as json_mod
         from services.relay import get_redis
         redis = get_redis()
         session_id = f"direct_{tenant_id}_{int(time.time())}"
+
+        system_prompt = f"""IDIOMA OBLIGATORIO: Espanol argentino. Voseo (vos, sos, tenes). NUNCA cambies de idioma.
+
+Sos Nova, la asistente inteligente de ClinicForge para la clinica dental.
+Estas en la pagina: {page}. Rol del usuario: {user_role}.
+
+PERSONALIDAD: Sos proactiva, directa y profesional. Hablás con confianza y calidez.
+
+REGLAS:
+- Se BREVE. Maximo 3 oraciones por respuesta.
+- Cada respuesta termina con una sugerencia o accion concreta.
+- NUNCA inventes datos — siempre usa las tools.
+- Fechas: formato argentino (dd/mm/yyyy). Horarios: 24h.
+"""
+
         await redis.setex(f"nova_session:{session_id}", 360, json_mod.dumps({
             "system_prompt": system_prompt,
             "tenant_id": tenant_id,
-            "user_role": user_data.get("role", "secretary"),
-            "user_id": str(user_data.get("sub", "")),
+            "user_role": user_role,
+            "user_id": user_id,
             "page": page,
         }))
 
-        # Reuse the existing handler
-        await nova_realtime_ws.__wrapped__(websocket, session_id) if hasattr(nova_realtime_ws, '__wrapped__') else None
-
-        # If __wrapped__ doesn't work, inline the logic
-        session_data = await redis.get(f"nova_session:{session_id}")
-        if not session_data:
-            await websocket.close()
-            return
-        config = json_mod.loads(session_data)
-
-        import websockets
-        api_key = os.getenv("OPENAI_API_KEY")
-        openai_url = "wss://api.openai.com/v1/realtime?model=gpt-4o-mini-realtime-preview"
-
-        from services.nova_tools import execute_nova_tool, NOVA_TOOLS_SCHEMA
-
-        async with websockets.connect(openai_url, extra_headers={"Authorization": f"Bearer {api_key}", "OpenAI-Beta": "realtime=v1"}) as openai_ws:
-            await openai_ws.send(json_mod.dumps({
-                "type": "session.update",
-                "session": {
-                    "instructions": config.get("system_prompt", ""),
-                    "voice": os.getenv("NOVA_VOICE", "coral"),
-                    "input_audio_format": "pcm16",
-                    "output_audio_format": "pcm16",
-                    "input_audio_transcription": {"model": "whisper-1"},
-                    "tools": NOVA_TOOLS_SCHEMA,
-                    "tool_choice": "auto",
-                    "turn_detection": {"type": "server_vad", "threshold": 0.5, "prefix_padding_ms": 800, "silence_duration_ms": 5000}
-                }
-            }))
-
-            async def c2o():
-                try:
-                    while True:
-                        data = await websocket.receive()
-                        if "bytes" in data and data["bytes"]:
-                            await openai_ws.send(json_mod.dumps({"type": "input_audio_buffer.append", "audio": base64.b64encode(data["bytes"]).decode()}))
-                        elif "text" in data and data["text"]:
-                            msg = json_mod.loads(data["text"])
-                            if msg.get("type") == "text_message":
-                                await openai_ws.send(json_mod.dumps({"type": "conversation.item.create", "item": {"type": "message", "role": "user", "content": [{"type": "input_text", "text": msg["text"]}]}}))
-                                await openai_ws.send(json_mod.dumps({"type": "response.create"}))
-                except Exception:
-                    pass
-
-            async def o2c():
-                try:
-                    async for message in openai_ws:
-                        event = json_mod.loads(message)
-                        etype = event.get("type", "")
-                        if etype == "response.audio.delta":
-                            audio_b64 = event.get("delta", "")
-                            if audio_b64: await websocket.send_bytes(base64.b64decode(audio_b64))
-                        elif etype == "response.audio.done":
-                            await websocket.send_text(json_mod.dumps({"type": "nova_audio_done"}))
-                        elif etype == "response.audio_transcript.delta":
-                            t = event.get("delta", "")
-                            if t: await websocket.send_text(json_mod.dumps({"type": "transcript", "role": "assistant", "text": t}))
-                        elif etype == "conversation.item.input_audio_transcription.completed":
-                            t = event.get("transcript", "")
-                            if t: await websocket.send_text(json_mod.dumps({"type": "transcript", "role": "user", "text": t}))
-                        elif etype == "input_audio_buffer.speech_started":
-                            await websocket.send_text(json_mod.dumps({"type": "user_speech_started"}))
-                        elif etype == "response.done":
-                            await websocket.send_text(json_mod.dumps({"type": "response_done"}))
-                        elif etype == "response.function_call_arguments.done":
-                            tool_name = event.get("name", "")
-                            tool_args = json_mod.loads(event.get("arguments", "{}"))
-                            call_id = event.get("call_id", "")
-                            result = await execute_nova_tool(tool_name, tool_args, config.get("tenant_id", 1), config.get("user_role", "secretary"), config.get("user_id", ""))
-                            await websocket.send_text(json_mod.dumps({"type": "tool_call", "name": tool_name, "args": tool_args, "result": result}))
-                            await openai_ws.send(json_mod.dumps({"type": "conversation.item.create", "item": {"type": "function_call_output", "call_id": call_id, "output": result}}))
-                            await openai_ws.send(json_mod.dumps({"type": "response.create"}))
-                except Exception:
-                    pass
-
-            await asyncio.gather(c2o(), o2c())
+        # Reuse the inner handler (websocket already accepted)
+        await _nova_realtime_handler(websocket, session_id)
 
     except Exception as e:
         logger.error(f"nova_voice_direct_error: {e}")
-    finally:
         try: await websocket.close()
         except: pass
 
