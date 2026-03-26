@@ -70,20 +70,20 @@ const SOURCE_COLORS: Record<string, { hex: string; label: string; bgClass: strin
   ai: {
     hex: '#3b82f6',
     label: 'AI',
-    bgClass: 'bg-blue-100',
-    textClass: 'text-blue-800'
+    bgClass: 'bg-blue-500/10',
+    textClass: 'text-blue-400'
   },
   manual: {
     hex: '#22c55e',
     label: 'Manual',
-    bgClass: 'bg-green-100',
-    textClass: 'text-green-800'
+    bgClass: 'bg-green-500/10',
+    textClass: 'text-green-400'
   },
   gcalendar: {
     hex: '#6b7280',
     label: 'GCalendar',
-    bgClass: 'bg-gray-100',
-    textClass: 'text-gray-800'
+    bgClass: 'bg-white/[0.06]',
+    textClass: 'text-white/50'
   },
 };
 
@@ -546,11 +546,11 @@ export default function AgendaView() {
         {/* Header */}
         <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-6">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center w-full lg:w-auto gap-4">
-            <div className="border-l-4 border-medical-500 pl-3 sm:pl-4 min-w-0">
-              <h1 className="text-xl sm:text-2xl font-bold text-slate-800 tracking-tight">{t('agenda.title')}</h1>
-              <p className="text-xs sm:text-sm text-slate-600 mt-0.5">{t('agenda.subtitle')}</p>
+            <div className="border-l-4 border-blue-500 pl-3 sm:pl-4 min-w-0">
+              <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">{t('agenda.title')}</h1>
+              <p className="text-xs sm:text-sm text-white/50 mt-0.5">{t('agenda.subtitle')}</p>
               {visibleRangeStr && (
-                <p className="text-xs text-slate-500 mt-1" title={t('agenda.range_hint')}>
+                <p className="text-xs text-white/30 mt-1" title={t('agenda.range_hint')}>
                   {filteredAppointments.length} {t('agenda.appointments_in_view')} • {visibleRangeStr}
                 </p>
               )}
@@ -558,12 +558,12 @@ export default function AgendaView() {
 
             {/* Professional Filter (CEO/Secretary only) - Mobile Stacking */}
             {(user?.role === 'ceo' || user?.role === 'secretary') && (
-              <div className="flex items-center gap-2 bg-white px-3 py-2 rounded-xl shadow-sm border border-gray-100 w-full sm:w-auto">
-                <Stethoscope size={16} className="text-medical-600 shrink-0" />
+              <div className="flex items-center gap-2 bg-white/[0.04] px-3 py-2 rounded-xl border border-white/[0.08] w-full sm:w-auto">
+                <Stethoscope size={16} className="text-blue-400 shrink-0" />
                 <select
                   value={selectedProfessionalId}
                   onChange={(e) => setSelectedProfessionalId(e.target.value)}
-                  className="bg-transparent border-none text-xs font-medium focus:ring-0 outline-none text-medical-900 cursor-pointer w-full"
+                  className="bg-transparent border-none text-xs font-medium focus:ring-0 outline-none text-white cursor-pointer w-full"
                 >
                   <option value="all">{t('agenda.all_professionals')}</option>
                   {professionals.map(p => (
@@ -579,18 +579,18 @@ export default function AgendaView() {
           {/* Connection Status & Controls */}
           <div className="flex flex-wrap items-center gap-2 sm:gap-4 w-full lg:w-auto">
             {/* Source Legend - Compact on Mobile */}
-            <div className="flex gap-2 sm:gap-3 bg-white px-3 py-1.5 rounded-full border border-gray-50">
+            <div className="flex gap-2 sm:gap-3 bg-white/[0.04] px-3 py-1.5 rounded-full border border-white/[0.06]">
               <div className="flex items-center gap-1">
                 <div className="w-2.5 h-2.5 rounded-full bg-blue-500"></div>
-                <span className="text-[10px] text-gray-600">{t('agenda.source_ai')}</span>
+                <span className="text-[10px] text-white/50">{t('agenda.source_ai')}</span>
               </div>
               <div className="flex items-center gap-1">
                 <div className="w-2.5 h-2.5 rounded-full bg-green-500"></div>
-                <span className="text-[10px] text-gray-600">{t('agenda.source_manual')}</span>
+                <span className="text-[10px] text-white/50">{t('agenda.source_manual')}</span>
               </div>
               <div className="flex items-center gap-1">
                 <div className="w-2.5 h-2.5 rounded-full bg-gray-500"></div>
-                <span className="text-[10px] text-gray-600">{t('agenda.source_gcalendar')}</span>
+                <span className="text-[10px] text-white/50">{t('agenda.source_gcalendar')}</span>
               </div>
             </div>
 
@@ -626,7 +626,7 @@ export default function AgendaView() {
           </div>
         ) : (
           <div className="flex-1 min-h-0 px-4 lg:px-6 pb-4 lg:pb-6">
-            <div className="h-[calc(100vh-140px)] bg-white/60 backdrop-blur-lg md:backdrop-blur-2xl border border-white/40 shadow-2xl rounded-2xl md:rounded-3xl p-2 sm:p-4 overflow-y-auto">
+            <div className="h-[calc(100vh-140px)] bg-white/[0.03] backdrop-blur-lg md:backdrop-blur-2xl border border-white/[0.06] shadow-2xl rounded-2xl md:rounded-3xl p-2 sm:p-4 overflow-y-auto">
               {/* Calendar */}
 
               {/* Custom FullCalendar Styles for Spacious TimeGrid */}
@@ -659,12 +659,12 @@ export default function AgendaView() {
           
           /* Opacar días pasados visualmente */
           .fc-day-past {
-            background-color: #f9fafb !important;
+            background-color: rgba(255,255,255,0.02) !important;
             opacity: 0.5 !important;
           }
-          
+
           .fc-timegrid-col.fc-day-past {
-            background-color: #f9fafb !important;
+            background-color: rgba(255,255,255,0.02) !important;
           }
           
           .fc-event-past {
@@ -717,15 +717,136 @@ export default function AgendaView() {
             70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
             100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
           }
+
+          /* ===== DARK MODE OVERRIDES FOR FULLCALENDAR ===== */
+          .fc {
+            --fc-border-color: rgba(255,255,255,0.06);
+            --fc-page-bg-color: transparent;
+            --fc-neutral-bg-color: rgba(255,255,255,0.04);
+            --fc-list-event-hover-bg-color: rgba(255,255,255,0.04);
+            --fc-today-bg-color: rgba(59,130,246,0.08);
+            --fc-highlight-color: rgba(59,130,246,0.12);
+            --fc-non-business-color: rgba(255,255,255,0.02);
+            --fc-bg-event-opacity: 0.15;
+            --fc-neutral-text-color: rgba(255,255,255,0.5);
+            --fc-event-text-color: #fff;
+            color: rgba(255,255,255,0.85);
+          }
+
+          /* Toolbar buttons */
+          .fc .fc-button-primary {
+            background-color: rgba(255,255,255,0.04) !important;
+            border-color: rgba(255,255,255,0.08) !important;
+            color: rgba(255,255,255,0.7) !important;
+          }
+          .fc .fc-button-primary:hover {
+            background-color: rgba(255,255,255,0.08) !important;
+            color: #fff !important;
+          }
+          .fc .fc-button-primary.fc-button-active,
+          .fc .fc-button-primary:not(:disabled).fc-button-active {
+            background-color: #fff !important;
+            color: #0a0e1a !important;
+            border-color: #fff !important;
+          }
+          .fc .fc-today-button {
+            background-color: rgba(255,255,255,0.04) !important;
+            border-color: rgba(255,255,255,0.08) !important;
+            color: rgba(255,255,255,0.7) !important;
+          }
+          .fc .fc-today-button:hover {
+            background-color: rgba(255,255,255,0.08) !important;
+            color: #fff !important;
+          }
+          .fc .fc-today-button:disabled {
+            opacity: 0.3 !important;
+          }
+
+          /* Toolbar title */
+          .fc .fc-toolbar-title {
+            color: #fff !important;
+          }
+
+          /* Column headers (day names) */
+          .fc .fc-col-header-cell {
+            background-color: rgba(255,255,255,0.04) !important;
+            border-color: rgba(255,255,255,0.06) !important;
+          }
+          .fc .fc-col-header-cell-cushion {
+            color: rgba(255,255,255,0.7) !important;
+          }
+
+          /* Time slot labels */
+          .fc .fc-timegrid-slot-label-cushion {
+            color: rgba(255,255,255,0.5) !important;
+          }
+
+          /* Day number in month view */
+          .fc .fc-daygrid-day-number {
+            color: rgba(255,255,255,0.7) !important;
+          }
+
+          /* List view */
+          .fc .fc-list-day-cushion {
+            background-color: rgba(255,255,255,0.04) !important;
+          }
+          .fc .fc-list-day-cushion a {
+            color: #fff !important;
+          }
+          .fc .fc-list-event td {
+            border-color: rgba(255,255,255,0.06) !important;
+          }
+          .fc .fc-list-event:hover td {
+            background-color: rgba(255,255,255,0.04) !important;
+          }
+          .fc .fc-list-event-title a {
+            color: rgba(255,255,255,0.85) !important;
+          }
+          .fc .fc-list-event-time {
+            color: rgba(255,255,255,0.5) !important;
+          }
+
+          /* Resource labels */
+          .fc .fc-resource-cell {
+            background-color: rgba(255,255,255,0.04) !important;
+            color: rgba(255,255,255,0.7) !important;
+          }
+
+          /* Scrollbar dark */
+          .fc ::-webkit-scrollbar {
+            width: 6px;
+          }
+          .fc ::-webkit-scrollbar-track {
+            background: transparent;
+          }
+          .fc ::-webkit-scrollbar-thumb {
+            background: rgba(255,255,255,0.1);
+            border-radius: 3px;
+          }
+
+          /* More link */
+          .fc .fc-daygrid-more-link {
+            color: rgba(255,255,255,0.6) !important;
+          }
+
+          /* Popover */
+          .fc .fc-popover {
+            background: #0d1117 !important;
+            border-color: rgba(255,255,255,0.06) !important;
+          }
+          .fc .fc-popover-header {
+            background: rgba(255,255,255,0.04) !important;
+            color: #fff !important;
+          }
         `}</style>
 
               {/* Siempre montar el calendario para que las flechas y la vista no reviertan al hacer fetch */}
               <div className="relative h-full min-h-[400px]">
                 {loading && appointments.length === 0 && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-white/80 z-10 rounded-2xl">
+                  <div className="absolute inset-0 flex items-center justify-center bg-[#0d1117]/80 z-10 rounded-2xl">
                     <div className="flex flex-col items-center gap-4">
-                      <RefreshCw className="w-12 h-12 text-blue-500 animate-spin" />
-                      <p className="text-gray-500 font-medium">{t('common.loading')}</p>
+                      <RefreshCw className="w-12 h-12 text-blue-400 animate-spin" />
+                      <p className="text-white/50 font-medium">{t('common.loading')}</p>
                     </div>
                   </div>
                 )}

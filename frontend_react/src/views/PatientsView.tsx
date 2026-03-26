@@ -331,7 +331,7 @@ export default function PatientsView() {
   };
 
   return (
-    <div className="p-4 lg:p-6 h-full overflow-y-auto bg-gray-100">
+    <div className="p-4 lg:p-6 h-full overflow-y-auto">
       <PageHeader
         title={t('patients.title')}
         subtitle={t('patients.subtitle')}
@@ -340,14 +340,14 @@ export default function PatientsView() {
           <div className="flex gap-2 w-full sm:w-auto">
             <button
               onClick={openImportModal}
-              className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-slate-600 hover:bg-slate-700 text-white px-4 py-2.5 rounded-xl transition-colors text-sm font-medium shadow-md active:scale-[0.98]"
+              className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-white/[0.06] hover:bg-white/[0.1] text-white/70 px-4 py-2.5 rounded-xl transition-colors text-sm font-medium shadow-md active:scale-[0.98]"
             >
               <Upload size={18} />
               {t('patients.import_button')}
             </button>
             <button
               onClick={openCreateModal}
-              className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-primary hover:bg-primary-dark text-white px-4 py-2.5 rounded-xl transition-colors text-sm font-medium shadow-md active:scale-[0.98]"
+              className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-white text-[#0a0e1a] hover:bg-white/90 px-4 py-2.5 rounded-xl transition-colors text-sm font-medium shadow-md active:scale-[0.98]"
             >
               <Plus size={20} />
               {t('patients.new_patient')}
@@ -359,13 +359,13 @@ export default function PatientsView() {
       {/* Search */}
       <div className="mb-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-white/30" size={18} />
           <input
             type="text"
             placeholder={t('patients.search_placeholder')}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent bg-white"
+            className="w-full pl-10 pr-4 py-2 text-sm border border-white/[0.08] rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent bg-white/[0.04] text-white placeholder-white/20"
           />
         </div>
 
@@ -377,7 +377,7 @@ export default function PatientsView() {
             placeholder={t('patients.search_semantic')}
             value={semanticSearchTerm}
             onChange={(e) => handleSemanticSearch(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 text-sm border border-purple-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white"
+            className="w-full pl-10 pr-4 py-2 text-sm border border-purple-500/30 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white/[0.04] text-white placeholder-white/20"
           />
           {semanticLoading && (
             <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
@@ -388,42 +388,42 @@ export default function PatientsView() {
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-lg shadow overflow-hidden">
+      <div className="bg-white/[0.03] border border-white/[0.06] rounded-lg shadow overflow-hidden">
         {loading ? (
-          <div className="p-8 text-center text-gray-500">{t('patients.loading')}</div>
+          <div className="p-8 text-center text-white/50">{t('patients.loading')}</div>
         ) : filteredPatients.length === 0 ? (
-          <div className="p-8 text-center text-gray-500">
+          <div className="p-8 text-center text-white/50">
             {t('patients.no_patients_found')}
           </div>
         ) : (
           <>
             <div className="overflow-x-auto hidden md:block">
               <table className="w-full">
-                <thead className="bg-gray-50">
+                <thead className="bg-white/[0.04]">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-white/50 uppercase tracking-wider">
                       {t('patients.patient')}
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-white/50 uppercase tracking-wider">
                       {t('patients.contact')}
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-white/50 uppercase tracking-wider">
                       {t('patients.dni_obra_social')}
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-white/50 uppercase tracking-wider">
                       {t('patients.health')}
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-white/50 uppercase tracking-wider">
                       {t('patients.date_added')}
                     </th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-right text-xs font-medium text-white/50 uppercase tracking-wider">
                       {t('patients.actions')}
                     </th>
                   </tr>
                 </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
+                <tbody className="bg-white/[0.02] divide-y divide-white/[0.06]">
                   {filteredPatients.map((patient) => (
-                    <tr key={patient.id} className="hover:bg-gray-50 transition-colors">
+                    <tr key={patient.id} className="hover:bg-white/[0.04] transition-colors">
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center">
                           <div className="flex-shrink-0 h-10 w-10 bg-primary-light rounded-full flex items-center justify-center text-white font-medium">
@@ -431,7 +431,7 @@ export default function PatientsView() {
                           </div>
                           <div className="ml-4">
                             <div className="flex items-center gap-2">
-                              <div className="text-sm font-medium text-gray-900">
+                              <div className="text-sm font-medium text-white">
                                 {patient.first_name} {patient.last_name}
                               </div>
                               {semanticResults.some(r => r.id === patient.id) && (
@@ -442,36 +442,36 @@ export default function PatientsView() {
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-900">{patient.phone_number}</div>
-                        <div className="text-sm text-gray-500">{patient.email}</div>
+                        <div className="text-sm text-white">{patient.phone_number}</div>
+                        <div className="text-sm text-white/50">{patient.email}</div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-900">{patient.dni || '-'}</div>
-                        <div className="text-sm text-gray-500">{patient.obra_social || '-'}</div>
+                        <div className="text-sm text-white">{patient.dni || '-'}</div>
+                        <div className="text-sm text-white/50">{patient.obra_social || '-'}</div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">-</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-white/50">-</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-white/50">
                         {new Date(patient.created_at).toLocaleDateString(language)}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                         <div className="flex justify-end gap-2">
                           <button
                             onClick={() => navigate(`/pacientes/${patient.id}`)}
-                            className="p-2 text-gray-600 hover:text-primary hover:bg-gray-100 rounded-lg transition-colors"
+                            className="p-2 text-white/50 hover:text-primary hover:bg-white/[0.04] rounded-lg transition-colors"
                             title={t('patients.view_chart')}
                           >
                             <FileText size={18} />
                           </button>
                           <button
                             onClick={() => openEditModal(patient)}
-                            className="p-2 text-gray-600 hover:text-primary hover:bg-gray-100 rounded-lg transition-colors"
+                            className="p-2 text-white/50 hover:text-primary hover:bg-white/[0.04] rounded-lg transition-colors"
                             title={t('common.edit')}
                           >
                             <Edit size={18} />
                           </button>
                           <button
                             onClick={() => handleDelete(patient.id)}
-                            className="p-2 text-gray-600 hover:text-red-600 hover:bg-gray-100 rounded-lg transition-colors"
+                            className="p-2 text-white/50 hover:text-red-400 hover:bg-white/[0.04] rounded-lg transition-colors"
                             title={t('common.delete')}
                           >
                             <Trash2 size={18} />
@@ -485,9 +485,9 @@ export default function PatientsView() {
             </div>
 
             {/* Cards for Mobile */}
-            <div className="md:hidden divide-y">
+            <div className="md:hidden divide-y divide-white/[0.06]">
               {filteredPatients.map((patient) => (
-                <div key={patient.id} className="p-4 bg-white hover:bg-gray-50 transition-colors">
+                <div key={patient.id} className="p-4 hover:bg-white/[0.04] transition-colors">
                   <div className="flex justify-between items-start mb-3">
                     <div className="flex items-center gap-3">
                       <div className="h-10 w-10 bg-primary-light rounded-full flex items-center justify-center text-white font-medium shrink-0">
@@ -495,50 +495,50 @@ export default function PatientsView() {
                       </div>
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
-                          <h3 className="text-sm font-semibold text-gray-900 truncate">
+                          <h3 className="text-sm font-semibold text-white truncate">
                             {patient.first_name} {patient.last_name}
                           </h3>
                           {semanticResults.some(r => r.id === patient.id) && (
                             <Brain size={14} className="text-purple-500 shrink-0" />
                           )}
                         </div>
-                        <p className="text-xs text-gray-500 truncate">DNI: {patient.dni || '-'}</p>
+                        <p className="text-xs text-white/50 truncate">DNI: {patient.dni || '-'}</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-1">
                       <button
                         onClick={() => navigate(`/pacientes/${patient.id}`)}
-                        className="p-2 text-gray-600 hover:text-primary active:bg-gray-200 rounded-lg"
+                        className="p-2 text-white/50 hover:text-primary active:bg-white/[0.04] rounded-lg"
                       >
                         <FileText size={18} />
                       </button>
                       <button
                         onClick={() => openEditModal(patient)}
-                        className="p-2 text-gray-600 hover:text-primary active:bg-gray-200 rounded-lg"
+                        className="p-2 text-white/50 hover:text-primary active:bg-white/[0.04] rounded-lg"
                       >
                         <Edit size={18} />
                       </button>
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-2 text-xs text-gray-500 mb-3 bg-gray-50 p-2 rounded-lg">
+                  <div className="grid grid-cols-2 gap-2 text-xs text-white/50 mb-3 bg-white/[0.04] p-2 rounded-lg">
                     <div>
-                      <span className="block text-[10px] text-gray-400 uppercase font-semibold">{t('patients.phone_label')}</span>
+                      <span className="block text-[10px] text-white/30 uppercase font-semibold">{t('patients.phone_label')}</span>
                       {patient.phone_number}
                     </div>
                     <div>
-                      <span className="block text-[10px] text-gray-400 uppercase font-semibold">{t('patients.obra_social')}</span>
+                      <span className="block text-[10px] text-white/30 uppercase font-semibold">{t('patients.obra_social')}</span>
                       {patient.obra_social || '-'}
                     </div>
                   </div>
 
                   <div className="flex items-center justify-between pt-2">
-                    <span className="text-[10px] text-gray-400">
+                    <span className="text-[10px] text-white/30">
                       {t('patients.loaded_on')}: {new Date(patient.created_at).toLocaleDateString(language)}
                     </span>
                     <button
                       onClick={() => handleDelete(patient.id)}
-                      className="text-xs text-red-500 font-medium px-2 py-1 hover:bg-red-50 rounded"
+                      className="text-xs text-red-400 font-medium px-2 py-1 hover:bg-red-500/10 rounded"
                     >
                       {t('common.delete')}
                     </button>
@@ -554,18 +554,18 @@ export default function PatientsView() {
       {showModal && (
         <div key={`patient-modal-${editingPatient?.id ?? 'new'}`} className="fixed inset-0 z-[60]">
           <div
-            className="fixed inset-0 bg-black/20 backdrop-blur-sm transition-opacity duration-300"
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm transition-opacity duration-300"
             onClick={closeModal}
           />
-          <div className="fixed inset-y-0 right-0 z-[70] w-full md:w-[450px] bg-white/90 backdrop-blur-xl shadow-2xl transform transition-transform duration-300 ease-out border-l border-white/50 flex flex-col">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-white/50">
+          <div className="fixed inset-y-0 right-0 z-[70] w-full md:w-[450px] bg-[#0d1117] backdrop-blur-xl shadow-2xl transform transition-transform duration-300 ease-out border-l border-white/[0.08] flex flex-col">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-white/[0.06]">
               <div>
-                <h2 className="text-xl font-bold text-slate-800">
+                <h2 className="text-xl font-bold text-white">
                   {editingPatient ? t('patients.edit_patient') : t('patients.new_patient')}
                 </h2>
-                <p className="text-xs text-slate-500">{t('patients.personal_data')}</p>
+                <p className="text-xs text-white/50">{t('patients.personal_data')}</p>
               </div>
-              <button onClick={closeModal} className="p-2 hover:bg-gray-100 rounded-full text-gray-400 hover:text-gray-600 transition-colors">
+              <button onClick={closeModal} className="p-2 hover:bg-white/[0.04] rounded-full text-white/30 hover:text-white/50 transition-colors">
                 <X size={20} />
               </button>
             </div>
@@ -576,97 +576,97 @@ export default function PatientsView() {
                 <div className="space-y-5">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-1.5">
-                      <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{t('patients.first_name_req')}</label>
+                      <label className="text-xs font-semibold text-white/50 uppercase tracking-wider">{t('patients.first_name_req')}</label>
                       <div className="relative">
-                        <User className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                        <User className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" size={18} />
                         <input
                           type="text"
                           required
                           value={formData.first_name}
                           onChange={(e) => setFormData({ ...formData, first_name: e.target.value })}
-                          className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-transparent rounded-lg focus:bg-white focus:border-blue-500 focus:ring-0 transition-all text-sm"
+                          className="w-full pl-10 pr-4 py-2.5 bg-white/[0.04] border border-white/[0.08] rounded-lg focus:bg-white/[0.06] focus:border-blue-500 focus:ring-0 transition-all text-sm text-white placeholder-white/20"
                         />
                       </div>
                     </div>
                     <div className="space-y-1.5">
-                      <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{t('patients.last_name_req')}</label>
+                      <label className="text-xs font-semibold text-white/50 uppercase tracking-wider">{t('patients.last_name_req')}</label>
                       <div className="relative">
-                        <User className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                        <User className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" size={18} />
                         <input
                           type="text"
                           required
                           value={formData.last_name}
                           onChange={(e) => setFormData({ ...formData, last_name: e.target.value })}
-                          className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-transparent rounded-lg focus:bg-white focus:border-blue-500 focus:ring-0 transition-all text-sm"
+                          className="w-full pl-10 pr-4 py-2.5 bg-white/[0.04] border border-white/[0.08] rounded-lg focus:bg-white/[0.06] focus:border-blue-500 focus:ring-0 transition-all text-sm text-white placeholder-white/20"
                         />
                       </div>
                     </div>
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{t('patients.phone_req')}</label>
+                    <label className="text-xs font-semibold text-white/50 uppercase tracking-wider">{t('patients.phone_req')}</label>
                     <div className="relative">
-                      <Phone className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                      <Phone className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" size={18} />
                       <input
                         type="tel"
                         required
                         value={formData.phone_number}
                         onChange={(e) => setFormData({ ...formData, phone_number: e.target.value })}
-                        className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-transparent rounded-lg focus:bg-white focus:border-blue-500 focus:ring-0 transition-all text-sm"
+                        className="w-full pl-10 pr-4 py-2.5 bg-white/[0.04] border border-white/[0.08] rounded-lg focus:bg-white/[0.06] focus:border-blue-500 focus:ring-0 transition-all text-sm text-white placeholder-white/20"
                       />
                     </div>
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{t('patients.dni')}</label>
+                    <label className="text-xs font-semibold text-white/50 uppercase tracking-wider">{t('patients.dni')}</label>
                     <div className="relative">
-                      <FileText className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                      <FileText className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" size={18} />
                       <input
                         type="text"
                         value={formData.dni}
                         onChange={(e) => setFormData({ ...formData, dni: e.target.value })}
-                        className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-transparent rounded-lg focus:bg-white focus:border-blue-500 focus:ring-0 transition-all text-sm"
+                        className="w-full pl-10 pr-4 py-2.5 bg-white/[0.04] border border-white/[0.08] rounded-lg focus:bg-white/[0.06] focus:border-blue-500 focus:ring-0 transition-all text-sm text-white placeholder-white/20"
                       />
                     </div>
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{t('patients.email')}</label>
+                    <label className="text-xs font-semibold text-white/50 uppercase tracking-wider">{t('patients.email')}</label>
                     <div className="relative">
-                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" size={18} />
                       <input
                         type="email"
                         value={formData.email}
                         onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                        className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-transparent rounded-lg focus:bg-white focus:border-blue-500 focus:ring-0 transition-all text-sm"
+                        className="w-full pl-10 pr-4 py-2.5 bg-white/[0.04] border border-white/[0.08] rounded-lg focus:bg-white/[0.06] focus:border-blue-500 focus:ring-0 transition-all text-sm text-white placeholder-white/20"
                       />
                     </div>
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{t('patients.obra_social')}</label>
+                    <label className="text-xs font-semibold text-white/50 uppercase tracking-wider">{t('patients.obra_social')}</label>
                     <input
                       type="text"
                       value={formData.obra_social}
                       onChange={(e) => setFormData({ ...formData, obra_social: e.target.value })}
                       placeholder={t('patients.obra_social_placeholder')}
-                      className="w-full px-4 py-2.5 bg-gray-50 border border-transparent rounded-lg focus:bg-white focus:border-blue-500 focus:ring-0 transition-all text-sm"
+                      className="w-full px-4 py-2.5 bg-white/[0.04] border border-white/[0.08] rounded-lg focus:bg-white/[0.06] focus:border-blue-500 focus:ring-0 transition-all text-sm text-white placeholder-white/20"
                     />
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-1.5">
-                      <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{t('patients.city_neighborhood')}</label>
+                      <label className="text-xs font-semibold text-white/50 uppercase tracking-wider">{t('patients.city_neighborhood')}</label>
                       <input
                         type="text"
                         value={formData.city}
                         onChange={(e) => setFormData({ ...formData, city: e.target.value })}
                         placeholder={t('patients.city_placeholder')}
-                        className="w-full px-4 py-2.5 bg-gray-50 border border-transparent rounded-lg focus:bg-white focus:border-blue-500 focus:ring-0 transition-all text-sm"
+                        className="w-full px-4 py-2.5 bg-white/[0.04] border border-white/[0.08] rounded-lg focus:bg-white/[0.06] focus:border-blue-500 focus:ring-0 transition-all text-sm text-white placeholder-white/20"
                       />
                     </div>
                     <div className="space-y-1.5">
-                      <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{t('patients.birth_date')}</label>
+                      <label className="text-xs font-semibold text-white/50 uppercase tracking-wider">{t('patients.birth_date')}</label>
                       <input
                         type="date"
                         value={formData.birth_date}
                         onChange={(e) => setFormData({ ...formData, birth_date: e.target.value })}
-                        className="w-full px-4 py-2.5 bg-gray-50 border border-transparent rounded-lg focus:bg-white focus:border-blue-500 focus:ring-0 transition-all text-sm"
+                        className="w-full px-4 py-2.5 bg-white/[0.04] border border-white/[0.08] rounded-lg focus:bg-white/[0.06] focus:border-blue-500 focus:ring-0 transition-all text-sm text-white placeholder-white/20"
                       />
                     </div>
                   </div>
@@ -674,16 +674,16 @@ export default function PatientsView() {
 
                 {/* Turno inicial (solo para nuevos) */}
                 {!editingPatient && (
-                  <div className="pt-4 border-t border-gray-100">
-                    <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-4 flex items-center gap-2">
+                  <div className="pt-4 border-t border-white/[0.06]">
+                    <h3 className="text-xs font-semibold text-white/50 uppercase tracking-wider mb-4 flex items-center gap-2">
                       <Calendar size={16} />
                       {t('patients.schedule_first_appointment')}
                     </h3>
                     <div className="space-y-5">
                       <div className="space-y-1.5">
-                        <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{t('patients.treatment_service')}</label>
+                        <label className="text-xs font-semibold text-white/50 uppercase tracking-wider">{t('patients.treatment_service')}</label>
                         <div className="relative">
-                          <Stethoscope className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                          <Stethoscope className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" size={18} />
                           <select
                             value={appointmentData.treatment_code}
                             onChange={(e) => {
@@ -691,7 +691,7 @@ export default function PatientsView() {
                               const tr = treatments.find(t => t.code === code);
                               setAppointmentData({ ...appointmentData, treatment_code: code, duration_minutes: tr?.default_duration_minutes ?? 30 });
                             }}
-                            className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-transparent rounded-lg focus:bg-white focus:border-blue-500 focus:ring-0 transition-all text-sm appearance-none cursor-pointer"
+                            className="w-full pl-10 pr-4 py-2.5 bg-white/[0.04] border border-white/[0.08] rounded-lg focus:bg-white/[0.06] focus:border-blue-500 focus:ring-0 transition-all text-sm text-white placeholder-white/20 appearance-none cursor-pointer [&>option]:bg-[#0d1117] [&>option]:text-white"
                           >
                             <option value="">{t('patients.select_treatment')}</option>
                             {treatments.map(t => (
@@ -701,13 +701,13 @@ export default function PatientsView() {
                         </div>
                       </div>
                       <div className="space-y-1.5">
-                        <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{t('agenda.professional')}</label>
+                        <label className="text-xs font-semibold text-white/50 uppercase tracking-wider">{t('agenda.professional')}</label>
                         <div className="relative">
-                          <User className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                          <User className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" size={18} />
                           <select
                             value={appointmentData.professional_id}
                             onChange={(e) => setAppointmentData({ ...appointmentData, professional_id: e.target.value })}
-                            className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-transparent rounded-lg focus:bg-white focus:border-blue-500 focus:ring-0 transition-all text-sm appearance-none cursor-pointer"
+                            className="w-full pl-10 pr-4 py-2.5 bg-white/[0.04] border border-white/[0.08] rounded-lg focus:bg-white/[0.06] focus:border-blue-500 focus:ring-0 transition-all text-sm text-white placeholder-white/20 appearance-none cursor-pointer [&>option]:bg-[#0d1117] [&>option]:text-white"
                           >
                             <option value="">{t('patients.select_professional')}</option>
                             {professionals.map(p => (
@@ -718,38 +718,38 @@ export default function PatientsView() {
                       </div>
                       <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-1.5">
-                          <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{t('patients.date')}</label>
+                          <label className="text-xs font-semibold text-white/50 uppercase tracking-wider">{t('patients.date')}</label>
                           <div className="relative">
-                            <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                            <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" size={18} />
                             <input
                               type="date"
                               value={appointmentData.date}
                               onChange={(e) => setAppointmentData({ ...appointmentData, date: e.target.value })}
-                              className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-transparent rounded-lg focus:bg-white focus:border-blue-500 focus:ring-0 transition-all text-sm"
+                              className="w-full pl-10 pr-4 py-2.5 bg-white/[0.04] border border-white/[0.08] rounded-lg focus:bg-white/[0.06] focus:border-blue-500 focus:ring-0 transition-all text-sm text-white placeholder-white/20"
                             />
                           </div>
                         </div>
                         <div className="space-y-1.5">
-                          <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{t('patients.time')}</label>
+                          <label className="text-xs font-semibold text-white/50 uppercase tracking-wider">{t('patients.time')}</label>
                           <div className="relative">
-                            <Clock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                            <Clock className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" size={18} />
                             <input
                               type="time"
                               value={appointmentData.time}
                               onChange={(e) => setAppointmentData({ ...appointmentData, time: e.target.value })}
-                              className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-transparent rounded-lg focus:bg-white focus:border-blue-500 focus:ring-0 transition-all text-sm"
+                              className="w-full pl-10 pr-4 py-2.5 bg-white/[0.04] border border-white/[0.08] rounded-lg focus:bg-white/[0.06] focus:border-blue-500 focus:ring-0 transition-all text-sm text-white placeholder-white/20"
                             />
                           </div>
                         </div>
                       </div>
                       <div className="space-y-1.5">
-                        <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{t('agenda.duration_min')}</label>
+                        <label className="text-xs font-semibold text-white/50 uppercase tracking-wider">{t('agenda.duration_min')}</label>
                         <div className="relative">
-                          <Clock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                          <Clock className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" size={18} />
                           <select
                             value={appointmentData.duration_minutes}
                             onChange={(e) => setAppointmentData({ ...appointmentData, duration_minutes: parseInt(e.target.value) || 30 })}
-                            className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-transparent rounded-lg focus:bg-white focus:border-blue-500 focus:ring-0 transition-all text-sm appearance-none"
+                            className="w-full pl-10 pr-4 py-2.5 bg-white/[0.04] border border-white/[0.08] rounded-lg focus:bg-white/[0.06] focus:border-blue-500 focus:ring-0 transition-all text-sm text-white placeholder-white/20 appearance-none [&>option]:bg-[#0d1117] [&>option]:text-white"
                           >
                             {[15, 30, 45, 60, 90, 120].map(m => (
                               <option key={m} value={m}>{m} min</option>
@@ -762,11 +762,11 @@ export default function PatientsView() {
                 )}
               </div>
 
-              <div className="flex justify-end gap-3 p-6 border-t border-gray-100 bg-white/50">
-                <button type="button" onClick={closeModal} className="px-4 py-2.5 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium">
+              <div className="flex justify-end gap-3 p-6 border-t border-white/[0.06]">
+                <button type="button" onClick={closeModal} className="px-4 py-2.5 text-white/70 bg-white/[0.06] rounded-lg hover:bg-white/[0.1] transition-colors text-sm font-medium">
                   {t('common.cancel')}
                 </button>
-                <button type="submit" className="px-4 py-2.5 text-white bg-primary rounded-lg hover:bg-primary-dark transition-colors text-sm font-medium">
+                <button type="submit" className="px-4 py-2.5 text-[#0a0e1a] bg-white rounded-lg hover:bg-white/90 transition-colors text-sm font-medium">
                   {editingPatient ? t('common.save_changes') : t('patients.create_patient')}
                 </button>
               </div>
@@ -778,14 +778,14 @@ export default function PatientsView() {
       {/* Import Modal */}
       {showImportModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={e => e.target === e.currentTarget && setShowImportModal(false)}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
+          <div className="bg-[#0d1117] border border-white/[0.08] rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
             {/* Header */}
-            <div className="flex items-center justify-between p-5 border-b border-slate-100 shrink-0">
+            <div className="flex items-center justify-between p-5 border-b border-white/[0.06] shrink-0">
               <div className="flex items-center gap-3">
-                <div className="p-2.5 bg-slate-100 rounded-xl"><Upload size={20} className="text-slate-600" /></div>
-                <h3 className="text-lg font-bold text-slate-800">{t('patients.import_title')}</h3>
+                <div className="p-2.5 bg-white/[0.06] rounded-xl"><Upload size={20} className="text-white/50" /></div>
+                <h3 className="text-lg font-bold text-white">{t('patients.import_title')}</h3>
               </div>
-              <button onClick={() => setShowImportModal(false)} className="p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100"><X size={20} /></button>
+              <button onClick={() => setShowImportModal(false)} className="p-2 rounded-xl text-white/30 hover:text-white/50 hover:bg-white/[0.04]"><X size={20} /></button>
             </div>
 
             <div className="flex-1 min-h-0 overflow-y-auto p-5">
@@ -799,54 +799,54 @@ export default function PatientsView() {
                     onDrop={handleImportDrop}
                     onClick={() => { const input = document.createElement('input'); input.type = 'file'; input.accept = '.csv,.xlsx'; input.onchange = (e: any) => { if (e.target.files[0]) handleImportFileSelect(e.target.files[0]); }; input.click(); }}
                     className={`border-2 border-dashed rounded-2xl p-10 text-center cursor-pointer transition-all ${
-                      dragOver ? 'border-blue-400 bg-blue-50' : importFile ? 'border-green-300 bg-green-50' : 'border-slate-300 hover:border-slate-400 bg-slate-50'
+                      dragOver ? 'border-blue-400 bg-blue-500/10' : importFile ? 'border-green-500/30 bg-green-500/10' : 'border-white/[0.08] hover:border-white/[0.15] bg-white/[0.02]'
                     }`}
                   >
                     {importFile ? (
                       <div className="flex flex-col items-center gap-2">
-                        <CheckCircle size={32} className="text-green-500" />
-                        <p className="text-sm font-semibold text-green-700">{importFile.name}</p>
-                        <p className="text-xs text-slate-400">{(importFile.size / 1024).toFixed(1)} KB</p>
+                        <CheckCircle size={32} className="text-green-400" />
+                        <p className="text-sm font-semibold text-green-400">{importFile.name}</p>
+                        <p className="text-xs text-white/30">{(importFile.size / 1024).toFixed(1)} KB</p>
                       </div>
                     ) : (
                       <div className="flex flex-col items-center gap-2">
-                        <Upload size={32} className="text-slate-400" />
-                        <p className="text-sm font-medium text-slate-600">{t('patients.import_drag_drop')}</p>
-                        <p className="text-xs text-slate-400">{t('patients.import_formats')}</p>
+                        <Upload size={32} className="text-white/30" />
+                        <p className="text-sm font-medium text-white/50">{t('patients.import_drag_drop')}</p>
+                        <p className="text-xs text-white/30">{t('patients.import_formats')}</p>
                       </div>
                     )}
                   </div>
 
                   {importFile && (
-                    <button onClick={() => setImportFile(null)} className="text-xs text-red-500 hover:text-red-700 font-medium">{t('patients.import_remove_file')}</button>
+                    <button onClick={() => setImportFile(null)} className="text-xs text-red-400 hover:text-red-300 font-medium">{t('patients.import_remove_file')}</button>
                   )}
 
                   {/* Column format guide */}
-                  <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
-                    <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">{t('patients.import_columns_title')}</h4>
+                  <div className="bg-white/[0.03] rounded-xl p-4 border border-white/[0.06]">
+                    <h4 className="text-xs font-bold text-white/50 uppercase tracking-wider mb-3">{t('patients.import_columns_title')}</h4>
                     <div className="overflow-x-auto">
                       <table className="w-full text-xs">
                         <thead>
-                          <tr className="border-b border-slate-200">
-                            <th className="text-left py-1.5 pr-3 font-bold text-slate-600">{t('patients.import_column')}</th>
-                            <th className="text-left py-1.5 pr-3 font-bold text-slate-600">{t('patients.import_required')}</th>
-                            <th className="text-left py-1.5 font-bold text-slate-600">{t('patients.import_example')}</th>
+                          <tr className="border-b border-white/[0.06]">
+                            <th className="text-left py-1.5 pr-3 font-bold text-white/50">{t('patients.import_column')}</th>
+                            <th className="text-left py-1.5 pr-3 font-bold text-white/50">{t('patients.import_required')}</th>
+                            <th className="text-left py-1.5 font-bold text-white/50">{t('patients.import_example')}</th>
                           </tr>
                         </thead>
-                        <tbody className="text-slate-500">
-                          <tr className="border-b border-slate-100"><td className="py-1.5 pr-3 font-semibold text-slate-700">nombre</td><td className="pr-3 text-red-500 font-bold">{t('common.yes')}</td><td>María</td></tr>
-                          <tr className="border-b border-slate-100"><td className="py-1.5 pr-3">apellido</td><td className="pr-3">{t('common.no')}</td><td>López</td></tr>
-                          <tr className="border-b border-slate-100"><td className="py-1.5 pr-3">telefono</td><td className="pr-3">{t('common.no')}</td><td>+5491155551234</td></tr>
-                          <tr className="border-b border-slate-100"><td className="py-1.5 pr-3">dni</td><td className="pr-3">{t('common.no')}</td><td>35789456</td></tr>
-                          <tr className="border-b border-slate-100"><td className="py-1.5 pr-3">email</td><td className="pr-3">{t('common.no')}</td><td>maria@mail.com</td></tr>
-                          <tr className="border-b border-slate-100"><td className="py-1.5 pr-3">fecha_nacimiento</td><td className="pr-3">{t('common.no')}</td><td>15/03/1990</td></tr>
-                          <tr className="border-b border-slate-100"><td className="py-1.5 pr-3">obra_social</td><td className="pr-3">{t('common.no')}</td><td>OSDE</td></tr>
-                          <tr className="border-b border-slate-100"><td className="py-1.5 pr-3">ciudad</td><td className="pr-3">{t('common.no')}</td><td>CABA</td></tr>
+                        <tbody className="text-white/50">
+                          <tr className="border-b border-white/[0.04]"><td className="py-1.5 pr-3 font-semibold text-white">nombre</td><td className="pr-3 text-red-400 font-bold">{t('common.yes')}</td><td>María</td></tr>
+                          <tr className="border-b border-white/[0.04]"><td className="py-1.5 pr-3">apellido</td><td className="pr-3">{t('common.no')}</td><td>López</td></tr>
+                          <tr className="border-b border-white/[0.04]"><td className="py-1.5 pr-3">telefono</td><td className="pr-3">{t('common.no')}</td><td>+5491155551234</td></tr>
+                          <tr className="border-b border-white/[0.04]"><td className="py-1.5 pr-3">dni</td><td className="pr-3">{t('common.no')}</td><td>35789456</td></tr>
+                          <tr className="border-b border-white/[0.04]"><td className="py-1.5 pr-3">email</td><td className="pr-3">{t('common.no')}</td><td>maria@mail.com</td></tr>
+                          <tr className="border-b border-white/[0.04]"><td className="py-1.5 pr-3">fecha_nacimiento</td><td className="pr-3">{t('common.no')}</td><td>15/03/1990</td></tr>
+                          <tr className="border-b border-white/[0.04]"><td className="py-1.5 pr-3">obra_social</td><td className="pr-3">{t('common.no')}</td><td>OSDE</td></tr>
+                          <tr className="border-b border-white/[0.04]"><td className="py-1.5 pr-3">ciudad</td><td className="pr-3">{t('common.no')}</td><td>CABA</td></tr>
                           <tr><td className="py-1.5 pr-3">notas</td><td className="pr-3">{t('common.no')}</td><td>{t('patients.import_notes_example')}</td></tr>
                         </tbody>
                       </table>
                     </div>
-                    <p className="text-[10px] text-slate-400 mt-2">{t('patients.import_max_rows')}</p>
+                    <p className="text-[10px] text-white/30 mt-2">{t('patients.import_max_rows')}</p>
                   </div>
                 </div>
               )}
@@ -856,51 +856,51 @@ export default function PatientsView() {
                 <div className="space-y-4">
                   {/* Summary cards */}
                   <div className="grid grid-cols-3 gap-3">
-                    <div className="bg-green-50 border border-green-200 rounded-xl p-3 text-center">
-                      <div className="text-2xl font-black text-green-700">{importPreview.valid_new}</div>
-                      <div className="text-[10px] font-bold text-green-600 uppercase">{t('patients.import_new')}</div>
+                    <div className="bg-green-500/10 border border-green-500/20 rounded-xl p-3 text-center">
+                      <div className="text-2xl font-black text-green-400">{importPreview.valid_new}</div>
+                      <div className="text-[10px] font-bold text-green-400/70 uppercase">{t('patients.import_new')}</div>
                     </div>
-                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-center">
-                      <div className="text-2xl font-black text-amber-700">{importPreview.duplicates}</div>
-                      <div className="text-[10px] font-bold text-amber-600 uppercase">{t('patients.import_duplicates')}</div>
+                    <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3 text-center">
+                      <div className="text-2xl font-black text-amber-400">{importPreview.duplicates}</div>
+                      <div className="text-[10px] font-bold text-amber-400/70 uppercase">{t('patients.import_duplicates')}</div>
                     </div>
-                    <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-center">
-                      <div className="text-2xl font-black text-red-700">{importPreview.errors}</div>
-                      <div className="text-[10px] font-bold text-red-600 uppercase">{t('patients.import_errors')}</div>
+                    <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-3 text-center">
+                      <div className="text-2xl font-black text-red-400">{importPreview.errors}</div>
+                      <div className="text-[10px] font-bold text-red-400/70 uppercase">{t('patients.import_errors')}</div>
                     </div>
                   </div>
 
                   {/* Duplicates section */}
                   {importPreview.duplicates > 0 && (
-                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+                    <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4">
                       <div className="flex items-center gap-2 mb-3">
-                        <AlertTriangle size={16} className="text-amber-600" />
-                        <span className="text-sm font-bold text-amber-800">{t('patients.import_duplicates_found')}</span>
+                        <AlertTriangle size={16} className="text-amber-400" />
+                        <span className="text-sm font-bold text-amber-400">{t('patients.import_duplicates_found')}</span>
                       </div>
                       <div className="max-h-32 overflow-y-auto space-y-1 mb-3">
                         {importPreview.duplicate_details.slice(0, 10).map((d: any, i: number) => (
-                          <div key={i} className="text-xs text-amber-700 flex gap-2">
-                            <span className="font-mono text-amber-500">#{d.row}</span>
+                          <div key={i} className="text-xs text-amber-300 flex gap-2">
+                            <span className="font-mono text-amber-400/70">#{d.row}</span>
                             <span>{d.csv_name} ({d.csv_phone})</span>
-                            <span className="text-amber-400">→</span>
+                            <span className="text-amber-400/50">→</span>
                             <span>{d.existing_name}</span>
                           </div>
                         ))}
                         {importPreview.duplicate_details.length > 10 && (
-                          <div className="text-xs text-amber-500 font-medium">...{t('patients.import_and_more', { count: importPreview.duplicate_details.length - 10 })}</div>
+                          <div className="text-xs text-amber-400/70 font-medium">...{t('patients.import_and_more', { count: importPreview.duplicate_details.length - 10 })}</div>
                         )}
                       </div>
                       <div className="flex gap-2">
                         <button
                           onClick={() => setDuplicateAction('skip')}
                           className={`flex-1 px-3 py-2 rounded-lg text-xs font-bold border-2 transition-all ${
-                            duplicateAction === 'skip' ? 'bg-slate-700 text-white border-slate-700' : 'bg-white text-slate-600 border-slate-300 hover:border-slate-400'
+                            duplicateAction === 'skip' ? 'bg-white text-[#0a0e1a] border-white' : 'bg-white/[0.06] text-white/70 border-white/[0.08] hover:border-white/[0.15]'
                           }`}
                         >{t('patients.import_skip_duplicates')}</button>
                         <button
                           onClick={() => setDuplicateAction('update')}
                           className={`flex-1 px-3 py-2 rounded-lg text-xs font-bold border-2 transition-all ${
-                            duplicateAction === 'update' ? 'bg-amber-600 text-white border-amber-600' : 'bg-white text-amber-600 border-amber-300 hover:border-amber-400'
+                            duplicateAction === 'update' ? 'bg-amber-500 text-[#0a0e1a] border-amber-500' : 'bg-white/[0.06] text-amber-400 border-white/[0.08] hover:border-amber-500/30'
                           }`}
                         >{t('patients.import_update_duplicates')}</button>
                       </div>
@@ -909,14 +909,14 @@ export default function PatientsView() {
 
                   {/* Errors section */}
                   {importPreview.errors > 0 && (
-                    <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+                    <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4">
                       <div className="flex items-center gap-2 mb-2">
-                        <XCircle size={16} className="text-red-600" />
-                        <span className="text-sm font-bold text-red-800">{t('patients.import_errors_found')}</span>
+                        <XCircle size={16} className="text-red-400" />
+                        <span className="text-sm font-bold text-red-400">{t('patients.import_errors_found')}</span>
                       </div>
                       <div className="max-h-24 overflow-y-auto space-y-1">
                         {importPreview.error_details.map((e: any, i: number) => (
-                          <div key={i} className="text-xs text-red-600"><span className="font-mono text-red-400">#{e.row}</span> {e.reason}</div>
+                          <div key={i} className="text-xs text-red-300"><span className="font-mono text-red-400/70">#{e.row}</span> {e.reason}</div>
                         ))}
                       </div>
                     </div>
@@ -927,48 +927,48 @@ export default function PatientsView() {
               {/* STEP 3: Result */}
               {importStep === 'result' && importResult && (
                 <div className="space-y-4 text-center py-6">
-                  <CheckCircle size={48} className="text-green-500 mx-auto" />
-                  <h4 className="text-lg font-bold text-slate-800">{t('patients.import_complete')}</h4>
+                  <CheckCircle size={48} className="text-green-400 mx-auto" />
+                  <h4 className="text-lg font-bold text-white">{t('patients.import_complete')}</h4>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 max-w-md mx-auto">
-                    <div className="bg-green-50 rounded-xl p-3"><div className="text-xl font-black text-green-700">{importResult.imported}</div><div className="text-[9px] font-bold text-green-600 uppercase">{t('patients.import_imported')}</div></div>
-                    <div className="bg-blue-50 rounded-xl p-3"><div className="text-xl font-black text-blue-700">{importResult.updated}</div><div className="text-[9px] font-bold text-blue-600 uppercase">{t('patients.import_updated')}</div></div>
-                    <div className="bg-slate-50 rounded-xl p-3"><div className="text-xl font-black text-slate-500">{importResult.skipped}</div><div className="text-[9px] font-bold text-slate-400 uppercase">{t('patients.import_skipped')}</div></div>
-                    <div className="bg-red-50 rounded-xl p-3"><div className="text-xl font-black text-red-600">{importResult.errors}</div><div className="text-[9px] font-bold text-red-500 uppercase">{t('patients.import_errors')}</div></div>
+                    <div className="bg-green-500/10 rounded-xl p-3"><div className="text-xl font-black text-green-400">{importResult.imported}</div><div className="text-[9px] font-bold text-green-400/70 uppercase">{t('patients.import_imported')}</div></div>
+                    <div className="bg-blue-500/10 rounded-xl p-3"><div className="text-xl font-black text-blue-400">{importResult.updated}</div><div className="text-[9px] font-bold text-blue-400/70 uppercase">{t('patients.import_updated')}</div></div>
+                    <div className="bg-white/[0.04] rounded-xl p-3"><div className="text-xl font-black text-white/50">{importResult.skipped}</div><div className="text-[9px] font-bold text-white/30 uppercase">{t('patients.import_skipped')}</div></div>
+                    <div className="bg-red-500/10 rounded-xl p-3"><div className="text-xl font-black text-red-400">{importResult.errors}</div><div className="text-[9px] font-bold text-red-400/70 uppercase">{t('patients.import_errors')}</div></div>
                   </div>
                 </div>
               )}
             </div>
 
             {/* Footer */}
-            <div className="flex justify-end gap-3 p-5 border-t border-slate-100 shrink-0 bg-slate-50/80">
+            <div className="flex justify-end gap-3 p-5 border-t border-white/[0.06] shrink-0">
               {importStep === 'upload' && (
                 <>
-                  <button onClick={() => setShowImportModal(false)} className="px-4 py-2 text-slate-600 font-semibold hover:bg-slate-200 rounded-xl text-sm">{t('common.cancel')}</button>
+                  <button onClick={() => setShowImportModal(false)} className="px-4 py-2 text-white/70 font-semibold hover:bg-white/[0.04] rounded-xl text-sm">{t('common.cancel')}</button>
                   <button
                     onClick={handleImportPreview}
                     disabled={!importFile || importLoading}
-                    className="px-6 py-2 bg-slate-700 text-white rounded-xl font-bold text-sm shadow-sm hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                    className="px-6 py-2 bg-white text-[#0a0e1a] rounded-xl font-bold text-sm shadow-sm hover:bg-white/90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                   >
-                    {importLoading && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
+                    {importLoading && <div className="w-4 h-4 border-2 border-black/20 border-t-black/70 rounded-full animate-spin" />}
                     {t('patients.import_preview_btn')}
                   </button>
                 </>
               )}
               {importStep === 'preview' && (
                 <>
-                  <button onClick={() => { setImportStep('upload'); setImportPreview(null); }} className="px-4 py-2 text-slate-600 font-semibold hover:bg-slate-200 rounded-xl text-sm">{t('common.back')}</button>
+                  <button onClick={() => { setImportStep('upload'); setImportPreview(null); }} className="px-4 py-2 text-white/70 font-semibold hover:bg-white/[0.04] rounded-xl text-sm">{t('common.back')}</button>
                   <button
                     onClick={handleImportExecute}
                     disabled={importLoading || importPreview?.valid_new === 0}
-                    className="px-6 py-2 bg-green-600 text-white rounded-xl font-bold text-sm shadow-sm hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                    className="px-6 py-2 bg-green-500 text-[#0a0e1a] rounded-xl font-bold text-sm shadow-sm hover:bg-green-400 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                   >
-                    {importLoading && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
+                    {importLoading && <div className="w-4 h-4 border-2 border-black/20 border-t-black/70 rounded-full animate-spin" />}
                     {t('patients.import_confirm')}
                   </button>
                 </>
               )}
               {importStep === 'result' && (
-                <button onClick={() => setShowImportModal(false)} className="px-6 py-2 bg-slate-700 text-white rounded-xl font-bold text-sm shadow-sm hover:bg-slate-800">{t('common.close')}</button>
+                <button onClick={() => setShowImportModal(false)} className="px-6 py-2 bg-white text-[#0a0e1a] rounded-xl font-bold text-sm shadow-sm hover:bg-white/90">{t('common.close')}</button>
               )}
             </div>
           </div>

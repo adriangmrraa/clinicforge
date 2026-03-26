@@ -50,27 +50,27 @@ interface KPICardProps {
 }
 
 const KPICard = ({ title, value, icon: Icon, color, trend, hint }: KPICardProps) => (
-  <div className="bg-white/80 backdrop-blur-md border border-white/20 rounded-2xl p-3 sm:p-5 shadow-sm hover:shadow-md transition-all duration-300 group" title={hint}>
+  <div className="bg-white/[0.03] backdrop-blur-md border border-white/[0.06] rounded-2xl p-3 sm:p-5 hover:bg-white/[0.04] transition-all duration-300 group" title={hint}>
     <div className="flex justify-between items-start mb-2 sm:mb-3">
       <div className={`p-2 sm:p-3 rounded-xl ${color} bg-opacity-10 group-hover:scale-110 transition-transform`}>
         <Icon className={`w-4 h-4 sm:w-6 sm:h-6 ${color.replace('bg-', 'text-')}`} />
       </div>
       {trend && (
-        <span className="flex items-center gap-0.5 text-[10px] sm:text-xs font-medium text-green-600 bg-green-50 px-1.5 py-0.5 sm:px-2 sm:py-1 rounded-full">
+        <span className="flex items-center gap-0.5 text-[10px] sm:text-xs font-medium text-green-400 bg-green-500/10 px-1.5 py-0.5 sm:px-2 sm:py-1 rounded-full">
           <TrendingUp size={10} /> {trend}
         </span>
       )}
     </div>
-    <p className="text-gray-500 text-[11px] sm:text-sm font-medium leading-tight">{title}</p>
-    <h3 className="text-lg sm:text-2xl font-bold text-gray-800 mt-0.5">{value}</h3>
+    <p className="text-white/50 text-[11px] sm:text-sm font-medium leading-tight">{title}</p>
+    <h3 className="text-lg sm:text-2xl font-bold text-white mt-0.5">{value}</h3>
   </div>
 );
 
 const UrgencyBadge = ({ level, t }: { level: UrgencyRecord['urgency_level'], t: any }) => {
   const styles = {
-    CRITICAL: 'bg-red-100 text-red-700 border-red-200',
-    HIGH: 'bg-orange-100 text-orange-700 border-orange-200',
-    NORMAL: 'bg-green-100 text-green-700 border-green-200'
+    CRITICAL: 'bg-red-500/10 text-red-400 border-red-500/20',
+    HIGH: 'bg-orange-500/10 text-orange-400 border-orange-500/20',
+    NORMAL: 'bg-green-500/10 text-green-400 border-green-500/20'
   };
   return (
     <span className={`px-2 py-1 rounded-full text-[10px] font-bold border ${styles[level]}`}>
@@ -162,16 +162,16 @@ export default function DashboardView() {
 
   if (loading) {
     return (
-      <div className="h-screen flex items-center justify-center bg-gray-50">
+      <div className="h-screen flex items-center justify-center">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
       </div>
     );
   }
 
   return (
-    <div className="h-screen flex flex-col bg-slate-50 overflow-hidden">
+    <div className="h-screen flex flex-col overflow-hidden">
       {/* HEADER SECTION */}
-      <header className="p-4 sm:p-6 shrink-0 bg-white/50 backdrop-blur-sm border-b border-slate-100">
+      <header className="p-4 sm:p-6 shrink-0 bg-white/[0.02] backdrop-blur-sm border-b border-white/[0.06]">
         <PageHeader
           title={t('dashboard.analytics_title')}
           subtitle={t('dashboard.analytics_subtitle')}
@@ -180,8 +180,8 @@ export default function DashboardView() {
               <button
                 onClick={() => setTimeRange('weekly')}
                 className={`px-3 sm:px-4 py-2 rounded-xl shadow-sm border text-xs sm:text-sm font-medium transition-colors ${timeRange === 'weekly'
-                  ? 'bg-slate-800 text-white border-slate-800'
-                  : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                  ? 'bg-white text-[#0a0e1a] border-white'
+                  : 'bg-white/[0.03] text-white/50 border-white/[0.06] hover:bg-white/[0.04]'
                   } `}
               >
                 {t('dashboard.weekly')}
@@ -189,8 +189,8 @@ export default function DashboardView() {
               <button
                 onClick={() => setTimeRange('monthly')}
                 className={`px-3 sm:px-4 py-2 rounded-xl shadow-sm border text-xs sm:text-sm font-medium transition-colors ${timeRange === 'monthly'
-                  ? 'bg-slate-800 text-white border-slate-800'
-                  : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                  ? 'bg-white text-[#0a0e1a] border-white'
+                  : 'bg-white/[0.03] text-white/50 border-white/[0.06] hover:bg-white/[0.04]'
                   } `}
               >
                 {t('dashboard.monthly')}
@@ -198,8 +198,8 @@ export default function DashboardView() {
               <button
                 onClick={() => setTimeRange('yearly')}
                 className={`px-3 sm:px-4 py-2 rounded-xl shadow-sm border text-xs sm:text-sm font-medium transition-colors ${timeRange === 'yearly'
-                  ? 'bg-slate-800 text-white border-slate-800'
-                  : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                  ? 'bg-white text-[#0a0e1a] border-white'
+                  : 'bg-white/[0.03] text-white/50 border-white/[0.06] hover:bg-white/[0.04]'
                   } `}
               >
                 {t('dashboard.this_year')}
@@ -207,8 +207,8 @@ export default function DashboardView() {
               <button
                 onClick={() => setTimeRange('all')}
                 className={`px-3 sm:px-4 py-2 rounded-xl shadow-sm border text-xs sm:text-sm font-medium transition-colors ${timeRange === 'all'
-                  ? 'bg-slate-800 text-white border-slate-800'
-                  : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                  ? 'bg-white text-[#0a0e1a] border-white'
+                  : 'bg-white/[0.03] text-white/50 border-white/[0.06] hover:bg-white/[0.04]'
                   } `}
               >
                 {t('dashboard.all')}
@@ -262,10 +262,10 @@ export default function DashboardView() {
 
         {/* MIDDLE ROW: CHARTS */}
         <div className="grid grid-cols-1 gap-6">
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+          <div className="bg-white/[0.03] rounded-2xl border border-white/[0.06] p-6">
             <div className="flex justify-between items-center mb-6">
-              <h2 className="text-lg font-semibold text-slate-800">{t('dashboard.chart_title')}</h2>
-              <div className="hidden sm:flex gap-4 text-xs font-medium text-slate-500">
+              <h2 className="text-lg font-semibold text-white">{t('dashboard.chart_title')}</h2>
+              <div className="hidden sm:flex gap-4 text-xs font-medium text-white/50">
                 <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-blue-500"></div> {t('dashboard.referrals')}</span>
                 <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-emerald-500"></div> {t('dashboard.completed')}</span>
               </div>
@@ -284,18 +284,18 @@ export default function DashboardView() {
                         <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
                       </linearGradient>
                     </defs>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255,255,255,0.06)" />
                     <XAxis
                       dataKey="date"
                       axisLine={false}
                       tickLine={false}
-                      tick={{ fill: '#94a3b8', fontSize: 10 }}
+                      tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 10 }}
                       dy={10}
                       tickFormatter={(v) => { const d = new Date(v + 'T00:00:00'); return `${d.getDate()}/${d.getMonth()+1}`; }}
                     />
-                    <YAxis axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 10 }} width={30} allowDecimals={false} />
+                    <YAxis axisLine={false} tickLine={false} tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 10 }} width={30} allowDecimals={false} />
                     <Tooltip
-                      contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)', fontSize: 13 }}
+                      contentStyle={{ borderRadius: '12px', border: '1px solid rgba(255,255,255,0.08)', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.3)', fontSize: 13, backgroundColor: '#1a1e2e', color: '#fff' }}
                       labelFormatter={(v) => { const d = new Date(v + 'T00:00:00'); return d.toLocaleDateString('es-AR', { day: 'numeric', month: 'short' }); }}
                       formatter={(value: number, name: string) => [
                         value,
@@ -307,7 +307,7 @@ export default function DashboardView() {
                   </AreaChart>
                 </ResponsiveContainer>
               ) : (
-                <div className="h-full flex items-center justify-center text-slate-400 italic text-sm">
+                <div className="h-full flex items-center justify-center text-white/30 italic text-sm">
                   {t('dashboard.no_data_available')}
                 </div>
               )}
@@ -322,47 +322,47 @@ export default function DashboardView() {
         </div>
 
         {/* BOTTOM ROW: RECENT URGENCIES TABLE */}
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden flex flex-col mb-4">
-          <div className="p-6 border-b border-slate-50 flex justify-between items-center">
-            <h2 className="text-lg font-semibold text-slate-800">{t('dashboard.urgencies_recent')}</h2>
-            <button className="text-blue-600 text-sm font-semibold hover:underline px-3 py-2">{t('dashboard.see_all')}</button>
+        <div className="bg-white/[0.03] rounded-2xl border border-white/[0.06] overflow-hidden flex flex-col mb-4">
+          <div className="p-6 border-b border-white/[0.06] flex justify-between items-center">
+            <h2 className="text-lg font-semibold text-white">{t('dashboard.urgencies_recent')}</h2>
+            <button className="text-blue-400 text-sm font-semibold hover:underline px-3 py-2">{t('dashboard.see_all')}</button>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse min-w-[600px]">
               <thead>
-                <tr className="bg-slate-50/50">
-                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">{t('dashboard.patient')}</th>
-                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">{t('dashboard.reason')}</th>
-                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">{t('dashboard.severity')}</th>
-                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">{t('dashboard.time')}</th>
-                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider"></th>
+                <tr className="bg-white/[0.02]">
+                  <th className="px-6 py-4 text-xs font-bold text-white/30 uppercase tracking-wider">{t('dashboard.patient')}</th>
+                  <th className="px-6 py-4 text-xs font-bold text-white/30 uppercase tracking-wider">{t('dashboard.reason')}</th>
+                  <th className="px-6 py-4 text-xs font-bold text-white/30 uppercase tracking-wider">{t('dashboard.severity')}</th>
+                  <th className="px-6 py-4 text-xs font-bold text-white/30 uppercase tracking-wider">{t('dashboard.time')}</th>
+                  <th className="px-6 py-4 text-xs font-bold text-white/30 uppercase tracking-wider"></th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-50">
+              <tbody className="divide-y divide-white/[0.06]">
                 {urgencies.map((u) => (
-                  <tr key={u.id} className="hover:bg-slate-50/50 transition-colors group">
+                  <tr key={u.id} className="hover:bg-white/[0.04] transition-colors group">
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 group-hover:bg-blue-100 group-hover:text-blue-600 transition-colors">
+                        <div className="w-9 h-9 rounded-full bg-white/[0.06] flex items-center justify-center text-white/50 group-hover:bg-blue-500/10 group-hover:text-blue-400 transition-colors">
                           <User size={18} />
                         </div>
                         <div>
-                          <p className="text-sm font-semibold text-slate-800">{u.patient_name}</p>
-                          <p className="text-[11px] text-slate-500 font-mono tracking-tighter">{u.phone}</p>
+                          <p className="text-sm font-semibold text-white">{u.patient_name}</p>
+                          <p className="text-[11px] text-white/50 font-mono tracking-tighter">{u.phone}</p>
                         </div>
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-sm text-slate-600 font-medium">{u.reason}</td>
+                    <td className="px-6 py-4 text-sm text-white/50 font-medium">{u.reason}</td>
                     <td className="px-6 py-4">
                       <UrgencyBadge level={u.urgency_level} t={t} />
                     </td>
-                    <td className="px-6 py-4 text-sm text-slate-500">
+                    <td className="px-6 py-4 text-sm text-white/50">
                       <div className="flex items-center gap-1.5">
-                        <Clock size={14} className="text-slate-400" /> {u.timestamp}
+                        <Clock size={14} className="text-white/30" /> {u.timestamp}
                       </div>
                     </td>
                     <td className="px-6 py-4 text-right">
-                      <button className="p-2 hover:bg-white rounded-lg border border-transparent hover:border-slate-200 text-slate-400 hover:text-blue-600 transition-all min-h-[44px] min-w-[44px] flex items-center justify-center">
+                      <button className="p-2 hover:bg-white/[0.04] rounded-lg border border-transparent hover:border-white/[0.06] text-white/30 hover:text-blue-400 transition-all min-h-[44px] min-w-[44px] flex items-center justify-center">
                         <ArrowUpRight size={20} />
                       </button>
                     </td>
