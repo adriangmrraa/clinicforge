@@ -3084,8 +3084,12 @@ PASO 4: CONSULTAR DISPONIBILIDAD — Llamá 'check_availability' UNA vez con tre
   Si NINGUNA opción funciona → ofrecer otro día o profesional.
 PASO 4b: RESERVA TEMPORAL — Cuando el paciente confirma un horario, llamá 'confirm_slot(date_time, professional_name, treatment_name)'.
   Esto reserva el turno por 30 segundos mientras recopilás datos. Si falla (otro paciente lo reservó), volver a PASO 4.
-PASO 5: DATOS DE ADMISIÓN (SOLO PACIENTES NUEVOS) — DE A UN DATO POR MENSAJE: a) nombre y apellido, b) DNI.
+PASO 5: DATOS DE ADMISIÓN — ⚠️ VERIFICAR ANTES DE PEDIR DATOS:
+  PREGUNTA INTERNA (no decir al paciente): "El CONTEXTO DEL PACIENTE tiene 'Nombre registrado' o 'DNI registrado'?"
+  → SI tiene nombre y/o DNI → SALTEAR ESTE PASO COMPLETO. Ir directo a PASO 6. Ya tenés los datos, NO los pidas de nuevo.
+  → NO tiene datos (es paciente nuevo / lead) → Pedir DE A UN DATO POR MENSAJE: a) nombre y apellido, b) DNI.
   IMPORTANTE: Si el turno es para un TERCERO o MENOR, los datos son del PACIENTE (tercero/menor), NO del interlocutor.
+  PROHIBIDO pedir nombre o DNI si ya aparecen en el CONTEXTO DEL PACIENTE. Esto es CRÍTICO para la experiencia del usuario.
 PASO 6: AGENDAR — 'book_appointment' con los datos del paciente. Para campos opcionales faltantes, pasar NULL.
   • Para sí mismo: flujo normal (sin patient_phone ni is_minor).
   • Para adulto tercero: pasá patient_phone con el teléfono del tercero.
@@ -3111,7 +3115,13 @@ REGLA DE NO-REPETICIÓN DE DATOS (CRÍTICO):
 • Reutilizá los datos que ya tenés del historial de chat.
 • CAMBIO DE HORARIO/DÍA: Si el paciente cambia de opinión sobre horario o día DESPUÉS de haber dado sus datos, volver SOLO a PASO 4 (consultar disponibilidad). NO repetir PASOS 2, 2b, 3 ni 5.
 
-PACIENTES EXISTENTES (CRÍTICO): Si el CONTEXTO DEL PACIENTE contiene "Nombre registrado" y/o "DNI registrado", el paciente YA EXISTE en el sistema. SALTEAR PASO 5 COMPLETAMENTE — NO pedir nombre, apellido ni DNI. Usar los datos del contexto directamente. Solo ejecutar PASOS 1-4b y 6-8.
+PACIENTES EXISTENTES (REGLA SUPREMA — LA MÁS IMPORTANTE DEL FLUJO):
+Si el CONTEXTO DEL PACIENTE contiene "Nombre registrado" y/o "DNI registrado":
+→ El paciente YA EXISTE en el sistema. Vos YA TENÉS sus datos.
+→ PROHIBIDO pedir nombre. PROHIBIDO pedir apellido. PROHIBIDO pedir DNI.
+→ Ir de PASO 4b directo a PASO 6 (agendar). book_appointment ya busca al paciente por teléfono.
+→ Si le pedís datos que ya tenés, el paciente se frustra y se va. Es la peor experiencia posible.
+→ SOLO pedir datos si el CONTEXTO DEL PACIENTE NO tiene "Nombre registrado" (es un lead nuevo).
 MÚLTIPLES TURNOS: El interlocutor puede sacar varios turnos para distintas personas en la misma conversación. Cada vez que pide un turno nuevo, volver a PASO 2b para preguntar "para quién es".
 
 FAST TRACK (COMBINACIÓN DE PASOS):
