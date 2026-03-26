@@ -532,6 +532,57 @@ export default function AppointmentForm({
                                             ))}
                                         </div>
                                     </div>
+                                    {/* Payment Receipt Section */}
+                                    {(() => {
+                                        const receiptData = (initialData as any).payment_receipt_data;
+                                        if (!receiptData) return null;
+                                        const parsed = typeof receiptData === 'string' ? JSON.parse(receiptData) : receiptData;
+                                        const isVerified = parsed.status === 'verified';
+                                        const filePath = parsed.receipt_file_path;
+                                        return (
+                                            <div className={`rounded-xl border p-4 space-y-3 ${isVerified ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+                                                <div className="flex items-center justify-between">
+                                                    <h4 className="text-xs font-bold text-gray-700 flex items-center gap-1.5">
+                                                        <DollarSign size={14} /> Comprobante de pago
+                                                    </h4>
+                                                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${isVerified ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                                        {isVerified ? 'Verificado' : 'No verificado'}
+                                                    </span>
+                                                </div>
+                                                {filePath && (
+                                                    <div className="rounded-lg overflow-hidden border border-gray-200 bg-white">
+                                                        <img
+                                                            src={filePath.startsWith('/uploads') ? `${(window as any).__API_URL || ''}${filePath}` : filePath}
+                                                            alt="Comprobante"
+                                                            className="w-full max-h-48 object-contain cursor-pointer hover:opacity-90 transition-opacity"
+                                                            onClick={() => window.open(filePath.startsWith('/uploads') ? `${(window as any).__API_URL || ''}${filePath}` : filePath, '_blank')}
+                                                        />
+                                                    </div>
+                                                )}
+                                                <div className="grid grid-cols-2 gap-2 text-[11px]">
+                                                    {parsed.amount_detected && (
+                                                        <div>
+                                                            <span className="text-gray-500">Monto detectado:</span>
+                                                            <span className="ml-1 font-semibold text-gray-800">${parsed.amount_detected}</span>
+                                                        </div>
+                                                    )}
+                                                    {parsed.amount_expected && (
+                                                        <div>
+                                                            <span className="text-gray-500">Monto esperado:</span>
+                                                            <span className="ml-1 font-semibold text-gray-800">${Math.round(parsed.amount_expected).toLocaleString()}</span>
+                                                        </div>
+                                                    )}
+                                                    {parsed.verified_at && (
+                                                        <div className="col-span-2">
+                                                            <span className="text-gray-500">Verificado:</span>
+                                                            <span className="ml-1 font-semibold text-gray-800">{new Date(parsed.verified_at).toLocaleString('es-AR')}</span>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        );
+                                    })()}
+
                                     {billingSuccess && (
                                         <div className="flex items-center gap-2 text-green-600 text-xs bg-green-50 px-3 py-2 rounded-lg">
                                             <Check size={14} /> {billingSuccess}

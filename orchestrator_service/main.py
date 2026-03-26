@@ -2632,13 +2632,42 @@ async def verify_payment_receipt(
             tolerance = expected_amount * 0.05
             amount_match = abs(amount_value - expected_amount) <= tolerance
 
+        # 5b. Find the receipt file (last uploaded image/document from this patient)
+        receipt_file_path = None
+        receipt_file_name = None
+        try:
+            phone_digits_r = normalize_phone_digits(phone)
+            last_doc = await db.pool.fetchrow("""
+                SELECT pd.file_path, pd.file_name, pd.mime_type
+                FROM patient_documents pd
+                JOIN patients p ON pd.patient_id = p.id
+                WHERE p.tenant_id = $1 AND REGEXP_REPLACE(p.phone_number, '[^0-9]', '', 'g') = $2
+                AND pd.document_type IN ('whatsapp_image', 'whatsapp_document')
+                ORDER BY pd.uploaded_at DESC LIMIT 1
+            """, tenant_id, phone_digits_r)
+            if last_doc:
+                receipt_file_path = last_doc['file_path']
+                receipt_file_name = last_doc['file_name']
+                # Re-classify this document as payment receipt
+                await db.pool.execute("""
+                    UPDATE patient_documents SET document_type = 'payment_receipt',
+                    source_details = COALESCE(source_details, '{}'::jsonb) || '{"reclassified": "payment_receipt"}'::jsonb
+                    WHERE file_path = $1 AND tenant_id = $2
+                """, receipt_file_path, tenant_id)
+        except Exception as doc_err:
+            logger.warning(f"Receipt file lookup (non-fatal): {doc_err}")
+
         # 6. Build result
         receipt_data = {
             "description": receipt_description[:500],
             "amount_detected": amount_detected,
+            "amount_expected": expected_amount,
             "holder_match": holder_match,
             "amount_match": amount_match,
             "verified_at": datetime.now(timezone.utc).isoformat(),
+            "receipt_file_path": receipt_file_path,
+            "receipt_file_name": receipt_file_name,
+            "status": "verified" if (holder_match and amount_match) else "failed",
         }
 
         if holder_match and amount_match:
@@ -2651,9 +2680,11 @@ async def verify_payment_receipt(
                     status = $1,
                     payment_status = $2,
                     payment_receipt_data = $3::jsonb,
+                    billing_amount = COALESCE(NULLIF(billing_amount, 0), $6),
                     updated_at = NOW()
                 WHERE id = $4 AND tenant_id = $5
-            """, new_status, payment_status, json.dumps(receipt_data), str(apt['id']), tenant_id)
+            """, new_status, payment_status, json.dumps(receipt_data), str(apt['id']), tenant_id,
+                amount_value or expected_amount)
 
             # Emit WebSocket events
             try:
