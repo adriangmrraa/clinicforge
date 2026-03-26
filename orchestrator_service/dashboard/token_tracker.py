@@ -13,32 +13,28 @@ import json
 logger = logging.getLogger(__name__)
 
 # Precios por 1K tokens (USD) - Actualizado Marzo 2026
-# Fuente: https://openai.com/pricing — Lista completa para selector en dashboard
+# Fuente: https://openai.com/pricing
 OPENAI_PRICING = {
-    # --- GPT-5 Serie (flagship) ---
-    "gpt-5.4": {"input": Decimal("0.00250"), "output": Decimal("0.01500"), "context": 1000000, "description": "GPT-5.4 - Flagship, razonamiento complejo"},
-    "gpt-5": {"input": Decimal("0.00250"), "output": Decimal("0.01500"), "context": 400000, "description": "GPT-5 - Chat principal"},
-    "gpt-5-mini": {"input": Decimal("0.00025"), "output": Decimal("0.00200"), "context": 400000, "description": "GPT-5 Mini - Baja latencia y costo"},
+    # --- GPT-5.4 Serie (flagship actual, Marzo 2026) ---
+    "gpt-5.4": {"input": Decimal("0.00250"), "output": Decimal("0.01500"), "context": 1000000, "description": "GPT-5.4 - Flagship, el mas inteligente"},
+    "gpt-5.4-pro": {"input": Decimal("0.00500"), "output": Decimal("0.03000"), "context": 1000000, "description": "GPT-5.4 Pro - Maximo razonamiento"},
+    "gpt-5.4-mini": {"input": Decimal("0.00025"), "output": Decimal("0.00200"), "context": 1000000, "description": "GPT-5.4 Mini - Rapido y barato (RECOMENDADO)"},
+    "gpt-5.4-nano": {"input": Decimal("0.00010"), "output": Decimal("0.00080"), "context": 500000, "description": "GPT-5.4 Nano - Ultra economico"},
+    # --- GPT-5.3 Serie ---
     "gpt-5.3": {"input": Decimal("0.00200"), "output": Decimal("0.01200"), "context": 400000, "description": "GPT-5.3 - Balanceado"},
-    "gpt-5.2": {"input": Decimal("0.00150"), "output": Decimal("0.01000"), "context": 400000, "description": "GPT-5.2 - Versión estándar"},
-    "gpt-5.2-instant": {"input": Decimal("0.00150"), "output": Decimal("0.01000"), "context": 400000, "description": "GPT-5.2 Instant - Respuesta rápida"},
-    "gpt-5.2-thinking": {"input": Decimal("0.00200"), "output": Decimal("0.01200"), "context": 400000, "description": "GPT-5.2 Thinking - Razonamiento extendido"},
-    # --- GPT-4o Serie ---
-    "gpt-4o-mini": {"input": Decimal("0.00015"), "output": Decimal("0.00060"), "context": 128000, "description": "GPT-4o Mini - Más rápido y económico"},
-    "gpt-4o": {"input": Decimal("0.00250"), "output": Decimal("0.01000"), "context": 128000, "description": "GPT-4o - Balanceado"},
-    "gpt-4o-2024-11-20": {"input": Decimal("0.00250"), "output": Decimal("0.01000"), "context": 128000, "description": "GPT-4o (Nov 2024)"},
-    "gpt-4o-mini-2024-07-18": {"input": Decimal("0.00015"), "output": Decimal("0.00060"), "context": 128000, "description": "GPT-4o Mini (Jul 2024)"},
-    # --- GPT-4 Serie ---
-    "gpt-4-turbo": {"input": Decimal("0.01000"), "output": Decimal("0.03000"), "context": 128000, "description": "GPT-4 Turbo - Alta capacidad"},
-    "gpt-4-turbo-preview": {"input": Decimal("0.01000"), "output": Decimal("0.03000"), "context": 128000, "description": "GPT-4 Turbo Preview"},
-    # --- GPT-3.5 ---
-    "gpt-3.5-turbo": {"input": Decimal("0.00050"), "output": Decimal("0.00150"), "context": 16385, "description": "GPT-3.5 Turbo - Más económico"},
-    # --- o1 Serie (razonamiento) ---
-    "o1-preview": {"input": Decimal("0.01500"), "output": Decimal("0.06000"), "context": 128000, "description": "o1-preview - Razonamiento avanzado"},
-    "o1-mini": {"input": Decimal("0.00300"), "output": Decimal("0.01200"), "context": 128000, "description": "o1-mini - Razonamiento económico"},
+    "gpt-5.3-codex": {"input": Decimal("0.00300"), "output": Decimal("0.01500"), "context": 400000, "description": "GPT-5.3 Codex - Coding especializado"},
+    # --- GPT-5.2 Serie (RETIRADOS de ChatGPT, pueden funcionar via API) ---
+    "gpt-5.2": {"input": Decimal("0.00150"), "output": Decimal("0.01000"), "context": 400000, "description": "GPT-5.2 - Puede no estar disponible"},
+    "gpt-5.2-pro": {"input": Decimal("0.00300"), "output": Decimal("0.01500"), "context": 400000, "description": "GPT-5.2 Pro"},
+    # --- GPT-5 Serie ---
+    "gpt-5": {"input": Decimal("0.00250"), "output": Decimal("0.01500"), "context": 400000, "description": "GPT-5 - Original"},
+    "gpt-5-mini": {"input": Decimal("0.00025"), "output": Decimal("0.00200"), "context": 400000, "description": "GPT-5 Mini"},
+    # --- GPT-4o Serie (legacy, aun funcional via API) ---
+    "gpt-4o-mini": {"input": Decimal("0.00015"), "output": Decimal("0.00060"), "context": 128000, "description": "GPT-4o Mini - Legacy, muy economico"},
+    "gpt-4o": {"input": Decimal("0.00250"), "output": Decimal("0.01000"), "context": 128000, "description": "GPT-4o - Legacy"},
     # --- Realtime API (voice) ---
-    "gpt-4o-mini-realtime-preview": {"input": Decimal("0.00060"), "output": Decimal("0.00240"), "context": 128000, "description": "GPT-4o Mini Realtime - Voz bidireccional"},
-    "gpt-4o-realtime-preview": {"input": Decimal("0.00500"), "output": Decimal("0.02000"), "context": 128000, "description": "GPT-4o Realtime - Voz premium"},
+    "gpt-4o-mini-realtime-preview": {"input": Decimal("0.00060"), "output": Decimal("0.00240"), "context": 128000, "description": "Realtime Mini - Voz bidireccional"},
+    "gpt-4o-realtime-preview": {"input": Decimal("0.00500"), "output": Decimal("0.02000"), "context": 128000, "description": "Realtime - Voz premium"},
 }
 
 
