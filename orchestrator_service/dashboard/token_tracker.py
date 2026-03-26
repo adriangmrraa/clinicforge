@@ -349,29 +349,96 @@ class TokenTracker:
             return []
 
     async def get_available_models(self, model_type: str = None) -> List[Dict]:
-        """Obtiene lista completa de modelos (OpenAI + DeepSeek) para selector en dashboard."""
+        """Fetches live models from OpenAI + DeepSeek APIs. Falls back to hardcoded list on error."""
         models = []
-        for model_id, info in MODEL_PRICING.items():
-            if model_type and info.get("type") != model_type:
-                continue
-            provider = info.get("provider", "openai")
-            # Skip DeepSeek models if no API key configured
-            if provider == "deepseek" and not os.getenv("DEEPSEEK_API_KEY"):
-                continue
-            prefix = "🟢 " if provider == "deepseek" else ""
-            models.append({
-                "id": model_id,
-                "provider": provider,
-                "description": f"{prefix}{info['description']}",
-                "context_window": info["context"],
-                "type": info.get("type", "text"),
-                "input_price_per_1k": float(info["input"]),
-                "output_price_per_1k": float(info["output"]),
-                "input_price_per_1m": float(info["input"] * 1000),
-                "output_price_per_1m": float(info["output"] * 1000)
-            })
 
-        return sorted(models, key=lambda x: x["input_price_per_1k"])
+        # 1. Fetch from OpenAI GET /v1/models
+        openai_key = os.getenv("OPENAI_API_KEY", "")
+        if openai_key:
+            try:
+                import httpx
+                async with httpx.AsyncClient(timeout=10) as client:
+                    resp = await client.get("https://api.openai.com/v1/models", headers={"Authorization": f"Bearer {openai_key}"})
+                    if resp.status_code == 200:
+                        data = resp.json().get("data", [])
+                        for m in data:
+                            mid = m.get("id", "")
+                            # Only show GPT chat models (not embeddings, tts, dall-e, etc.)
+                            if not (mid.startswith("gpt-") or mid.startswith("o1") or mid.startswith("o3") or mid.startswith("o4")):
+                                continue
+                            # Skip internal/dated snapshots unless they're the main model
+                            if mid.count("-202") > 0 and mid not in MODEL_PRICING:
+                                continue
+                            # Skip audio/tts/whisper/embedding models
+                            if any(x in mid for x in ["audio", "tts", "whisper", "embedding", "dall-e", "davinci", "babbage", "moderation"]):
+                                continue
+
+                            known = MODEL_PRICING.get(mid, {})
+                            is_realtime = "realtime" in mid
+                            if model_type == "realtime" and not is_realtime:
+                                continue
+                            if model_type == "text" and is_realtime:
+                                continue
+
+                            models.append({
+                                "id": mid,
+                                "provider": "openai",
+                                "description": known.get("description", mid),
+                                "context_window": known.get("context", 128000),
+                                "type": "realtime" if is_realtime else "text",
+                                "input_price_per_1k": float(known.get("input", Decimal("0.001"))),
+                                "output_price_per_1k": float(known.get("output", Decimal("0.003"))),
+                            })
+            except Exception as e:
+                logger.warning(f"Failed to fetch OpenAI models: {e}")
+
+        # 2. Fetch from DeepSeek GET /models
+        deepseek_key = os.getenv("DEEPSEEK_API_KEY", "")
+        if deepseek_key:
+            try:
+                import httpx
+                async with httpx.AsyncClient(timeout=10) as client:
+                    resp = await client.get("https://api.deepseek.com/models", headers={"Authorization": f"Bearer {deepseek_key}"})
+                    if resp.status_code == 200:
+                        data = resp.json().get("data", [])
+                        for m in data:
+                            mid = m.get("id", "")
+                            if model_type == "realtime":
+                                continue  # DeepSeek has no realtime models
+
+                            known = MODEL_PRICING.get(mid, {})
+                            models.append({
+                                "id": mid,
+                                "provider": "deepseek",
+                                "description": known.get("description", f"DeepSeek {mid}"),
+                                "context_window": known.get("context", 128000),
+                                "type": "text",
+                                "input_price_per_1k": float(known.get("input", Decimal("0.00028"))),
+                                "output_price_per_1k": float(known.get("output", Decimal("0.00042"))),
+                            })
+            except Exception as e:
+                logger.warning(f"Failed to fetch DeepSeek models: {e}")
+
+        # 3. Fallback: if API calls failed, use hardcoded list
+        if not models:
+            for model_id, info in MODEL_PRICING.items():
+                if model_type and info.get("type") != model_type:
+                    continue
+                provider = info.get("provider", "openai")
+                if provider == "deepseek" and not deepseek_key:
+                    continue
+                models.append({
+                    "id": model_id,
+                    "provider": provider,
+                    "description": info["description"],
+                    "context_window": info["context"],
+                    "type": info.get("type", "text"),
+                    "input_price_per_1k": float(info["input"]),
+                    "output_price_per_1k": float(info["output"]),
+                })
+
+        # Sort: DeepSeek first (cheaper), then by price
+        return sorted(models, key=lambda x: (0 if x["provider"] == "deepseek" else 1, x["input_price_per_1k"]))
 
 # Instancia global del tracker
 token_tracker = None
