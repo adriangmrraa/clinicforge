@@ -1749,9 +1749,11 @@ async def cancel_appointment(date_query: str):
     try:
         target_date = parse_date(date_query)
         apt = await db.pool.fetchrow("""
-            SELECT a.id, a.google_calendar_event_id
+            SELECT a.id, a.google_calendar_event_id, a.billing_amount, a.payment_status,
+                   a.appointment_datetime, tt.name as treatment_name
             FROM appointments a
             JOIN patients p ON a.patient_id = p.id
+            LEFT JOIN treatment_types tt ON a.appointment_type = tt.code
             WHERE p.tenant_id = $1 AND REGEXP_REPLACE(p.phone_number, '[^0-9]', '', 'g') = $2 AND DATE(a.appointment_datetime) = $3
             AND a.status IN ('scheduled', 'confirmed')
             LIMIT 1
@@ -1761,7 +1763,6 @@ async def cancel_appointment(date_query: str):
 
         calendar_provider = await get_tenant_calendar_provider(tenant_id)
         if apt["google_calendar_event_id"] and calendar_provider == "google":
-            # Fetch professional's calendar ID
             google_calendar_id = await db.pool.fetchval(
                 "SELECT google_calendar_id FROM professionals WHERE id = (SELECT professional_id FROM appointments WHERE id = $1)",
                 apt["id"],
@@ -1773,7 +1774,7 @@ async def cancel_appointment(date_query: str):
             UPDATE appointments SET status = 'cancelled', google_calendar_sync_status = 'cancelled'
             WHERE id = $1
         """, apt['id'])
-        
+
         # 3. Notificar a la UI (Borrado visual)
         try:
             from main import sio
@@ -1782,7 +1783,18 @@ async def cancel_appointment(date_query: str):
             pass  # Socket notification is non-critical
 
         logger.info(f"🚫 Turno cancelado por IA: {apt['id']} ({phone})")
-        return f"✅ Entendido. He cancelado tu turno del {date_query}. ¿Te puedo ayudar con algo más?"
+
+        # 4. Build response — warn about non-refundable deposit if applicable
+        has_payment = apt.get("payment_status") in ("partial", "paid") and apt.get("billing_amount")
+        treatment = apt.get("treatment_name") or "consulta"
+        if has_payment:
+            amount = apt["billing_amount"]
+            return (
+                f"✅ Tu turno de {treatment} del {date_query} fue cancelado. "
+                f"Tené en cuenta que la seña abonada (${amount:,.0f}) no es reembolsable. "
+                f"¿Hay algo más en lo que pueda ayudarte?"
+            )
+        return f"✅ Entendido. He cancelado tu turno de {treatment} del {date_query}. ¿Te puedo ayudar con algo más?"
 
     except Exception as e:
         logger.error(f"Error en cancel_appointment: {e}")
@@ -3012,6 +3024,7 @@ REGLAS:
 ## SINÓNIMOS PARA ACCIONES (triggers de tools)
 • VER TURNOS → `list_my_appointments`: "tengo turno", "mis turnos", "cuándo me toca", "próximo turno", "mi próxima cita"
 • CANCELAR → `cancel_appointment`: "cancelar", "anular", "no voy a poder ir", "borrar turno"
+  POLÍTICA DE SEÑA: Si el paciente tenía una seña pagada, la seña NO se devuelve al cancelar. La tool ya informa esto automáticamente en su respuesta. NO ofrezcas reembolso ni digas que se puede devolver la seña.
 • REPROGRAMAR → `reschedule_appointment`: "reprogramar", "cambiar turno", "mover turno", "otro día", "reagendar"
 Si el mensaje coincide con alguna variante, ejecutá la tool. No esperes palabras exactas.
 
