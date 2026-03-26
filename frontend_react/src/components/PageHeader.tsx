@@ -4,31 +4,25 @@ interface PageHeaderProps {
   title: string;
   subtitle?: string;
   action?: ReactNode;
-  /** Optional icon (e.g. Building2, Stethoscope) to show beside title on mobile */
   icon?: ReactNode;
 }
 
-/**
- * Encabezado de página unificado: título, subtítulo y acción.
- * En mobile: layout apilado y compacto; en desktop: fila con acción alineada a la derecha.
- * Estética consistente en todas las vistas (Clínicas, Tratamientos, Pacientes, etc.).
- */
 export default function PageHeader({ title, subtitle, action, icon }: PageHeaderProps) {
   return (
     <div className="mb-6 sm:mb-8">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div className="flex items-start gap-3 min-w-0">
           {icon && (
-            <div className="hidden sm:flex shrink-0 w-10 h-10 items-center justify-center rounded-xl bg-medical-50 text-medical-600 border border-medical-100">
+            <div className="hidden sm:flex shrink-0 w-10 h-10 items-center justify-center rounded-xl bg-blue-500/10 text-blue-400 border border-blue-500/20">
               {icon}
             </div>
           )}
-          <div className="min-w-0 flex-1 border-l-4 border-medical-500 pl-3 sm:pl-4">
-            <h1 className="text-xl sm:text-2xl font-bold text-slate-800 tracking-tight">
+          <div className="min-w-0 flex-1 border-l-4 border-blue-500 pl-3 sm:pl-4">
+            <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
               {title}
             </h1>
             {subtitle && (
-              <p className="text-slate-500 text-sm sm:text-base mt-0.5 font-medium">
+              <p className="text-white/40 text-sm sm:text-base mt-0.5 font-medium">
                 {subtitle}
               </p>
             )}

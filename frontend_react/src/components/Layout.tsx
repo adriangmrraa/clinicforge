@@ -184,7 +184,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }: LayoutProps) => {
   };
 
   return (
-    <div className="flex h-screen bg-gradient-to-br from-slate-50 to-blue-50 relative overflow-hidden">
+    <div className="flex h-screen bg-[#06060e] relative overflow-hidden">
       {/* Mobile Backdrop */}
       {isMobileMenuOpen && (
         <div
@@ -213,29 +213,28 @@ export const Layout: React.FC<LayoutProps> = ({ children }: LayoutProps) => {
       >
         <MetaTokenBanner />
         {/* Top Header */}
-        <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-4 lg:px-6 shadow-sm sticky top-0 z-30">
+        <header className="h-14 bg-[#0a0e1a]/80 backdrop-blur-xl border-b border-white/[0.06] flex items-center justify-between px-4 lg:px-6 sticky top-0 z-30">
           <div className="flex items-center gap-3 lg:gap-4">
-            {/* Hamburger Button for Mobile */}
             <button
               onClick={() => setIsMobileMenuOpen(true)}
-              className="lg:hidden p-2 hover:bg-gray-100 rounded-lg text-gray-600"
+              className="lg:hidden p-2 hover:bg-white/[0.06] rounded-lg text-white/50"
             >
-              <div className="w-6 h-5 flex flex-col justify-between">
+              <div className="w-5 h-4 flex flex-col justify-between">
                 <span className="w-full h-0.5 bg-current rounded-full"></span>
                 <span className="w-full h-0.5 bg-current rounded-full"></span>
                 <span className="w-full h-0.5 bg-current rounded-full"></span>
               </div>
             </button>
-            <h1 className="text-lg lg:text-xl font-semibold text-medical-900 truncate max-w-[150px] md:max-w-none">
+            <h1 className="text-base lg:text-lg font-semibold text-white/90 truncate max-w-[150px] md:max-w-none tracking-tight">
               {localStorage.getItem('CLINIC_NAME') || t('layout.app_title')}
             </h1>
           </div>
 
-          <div className="flex items-center gap-2 lg:gap-4">
+          <div className="flex items-center gap-2 lg:gap-3">
             {/* Guide Button */}
             <button
               onClick={() => setShowGuide(true)}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors border border-blue-100"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 transition-colors border border-blue-500/20"
               title="Guia de la pagina"
             >
               <HelpCircle size={14} />
@@ -243,8 +242,8 @@ export const Layout: React.FC<LayoutProps> = ({ children }: LayoutProps) => {
             </button>
 
             {/* Connection Status Chip */}
-            <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] lg:text-xs font-medium transition-colors ${isReconnecting ? 'bg-orange-100 text-orange-700 animate-pulse' :
-                isConnected ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+            <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] lg:text-xs font-medium transition-colors ${isReconnecting ? 'bg-orange-500/10 text-orange-400 animate-pulse' :
+                isConnected ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'
               }`}>
               {isReconnecting ? <WifiOff size={12} /> : <Wifi size={12} />}
               <span className="hidden xs:inline">
@@ -253,19 +252,19 @@ export const Layout: React.FC<LayoutProps> = ({ children }: LayoutProps) => {
               </span>
             </div>
 
-            {/* Tenant Selector - Hidden on small mobile */}
-            <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-gray-100 rounded-lg text-sm">
-              <span className="text-gray-500">{t('layout.branch')}:</span>
-              <span className="font-medium text-medical-900">{t('layout.branch_principal')}</span>
+            {/* Tenant Selector */}
+            <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-white/[0.04] rounded-lg text-sm border border-white/[0.06]">
+              <span className="text-white/30">{t('layout.branch')}:</span>
+              <span className="font-medium text-white/70">{t('layout.branch_principal')}</span>
             </div>
 
             {/* User Menu */}
             <div className="flex items-center gap-2 lg:gap-3">
               <div className="hidden xs:flex flex-col items-end">
-                <span className="text-xs lg:text-sm font-medium text-medical-900">{user?.email?.split('@')[0]}</span>
-                <span className="text-[10px] lg:text-xs text-secondary uppercase leading-none">{user?.role}</span>
+                <span className="text-xs lg:text-sm font-medium text-white/80">{user?.email?.split('@')[0]}</span>
+                <span className="text-[10px] lg:text-xs text-white/30 uppercase leading-none">{user?.role}</span>
               </div>
-              <div className="w-8 h-8 lg:w-9 lg:h-9 rounded-full bg-medical-600 flex items-center justify-center text-white font-semibold text-sm lg:text-lg border-2 border-white shadow-sm">
+              <div className="w-8 h-8 lg:w-9 lg:h-9 rounded-lg bg-white/[0.08] flex items-center justify-center text-white/70 font-semibold text-sm lg:text-base">
                 {user?.email?.[0].toUpperCase() || 'U'}
               </div>
             </div>

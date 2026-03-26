@@ -42,8 +42,8 @@
 
 body {
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
-  background-color: var(--white-100);
-  color: #1a1a1a;
+  background-color: #06060e;
+  color: rgba(255, 255, 255, 0.9);
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -65,16 +65,16 @@ body {
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--white-100);
+  background: #0a0e1a;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #c4c4c4;
+  background: rgba(255, 255, 255, 0.1);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #a8a8a8;
+  background: rgba(255, 255, 255, 0.2);
 }
 
 /* Focus States */
@@ -93,7 +93,7 @@ body {
    ============================================ */
 
 .card {
-  @apply bg-white rounded-xl shadow-card p-6;
+  @apply bg-white/[0.03] rounded-xl p-6 border border-white/[0.06];
 }
 
 .card-header {
