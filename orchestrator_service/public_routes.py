@@ -33,11 +33,11 @@ class AnamnesisFormSubmission(BaseModel):
 @router.get("/anamnesis/{tenant_id}/{token}")
 async def get_anamnesis_form(tenant_id: int, token: str):
     """
-    Get patient info + existing anamnesis data for the public form.
-    No auth required — token is the patient's unique anamnesis_token.
+    Get patient basic info (name, clinic) WITHOUT medical data.
+    Medical data requires DNI verification first.
     """
     patient = await db.pool.fetchrow(
-        """SELECT id, first_name, last_name, medical_history
+        """SELECT id, first_name, last_name, dni
            FROM patients WHERE tenant_id = $1 AND anamnesis_token = $2""",
         tenant_id, token
     )
@@ -48,6 +48,45 @@ async def get_anamnesis_form(tenant_id: int, token: str):
         "SELECT clinic_name FROM tenants WHERE id = $1", tenant_id
     )
 
+    # Only return basic info — medical data requires DNI verification
+    has_dni = bool(patient.get("dni") and patient["dni"].strip())
+    return {
+        "patient_name": f"{patient['first_name'] or ''} {patient['last_name'] or ''}".strip(),
+        "clinic_name": tenant["clinic_name"] if tenant else "Clínica",
+        "requires_dni": has_dni,  # If patient has DNI, require verification
+        "existing_data": {},  # Empty until verified
+    }
+
+
+class DniVerification(BaseModel):
+    dni: str
+
+
+@router.post("/anamnesis/{tenant_id}/{token}/verify")
+async def verify_anamnesis_dni(tenant_id: int, token: str, body: DniVerification):
+    """
+    Verify patient DNI to unlock the anamnesis form.
+    Returns medical data only after successful verification.
+    """
+    patient = await db.pool.fetchrow(
+        """SELECT id, first_name, last_name, dni, medical_history
+           FROM patients WHERE tenant_id = $1 AND anamnesis_token = $2""",
+        tenant_id, token
+    )
+    if not patient:
+        raise HTTPException(status_code=404, detail="Formulario no encontrado.")
+
+    # Clean both DNIs for comparison (remove dots, spaces, dashes)
+    import re
+    clean_input = re.sub(r'[^0-9]', '', body.dni.strip())
+    clean_stored = re.sub(r'[^0-9]', '', (patient["dni"] or "").strip())
+
+    if not clean_stored:
+        # Patient has no DNI stored — allow access (first time)
+        pass
+    elif clean_input != clean_stored:
+        raise HTTPException(status_code=403, detail="DNI incorrecto. Verificá e intentá de nuevo.")
+
     mh = patient["medical_history"] or {}
     if isinstance(mh, str):
         try:
@@ -56,8 +95,8 @@ async def get_anamnesis_form(tenant_id: int, token: str):
             mh = {}
 
     return {
+        "verified": True,
         "patient_name": f"{patient['first_name'] or ''} {patient['last_name'] or ''}".strip(),
-        "clinic_name": tenant["clinic_name"] if tenant else "Clínica",
         "existing_data": mh,
     }
 

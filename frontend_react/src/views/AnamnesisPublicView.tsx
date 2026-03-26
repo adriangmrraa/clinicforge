@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import { HeartPulse, Pill, AlertTriangle, Scissors, Cigarette, Baby, Frown, Brain, Loader2, CheckCircle2, XCircle } from 'lucide-react';
+import { HeartPulse, Pill, AlertTriangle, Scissors, Cigarette, Baby, Frown, Brain, Loader2, CheckCircle2, XCircle, Lock, Mic } from 'lucide-react';
 import api from '../api/axios';
 
 /* ── Checklist Options (dental standard) ── */
@@ -27,6 +27,13 @@ export default function AnamnesisPublicView() {
   const [patientName, setPatientName] = useState('');
   const [clinicName, setClinicName] = useState('');
 
+  // DNI Lock state
+  const [requiresDni, setRequiresDni] = useState(false);
+  const [isUnlocked, setIsUnlocked] = useState(false);
+  const [dniInput, setDniInput] = useState('');
+  const [dniError, setDniError] = useState('');
+  const [verifying, setVerifying] = useState(false);
+
   // Form state
   const [baseDiseases, setBaseDiseases] = useState<string[]>([]);
   const [baseDiseasesOther, setBaseDiseasesOther] = useState('');
@@ -41,6 +48,36 @@ export default function AnamnesisPublicView() {
   const [fears, setFears] = useState<string[]>([]);
   const [fearsOther, setFearsOther] = useState('');
 
+  const prefillForm = (d: any) => {
+    if (d.base_diseases) {
+      const items = String(d.base_diseases).split(',').map((s: string) => s.trim());
+      const known = items.filter((i: string) => DISEASE_OPTIONS.includes(i));
+      const other = items.filter((i: string) => !DISEASE_OPTIONS.includes(i) && i !== 'Ninguna');
+      setBaseDiseases(known);
+      if (other.length) setBaseDiseasesOther(other.join(', '));
+    }
+    if (d.habitual_medication && d.habitual_medication !== 'Ninguna') setMedication(d.habitual_medication);
+    if (d.allergies) {
+      const items = String(d.allergies).split(',').map((s: string) => s.trim());
+      const known = items.filter((i: string) => ALLERGY_OPTIONS.includes(i));
+      const other = items.filter((i: string) => !ALLERGY_OPTIONS.includes(i) && i !== 'Ninguna');
+      setAllergies(known);
+      if (other.length) setAllergiesOther(other.join(', '));
+    }
+    if (d.previous_surgeries && d.previous_surgeries !== 'Ninguna') setSurgeries(d.previous_surgeries);
+    if (d.is_smoker) setIsSmoker(d.is_smoker);
+    if (d.smoker_amount) setSmokerAmount(d.smoker_amount);
+    if (d.pregnancy_lactation) setPregnancy(d.pregnancy_lactation);
+    if (d.negative_experiences && d.negative_experiences !== 'Ninguna') setNegativeExperiences(d.negative_experiences);
+    if (d.specific_fears) {
+      const items = String(d.specific_fears).split(',').map((s: string) => s.trim());
+      const known = items.filter((i: string) => FEAR_OPTIONS.includes(i));
+      const other = items.filter((i: string) => !FEAR_OPTIONS.includes(i) && i !== 'Ninguno');
+      setFears(known);
+      if (other.length) setFearsOther(other.join(', '));
+    }
+  };
+
   useEffect(() => {
     if (!tenantId || !token) return;
     (async () => {
@@ -49,34 +86,13 @@ export default function AnamnesisPublicView() {
         setPatientName(resp.data.patient_name);
         setClinicName(resp.data.clinic_name);
 
-        // Pre-fill with existing data
-        const d = resp.data.existing_data || {};
-        if (d.base_diseases) {
-          const items = String(d.base_diseases).split(',').map((s: string) => s.trim());
-          const known = items.filter((i: string) => DISEASE_OPTIONS.includes(i));
-          const other = items.filter((i: string) => !DISEASE_OPTIONS.includes(i) && i !== 'Ninguna');
-          setBaseDiseases(known);
-          if (other.length) setBaseDiseasesOther(other.join(', '));
-        }
-        if (d.habitual_medication && d.habitual_medication !== 'Ninguna') setMedication(d.habitual_medication);
-        if (d.allergies) {
-          const items = String(d.allergies).split(',').map((s: string) => s.trim());
-          const known = items.filter((i: string) => ALLERGY_OPTIONS.includes(i));
-          const other = items.filter((i: string) => !ALLERGY_OPTIONS.includes(i) && i !== 'Ninguna');
-          setAllergies(known);
-          if (other.length) setAllergiesOther(other.join(', '));
-        }
-        if (d.previous_surgeries && d.previous_surgeries !== 'Ninguna') setSurgeries(d.previous_surgeries);
-        if (d.is_smoker) setIsSmoker(d.is_smoker);
-        if (d.smoker_amount) setSmokerAmount(d.smoker_amount);
-        if (d.pregnancy_lactation) setPregnancy(d.pregnancy_lactation);
-        if (d.negative_experiences && d.negative_experiences !== 'Ninguna') setNegativeExperiences(d.negative_experiences);
-        if (d.specific_fears) {
-          const items = String(d.specific_fears).split(',').map((s: string) => s.trim());
-          const known = items.filter((i: string) => FEAR_OPTIONS.includes(i));
-          const other = items.filter((i: string) => !FEAR_OPTIONS.includes(i) && i !== 'Ninguno');
-          setFears(known);
-          if (other.length) setFearsOther(other.join(', '));
+        if (resp.data.requires_dni) {
+          // Patient has DNI — require verification
+          setRequiresDni(true);
+        } else {
+          // No DNI stored — open directly (and prefill if data exists)
+          setIsUnlocked(true);
+          prefillForm(resp.data.existing_data || {});
         }
       } catch {
         setError('Link inválido o expirado. Pedí un nuevo link al asistente por WhatsApp.');
@@ -85,6 +101,23 @@ export default function AnamnesisPublicView() {
       }
     })();
   }, [tenantId, token]);
+
+  const handleDniVerify = async () => {
+    if (!dniInput.trim()) { setDniError('Ingresá tu DNI'); return; }
+    setVerifying(true);
+    setDniError('');
+    try {
+      const resp = await api.post(`/public/anamnesis/${tenantId}/${token}/verify`, { dni: dniInput.trim() });
+      if (resp.data.verified) {
+        setIsUnlocked(true);
+        prefillForm(resp.data.existing_data || {});
+      }
+    } catch (err: any) {
+      setDniError(err?.response?.data?.detail || 'DNI incorrecto. Verificá e intentá de nuevo.');
+    } finally {
+      setVerifying(false);
+    }
+  };
 
   const toggleCheck = (list: string[], setList: (v: string[]) => void, value: string) => {
     setList(list.includes(value) ? list.filter(i => i !== value) : [...list, value]);
@@ -150,6 +183,48 @@ export default function AnamnesisPublicView() {
     );
   }
 
+  // DNI Lock Screen
+  if (requiresDni && !isUnlocked) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white flex items-center justify-center p-6">
+        <div className="bg-white rounded-2xl shadow-lg p-8 max-w-sm w-full space-y-6 text-center">
+          <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto">
+            <Lock size={28} className="text-blue-600" />
+          </div>
+          <div>
+            <h1 className="text-xl font-bold text-gray-800">Ficha Médica Protegida</h1>
+            <p className="text-sm text-gray-500 mt-1">{clinicName}</p>
+            <p className="text-sm text-gray-600 mt-3">Hola {patientName}! Para acceder a tu ficha médica, ingresá tu DNI.</p>
+          </div>
+          <div className="space-y-3">
+            <input
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              placeholder="Ingresá tu DNI (solo números)"
+              className="w-full px-4 py-3 border border-gray-200 rounded-xl text-center text-lg font-mono tracking-wider focus:ring-2 focus:ring-blue-500 outline-none"
+              value={dniInput}
+              onChange={e => setDniInput(e.target.value.replace(/[^0-9]/g, ''))}
+              onKeyDown={e => e.key === 'Enter' && handleDniVerify()}
+              maxLength={10}
+              autoFocus
+            />
+            {dniError && <p className="text-red-500 text-sm">{dniError}</p>}
+            <button
+              onClick={handleDniVerify}
+              disabled={verifying || !dniInput.trim()}
+              className="w-full py-3 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            >
+              {verifying ? <Loader2 size={18} className="animate-spin" /> : <Lock size={18} />}
+              {verifying ? 'Verificando...' : 'Acceder a mi ficha'}
+            </button>
+          </div>
+          <p className="text-xs text-gray-400">Tu información médica está protegida. Solo vos podés acceder con tu DNI.</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white">
       {/* Header */}
@@ -161,6 +236,17 @@ export default function AnamnesisPublicView() {
           </h1>
           <p className="text-sm text-gray-500">{clinicName} — {patientName}</p>
         </div>
+      </div>
+
+      {/* Nova Voice Button */}
+      <div className="max-w-lg mx-auto px-4 pt-4">
+        <button
+          onClick={() => {/* TODO: activate Nova voice for guided anamnesis */}}
+          className="w-full py-2.5 bg-gradient-to-r from-violet-600 to-indigo-600 text-white rounded-xl text-sm font-medium flex items-center justify-center gap-2 hover:from-violet-700 hover:to-indigo-700 active:scale-[0.98] transition-all shadow-sm"
+        >
+          <Mic size={16} />
+          Completar con voz (asistente Nova)
+        </button>
       </div>
 
       <form onSubmit={handleSubmit} className="max-w-lg mx-auto px-4 py-6 space-y-6">
