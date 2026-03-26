@@ -206,9 +206,9 @@ export default function ProfessionalAnalyticsView() {
           </div>
         </div>
 
-        {/* Professional Detail Cards */}
-        <div className="space-y-3">
-          <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+        {/* Professional Detail Cards — 2 columns on desktop */}
+        <div>
+          <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2 mb-3">
             <TrendingUp size={16} className="text-blue-500" /> Detalle por profesional
           </h3>
           {data.length === 0 && (
@@ -216,6 +216,7 @@ export default function ProfessionalAnalyticsView() {
               Selecciona un rango de fechas para ver las metricas
             </div>
           )}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {data.map((prof) => (
             <div key={prof.id} className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 sm:p-5 hover:shadow-md transition-shadow">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
@@ -278,6 +279,7 @@ export default function ProfessionalAnalyticsView() {
               </div>
             </div>
           ))}
+          </div>
         </div>
       </div>
     </div>

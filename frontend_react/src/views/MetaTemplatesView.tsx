@@ -540,18 +540,13 @@ function RuleCard({ rule, onEdit, onDelete, onToggle }: {
 
 function StatCard({ icon: Icon, label, value, color }: { icon: any; label: string; value: string | number; color: string }) {
   return (
-    <div style={{
-      background: '#fff', borderRadius: '12px', padding: '18px 22px',
-      border: `1px solid ${color}33`,
-      display: 'flex', alignItems: 'center', gap: '14px',
-      boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
-    }}>
-      <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: color + '18', display: 'flex', alignItems: 'center', justifyContent: 'center', color: color }}>
-        <Icon size={24} />
+    <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 sm:p-5 flex items-center gap-4 hover:shadow-md transition-shadow">
+      <div className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0" style={{ background: color + '15', color }}>
+        <Icon size={22} />
       </div>
       <div>
-        <div style={{ color: '#0f172a', fontSize: '24px', fontWeight: 800, lineHeight: 1 }}>{value}</div>
-        <div style={{ color: '#94a3b8', fontSize: '13px', marginTop: '3px' }}>{label}</div>
+        <p className="text-2xl font-bold text-slate-900 tracking-tight leading-none">{value}</p>
+        <p className="text-xs text-slate-500 mt-1">{label}</p>
       </div>
     </div>
   );
@@ -656,47 +651,32 @@ export default function MetaTemplatesView() {
   }
 
   return (
-    <div style={{ height: '100%', overflowY: 'auto', background: '#f8fafc', padding: isMobile ? '16px' : '28px 32px' }}>
+    <div className="h-full overflow-y-auto bg-slate-50 p-4 sm:p-6 lg:p-8">
       {/* Header */}
-      <PageHeader 
-        title={t('meta_templates.title')} 
+      <PageHeader
+        title={t('meta_templates.title')}
         subtitle={t('meta_templates.subtitle')}
       />
 
-      {/* Stats */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)',
-        gap: '12px',
-        marginBottom: '24px'
-      }}>
+      {/* Stats — 2 columns on mobile, 3 on desktop */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4 mb-6">
         <StatCard icon={Send} label={t('meta_templates.stats.sent')} value={stats.sent} color="#6366f1" />
         <StatCard icon={UserCheck} label={t('meta_templates.stats.delivery_rate')} value={`${stats.delivery_rate}%`} color="#10b981" />
         <StatCard icon={Zap} label={t('meta_templates.stats.active_rules')} value={stats.active_rules} color="#f59e0b" />
       </div>
 
       {/* Tabs */}
-      <div style={{
-        display: 'flex',
-        gap: '2px',
-        background: '#e2e8f0',
-        borderRadius: '10px',
-        padding: '3px',
-        marginBottom: '22px',
-        width: isMobile ? '100%' : 'fit-content',
-        overflowX: 'hidden',
-        WebkitOverflowScrolling: 'touch'
-      }}>
+      <div className="flex gap-0.5 bg-slate-200 rounded-xl p-1 mb-6 w-full sm:w-fit overflow-hidden">
         {(['rules', 'logs', 'templates'] as const).map(tab => (
-          <button key={tab} onClick={() => setActiveTab(tab)} style={{
-            padding: '8px 18px', borderRadius: '8px', border: 'none', cursor: 'pointer',
-            fontSize: '13px', fontWeight: 600, transition: 'all 0.15s',
-            display: 'flex', alignItems: 'center', gap: '8px',
-            background: activeTab === tab ? '#fff' : 'transparent',
-            color: activeTab === tab ? '#6366f1' : '#64748b',
-            boxShadow: activeTab === tab ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
-            whiteSpace: 'nowrap'
-          }}>
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-[13px] font-semibold transition-all whitespace-nowrap ${
+              activeTab === tab
+                ? 'bg-white text-indigo-600 shadow-sm'
+                : 'text-slate-500 hover:text-slate-700'
+            }`}
+          >
             {tab === 'rules' ? <Zap size={14} /> : tab === 'logs' ? <MessageSquare size={14} /> : <Files size={14} />}
             {tab === 'rules' ? t('meta_templates.tabs.rules') : tab === 'logs' ? t('meta_templates.tabs.logs') : t('meta_templates.tabs.templates')}
           </button>
