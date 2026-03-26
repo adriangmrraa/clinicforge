@@ -2587,21 +2587,25 @@ async def verify_payment_receipt(
         if not apt:
             return "No encontré un turno pendiente asociado a tu número. Verificá con la clínica."
 
-        # 3. Determine expected amount (priority: billing_amount > professional price > tenant price)
+        # 3. Determine expected SEÑA amount (50% of consultation price)
+        # Priority: billing_amount (if already set) > 50% of professional price > 50% of tenant price
         expected_amount = None
-        if apt['billing_amount']:
+        if apt['billing_amount'] and float(apt['billing_amount']) > 0:
             expected_amount = float(apt['billing_amount'])
         else:
-            # Check professional-specific price
+            # Seña = 50% of consultation price
+            full_price = None
             prof_id = apt.get('professional_id') if isinstance(apt, dict) else apt['professional_id']
             if prof_id:
                 prof_price = await db.pool.fetchval(
                     "SELECT consultation_price FROM professionals WHERE id = $1", prof_id
                 )
                 if prof_price and float(prof_price) > 0:
-                    expected_amount = float(prof_price)
-            if expected_amount is None and tenant['consultation_price']:
-                expected_amount = float(tenant['consultation_price'])
+                    full_price = float(prof_price)
+            if full_price is None and tenant['consultation_price']:
+                full_price = float(tenant['consultation_price'])
+            if full_price:
+                expected_amount = full_price / 2  # Seña = 50%
 
         # 4. Verify holder name in receipt
         receipt_lower = receipt_description.lower()
@@ -2680,13 +2684,23 @@ async def verify_payment_receipt(
             return f"✅ Comprobante verificado correctamente! Tu turno de {apt['appointment_type']} el {fecha} con {apt['prof_name'] or 'el profesional'} queda CONFIRMADO. Te esperamos! 😊"
 
         elif not holder_match:
-            return f"⚠️ No pude verificar el comprobante: el titular de la cuenta destino no coincide con los datos de la clínica. Verificá que la transferencia se haya realizado a la cuenta correcta y reenviá el comprobante."
+            return (
+                f"⚠️ No pude verificar el comprobante: el titular de la cuenta destino no coincide con los datos de la clínica. "
+                f"Verificá que la transferencia se haya realizado a la cuenta correcta y reenviá el comprobante. "
+                f"[INTERNAL_VERIFICATION_FAILED:holder_mismatch]"
+            )
 
         elif not amount_match:
             expected_str = f"${int(expected_amount):,}".replace(",", ".") if expected_amount else "el monto acordado"
-            return f"⚠️ El monto del comprobante no coincide con {expected_str}. Verificá el monto y reenviá el comprobante, o contactá a la clínica."
+            detected_str = f"${int(amount_value):,}".replace(",", ".") if amount_value else "no detectado"
+            return (
+                f"⚠️ El monto del comprobante ({detected_str}) no coincide con la seña de {expected_str}. "
+                f"La seña es el 50% del valor de la consulta. "
+                f"Verificá el monto y reenviá el comprobante. "
+                f"[INTERNAL_VERIFICATION_FAILED:amount_mismatch]"
+            )
 
-        return "⚠️ No pude verificar el comprobante. Contactá a la clínica para confirmar tu pago."
+        return "⚠️ No pude verificar el comprobante. Reenviá una foto más clara o contactá a la clínica. [INTERNAL_VERIFICATION_FAILED:unknown]"
 
     except Exception as e:
         logger.error(f"Error en verify_payment_receipt: {e}")
@@ -2976,11 +2990,19 @@ VERIFICACIÓN DE COMPROBANTE:
    - receipt_description: la descripción completa de la imagen
    - amount_detected: el monto que detectes (solo el número)
    - appointment_id: el ID del turno si lo tenés (opcional)
-7. Si la verificación es exitosa → turno CONFIRMADO automáticamente. Agradecé y recordá los datos del turno.
-8. Si falla → explicá el problema y pedí que reenvíe.
+7. Si la verificación retorna ✅ (EXITOSA):
+   → Turno CONFIRMADO automáticamente.
+   → Agradecé al paciente.
+   → AHORA SÍ pasar al MOMENTO 2: enviar "cómo nos conociste" + link de anamnesis (ver PASOS 7c y 8).
+8. Si la verificación retorna ⚠️ (FALLIDA):
+   → Informar al paciente QUÉ falló (monto incorrecto, titular no coincide, imagen ilegible).
+   → Pedirle que reenvíe un comprobante correcto.
+   → NO enviar anamnesis ni preguntar "cómo nos conociste" hasta que el pago se verifique correctamente.
+   → Si el paciente insiste en que es correcto → derivar a humano con 'derivhumano'.
+   → Si el monto es menor al 50% → decirle explícitamente cuánto falta y que complete la diferencia.
 9. NUNCA inventes datos bancarios. Solo compartí los configurados arriba.
 
-SI NO HAY PRECIO CONFIGURADO: No pedir seña. Agendar normalmente."""
+SI NO HAY PRECIO CONFIGURADO: No pedir seña. Agendar normalmente y pasar directo a MOMENTO 2."""
 
     price_text = f"${int(consultation_price):,}".replace(",", ".") if consultation_price and float(consultation_price) > 0 else ""
 
