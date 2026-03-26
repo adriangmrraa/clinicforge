@@ -1774,12 +1774,15 @@ async def cancel_appointment(date_query: str):
         """, apt['id'])
         
         # 3. Notificar a la UI (Borrado visual)
-        from main import sio
-        await sio.emit("APPOINTMENT_DELETED", apt['id'])
+        try:
+            from main import sio
+            await sio.emit("APPOINTMENT_DELETED", apt['id'])
+        except Exception:
+            pass  # Socket notification is non-critical
 
         logger.info(f"🚫 Turno cancelado por IA: {apt['id']} ({phone})")
-        return f"Entendido. He cancelado tu turno del {date_query}. ¿Te puedo ayudar con algo más?"
-        
+        return f"✅ Entendido. He cancelado tu turno del {date_query}. ¿Te puedo ayudar con algo más?"
+
     except Exception as e:
         logger.error(f"Error en cancel_appointment: {e}")
         return "⚠️ Hubo un error al intentar cancelar el turno. Por favor, intenta nuevamente."
