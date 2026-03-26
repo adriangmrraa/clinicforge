@@ -13,8 +13,9 @@ import json
 
 logger = logging.getLogger(__name__)
 
-# Precios por 1M tokens (USD) - Actualizado Marzo 2026
+# Precios por 1M tokens (USD) - Actualizado Marzo 2026 v2
 # Providers: openai, deepseek
+logger.info("📦 MODEL_PRICING v2 loaded — OpenAI + DeepSeek models")
 MODEL_PRICING = {
     # ============ OPENAI ============
     # --- GPT-5.4 Serie (flagship, Marzo 2026) ---
