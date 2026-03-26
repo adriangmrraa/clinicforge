@@ -16,7 +16,9 @@ import {
   Settings,
   Check,
   MessageSquare,
-  Brain
+  Brain,
+  Mic,
+  Sparkles
 } from 'lucide-react';
 import api from '../api/axios';
 import PageHeader from '../components/PageHeader';
@@ -112,8 +114,10 @@ interface ModelAction {
 }
 
 const MODEL_ACTIONS: ModelAction[] = [
-  { key: 'OPENAI_MODEL', label: 'Chat con pacientes', description: 'Modelo para el agente principal que conversa con pacientes por WhatsApp/Instagram/Facebook', icon: MessageSquare },
-  { key: 'MODEL_INSIGHTS', label: 'Análisis de conversaciones', description: 'Modelo para generar insights y análisis de sentimiento de conversaciones', icon: Brain },
+  { key: 'OPENAI_MODEL', label: 'Chat con pacientes', description: 'Agente principal que conversa con pacientes por WhatsApp/Instagram/Facebook', icon: MessageSquare },
+  { key: 'MODEL_INSIGHTS', label: 'Análisis diario', description: 'Genera insights y análisis de conversaciones cada 12 horas', icon: Brain },
+  { key: 'MODEL_NOVA_VOICE', label: 'Nova Voz', description: 'Asistente de voz Nova para el dashboard y ficha médica', icon: Mic },
+  { key: 'MODEL_PATIENT_MEMORY', label: 'Memoria de pacientes', description: 'Extrae y almacena recuerdos de las conversaciones con pacientes', icon: Sparkles },
 ];
 
 export default function DashboardStatusView() {

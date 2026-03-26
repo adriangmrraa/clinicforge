@@ -194,10 +194,11 @@ async def update_dashboard_config(
                 tenant_id = int(tid_header)
         except Exception:
             pass
-        allowed = {"OPENAI_MODEL", "MODEL_INSIGHTS", "OPENAI_TEMPERATURE", "MAX_TOKENS_PER_RESPONSE"}
+        allowed = {"OPENAI_MODEL", "MODEL_INSIGHTS", "MODEL_NOVA_VOICE", "MODEL_PATIENT_MEMORY", "OPENAI_TEMPERATURE", "MAX_TOKENS_PER_RESPONSE"}
+        model_keys = {"OPENAI_MODEL", "MODEL_INSIGHTS", "MODEL_NOVA_VOICE", "MODEL_PATIENT_MEMORY"}
         for key, value in payload.items():
             if key in allowed:
-                if isinstance(value, str) and key in ("OPENAI_MODEL", "MODEL_INSIGHTS"):
+                if isinstance(value, str) and key in model_keys:
                     await config_manager.set_config(key, value.strip(), data_type="string", category="ai", tenant_id=tenant_id)
                 elif key == "OPENAI_TEMPERATURE":
                     await config_manager.set_config(key, str(float(value)), data_type="float", category="ai", tenant_id=tenant_id)

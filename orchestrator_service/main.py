@@ -4135,10 +4135,20 @@ async def _nova_realtime_handler(websocket: WebSocket, session_id: str):
         import json as json_mod
         config = json_mod.loads(session_data)
 
-        # Connect to OpenAI Realtime
+        # Connect to OpenAI Realtime — model configurable from dashboard
         import websockets
         api_key = os.getenv("OPENAI_API_KEY")
-        openai_url = "wss://api.openai.com/v1/realtime?model=gpt-4o-mini-realtime-preview"
+        nova_voice_model = "gpt-4o-mini-realtime-preview"
+        try:
+            _voice_model_row = await db.pool.fetchrow(
+                "SELECT value FROM system_config WHERE key = 'MODEL_NOVA_VOICE' AND tenant_id = $1",
+                config.get("tenant_id", 1)
+            )
+            if _voice_model_row and _voice_model_row.get("value"):
+                nova_voice_model = str(_voice_model_row["value"]).strip()
+        except Exception:
+            pass
+        openai_url = f"wss://api.openai.com/v1/realtime?model={nova_voice_model}"
 
         async with websockets.connect(
             openai_url,

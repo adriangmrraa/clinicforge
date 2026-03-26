@@ -282,10 +282,23 @@ async def _get_conversation_summary(pool, tenant_id: int) -> str:
 # ---------------------------------------------------------------------------
 
 async def _analyze_with_gpt(prompt: str, api_key: str, tenant_id: int = 0) -> dict | None:
-    """Call GPT-4o-mini and return parsed JSON response."""
+    """Call GPT for analysis — model configurable from dashboard."""
     if not api_key:
         logger.warning("nova_analysis: OPENAI_API_KEY not set, skipping")
         return None
+
+    # Read model from config (fallback: gpt-4o-mini)
+    analysis_model = "gpt-4o-mini"
+    if tenant_id:
+        try:
+            from db import db
+            row = await db.pool.fetchrow(
+                "SELECT value FROM system_config WHERE key = 'MODEL_INSIGHTS' AND tenant_id = $1", tenant_id
+            )
+            if row and row.get("value"):
+                analysis_model = str(row["value"]).strip()
+        except Exception:
+            pass
 
     try:
         async with httpx.AsyncClient(timeout=30) as client:
@@ -296,7 +309,7 @@ async def _analyze_with_gpt(prompt: str, api_key: str, tenant_id: int = 0) -> di
                     "Content-Type": "application/json",
                 },
                 json={
-                    "model": "gpt-4o-mini",
+                    "model": analysis_model,
                     "messages": [
                         {"role": "system", "content": prompt},
                     ],

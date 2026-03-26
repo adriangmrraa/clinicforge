@@ -116,13 +116,24 @@ Retorna JSON: {{"memories": [{{"text": "...", "category": "..."}}]}}
 Si no hay nada nuevo: {{"memories": []}}
 Solo JSON, sin explicaciones."""
 
+    # Read model from config (fallback: gpt-4o-mini)
+    memory_model = "gpt-4o-mini"
+    try:
+        row = await pool.fetchrow(
+            "SELECT value FROM system_config WHERE key = 'MODEL_PATIENT_MEMORY' AND tenant_id = $1", tenant_id
+        )
+        if row and row.get("value"):
+            memory_model = str(row["value"]).strip()
+    except Exception:
+        pass
+
     try:
         async with httpx.AsyncClient(timeout=15) as client:
             resp = await client.post(
                 "https://api.openai.com/v1/chat/completions",
                 headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
                 json={
-                    "model": "gpt-4o-mini",
+                    "model": memory_model,
                     "messages": [{"role": "user", "content": extraction_prompt}],
                     "temperature": 0,
                     "max_tokens": 200,
