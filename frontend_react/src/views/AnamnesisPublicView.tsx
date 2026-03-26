@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
-import { HeartPulse, Pill, AlertTriangle, Scissors, Cigarette, Baby, Frown, Brain, Loader2, CheckCircle2, XCircle, Lock, Mic, MicOff, Volume2 } from 'lucide-react';
+import { HeartPulse, Pill, AlertTriangle, Scissors, Cigarette, Baby, Frown, Brain, Loader2, CheckCircle2, XCircle, Lock, Mic, MicOff, Volume2, ArrowRight } from 'lucide-react';
 import api, { BACKEND_URL } from '../api/axios';
 
 /* ── Checklist Options (dental standard) ── */
@@ -320,7 +320,7 @@ export default function AnamnesisPublicView() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white flex items-center justify-center">
+      <div className="min-h-screen bg-[#0a0f1a] flex items-center justify-center">
         <Loader2 className="animate-spin text-blue-600" size={40} />
       </div>
     );
@@ -328,11 +328,11 @@ export default function AnamnesisPublicView() {
 
   if (error && !patientName) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-red-50 to-white flex items-center justify-center p-6">
-        <div className="bg-white rounded-2xl shadow-lg p-5 sm:p-8 max-w-md text-center space-y-4">
+      <div className="min-h-screen bg-[#0a0f1a] flex items-center justify-center p-6">
+        <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-5 sm:p-8 max-w-md text-center space-y-4">
           <XCircle className="mx-auto text-red-500" size={48} />
-          <h1 className="text-xl font-bold text-gray-800">Link inválido</h1>
-          <p className="text-gray-600">{error}</p>
+          <h1 className="text-xl font-bold text-white">Link inválido</h1>
+          <p className="text-gray-300">{error}</p>
         </div>
       </div>
     );
@@ -340,69 +340,99 @@ export default function AnamnesisPublicView() {
 
   if (submitted) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-green-50 to-white flex items-center justify-center p-6">
-        <div className="bg-white rounded-2xl shadow-lg p-5 sm:p-8 max-w-md text-center space-y-4">
+      <div className="min-h-screen bg-[#0a0f1a] flex items-center justify-center p-6">
+        <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-5 sm:p-8 max-w-md text-center space-y-4">
           <CheckCircle2 className="mx-auto text-green-500" size={48} />
-          <h1 className="text-xl font-bold text-gray-800">Ficha médica guardada</h1>
-          <p className="text-gray-600">Gracias {patientName}! Tu ficha fue guardada correctamente.</p>
+          <h1 className="text-xl font-bold text-white">Ficha médica guardada</h1>
+          <p className="text-gray-300">Gracias {patientName}! Tu ficha fue guardada correctamente.</p>
           <p className="text-gray-500 text-sm">Podés avisarle al asistente por WhatsApp que ya completaste el formulario.</p>
         </div>
       </div>
     );
   }
 
-  // DNI Lock Screen
+  // DNI Lock Screen — Dentalogic login aesthetic
   if (requiresDni && !isUnlocked) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white flex items-center justify-center p-6">
-        <div className="bg-white rounded-2xl shadow-lg p-5 sm:p-8 max-w-sm w-full space-y-6 text-center">
-          <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto">
-            <Lock size={28} className="text-blue-600" />
+      <div className="min-h-screen bg-[#0a0f1a] flex flex-col items-center justify-center p-6 relative overflow-hidden">
+        {/* Background glow */}
+        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[400px] h-[400px] bg-cyan-500/8 rounded-full blur-[120px] pointer-events-none" />
+
+        {/* Logo */}
+        <div className="flex items-center gap-3 mb-8">
+          <div className="w-10 h-10 bg-gradient-to-br from-cyan-400 to-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-cyan-500/20">
+            <HeartPulse size={20} className="text-white" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-gray-800">Ficha Médica Protegida</h1>
-            <p className="text-sm text-gray-500 mt-1">{clinicName}</p>
-            <p className="text-sm text-gray-600 mt-3">Hola {patientName}! Para acceder a tu ficha médica, ingresá tu DNI.</p>
+            <h2 className="text-lg font-bold text-white tracking-tight">{clinicName || 'Dentalogic'}</h2>
+            <p className="text-[10px] text-cyan-400 uppercase tracking-[0.2em] font-medium">Ficha Medica</p>
           </div>
-          <div className="space-y-3">
-            <input
-              type="text"
-              inputMode="numeric"
-              pattern="[0-9]*"
-              placeholder="Ingresá tu DNI (solo números)"
-              className="w-full px-4 py-3 border border-gray-200 rounded-xl text-center text-lg font-mono tracking-wider focus:ring-2 focus:ring-blue-500 outline-none"
-              value={dniInput}
-              onChange={e => setDniInput(e.target.value.replace(/[^0-9]/g, ''))}
-              onKeyDown={e => e.key === 'Enter' && handleDniVerify()}
-              maxLength={10}
-              autoFocus
-            />
-            {dniError && <p className="text-red-500 text-sm">{dniError}</p>}
+        </div>
+
+        {/* Card — matching login aesthetic */}
+        <div className="w-full max-w-sm bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6 sm:p-8 space-y-6 relative z-10">
+          <div className="text-center">
+            <h1 className="text-xl font-bold text-white">Hola {patientName}!</h1>
+            <p className="text-sm text-gray-400 mt-1">Verificacion de identidad</p>
+          </div>
+
+          <div className="space-y-4">
+            <div>
+              <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+                DNI
+              </label>
+              <div className="relative">
+                <Lock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500" />
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  placeholder="Ingresa tu DNI"
+                  className="w-full pl-10 pr-4 py-3.5 bg-white/5 border border-white/10 rounded-xl text-white text-base font-mono tracking-wider placeholder-gray-600 focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500/30 outline-none transition-colors"
+                  value={dniInput}
+                  onChange={e => setDniInput(e.target.value.replace(/[^0-9]/g, ''))}
+                  onKeyDown={e => e.key === 'Enter' && handleDniVerify()}
+                  maxLength={10}
+                  autoFocus
+                />
+              </div>
+            </div>
+
+            {dniError && (
+              <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-3 text-red-400 text-sm text-center">
+                {dniError}
+              </div>
+            )}
+
             <button
               onClick={handleDniVerify}
               disabled={verifying || !dniInput.trim()}
-              className="w-full py-3 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              className="w-full py-3.5 bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-semibold rounded-xl hover:from-cyan-400 hover:to-blue-500 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-lg shadow-cyan-500/20 transition-all active:scale-[0.98]"
             >
-              {verifying ? <Loader2 size={18} className="animate-spin" /> : <Lock size={18} />}
-              {verifying ? 'Verificando...' : 'Acceder a mi ficha'}
+              {verifying ? <Loader2 size={18} className="animate-spin" /> : <ArrowRight size={18} />}
+              {verifying ? 'Verificando...' : 'Acceder'}
             </button>
           </div>
-          <p className="text-xs text-gray-400">Tu información médica está protegida. Solo vos podés acceder con tu DNI.</p>
+
+          <p className="text-xs text-gray-600 text-center">Tu informacion medica esta protegida y encriptada.</p>
         </div>
+
+        {/* Footer */}
+        <p className="text-[10px] text-gray-700 mt-6">Powered by Dentalogic AI</p>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white">
+    <div className="min-h-screen bg-[#0a0f1a]">
       {/* Header + Nova Voice (sticky) */}
-      <div className="bg-white shadow-sm sticky top-0 z-10">
+      <div className="bg-[#0d1320]/90 backdrop-blur-md border-b border-white/5 sticky top-0 z-10">
         <div className="max-w-lg mx-auto px-4 py-3">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-lg font-bold text-blue-900 flex items-center gap-2">
-                <HeartPulse size={20} className="text-blue-600" />
-                Ficha Médica
+              <h1 className="text-lg font-bold text-white flex items-center gap-2">
+                <HeartPulse size={20} className="text-cyan-400" />
+                Ficha Medica
               </h1>
               <p className="text-sm text-gray-500">{clinicName} — {patientName}</p>
             </div>
@@ -413,31 +443,31 @@ export default function AnamnesisPublicView() {
         </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="max-w-lg mx-auto px-4 py-6 space-y-6">
+      <form onSubmit={handleSubmit} className="max-w-lg mx-auto px-4 py-6 space-y-5">
         {error && (
-          <div className="bg-red-50 text-red-600 p-3 rounded-xl text-sm">{error}</div>
+          <div className="bg-red-500/10 border border-red-500/20 text-red-400 p-3 rounded-xl text-sm">{error}</div>
         )}
 
         {/* Enfermedades de base */}
         <Section icon={<HeartPulse size={18} className="text-red-500" />} title="Enfermedades de base" subtitle="Seleccioná todas las que apliquen">
           <CheckboxGroup options={DISEASE_OPTIONS} selected={baseDiseases} toggle={(v) => toggleCheck(baseDiseases, setBaseDiseases, v)} />
-          <input type="text" placeholder="Otra (especificar)" className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none" value={baseDiseasesOther} onChange={e => setBaseDiseasesOther(e.target.value)} />
+          <input type="text" placeholder="Otra (especificar)" className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-gray-600 focus:border-cyan-500 outline-none" value={baseDiseasesOther} onChange={e => setBaseDiseasesOther(e.target.value)} />
         </Section>
 
         {/* Medicación habitual */}
         <Section icon={<Pill size={18} className="text-orange-500" />} title="Medicación habitual">
-          <textarea placeholder="Ej: Metformina 850mg, Enalapril 10mg..." className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none min-h-[60px]" value={medication} onChange={e => setMedication(e.target.value)} />
+          <textarea placeholder="Ej: Metformina 850mg, Enalapril 10mg..." className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-gray-600 focus:border-cyan-500 outline-none min-h-[60px]" value={medication} onChange={e => setMedication(e.target.value)} />
         </Section>
 
         {/* Alergias */}
         <Section icon={<AlertTriangle size={18} className="text-red-600" />} title="Alergias" subtitle="Seleccioná todas las que apliquen">
           <CheckboxGroup options={ALLERGY_OPTIONS} selected={allergies} toggle={(v) => toggleCheck(allergies, setAllergies, v)} />
-          <input type="text" placeholder="Otra alergia (especificar)" className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none" value={allergiesOther} onChange={e => setAllergiesOther(e.target.value)} />
+          <input type="text" placeholder="Otra alergia (especificar)" className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-gray-600 focus:border-cyan-500 outline-none" value={allergiesOther} onChange={e => setAllergiesOther(e.target.value)} />
         </Section>
 
         {/* Cirugías previas */}
-        <Section icon={<Scissors size={18} className="text-gray-600" />} title="Cirugías previas">
-          <textarea placeholder="Ej: Apendicectomía 2019, cesárea 2021..." className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none min-h-[60px]" value={surgeries} onChange={e => setSurgeries(e.target.value)} />
+        <Section icon={<Scissors size={18} className="text-gray-300" />} title="Cirugías previas">
+          <textarea placeholder="Ej: Apendicectomía 2019, cesárea 2021..." className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-gray-600 focus:border-cyan-500 outline-none min-h-[60px]" value={surgeries} onChange={e => setSurgeries(e.target.value)} />
         </Section>
 
         {/* Fumador */}
@@ -448,7 +478,7 @@ export default function AnamnesisPublicView() {
             <RadioBtn label="Ex fumador" value="ex" selected={isSmoker} onSelect={setIsSmoker} />
           </div>
           {(isSmoker === 'si' || isSmoker === 'ex') && (
-            <input type="text" placeholder="Cuántos por día? (aprox)" className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none mt-2" value={smokerAmount} onChange={e => setSmokerAmount(e.target.value)} />
+            <input type="text" placeholder="Cuántos por día? (aprox)" className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-gray-600 focus:border-cyan-500 outline-none mt-2" value={smokerAmount} onChange={e => setSmokerAmount(e.target.value)} />
           )}
         </Section>
 
@@ -463,24 +493,24 @@ export default function AnamnesisPublicView() {
 
         {/* Experiencias negativas */}
         <Section icon={<Frown size={18} className="text-gray-500" />} title="Experiencias negativas en odontología">
-          <textarea placeholder="Contanos si tuviste alguna mala experiencia previa..." className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none min-h-[60px]" value={negativeExperiences} onChange={e => setNegativeExperiences(e.target.value)} />
+          <textarea placeholder="Contanos si tuviste alguna mala experiencia previa..." className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-gray-600 focus:border-cyan-500 outline-none min-h-[60px]" value={negativeExperiences} onChange={e => setNegativeExperiences(e.target.value)} />
         </Section>
 
         {/* Miedos dentales */}
         <Section icon={<Brain size={18} className="text-purple-500" />} title="Miedos dentales" subtitle="Seleccioná todos los que apliquen">
           <CheckboxGroup options={FEAR_OPTIONS} selected={fears} toggle={(v) => toggleCheck(fears, setFears, v)} />
-          <input type="text" placeholder="Otro miedo (especificar)" className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none" value={fearsOther} onChange={e => setFearsOther(e.target.value)} />
+          <input type="text" placeholder="Otro miedo (especificar)" className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-gray-600 focus:border-cyan-500 outline-none" value={fearsOther} onChange={e => setFearsOther(e.target.value)} />
         </Section>
 
         {/* Submit */}
         <button type="submit" disabled={submitting}
-          className="w-full py-3.5 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 active:bg-blue-800 transition-all shadow-lg disabled:opacity-50 flex items-center justify-center gap-2 text-base">
+          className="w-full py-3.5 bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-bold rounded-xl hover:from-cyan-400 hover:to-blue-500 active:scale-[0.98] transition-all shadow-lg shadow-cyan-500/20 disabled:opacity-50 flex items-center justify-center gap-2 text-base">
           {submitting ? <Loader2 className="animate-spin" size={20} /> : <CheckCircle2 size={20} />}
-          {submitting ? 'Guardando...' : 'Enviar ficha médica'}
+          {submitting ? 'Guardando...' : 'Enviar ficha medica'}
         </button>
 
-        <p className="text-center text-xs text-gray-400 pb-4">
-          Tus datos están protegidos y solo serán visibles por tu profesional de salud.
+        <p className="text-center text-xs text-gray-600 pb-4">
+          Tus datos estan protegidos y solo seran visibles por tu profesional de salud.
         </p>
       </form>
     </div>
@@ -490,10 +520,10 @@ export default function AnamnesisPublicView() {
 /* ── UI Components ── */
 function Section({ icon, title, subtitle, children }: { icon: React.ReactNode; title: string; subtitle?: string; children: React.ReactNode }) {
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 space-y-3">
+    <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-4 space-y-3">
       <div>
-        <h2 className="font-semibold text-gray-800 flex items-center gap-2">{icon} {title}</h2>
-        {subtitle && <p className="text-xs text-gray-400 mt-0.5 ml-7">{subtitle}</p>}
+        <h2 className="font-semibold text-white flex items-center gap-2">{icon} {title}</h2>
+        {subtitle && <p className="text-xs text-gray-500 mt-0.5 ml-7">{subtitle}</p>}
       </div>
       {children}
     </div>
@@ -505,8 +535,8 @@ function CheckboxGroup({ options, selected, toggle }: { options: string[]; selec
     <div className="grid grid-cols-2 gap-2">
       {options.map(opt => (
         <label key={opt} className={`flex items-center gap-2 p-2.5 rounded-xl border cursor-pointer transition-all touch-manipulation
-          ${selected.includes(opt) ? 'bg-blue-50 border-blue-300 text-blue-800' : 'bg-gray-50 border-gray-200 text-gray-700 hover:bg-gray-100'}`}>
-          <input type="checkbox" checked={selected.includes(opt)} onChange={() => toggle(opt)} className="w-4 h-4 rounded border-gray-300 text-blue-600" />
+          ${selected.includes(opt) ? 'bg-cyan-500/10 border-cyan-500/30 text-cyan-300' : 'bg-white/5 border-white/10 text-gray-300 hover:bg-white/10'}`}>
+          <input type="checkbox" checked={selected.includes(opt)} onChange={() => toggle(opt)} className="w-4 h-4 rounded border-gray-600 text-cyan-500 bg-transparent" />
           <span className="text-sm">{opt}</span>
         </label>
       ))}
@@ -519,7 +549,7 @@ function RadioBtn({ label, value, selected, onSelect }: { label: string; value: 
   return (
     <button type="button" onClick={() => onSelect(value)}
       className={`px-4 py-2 rounded-xl text-sm font-medium transition-all touch-manipulation border
-        ${isActive ? 'bg-blue-600 text-white border-blue-600' : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100'}`}>
+        ${isActive ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white border-cyan-500' : 'bg-white/5 text-gray-300 border-white/10 hover:bg-white/10'}`}>
       {label}
     </button>
   );
