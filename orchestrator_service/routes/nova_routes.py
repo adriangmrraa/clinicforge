@@ -357,10 +357,13 @@ async def _calculate_health_score(tenant_id: int, stats: Dict[str, Any]) -> int:
         score += 10
 
     # Google Calendar connected (5)
-    gcal = await db.pool.fetchval(
-        "SELECT COUNT(*) FROM google_oauth_tokens WHERE tenant_id = $1",
-        tenant_id,
-    ) or 0
+    try:
+        gcal = await db.pool.fetchval(
+            "SELECT COUNT(*) FROM google_oauth_tokens WHERE tenant_id = $1",
+            tenant_id,
+        ) or 0
+    except Exception:
+        gcal = 0
     if int(gcal) > 0:
         score += 5
 
