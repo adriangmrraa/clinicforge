@@ -3,6 +3,7 @@ Token Tracker - Sistema de tracking de tokens y costos OpenAI
 """
 
 import asyncio
+import os
 import logging
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
@@ -12,30 +13,34 @@ import json
 
 logger = logging.getLogger(__name__)
 
-# Precios por 1K tokens (USD) - Actualizado Marzo 2026
-# Fuente: https://openai.com/pricing
-OPENAI_PRICING = {
-    # --- GPT-5.4 Serie (flagship actual, Marzo 2026) ---
-    "gpt-5.4": {"input": Decimal("0.00250"), "output": Decimal("0.01500"), "context": 1000000, "description": "GPT-5.4 - Flagship, el mas inteligente"},
-    "gpt-5.4-pro": {"input": Decimal("0.00500"), "output": Decimal("0.03000"), "context": 1000000, "description": "GPT-5.4 Pro - Maximo razonamiento"},
-    "gpt-5.4-mini": {"input": Decimal("0.00025"), "output": Decimal("0.00200"), "context": 1000000, "description": "GPT-5.4 Mini - Rapido y barato (RECOMENDADO)"},
-    "gpt-5.4-nano": {"input": Decimal("0.00010"), "output": Decimal("0.00080"), "context": 500000, "description": "GPT-5.4 Nano - Ultra economico"},
-    # --- GPT-5.3 Serie ---
-    "gpt-5.3": {"input": Decimal("0.00200"), "output": Decimal("0.01200"), "context": 400000, "description": "GPT-5.3 - Balanceado"},
-    "gpt-5.3-codex": {"input": Decimal("0.00300"), "output": Decimal("0.01500"), "context": 400000, "description": "GPT-5.3 Codex - Coding especializado"},
-    # --- GPT-5.2 Serie (RETIRADOS de ChatGPT, pueden funcionar via API) ---
-    "gpt-5.2": {"input": Decimal("0.00150"), "output": Decimal("0.01000"), "context": 400000, "description": "GPT-5.2 - Puede no estar disponible"},
-    "gpt-5.2-pro": {"input": Decimal("0.00300"), "output": Decimal("0.01500"), "context": 400000, "description": "GPT-5.2 Pro"},
-    # --- GPT-5 Serie ---
-    "gpt-5": {"input": Decimal("0.00250"), "output": Decimal("0.01500"), "context": 400000, "description": "GPT-5 - Original"},
-    "gpt-5-mini": {"input": Decimal("0.00025"), "output": Decimal("0.00200"), "context": 400000, "description": "GPT-5 Mini"},
-    # --- GPT-4o Serie (legacy, aun funcional via API) ---
-    "gpt-4o-mini": {"input": Decimal("0.00015"), "output": Decimal("0.00060"), "context": 128000, "description": "GPT-4o Mini - Legacy, muy economico"},
-    "gpt-4o": {"input": Decimal("0.00250"), "output": Decimal("0.01000"), "context": 128000, "description": "GPT-4o - Legacy"},
-    # --- Realtime API (voice) ---
-    "gpt-4o-mini-realtime-preview": {"input": Decimal("0.00060"), "output": Decimal("0.00240"), "context": 128000, "description": "Realtime Mini - Voz bidireccional"},
-    "gpt-4o-realtime-preview": {"input": Decimal("0.00500"), "output": Decimal("0.02000"), "context": 128000, "description": "Realtime - Voz premium"},
+# Precios por 1M tokens (USD) - Actualizado Marzo 2026
+# Providers: openai, deepseek
+MODEL_PRICING = {
+    # ============ OPENAI ============
+    # --- GPT-5.4 Serie (flagship, Marzo 2026) ---
+    "gpt-5.4": {"provider": "openai", "input": Decimal("0.00250"), "output": Decimal("0.01500"), "context": 1000000, "type": "text", "description": "GPT-5.4 Flagship (1M ctx)"},
+    "gpt-5.4-pro": {"provider": "openai", "input": Decimal("0.00500"), "output": Decimal("0.03000"), "context": 1000000, "type": "text", "description": "GPT-5.4 Pro — Maximo razonamiento"},
+    "gpt-5.4-mini": {"provider": "openai", "input": Decimal("0.00025"), "output": Decimal("0.00200"), "context": 1000000, "type": "text", "description": "GPT-5.4 Mini — Rapido y barato (RECOMENDADO)"},
+    "gpt-5.4-nano": {"provider": "openai", "input": Decimal("0.00010"), "output": Decimal("0.00080"), "context": 500000, "type": "text", "description": "GPT-5.4 Nano — Ultra economico"},
+    # --- GPT-5.3 ---
+    "gpt-5.3": {"provider": "openai", "input": Decimal("0.00200"), "output": Decimal("0.01200"), "context": 400000, "type": "text", "description": "GPT-5.3 Balanceado"},
+    # --- GPT-5 ---
+    "gpt-5": {"provider": "openai", "input": Decimal("0.00250"), "output": Decimal("0.01500"), "context": 400000, "type": "text", "description": "GPT-5 Original"},
+    "gpt-5-mini": {"provider": "openai", "input": Decimal("0.00025"), "output": Decimal("0.00200"), "context": 400000, "type": "text", "description": "GPT-5 Mini"},
+    # --- GPT-4o (legacy) ---
+    "gpt-4o-mini": {"provider": "openai", "input": Decimal("0.00015"), "output": Decimal("0.00060"), "context": 128000, "type": "text", "description": "GPT-4o Mini — Legacy economico"},
+    "gpt-4o": {"provider": "openai", "input": Decimal("0.00250"), "output": Decimal("0.01000"), "context": 128000, "type": "text", "description": "GPT-4o Legacy"},
+    # --- Realtime (voice) ---
+    "gpt-4o-mini-realtime-preview": {"provider": "openai", "input": Decimal("0.00060"), "output": Decimal("0.00240"), "context": 128000, "type": "realtime", "description": "Realtime Mini — Voz"},
+    "gpt-4o-realtime-preview": {"provider": "openai", "input": Decimal("0.00500"), "output": Decimal("0.02000"), "context": 128000, "type": "realtime", "description": "Realtime Premium — Voz"},
+
+    # ============ DEEPSEEK ============
+    "deepseek-chat": {"provider": "deepseek", "input": Decimal("0.00028"), "output": Decimal("0.00042"), "context": 128000, "type": "text", "description": "DeepSeek V4 Chat — Muy barato, excelente"},
+    "deepseek-reasoner": {"provider": "deepseek", "input": Decimal("0.00028"), "output": Decimal("0.00042"), "context": 128000, "type": "text", "description": "DeepSeek V4 Reasoner — Razonamiento profundo"},
 }
+
+# Backward compat alias
+OPENAI_PRICING = MODEL_PRICING
 
 
 async def track_service_usage(pool, tenant_id: int, model: str, input_tokens: int, output_tokens: int, source: str = "unknown", phone: str = "system"):
@@ -124,10 +129,10 @@ class TokenTracker:
     
     def calculate_cost(self, model: str, input_tokens: int, output_tokens: int) -> Decimal:
         """Calcula costo en USD basado en tokens y modelo"""
-        if model not in OPENAI_PRICING:
-            model = "gpt-4o-mini"  # Fallback a nuestro modelo por defecto
-        
-        pricing = OPENAI_PRICING[model]
+        if model not in MODEL_PRICING:
+            model = "gpt-4o-mini"  # Fallback
+
+        pricing = MODEL_PRICING[model]
         
         # Convertir tokens a miles y calcular costo
         input_cost = (Decimal(input_tokens) / 1000) * pricing["input"]
@@ -343,20 +348,29 @@ class TokenTracker:
             self.logger.error(f"❌ Error obteniendo desglose por servicio: {e}")
             return []
 
-    async def get_available_models(self) -> List[Dict]:
-        """Obtiene lista completa de modelos OpenAI para selector en dashboard (fuente de verdad: DB)"""
+    async def get_available_models(self, model_type: str = None) -> List[Dict]:
+        """Obtiene lista completa de modelos (OpenAI + DeepSeek) para selector en dashboard."""
         models = []
-        for model_id, info in OPENAI_PRICING.items():
+        for model_id, info in MODEL_PRICING.items():
+            if model_type and info.get("type") != model_type:
+                continue
+            provider = info.get("provider", "openai")
+            # Skip DeepSeek models if no API key configured
+            if provider == "deepseek" and not os.getenv("DEEPSEEK_API_KEY"):
+                continue
+            prefix = "🟢 " if provider == "deepseek" else ""
             models.append({
                 "id": model_id,
-                "description": info["description"],
+                "provider": provider,
+                "description": f"{prefix}{info['description']}",
                 "context_window": info["context"],
+                "type": info.get("type", "text"),
                 "input_price_per_1k": float(info["input"]),
                 "output_price_per_1k": float(info["output"]),
                 "input_price_per_1m": float(info["input"] * 1000),
                 "output_price_per_1m": float(info["output"] * 1000)
             })
-        
+
         return sorted(models, key=lambda x: x["input_price_per_1k"])
 
 # Instancia global del tracker

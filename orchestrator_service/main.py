@@ -3183,11 +3183,31 @@ Usá solo las tools proporcionadas. Siempre terminá con una pregunta o frase qu
 # Vault (spec §5.2): soporte api_key por tenant vía get_agent_executable_for_tenant(tenant_id)
 # Modelo: fuente de verdad en system_config.OPENAI_MODEL (configurable en dashboard tokens/métricas)
 DEFAULT_OPENAI_MODEL = "gpt-5.4-mini"
+DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
+DEEPSEEK_BASE_URL = "https://api.deepseek.com"
+
+# DeepSeek models use the same OpenAI-compatible API
+DEEPSEEK_MODELS = {"deepseek-chat", "deepseek-reasoner"}
+
+
+def _resolve_provider(model: str):
+    """Returns (api_key, base_url) based on model name."""
+    if model in DEEPSEEK_MODELS:
+        return DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL
+    return OPENAI_API_KEY, None  # None = default OpenAI base URL
+
 
 def get_agent_executable(openai_api_key: Optional[str] = None, model: Optional[str] = None):
     key = (openai_api_key or "").strip() or OPENAI_API_KEY
     model_str = (model or "").strip() or DEFAULT_OPENAI_MODEL
-    llm = ChatOpenAI(model=model_str, temperature=0, openai_api_key=key)
+
+    # Auto-detect provider from model name
+    if model_str in DEEPSEEK_MODELS:
+        key = DEEPSEEK_API_KEY or key
+        llm = ChatOpenAI(model=model_str, temperature=0, openai_api_key=key, openai_api_base=DEEPSEEK_BASE_URL)
+    else:
+        llm = ChatOpenAI(model=model_str, temperature=0, openai_api_key=key)
+
     prompt = ChatPromptTemplate.from_messages([
         ("system", "{system_prompt}"),
         MessagesPlaceholder(variable_name="chat_history"),
@@ -3199,7 +3219,7 @@ def get_agent_executable(openai_api_key: Optional[str] = None, model: Optional[s
 
 
 async def get_agent_executable_for_tenant(tenant_id: int):
-    """Devuelve un executor del agente usando OPENAI_API_KEY del tenant (Vault) y OPENAI_MODEL de system_config (dashboard)."""
+    """Devuelve un executor del agente. Auto-detecta provider (OpenAI o DeepSeek) segun el modelo seleccionado."""
     from core.credentials import get_tenant_credential
     key = await get_tenant_credential(tenant_id, "OPENAI_API_KEY")
     if not key:
@@ -3214,6 +3234,11 @@ async def get_agent_executable_for_tenant(tenant_id: int):
             model = str(row["value"]).strip()
     except Exception:
         pass
+
+    # If DeepSeek model, override key
+    if model in DEEPSEEK_MODELS:
+        key = DEEPSEEK_API_KEY
+
     return get_agent_executable(openai_api_key=key, model=model)
 
 
