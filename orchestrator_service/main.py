@@ -1648,17 +1648,18 @@ async def triage_urgency(symptoms: str):
             """, urgency_level, symptoms, patient_row['id'])
             
             # Notificar al dashboard el cambio de prioridad
-            # Obtenemos el nombre para el Toast
-            name = f"{patient_row.get('first_name', '')} {patient_row.get('last_name', '') or ''}".strip() or phone
-
-            await sio.emit("PATIENT_UPDATED", to_json_safe({
-                "phone_number": phone,
-                "patient_name": name,
-                "urgency_level": urgency_level,
-                "urgency_reason": symptoms,
-                "ad_intent_match": ad_intent_match,
-                "tenant_id": tenant_id
-            }))
+            try:
+                name = f"{patient_row.get('first_name', '')} {patient_row.get('last_name', '') or ''}".strip() or phone
+                await sio.emit("PATIENT_UPDATED", to_json_safe({
+                    "phone_number": phone,
+                    "patient_name": name,
+                    "urgency_level": urgency_level,
+                    "urgency_reason": symptoms,
+                    "ad_intent_match": ad_intent_match,
+                    "tenant_id": tenant_id
+                }))
+            except Exception:
+                pass  # Socket notification is non-critical
         except Exception as e:
             logger.error(f"Error persisting triage: {e}")
 
@@ -2037,8 +2038,11 @@ async def derivhumano(reason: str):
             WHERE tenant_id = $2 AND phone_number = $3
         """, override_until, tenant_id, phone)
         logger.info(f"👤 Derivación humana solicitada para {phone} (tenant={tenant_id}): {reason}")
-        from main import sio
-        await sio.emit("HUMAN_HANDOFF", to_json_safe({"phone_number": phone, "tenant_id": tenant_id, "reason": reason}))
+        try:
+            from main import sio
+            await sio.emit("HUMAN_HANDOFF", to_json_safe({"phone_number": phone, "tenant_id": tenant_id, "reason": reason}))
+        except Exception:
+            pass  # Socket notification is non-critical
 
         # 1. Full patient data + PSIDs for social links
         patient = await db.pool.fetchrow("""
@@ -2779,6 +2783,15 @@ REGLAS DE USO DEL CONTEXTO DEL PACIENTE:
 • Si tiene "Primera visita" → ser más explicativo y guiarlo con más detalle.
 • Si tiene "HIJOS/MENORES" → recordar que puede agendar para sus hijos.
 • NUNCA ignores el contexto del paciente. Es información REAL de la base de datos.
+
+REGLA SUPREMA DE HERRAMIENTAS (TOOLS):
+• Cuando una herramienta (tool) retorna un resultado, ESE ES EL RESULTADO REAL. No lo contradigas, no lo reinterpretes, no inventes otro resultado.
+• Si una tool retorna "✅ ..." o "Entendido..." → la acción FUE EXITOSA. Confirmá el éxito al paciente.
+• Si una tool retorna "⚠️ ..." o "❌ ..." → la acción FALLÓ. Informá el error al paciente.
+• NUNCA digas "hubo un error" si la tool retornó éxito. NUNCA digas "se completó" si la tool retornó error.
+• NUNCA inventes respuestas sobre acciones que NO ejecutaste con una tool. Si no llamaste a la tool, no digas que la acción se realizó ni que falló.
+• Si no estás seguro del resultado, volvé a llamar a la tool para verificar (ej: list_my_appointments después de book_appointment).
+• PROHIBIDO decir "comunicate con la clínica" si la tool funcionó. Esa frase SOLO se usa cuando la tool explícitamente falló y no hay alternativa.
 """
 
     # Secciones dinámicas desde DB
