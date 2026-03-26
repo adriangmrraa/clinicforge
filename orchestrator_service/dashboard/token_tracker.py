@@ -388,32 +388,22 @@ class TokenTracker:
             except Exception as e:
                 logger.warning(f"Failed to fetch OpenAI models: {e}")
 
-        # 2. Fetch from DeepSeek GET /models
+        # 2. DeepSeek models — add from MODEL_PRICING if API key exists
         deepseek_key = os.getenv("DEEPSEEK_API_KEY", "")
-        if deepseek_key:
-            try:
-                import httpx
-                async with httpx.AsyncClient(timeout=10) as client:
-                    resp = await client.get("https://api.deepseek.com/models", headers={"Authorization": f"Bearer {deepseek_key}"})
-                    if resp.status_code == 200:
-                        data = resp.json().get("data", [])
-                        for m in data:
-                            mid = m.get("id", "")
-                            if model_type == "realtime":
-                                continue  # DeepSeek has no realtime models
-
-                            known = MODEL_PRICING.get(mid, {})
-                            models.append({
-                                "id": mid,
-                                "provider": "deepseek",
-                                "description": known.get("description", f"DeepSeek {mid}"),
-                                "context_window": known.get("context", 128000),
-                                "type": "text",
-                                "input_price_per_1k": float(known.get("input", Decimal("0.00028"))),
-                                "output_price_per_1k": float(known.get("output", Decimal("0.00042"))),
-                            })
-            except Exception as e:
-                logger.warning(f"Failed to fetch DeepSeek models: {e}")
+        logger.info(f"🔍 DeepSeek key configured: {bool(deepseek_key)} (len={len(deepseek_key)})")
+        if deepseek_key and model_type != "realtime":
+            for mid, info in MODEL_PRICING.items():
+                if info.get("provider") == "deepseek":
+                    models.append({
+                        "id": mid,
+                        "provider": "deepseek",
+                        "description": info["description"],
+                        "context_window": info["context"],
+                        "type": "text",
+                        "input_price_per_1k": float(info["input"]),
+                        "output_price_per_1k": float(info["output"]),
+                    })
+            logger.info(f"✅ DeepSeek models added: {[m['id'] for m in models if m['provider'] == 'deepseek']}")
 
         # 3. Fallback: if API calls failed, use hardcoded list
         if not models:
