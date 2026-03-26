@@ -571,6 +571,25 @@ async def process_buffer_task(
             )
             logger.info(f"Injected Meta Direct phone-request rule for {channel_type}")
 
+        # INYECCIÓN FORZADA: Si el paciente ya existe, meter sus datos en el input
+        # para que sea IMPOSIBLE que el agente los ignore y los pida de nuevo
+        if patient_row and (patient_row.get("first_name") or patient_row.get("last_name")):
+            p_fn = patient_row.get("first_name") or ""
+            p_ln = patient_row.get("last_name") or ""
+            p_dn = patient_row.get("dni") or ""
+            p_em = patient_row.get("email") or ""
+            forced_context = (
+                f"[DATOS DEL PACIENTE - YA REGISTRADO EN EL SISTEMA - NO PEDIR ESTOS DATOS]\n"
+                f"Nombre: {p_fn} {p_ln}\n"
+            )
+            if p_dn:
+                forced_context += f"DNI: {p_dn}\n"
+            if p_em:
+                forced_context += f"Email: {p_em}\n"
+            forced_context += "INSTRUCCIÓN: Este paciente YA ESTÁ en la base de datos. NO le pidas nombre, apellido ni DNI. Usá estos datos directamente para agendar.\n"
+            special_context.insert(0, forced_context)
+            logger.info(f"💉 Forced patient context injected: {p_fn} {p_ln} (DNI: {p_dn})")
+
         # Aplicar todos los contextos especiales
         if special_context:
             context_block = "\n\n".join(special_context)
