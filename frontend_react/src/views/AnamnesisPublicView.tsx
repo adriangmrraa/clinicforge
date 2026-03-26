@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
-import { HeartPulse, Pill, AlertTriangle, Scissors, Cigarette, Baby, Frown, Brain, Loader2, CheckCircle2, XCircle, Lock, Mic } from 'lucide-react';
-import api from '../api/axios';
+import { HeartPulse, Pill, AlertTriangle, Scissors, Cigarette, Baby, Frown, Brain, Loader2, CheckCircle2, XCircle, Lock, Mic, MicOff, Volume2 } from 'lucide-react';
+import api, { BACKEND_URL } from '../api/axios';
 
 /* ── Checklist Options (dental standard) ── */
 const DISEASE_OPTIONS = [
@@ -17,6 +17,177 @@ const FEAR_OPTIONS = [
   'Agujas', 'Dolor', 'Ruido del torno', 'Asfixia/Ahogo',
   'Sangre', 'Anestesia', 'Estar en el sillón dental',
 ];
+
+/* ── Nova Voice Indicator for Anamnesis ── */
+type VoiceState = 'idle' | 'connecting' | 'listening' | 'processing' | 'speaking';
+
+function NovaVoiceBar({ tenantId, token, patientName }: { tenantId: string; token: string; patientName: string }) {
+  const [voiceState, setVoiceState] = useState<VoiceState>('idle');
+  const wsRef = useRef<WebSocket | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const captureCtxRef = useRef<AudioContext | null>(null);
+  const processorRef = useRef<ScriptProcessorNode | null>(null);
+  const playbackCtxRef = useRef<AudioContext | null>(null);
+  const nextPlayTimeRef = useRef(0);
+  const micPausedRef = useRef(false);
+  const novaPlayingRef = useRef(false);
+
+  const stopVoice = useCallback(() => {
+    if (wsRef.current) { try { wsRef.current.close(); } catch {} wsRef.current = null; }
+    if (streamRef.current) { streamRef.current.getTracks().forEach(t => t.stop()); streamRef.current = null; }
+    if (processorRef.current) { processorRef.current.disconnect(); processorRef.current = null; }
+    if (captureCtxRef.current?.state !== 'closed') { try { captureCtxRef.current?.close(); } catch {} }
+    captureCtxRef.current = null;
+    if (playbackCtxRef.current?.state !== 'closed') { try { playbackCtxRef.current?.close(); } catch {} }
+    playbackCtxRef.current = null;
+    nextPlayTimeRef.current = 0;
+    micPausedRef.current = false;
+    novaPlayingRef.current = false;
+    setVoiceState('idle');
+  }, []);
+
+  const playAudio = useCallback((arrayBuffer: ArrayBuffer) => {
+    if (!playbackCtxRef.current || playbackCtxRef.current.state === 'closed') {
+      playbackCtxRef.current = new AudioContext({ sampleRate: 24000 });
+      nextPlayTimeRef.current = 0;
+    }
+    const ctx = playbackCtxRef.current;
+    const pcm16 = new Int16Array(arrayBuffer);
+    const float32 = new Float32Array(pcm16.length);
+    for (let i = 0; i < pcm16.length; i++) float32[i] = pcm16[i] / 32768;
+    const buffer = ctx.createBuffer(1, float32.length, 24000);
+    buffer.getChannelData(0).set(float32);
+    const src = ctx.createBufferSource();
+    src.buffer = buffer;
+    src.connect(ctx.destination);
+    const startTime = Math.max(ctx.currentTime, nextPlayTimeRef.current);
+    src.start(startTime);
+    nextPlayTimeRef.current = startTime + buffer.duration;
+  }, []);
+
+  const startVoice = useCallback(async () => {
+    try {
+      setVoiceState('connecting');
+      // 1. Create session
+      const sessionResp = await api.post('/admin/nova/session', {
+        page: 'anamnesis',
+        context_summary: `Paciente ${patientName} completando ficha médica via voz. Guialo pregunta por pregunta por el formulario de anamnesis.`,
+      });
+      const sessionId = sessionResp.data.session_id;
+
+      // 2. Get mic
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+
+      // 3. Connect WS
+      const wsUrl = `${BACKEND_URL.replace('http', 'ws')}/public/nova/voice?tenant_id=${tenantId}&token=${sessionId}&page=anamnesis`;
+      const ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        setVoiceState('listening');
+        // Start audio capture
+        const captureCtx = new AudioContext();
+        captureCtxRef.current = captureCtx;
+        const source = captureCtx.createMediaStreamSource(stream);
+        const processor = captureCtx.createScriptProcessor(4096, 1, 1);
+        processorRef.current = processor;
+        const nativeRate = captureCtx.sampleRate;
+
+        processor.onaudioprocess = (e) => {
+          if (micPausedRef.current || novaPlayingRef.current) return;
+          if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+          const input = e.inputBuffer.getChannelData(0);
+          const ratio = nativeRate / 24000;
+          const newLen = Math.floor(input.length / ratio);
+          const resampled = new Float32Array(newLen);
+          for (let i = 0; i < newLen; i++) resampled[i] = input[Math.floor(i * ratio)];
+          const pcm16 = new Int16Array(resampled.length);
+          for (let i = 0; i < resampled.length; i++) pcm16[i] = Math.max(-32768, Math.min(32767, resampled[i] * 32768));
+          ws.send(pcm16.buffer);
+        };
+        source.connect(processor);
+        processor.connect(captureCtx.destination);
+      };
+
+      ws.onmessage = (evt) => {
+        if (evt.data instanceof ArrayBuffer || evt.data instanceof Blob) {
+          if (!novaPlayingRef.current) {
+            novaPlayingRef.current = true;
+            micPausedRef.current = true;
+            setVoiceState('speaking');
+          }
+          if (evt.data instanceof Blob) {
+            evt.data.arrayBuffer().then(buf => playAudio(buf));
+          } else {
+            playAudio(evt.data);
+          }
+          return;
+        }
+        try {
+          const msg = JSON.parse(evt.data);
+          if (msg.type === 'nova_audio_done') {
+            const ctx = playbackCtxRef.current;
+            const remaining = ctx ? Math.max(0, (nextPlayTimeRef.current - ctx.currentTime) * 1000) : 0;
+            setTimeout(() => {
+              novaPlayingRef.current = false;
+              micPausedRef.current = false;
+              setVoiceState('listening');
+            }, remaining + 300);
+          } else if (msg.type === 'user_speech_started') {
+            novaPlayingRef.current = false;
+            micPausedRef.current = false;
+            if (playbackCtxRef.current?.state !== 'closed') { try { playbackCtxRef.current?.close(); } catch {} }
+            playbackCtxRef.current = null;
+            nextPlayTimeRef.current = 0;
+            setVoiceState('processing');
+          } else if (msg.type === 'response_done') {
+            setTimeout(() => {
+              novaPlayingRef.current = false;
+              micPausedRef.current = false;
+              setVoiceState('listening');
+            }, 500);
+          }
+        } catch {}
+      };
+
+      ws.onclose = () => stopVoice();
+      ws.onerror = () => stopVoice();
+    } catch {
+      stopVoice();
+    }
+  }, [tenantId, patientName, playAudio, stopVoice]);
+
+  const handleToggle = () => {
+    if (voiceState === 'idle') startVoice();
+    else stopVoice();
+  };
+
+  return (
+    <button
+      onClick={handleToggle}
+      className={`w-full py-3 rounded-xl text-sm font-medium flex items-center justify-center gap-2.5 transition-all active:scale-[0.98] shadow-sm ${
+        voiceState === 'idle'
+          ? 'bg-gradient-to-r from-violet-600 to-indigo-600 text-white hover:from-violet-700 hover:to-indigo-700'
+          : voiceState === 'listening'
+          ? 'bg-green-600 text-white'
+          : voiceState === 'processing'
+          ? 'bg-amber-600 text-white'
+          : voiceState === 'speaking'
+          ? 'bg-violet-600 text-white'
+          : 'bg-gray-600 text-white'
+      }`}
+    >
+      {voiceState === 'idle' && <><Mic size={16} /> Completar con voz</>}
+      {voiceState === 'connecting' && <><Loader2 size={16} className="animate-spin" /> Conectando...</>}
+      {voiceState === 'listening' && <><span className="relative flex h-3 w-3"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span><span className="relative inline-flex rounded-full h-3 w-3 bg-white"></span></span> Escuchando...</>}
+      {voiceState === 'processing' && <><Loader2 size={16} className="animate-spin" /> Procesando...</>}
+      {voiceState === 'speaking' && <><Volume2 size={16} className="animate-pulse" /> Nova hablando...</>}
+      {voiceState !== 'idle' && <span className="text-xs opacity-75 ml-1">(tocar para detener)</span>}
+    </button>
+  );
+}
+
 
 export default function AnamnesisPublicView() {
   const { tenantId, token } = useParams<{ tenantId: string; token: string }>();
@@ -238,15 +409,9 @@ export default function AnamnesisPublicView() {
         </div>
       </div>
 
-      {/* Nova Voice Button */}
+      {/* Nova Voice Bar */}
       <div className="max-w-lg mx-auto px-4 pt-4">
-        <button
-          onClick={() => {/* TODO: activate Nova voice for guided anamnesis */}}
-          className="w-full py-2.5 bg-gradient-to-r from-violet-600 to-indigo-600 text-white rounded-xl text-sm font-medium flex items-center justify-center gap-2 hover:from-violet-700 hover:to-indigo-700 active:scale-[0.98] transition-all shadow-sm"
-        >
-          <Mic size={16} />
-          Completar con voz (asistente Nova)
-        </button>
+        <NovaVoiceBar tenantId={tenantId || ''} token={token || ''} patientName={patientName} />
       </div>
 
       <form onSubmit={handleSubmit} className="max-w-lg mx-auto px-4 py-6 space-y-6">
