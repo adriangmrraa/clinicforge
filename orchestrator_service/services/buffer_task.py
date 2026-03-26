@@ -102,6 +102,13 @@ async def process_buffer_task(
         )
         faqs = [dict(r) for r in faq_rows] if faq_rows else []
         
+        # --- PATIENT MEMORY SYSTEM: Ensure table exists (first call only) ---
+        try:
+            from services.patient_memory import ensure_memory_table, format_memories_for_prompt, extract_and_store_memories
+            await ensure_memory_table(pool)
+        except Exception as mem_init_err:
+            logger.warning(f"⚠️ Patient memory init (non-fatal): {mem_init_err}")
+
         # Spec 24 / Spec 06 / v7.6: Patient Identity & Appointment Context
         # Fetch patient data (normalized phone for consistency with tools)
         phone_digits = normalize_phone_digits(external_user_id)
@@ -282,6 +289,16 @@ async def process_buffer_task(
                         if hasattr(mdt, 'astimezone'): mdt = mdt.astimezone(ARG_TZ)
                         identity_lines.append(f"    Próximo turno: {minor_apt['treatment_name'] or 'Consulta'} el {dias_semana[mdt.weekday()]} {mdt.strftime('%d/%m')} a las {mdt.strftime('%H:%M')}")
 
+            # --- PATIENT MEMORY: Retrieve persistent memories ---
+            try:
+                memory_text = await format_memories_for_prompt(pool, external_user_id, tenant_id)
+                if memory_text:
+                    identity_lines.append("")
+                    identity_lines.append(memory_text)
+                    logger.info(f"🧠 Patient memories injected for {external_user_id}")
+            except Exception as mem_err:
+                logger.warning(f"⚠️ Memory retrieval (non-fatal): {mem_err}")
+
             if identity_lines:
                 patient_context = "\n".join(identity_lines)
 
@@ -409,14 +426,35 @@ async def process_buffer_task(
             if last_db_msg.strip() == first_buffer_msg.strip():
                 db_history_dicts.pop()
 
-        for msg in db_history_dicts:
-            role = msg['role']
-            content = msg['content']
-            
-            if role == 'user':
-                chat_history.append(HumanMessage(content=content))
-            else:
-                chat_history.append(AIMessage(content=content))
+        # CONTEXT COMPRESSION: Keep last 6 messages full, compress older ones
+        if len(db_history_dicts) > 6:
+            # Compress older messages into a summary line each (save ~60% tokens)
+            old_msgs = db_history_dicts[:-6]
+            recent_msgs = db_history_dicts[-6:]
+            for msg in old_msgs:
+                role = msg['role']
+                content = msg['content']
+                # Truncate old messages to 80 chars max
+                truncated = content[:80] + "..." if len(content) > 80 else content
+                if role == 'user':
+                    chat_history.append(HumanMessage(content=truncated))
+                else:
+                    chat_history.append(AIMessage(content=truncated))
+            for msg in recent_msgs:
+                role = msg['role']
+                content = msg['content']
+                if role == 'user':
+                    chat_history.append(HumanMessage(content=content))
+                else:
+                    chat_history.append(AIMessage(content=content))
+        else:
+            for msg in db_history_dicts:
+                role = msg['role']
+                content = msg['content']
+                if role == 'user':
+                    chat_history.append(HumanMessage(content=content))
+                else:
+                    chat_history.append(AIMessage(content=content))
 
         # Append buffered messages as ONE block
         user_input = "\n".join(messages)
@@ -679,6 +717,19 @@ async def process_buffer_task(
                 else:
                     logger.exception("process_buffer_task_agent_error_final", exc_info=e)
                     response_text = "Disculpas, estoy experimentando intermitencias técnicas. Consultame de nuevo en unos minutos."
+
+        # --- PATIENT MEMORY: Extract and store new memories from this conversation ---
+        if response_text and patient_row:
+            try:
+                import asyncio as _mem_asyncio
+                _mem_asyncio.create_task(extract_and_store_memories(
+                    pool, external_user_id, tenant_id,
+                    user_input, response_text,
+                    patient_name=f"{patient_row.get('first_name', '')} {patient_row.get('last_name', '')}".strip()
+                ))
+                logger.info(f"🧠 Memory extraction queued for {external_user_id}")
+            except Exception as mem_store_err:
+                logger.warning(f"⚠️ Memory extraction (non-fatal): {mem_store_err}")
 
         # --- Token Tracking (dual: callback or estimate) ---
         if response_text and response_text != "Disculpas, estoy experimentando intermitencias técnicas. Consultame de nuevo en unos minutos.":
