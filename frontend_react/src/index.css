@@ -278,3 +278,19 @@ body {
 .toast-info {
   @apply bg-blue-50 border-blue-500 text-blue-800;
 }
+
+/* ============================================
+   MOBILE SAFE AREA HELPERS
+   ============================================ */
+.safe-top {
+  padding-top: max(0.75rem, env(safe-area-inset-top));
+}
+.safe-bottom {
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+}
+
+/* Prevent iOS rubber-band overscroll from bleeding */
+.overscroll-contain {
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
