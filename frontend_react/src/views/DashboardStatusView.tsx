@@ -79,15 +79,15 @@ const StatCard = ({
   color: string;
   subtitle?: string;
 }) => (
-  <div className="bg-white/80 backdrop-blur-md border border-white/20 rounded-2xl p-6 shadow-sm hover:shadow-md transition-all duration-300">
-    <div className="flex justify-between items-start mb-3">
-      <div className={`p-3 rounded-xl ${color} bg-opacity-10`}>
-        <Icon className={`w-6 h-6 ${color.replace('bg-', 'text-')}`} />
+  <div className="bg-white/80 backdrop-blur-md border border-white/20 rounded-2xl p-3 sm:p-5 shadow-sm hover:shadow-md transition-all duration-300">
+    <div className="flex justify-between items-start mb-2">
+      <div className={`p-2 sm:p-3 rounded-xl ${color} bg-opacity-10`}>
+        <Icon className={`w-4 h-4 sm:w-6 sm:h-6 ${color.replace('bg-', 'text-')}`} />
       </div>
     </div>
-    <p className="text-slate-500 text-sm font-medium">{title}</p>
-    <h3 className="text-2xl font-bold text-slate-800 mt-1">{value}</h3>
-    {subtitle && <p className="text-xs text-slate-400 mt-1">{subtitle}</p>}
+    <p className="text-slate-500 text-[11px] sm:text-sm font-medium leading-tight">{title}</p>
+    <h3 className="text-lg sm:text-2xl font-bold text-slate-800 mt-0.5">{value}</h3>
+    {subtitle && <p className="text-[10px] sm:text-xs text-slate-400 mt-0.5">{subtitle}</p>}
   </div>
 );
 
@@ -265,7 +265,7 @@ export default function DashboardStatusView() {
         {data && !error && (
           <div className="space-y-6">
             {/* KPI Row */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
               <StatCard
                 title="Costo total (período)"
                 value={`$${(tokenMetrics?.totals?.total_cost_usd ?? 0).toFixed(2)}`}
@@ -350,7 +350,7 @@ export default function DashboardStatusView() {
                 Configuración de modelos por acción
               </h2>
               <p className="text-sm text-slate-500 mb-5">Seleccioná qué modelo usar para cada funcionalidad. Los cambios se aplican inmediatamente.</p>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                 {MODEL_ACTIONS.map((action) => {
                   const ActionIcon = action.icon;
                   const isVoice = VOICE_KEYS.has(action.key);

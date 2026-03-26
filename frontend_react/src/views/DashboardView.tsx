@@ -50,19 +50,19 @@ interface KPICardProps {
 }
 
 const KPICard = ({ title, value, icon: Icon, color, trend, hint }: KPICardProps) => (
-  <div className="bg-white/80 backdrop-blur-md border border-white/20 rounded-2xl p-6 shadow-sm hover:shadow-md transition-all duration-300 group" title={hint}>
-    <div className="flex justify-between items-start mb-4">
-      <div className={`p-3 rounded-xl ${color} bg-opacity-10 group-hover:scale-110 transition-transform`}>
-        <Icon className={`w-6 h-6 ${color.replace('bg-', 'text-')}`} />
+  <div className="bg-white/80 backdrop-blur-md border border-white/20 rounded-2xl p-3 sm:p-5 shadow-sm hover:shadow-md transition-all duration-300 group" title={hint}>
+    <div className="flex justify-between items-start mb-2 sm:mb-3">
+      <div className={`p-2 sm:p-3 rounded-xl ${color} bg-opacity-10 group-hover:scale-110 transition-transform`}>
+        <Icon className={`w-4 h-4 sm:w-6 sm:h-6 ${color.replace('bg-', 'text-')}`} />
       </div>
       {trend && (
-        <span className="flex items-center gap-1 text-xs font-medium text-green-600 bg-green-50 px-2 py-1 rounded-full">
-          <TrendingUp size={12} /> {trend}
+        <span className="flex items-center gap-0.5 text-[10px] sm:text-xs font-medium text-green-600 bg-green-50 px-1.5 py-0.5 sm:px-2 sm:py-1 rounded-full">
+          <TrendingUp size={10} /> {trend}
         </span>
       )}
     </div>
-    <p className="text-gray-500 text-sm font-medium">{title}</p>
-    <h3 className="text-2xl font-bold text-gray-800 mt-1">{value}</h3>
+    <p className="text-gray-500 text-[11px] sm:text-sm font-medium leading-tight">{title}</p>
+    <h3 className="text-lg sm:text-2xl font-bold text-gray-800 mt-0.5">{value}</h3>
   </div>
 );
 
@@ -222,7 +222,7 @@ export default function DashboardView() {
       <main className="flex-1 overflow-y-auto p-4 lg:p-6 space-y-6 scroll-smooth">
 
         {/* TOP ROW: KPI CARDS */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           <KPICard
             title={t('dashboard.conversations')}
             value={stats?.ia_conversations?.toLocaleString() || '0'}
