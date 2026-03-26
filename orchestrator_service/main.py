@@ -838,17 +838,19 @@ async def check_availability(date_query: str, professional_name: Optional[str] =
         elif day_idx == 6:
             return f"Lo siento, el {date_query} es domingo y la clínica está cerrada. Atendemos Lunes a Sábados."
 
-        # 0. B) Obtener duración del tratamiento (solo los cargados en Tratamientos)
+        # 0. B) Obtener duración y precio del tratamiento
         duration = 30  # Default cuando no se especifica tratamiento
+        avail_price = None
         if treatment_name:
             t_data = await db.pool.fetchrow("""
-                SELECT id, default_duration_minutes FROM treatment_types
+                SELECT id, default_duration_minutes, base_price, name FROM treatment_types
                 WHERE tenant_id = $1 AND (name ILIKE $2 OR code ILIKE $2) AND is_active = true AND is_available_for_booking = true
                 LIMIT 1
             """, tenant_id, f"%{treatment_name}%")
             if not t_data:
                 return "❌ Ese tratamiento no está en la lista de servicios de esta clínica. Los horarios solo se pueden consultar para tratamientos que devuelve 'list_services'. Llamá a list_services y usá solo uno de esos nombres para consultar disponibilidad."
             duration = t_data['default_duration_minutes']
+            avail_price = float(t_data['base_price']) if t_data.get('base_price') and float(t_data['base_price']) > 0 else None
             # Filter professionals by treatment assignment (backward compatible: if none assigned, all can do it)
             if not clean_name:
                 assigned_ids = await db.pool.fetch(
@@ -1072,23 +1074,29 @@ async def check_availability(date_query: str, professional_name: Optional[str] =
             if professional_name:
                 lines.append(f"\nConsultando con Dr/a. {professional_name}.")
 
+            # Price info
+            if avail_price:
+                lines.append(f"\n💰 Valor: ${avail_price:,.0f} ({duration} min)")
+
             # Sede info grouped at the end (only once if all same)
             sedes = [opt['sede'] for opt in options if opt.get('sede')]
-            unique_sedes = list(dict.fromkeys(sedes))  # preserve order, deduplicate
+            unique_sedes = list(dict.fromkeys(sedes))
             if unique_sedes:
                 if len(unique_sedes) == 1:
-                    lines.append(f"\n📍 {unique_sedes[0]}")
+                    lines.append(f"📍 {unique_sedes[0]}")
                 else:
-                    # Multi-sede: show each sede with its corresponding options
                     for sede in unique_sedes:
                         lines.append(f"📍 {sede}")
 
             resp = "\n".join(lines)
-            logger.info(f"📅 check_availability OK options={len(options)} total_today={total_today} for {date_query}")
+            logger.info(f"📅 check_availability OK options={len(options)} total_today={total_today} price={avail_price} for {date_query}")
             return resp
         else:
             logger.info(f"📅 check_availability no slots for {date_query} (duration={duration} min)")
-            return f"No encontré huecos libres de {duration} min para {date_query}. ¿Probamos otro día o momento?"
+            return (
+                f"No encontré huecos libres de {duration} min para {date_query}. "
+                f"¿Querés que te anote en lista de espera para ese día o probamos otro día?"
+            )
             
     except Exception as e:
         import traceback
@@ -1224,9 +1232,11 @@ async def book_appointment(date_time: str, treatment_reason: str,
 
         # Use provided duration_minutes if available, otherwise fetch from treatment_types
         final_duration = duration_minutes
-        if treatment_reason and (final_duration is None or final_duration == 30): # If default 30 or not provided, try to get from treatment
+        treatment_display_name = "Consulta"
+        treatment_price = None
+        if treatment_reason and (final_duration is None or final_duration == 30):
             t_data = await db.pool.fetchrow("""
-                SELECT code, default_duration_minutes FROM treatment_types
+                SELECT code, name, default_duration_minutes, base_price FROM treatment_types
                 WHERE tenant_id = $1 AND (name ILIKE $2 OR code ILIKE $2) AND is_active = true AND is_available_for_booking = true
                 LIMIT 1
             """, tenant_id, f"%{treatment_reason}%")
@@ -1234,19 +1244,30 @@ async def book_appointment(date_time: str, treatment_reason: str,
                 return "❌ Ese tratamiento no está disponible en esta clínica. Los únicos que se pueden agendar son los que devuelve la tool 'list_services'. Llamá a list_services y ofrecé solo esos al paciente; si pide otro, decile que en esta sede solo se agendan los de esa lista."
             final_duration = t_data["default_duration_minutes"]
             treatment_code = t_data["code"]
-        elif treatment_reason: # If treatment_reason is provided and duration_minutes is also provided and not default
+            treatment_display_name = t_data["name"] or treatment_reason
+            treatment_price = float(t_data["base_price"]) if t_data.get("base_price") else None
+        elif treatment_reason:
             t_data = await db.pool.fetchrow("""
-                SELECT code FROM treatment_types
+                SELECT code, name, base_price FROM treatment_types
                 WHERE tenant_id = $1 AND (name ILIKE $2 OR code ILIKE $2) AND is_active = true AND is_available_for_booking = true
                 LIMIT 1
             """, tenant_id, f"%{treatment_reason}%")
             if not t_data:
                 return "❌ Ese tratamiento no está disponible en esta clínica. Los únicos que se pueden agendar son los que devuelve la tool 'list_services'. Llamá a list_services y ofrecé solo esos al paciente; si pide otro, decile que en esta sede solo se agendan los de esa lista."
             treatment_code = t_data["code"]
-        else: # No treatment_reason, use default duration or provided duration_minutes
-            treatment_code = "CONSULTA" # Default treatment code if not specified
+            treatment_display_name = t_data["name"] or treatment_reason
+            treatment_price = float(t_data["base_price"]) if t_data.get("base_price") else None
+        else:
+            treatment_code = "CONSULTA"
             if final_duration is None:
-                final_duration = 30 # Fallback if no treatment and no duration_minutes
+                final_duration = 30
+            # Fallback price: consultation_price from professional or tenant
+            try:
+                t_price_row = await db.pool.fetchrow("SELECT consultation_price FROM tenants WHERE id = $1", tenant_id)
+                if t_price_row and t_price_row.get("consultation_price"):
+                    treatment_price = float(t_price_row["consultation_price"])
+            except Exception:
+                pass
 
         end_apt = apt_datetime + timedelta(minutes=final_duration)
 
@@ -1515,23 +1536,33 @@ async def book_appointment(date_time: str, treatment_reason: str,
         frontend_url = os.getenv("FRONTEND_URL", "http://localhost:4173").split(",")[0].strip().rstrip("/")
         patient_anamnesis_url = f"{frontend_url}/anamnesis/{tenant_id}/{patient_anamnesis_token}"
 
+        # Build price line
+        price_line = ""
+        if treatment_price and treatment_price > 0:
+            price_line = f"\nValor: ${treatment_price:,.0f}"
+
         if is_third_party:
-            # Get interlocutor name for the confirmation
             interlocutor = await db.pool.fetchrow(
                 "SELECT first_name, last_name FROM patients WHERE tenant_id = $1 AND phone_number = $2",
                 tenant_id, chat_phone,
             )
             interlocutor_name = f"{interlocutor['first_name']} {interlocutor.get('last_name', '')}".strip() if interlocutor else "el interlocutor"
             return (
-                f"✅ Turno confirmado para {patient_label} (solicitado por {interlocutor_name}) con el/la Dr/a. {target_prof['first_name']}! "
-                f"{dia_nombre} {apt_datetime.strftime('%d/%m')} a las {apt_datetime.strftime('%H:%M')} ({final_duration} min).{booking_sede}\n"
+                f"✅ Turno confirmado para {patient_label} (solicitado por {interlocutor_name}):\n"
+                f"Tratamiento: {treatment_display_name}\n"
+                f"Profesional: Dr/a. {target_prof['first_name']}\n"
+                f"Fecha: {dia_nombre} {apt_datetime.strftime('%d/%m')} a las {apt_datetime.strftime('%H:%M')} ({final_duration} min)"
+                f"{booking_sede}{price_line}\n"
                 f"[INTERNAL_PATIENT_PHONE:{phone}]\n"
                 f"[INTERNAL_ANAMNESIS_URL:{patient_anamnesis_url}]"
             )
         else:
             return (
-                f"✅ ¡Turno confirmado con el/la Dr/a. {target_prof['first_name']}! "
-                f"{dia_nombre} {apt_datetime.strftime('%d/%m')} a las {apt_datetime.strftime('%H:%M')} ({final_duration} min).{booking_sede}\n"
+                f"✅ ¡Turno confirmado!\n"
+                f"Tratamiento: {treatment_display_name}\n"
+                f"Profesional: Dr/a. {target_prof['first_name']}\n"
+                f"Fecha: {dia_nombre} {apt_datetime.strftime('%d/%m')} a las {apt_datetime.strftime('%H:%M')} ({final_duration} min)"
+                f"{booking_sede}{price_line}\n"
                 f"[INTERNAL_ANAMNESIS_URL:{patient_anamnesis_url}]"
             )
 
@@ -3054,6 +3085,12 @@ SEGURIDAD:
 OBJETIVO: Ayudar a pacientes a: (a) informarse sobre tratamientos, (b) consultar disponibilidad, (c) agendar/reprogramar/cancelar turnos y (d) realizar triaje inicial de urgencias.
 
 REGLA ANTI-REPETICIÓN (CRÍTICO): Mantené el estado de la conversación. NUNCA volvás a preguntar algo que el paciente ya respondió (tratamiento, día, hora). Si ya mencionó el tratamiento, saltá directo a disponibilidad.
+• Si el paciente dice "consulta" → ES UNA CONSULTA. El tratamiento es "Consulta". NO preguntes "¿qué tratamiento querés?" porque YA TE LO DIJO.
+• Si el paciente dice el tratamiento + día + profesional en el mismo mensaje → ejecutá check_availability DIRECTO sin hacer más preguntas.
+
+REGLA ANTI-SALUDO-REPETITIVO: NO repitas "¡Hola, [nombre]!" si ya lo saludaste en esta conversación. Si el paciente vuelve a escribir después de un rato, un simple "¡Hola de nuevo!" o ir directo al punto es suficiente. Saludar con nombre completo cada mensaje es robótico y molesto.
+
+REGLA DE SOFT-LOCK OBLIGATORIA: SIEMPRE llamá a confirm_slot ANTES de book_appointment. El flujo es: check_availability → paciente elige horario → confirm_slot → recopilar datos si faltan → book_appointment. NUNCA saltees confirm_slot.
 
 POLÍTICAS DURAS:
 • NUNCA INVENTES horarios, disponibilidad, NI INDISPONIBILIDAD. NUNCA digas "el profesional no está disponible" o "no hay turnos" sin haber ejecutado 'check_availability'. La ÚNICA forma de saber si hay disponibilidad es ejecutando la tool.
@@ -3132,10 +3169,11 @@ PASO 6: AGENDAR — 'book_appointment' con los datos del paciente. Para campos o
   • Para adulto tercero: pasá patient_phone con el teléfono del tercero.
   • Para menor: pasá is_minor=true.
 PASO 7: CONFIRMACIÓN.
-  • Para sí mismo: "Turno confirmado para [nombre], [tratamiento], [día], [hora], con [profesional], en [sede]."
-  • Para tercero/menor: "Turno confirmado para [nombre del paciente] (solicitado por [nombre del interlocutor]): [tratamiento], [día], [hora], con [profesional], en [sede]."
-  Ofrecer enviar recordatorio y pedir mail opcionalmente.
-  PROHIBIDO pedir teléfono o "número de contacto" después de confirmar un turno. El paciente escribe desde WhatsApp, su teléfono YA ESTÁ en el sistema. Pedirlo genera confusión.
+  La tool book_appointment devuelve un resumen estructurado con: tratamiento, profesional, fecha, hora, duración, sede y precio.
+  Presentá esa información TAL CUAL al paciente. NO la reformules ni la recortes. El paciente debe ver TODO.
+  Si el paciente pregunta "cuánto sale?" después de la confirmación, el precio ya está en el mensaje de la tool.
+  Ofrecer pedir mail opcionalmente: "¿Querés dejarnos tu email para enviarte un recordatorio?"
+  PROHIBIDO pedir teléfono o "número de contacto" después de confirmar un turno. El paciente escribe desde WhatsApp, su teléfono YA ESTÁ en el sistema.
   IMPORTANTE: La respuesta de book_appointment incluye etiquetas internas:
   - [INTERNAL_PATIENT_PHONE:xxx] → es el teléfono del paciente en la BD. Usalo en save_patient_email(patient_phone=xxx) si el turno fue para un tercero/menor.
   - [INTERNAL_ANAMNESIS_URL:xxx] → es el link de ficha médica DEL PACIENTE (no del interlocutor). Usá ESTE link para el PASO 8.
@@ -3147,6 +3185,46 @@ PASO 8: FICHA MÉDICA — Usá SIEMPRE el link de [INTERNAL_ANAMNESIS_URL] que d
   • Para sí mismo: "Para ahorrar tiempo en tu consulta podés completar tu ficha médica aquí: [link del INTERNAL_ANAMNESIS_URL]."
   • Para menor: "Te paso el link para completar la ficha médica de [nombre hijo/a]: [link del INTERNAL_ANAMNESIS_URL]."
   • Para adulto tercero: "Te paso el link de ficha médica para que se lo reenvíes a [nombre]: [link del INTERNAL_ANAMNESIS_URL]."
+
+PASO 9: INSTRUCCIONES PRE-TURNO — Después de la ficha médica, SI el paciente es NUEVO (primera visita):
+  Enviar checklist: "Para tu primera visita recordá traer: DNI, radiografías previas (si tenés), y llegá 10 min antes para completar datos."
+  Si el tratamiento requiere preparación específica (ej: cirugía → ayuno, blanqueamiento → no fumar 24h antes), mencionalo.
+PASO 10: SEGUIMIENTO — Si el paciente no responde en 2-3 mensajes durante el flujo de agendamiento:
+  No enviar más mensajes automáticos. Cuando vuelva a escribir, retomar donde quedó sin repetir pasos ya completados.
+
+INTELIGENCIA DE PRECIOS Y PAGOS:
+• La tool check_availability muestra el precio del tratamiento. NO lo repitas si ya lo mostró.
+• La tool book_appointment muestra el precio en la confirmación. Usá ese valor.
+• Si el paciente pregunta por precio ANTES de agendar → llamá get_service_details que incluye base_price.
+• Si el paciente pregunta "aceptan obra social?" o "tienen convenio?" → respondé: "Te recomiendo consultar directamente con la clínica sobre convenios y coberturas. ¿Querés que te derive con un humano para eso?"
+• MEDIOS DE PAGO: Si el paciente pregunta cómo pagar → "Aceptamos efectivo, transferencia y tarjeta. Si preferís transferencia, te paso los datos después de confirmar el turno."
+• SEÑA/DEPÓSITO: Si la clínica tiene bank_cbu configurado, después de confirmar el turno podés ofrecer: "Para confirmar definitivamente tu turno podés abonar una seña por transferencia. ¿Querés los datos?"
+
+LISTA DE ESPERA:
+• Si check_availability no encuentra turnos → ofrecé: "¿Querés que te anote en lista de espera para ese día? Si se libera un turno te avisamos."
+• Esta funcionalidad es informativa — el paciente queda registrado en la memoria del sistema para follow-up manual.
+
+ANSIEDAD DENTAL (DETECCIÓN Y MANEJO):
+• Palabras clave: "miedo", "nervioso/a", "ansiedad", "fobia", "pánico", "me da cosa", "no me gustan los dentistas", "agujas"
+• Respuesta empática: "Es completamente normal sentir un poco de nervios. Nuestros profesionales están preparados para que te sientas cómodo/a. Podemos agendar más tiempo para que sea una experiencia tranquila."
+• Si el paciente tiene "miedo" en su MEMORIA DEL PACIENTE → SIEMPRE ser empático y tranquilizador, sin que el paciente lo pida.
+
+PRIMERA VISITA — ONBOARDING:
+• Si el paciente es nuevo (no tiene "Nombre registrado" en el contexto):
+  - Presentá la clínica brevemente: "Somos un equipo de profesionales especializados en [tratamiento solicitado]."
+  - Después de agendar, mencioná: "Como es tu primera vez, te pedimos llegar 10 minutos antes."
+• Si tiene "Primera visita" en el contexto → dar más explicaciones, ser más guía.
+
+PROFESIONAL AUTO-ASIGNADO:
+• Cuando el sistema asigna automáticamente un profesional (paciente dijo "cualquiera" o no eligió):
+  - En la confirmación, mencioná el nombre del profesional asignado.
+  - Si el paciente pregunta por qué ese profesional: "Es el/la que tiene disponibilidad más cercana para ese tratamiento."
+
+MULTI-TRATAMIENTO (MISMO PACIENTE):
+• Si el paciente pide dos tratamientos en la misma conversación (ej: "necesito limpieza y después una extracción"):
+  - Agendá cada uno por separado con book_appointment.
+  - Intentá agendar el segundo DESPUÉS del primero en el mismo día si hay disponibilidad.
+  - Mencioná: "Te agendé los dos tratamientos: [tratamiento 1] a las [hora 1] y [tratamiento 2] a las [hora 2]."
 
 REGLA DE NO-REPETICIÓN DE DATOS (CRÍTICO):
 • Si el paciente ya dio nombre, apellido o DNI en esta conversación, NUNCA volver a pedirlos aunque cambie el horario, día o tratamiento.
