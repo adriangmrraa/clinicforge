@@ -92,22 +92,24 @@ const StatCard = ({
 );
 
 const AVAILABLE_MODELS = [
-  // Text models (chat, analysis, memory)
-  { id: 'gpt-5.4', label: 'GPT-5.4 — Flagship (1M ctx)', tier: 'premium', type: 'text' },
-  { id: 'gpt-5', label: 'GPT-5 — Chat principal (400K ctx)', tier: 'premium', type: 'text' },
-  { id: 'gpt-5.3', label: 'GPT-5.3 — Balanceado (400K ctx)', tier: 'premium', type: 'text' },
-  { id: 'gpt-5.2', label: 'GPT-5.2 — Estándar (400K ctx)', tier: 'standard', type: 'text' },
-  { id: 'gpt-5.2-thinking', label: 'GPT-5.2 Thinking — Razonamiento', tier: 'standard', type: 'text' },
-  { id: 'gpt-5-mini', label: 'GPT-5 Mini — Económico (400K ctx)', tier: 'economy', type: 'text' },
-  { id: 'gpt-4o', label: 'GPT-4o — Balanceado (128K ctx)', tier: 'standard', type: 'text' },
-  { id: 'gpt-4o-mini', label: 'GPT-4o Mini — Más económico (128K ctx)', tier: 'economy', type: 'text' },
-  { id: 'gpt-4-turbo', label: 'GPT-4 Turbo (128K ctx)', tier: 'standard', type: 'text' },
-  { id: 'o1-preview', label: 'o1 Preview — Razonamiento avanzado', tier: 'premium', type: 'text' },
-  { id: 'o1-mini', label: 'o1 Mini — Razonamiento económico', tier: 'economy', type: 'text' },
-  { id: 'gpt-3.5-turbo', label: 'GPT-3.5 Turbo — Más barato (16K ctx)', tier: 'economy', type: 'text' },
-  // Realtime models (voice only)
-  { id: 'gpt-4o-mini-realtime-preview', label: 'GPT-4o Mini Realtime — Voz económica', tier: 'economy', type: 'realtime' },
-  { id: 'gpt-4o-realtime-preview', label: 'GPT-4o Realtime — Voz premium', tier: 'premium', type: 'realtime' },
+  // === OpenAI — GPT-5.4 (Marzo 2026) ===
+  { id: 'gpt-5.4', label: 'GPT-5.4 Flagship (1M ctx)', tier: 'premium', type: 'text', provider: 'openai' },
+  { id: 'gpt-5.4-pro', label: 'GPT-5.4 Pro — Maximo razonamiento', tier: 'premium', type: 'text', provider: 'openai' },
+  { id: 'gpt-5.4-mini', label: 'GPT-5.4 Mini — Rapido y barato', tier: 'economy', type: 'text', provider: 'openai' },
+  { id: 'gpt-5.4-nano', label: 'GPT-5.4 Nano — Ultra economico', tier: 'economy', type: 'text', provider: 'openai' },
+  // === OpenAI — GPT-5.x ===
+  { id: 'gpt-5.3', label: 'GPT-5.3 Balanceado (400K ctx)', tier: 'standard', type: 'text', provider: 'openai' },
+  { id: 'gpt-5', label: 'GPT-5 Original (400K ctx)', tier: 'standard', type: 'text', provider: 'openai' },
+  { id: 'gpt-5-mini', label: 'GPT-5 Mini (400K ctx)', tier: 'economy', type: 'text', provider: 'openai' },
+  // === OpenAI — Legacy ===
+  { id: 'gpt-4o', label: 'GPT-4o Legacy (128K ctx)', tier: 'standard', type: 'text', provider: 'openai' },
+  { id: 'gpt-4o-mini', label: 'GPT-4o Mini Legacy (128K ctx)', tier: 'economy', type: 'text', provider: 'openai' },
+  // === OpenAI — Realtime (voice) ===
+  { id: 'gpt-4o-mini-realtime-preview', label: 'Realtime Mini — Voz economica', tier: 'economy', type: 'realtime', provider: 'openai' },
+  { id: 'gpt-4o-realtime-preview', label: 'Realtime Premium — Voz', tier: 'premium', type: 'realtime', provider: 'openai' },
+  // === DeepSeek ===
+  { id: 'deepseek-chat', label: 'DeepSeek V4 Chat — Muy barato, excelente', tier: 'economy', type: 'text', provider: 'deepseek' },
+  { id: 'deepseek-reasoner', label: 'DeepSeek V4 Reasoner — Razonamiento profundo', tier: 'standard', type: 'text', provider: 'deepseek' },
 ];
 
 // Nova Voice only works with realtime models, others only with text models
