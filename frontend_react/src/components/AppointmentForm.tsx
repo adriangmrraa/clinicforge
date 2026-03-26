@@ -272,7 +272,7 @@ export default function AppointmentForm({
             onClick={() => setActiveTab(id)}
             className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === id
                 ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                : 'border-transparent text-white/40 hover:text-white/70 hover:bg-white/[0.04]'
                 }`}
         >
             {React.createElement(icon, { size: 16 })}
@@ -290,21 +290,21 @@ export default function AppointmentForm({
 
             {/* Slide-over Panel */}
             <div
-                className={`fixed inset-y-0 right-0 z-[70] w-full md:w-[450px] bg-white/90 backdrop-blur-xl shadow-2xl transform transition-transform duration-300 ease-out border-l border-white/50 flex flex-col ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}
+                className={`fixed inset-y-0 right-0 z-[70] w-full md:w-[450px] bg-[#0d1117] backdrop-blur-xl shadow-2xl transform transition-transform duration-300 ease-out border-l border-white/[0.08] flex flex-col ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}
             >
-                <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-white/50">
+                <div className="flex items-center justify-between px-6 py-4 border-b border-white/[0.06] bg-white/[0.02]">
                     <div>
-                        <h2 className="text-xl font-bold text-slate-800">
+                        <h2 className="text-xl font-bold text-white">
                             {isEditing ? t('agenda.form_edit_appointment') : t('agenda.form_new_appointment')}
                         </h2>
                         <p className="text-xs text-slate-500">{t('agenda.clinical_inspector')}</p>
                     </div>
-                    <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full text-gray-400 hover:text-gray-600 transition-colors">
+                    <button onClick={onClose} className="p-2 hover:bg-white/[0.06] rounded-full text-white/30 hover:text-white/60 transition-colors">
                         <X size={20} />
                     </button>
                 </div>
 
-                <div className="flex border-b border-gray-100 bg-white/50">
+                <div className="flex border-b border-white/[0.06] bg-white/[0.02]">
                     {renderTabButton('general', t('agenda.tab_general'), FileText)}
                     {renderTabButton('anamnesis', t('agenda.tab_anamnesis'), Activity)}
                     {renderTabButton('billing', t('agenda.tab_billing'), DollarSign)}
@@ -321,11 +321,11 @@ export default function AppointmentForm({
                     {activeTab === 'general' && (
                         <div className="space-y-5">
                             <div className="space-y-1.5">
-                                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{t('agenda.patient')}</label>
+                                <label className="text-xs font-semibold text-white/40 uppercase tracking-wider">{t('agenda.patient')}</label>
                                 <div className="relative">
-                                    <User className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                                    <User className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" size={18} />
                                     <select
-                                        className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-transparent rounded-lg focus:bg-white focus:border-blue-500 focus:ring-0 transition-all text-sm appearance-none cursor-pointer"
+                                        className="w-full pl-10 pr-4 py-2.5 bg-white/[0.04] border border-white/[0.08] rounded-lg focus:bg-white/[0.06] focus:border-blue-500 text-white focus:ring-0 transition-all text-sm appearance-none cursor-pointer"
                                         value={formData.patient_id}
                                         onChange={(e) => handleChange('patient_id', e.target.value)}
                                         disabled={isEditing}
@@ -339,11 +339,11 @@ export default function AppointmentForm({
                             </div>
 
                             <div className="space-y-1.5">
-                                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{t('agenda.professional')}</label>
+                                <label className="text-xs font-semibold text-white/40 uppercase tracking-wider">{t('agenda.professional')}</label>
                                 <div className="relative">
-                                    <User className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                                    <User className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" size={18} />
                                     <select
-                                        className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-transparent rounded-lg focus:bg-white focus:border-blue-500 focus:ring-0 transition-all text-sm appearance-none cursor-pointer"
+                                        className="w-full pl-10 pr-4 py-2.5 bg-white/[0.04] border border-white/[0.08] rounded-lg focus:bg-white/[0.06] focus:border-blue-500 text-white focus:ring-0 transition-all text-sm appearance-none cursor-pointer"
                                         value={formData.professional_id}
                                         onChange={(e) => handleChange('professional_id', e.target.value)}
                                     >
@@ -357,23 +357,23 @@ export default function AppointmentForm({
 
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-1.5">
-                                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{t('agenda.date_time')}</label>
+                                    <label className="text-xs font-semibold text-white/40 uppercase tracking-wider">{t('agenda.date_time')}</label>
                                     <div className="relative">
-                                        <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                                        <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" size={18} />
                                         <input
                                             type="datetime-local"
-                                            className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-transparent rounded-lg focus:bg-white focus:border-blue-500 focus:ring-0 transition-all text-sm"
+                                            className="w-full pl-10 pr-4 py-2.5 bg-white/[0.04] border border-white/[0.08] rounded-lg focus:bg-white/[0.06] focus:border-blue-500 text-white focus:ring-0 transition-all text-sm"
                                             value={formData.appointment_datetime}
                                             onChange={(e) => handleChange('appointment_datetime', e.target.value)}
                                         />
                                     </div>
                                 </div>
                                 <div className="space-y-1.5">
-                                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{t('agenda.duration_min')}</label>
+                                    <label className="text-xs font-semibold text-white/40 uppercase tracking-wider">{t('agenda.duration_min')}</label>
                                     <div className="relative">
-                                        <Clock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                                        <Clock className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" size={18} />
                                         <select
-                                            className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-transparent rounded-lg focus:bg-white focus:border-blue-500 focus:ring-0 transition-all text-sm appearance-none"
+                                            className="w-full pl-10 pr-4 py-2.5 bg-white/[0.04] border border-white/[0.08] rounded-lg focus:bg-white/[0.06] focus:border-blue-500 text-white focus:ring-0 transition-all text-sm appearance-none"
                                             value={formData.duration_minutes}
                                             onChange={(e) => handleChange('duration_minutes', parseInt(e.target.value))}
                                         >
@@ -396,7 +396,7 @@ export default function AppointmentForm({
                             )}
 
                             <div className="space-y-1.5">
-                                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                                <label className="text-xs font-semibold text-white/40 uppercase tracking-wider">
                                     {t('agenda.appointment_type')}
                                 </label>
                                 <div className="grid grid-cols-2 gap-2">
@@ -407,7 +407,7 @@ export default function AppointmentForm({
                                             onClick={() => handleChange('appointment_type', s.code)}
                                             className={`px-3 py-2 text-xs font-medium rounded-lg border transition-all ${formData.appointment_type === s.code
                                                 ? 'bg-blue-50 border-blue-200 text-blue-700 shadow-sm'
-                                                : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
+                                                : 'bg-white/[0.04] border-white/[0.08] text-white/50 hover:bg-white/[0.06]'
                                                 }`}
                                         >
                                             {s.name}
@@ -437,7 +437,7 @@ export default function AppointmentForm({
                                                 className={`px-3 py-2 text-xs font-semibold rounded-lg border transition-all ${
                                                     appointmentStatus === s.value
                                                         ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm'
-                                                        : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                                                        : 'bg-white/[0.04] border-white/[0.08] text-white/50 hover:bg-white/[0.06]'
                                                 } ${statusLoading ? 'opacity-50 cursor-wait' : ''}`}
                                             >
                                                 {s.label}
@@ -452,9 +452,9 @@ export default function AppointmentForm({
 
 
                             <div className="space-y-1.5">
-                                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{t('agenda.notes')}</label>
+                                <label className="text-xs font-semibold text-white/40 uppercase tracking-wider">{t('agenda.notes')}</label>
                                 <textarea
-                                    className="w-full p-3 bg-gray-50 border border-transparent rounded-lg focus:bg-white focus:border-blue-500 focus:ring-0 transition-all text-sm min-h-[100px]"
+                                    className="w-full p-3 bg-white/[0.04] border border-white/[0.08] rounded-lg focus:bg-white/[0.06] focus:border-blue-500 text-white focus:ring-0 transition-all text-sm min-h-[100px]"
                                     placeholder={t('agenda.notes_placeholder')}
                                     value={formData.notes}
                                     onChange={(e) => handleChange('notes', e.target.value)}
@@ -472,7 +472,7 @@ export default function AppointmentForm({
                                 refreshKey={anamnesisRefreshKey}
                             />
                         ) : (
-                            <div className="text-center py-10 text-gray-400">
+                            <div className="text-center py-10 text-white/30">
                                 <Activity size={48} className="mx-auto mb-3 opacity-20" />
                                 <p className="text-sm">{t('agenda.select_patient_anamnesis')}</p>
                             </div>
@@ -482,7 +482,7 @@ export default function AppointmentForm({
                     {activeTab === 'billing' && (
                         <div className="space-y-4 p-1">
                             {!isEditing ? (
-                                <div className="text-center py-10 text-gray-400">
+                                <div className="text-center py-10 text-white/30">
                                     <DollarSign size={48} className="mx-auto mb-3 opacity-20" />
                                     <p className="text-sm">{t('agenda.billing_save_first')}</p>
                                 </div>
@@ -490,9 +490,9 @@ export default function AppointmentForm({
                                 <>
                                     <div className="grid grid-cols-2 gap-4">
                                         <div className="space-y-1">
-                                            <label className="text-xs font-semibold text-gray-600">{t('agenda.billing_amount')}</label>
+                                            <label className="text-xs font-semibold text-white/50">{t('agenda.billing_amount')}</label>
                                             <div className="relative">
-                                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+                                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30 text-sm">$</span>
                                                 <input type="number" step="0.01" min="0" placeholder="0.00"
                                                     className="w-full pl-7 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
                                                     value={billingData.billing_amount}
@@ -500,22 +500,22 @@ export default function AppointmentForm({
                                             </div>
                                         </div>
                                         <div className="space-y-1">
-                                            <label className="text-xs font-semibold text-gray-600">{t('agenda.billing_installments')}</label>
+                                            <label className="text-xs font-semibold text-white/50">{t('agenda.billing_installments')}</label>
                                             <input type="number" min="1" max="48" placeholder="1"
-                                                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                                                className="w-full px-4 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm text-white"
                                                 value={billingData.billing_installments}
                                                 onChange={(e) => setBillingData(prev => ({ ...prev, billing_installments: e.target.value }))} />
                                         </div>
                                     </div>
                                     <div className="space-y-1">
-                                        <label className="text-xs font-semibold text-gray-600">{t('agenda.billing_notes')}</label>
+                                        <label className="text-xs font-semibold text-white/50">{t('agenda.billing_notes')}</label>
                                         <textarea rows={3} placeholder={t('agenda.billing_notes_placeholder')}
-                                            className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm resize-none"
+                                            className="w-full px-4 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm text-white resize-none"
                                             value={billingData.billing_notes}
                                             onChange={(e) => setBillingData(prev => ({ ...prev, billing_notes: e.target.value }))} />
                                     </div>
                                     <div className="space-y-1">
-                                        <label className="text-xs font-semibold text-gray-600">{t('agenda.payment_status')}</label>
+                                        <label className="text-xs font-semibold text-white/50">{t('agenda.payment_status')}</label>
                                         <div className="flex gap-2">
                                             {(['pending', 'partial', 'paid'] as const).map((ps) => (
                                                 <button key={ps} type="button"
@@ -524,7 +524,7 @@ export default function AppointmentForm({
                                                         billingData.payment_status === ps
                                                             ? ps === 'paid' ? 'bg-green-100 border-green-300 text-green-700'
                                                               : ps === 'partial' ? 'bg-yellow-100 border-yellow-300 text-yellow-700'
-                                                              : 'bg-gray-100 border-gray-300 text-gray-700'
+                                                              : 'bg-white/[0.04] border-white/[0.08] text-white/50'
                                                             : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'
                                                     }`}>
                                                     {t(`agenda.payment_${ps}`)}
