@@ -1515,8 +1515,8 @@ async def _comparar_sedes(args: Dict, user_role: str) -> str:
         date_filter = "appointment_datetime::date = CURRENT_DATE"
         date_filter_created = "created_at::date = CURRENT_DATE"
     else:
-        date_filter = "appointment_datetime::date >= CURRENT_DATE - $2"
-        date_filter_created = "created_at::date >= CURRENT_DATE - $2"
+        date_filter = "appointment_datetime::date >= CURRENT_DATE - make_interval(days => $2)"
+        date_filter_created = "created_at::date >= CURRENT_DATE - make_interval(days => $2)"
 
     tenant_ids = await _get_allowed_tenant_ids()
 
