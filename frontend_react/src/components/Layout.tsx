@@ -231,14 +231,15 @@ export const Layout: React.FC<LayoutProps> = ({ children }: LayoutProps) => {
           </div>
 
           <div className="flex items-center gap-2 lg:gap-3">
-            {/* Guide Button */}
+            {/* Guide Button — animated attention-grabber */}
             <button
               onClick={() => setShowGuide(true)}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 transition-colors border border-blue-500/20"
+              className="guide-btn relative flex items-center justify-center w-9 h-9 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20 hover:bg-blue-500/25 hover:scale-110 active:scale-90 transition-all duration-200"
               title="Guia de la pagina"
             >
-              <HelpCircle size={14} />
-              <span className="hidden sm:inline">Guia</span>
+              <HelpCircle size={18} className="guide-icon" />
+              {/* Ping ring */}
+              <span className="absolute inset-0 rounded-full border-2 border-blue-400/40 animate-[guidePing_3s_ease-out_infinite]" />
             </button>
 
             {/* Connection Status Chip */}
