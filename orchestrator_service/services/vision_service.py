@@ -41,18 +41,20 @@ async def analyze_image_url(image_url: str, tenant_id: int) -> Optional[str]:
             else:
                 path = image_url
             
-            # Quitar slash inicial si existe para join
-            rel_path = path.lstrip("/")
-            
-            # Determinar directorio base según el path
+            # Determinar directorio base y path relativo
             if path.startswith("/uploads/"):
-                # Usar UPLOADS_DIR si está configurado
                 base_dir = os.getenv("UPLOADS_DIR", os.path.join(os.getcwd(), "uploads"))
-            else:
-                # Usar MEDIA_ROOT si está configurado (para /media/)
+                # Remove /uploads/ prefix since base_dir already points to uploads dir
+                rel_path = path.replace("/uploads/", "", 1)
+            elif path.startswith("/media/"):
                 base_dir = os.getenv("MEDIA_ROOT", os.getcwd())
-            
+                rel_path = path.lstrip("/")
+            else:
+                base_dir = os.getcwd()
+                rel_path = path.lstrip("/")
+
             local_path = os.path.join(base_dir, rel_path)
+            logger.info(f"👁️ Vision: Resolving path: base={base_dir} rel={rel_path} → {local_path}")
             
             if not os.path.exists(local_path):
                 logger.error(f"❌ Vision: Archivo local no encontrado: {local_path}")
