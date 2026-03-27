@@ -281,3 +281,111 @@ Unique link to a mobile-optimized anamnesis checklist form (`/anamnesis/{tenant_
 
 ### BFF Proxy Pattern
 Frontend (port 4173) never calls the orchestrator directly. All API calls go through the BFF Express proxy (port 3000), which handles CORS and 60s timeouts.
+
+---
+
+## Nova — AI Voice Assistant (Jarvis for Dental Clinics)
+
+### Overview
+Nova is the voice-powered AI copilot that runs inside ClinicForge. Available as a floating widget on every page. Uses OpenAI Realtime API for bidirectional audio + function calling.
+
+### Architecture
+```
+NovaWidget (React)  →  WebSocket  →  Nova Handler (main.py)  →  OpenAI Realtime API
+                                          ↕
+                                    Nova Tools (47 tools)  →  PostgreSQL
+```
+
+### Files
+| File | Purpose |
+|------|---------|
+| `frontend_react/src/components/NovaWidget.tsx` | Voice widget UI, WebSocket client, audio playback |
+| `orchestrator_service/services/nova_tools.py` | 47 tool definitions + implementations |
+| `orchestrator_service/main.py` (~line 4713) | WebSocket handler, Realtime API bridge, system prompt |
+| `orchestrator_service/services/nova_daily_analysis.py` | Automated daily insights (every 12h) |
+| `orchestrator_service/routes/nova_routes.py` | REST endpoints (context, health, sessions) |
+
+### Tools (47 total)
+Organized in categories:
+
+| Category | Tools | Count |
+|----------|-------|-------|
+| **A. Pacientes** | buscar_paciente, ver_paciente, registrar_paciente, actualizar_paciente, historial_clinico, registrar_nota_clinica, eliminar_paciente | 7 |
+| **B. Turnos** | ver_agenda, proximo_paciente, verificar_disponibilidad, agendar_turno, cancelar_turno, confirmar_turnos, reprogramar_turno, cambiar_estado_turno, bloquear_agenda | 9 |
+| **C. Facturación** | listar_tratamientos, registrar_pago, facturacion_pendiente | 3 |
+| **D. Analytics** | resumen_semana, rendimiento_profesional, ver_estadisticas, resumen_marketing, resumen_financiero | 5 |
+| **E. Navegación** | ir_a_pagina, ir_a_paciente | 2 |
+| **F. Multi-sede** | resumen_sedes, comparar_sedes, switch_sede, onboarding_status | 4 |
+| **G. Staff** | listar_profesionales, ver_configuracion, actualizar_configuracion, crear_tratamiento, editar_tratamiento, ver_chats_recientes, enviar_mensaje, ver_faqs, eliminar_faq, actualizar_faq | 10 |
+| **H. Anamnesis** | guardar_anamnesis, ver_anamnesis | 2 |
+| **I. Datos** | consultar_datos | 1 |
+| **J. CRUD** | obtener_registros, actualizar_registro, crear_registro, contar_registros | 4 |
+
+### Tool Schema Format (CRITICAL)
+OpenAI Realtime API requires **flat** tool schema format:
+```json
+{"type": "function", "name": "tool_name", "description": "...", "parameters": {...}}
+```
+**NOT** the Chat Completions wrapper format:
+```json
+{"type": "function", "function": {"name": "tool_name", ...}}  // WRONG for Realtime
+```
+
+### CRUD Tools
+Generic tools that give Nova access to ALL database tables:
+- `obtener_registros(tabla, filtros, campos, limite, orden)` — GET with filters (max 15 results)
+- `actualizar_registro(tabla, registro_id, campos)` — UPDATE by ID
+- `crear_registro(tabla, datos)` — INSERT new record
+- `contar_registros(tabla, filtros)` — COUNT with filters
+
+Allowed tables: patients, appointments, professionals, treatment_types, tenants, chat_messages, chat_conversations, patient_documents, clinical_records, automation_logs, patient_memories, clinic_faqs, google_calendar_blocks, meta_ad_insights, treatment_type_professionals, users.
+
+### Date Handling
+All tool args come as strings from OpenAI. Use `_parse_date_str()` and `_parse_datetime_str()` helpers to convert before passing to asyncpg.
+
+### Voice Model Configuration
+- Stored in `system_config` table, key `MODEL_NOVA_VOICE`
+- Options: `gpt-4o-mini-realtime-preview` (economic) or `gpt-4o-realtime-preview` (premium)
+- Selected from Tokens & Metrics page in the admin UI
+
+### System Prompt Design
+Nova's prompt follows the "Jarvis" principle:
+- Execute tools FIRST, talk AFTER
+- Chain 2-3 tools without asking for confirmation
+- If missing a data point, infer or ask ONCE
+- When on anamnesis page, switch to patient-facing mode
+- NEVER say "no puedo" if a tool can solve it
+
+### MCP Server (Planned)
+A Model Context Protocol server is planned to replace the 47 individual tools with a more fluid resource-based architecture. See `MCP_SERVER_SPEC.md` for the complete specification.
+
+---
+
+## UI Design System
+
+### Dark Mode (Mandatory)
+The entire platform uses dark mode. No light mode exists.
+
+| Element | Class |
+|---------|-------|
+| Root background | `bg-[#06060e]` |
+| Cards | `GlassCard` component with hover images |
+| Modals | `bg-[#0d1117]` |
+| Text primary | `text-white` |
+| Text secondary | `text-white/50` |
+| Text muted | `text-white/30` |
+| Borders | `border-white/[0.06]` |
+| Inputs | `bg-white/[0.04] border-white/[0.08] text-white` |
+| Primary buttons | `bg-white text-[#0a0e1a]` (white accent) |
+| Badges | `bg-{color}-500/10 text-{color}-400` |
+
+### GlassCard Component
+Reusable card with background image that fades in on hover/touch:
+- `blur(2px)` filter on background image
+- Ken Burns slow zoom animation (8s)
+- Scale-up 1.015x with cubic-bezier bounce
+- Blue gradient glow on bottom edge
+- Pre-defined `CARD_IMAGES` for each context
+
+### Sidebar
+Uses Lucide icons (no emojis). Each item has a themed background image on hover with scale animation.
