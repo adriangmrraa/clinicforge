@@ -3270,8 +3270,55 @@ _VALID_FDI = set(_FDI_NAMES.keys())
 _VALID_STATES = set(_STATUS_ES.keys())
 
 
+# All 32 FDI teeth in standard order
+_ALL_TEETH_FDI = [18, 17, 16, 15, 14, 13, 12, 11, 21, 22, 23, 24, 25, 26, 27, 28,
+                  48, 47, 46, 45, 44, 43, 42, 41, 31, 32, 33, 34, 35, 36, 37, 38]
+
+
+def _build_default_teeth() -> list:
+    """Build a full 32-tooth array with all healthy (matches frontend format)."""
+    return [{"id": t, "state": "healthy", "surfaces": {}, "notes": ""} for t in _ALL_TEETH_FDI]
+
+
+def _parse_odontogram_data(odata) -> list:
+    """Parse odontogram_data from DB into the teeth array format.
+    Handles both frontend format (v2.0 with 'teeth' array) and legacy dict format."""
+    if isinstance(odata, str):
+        try:
+            odata = json.loads(odata)
+        except Exception:
+            return _build_default_teeth()
+    if not isinstance(odata, dict):
+        return _build_default_teeth()
+
+    # Frontend v2.0 format: {"teeth": [{id, state, surfaces, notes}, ...], "version": "2.0"}
+    if "teeth" in odata and isinstance(odata["teeth"], list):
+        return odata["teeth"]
+
+    # Legacy dict format: {"37": {"status": "caries"}, ...}
+    # Convert to frontend array format
+    teeth = _build_default_teeth()
+    for tooth_key, tooth_data in odata.items():
+        try:
+            num = int(tooth_key)
+        except ValueError:
+            continue
+        if not isinstance(tooth_data, dict):
+            continue
+        status = tooth_data.get("status", tooth_data.get("state", "healthy"))
+        for i, t in enumerate(teeth):
+            if t["id"] == num:
+                teeth[i]["state"] = status
+                if "surfaces" in tooth_data:
+                    teeth[i]["surfaces"] = tooth_data["surfaces"]
+                if "notes" in tooth_data:
+                    teeth[i]["notes"] = tooth_data["notes"]
+                break
+    return teeth
+
+
 async def _get_latest_odontogram(patient_id: int, tenant_id: int):
-    """Returns (record_id, odontogram_data dict) for the most recent clinical record."""
+    """Returns (record_id, teeth_array) for the most recent clinical record."""
     row = await db.pool.fetchrow(
         """
         SELECT id, odontogram_data
@@ -3283,16 +3330,9 @@ async def _get_latest_odontogram(patient_id: int, tenant_id: int):
         patient_id, tenant_id,
     )
     if not row:
-        return None, {}
-    odata = row["odontogram_data"]
-    if isinstance(odata, str):
-        try:
-            odata = json.loads(odata)
-        except Exception:
-            odata = {}
-    if not isinstance(odata, dict):
-        odata = {}
-    return row["id"], odata
+        return None, _build_default_teeth()
+    teeth = _parse_odontogram_data(row["odontogram_data"])
+    return row["id"], teeth
 
 
 async def _ver_odontograma(args: Dict, tenant_id: int, user_role: str) -> str:
@@ -3304,7 +3344,6 @@ async def _ver_odontograma(args: Dict, tenant_id: int, user_role: str) -> str:
     if not pid:
         return "Necesito el ID del paciente."
 
-    # Verify patient exists
     patient = await db.pool.fetchrow(
         "SELECT first_name, last_name FROM patients WHERE id = $1 AND tenant_id = $2",
         int(pid), tenant_id,
@@ -3312,41 +3351,37 @@ async def _ver_odontograma(args: Dict, tenant_id: int, user_role: str) -> str:
     if not patient:
         return "No encontré a ese paciente."
 
-    record_id, odata = await _get_latest_odontogram(int(pid), tenant_id)
-
+    record_id, teeth = await _get_latest_odontogram(int(pid), tenant_id)
     name = f"{patient['first_name']} {patient['last_name'] or ''}".strip()
 
-    if not odata:
-        return f"Odontograma de {name}: sin datos cargados. Todas las piezas se consideran sanas por defecto."
+    # Count non-healthy teeth
+    modified = [t for t in teeth if t.get("state", "healthy") != "healthy"]
+    if not modified:
+        return f"Odontograma de {name}: todas las piezas están sanas (sin modificaciones)."
 
-    # Build readable output grouped by quadrant
-    lines = [f"Odontograma de {name} ({len(odata)} pieza(s) con datos):\n"]
+    lines = [f"Odontograma de {name} ({len(modified)} pieza(s) con hallazgos):\n"]
 
     quadrants = {1: [], 2: [], 3: [], 4: []}
-    for tooth_key, tooth_data in sorted(odata.items(), key=lambda x: int(x[0]) if x[0].isdigit() else 0):
-        try:
-            num = int(tooth_key)
-        except ValueError:
+    for t in teeth:
+        state = t.get("state", "healthy")
+        if state == "healthy":
             continue
+        num = t.get("id", 0)
         q = num // 10
         if q not in quadrants:
             continue
 
-        status = tooth_data.get("status", "healthy") if isinstance(tooth_data, dict) else "healthy"
-        status_es = _STATUS_ES.get(status, status)
+        status_es = _STATUS_ES.get(state, state)
         fdi_name = _FDI_NAMES.get(num, f"pieza {num}")
-
         detail = f"  Pieza {num} ({fdi_name}): {status_es}"
 
-        # Surfaces
-        surfaces = tooth_data.get("surfaces", {}) if isinstance(tooth_data, dict) else {}
+        surfaces = t.get("surfaces", {})
         if surfaces and isinstance(surfaces, dict):
             affected = [f"{s}={_STATUS_ES.get(v, v)}" for s, v in surfaces.items() if v and v != "healthy"]
             if affected:
                 detail += f" [{', '.join(affected)}]"
 
-        # Notes
-        notes = tooth_data.get("notes", "") if isinstance(tooth_data, dict) else ""
+        notes = t.get("notes", "")
         if notes:
             detail += f" — {notes}"
 
@@ -3360,10 +3395,7 @@ async def _ver_odontograma(args: Dict, tenant_id: int, user_role: str) -> str:
             lines.extend(quadrants[q])
             lines.append("")
 
-    # Summary: pieces NOT in data are healthy
-    registered = len(odata)
-    lines.append(f"Las {32 - registered} piezas restantes están sanas (sin modificaciones).")
-
+    lines.append(f"Las {32 - len(modified)} piezas restantes están sanas.")
     return "\n".join(lines)
 
 
@@ -3407,7 +3439,7 @@ async def _modificar_odontograma(args: Dict, tenant_id: int, user_role: str, use
         return "No encontré a ese paciente."
 
     # Get or create clinical record
-    record_id, current_odata = await _get_latest_odontogram(int(pid), tenant_id)
+    record_id, current_teeth = await _get_latest_odontogram(int(pid), tenant_id)
 
     prof_id = await _resolve_professional_id(user_id, tenant_id) if user_role == "professional" else None
 
@@ -3423,48 +3455,57 @@ async def _modificar_odontograma(args: Dict, tenant_id: int, user_role: str, use
             record_id, tenant_id, int(pid), prof_id, _today(),
             diagnostico or "Actualización de odontograma",
         )
-        current_odata = {}
+        current_teeth = _build_default_teeth()
 
-    # Apply changes — MERGE with existing data (don't overwrite unrelated teeth)
-    today_str = str(_today())
+    # Apply changes to the teeth array (same format as frontend: [{id, state, surfaces, notes}])
+    surface_map = {"oclusal": "occlusal", "mesial": "mesial", "distal": "distal",
+                   "bucal": "buccal", "lingual": "lingual",
+                   "occlusal": "occlusal", "buccal": "buccal"}
     changes_summary = []
     for pieza in piezas:
         num = int(pieza["numero"])
         estado = pieza["estado"]
-        key = str(num)
 
-        # Build tooth entry preserving existing data
-        existing_tooth = current_odata.get(key, {})
-        if not isinstance(existing_tooth, dict):
-            existing_tooth = {}
+        # Find the tooth in the array and update it
+        found = False
+        for i, t in enumerate(current_teeth):
+            if t.get("id") == num:
+                current_teeth[i]["state"] = estado
 
-        existing_tooth["status"] = estado
-        existing_tooth["date"] = today_str
+                # Surfaces (merge)
+                surfaces_input = pieza.get("superficies", {})
+                if surfaces_input and isinstance(surfaces_input, dict):
+                    existing_surfaces = current_teeth[i].get("surfaces", {})
+                    if not isinstance(existing_surfaces, dict):
+                        existing_surfaces = {}
+                    for s_name, s_val in surfaces_input.items():
+                        en_name = surface_map.get(s_name.lower(), s_name.lower())
+                        existing_surfaces[en_name] = s_val
+                    current_teeth[i]["surfaces"] = existing_surfaces
 
-        # Surfaces (merge, don't overwrite)
-        surfaces_input = pieza.get("superficies", {})
-        if surfaces_input and isinstance(surfaces_input, dict):
-            existing_surfaces = existing_tooth.get("surfaces", {})
-            if not isinstance(existing_surfaces, dict):
-                existing_surfaces = {}
-            # Map Spanish surface names to English keys
-            surface_map = {"oclusal": "occlusal", "mesial": "mesial", "distal": "distal",
-                           "bucal": "buccal", "lingual": "lingual",
-                           "occlusal": "occlusal", "buccal": "buccal"}
-            for s_name, s_val in surfaces_input.items():
-                en_name = surface_map.get(s_name.lower(), s_name.lower())
-                existing_surfaces[en_name] = s_val
-            existing_tooth["surfaces"] = existing_surfaces
+                # Notes
+                notas = pieza.get("notas", "")
+                if notas:
+                    current_teeth[i]["notes"] = notas
 
-        # Notes
-        notas = pieza.get("notas", "")
-        if notas:
-            existing_tooth["notes"] = notas
+                found = True
+                break
 
-        current_odata[key] = existing_tooth
+        if not found:
+            # Tooth not in array (shouldn't happen with 32 default teeth, but just in case)
+            current_teeth.append({"id": num, "state": estado, "surfaces": {}, "notes": pieza.get("notas", "")})
+
         fdi_name = _FDI_NAMES.get(num, f"pieza {num}")
         status_es = _STATUS_ES.get(estado, estado)
         changes_summary.append(f"  Pieza {num} ({fdi_name}) → {status_es}")
+
+    # Save in frontend-compatible v2.0 format
+    from datetime import datetime as _dt
+    odontogram_data_v2 = {
+        "teeth": current_teeth,
+        "last_updated": _dt.now().isoformat(),
+        "version": "2.0",
+    }
 
     # Persist to database
     await db.pool.execute(
@@ -3473,7 +3514,7 @@ async def _modificar_odontograma(args: Dict, tenant_id: int, user_role: str, use
         SET odontogram_data = $1::jsonb, updated_at = NOW()
         WHERE id = $2 AND tenant_id = $3
         """,
-        json.dumps(current_odata), record_id, tenant_id,
+        json.dumps(odontogram_data_v2), record_id, tenant_id,
     )
 
     # Also update diagnosis if provided
