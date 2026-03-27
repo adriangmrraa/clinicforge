@@ -213,8 +213,10 @@ def parse_date(date_query: str) -> Optional[date]:
     7. Fallback: None (no inventar fechas)
     """
     query = date_query.lower().strip()
-    # Limpiar preposiciones/artículos comunes que no aportan al parsing
+    # Limpiar preposiciones/artículos y frases que confunden al parser de fechas
     query_clean = re.sub(r'^(para el |para |el día |el |del |al )', '', query).strip()
+    # Eliminar sufijos de rango que no aportan a la fecha en sí
+    query_clean = re.sub(r'\s*(en adelante|para adelante|de ahí en más|de ahi en mas|o después|o despues|o más tarde|o mas tarde|más o menos|mas o menos|maso|masomenos|aproximadamente|aprox)\s*', ' ', query_clean).strip()
     today = get_now_arg().date()
 
     # ── CAPA 1: Atajos exactos (palabras clave inequívocas) ──
@@ -596,6 +598,10 @@ def _get_search_range_days(date_query: str, start_date: date) -> int:
     # "próxima semana" / "semana que viene"
     if any(p in query for p in ['semana que viene', 'próxima semana', 'proxima semana']):
         return 5
+    # "en adelante" / "de ahí en más" / "para adelante" → rango abierto desde esa fecha
+    if any(p in query for p in ['en adelante', 'para adelante', 'de ahí en más', 'de ahi en mas',
+                                 'en más', 'en mas', 'o después', 'o despues', 'o más tarde', 'o mas tarde']):
+        return 14  # Buscar 2 semanas desde la fecha indicada
     # ASAP / sin preferencia → buscar 30 días
     asap_patterns = ['lo antes posible', 'cuanto antes', 'cualquier', 'sin preferencia',
                      'cuando puedan', 'cuando haya', 'el más cercano', 'el mas cercano',
@@ -1019,6 +1025,12 @@ async def check_availability(date_query: str, professional_name: Optional[str] =
         # Si parse_date no pudo interpretar la fecha, pedir aclaración
         if target_date is None:
             return f"No pude entender la fecha '{date_query}'. ¿Podrías decirme el día que te gustaría? Por ejemplo: 'jueves 30 de abril', 'mañana', 'la semana que viene'."
+
+        # GUARDIA: NUNCA buscar en el pasado
+        today_date = get_now_arg().date()
+        if target_date < today_date:
+            logger.warning(f"📅 check_availability: parsed date {target_date} is in the past, advancing to today {today_date}")
+            target_date = today_date
 
         # 0. B) Auto-avanzar si el día está cerrado (clínica o profesional)
         # En vez de retornar error, buscamos el próximo día válido automáticamente.
