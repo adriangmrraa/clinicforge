@@ -4144,7 +4144,9 @@ async def chat_endpoint(req: ChatRequest, background_tasks: BackgroundTasks):
                     try:
                         # Determinar tipo de documento para clasificación
                         doc_type = "whatsapp_image" if media_type == "image" else "whatsapp_document"
-                        file_name = item.get("file_name") or f"{doc_type}_{uuid.uuid4().hex[:8]}"
+                        raw_name = item.get("file_name") or ""
+                        # Always make filename unique to avoid duplicate key constraint
+                        file_name = f"{doc_type}_{uuid.uuid4().hex[:8]}_{raw_name}" if raw_name else f"{doc_type}_{uuid.uuid4().hex[:8]}"
                         
                         # Extraer extensión del archivo si está disponible
                         mime_type = item.get("mime_type", "")
