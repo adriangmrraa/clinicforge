@@ -198,91 +198,141 @@ def get_next_weekday(target_weekday: int) -> date:
         days_ahead += 7
     return (today + timedelta(days=days_ahead)).date()
 
-def parse_date(date_query: str) -> date:
-    """Convierte 'mañana', 'lunes', '2025-02-05' a date."""
+def parse_date(date_query: str) -> Optional[date]:
+    """
+    Convierte texto libre de fecha a date. Diseñado para ser robusto con cualquier forma
+    en que un paciente o LLM exprese una fecha. Retorna None si no puede parsear.
+
+    Prioridad de capas (de más específica a más genérica):
+    1. Atajos exactos: hoy, mañana, pasado mañana
+    2. "Lo antes posible" / sin preferencia → mañana
+    3. dateutil parse (cubre "30 de abril", "jueves 30 de abril", "2025-04-30", "abril 30", etc.)
+    4. Expresiones con mes: "fines de abril", "principio de mayo", "para mayo"
+    5. Día de semana solo: "jueves", "lunes" → próximo de esa semana
+    6. Frases relativas: "próxima semana", "mes que viene"
+    7. Fallback: None (no inventar fechas)
+    """
     query = date_query.lower().strip()
-    
-    # Palabras clave españolas/inglesas
+    # Limpiar preposiciones/artículos comunes que no aportan al parsing
+    query_clean = re.sub(r'^(para el |para |el día |el |del |al )', '', query).strip()
     today = get_now_arg().date()
-    day_map = {
-        'mañana': lambda: (get_now_arg() + timedelta(days=1)).date(),
-        'tomorrow': lambda: (get_now_arg() + timedelta(days=1)).date(),
-        'pasado mañana': lambda: (get_now_arg() + timedelta(days=2)).date(),
-        'day after tomorrow': lambda: (get_now_arg() + timedelta(days=2)).date(),
-        'hoy': lambda: today,
-        'today': lambda: today,
-        'lunes': lambda: get_next_weekday(0),
-        'monday': lambda: get_next_weekday(0),
-        'martes': lambda: get_next_weekday(1),
-        'tuesday': lambda: get_next_weekday(1),
-        'miércoles': lambda: get_next_weekday(2),
-        'miercoles': lambda: get_next_weekday(2),
-        'wednesday': lambda: get_next_weekday(2),
-        'jueves': lambda: get_next_weekday(3),
-        'thursday': lambda: get_next_weekday(3),
-        'viernes': lambda: get_next_weekday(4),
-        'friday': lambda: get_next_weekday(4),
-        'sábado': lambda: get_next_weekday(5),
-        'sabado': lambda: get_next_weekday(5),
-        'saturday': lambda: get_next_weekday(5),
-        'domingo': lambda: get_next_weekday(6),
-        'sunday': lambda: get_next_weekday(6),
-    }
-    
-    # Frases de dos palabras primero (ej. "pasado mañana")
+
+    # ── CAPA 1: Atajos exactos (palabras clave inequívocas) ──
     if "pasado mañana" in query or "day after tomorrow" in query:
         return (get_now_arg() + timedelta(days=2)).date()
-    for key, func in day_map.items():
-        if key in query:
-            return func()
 
-    # Month-based expressions: "mitad de abril", "principio de mayo", "fin de junio"
+    exact_map = {
+        'hoy': today, 'today': today,
+    }
+    # "mañana" solo como día (no como "mañana" = morning en contexto de hora)
+    # Solo matchear si query ES "mañana" o empieza/termina con "mañana" como palabra completa
+    if re.search(r'\bmañana\b', query_clean) and not re.search(r'\b(por la|a la|de la)\s+mañana\b', query):
+        # Solo si no hay otros indicadores de fecha (evitar "mañana 30 de abril")
+        if not re.search(r'\d', query_clean):
+            return (get_now_arg() + timedelta(days=1)).date()
+    if 'tomorrow' in query_clean and not re.search(r'\d', query_clean):
+        return (get_now_arg() + timedelta(days=1)).date()
+    for key, val in exact_map.items():
+        if query_clean == key or query == key:
+            return val
+
+    # ── CAPA 2: "Lo antes posible" / sin preferencia → mañana ──
+    asap_patterns = [
+        'lo antes posible', 'lo más pronto', 'lo mas pronto', 'cuanto antes',
+        'lo más rápido', 'lo mas rapido', 'sin preferencia', 'cualquier',
+        'cuando puedan', 'cuando haya', 'el primero que haya', 'el más cercano',
+        'el mas cercano', 'primer turno', 'primer horario', 'asap', 'urgente',
+        'lo antes que se pueda', 'lo antes que puedan', 'lo más temprano',
+    ]
+    if any(p in query for p in asap_patterns):
+        logger.info(f"📅 parse_date: '{date_query}' → tomorrow (ASAP/sin preferencia)")
+        return (get_now_arg() + timedelta(days=1)).date()
+
+    # ── CAPA 3: dateutil parse (el parser más robusto para fechas específicas) ──
+    # Cubre: "30 de abril", "jueves 30 de abril", "abril 30", "2025-04-30",
+    #         "30/04", "30-04-2025", "4 de mayo", "lunes 4 de mayo", etc.
+    # Solo intentar si hay un número en el query (para no confundir "jueves" con una fecha)
+    if re.search(r'\d', query_clean):
+        try:
+            parsed = dateutil_parse(query_clean, dayfirst=True, fuzzy=True).date()
+            # Si el año no estaba en el query, dateutil usa el año actual.
+            # Si eso resulta en una fecha pasada, asumir año siguiente.
+            if parsed < today and not re.search(r'20\d{2}', query):
+                parsed = parsed.replace(year=parsed.year + 1)
+            logger.info(f"📅 parse_date: '{date_query}' → {parsed} (dateutil)")
+            return parsed
+        except Exception:
+            pass
+
+    # ── CAPA 4: Expresiones con mes (sin número): "para mayo", "fines de abril" ──
     month_names = {
-        'enero': 1, 'february': 2, 'febrero': 2, 'marzo': 3, 'april': 4, 'abril': 4,
-        'mayo': 5, 'junio': 6, 'julio': 7, 'agosto': 8, 'septiembre': 9, 'setiembre': 9,
-        'octubre': 10, 'noviembre': 11, 'diciembre': 12,
-        'january': 1, 'march': 3, 'may': 5, 'june': 6, 'july': 7, 'august': 8,
+        'enero': 1, 'febrero': 2, 'marzo': 3, 'abril': 4,
+        'mayo': 5, 'junio': 6, 'julio': 7, 'agosto': 8,
+        'septiembre': 9, 'setiembre': 9, 'octubre': 10,
+        'noviembre': 11, 'diciembre': 12,
+        'january': 1, 'february': 2, 'march': 3, 'april': 4,
+        'may': 5, 'june': 6, 'july': 7, 'august': 8,
         'september': 9, 'october': 10, 'november': 11, 'december': 12,
     }
     for month_name, month_num in month_names.items():
         if month_name in query:
             year = today.year
             if month_num < today.month or (month_num == today.month and today.day > 20):
-                year += 1  # Next year if month already passed
-            if 'mitad' in query or 'mediado' in query or 'medio' in query:
+                year += 1
+            if any(w in query for w in ['mitad', 'mediado', 'medio']):
                 target_day = 15
-            elif 'principio' in query or 'inicio' in query or 'comienzo' in query or 'primera semana' in query:
-                target_day = 3  # First business day-ish
-            elif 'fin' in query or 'final' in query or 'última semana' in query or 'ultima semana' in query:
+            elif any(w in query for w in ['principio', 'inicio', 'comienzo', 'primera semana']):
+                target_day = 3
+            elif any(w in query for w in ['fin', 'final', 'última semana', 'ultima semana']):
                 target_day = 25
             else:
-                target_day = 1  # Default to first of month
+                target_day = 1
             try:
                 result = date(year, month_num, target_day)
-                logger.info(f"📅 parse_date: '{date_query}' → {result} (month expression)")
-                return result
             except ValueError:
-                return date(year, month_num, 1)
+                result = date(year, month_num, 1)
+            logger.info(f"📅 parse_date: '{date_query}' → {result} (month expression)")
+            return result
 
-    # "próxima semana" / "la semana que viene"
-    if 'próxima semana' in query or 'proxima semana' in query or 'semana que viene' in query:
+    # ── CAPA 5: Día de semana solo (sin número ni mes) ──
+    weekday_map = {
+        'lunes': 0, 'monday': 0, 'martes': 1, 'tuesday': 1,
+        'miércoles': 2, 'miercoles': 2, 'wednesday': 2,
+        'jueves': 3, 'thursday': 3, 'viernes': 4, 'friday': 4,
+        'sábado': 5, 'sabado': 5, 'saturday': 5,
+        'domingo': 6, 'sunday': 6,
+    }
+    for day_name, day_num in weekday_map.items():
+        if re.search(r'\b' + day_name + r'\b', query_clean):
+            result = get_next_weekday(day_num)
+            logger.info(f"📅 parse_date: '{date_query}' → {result} (weekday)")
+            return result
+
+    # ── CAPA 6: Frases relativas ──
+    if any(p in query for p in ['próxima semana', 'proxima semana', 'semana que viene']):
         next_monday = get_next_weekday(0)
         if next_monday == today or (next_monday - today).days <= 2:
             next_monday += timedelta(days=7)
         return next_monday
 
-    # "mes que viene" / "próximo mes"
-    if 'mes que viene' in query or 'próximo mes' in query or 'proximo mes' in query:
+    if any(p in query for p in ['mes que viene', 'próximo mes', 'proximo mes']):
         if today.month == 12:
             return date(today.year + 1, 1, 1)
         return date(today.year, today.month + 1, 1)
 
-    # Intentar parsear como fecha
+    # ── CAPA 7: Último intento con dateutil sin restricción de dígitos ──
     try:
-        return dateutil_parse(query, dayfirst=True).date()
-    except:
-        logger.warning(f"📅 parse_date: Could not parse '{date_query}', returning tomorrow")
-        return (get_now_arg() + timedelta(days=1)).date()
+        parsed = dateutil_parse(query_clean, dayfirst=True, fuzzy=True).date()
+        if parsed < today:
+            parsed = parsed.replace(year=parsed.year + 1)
+        logger.info(f"📅 parse_date: '{date_query}' → {parsed} (dateutil fuzzy fallback)")
+        return parsed
+    except Exception:
+        pass
+
+    # ── FALLBACK: No inventar fechas. Retornar None para que la tool maneje el error ──
+    logger.warning(f"📅 parse_date: Could not parse '{date_query}', returning None")
+    return None
 
 def parse_datetime(datetime_query: str) -> datetime:
     """Convierte 'lunes 15:30', 'mañana 14:00', '2025-02-05 14:30' a datetime localizado."""
@@ -313,25 +363,22 @@ def parse_datetime(datetime_query: str) -> datetime:
             else:
                 target_time = (h, 0)
     
-    # 2. Extraer fecha (usando la lógica de parse_date)
-    # Buscamos palabras clave o fechas en la query
-    words = query.split()
-    for word in words:
-        try:
-            # Intentamos parsear la palabra individualmente como fecha (mañana, lunes, etc)
+    # 2. Extraer fecha: primero intentar el query completo con parse_date
+    target_date = parse_date(query)
+    # Si retornó None, intentar palabra por palabra
+    if target_date is None:
+        words = query.split()
+        for word in words:
             d = parse_date(word)
-            # Si no es hoy, o si la query explícitamente dice 'hoy', lo tomamos
-            if d != get_now_arg().date() or 'hoy' in query or 'today' in query:
+            if d is not None:
                 target_date = d
                 break
-        except:
-            continue
 
     # 3. Fallback a dateutil para formatos estándar (YYYY-MM-DD)
-    if not target_date:
+    if target_date is None:
         try:
             dt = dateutil_parse(query, dayfirst=True)
-            if dt.year > 2000: # Evitar años raros
+            if dt.year > 2000:
                 target_date = dt.date()
                 if not time_match: target_time = (dt.hour, dt.minute)
         except:
@@ -506,6 +553,39 @@ DIAS_ES = {
     "thursday": "Jueves", "friday": "Viernes", "saturday": "Sábado", "sunday": "Domingo"
 }
 DAYS_EN = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+
+
+def _get_search_range_days(date_query: str, start_date: date) -> int:
+    """
+    Determina cuántos días buscar desde start_date según el tipo de expresión.
+    Expresiones vagas = rango amplio. Fecha específica = rango corto.
+    """
+    query = date_query.lower()
+    # Rangos parciales de mes
+    if any(w in query for w in ['mitad', 'mediado', 'medio']):
+        return 7   # "mitad de julio" → Jul 15-22
+    if any(w in query for w in ['fin', 'fines', 'final', 'última semana', 'ultima semana']):
+        return 7   # "fines de octubre" → Oct 25-31
+    if any(w in query for w in ['principio', 'inicio', 'comienzo', 'primera semana']):
+        return 10  # "principio de mayo" → May 1-10
+    # Mes completo sin especificar parte (ej: "para mayo", "en julio")
+    month_names = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto',
+                   'septiembre','setiembre','octubre','noviembre','diciembre']
+    if any(m in query for m in month_names) and not re.search(r'\d', query):
+        import calendar
+        _, last_day = calendar.monthrange(start_date.year, start_date.month)
+        return last_day  # Todo el mes
+    # "próxima semana" / "semana que viene"
+    if any(p in query for p in ['semana que viene', 'próxima semana', 'proxima semana']):
+        return 5
+    # ASAP / sin preferencia → buscar 30 días
+    asap_patterns = ['lo antes posible', 'cuanto antes', 'cualquier', 'sin preferencia',
+                     'cuando puedan', 'cuando haya', 'el más cercano', 'el mas cercano',
+                     'primer turno', 'urgente']
+    if any(p in query for p in asap_patterns):
+        return 30
+    # Fecha específica o día de semana → 1 día principal + comodín
+    return 1
 
 
 def _pick_from_slots(slots: List[str], max_picks: int = 3) -> List[str]:
@@ -690,52 +770,123 @@ async def pick_representative_slots(
     professional_name: Optional[str] = None,
     treatment_name: Optional[str] = None,
     duration: int = 30,
-    max_options: int = 3
+    max_options: int = 3,
+    search_range_days: int = 1
 ) -> tuple:
     """
-    Selecciona hasta max_options slots representativos. Si el día pedido tiene menos,
-    busca en los próximos 7 días para completar.
+    Selecciona hasta max_options slots representativos.
+    - search_range_days=1: fecha específica → 2 del mismo día + 1 comodín de otro día.
+    - search_range_days>1: rango (ej: "mitad de julio") → distribuir 1 opción por día
+      en diferentes días del rango para dar variedad al paciente.
+    Si no hay suficientes en el rango, expande la búsqueda hacia adelante.
     Returns: (options: list[dict], total_today: int)
     """
     options = []
     total_today = len(slots)
 
-    # Resolver sede del día pedido
-    day_name_en = DAYS_EN[target_date.weekday()]
-    tenant_day_cfg = tenant_wh.get(day_name_en, {})
-    sede_text = _resolve_sede_text(tenant_day_cfg, tenant_row)
-    date_display = f"{DIAS_ES.get(day_name_en, '')} {target_date.strftime('%d/%m')}"
+    if search_range_days <= 1:
+        # ── MODO FECHA ESPECÍFICA: 2 del día + 1 comodín ──
+        day_name_en = DAYS_EN[target_date.weekday()]
+        tenant_day_cfg = tenant_wh.get(day_name_en, {})
+        sede_text = _resolve_sede_text(tenant_day_cfg, tenant_row)
+        date_display = f"{DIAS_ES.get(day_name_en, '')} {target_date.strftime('%d/%m')}"
 
-    # Seleccionar del día pedido — máximo 2 del mismo día, reservar 1 para comodín de otro día
-    slots_from_today = min(max_options - 1, len(slots)) if len(slots) > 0 else 0  # 2 del día pedido, 1 comodín
-    if slots_from_today < 1:
-        slots_from_today = min(max_options, len(slots))  # Si solo hay 1 slot, tomarlo
-    picked = _pick_from_slots(slots, slots_from_today)
-    for time_str in picked:
-        hour = int(time_str.split(":")[0])
-        options.append({
-            "time": time_str,
-            "date": target_date,
-            "date_display": date_display,
-            "sede": sede_text,
-            "period": "mañana" if hour < 13 else "tarde"
-        })
+        slots_from_today = min(max_options - 1, len(slots)) if len(slots) > 0 else 0
+        if slots_from_today < 1:
+            slots_from_today = min(max_options, len(slots))
+        picked = _pick_from_slots(slots, slots_from_today)
+        for time_str in picked:
+            hour = int(time_str.split(":")[0])
+            options.append({
+                "time": time_str, "date": target_date,
+                "date_display": date_display, "sede": sede_text,
+                "period": "mañana" if hour < 13 else "tarde"
+            })
+    else:
+        # ── MODO RANGO: distribuir opciones en distintos días del rango ──
+        # Primero recolectar todos los días con disponibilidad dentro del rango
+        days_with_slots = []
 
-    # SIEMPRE buscar 1 comodín de otro día (incluso si el día pedido tiene slots de sobra)
+        # Día target (ya tenemos sus slots)
+        if slots:
+            day_name_en = DAYS_EN[target_date.weekday()]
+            tenant_day_cfg = tenant_wh.get(day_name_en, {})
+            days_with_slots.append({
+                "date": target_date,
+                "slots": slots,
+                "sede": _resolve_sede_text(tenant_day_cfg, tenant_row),
+                "day_en": day_name_en,
+            })
+
+        # Buscar en el resto del rango
+        for day_offset in range(1, search_range_days):
+            if len(days_with_slots) >= max_options * 2:  # Suficientes días para elegir
+                break
+            extra_date = target_date + timedelta(days=day_offset)
+            extra_day_en = DAYS_EN[extra_date.weekday()]
+            extra_day_cfg = tenant_wh.get(extra_day_en, {})
+            if extra_day_cfg and not extra_day_cfg.get("enabled", True):
+                continue
+            if not extra_day_cfg and extra_date.weekday() == 6:
+                continue
+            try:
+                extra_slots = await _get_slots_for_extra_day(
+                    extra_date, tenant_id, tenant_wh,
+                    professional_name, treatment_name, duration
+                )
+            except Exception as e:
+                logger.warning(f"Error getting range day slots for {extra_date}: {e}")
+                continue
+            if extra_slots:
+                days_with_slots.append({
+                    "date": extra_date, "slots": extra_slots,
+                    "sede": _resolve_sede_text(extra_day_cfg, tenant_row),
+                    "day_en": extra_day_en,
+                })
+
+        if days_with_slots:
+            # Distribuir: elegir días espaciados dentro del rango
+            if len(days_with_slots) <= max_options:
+                selected_days = days_with_slots
+            else:
+                # Espaciar: tomar el primero, uno del medio, y el último
+                step = max(1, (len(days_with_slots) - 1) / (max_options - 1))
+                indices = [round(i * step) for i in range(max_options)]
+                indices = sorted(set(min(idx, len(days_with_slots) - 1) for idx in indices))
+                selected_days = [days_with_slots[i] for i in indices]
+
+            for day_info in selected_days:
+                if len(options) >= max_options:
+                    break
+                d = day_info["date"]
+                day_en = day_info["day_en"]
+                display = f"{DIAS_ES.get(day_en, '')} {d.strftime('%d/%m')}"
+                # 1 slot por día para maximizar variedad de fechas
+                picked = _pick_from_slots(day_info["slots"], 1)
+                for time_str in picked:
+                    hour = int(time_str.split(":")[0])
+                    options.append({
+                        "time": time_str, "date": d,
+                        "date_display": display, "sede": day_info["sede"],
+                        "period": "mañana" if hour < 13 else "tarde"
+                    })
+
+        # Contar total disponible en el rango para informar
+        total_today = sum(len(d["slots"]) for d in days_with_slots)
+
+    # ── EXPANDIR si faltan opciones (buscar más allá del rango) ──
     if len(options) < max_options:
-        for day_offset in range(1, 8):
+        expand_start = search_range_days if search_range_days > 1 else 1
+        for day_offset in range(expand_start, expand_start + 30):
             if len(options) >= max_options:
                 break
             extra_date = target_date + timedelta(days=day_offset)
             extra_day_en = DAYS_EN[extra_date.weekday()]
             extra_day_cfg = tenant_wh.get(extra_day_en, {})
-
-            # Validar día habilitado
             if extra_day_cfg and not extra_day_cfg.get("enabled", True):
                 continue
             if not extra_day_cfg and extra_date.weekday() == 6:
                 continue
-
             try:
                 extra_slots = await _get_slots_for_extra_day(
                     extra_date, tenant_id, tenant_wh,
@@ -744,25 +895,19 @@ async def pick_representative_slots(
             except Exception as e:
                 logger.warning(f"Error getting extra day slots for {extra_date}: {e}")
                 continue
-
             if not extra_slots:
                 continue
-
             extra_sede = _resolve_sede_text(extra_day_cfg, tenant_row)
             extra_display = f"{DIAS_ES.get(extra_day_en, '')} {extra_date.strftime('%d/%m')}"
-
-            # Tomar 1 slot del día extra (el primero disponible)
             remaining = max_options - len(options)
-            extra_picked = _pick_from_slots(extra_slots, remaining)
+            extra_picked = _pick_from_slots(extra_slots, min(remaining, 1))
             for time_str in extra_picked:
                 if len(options) >= max_options:
                     break
                 hour = int(time_str.split(":")[0])
                 options.append({
-                    "time": time_str,
-                    "date": extra_date,
-                    "date_display": extra_display,
-                    "sede": extra_sede,
+                    "time": time_str, "date": extra_date,
+                    "date_display": extra_display, "sede": extra_sede,
                     "period": "mañana" if hour < 13 else "tarde"
                 })
 
@@ -803,7 +948,10 @@ async def check_availability(date_query: str, professional_name: Optional[str] =
                              treatment_name: Optional[str] = None, time_preference: Optional[str] = None):
     """
     Consulta la disponibilidad REAL de turnos para una fecha. Llamar UNA sola vez por pregunta del paciente.
-    date_query: Día a consultar. Es crítico entender términos relativos: 'hoy', 'mañana', 'pasado mañana', 'lunes', 'martes', etc. Si el paciente dice "qué horarios tienen hoy?" usar date_query='hoy'.
+    date_query: Pasá EXACTAMENTE lo que dijo el paciente sobre la fecha, sin recortar ni interpretar. Ejemplos:
+      "jueves 30 de abril", "4 de mayo", "mañana", "fines de abril", "lo antes posible", "para mayo",
+      "la semana que viene", "hoy", "pasado mañana", "cualquier día", "el más cercano".
+      El sistema interpreta CUALQUIER formato. Si la clínica/profesional no atiende ese día, busca el más cercano automáticamente.
     professional_name: (Opcional) Nombre del profesional (uno de list_professionals).
     treatment_name: (Opcional) Tratamiento ya definido (ej. limpieza profunda, consulta).
     time_preference: OBLIGATORIO cuando el paciente pide horarios de un momento del día: si pide 'a la tarde', 'por la tarde', 'tarde' -> 'tarde'; si pide 'a la mañana', 'por la mañana', 'mañana' (en sentido horario) -> 'mañana'; si no especifica -> 'todo' o no pasar.
@@ -848,37 +996,70 @@ async def check_availability(date_query: str, professional_name: Optional[str] =
             return "❌ No hay profesionales activos en esta sede para consultar disponibilidad. Por favor contactá a la clínica."
 
         target_date = parse_date(date_query)
-        
-        # 0. B) Validar contra Working Hours antes de GCal (Primer Filtro)
-        # Usamos número de día (0=Monday, 6=Sunday) para evitar problemas de locale
-        day_idx = target_date.weekday()
-        days_en = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
-        day_name_en = days_en[day_idx]
-        
-        # Si se pidió un profesional específico, verificar si atiende ese día
-        if clean_name and active_professionals:
-            prof = active_professionals[0]
-            wh = prof.get('working_hours')
-            if isinstance(wh, str):
-                try:
-                    wh = json.loads(wh) if wh else {}
-                except Exception:
-                    wh = {}
-            if not isinstance(wh, dict):
-                wh = {}
-            day_config = wh.get(day_name_en, {"enabled": False, "slots": []})
-            
-            if not day_config.get("enabled"):
-                return f"Lo siento, el/la Dr/a. {prof['first_name']} no atiende los {target_date.strftime('%A')}. ¿Querés que busquemos disponibilidad con otros profesionales?"
 
-        # Validar contra working_hours del tenant (si están configurados)
+        # Si parse_date no pudo interpretar la fecha, pedir aclaración
+        if target_date is None:
+            return f"No pude entender la fecha '{date_query}'. ¿Podrías decirme el día que te gustaría? Por ejemplo: 'jueves 30 de abril', 'mañana', 'la semana que viene'."
+
+        # 0. B) Auto-avanzar si el día está cerrado (clínica o profesional)
+        # En vez de retornar error, buscamos el próximo día válido automáticamente.
+        days_en = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+        dias_es = {"monday": "lunes", "tuesday": "martes", "wednesday": "miércoles", "thursday": "jueves", "friday": "viernes", "saturday": "sábado", "sunday": "domingo"}
+        original_date = target_date
+        auto_advanced = False
+        auto_advance_reason = ""
+
+        for _advance in range(21):  # Buscar hasta 3 semanas adelante
+            day_idx = target_date.weekday()
+            day_name_en = days_en[day_idx]
+            tenant_day_cfg = tenant_wh.get(day_name_en, {}) if tenant_wh else {}
+
+            # Verificar si la clínica atiende este día
+            clinic_closed = False
+            if tenant_wh and tenant_day_cfg:
+                if not tenant_day_cfg.get("enabled", True):
+                    clinic_closed = True
+            elif day_idx == 6:  # Domingo sin config
+                clinic_closed = True
+
+            if clinic_closed:
+                if not auto_advanced:
+                    auto_advance_reason = f"El {dias_es.get(day_name_en, day_name_en)} la clínica no atiende"
+                    auto_advanced = True
+                target_date += timedelta(days=1)
+                continue
+
+            # Verificar si el profesional atiende este día
+            prof_closed = False
+            if clean_name and active_professionals:
+                prof = active_professionals[0]
+                wh = prof.get('working_hours')
+                if isinstance(wh, str):
+                    try:
+                        wh = json.loads(wh) if wh else {}
+                    except Exception:
+                        wh = {}
+                if not isinstance(wh, dict):
+                    wh = {}
+                day_config = wh.get(day_name_en, {"enabled": False, "slots": []})
+                if not day_config.get("enabled"):
+                    prof_closed = True
+
+            if prof_closed:
+                if not auto_advanced:
+                    auto_advance_reason = f"El/la Dr/a. {active_professionals[0]['first_name']} no atiende los {dias_es.get(day_name_en, day_name_en)}"
+                    auto_advanced = True
+                target_date += timedelta(days=1)
+                continue
+
+            break  # Día válido encontrado
+        else:
+            return "No encontré días con atención disponible en las próximas 3 semanas. Por favor contactá a la clínica."
+
+        # Recalcular después del auto-advance
+        day_idx = target_date.weekday()
+        day_name_en = days_en[day_idx]
         tenant_day_cfg = tenant_wh.get(day_name_en, {}) if tenant_wh else {}
-        if tenant_wh and tenant_day_cfg:
-            if not tenant_day_cfg.get("enabled", True):
-                dias_es = {"monday": "lunes", "tuesday": "martes", "wednesday": "miércoles", "thursday": "jueves", "friday": "viernes", "saturday": "sábado", "sunday": "domingo"}
-                return f"Lo siento, la clínica no atiende los {dias_es.get(day_name_en, day_name_en)}. ¿Probamos otro día?"
-        elif day_idx == 6:
-            return f"Lo siento, el {date_query} es domingo y la clínica está cerrada. Atendemos Lunes a Sábados."
 
         # 0. B) Obtener duración y precio del tratamiento
         duration = 30  # Default cuando no se especifica tratamiento
@@ -1130,20 +1311,31 @@ async def check_availability(date_query: str, professional_name: Optional[str] =
         except Exception as e:
             logger.warning(f"Soft lock check failed (non-blocking): {e}")
 
+        # Determinar rango de búsqueda según el tipo de expresión del paciente
+        search_range = _get_search_range_days(date_query, target_date)
+        logger.info(f"📅 search_range={search_range} days for query={date_query!r} target={target_date}")
+
         # Seleccionar 2-3 opciones representativas (con multi-día si hace falta)
         options, total_today = await pick_representative_slots(
             available_slots, target_date, tenant_id, tenant_wh, tenant_row,
             professional_name=professional_name, treatment_name=treatment_name,
-            duration=duration, max_options=3
+            duration=duration, max_options=3, search_range_days=search_range
         )
 
         if options:
             # Emoji numbers for WhatsApp-friendly format
             emoji_nums = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣"]
 
+            lines = []
+
+            # Si auto-avanzamos, explicar por qué
+            if auto_advanced:
+                lines.append(f"{auto_advance_reason}.")
+                lines.append(f"Te busqué los turnos más cercanos:\n")
+
             # Header with treatment name
             treatment_display = treatment_name or "tu turno"
-            lines = [f"🗓️ Opciones disponibles para tu {treatment_display}:\n"]
+            lines.append(f"🗓️ Opciones disponibles para tu {treatment_display}:\n")
 
             for i, opt in enumerate(options):
                 lines.append(f"{emoji_nums[i]}  {opt['date_display']} — {opt['time']} hs")
@@ -1169,14 +1361,18 @@ async def check_availability(date_query: str, professional_name: Optional[str] =
                         lines.append(f"📍 {sede}")
 
             resp = "\n".join(lines)
-            logger.info(f"📅 check_availability OK options={len(options)} total_today={total_today} price={avail_price} for {date_query}")
+            logger.info(f"📅 check_availability OK options={len(options)} total_today={total_today} price={avail_price} for {date_query} auto_advanced={auto_advanced}")
             return resp
         else:
-            logger.info(f"📅 check_availability no slots for {date_query} (duration={duration} min)")
-            return (
-                f"No encontré huecos libres de {duration} min para {date_query}. "
-                f"¿Querés que te anote en lista de espera para ese día o probamos otro día?"
-            )
+            # Sin turnos incluso con multi-day search — informar pero no dejar al paciente colgado
+            logger.info(f"📅 check_availability no slots for {date_query} (duration={duration} min, searched +7 days)")
+            no_slots_msg = f"No encontré turnos de {duration} min"
+            if auto_advanced:
+                no_slots_msg += f" cercanos a la fecha que pediste ({auto_advance_reason})"
+            else:
+                no_slots_msg += f" para {date_query} ni en los días cercanos"
+            no_slots_msg += ". ¿Querés que busque en otra semana o te anoto en lista de espera?"
+            return no_slots_msg
             
     except Exception as e:
         import traceback
@@ -1952,6 +2148,8 @@ async def cancel_appointment(date_query: str):
     phone_digits = normalize_phone_digits(phone)
     try:
         target_date = parse_date(date_query)
+        if target_date is None:
+            return f"No pude entender la fecha '{date_query}'. ¿Podrías indicarme qué turno querés cancelar?"
         apt = await db.pool.fetchrow("""
             SELECT a.id, a.google_calendar_event_id, a.billing_amount, a.payment_status,
                    a.appointment_datetime, tt.name as treatment_name
@@ -2018,6 +2216,8 @@ async def reschedule_appointment(original_date: str, new_date_time: str):
     phone_digits = normalize_phone_digits(phone)
     try:
         orig_date = parse_date(original_date)
+        if orig_date is None:
+            return f"No pude entender la fecha original '{original_date}'. ¿Podrías indicarme qué turno querés reprogramar?"
         new_dt = parse_datetime(new_date_time)
         apt = await db.pool.fetchrow("""
             SELECT a.id, a.google_calendar_event_id, a.professional_id, a.duration_minutes
@@ -3394,6 +3594,7 @@ PASO 3: PROFESIONAL ASIGNADO — Según lo que devolvió 'list_services' o 'get_
   • Si tiene VARIOS profesionales asignados → decí: "Este tratamiento lo realizan [nombres]. Preferís alguno/a?" Si el paciente elige uno → ejecutá check_availability con ese profesional. Si dice "no" / "cualquiera" / no responde claro → ejecutá check_availability SIN professional_name (el sistema asigna al primero disponible).
   • Si NO tiene profesionales asignados (no aparece "con: ...") → preguntá preferencia de profesional o asigná el primero disponible, como siempre.
 PASO 4: CONSULTAR DISPONIBILIDAD — Llamá 'check_availability' UNA vez con treatment_name y, si el paciente eligió profesional, con professional_name.
+  FECHA EN date_query (CRÍTICO): Pasá TEXTUALMENTE lo que dijo el paciente sobre la fecha, sin resumir ni interpretar. Si dijo "jueves 30 de abril" → date_query="jueves 30 de abril". Si dijo "para mayo" → date_query="para mayo". Si dijo "lo antes posible" → date_query="lo antes posible". Si dijo "cualquier día" → date_query="cualquier día". La tool entiende CUALQUIER formato y si el día está cerrado busca automáticamente el más cercano.
   La tool devuelve 2-3 opciones con emojis numerados (1️⃣ 2️⃣ 3️⃣) y la sede al final. Presentá el resultado TAL CUAL lo recibís, sin reformatear. NO agregues la dirección ni sede entre las opciones — ya viene al final del mensaje de la tool.
   Si el paciente elige una opción → pasar a PASO 4b.
   Si el paciente pide otro horario distinto a las opciones → volver a llamar 'check_availability' para verificar ese horario específico.
