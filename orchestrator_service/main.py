@@ -3550,8 +3550,14 @@ async def get_agent_executable_for_tenant(tenant_id: int):
             "OPENAI_MODEL", tenant_id
         )
         if row and row.get("value"):
-            model = str(row["value"]).strip()
-            logger.info(f"🤖 MODEL: Loaded from DB system_config: '{model}' for tenant={tenant_id}")
+            db_model = str(row["value"]).strip()
+            # gpt-3.5-turbo has only 16K context — too small for our prompt. Override to default.
+            if db_model == "gpt-3.5-turbo":
+                logger.warning(f"🤖 MODEL: DB has 'gpt-3.5-turbo' (16K limit, too small). Overriding to '{DEFAULT_OPENAI_MODEL}'")
+                model = DEFAULT_OPENAI_MODEL
+            else:
+                model = db_model
+                logger.info(f"🤖 MODEL: Loaded from DB system_config: '{model}' for tenant={tenant_id}")
         else:
             logger.warning(f"🤖 MODEL: No model in system_config for tenant={tenant_id}, using default: '{DEFAULT_OPENAI_MODEL}'")
     except Exception as model_err:

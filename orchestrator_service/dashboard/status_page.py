@@ -199,6 +199,7 @@ async def update_dashboard_config(
         for key, value in payload.items():
             if key in allowed:
                 if isinstance(value, str) and key in model_keys:
+                    logger.info(f"🤖 CONFIG SAVE: key={key} value='{value.strip()}' tenant_id={tenant_id}")
                     await config_manager.set_config(key, value.strip(), data_type="string", category="ai", tenant_id=tenant_id)
                 elif key == "OPENAI_TEMPERATURE":
                     await config_manager.set_config(key, str(float(value)), data_type="float", category="ai", tenant_id=tenant_id)
