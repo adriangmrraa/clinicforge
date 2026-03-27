@@ -4616,6 +4616,10 @@ async def _nova_realtime_handler(websocket: WebSocket, session_id: str):
                         event = json_mod.loads(message)
                         etype = event.get("type", "")
 
+                        # Log ALL event types for debugging (except audio deltas which are too frequent)
+                        if etype not in ("response.audio.delta", "response.audio_transcript.delta", "input_audio_buffer.committed", "input_audio_buffer.speech_stopped"):
+                            logger.info(f"🎙️ NOVA EVENT: {etype} {json_mod.dumps(event, ensure_ascii=False)[:200] if 'error' in etype or 'function' in etype or 'done' in etype else ''}")
+
                         if etype == "response.audio.delta":
                             audio_b64 = event.get("delta", "")
                             if audio_b64:
@@ -4653,7 +4657,7 @@ async def _nova_realtime_handler(websocket: WebSocket, session_id: str):
                                     from dashboard.token_tracker import track_service_usage
                                     await track_service_usage(
                                         db.pool, config.get("tenant_id", 1),
-                                        "gpt-4o-mini-realtime-preview",
+                                        nova_voice_model,
                                         in_tokens, out_tokens,
                                         source="nova_voice",
                                         phone=config.get("user_id", "system")
