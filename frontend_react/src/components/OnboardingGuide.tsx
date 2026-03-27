@@ -195,6 +195,8 @@ const OnboardingGuide: React.FC<OnboardingGuideProps> = ({ isOpen, onClose }) =>
   const [direction, setDirection] = useState<'next' | 'prev'>('next');
   const cardRef = useRef<HTMLDivElement>(null);
   const [tilt, setTilt] = useState({ x: 0, y: 0 });
+  const [swipeX, setSwipeX] = useState(0);
+  const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
   const [completedPages, setCompletedPages] = useState<string[]>(() => {
     try { return JSON.parse(localStorage.getItem('onboarding_completed') || '[]'); } catch { return []; }
   });
@@ -217,6 +219,40 @@ const OnboardingGuide: React.FC<OnboardingGuideProps> = ({ isOpen, onClose }) =>
     setTilt({ x, y });
   };
   const handlePointerLeave = () => setTilt({ x: 0, y: 0 });
+
+  // Swipe gesture
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY, time: Date.now() };
+    setSwipeX(0);
+  };
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!touchStartRef.current) return;
+    const dx = e.touches[0].clientX - touchStartRef.current.x;
+    const dy = e.touches[0].clientY - touchStartRef.current.y;
+    // Only track horizontal swipes
+    if (Math.abs(dx) > Math.abs(dy)) {
+      setSwipeX(dx * 0.4); // damped follow
+    }
+  };
+  const handleTouchEnd = () => {
+    if (!touchStartRef.current) return;
+    const threshold = 50;
+    if (swipeX < -threshold) {
+      // Swiped left → next
+      if (currentStep < (guide?.steps.length || 1) - 1) {
+        setDirection('next');
+        setCurrentStep(s => s + 1);
+      }
+    } else if (swipeX > threshold) {
+      // Swiped right → prev
+      if (currentStep > 0) {
+        setDirection('prev');
+        setCurrentStep(s => s - 1);
+      }
+    }
+    setSwipeX(0);
+    touchStartRef.current = null;
+  };
 
   if (!isOpen || !guide) return null;
 
@@ -292,9 +328,22 @@ const OnboardingGuide: React.FC<OnboardingGuideProps> = ({ isOpen, onClose }) =>
             </div>
           </div>
 
-          {/* Step content */}
-          <div className="px-5 pb-2 min-h-[240px]">
-            <div key={`${currentPath}-${currentStep}`} className={animClass}>
+          {/* Step content — swipeable */}
+          <div
+            className="px-5 pb-2 min-h-[240px] touch-pan-y select-none"
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
+          >
+            <div
+              key={`${currentPath}-${currentStep}`}
+              className={swipeX === 0 ? animClass : ''}
+              style={{
+                transform: swipeX !== 0 ? `translateX(${swipeX}px)` : undefined,
+                opacity: swipeX !== 0 ? Math.max(0.3, 1 - Math.abs(swipeX) / 200) : undefined,
+                transition: swipeX !== 0 ? 'none' : undefined,
+              }}
+            >
               {/* Step badge + title */}
               <div className="flex items-center gap-2 mb-3">
                 <div className="w-6 h-6 rounded-md bg-blue-500 text-white flex items-center justify-center text-xs font-black shadow-md shadow-blue-500/25">
