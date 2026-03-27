@@ -1132,14 +1132,14 @@ export const NovaWidget: React.FC = () => {
       {!isOpen && (
         <button
           onClick={() => setIsOpen(true)}
-          className={`fixed bottom-6 right-6 z-[9998] w-14 h-14 rounded-full bg-gradient-to-br from-violet-600 to-indigo-600 shadow-lg shadow-violet-500/25 flex items-center justify-center text-white hover:scale-105 active:scale-95 transition-transform ${
-            showPulse ? 'animate-pulse' : ''
-          }`}
+          className="nova-btn fixed bottom-6 right-6 z-[9998] w-14 h-14 rounded-full bg-gradient-to-br from-violet-600 to-indigo-600 shadow-lg shadow-violet-500/25 flex items-center justify-center text-white hover:scale-110 active:scale-90 transition-all duration-200"
           style={{ bottom: 'max(1.5rem, env(safe-area-inset-bottom))' }}
         >
-          <Sparkles className="w-6 h-6" />
+          <Sparkles className="w-6 h-6 nova-icon" />
+          {/* Ping ring */}
+          <span className="absolute inset-0 rounded-full border-2 border-violet-400/40 animate-[novaPing_3s_ease-out_infinite]" />
           {alertCount > 0 && (
-            <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
+            <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center z-10">
               {alertCount > 9 ? '9+' : alertCount}
             </span>
           )}
