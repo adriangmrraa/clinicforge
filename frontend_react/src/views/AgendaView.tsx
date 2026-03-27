@@ -65,13 +65,19 @@ export interface Patient {
 }
 
 // ==================== SOURCE COLORS ====================
-// Colors for appointment sources: AI (blue), Manual (green), GCalendar (gray)
+// Colors for appointment sources: AI/Ventas IA (blue), Manual (green), Nova (purple), GCalendar (gray)
 const SOURCE_COLORS: Record<string, { hex: string; label: string; bgClass: string; textClass: string }> = {
   ai: {
     hex: '#3b82f6',
-    label: 'AI',
+    label: 'Ventas IA',
     bgClass: 'bg-blue-500/10',
     textClass: 'text-blue-400'
+  },
+  nova: {
+    hex: '#a855f7',
+    label: 'Nova',
+    bgClass: 'bg-purple-500/10',
+    textClass: 'text-purple-400'
   },
   manual: {
     hex: '#22c55e',
@@ -105,7 +111,7 @@ const getSourceLabel = (source: string | undefined, t?: (k: string) => string): 
   if (t) {
     if (!source) return t('agenda.source_ai');
     const key = 'agenda.source_' + source;
-    return (source === 'ai' || source === 'manual' || source === 'gcalendar') ? t(key) : source.toUpperCase();
+    return (source === 'ai' || source === 'nova' || source === 'manual' || source === 'gcalendar') ? t(key) : source.toUpperCase();
   }
   if (!source) return 'AI';
   return SOURCE_COLORS[source]?.label || source.toUpperCase();
@@ -583,6 +589,10 @@ export default function AgendaView() {
               <div className="flex items-center gap-1">
                 <div className="w-2.5 h-2.5 rounded-full bg-blue-500"></div>
                 <span className="text-[10px] text-white/50">{t('agenda.source_ai')}</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <div className="w-2.5 h-2.5 rounded-full bg-purple-500"></div>
+                <span className="text-[10px] text-white/50">{t('agenda.source_nova')}</span>
               </div>
               <div className="flex items-center gap-1">
                 <div className="w-2.5 h-2.5 rounded-full bg-green-500"></div>

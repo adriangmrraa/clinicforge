@@ -294,9 +294,26 @@ export default function AppointmentForm({
             >
                 <div className="flex items-center justify-between px-6 py-4 border-b border-white/[0.06] bg-white/[0.02]">
                     <div>
-                        <h2 className="text-xl font-bold text-white">
-                            {isEditing ? t('agenda.form_edit_appointment') : t('agenda.form_new_appointment')}
-                        </h2>
+                        <div className="flex items-center gap-2">
+                            <h2 className="text-xl font-bold text-white">
+                                {isEditing ? t('agenda.form_edit_appointment') : t('agenda.form_new_appointment')}
+                            </h2>
+                            {isEditing && (initialData as any).source && (() => {
+                                const src = (initialData as any).source;
+                                const sourceConfig: Record<string, { bg: string; text: string; label: string }> = {
+                                    ai: { bg: 'bg-blue-500/10', text: 'text-blue-400', label: t('agenda.source_ai') },
+                                    nova: { bg: 'bg-purple-500/10', text: 'text-purple-400', label: t('agenda.source_nova') },
+                                    manual: { bg: 'bg-green-500/10', text: 'text-green-400', label: t('agenda.source_manual') },
+                                    gcalendar: { bg: 'bg-white/[0.06]', text: 'text-white/50', label: t('agenda.source_gcalendar') },
+                                };
+                                const cfg = sourceConfig[src] || sourceConfig.manual;
+                                return (
+                                    <span className={`px-2 py-0.5 text-[10px] font-medium rounded-full ${cfg.bg} ${cfg.text}`}>
+                                        {cfg.label}
+                                    </span>
+                                );
+                            })()}
+                        </div>
                         <p className="text-xs text-slate-500">{t('agenda.clinical_inspector')}</p>
                     </div>
                     <button onClick={onClose} className="p-2 hover:bg-white/[0.06] rounded-full text-white/30 hover:text-white/60 transition-colors">

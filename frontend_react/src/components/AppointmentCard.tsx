@@ -5,7 +5,7 @@ import { useTranslation } from '../context/LanguageContext';
 
 interface ExtendedProps {
     eventType: 'appointment' | 'gcalendar_block';
-    source?: 'ai' | 'manual';
+    source?: 'ai' | 'nova' | 'manual';
     status?: string; // scheduled, confirmed, in_progress, completed, cancelled, no_show
     patient_name?: string;
     patient_phone?: string;
