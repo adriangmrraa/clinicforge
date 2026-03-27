@@ -196,13 +196,13 @@ export default function MarketingHubView() {
         if (activePlatform === 'meta') {
             if (isMetaConnected) {
                 return (
-                    <div className="mb-4 rounded-lg bg-green-50 px-3 py-2 border border-green-200">
+                    <div className="mb-4 rounded-lg bg-green-500/10 px-3 py-2 border border-green-500/20">
                         <div className="flex items-center">
-                            <Megaphone className="h-4 w-4 text-green-600 shrink-0" />
-                            <span className="ml-2 text-xs font-medium text-green-800">{t('marketing.connected_active')}</span>
+                            <Megaphone className="h-4 w-4 text-green-400 shrink-0" />
+                            <span className="ml-2 text-xs font-medium text-green-400">{t('marketing.connected_active')}</span>
                             <button
                                 onClick={() => setIsMetaWizardOpen(true)}
-                                className="ml-auto text-xs font-medium text-green-700 hover:text-green-600"
+                                className="ml-auto text-xs font-medium text-green-400 hover:text-green-300"
                             >
                                 {t('marketing.reconnect')}
                             </button>
@@ -211,13 +211,13 @@ export default function MarketingHubView() {
                 );
             } else {
                 return (
-                    <div className="mb-4 rounded-lg bg-yellow-50 px-3 py-2 border border-yellow-200">
+                    <div className="mb-4 rounded-lg bg-yellow-500/10 px-3 py-2 border border-yellow-500/20">
                         <div className="flex items-center">
-                            <Megaphone className="h-4 w-4 text-yellow-600 shrink-0" />
-                            <span className="ml-2 text-xs font-medium text-yellow-800">{t('marketing.connected_disconnected')}</span>
+                            <Megaphone className="h-4 w-4 text-yellow-400 shrink-0" />
+                            <span className="ml-2 text-xs font-medium text-yellow-400">{t('marketing.connected_disconnected')}</span>
                             <button
                                 onClick={() => setIsMetaWizardOpen(true)}
-                                className="ml-auto inline-flex items-center rounded-md bg-yellow-600 px-2 py-1 text-xs font-semibold text-white shadow-sm hover:bg-yellow-500"
+                                className="ml-auto inline-flex items-center rounded-md bg-yellow-500 px-2 py-1 text-xs font-semibold text-[#0a0e1a] hover:bg-yellow-400"
                             >
                                 {t('marketing.connect')}
                             </button>
@@ -228,23 +228,23 @@ export default function MarketingHubView() {
         } else if (activePlatform === 'google') {
             if (isGoogleConnected) {
                 return (
-                    <div className="mb-4 rounded-lg bg-blue-50 px-3 py-2 border border-blue-200">
+                    <div className="mb-4 rounded-lg bg-blue-500/10 px-3 py-2 border border-blue-500/20">
                         <div className="flex items-center flex-wrap gap-1">
-                            <Globe className="h-4 w-4 text-blue-600 shrink-0" />
-                            <span className="ml-1 text-xs font-medium text-blue-800">{t('marketing_google.connected_active')}</span>
+                            <Globe className="h-4 w-4 text-blue-400 shrink-0" />
+                            <span className="ml-1 text-xs font-medium text-blue-400">{t('marketing_google.connected_active')}</span>
                             {googleStats?.is_demo && (
-                                <span className="text-[10px] font-medium text-blue-600 ml-1">({t('marketing_google.demo_data_notice')})</span>
+                                <span className="text-[10px] font-medium text-blue-400/60 ml-1">({t('marketing_google.demo_data_notice')})</span>
                             )}
                             <div className="ml-auto flex space-x-2">
                                 <button
                                     onClick={handleSyncGoogleData}
-                                    className="text-xs font-medium text-blue-700 hover:text-blue-600"
+                                    className="text-xs font-medium text-blue-400 hover:text-blue-300"
                                 >
                                     {t('marketing_google.sync.button')}
                                 </button>
                                 <button
                                     onClick={() => setIsGoogleWizardOpen(true)}
-                                    className="text-xs font-medium text-blue-700 hover:text-blue-600"
+                                    className="text-xs font-medium text-blue-400 hover:text-blue-300"
                                 >
                                     {t('marketing_google.reconnect')}
                                 </button>
@@ -254,13 +254,13 @@ export default function MarketingHubView() {
                 );
             } else {
                 return (
-                    <div className="mb-4 rounded-lg bg-yellow-50 px-3 py-2 border border-yellow-200">
+                    <div className="mb-4 rounded-lg bg-yellow-500/10 px-3 py-2 border border-yellow-500/20">
                         <div className="flex items-center">
-                            <Globe className="h-4 w-4 text-yellow-600 shrink-0" />
-                            <span className="ml-2 text-xs font-medium text-yellow-800">{t('marketing_google.connected_disconnected')}</span>
+                            <Globe className="h-4 w-4 text-yellow-400 shrink-0" />
+                            <span className="ml-2 text-xs font-medium text-yellow-400">{t('marketing_google.connected_disconnected')}</span>
                             <button
                                 onClick={() => setIsGoogleWizardOpen(true)}
-                                className="ml-auto inline-flex items-center rounded-md bg-yellow-600 px-2 py-1 text-xs font-semibold text-white shadow-sm hover:bg-yellow-500"
+                                className="ml-auto inline-flex items-center rounded-md bg-yellow-500 px-2 py-1 text-xs font-semibold text-[#0a0e1a] hover:bg-yellow-400"
                             >
                                 {t('marketing_google.connect')}
                             </button>
@@ -277,10 +277,10 @@ export default function MarketingHubView() {
                 if (isGoogleConnected) connectedPlatforms.push('Google Ads');
 
                 return (
-                    <div className="mb-4 rounded-lg bg-purple-50 px-3 py-2 border border-purple-200">
+                    <div className="mb-4 rounded-lg bg-purple-500/10 px-3 py-2 border border-purple-500/20">
                         <div className="flex items-center">
-                            <BarChart3 className="h-4 w-4 text-purple-600 shrink-0" />
-                            <span className="ml-2 text-xs font-medium text-purple-800">
+                            <BarChart3 className="h-4 w-4 text-purple-400 shrink-0" />
+                            <span className="ml-2 text-xs font-medium text-purple-400">
                                 {t('marketing_google.combined_stats.title')} — {connectedPlatforms.join(', ')}
                             </span>
                         </div>
@@ -288,10 +288,10 @@ export default function MarketingHubView() {
                 );
             } else {
                 return (
-                    <div className="mb-4 rounded-lg bg-gray-50 px-3 py-2 border border-gray-200">
+                    <div className="mb-4 rounded-lg bg-white/[0.02] px-3 py-2 border border-white/[0.06]">
                         <div className="flex items-center">
-                            <BarChart3 className="h-4 w-4 text-gray-600 shrink-0" />
-                            <span className="ml-2 text-xs font-medium text-gray-800">
+                            <BarChart3 className="h-4 w-4 text-white/60 shrink-0" />
+                            <span className="ml-2 text-xs font-medium text-white">
                                 {t('marketing_google.combined_stats.title')} — Conecta al menos una plataforma
                             </span>
                         </div>
@@ -316,16 +316,16 @@ export default function MarketingHubView() {
                             />
                         )}
 
-                        {/* Sub-tabs: Campañas / Creativos */}
-                        <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
+                        {/* Sub-tabs: Campanas / Creativos */}
+                        <div className="rounded-lg border border-white/[0.06] bg-white/[0.03] overflow-hidden">
                             {/* Tab bar */}
-                            <div className="border-b border-gray-200 px-4">
+                            <div className="border-b border-white/[0.06] px-4">
                                 <nav className="-mb-px flex space-x-6">
                                     <button
                                         onClick={() => setActiveTab('campaigns')}
                                         className={`py-3 px-1 border-b-2 font-medium text-sm transition-colors ${activeTab === 'campaigns'
-                                            ? 'border-blue-500 text-blue-600'
-                                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                                            ? 'border-blue-500 text-blue-400'
+                                            : 'border-transparent text-white/40 hover:text-white/60 hover:border-white/[0.1]'
                                             }`}
                                     >
                                         📢 {t('marketing.tabs.campaigns')}
@@ -333,8 +333,8 @@ export default function MarketingHubView() {
                                     <button
                                         onClick={() => setActiveTab('ads')}
                                         className={`py-3 px-1 border-b-2 font-medium text-sm transition-colors ${activeTab === 'ads'
-                                            ? 'border-blue-500 text-blue-600'
-                                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                                            ? 'border-blue-500 text-blue-400'
+                                            : 'border-transparent text-white/40 hover:text-white/60 hover:border-white/[0.1]'
                                             }`}
                                     >
                                         🎨 {t('marketing.tabs.creatives')}
@@ -346,81 +346,81 @@ export default function MarketingHubView() {
                             <div className="p-4">
                                 {activeTab === 'campaigns' ? (
                                     <>
-                                        <p className="text-xs text-gray-400 mb-3">{t('marketing.sorted_by_leads')}</p>
+                                        <p className="text-xs text-white/30 mb-3">{t('marketing.sorted_by_leads')}</p>
                                         {metaStats?.campaigns?.campaigns?.length > 0 ? (
                                             <div className="space-y-3">
                                                 {[...(metaStats?.campaigns?.campaigns || [])]
                                                     .sort((a: any, b: any) => (b.leads || 0) - (a.leads || 0))
                                                     .map((campaign: any, index: number) => (
-                                                        <div key={index} className="bg-white border border-slate-100 rounded-xl p-3 sm:p-4 hover:border-blue-200 transition-colors">
+                                                        <div key={index} className="bg-white/[0.03] border border-white/[0.06] rounded-xl p-3 sm:p-4 hover:border-blue-500/30 transition-colors">
                                                             <div className="flex items-start justify-between gap-2 mb-3">
                                                                 <div className="min-w-0 flex-1">
-                                                                    <h4 className="text-sm font-semibold text-slate-800 truncate">{campaign.campaign_name || campaign.ad_name || '—'}</h4>
-                                                                    <p className="text-xs text-slate-400 mt-0.5">${campaign.spend?.toLocaleString('es-AR', { minimumFractionDigits: 0 }) || '0'} invertidos</p>
+                                                                    <h4 className="text-sm font-semibold text-white truncate">{campaign.campaign_name || campaign.ad_name || '—'}</h4>
+                                                                    <p className="text-xs text-white/30 mt-0.5">${campaign.spend?.toLocaleString('es-AR', { minimumFractionDigits: 0 }) || '0'} invertidos</p>
                                                                 </div>
-                                                                <span className={`shrink-0 inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold ${campaign.status === 'active' ? 'bg-emerald-100 text-emerald-700' : campaign.status === 'paused' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'}`}>
+                                                                <span className={`shrink-0 inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold ${campaign.status === 'active' ? 'bg-emerald-500/10 text-emerald-400' : campaign.status === 'paused' ? 'bg-amber-500/10 text-amber-400' : 'bg-white/[0.04] text-white/60'}`}>
                                                                     {campaign.status === 'active' ? '● Activo' : campaign.status === 'paused' ? '⏸ Pausado' : campaign.status || '—'}
                                                                 </span>
                                                             </div>
                                                             <div className="grid grid-cols-3 gap-2">
-                                                                <div className="text-center bg-blue-50 rounded-lg py-2">
-                                                                    <p className="text-lg sm:text-xl font-bold text-blue-700">{campaign.leads || 0}</p>
-                                                                    <p className="text-[10px] text-blue-500 font-medium">Leads</p>
+                                                                <div className="text-center bg-blue-500/10 rounded-lg py-2">
+                                                                    <p className="text-lg sm:text-xl font-bold text-blue-400">{campaign.leads || 0}</p>
+                                                                    <p className="text-[10px] text-blue-400/60 font-medium">Leads</p>
                                                                 </div>
-                                                                <div className="text-center bg-emerald-50 rounded-lg py-2">
-                                                                    <p className="text-lg sm:text-xl font-bold text-emerald-700">{campaign.patients_converted || 0}</p>
-                                                                    <p className="text-[10px] text-emerald-500 font-medium">Pacientes</p>
+                                                                <div className="text-center bg-emerald-500/10 rounded-lg py-2">
+                                                                    <p className="text-lg sm:text-xl font-bold text-emerald-400">{campaign.patients_converted || 0}</p>
+                                                                    <p className="text-[10px] text-emerald-400/60 font-medium">Pacientes</p>
                                                                 </div>
-                                                                <div className="text-center bg-slate-50 rounded-lg py-2">
-                                                                    <p className="text-lg sm:text-xl font-bold text-slate-700">{campaign.roi ? `${campaign.roi.toFixed(0)}%` : '0%'}</p>
-                                                                    <p className="text-[10px] text-slate-500 font-medium">ROI</p>
+                                                                <div className="text-center bg-white/[0.04] rounded-lg py-2">
+                                                                    <p className="text-lg sm:text-xl font-bold text-white/60">{campaign.roi ? `${campaign.roi.toFixed(0)}%` : '0%'}</p>
+                                                                    <p className="text-[10px] text-white/40 font-medium">ROI</p>
                                                                 </div>
                                                             </div>
                                                         </div>
                                                     ))}
                                             </div>
                                         ) : (
-                                            <p className="text-gray-500 text-center py-8">{t('marketing.no_campaigns')}</p>
+                                            <p className="text-white/40 text-center py-8">{t('marketing.no_campaigns')}</p>
                                         )}
                                     </>
                                 ) : (
                                     <>
-                                        <p className="text-xs text-gray-400 mb-3">{t('marketing.sorted_by_leads')}</p>
+                                        <p className="text-xs text-white/30 mb-3">{t('marketing.sorted_by_leads')}</p>
                                         {metaStats?.campaigns?.creatives?.length > 0 ? (
                                             <div className="space-y-3">
                                                 {[...(metaStats?.campaigns?.creatives || [])]
                                                     .sort((a: any, b: any) => (b.leads || 0) - (a.leads || 0))
                                                     .map((ad: any, index: number) => (
-                                                        <div key={index} className="bg-white border border-slate-100 rounded-xl p-3 sm:p-4 hover:border-blue-200 transition-colors">
+                                                        <div key={index} className="bg-white/[0.03] border border-white/[0.06] rounded-xl p-3 sm:p-4 hover:border-blue-500/30 transition-colors">
                                                             <div className="flex items-start justify-between gap-2 mb-3">
                                                                 <div className="min-w-0 flex-1">
-                                                                    <h4 className="text-sm font-semibold text-slate-800 truncate">{ad.ad_name || '—'}</h4>
-                                                                    <p className="text-[11px] text-slate-400 truncate mt-0.5">{ad.campaign_name || '—'}</p>
-                                                                    <p className="text-xs text-slate-500 mt-0.5">${ad.spend?.toLocaleString('es-AR', { minimumFractionDigits: 0 }) || '0'} invertidos</p>
+                                                                    <h4 className="text-sm font-semibold text-white truncate">{ad.ad_name || '—'}</h4>
+                                                                    <p className="text-[11px] text-white/30 truncate mt-0.5">{ad.campaign_name || '—'}</p>
+                                                                    <p className="text-xs text-white/40 mt-0.5">${ad.spend?.toLocaleString('es-AR', { minimumFractionDigits: 0 }) || '0'} invertidos</p>
                                                                 </div>
-                                                                <span className={`shrink-0 inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold ${ad.status === 'active' ? 'bg-emerald-100 text-emerald-700' : ad.status === 'paused' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'}`}>
+                                                                <span className={`shrink-0 inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold ${ad.status === 'active' ? 'bg-emerald-500/10 text-emerald-400' : ad.status === 'paused' ? 'bg-amber-500/10 text-amber-400' : 'bg-white/[0.04] text-white/60'}`}>
                                                                     {ad.status === 'active' ? '● Activo' : ad.status === 'paused' ? '⏸ Pausado' : ad.status || '—'}
                                                                 </span>
                                                             </div>
                                                             <div className="grid grid-cols-3 gap-2">
-                                                                <div className="text-center bg-blue-50 rounded-lg py-2">
-                                                                    <p className="text-lg sm:text-xl font-bold text-blue-700">{ad.leads || 0}</p>
-                                                                    <p className="text-[10px] text-blue-500 font-medium">Leads</p>
+                                                                <div className="text-center bg-blue-500/10 rounded-lg py-2">
+                                                                    <p className="text-lg sm:text-xl font-bold text-blue-400">{ad.leads || 0}</p>
+                                                                    <p className="text-[10px] text-blue-400/60 font-medium">Leads</p>
                                                                 </div>
-                                                                <div className="text-center bg-emerald-50 rounded-lg py-2">
-                                                                    <p className="text-lg sm:text-xl font-bold text-emerald-700">{ad.patients_converted || 0}</p>
-                                                                    <p className="text-[10px] text-emerald-500 font-medium">Pacientes</p>
+                                                                <div className="text-center bg-emerald-500/10 rounded-lg py-2">
+                                                                    <p className="text-lg sm:text-xl font-bold text-emerald-400">{ad.patients_converted || 0}</p>
+                                                                    <p className="text-[10px] text-emerald-400/60 font-medium">Pacientes</p>
                                                                 </div>
-                                                                <div className="text-center bg-slate-50 rounded-lg py-2">
-                                                                    <p className="text-lg sm:text-xl font-bold text-slate-700">{ad.roi ? `${ad.roi.toFixed(0)}%` : '0%'}</p>
-                                                                    <p className="text-[10px] text-slate-500 font-medium">ROI</p>
+                                                                <div className="text-center bg-white/[0.04] rounded-lg py-2">
+                                                                    <p className="text-lg sm:text-xl font-bold text-white/60">{ad.roi ? `${ad.roi.toFixed(0)}%` : '0%'}</p>
+                                                                    <p className="text-[10px] text-white/40 font-medium">ROI</p>
                                                                 </div>
                                                             </div>
                                                         </div>
                                                     ))}
                                             </div>
                                         ) : (
-                                            <p className="text-gray-500 text-center py-8">{t('marketing.no_data')}</p>
+                                            <p className="text-white/40 text-center py-8">{t('marketing.no_data')}</p>
                                         )}
                                     </>
                                 )}
@@ -434,25 +434,25 @@ export default function MarketingHubView() {
                     <div className="space-y-4">
                         {/* Google KPIs — same card style as Meta */}
                         {googleStats && (
-                            <div className="bg-white border border-gray-200 rounded-2xl p-4 sm:p-6">
+                            <div className="bg-white/[0.03] border border-white/[0.06] rounded-2xl p-4 sm:p-6">
                                 <div className="grid grid-cols-2 gap-3 mb-4">
-                                    <div className="bg-blue-50 rounded-xl p-3 text-center">
-                                        <p className="text-lg sm:text-2xl font-bold text-blue-700">{GoogleAdsApi.formatNumber(googleStats.impressions || 0)}</p>
-                                        <p className="text-[10px] text-blue-500 font-semibold uppercase">Impresiones</p>
+                                    <div className="bg-blue-500/10 rounded-xl p-3 text-center">
+                                        <p className="text-lg sm:text-2xl font-bold text-blue-400">{GoogleAdsApi.formatNumber(googleStats.impressions || 0)}</p>
+                                        <p className="text-[10px] text-blue-400/60 font-semibold uppercase">Impresiones</p>
                                     </div>
-                                    <div className="bg-indigo-50 rounded-xl p-3 text-center">
-                                        <p className="text-lg sm:text-2xl font-bold text-indigo-700">{GoogleAdsApi.formatNumber(googleStats.clicks || 0)}</p>
-                                        <p className="text-[10px] text-indigo-500 font-semibold uppercase">Clicks</p>
+                                    <div className="bg-indigo-500/10 rounded-xl p-3 text-center">
+                                        <p className="text-lg sm:text-2xl font-bold text-indigo-400">{GoogleAdsApi.formatNumber(googleStats.clicks || 0)}</p>
+                                        <p className="text-[10px] text-indigo-400/60 font-semibold uppercase">Clicks</p>
                                     </div>
                                 </div>
                                 <div className="grid grid-cols-2 gap-3">
-                                    <div className="bg-amber-50 rounded-xl p-3 text-center">
-                                        <p className="text-lg sm:text-2xl font-bold text-amber-700">{GoogleAdsApi.formatCurrency(googleStats.cost || 0, googleStats.currency)}</p>
-                                        <p className="text-[10px] text-amber-500 font-semibold uppercase">Costo</p>
+                                    <div className="bg-amber-500/10 rounded-xl p-3 text-center">
+                                        <p className="text-lg sm:text-2xl font-bold text-amber-400">{GoogleAdsApi.formatCurrency(googleStats.cost || 0, googleStats.currency)}</p>
+                                        <p className="text-[10px] text-amber-400/60 font-semibold uppercase">Costo</p>
                                     </div>
-                                    <div className="bg-emerald-50 rounded-xl p-3 text-center">
-                                        <p className="text-lg sm:text-2xl font-bold text-emerald-700">{GoogleAdsApi.formatNumber(googleStats.conversions || 0)}</p>
-                                        <p className="text-[10px] text-emerald-500 font-semibold uppercase">Conversiones</p>
+                                    <div className="bg-emerald-500/10 rounded-xl p-3 text-center">
+                                        <p className="text-lg sm:text-2xl font-bold text-emerald-400">{GoogleAdsApi.formatNumber(googleStats.conversions || 0)}</p>
+                                        <p className="text-[10px] text-emerald-400/60 font-semibold uppercase">Conversiones</p>
                                     </div>
                                 </div>
                             </div>
@@ -460,37 +460,37 @@ export default function MarketingHubView() {
 
                         {/* Google campaigns as cards */}
                         <div className="space-y-3">
-                            <h3 className="text-sm font-semibold text-slate-600 uppercase tracking-wider px-1">{t('marketing_google.active_campaigns')}</h3>
+                            <h3 className="text-sm font-semibold text-white/60 uppercase tracking-wider px-1">{t('marketing_google.active_campaigns')}</h3>
                             {googleStats?.campaigns?.length > 0 ? (
                                 googleStats.campaigns.map((c: any, i: number) => (
-                                    <div key={i} className="bg-white border border-slate-100 rounded-xl p-3 sm:p-4">
+                                    <div key={i} className="bg-white/[0.03] border border-white/[0.06] rounded-xl p-3 sm:p-4">
                                         <div className="flex items-start justify-between gap-2 mb-3">
                                             <div className="min-w-0 flex-1">
-                                                <h4 className="text-sm font-semibold text-slate-800 truncate">{c.name || c.campaign_name || '—'}</h4>
-                                                <p className="text-xs text-slate-400 mt-0.5">{c.type || 'Campaña'} · {GoogleAdsApi.formatCurrency(c.cost || c.spend || 0, googleStats.currency)}</p>
+                                                <h4 className="text-sm font-semibold text-white truncate">{c.name || c.campaign_name || '—'}</h4>
+                                                <p className="text-xs text-white/30 mt-0.5">{c.type || 'Campaña'} · {GoogleAdsApi.formatCurrency(c.cost || c.spend || 0, googleStats.currency)}</p>
                                             </div>
-                                            <span className={`shrink-0 inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold ${c.status === 'ENABLED' || c.status === 'active' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
+                                            <span className={`shrink-0 inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold ${c.status === 'ENABLED' || c.status === 'active' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-white/[0.04] text-white/60'}`}>
                                                 {c.status === 'ENABLED' || c.status === 'active' ? '● Activo' : c.status || '—'}
                                             </span>
                                         </div>
                                         <div className="grid grid-cols-3 gap-2">
-                                            <div className="text-center bg-blue-50 rounded-lg py-2">
-                                                <p className="text-lg font-bold text-blue-700">{GoogleAdsApi.formatNumber(c.clicks || 0)}</p>
-                                                <p className="text-[10px] text-blue-500 font-medium">Clicks</p>
+                                            <div className="text-center bg-blue-500/10 rounded-lg py-2">
+                                                <p className="text-lg font-bold text-blue-400">{GoogleAdsApi.formatNumber(c.clicks || 0)}</p>
+                                                <p className="text-[10px] text-blue-400/60 font-medium">Clicks</p>
                                             </div>
-                                            <div className="text-center bg-emerald-50 rounded-lg py-2">
-                                                <p className="text-lg font-bold text-emerald-700">{GoogleAdsApi.formatNumber(c.conversions || 0)}</p>
-                                                <p className="text-[10px] text-emerald-500 font-medium">Conversiones</p>
+                                            <div className="text-center bg-emerald-500/10 rounded-lg py-2">
+                                                <p className="text-lg font-bold text-emerald-400">{GoogleAdsApi.formatNumber(c.conversions || 0)}</p>
+                                                <p className="text-[10px] text-emerald-400/60 font-medium">Conversiones</p>
                                             </div>
-                                            <div className="text-center bg-slate-50 rounded-lg py-2">
-                                                <p className="text-lg font-bold text-slate-700">{c.roas?.toFixed(1) || '0.0'}</p>
-                                                <p className="text-[10px] text-slate-500 font-medium">ROAS</p>
+                                            <div className="text-center bg-white/[0.04] rounded-lg py-2">
+                                                <p className="text-lg font-bold text-white/60">{c.roas?.toFixed(1) || '0.0'}</p>
+                                                <p className="text-[10px] text-white/40 font-medium">ROAS</p>
                                             </div>
                                         </div>
                                     </div>
                                 ))
                             ) : (
-                                <p className="text-gray-400 text-center py-6 text-sm">{t('marketing_google.no_campaigns')}</p>
+                                <p className="text-white/30 text-center py-6 text-sm">{t('marketing_google.no_campaigns')}</p>
                             )}
                         </div>
                     </div>
@@ -501,29 +501,29 @@ export default function MarketingHubView() {
                     <div className="space-y-4">
                         {/* Combined KPIs */}
                         {combinedStats && (
-                            <div className="bg-white border border-gray-200 rounded-2xl p-4 sm:p-6">
+                            <div className="bg-white/[0.03] border border-white/[0.06] rounded-2xl p-4 sm:p-6">
                                 <div className="grid grid-cols-2 gap-3 mb-3">
-                                    <div className="bg-blue-50 rounded-xl p-3 text-center">
-                                        <p className="text-lg sm:text-2xl font-bold text-blue-700">{GoogleAdsApi.formatNumber(combinedStats.combined?.total_impressions || 0)}</p>
-                                        <p className="text-[10px] text-blue-500 font-semibold uppercase">Impresiones</p>
+                                    <div className="bg-blue-500/10 rounded-xl p-3 text-center">
+                                        <p className="text-lg sm:text-2xl font-bold text-blue-400">{GoogleAdsApi.formatNumber(combinedStats.combined?.total_impressions || 0)}</p>
+                                        <p className="text-[10px] text-blue-400/60 font-semibold uppercase">Impresiones</p>
                                     </div>
-                                    <div className="bg-indigo-50 rounded-xl p-3 text-center">
-                                        <p className="text-lg sm:text-2xl font-bold text-indigo-700">{GoogleAdsApi.formatNumber(combinedStats.combined?.total_clicks || 0)}</p>
-                                        <p className="text-[10px] text-indigo-500 font-semibold uppercase">Clicks</p>
+                                    <div className="bg-indigo-500/10 rounded-xl p-3 text-center">
+                                        <p className="text-lg sm:text-2xl font-bold text-indigo-400">{GoogleAdsApi.formatNumber(combinedStats.combined?.total_clicks || 0)}</p>
+                                        <p className="text-[10px] text-indigo-400/60 font-semibold uppercase">Clicks</p>
                                     </div>
                                 </div>
                                 <div className="grid grid-cols-3 gap-2">
-                                    <div className="bg-amber-50 rounded-xl p-2.5 text-center">
-                                        <p className="text-base sm:text-lg font-bold text-amber-700">{GoogleAdsApi.formatCurrency(combinedStats.combined?.total_cost || 0, 'ARS')}</p>
-                                        <p className="text-[10px] text-amber-500 font-semibold uppercase">Costo</p>
+                                    <div className="bg-amber-500/10 rounded-xl p-2.5 text-center">
+                                        <p className="text-base sm:text-lg font-bold text-amber-400">{GoogleAdsApi.formatCurrency(combinedStats.combined?.total_cost || 0, 'ARS')}</p>
+                                        <p className="text-[10px] text-amber-400/60 font-semibold uppercase">Costo</p>
                                     </div>
-                                    <div className="bg-emerald-50 rounded-xl p-2.5 text-center">
-                                        <p className="text-base sm:text-lg font-bold text-emerald-700">{GoogleAdsApi.formatNumber(combinedStats.combined?.total_conversions || 0)}</p>
-                                        <p className="text-[10px] text-emerald-500 font-semibold uppercase">Conversiones</p>
+                                    <div className="bg-emerald-500/10 rounded-xl p-2.5 text-center">
+                                        <p className="text-base sm:text-lg font-bold text-emerald-400">{GoogleAdsApi.formatNumber(combinedStats.combined?.total_conversions || 0)}</p>
+                                        <p className="text-[10px] text-emerald-400/60 font-semibold uppercase">Conversiones</p>
                                     </div>
-                                    <div className="bg-violet-50 rounded-xl p-2.5 text-center">
-                                        <p className="text-base sm:text-lg font-bold text-violet-700">{GoogleAdsApi.formatCurrency(combinedStats.combined?.total_conversions_value || 0, 'ARS')}</p>
-                                        <p className="text-[10px] text-violet-500 font-semibold uppercase">Ingresos</p>
+                                    <div className="bg-violet-500/10 rounded-xl p-2.5 text-center">
+                                        <p className="text-base sm:text-lg font-bold text-violet-400">{GoogleAdsApi.formatCurrency(combinedStats.combined?.total_conversions_value || 0, 'ARS')}</p>
+                                        <p className="text-[10px] text-violet-400/60 font-semibold uppercase">Ingresos</p>
                                     </div>
                                 </div>
                             </div>
@@ -531,58 +531,58 @@ export default function MarketingHubView() {
 
                         {/* Platform comparison as cards (not table) */}
                         <div className="space-y-3">
-                            <h3 className="text-sm font-semibold text-slate-600 uppercase tracking-wider px-1">Comparación de Plataformas</h3>
+                            <h3 className="text-sm font-semibold text-white/60 uppercase tracking-wider px-1">Comparación de Plataformas</h3>
 
                             {/* Meta Ads card */}
-                            <div className="bg-white border border-slate-100 rounded-xl p-3 sm:p-4">
+                            <div className="bg-white/[0.03] border border-white/[0.06] rounded-xl p-3 sm:p-4">
                                 <div className="flex items-center justify-between mb-3">
                                     <div className="flex items-center gap-2">
-                                        <Megaphone size={16} className="text-blue-600" />
-                                        <span className="text-sm font-semibold text-slate-800">Meta Ads</span>
+                                        <Megaphone size={16} className="text-blue-400" />
+                                        <span className="text-sm font-semibold text-white">Meta Ads</span>
                                     </div>
-                                    <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold ${isMetaConnected ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                                    <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold ${isMetaConnected ? 'bg-emerald-500/10 text-emerald-400' : 'bg-white/[0.04] text-white/40'}`}>
                                         {isMetaConnected ? '● Conectado' : 'Desconectado'}
                                     </span>
                                 </div>
                                 <div className="grid grid-cols-3 gap-2">
-                                    <div className="text-center bg-blue-50 rounded-lg py-2">
-                                        <p className="text-lg font-bold text-blue-700">${metaStats?.roi?.total_spend?.toLocaleString('es-AR', { maximumFractionDigits: 0 }) || '0'}</p>
-                                        <p className="text-[10px] text-blue-500 font-medium">Inversión</p>
+                                    <div className="text-center bg-blue-500/10 rounded-lg py-2">
+                                        <p className="text-lg font-bold text-blue-400">${metaStats?.roi?.total_spend?.toLocaleString('es-AR', { maximumFractionDigits: 0 }) || '0'}</p>
+                                        <p className="text-[10px] text-blue-400/60 font-medium">Inversión</p>
                                     </div>
-                                    <div className="text-center bg-emerald-50 rounded-lg py-2">
-                                        <p className="text-lg font-bold text-emerald-700">${metaStats?.roi?.total_revenue?.toLocaleString('es-AR', { maximumFractionDigits: 0 }) || '0'}</p>
-                                        <p className="text-[10px] text-emerald-500 font-medium">Ingresos</p>
+                                    <div className="text-center bg-emerald-500/10 rounded-lg py-2">
+                                        <p className="text-lg font-bold text-emerald-400">${metaStats?.roi?.total_revenue?.toLocaleString('es-AR', { maximumFractionDigits: 0 }) || '0'}</p>
+                                        <p className="text-[10px] text-emerald-400/60 font-medium">Ingresos</p>
                                     </div>
-                                    <div className="text-center bg-slate-50 rounded-lg py-2">
-                                        <p className="text-lg font-bold text-slate-700">{metaStats?.roi?.total_spend > 0 ? `${((metaStats.roi.total_revenue / metaStats.roi.total_spend) * 100).toFixed(0)}%` : '0%'}</p>
-                                        <p className="text-[10px] text-slate-500 font-medium">ROI</p>
+                                    <div className="text-center bg-white/[0.04] rounded-lg py-2">
+                                        <p className="text-lg font-bold text-white/60">{metaStats?.roi?.total_spend > 0 ? `${((metaStats.roi.total_revenue / metaStats.roi.total_spend) * 100).toFixed(0)}%` : '0%'}</p>
+                                        <p className="text-[10px] text-white/40 font-medium">ROI</p>
                                     </div>
                                 </div>
                             </div>
 
                             {/* Google Ads card */}
-                            <div className="bg-white border border-slate-100 rounded-xl p-3 sm:p-4">
+                            <div className="bg-white/[0.03] border border-white/[0.06] rounded-xl p-3 sm:p-4">
                                 <div className="flex items-center justify-between mb-3">
                                     <div className="flex items-center gap-2">
-                                        <Globe size={16} className="text-red-600" />
-                                        <span className="text-sm font-semibold text-slate-800">Google Ads</span>
+                                        <Globe size={16} className="text-red-400" />
+                                        <span className="text-sm font-semibold text-white">Google Ads</span>
                                     </div>
-                                    <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold ${isGoogleConnected ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                                    <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold ${isGoogleConnected ? 'bg-emerald-500/10 text-emerald-400' : 'bg-white/[0.04] text-white/40'}`}>
                                         {isGoogleConnected ? '● Conectado' : 'Desconectado'}
                                     </span>
                                 </div>
                                 <div className="grid grid-cols-3 gap-2">
-                                    <div className="text-center bg-blue-50 rounded-lg py-2">
-                                        <p className="text-lg font-bold text-blue-700">{GoogleAdsApi.formatCurrency(googleStats?.cost || 0, googleStats?.currency)}</p>
-                                        <p className="text-[10px] text-blue-500 font-medium">Inversión</p>
+                                    <div className="text-center bg-blue-500/10 rounded-lg py-2">
+                                        <p className="text-lg font-bold text-blue-400">{GoogleAdsApi.formatCurrency(googleStats?.cost || 0, googleStats?.currency)}</p>
+                                        <p className="text-[10px] text-blue-400/60 font-medium">Inversión</p>
                                     </div>
-                                    <div className="text-center bg-emerald-50 rounded-lg py-2">
-                                        <p className="text-lg font-bold text-emerald-700">{GoogleAdsApi.formatCurrency(googleStats?.conversions_value || 0, googleStats?.currency)}</p>
-                                        <p className="text-[10px] text-emerald-500 font-medium">Ingresos</p>
+                                    <div className="text-center bg-emerald-500/10 rounded-lg py-2">
+                                        <p className="text-lg font-bold text-emerald-400">{GoogleAdsApi.formatCurrency(googleStats?.conversions_value || 0, googleStats?.currency)}</p>
+                                        <p className="text-[10px] text-emerald-400/60 font-medium">Ingresos</p>
                                     </div>
-                                    <div className="text-center bg-slate-50 rounded-lg py-2">
-                                        <p className="text-lg font-bold text-slate-700">{googleStats?.roas ? `${googleStats.roas.toFixed(1)}x` : '0x'}</p>
-                                        <p className="text-[10px] text-slate-500 font-medium">ROAS</p>
+                                    <div className="text-center bg-white/[0.04] rounded-lg py-2">
+                                        <p className="text-lg font-bold text-white/60">{googleStats?.roas ? `${googleStats.roas.toFixed(1)}x` : '0x'}</p>
+                                        <p className="text-[10px] text-white/40 font-medium">ROAS</p>
                                     </div>
                                 </div>
                             </div>
@@ -596,10 +596,10 @@ export default function MarketingHubView() {
     };
 
     return (
-        <div className="h-screen flex flex-col bg-gray-50 overflow-hidden">
+        <div className="h-screen flex flex-col overflow-hidden">
             {/* Compact Header */}
-            <div className="shrink-0 bg-white border-b px-4 pt-4 pb-0">
-                <h1 className="text-lg font-bold text-slate-800 mb-1">Marketing Hub</h1>
+            <div className="shrink-0 border-b border-white/[0.06] px-4 pt-4 pb-0">
+                <h1 className="text-lg font-bold text-white mb-1">Marketing Hub</h1>
 
                 {/* Platform Tabs */}
                 <nav className="flex gap-4 -mb-px">
@@ -612,8 +612,8 @@ export default function MarketingHubView() {
                             key={tab.key}
                             onClick={() => setActivePlatform(tab.key)}
                             className={`flex items-center gap-1.5 py-2.5 px-1 border-b-2 text-xs sm:text-sm font-medium transition-colors ${activePlatform === tab.key
-                                ? 'border-blue-500 text-blue-600'
-                                : 'border-transparent text-gray-400 hover:text-gray-600'
+                                ? 'border-blue-500 text-blue-400'
+                                : 'border-transparent text-white/30 hover:text-white/60'
                                 }`}
                         >
                             <tab.icon size={14} />
@@ -633,8 +633,8 @@ export default function MarketingHubView() {
                         <button
                             onClick={() => setTimeRange('last_30d')}
                             className={`px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm rounded-md ${timeRange === 'last_30d'
-                                ? 'bg-blue-100 text-blue-700 font-medium'
-                                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                ? 'bg-blue-500/10 text-blue-400 font-medium'
+                                : 'bg-white/[0.04] text-white/60 hover:bg-white/[0.08]'
                                 }`}
                         >
                             {t('marketing.range_30d')}
@@ -642,8 +642,8 @@ export default function MarketingHubView() {
                         <button
                             onClick={() => setTimeRange('last_90d')}
                             className={`px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm rounded-md ${timeRange === 'last_90d'
-                                ? 'bg-blue-100 text-blue-700 font-medium'
-                                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                ? 'bg-blue-500/10 text-blue-400 font-medium'
+                                : 'bg-white/[0.04] text-white/60 hover:bg-white/[0.08]'
                                 }`}
                         >
                             {t('marketing.range_90d')}
@@ -651,8 +651,8 @@ export default function MarketingHubView() {
                         <button
                             onClick={() => setTimeRange('this_year')}
                             className={`px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm rounded-md ${timeRange === 'this_year'
-                                ? 'bg-blue-100 text-blue-700 font-medium'
-                                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                ? 'bg-blue-500/10 text-blue-400 font-medium'
+                                : 'bg-white/[0.04] text-white/60 hover:bg-white/[0.08]'
                                 }`}
                         >
                             {t('marketing.range_year')}
@@ -660,8 +660,8 @@ export default function MarketingHubView() {
                         <button
                             onClick={() => setTimeRange('all')}
                             className={`px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm rounded-md ${timeRange === 'all'
-                                ? 'bg-blue-100 text-blue-700 font-medium'
-                                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                ? 'bg-blue-500/10 text-blue-400 font-medium'
+                                : 'bg-white/[0.04] text-white/60 hover:bg-white/[0.08]'
                                 }`}
                         >
                             {t('marketing.range_all')}
@@ -671,7 +671,7 @@ export default function MarketingHubView() {
                     <button
                         onClick={loadAllStats}
                         disabled={isLoading}
-                        className="inline-flex items-center px-3 py-1 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+                        className="inline-flex items-center px-3 py-1 border border-white/[0.08] text-sm leading-4 font-medium rounded-md text-white bg-white/[0.04] hover:bg-white/[0.08] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
                     >
                         <RefreshCw className={`h-4 w-4 mr-1 ${isLoading ? 'animate-spin' : ''}`} />
                         {isLoading ? t('common.loading') : 'Actualizar'}
