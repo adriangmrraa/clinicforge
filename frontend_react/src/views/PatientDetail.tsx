@@ -144,6 +144,13 @@ export default function PatientDetail() {
       }
     });
 
+    socketRef.current.on('ODONTOGRAM_UPDATED', (payload: { patient_id?: number }) => {
+      const currentPatientId = id ? parseInt(id) : null;
+      if (payload.patient_id && payload.patient_id === currentPatientId) {
+        fetchPatientData();
+      }
+    });
+
     return () => {
       socketRef.current?.disconnect();
     };

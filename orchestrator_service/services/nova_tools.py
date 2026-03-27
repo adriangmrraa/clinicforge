@@ -3527,6 +3527,19 @@ async def _modificar_odontograma(args: Dict, tenant_id: int, user_role: str, use
     name = f"{patient['first_name']} {patient['last_name'] or ''}".strip()
     logger.info(f"🦷 NOVA Odontograma: patient={pid} ({name}) updated {len(piezas)} teeth, record={record_id}")
 
+    # Emit real-time Socket.IO event so any open Odontogram UI refreshes immediately
+    try:
+        from main import sio, to_json_safe
+        await sio.emit("ODONTOGRAM_UPDATED", to_json_safe({
+            "patient_id": int(pid),
+            "record_id": str(record_id),
+            "tenant_id": tenant_id,
+            "odontogram_data": odontogram_data_v2,
+        }))
+        logger.info(f"📡 Socket event emitted: ODONTOGRAM_UPDATED for patient {pid}")
+    except Exception as e:
+        logger.warning(f"Could not emit ODONTOGRAM_UPDATED socket event: {e}")
+
     result = f"Odontograma de {name} actualizado ({len(piezas)} pieza(s)):\n"
     result += "\n".join(changes_summary)
     return result
