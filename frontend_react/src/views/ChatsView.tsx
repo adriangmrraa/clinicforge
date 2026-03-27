@@ -885,8 +885,8 @@ export default function ChatsView() {
         return {
           color: 'text-pink-600',
           bgColor: 'bg-[#E1306C]',
-          hoverBg: 'hover:bg-pink-50',
-          selectedBg: 'bg-pink-50',
+          hoverBg: 'hover:bg-pink-500/10',
+          selectedBg: 'bg-pink-500/10',
           borderColor: 'border-pink-500',
           icon: <Instagram size={12} className="text-white" />,
           label: 'Instagram'
@@ -895,8 +895,8 @@ export default function ChatsView() {
         return {
           color: 'text-blue-600',
           bgColor: 'bg-[#1877F2]',
-          hoverBg: 'hover:bg-blue-50',
-          selectedBg: 'bg-blue-50',
+          hoverBg: 'hover:bg-blue-500/10',
+          selectedBg: 'bg-blue-500/10',
           borderColor: 'border-blue-500',
           icon: <Facebook size={12} className="text-white" />,
           label: 'Facebook'
@@ -905,18 +905,18 @@ export default function ChatsView() {
         return {
           color: 'text-green-600',
           bgColor: 'bg-[#25D366]',
-          hoverBg: 'hover:bg-green-50',
-          selectedBg: 'bg-green-50',
+          hoverBg: 'hover:bg-green-500/10',
+          selectedBg: 'bg-green-500/10',
           borderColor: 'border-green-500',
           icon: <MessageCircle size={12} className="text-white" />,
           label: 'WhatsApp'
         };
       default:
         return {
-          color: 'text-gray-600',
+          color: 'text-white/60',
           bgColor: 'bg-gray-600',
-          hoverBg: 'hover:bg-gray-50',
-          selectedBg: 'bg-gray-50',
+          hoverBg: 'hover:bg-white/[0.04]',
+          selectedBg: 'bg-white/[0.04]',
           borderColor: 'border-gray-500',
           icon: <MessageCircle size={12} className="text-white" />,
           label: channel
@@ -930,7 +930,7 @@ export default function ChatsView() {
   // ============================================
 
   return (
-    <div className="h-full flex relative overflow-hidden bg-white max-w-full">
+    <div className="h-full flex relative overflow-hidden bg-[#0a0e1a] max-w-full">
       {/* Audio para notificaciones */}
       <audio ref={audioRef} src="/notification.mp3" preload="auto" />
 
@@ -958,14 +958,14 @@ export default function ChatsView() {
       {/* Chat List */}
       <div className={`
         ${selectedSession || selectedChatwoot ? 'hidden lg:flex' : 'flex'}
-        w-full lg:w-80 border-r bg-white flex-col
+        w-full lg:w-80 border-r border-white/[0.06] bg-white/[0.02] flex-col
       `}>
-        <div className="p-4 border-b">
+        <div className="p-4 border-b border-white/[0.06]">
           <div className="flex justify-between items-center mb-3">
-            <h2 className="text-lg font-bold">{t('chats.title')}</h2>
+            <h2 className="text-lg font-bold text-white">{t('chats.title')}</h2>
             <button
               onClick={() => setSoundEnabled(!soundEnabled)}
-              className="p-2 rounded-lg hover:bg-gray-100"
+              className="p-2 rounded-lg hover:bg-white/[0.04] text-white/60"
               title={soundEnabled ? t('chats.mute_sound') : t('chats.enable_sound')}
             >
               {soundEnabled ? <Volume2 size={18} /> : <VolumeX size={18} />}
@@ -973,11 +973,11 @@ export default function ChatsView() {
           </div>
           {clinics.length > 1 && (
             <div className="mb-3">
-              <label className="block text-xs font-medium text-gray-500 mb-1">{t('chats.clinic_label')}</label>
+              <label className="block text-xs font-medium text-white/40 mb-1">{t('chats.clinic_label')}</label>
               <select
                 value={selectedTenantId ?? ''}
                 onChange={(e) => setSelectedTenantId(Number(e.target.value))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary bg-white"
+                className="w-full px-3 py-2 border border-white/[0.08] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary bg-white/[0.04] text-white"
               >
                 {clinics.map((c) => (
                   <option key={c.id} value={c.id}>{c.clinic_name}</option>
@@ -986,14 +986,14 @@ export default function ChatsView() {
             </div>
           )}
           {clinics.length === 1 && clinics[0] && (
-            <p className="text-xs text-gray-500 mb-2">{clinics[0].clinic_name}</p>
+            <p className="text-xs text-white/40 mb-2">{clinics[0].clinic_name}</p>
           )}
           <div className="mb-3">
-            <label className="block text-xs font-medium text-gray-500 mb-1">{t('chats.channel_label')}</label>
+            <label className="block text-xs font-medium text-white/40 mb-1">{t('chats.channel_label')}</label>
             <select
               value={channelFilter}
               onChange={(e) => setChannelFilter(e.target.value as 'all' | 'whatsapp' | 'instagram' | 'facebook')}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary bg-white"
+              className="w-full px-3 py-2 border border-white/[0.08] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary bg-white/[0.04] text-white"
             >
               <option value="all">{t('chats.channel_all')}</option>
               <option value="whatsapp">WhatsApp</option>
@@ -1002,22 +1002,22 @@ export default function ChatsView() {
             </select>
           </div>
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" size={16} />
             <input
               type="text"
               placeholder={t('chats.search_placeholder')}
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              className="w-full pl-9 pr-4 py-2 border border-white/[0.08] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary bg-white/[0.04] text-white placeholder-white/20"
             />
           </div>
         </div>
 
         <div className="flex-1 overflow-y-auto">
           {loading && mergedList.length === 0 ? (
-            <div className="p-4 text-center text-gray-500">{t('common.loading')}</div>
+            <div className="p-4 text-center text-white/40">{t('common.loading')}</div>
           ) : mergedList.length === 0 ? (
-            <div className="p-4 text-center text-gray-500">{t('chats.no_sessions')}</div>
+            <div className="p-4 text-center text-white/40">{t('chats.no_sessions')}</div>
           ) : (
             mergedList.map(row => {
               if (row.type === 'ycloud') {
@@ -1029,22 +1029,22 @@ export default function ChatsView() {
                   <div
                     key={`ycloud-${session.phone_number}`}
                     onClick={() => { setSelectedSession(session); setSelectedChatwoot(null); }}
-                    className={`px-4 py-3 border-b cursor-pointer transition-all relative border-l-4
-                      ${isSelected ? `${platform.selectedBg} ${platform.borderColor}` : `hover:bg-gray-50 border-transparent`}
+                    className={`px-4 py-3 border-b border-white/[0.06] cursor-pointer transition-all relative border-l-4
+                      ${isSelected ? `bg-white/[0.08] ${platform.borderColor}` : `hover:bg-white/[0.04] border-transparent`}
                     `}
                   >
                     <div className="flex items-center gap-3">
                       <div className="relative shrink-0">
-                        <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-lg shadow-sm ${avatarBg}`}>
+                        <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-lg ${avatarBg}`}>
                           {(session.patient_name || session.phone_number).charAt(0)}
                         </div>
-                        <div className={`absolute -bottom-1 -right-1 p-1 rounded-full shadow-sm border border-white ${platform.bgColor}`}>
+                        <div className={`absolute -bottom-1 -right-1 p-1 rounded-full border border-[#0a0e1a] ${platform.bgColor}`}>
                           {session.is_window_open === false ? <Lock size={10} className="text-white" /> : platform.icon}
                         </div>
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex justify-between items-baseline mb-0.5">
-                          <span className={`font-semibold truncate ${isSelected ? 'text-gray-900' : 'text-gray-900'}`}>
+                          <span className={`font-semibold truncate text-white`}>
                             {session.patient_name || session.phone_number}
                           </span>
                           <span className={`text-[10px] font-bold ${platform.color} shrink-0 ml-1`}>
@@ -1052,7 +1052,7 @@ export default function ChatsView() {
                           </span>
                         </div>
                         <div className="flex justify-between items-center">
-                          <p className={`text-sm truncate pr-4 ${session.unread_count > 0 ? 'text-gray-900 font-medium' : 'text-gray-500'}`}>
+                          <p className={`text-sm truncate pr-4 ${session.unread_count > 0 ? 'text-white font-medium' : 'text-white/40'}`}>
                             {session.last_message || t('chats.no_messages')}
                           </p>
                           {session.unread_count > 0 && (
@@ -1061,7 +1061,7 @@ export default function ChatsView() {
                             </span>
                           )}
                         </div>
-                        <span className={`text-[11px] ${session.unread_count > 0 ? 'text-medical-600 font-bold' : 'text-gray-400'}`}>
+                        <span className={`text-[11px] ${session.unread_count > 0 ? 'text-medical-600 font-bold' : 'text-white/30'}`}>
                           {formatTimeSummary(session.last_message_time)}
                         </span>
                       </div>
@@ -1079,26 +1079,26 @@ export default function ChatsView() {
                 <div
                   key={`chatwoot-${item.id}`}
                   onClick={() => { setSelectedChatwoot(item); setSelectedSession(null); }}
-                  className={`px-4 py-3 border-b cursor-pointer transition-all relative border-l-4
-                    ${isSelected ? `${platform.selectedBg} ${platform.borderColor}` : `hover:bg-gray-50 border-transparent`}
+                  className={`px-4 py-3 border-b border-white/[0.06] cursor-pointer transition-all relative border-l-4
+                    ${isSelected ? `bg-white/[0.08] ${platform.borderColor}` : `hover:bg-white/[0.04] border-transparent`}
                   `}
                 >
                   <div className="flex items-center gap-3">
                     <div className="relative shrink-0">
                       {avatarUrl ? (
-                        <img src={avatarUrl} alt={item.name} className="w-12 h-12 rounded-full object-cover shadow-sm" />
+                        <img src={avatarUrl} alt={item.name} className="w-12 h-12 rounded-full object-cover" />
                       ) : (
-                        <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-lg shadow-sm ${platform.bgColor}`}>
+                        <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-lg ${platform.bgColor}`}>
                           {(item.name || item.external_user_id || '?').charAt(0)}
                         </div>
                       )}
-                      <div className={`absolute -bottom-1 -right-1 p-1 rounded-full shadow-sm border border-white ${platform.bgColor}`}>
+                      <div className={`absolute -bottom-1 -right-1 p-1 rounded-full border border-[#0a0e1a] ${platform.bgColor}`}>
                         {!isWindowOpen(item.last_user_message_at) ? <Lock size={10} className="text-white" /> : platform.icon}
                       </div>
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex justify-between items-baseline mb-0.5">
-                        <span className={`font-semibold truncate ${isSelected ? 'text-gray-900' : 'text-gray-900'}`}>
+                        <span className={`font-semibold truncate text-white`}>
                           {item.name || item.external_user_id || 'Chatwoot'}
                         </span>
                         <span className={`text-[10px] font-bold ${platform.color} shrink-0 ml-1`}>
@@ -1106,7 +1106,7 @@ export default function ChatsView() {
                         </span>
                       </div>
                       <div className="flex justify-between items-center">
-                        <p className={`text-sm truncate pr-4 ${item.unread_count > 0 ? 'text-gray-900 font-medium' : 'text-gray-500'}`}>
+                        <p className={`text-sm truncate pr-4 ${item.unread_count > 0 ? 'text-white font-medium' : 'text-white/40'}`}>
                           {item.last_message || t('chats.no_messages')}
                         </p>
                         {item.unread_count > 0 && (
@@ -1115,7 +1115,7 @@ export default function ChatsView() {
                           </span>
                         )}
                       </div>
-                      <span className={`text-[11px] ${item.unread_count > 0 ? (item.channel === 'whatsapp' ? 'text-medical-600 font-bold' : 'text-purple-600 font-bold') : 'text-gray-400'}`}>
+                      <span className={`text-[11px] ${item.unread_count > 0 ? (item.channel === 'whatsapp' ? 'text-medical-600 font-bold' : 'text-purple-600 font-bold') : 'text-white/30'}`}>
                         {item.last_message_at ? formatTimeSummary(item.last_message_at) : ''}
                       </span>
                     </div>
@@ -1130,10 +1130,10 @@ export default function ChatsView() {
       {/* Chat Detail: YCloud o Chatwoot */}
       {selectedSession || selectedChatwoot ? (
         <>
-          <div className="flex-1 flex flex-col min-w-0 bg-gray-50 h-full min-h-0 overflow-hidden">
+          <div className="flex-1 flex flex-col min-w-0 bg-white/[0.02] h-full min-h-0 overflow-hidden">
             <div className="flex-1 flex flex-col min-h-0 relative overflow-hidden">
               {/* Header */}
-              <div className="p-4 border-b bg-white flex justify-between items-center shrink-0 sticky top-0 z-10">
+              <div className="p-4 border-b border-white/[0.06] bg-white/[0.03] flex justify-between items-center shrink-0 sticky top-0 z-10">
                 <div className="flex items-center gap-3 min-w-0">
                   <button
                     onClick={() => {
@@ -1141,7 +1141,7 @@ export default function ChatsView() {
                       setSelectedChatwoot(null);
                       setShowMobileContext(false);
                     }}
-                    className="lg:hidden p-2 -ml-2 hover:bg-gray-100 rounded-full text-gray-600 active:bg-gray-200 transition-colors"
+                    className="lg:hidden p-2 -ml-2 hover:bg-white/[0.04] rounded-full text-white/60 active:bg-white/[0.08] transition-colors"
                   >
                     <ChevronLeft size={24} />
                   </button>
@@ -1156,16 +1156,16 @@ export default function ChatsView() {
                           <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold ${selectedSession.status === 'human_handling' || selectedSession.status === 'silenced' ? 'bg-orange-500' : 'bg-medical-600'}`}>
                             {(selectedSession.patient_name || selectedSession.phone_number).charAt(0)}
                           </div>
-                          <div className={`absolute -bottom-0.5 -right-0.5 p-0.5 rounded-full shadow-sm border border-white ${platform.bgColor}`}>
+                          <div className={`absolute -bottom-0.5 -right-0.5 p-0.5 rounded-full border border-[#0a0e1a] ${platform.bgColor}`}>
                             {selectedSession.is_window_open === false ? <Lock size={10} className="text-white" /> : platform.icon}
                           </div>
                         </div>
                         <div className="min-w-0 flex-1 cursor-pointer" onClick={() => window.innerWidth < 1280 && setShowMobileContext(!showMobileContext)}>
-                          <h3 className="font-bold text-gray-900 truncate leading-tight flex items-center gap-2">
+                          <h3 className="font-bold text-white truncate leading-tight flex items-center gap-2">
                             {selectedSession.patient_name || t('chats.no_name')}
-                            <span className={`text-[10px] px-1.5 py-0.5 rounded bg-green-50 ${platform.color} border border-green-100`}>WhatsApp</span>
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded bg-green-500/10 ${platform.color} border border-green-500/20`}>WhatsApp</span>
                           </h3>
-                          <p className="text-xs text-gray-500 truncate">{selectedSession.phone_number}</p>
+                          <p className="text-xs text-white/40 truncate">{selectedSession.phone_number}</p>
                         </div>
                       </>
                     );
@@ -1179,13 +1179,13 @@ export default function ChatsView() {
                           className="relative shrink-0 cursor-pointer"
                         >
                           {avatarUrl ? (
-                            <img src={avatarUrl} alt={selectedChatwoot.name} className="w-10 h-10 rounded-full object-cover shadow-sm" />
+                            <img src={avatarUrl} alt={selectedChatwoot.name} className="w-10 h-10 rounded-full object-cover" />
                           ) : (
                             <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold ${platform.bgColor}`}>
                               {(selectedChatwoot.name || selectedChatwoot.external_user_id || '?').charAt(0)}
                             </div>
                           )}
-                          <div className={`absolute -bottom-0.5 -right-0.5 p-0.5 rounded-full shadow-sm border border-white ${platform.bgColor}`}>
+                          <div className={`absolute -bottom-0.5 -right-0.5 p-0.5 rounded-full border border-[#0a0e1a] ${platform.bgColor}`}>
                             {!isWindowOpen(selectedChatwoot.last_user_message_at) ? <Lock size={10} className="text-white" /> : platform.icon}
                           </div>
                         </div>
@@ -1193,13 +1193,13 @@ export default function ChatsView() {
                           onClick={() => window.innerWidth < 1280 && setShowMobileContext(!showMobileContext)}
                           className="min-w-0 flex-1 cursor-pointer"
                         >
-                          <h3 className="font-bold text-gray-900 truncate leading-tight flex items-center gap-2">
+                          <h3 className="font-bold text-white truncate leading-tight flex items-center gap-2">
                             {selectedChatwoot.name || selectedChatwoot.external_user_id || 'Chatwoot'}
                             <span className={`text-[10px] px-1.5 py-0.5 rounded border ${platform.selectedBg} ${platform.color} ${platform.borderColor}`}>
                               {platform.label}
                             </span>
                           </h3>
-                          <p className="text-xs text-gray-500 truncate">{
+                          <p className="text-xs text-white/40 truncate">{
                             // Hide short numeric IDs (Chatwoot contact IDs like "1", "2")
                             // Show username/phone if meaningful, otherwise show channel name
                             (() => {
@@ -1230,8 +1230,8 @@ export default function ChatsView() {
                       onClick={handleToggleHumanMode}
                       className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold transition-all shadow-sm
                       ${selectedSession.status === 'human_handling' || selectedSession.status === 'silenced'
-                          ? 'bg-green-100 text-green-700 hover:bg-green-200 border border-green-200'
-                          : 'bg-orange-100 text-orange-700 hover:bg-orange-200 border border-orange-200'
+                          ? 'bg-green-500/10 text-green-400 hover:bg-green-500/20 border border-green-500/20'
+                          : 'bg-orange-500/10 text-orange-400 hover:bg-orange-500/20 border border-orange-500/20'
                         }`}
                     >
                       {selectedSession.status === 'human_handling' || selectedSession.status === 'silenced' ? (
@@ -1245,7 +1245,7 @@ export default function ChatsView() {
                     <button
                       onClick={handleToggleChatwootLock}
                       className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold transition-all shadow-sm
-                      ${selectedChatwoot.is_locked ? 'bg-green-100 text-green-700 hover:bg-green-200 border border-green-200' : 'bg-orange-100 text-orange-700 hover:bg-orange-200 border border-orange-200'}`}
+                      ${selectedChatwoot.is_locked ? 'bg-green-500/10 text-green-400 hover:bg-green-500/20 border border-green-500/20' : 'bg-orange-500/10 text-orange-400 hover:bg-orange-500/20 border border-orange-500/20'}`}
                     >
                       {selectedChatwoot.is_locked ? <><Play size={14} className="fill-current" /> <span className="hidden sm:inline">{t('chats.activate_ai')}</span></> : <><Pause size={14} className="fill-current" /> <span className="hidden sm:inline">{t('chats.manual')}</span></>}
                     </button>
@@ -1255,17 +1255,17 @@ export default function ChatsView() {
 
               {/* Alert Banner para derivhumano (YCloud & Chatwoot) */}
               {(selectedSession?.last_derivhumano_at || selectedChatwoot?.last_derivhumano_at) ? (
-                <div className="bg-orange-50 border-b border-orange-200 px-4 py-2 flex items-center gap-2">
-                  <AlertCircle size={16} className="text-orange-600" />
-                  <span className="text-sm text-orange-800 font-medium">{t('chats.attention_required_handoff')}</span>
+                <div className="bg-orange-500/10 border-b border-orange-500/20 px-4 py-2 flex items-center gap-2">
+                  <AlertCircle size={16} className="text-orange-400" />
+                  <span className="text-sm text-orange-400 font-medium">{t('chats.attention_required_handoff')}</span>
                 </div>
               ) : null}
 
               {/* Banner Warning: Window 24h Closed */}
               {selectedSession && selectedSession.is_window_open === false && (
-                <div className="bg-gray-100 border-b border-gray-300 px-4 py-2 flex items-center justify-center gap-2">
-                  <Lock size={14} className="text-gray-500" />
-                  <span className="text-xs text-gray-600 font-medium">
+                <div className="bg-white/[0.04] border-b border-white/[0.06] px-4 py-2 flex items-center justify-center gap-2">
+                  <Lock size={14} className="text-white/40" />
+                  <span className="text-xs text-white/60 font-medium">
                     {t('chats.window_closed_warning')}
                   </span>
                 </div>
@@ -1274,14 +1274,14 @@ export default function ChatsView() {
               {/* Banner: Manual Mode Active */}
               {((selectedSession && (selectedSession.status === 'silenced' || selectedSession.status === 'human_handling')) ||
                 (selectedChatwoot && selectedChatwoot.is_locked)) && (
-                  <div className="bg-blue-50 border-b border-blue-200 px-4 py-2 flex items-center justify-between">
+                  <div className="bg-blue-500/10 border-b border-blue-500/20 px-4 py-2 flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <Pause size={16} className="text-blue-600 fill-current" />
-                      <span className="text-sm text-blue-800 font-bold">✋ {t('chats.manual_mode_active_banner')}</span>
+                      <Pause size={16} className="text-blue-400 fill-current" />
+                      <span className="text-sm text-blue-400 font-bold">✋ {t('chats.manual_mode_active_banner')}</span>
                     </div>
                     <button
                       onClick={() => selectedSession ? handleToggleHumanMode() : handleToggleChatwootLock()}
-                      className="text-xs bg-blue-100 hover:bg-blue-200 text-blue-700 px-3 py-1 rounded-full font-bold transition-colors"
+                      className="text-xs bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 px-3 py-1 rounded-full font-bold transition-colors"
                     >
                       {t('chats.activate_ai')}
                     </button>
@@ -1291,14 +1291,14 @@ export default function ChatsView() {
               {/* Banner de Ventana de 24hs Cerrada (Omnicanal) */}
               {((selectedSession && selectedSession.is_window_open === false) ||
                 (selectedChatwoot && !isWindowOpen(selectedChatwoot.last_user_message_at))) && (
-                  <div className="bg-yellow-50 border-b border-yellow-200 px-4 py-2 flex items-center gap-2">
-                    <Clock size={16} className="text-yellow-600" />
-                    <span className="text-sm text-yellow-700">
+                  <div className="bg-yellow-500/10 border-b border-yellow-500/20 px-4 py-2 flex items-center gap-2">
+                    <Clock size={16} className="text-yellow-400" />
+                    <span className="text-sm text-yellow-400">
                       ⏳ {t('chats.window_24h_closed')}
                     </span>
                     <button
                       onClick={() => navigate('/templates')}
-                      className="ml-auto flex items-center gap-1 text-xs font-bold text-yellow-700 hover:bg-yellow-100 px-2 py-1 rounded border border-yellow-300 transition-colors"
+                      className="ml-auto flex items-center gap-1 text-xs font-bold text-yellow-400 hover:bg-yellow-500/20 px-2 py-1 rounded border border-yellow-500/30 transition-colors"
                     >
                       {t('chats.meta_templates')} <ChevronRight size={14} />
                     </button>
@@ -1306,12 +1306,12 @@ export default function ChatsView() {
                 )}
 
               {/* Messages Area */}
-              <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 space-y-4 bg-gray-50 flex flex-col min-h-0">
+              <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 space-y-4 bg-white/[0.02] flex flex-col min-h-0">
                 {selectedSession && hasMoreMessages && (
                   <button
                     onClick={handleLoadMore}
                     disabled={loadingMore}
-                    className="mx-auto py-2 px-4 text-xs text-medical-600 hover:text-medical-700 font-medium bg-white rounded-full shadow-sm border border-medical-100 mb-4 transition-all disabled:opacity-50 shrink-0"
+                    className="mx-auto py-2 px-4 text-xs text-medical-600 hover:text-medical-700 font-medium bg-white/[0.06] rounded-full border border-white/[0.08] mb-4 transition-all disabled:opacity-50 shrink-0"
                   >
                     {loadingMore ? t('common.loading') : t('chats.load_older_messages')}
                   </button>
@@ -1338,10 +1338,10 @@ export default function ChatsView() {
                     >
                       <div
                         className={`max-w-[70%] rounded-lg px-4 py-3 break-words overflow-hidden ${message.role === 'user'
-                          ? 'bg-white shadow-sm'
+                          ? 'bg-white/[0.06] border border-white/[0.08] text-white'
                           : message.is_derivhumano
-                            ? 'bg-orange-100 border border-orange-300 shadow-sm text-gray-800'
-                            : `${platform.bgColor} text-white shadow-sm`
+                            ? 'bg-orange-500/10 border border-orange-500/20 text-orange-400'
+                            : `${platform.bgColor} text-white`
                           }`}
                       >
                         {message.is_derivhumano && (
@@ -1351,7 +1351,7 @@ export default function ChatsView() {
                           </div>
                         )}
                         <MessageContent message={message} />
-                        <p className={`text-xs mt-1 ${message.role === 'user' ? 'text-gray-400' : 'opacity-70'}`}>
+                        <p className={`text-xs mt-1 ${message.role === 'user' ? 'text-white/30' : 'opacity-70'}`}>
                           {safeFormatTime(message.created_at)}
                         </p>
                       </div>
@@ -1362,13 +1362,13 @@ export default function ChatsView() {
                 {selectedChatwoot && (() => {
                   const platform = getPlatformConfig(selectedChatwoot.channel || 'chatwoot');
                   if (loadingChatwootMessages) {
-                    return <div className="p-4 text-center text-gray-500">{t('common.loading')}</div>;
+                    return <div className="p-4 text-center text-white/40">{t('common.loading')}</div>;
                   }
 
                   const msgs = chatwootMessages || [];
                   if (msgs.length === 0) {
                     return (
-                      <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-gray-400">
+                      <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-white/30">
                         <MessageCircle size={48} className="mb-2 opacity-20" />
                           <p className="text-sm font-medium">{t('chat_extra.no_messages_yet')}</p>
                         <p className="text-xs opacity-70">{t('chat_extra.messages_appear_here')}</p>
@@ -1381,9 +1381,9 @@ export default function ChatsView() {
                       key={msg.id}
                       className={`flex ${msg.role === 'user' ? 'justify-start' : 'justify-end'}`}
                     >
-                      <div className={`max-w-[70%] rounded-lg px-4 py-3 break-words overflow-hidden ${msg.role === 'user' ? 'bg-white shadow-sm' : `${platform.bgColor} text-white shadow-sm`}`}>
+                      <div className={`max-w-[70%] rounded-lg px-4 py-3 break-words overflow-hidden ${msg.role === 'user' ? 'bg-white/[0.06] border border-white/[0.08] text-white' : `${platform.bgColor} text-white`}`}>
                         <MessageContent message={msg} />
-                        <p className={`text-xs mt-1 ${msg.role === 'user' ? 'text-gray-400' : 'opacity-70'}`}>
+                        <p className={`text-xs mt-1 ${msg.role === 'user' ? 'text-white/30' : 'opacity-70'}`}>
                           {msg.timestamp ? safeFormatTime(msg.timestamp) : ''}
                         </p>
                       </div>
@@ -1397,7 +1397,7 @@ export default function ChatsView() {
               {/* Input */}
               <form
                 onSubmit={selectedChatwoot ? handleSendChatwootMessage : handleSendMessage}
-                className="p-4 border-t bg-white relative z-10 pb-safe"
+                className="p-4 border-t border-white/[0.06] bg-white/[0.03] relative z-10 pb-safe"
               >
                 <div className="flex flex-col flex-1 gap-2">
                   {selectedFiles.length > 0 && (
@@ -1427,7 +1427,7 @@ export default function ChatsView() {
                     <button
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
-                      className="p-2 text-gray-400 hover:text-medical-600 hover:bg-medical-50 rounded-lg transition-colors"
+                      className="p-2 text-white/30 hover:text-medical-400 hover:bg-white/[0.04] rounded-lg transition-colors"
                       title={t('chats.attach_file')}
                     >
                       <Paperclip size={20} />
@@ -1449,8 +1449,8 @@ export default function ChatsView() {
                           else handleSendMessage(e as any);
                         }
                       }}
-                      className={`flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 bg-white text-gray-900
-                        ${selectedSession && selectedSession.is_window_open === false ? 'bg-gray-100 cursor-not-allowed opacity-75' : ''}
+                      className={`flex-1 px-4 py-2 border border-white/[0.08] rounded-lg focus:outline-none focus:ring-2 bg-white/[0.04] text-white placeholder-white/20
+                        ${selectedSession && selectedSession.is_window_open === false ? 'bg-white/[0.02] cursor-not-allowed opacity-75' : ''}
                         ${selectedSession ? 'focus:ring-green-500' : selectedChatwoot?.channel === 'instagram' ? 'focus:ring-pink-500' : selectedChatwoot?.channel === 'facebook' ? 'focus:ring-blue-500' : 'focus:ring-medical-500'}
                       `}
                     />
@@ -1483,28 +1483,28 @@ export default function ChatsView() {
             <div className={`
               ${showMobileContext ? 'flex' : 'hidden'}
               xl:flex flex-col
-              fixed inset-0 z-40 bg-white
-              xl:relative xl:z-0 xl:w-80 xl:border-l xl:inset-auto
+              fixed inset-0 z-40 bg-[#0d1117]
+              xl:relative xl:z-0 xl:w-80 xl:border-l xl:border-white/[0.06] xl:inset-auto
               animate-slide-in xl:animate-none
             `}>
               {/* Context Header (Mobile only) */}
-              <div className="p-4 border-b flex justify-between items-center xl:hidden">
+              <div className="p-4 border-b border-white/[0.06] flex justify-between items-center xl:hidden">
                 <div className="flex items-center gap-2">
                   <User className="text-medical-600" size={20} />
-                  <h3 className="font-bold">{t('chats.patient_profile_title')}</h3>
+                  <h3 className="font-bold text-white">{t('chats.patient_profile_title')}</h3>
                 </div>
                 <button
                   onClick={() => setShowMobileContext(false)}
-                  className="p-2 hover:bg-gray-100 rounded-full"
+                  className="p-2 hover:bg-white/[0.04] rounded-full text-white/60"
                 >
                   <ChevronLeft size={24} className="rotate-180" />
                 </button>
               </div>
 
               {/* Desktop Context Header */}
-              <div className="hidden xl:flex p-4 border-b items-center gap-2">
+              <div className="hidden xl:flex p-4 border-b border-white/[0.06] items-center gap-2">
                 <Activity size={18} className="text-primary" />
-                <h3 className="font-medium">{t('chats.clinical_context')}</h3>
+                <h3 className="font-medium text-white">{t('chats.clinical_context')}</h3>
               </div>
 
               <div className="flex-1 overflow-y-auto">
@@ -1517,8 +1517,8 @@ export default function ChatsView() {
 
                   return (
                     <div className={`p-3 mx-3 mt-4 rounded-lg ${isHuman
-                      ? 'bg-orange-50 border border-orange-200'
-                      : 'bg-green-50 border border-green-200'
+                      ? 'bg-orange-500/10 border border-orange-500/20'
+                      : 'bg-green-500/10 border border-green-500/20'
                       }`}>
                       <div className="flex items-center gap-2 mb-1">
                         {isHuman ? (
@@ -1530,13 +1530,13 @@ export default function ChatsView() {
                           {t('chats.bot_status')}
                         </span>
                       </div>
-                      <p className="text-sm text-gray-600">
+                      <p className="text-sm text-white/60">
                         {isHuman
                           ? t('chats.status_human')
                           : t('chats.ia_active')}
                       </p>
                       {overrideUntil && (
-                      <p className="text-xs text-gray-500 mt-1">
+                      <p className="text-xs text-white/40 mt-1">
                           {t('common.until')}: {safeFormatTime(overrideUntil)}
                         </p>
                       )}
@@ -1554,19 +1554,19 @@ export default function ChatsView() {
 
                   return (
                     <div className="mt-4 space-y-4 px-3">
-                      <div className={`p-3 rounded-lg ${hasAppointments ? 'bg-gray-50' : 'bg-amber-50 border border-amber-200'}`}>
+                      <div className={`p-3 rounded-lg ${hasAppointments ? 'bg-white/[0.03] border border-white/[0.06]' : 'bg-amber-500/10 border border-amber-500/20'}`}>
                         {hasAppointments ? (
                           <>
-                            <h4 className="text-xs font-medium text-gray-500 mb-2">{t('chats.patient_label')}</h4>
-                            <p className="font-medium">{displayName}</p>
-                            <p className="text-sm text-gray-500">{displayPhone}</p>
+                            <h4 className="text-xs font-medium text-white/40 mb-2">{t('chats.patient_label')}</h4>
+                            <p className="font-medium text-white">{displayName}</p>
+                            <p className="text-sm text-white/40">{displayPhone}</p>
                           </>
                         ) : (
                           <>
-                            <h4 className="text-xs font-medium text-amber-700 mb-2">{t('chats.contact_no_appointments')}</h4>
-                            <p className="font-medium">{displayName}</p>
-                            <p className="text-sm text-gray-500">{displayPhone}</p>
-                            <p className="text-xs text-amber-700 mt-2">{t('chats.no_appointments_yet')}</p>
+                            <h4 className="text-xs font-medium text-amber-400 mb-2">{t('chats.contact_no_appointments')}</h4>
+                            <p className="font-medium text-white">{displayName}</p>
+                            <p className="text-sm text-white/40">{displayPhone}</p>
+                            <p className="text-xs text-amber-400 mt-2">{t('chats.no_appointments_yet')}</p>
                           </>
                         )}
                       </div>
@@ -1574,54 +1574,54 @@ export default function ChatsView() {
                       {hasAppointments ? (
                         <>
                           {/* Last Appointment */}
-                          <div className="p-3 bg-gray-50 rounded-lg">
-                            <h4 className="text-xs font-medium text-gray-500 mb-2 flex items-center gap-1">
+                          <div className="p-3 bg-white/[0.03] border border-white/[0.06] rounded-lg">
+                            <h4 className="text-xs font-medium text-white/40 mb-2 flex items-center gap-1">
                               <Calendar size={12} /> {t('chats.last_appointment')}
                             </h4>
                             {patientContext?.last_appointment ? (
                               <div className="space-y-1">
-                                <p className="text-sm font-medium">{patientContext.last_appointment.type}</p>
-                                <div className="flex items-center gap-2 text-xs text-gray-500">
+                                <p className="text-sm font-medium text-white">{patientContext.last_appointment.type}</p>
+                                <div className="flex items-center gap-2 text-xs text-white/40">
                                   <span>{safeFormatDate(patientContext.last_appointment.date)} {safeFormatTime(patientContext.last_appointment.date)}</span>
                                   {patientContext.last_appointment.duration_minutes && (
-                                    <span className="bg-gray-200 px-1.5 rounded-sm">{patientContext.last_appointment.duration_minutes} min</span>
+                                    <span className="bg-white/[0.08] px-1.5 rounded-sm">{patientContext.last_appointment.duration_minutes} min</span>
                                   )}
                                 </div>
-                                <p className="text-[11px] text-gray-400">
+                                <p className="text-[11px] text-white/30">
                                   {t('chats.professional_label')}: {patientContext.last_appointment.professional_name}
                                 </p>
                               </div>
                             ) : (
-                              <p className="text-sm text-gray-400">{t('chats.no_previous_appointments')}</p>
+                              <p className="text-sm text-white/30">{t('chats.no_previous_appointments')}</p>
                             )}
                           </div>
 
                           {/* Upcoming Appointment */}
-                          <div className="p-3 bg-gray-50 rounded-lg">
-                            <h4 className="text-xs font-medium text-gray-500 mb-2 flex items-center gap-1">
+                          <div className="p-3 bg-white/[0.03] border border-white/[0.06] rounded-lg">
+                            <h4 className="text-xs font-medium text-white/40 mb-2 flex items-center gap-1">
                               <Clock size={12} /> {t('chats.upcoming_appointment')}
                             </h4>
                             {patientContext?.upcoming_appointment ? (
                               <div className="space-y-1">
-                                <p className="text-sm font-medium">{patientContext.upcoming_appointment.type}</p>
+                                <p className="text-sm font-medium text-white">{patientContext.upcoming_appointment.type}</p>
                                 <div className="flex items-center gap-2 text-xs text-primary font-medium">
                                   <span>{safeFormatDate(patientContext.upcoming_appointment.date)} {safeFormatTime(patientContext.upcoming_appointment.date)}</span>
                                   {patientContext.upcoming_appointment.duration_minutes && (
                                     <span className="bg-medical-100 px-1.5 rounded-sm">{patientContext.upcoming_appointment.duration_minutes} min</span>
                                   )}
                                 </div>
-                                <p className="text-[11px] text-gray-400">
+                                <p className="text-[11px] text-white/30">
                                   {t('chats.professional_label')}: {patientContext.upcoming_appointment.professional_name}
                                 </p>
                               </div>
                             ) : (
-                              <p className="text-sm text-gray-400">{t('chats.no_scheduled_appointments')}</p>
+                              <p className="text-sm text-white/30">{t('chats.no_scheduled_appointments')}</p>
                             )}
                           </div>
 
                           {/* Treatment Plan */}
-                          <div className="p-3 bg-gray-50 rounded-lg">
-                            <h4 className="text-xs font-medium text-gray-500 mb-2">{t('chats.current_treatment')}</h4>
+                          <div className="p-3 bg-white/[0.03] border border-white/[0.06] rounded-lg">
+                            <h4 className="text-xs font-medium text-white/40 mb-2">{t('chats.current_treatment')}</h4>
                             {patientContext?.treatment_plan ? (
                               <div className="text-sm bg-medical-50 p-2 rounded border border-medical-100 text-medical-800 italic">
                                 {typeof patientContext.treatment_plan === 'string'
@@ -1629,13 +1629,13 @@ export default function ChatsView() {
                                   : JSON.stringify(patientContext.treatment_plan, null, 2)}
                               </div>
                             ) : (
-                              <p className="text-sm text-gray-400 italic">{t('chats.no_treatment_plan')}</p>
+                              <p className="text-sm text-white/30 italic">{t('chats.no_treatment_plan')}</p>
                             )}
                           </div>
 
                           {/* Anamnesis (Spec 2026-03-11) */}
-                          <div className="p-3 bg-gray-50 rounded-lg">
-                            <h4 className="text-xs font-medium text-gray-500 mb-2 flex items-center gap-1">
+                          <div className="p-3 bg-white/[0.03] border border-white/[0.06] rounded-lg">
+                            <h4 className="text-xs font-medium text-white/40 mb-2 flex items-center gap-1">
                               <span>🦷</span> {t('chats.anamnesis')}
                             </h4>
                             <AnamnesisPanel
@@ -1647,8 +1647,8 @@ export default function ChatsView() {
                           </div>
                         </>
                       ) : (
-                        <div className="p-3 bg-gray-50 rounded-lg">
-                          <p className="text-sm text-gray-500 italic">{t('chats.no_clinical_history')}</p>
+                        <div className="p-3 bg-white/[0.03] border border-white/[0.06] rounded-lg">
+                          <p className="text-sm text-white/40 italic">{t('chats.no_clinical_history')}</p>
                         </div>
                       )}
                     </div>
@@ -1659,10 +1659,10 @@ export default function ChatsView() {
           )}
         </>
       ) : (
-        <div className="hidden lg:flex flex-1 items-center justify-center bg-gray-50 flex-col gap-4">
-          <MessageCircle size={64} className="opacity-20" />
-          <p className="text-lg font-medium text-gray-400">{t('chats.select_conversation')}</p>
-          <p className="text-sm text-gray-400">{t('chats.to_start_chatting')}</p>
+        <div className="hidden lg:flex flex-1 items-center justify-center bg-white/[0.02] flex-col gap-4">
+          <MessageCircle size={64} className="opacity-20 text-white/20" />
+          <p className="text-lg font-medium text-white/30">{t('chats.select_conversation')}</p>
+          <p className="text-sm text-white/30">{t('chats.to_start_chatting')}</p>
         </div>
       )}
 

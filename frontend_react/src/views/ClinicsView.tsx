@@ -317,8 +317,8 @@ export default function ClinicsView() {
     if (loading) {
         return (
             <div className="h-full flex flex-col items-center justify-center gap-3 min-h-0 overflow-y-auto">
-                <Loader2 className="animate-spin text-medical-600" size={32} />
-                <p className="text-medical-800 font-medium">{t('common.loading')}</p>
+                <Loader2 className="animate-spin text-blue-400" size={32} />
+                <p className="text-white/60 font-medium">{t('common.loading')}</p>
             </div>
         );
     }
@@ -332,7 +332,7 @@ export default function ClinicsView() {
                 action={
                     <button
                         onClick={() => handleOpenModal()}
-                        className="flex items-center justify-center gap-2 bg-medical-600 text-white px-4 py-2.5 rounded-xl hover:bg-medical-700 transition-all shadow-md font-medium text-sm sm:text-base active:scale-[0.98]"
+                        className="flex items-center justify-center gap-2 bg-white text-[#0a0e1a] px-4 py-2.5 rounded-xl hover:bg-white/90 transition-all font-medium text-sm sm:text-base active:scale-[0.98]"
                     >
                         <Plus size={20} /> {t('clinics.new_clinic')}
                     </button>
@@ -340,7 +340,7 @@ export default function ClinicsView() {
             />
 
             {success && (
-                <div className="bg-green-50 text-green-700 p-3 rounded-lg flex items-center gap-2 border border-green-200 animate-fade-in">
+                <div className="bg-green-500/10 text-green-400 p-3 rounded-lg flex items-center gap-2 border border-green-500/20 animate-fade-in">
                     <CheckCircle2 size={18} /> {success}
                 </div>
             )}
@@ -349,30 +349,30 @@ export default function ClinicsView() {
                 {clinicas.map((clinica) => (
                     <div
                         key={clinica.id}
-                        className="bg-white rounded-xl shadow-sm border border-medical-100 overflow-hidden hover:shadow-md transition-shadow group"
+                        className="bg-white/[0.03] rounded-xl border border-white/[0.06] overflow-hidden hover:border-white/[0.12] transition-all group"
                     >
                         <div className="p-5 space-y-4">
                             <div className="flex justify-between items-start">
-                                <div className="bg-medical-50 p-3 rounded-lg text-medical-600 group-hover:bg-medical-600 group-hover:text-white transition-colors">
+                                <div className="bg-blue-500/10 p-3 rounded-lg text-blue-400 group-hover:bg-blue-500 group-hover:text-white transition-colors">
                                     <Building2 size={24} />
                                 </div>
                                 <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                     <button
                                         onClick={() => openFaqModal(clinica)}
-                                        className="p-2 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
+                                        className="p-2 text-amber-400 hover:bg-amber-500/10 rounded-lg transition-colors"
                                         title={t('clinics.faq_manage')}
                                     >
                                         <HelpCircle size={18} />
                                     </button>
                                     <button
                                         onClick={() => handleOpenModal(clinica)}
-                                        className="p-2 text-medical-600 hover:bg-medical-50 rounded-lg transition-colors"
+                                        className="p-2 text-blue-400 hover:bg-blue-500/10 rounded-lg transition-colors"
                                     >
                                         <Edit size={18} />
                                     </button>
                                     <button
                                         onClick={() => handleDelete(clinica.id)}
-                                        className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                                        className="p-2 text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
                                     >
                                         <Trash2 size={18} />
                                     </button>
@@ -380,24 +380,24 @@ export default function ClinicsView() {
                             </div>
 
                             <div>
-                                <h3 className="font-bold text-medical-900 text-lg">{clinica.clinic_name}</h3>
-                                <div className="flex items-center gap-2 text-medical-600 mt-2 text-sm">
+                                <h3 className="font-bold text-white text-lg">{clinica.clinic_name}</h3>
+                                <div className="flex items-center gap-2 text-blue-400 mt-2 text-sm">
                                     <Phone size={14} className="shrink-0" />
                                     <span className="font-mono">{clinica.bot_phone_number}</span>
                                 </div>
                                 {clinica.address && (
-                                    <div className="flex items-center gap-2 text-medical-500 mt-1 text-xs">
+                                    <div className="flex items-center gap-2 text-white/40 mt-1 text-xs">
                                         <MapPin size={12} className="shrink-0" />
                                         <span>{clinica.address}</span>
                                     </div>
                                 )}
-                                <div className="flex items-center gap-2 text-medical-500 mt-1 text-xs">
+                                <div className="flex items-center gap-2 text-white/40 mt-1 text-xs">
                                     <Calendar size={12} className="shrink-0" />
                                     <span>{calendarProviderLabel(clinica.config?.calendar_provider || 'local')}</span>
                                 </div>
                             </div>
 
-                            <div className="pt-4 border-t border-medical-50 flex justify-between items-center text-xs text-medical-400">
+                            <div className="pt-4 border-t border-white/[0.06] flex justify-between items-center text-xs text-white/30">
                                 <span>ID: {clinica.id}</span>
                                 <span>{t('common.since')}: {new Date(clinica.created_at).toLocaleDateString()}</span>
                             </div>
@@ -409,18 +409,18 @@ export default function ClinicsView() {
             {/* ── Modal Editar/Crear Clínica ── */}
             {isModalOpen && (
                 <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl animate-scale-in max-h-[90vh] flex flex-col">
-                        <div className="p-4 sm:p-6 border-b shrink-0 flex justify-between items-center">
-                            <h2 className="text-xl font-bold flex items-center gap-2">
-                                {editingClinica ? <Edit className="text-medical-600" /> : <Plus className="text-medical-600" />}
+                    <div className="bg-[#0d1117] border border-white/[0.08] rounded-xl w-full max-w-2xl animate-scale-in max-h-[90vh] flex flex-col">
+                        <div className="p-4 sm:p-6 border-b border-white/[0.06] shrink-0 flex justify-between items-center">
+                            <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                                {editingClinica ? <Edit className="text-blue-400" /> : <Plus className="text-blue-400" />}
                                 {editingClinica ? t('clinics.edit_clinic') : t('clinics.create_clinic')}
                             </h2>
-                            <button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-gray-100 rounded-lg"><X size={20} /></button>
+                            <button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-white/[0.04] rounded-lg text-white/40"><X size={20} /></button>
                         </div>
 
                         <form onSubmit={handleSubmit} className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 space-y-5">
                             {error && (
-                                <div className="bg-red-50 text-red-600 p-3 rounded-lg flex items-center gap-2 text-sm border border-red-100">
+                                <div className="bg-red-500/10 text-red-400 p-3 rounded-lg flex items-center gap-2 text-sm border border-red-500/20">
                                     <AlertCircle size={16} /> {error}
                                 </div>
                             )}
@@ -428,13 +428,13 @@ export default function ClinicsView() {
                             {/* Nombre y teléfono */}
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div className="space-y-1">
-                                    <label className="text-sm font-semibold text-medical-700">{t('clinics.clinic_name_label')}</label>
+                                    <label className="text-sm font-semibold text-white/60">{t('clinics.clinic_name_label')}</label>
                                     <input required type="text" placeholder={t('clinics.clinic_name_placeholder')}
-                                        className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-medical-500 outline-none"
+                                        className="w-full px-4 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white placeholder-white/20 focus:ring-2 focus:ring-blue-500 outline-none"
                                         value={formData.clinic_name} onChange={(e) => { const v = e.target.value; setFormData(prev => ({ ...prev, clinic_name: v })); }} />
                                 </div>
                                 <div className="space-y-1">
-                                    <label className="text-sm font-semibold text-medical-700">{t('clinics.bot_phone_label')}</label>
+                                    <label className="text-sm font-semibold text-white/60">{t('clinics.bot_phone_label')}</label>
                                     <input required type="text" placeholder={t('clinics.bot_phone_placeholder')}
                                         className="w-full px-4 py-2 border rounded-lg font-mono focus:ring-2 focus:ring-medical-500 outline-none"
                                         value={formData.bot_phone_number} onChange={(e) => { const v = e.target.value; setFormData(prev => ({ ...prev, bot_phone_number: v })); }} />
@@ -443,57 +443,57 @@ export default function ClinicsView() {
 
                             {/* Dirección y Maps */}
                             <div className="space-y-1">
-                                <label className="text-sm font-semibold text-medical-700 flex items-center gap-2"><MapPin size={14} /> {t('clinics.address_label')}</label>
+                                <label className="text-sm font-semibold text-white/60 flex items-center gap-2"><MapPin size={14} /> {t('clinics.address_label')}</label>
                                 <input type="text" placeholder={t('clinics.address_placeholder')}
-                                    className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-medical-500 outline-none"
+                                    className="w-full px-4 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white placeholder-white/20 focus:ring-2 focus:ring-blue-500 outline-none"
                                     value={formData.address} onChange={(e) => { const v = e.target.value; setFormData(prev => ({ ...prev, address: v })); }} />
                             </div>
                             <div className="space-y-1">
-                                <label className="text-sm font-semibold text-medical-700">{t('clinics.maps_url_label')}</label>
+                                <label className="text-sm font-semibold text-white/60">{t('clinics.maps_url_label')}</label>
                                 <input type="url" placeholder={t('clinics.maps_url_placeholder')}
-                                    className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-medical-500 outline-none text-sm"
+                                    className="w-full px-4 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white placeholder-white/20 focus:ring-2 focus:ring-blue-500 outline-none text-sm"
                                     value={formData.google_maps_url} onChange={(e) => { const v = e.target.value; setFormData(prev => ({ ...prev, google_maps_url: v })); }} />
                             </div>
 
                             {/* Valor de consulta */}
                             <div className="space-y-1">
-                                <label className="text-sm font-semibold text-medical-700">{t('clinics.consultation_price_label')}</label>
+                                <label className="text-sm font-semibold text-white/60">{t('clinics.consultation_price_label')}</label>
                                 <input type="number" step="0.01" min="0" placeholder={t('clinics.consultation_price_placeholder')}
-                                    className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-medical-500 outline-none"
+                                    className="w-full px-4 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white placeholder-white/20 focus:ring-2 focus:ring-blue-500 outline-none"
                                     value={formData.consultation_price} onChange={(e) => { const v = e.target.value; setFormData(prev => ({ ...prev, consultation_price: v })); }} />
-                                <p className="text-xs text-medical-400">{t('clinics.consultation_price_help')}</p>
+                                <p className="text-xs text-white/30">{t('clinics.consultation_price_help')}</p>
                             </div>
 
                             {/* Sillones / Chairs */}
                             <div className="space-y-1">
-                                <label className="text-sm font-semibold text-medical-700">Sillones disponibles</label>
+                                <label className="text-sm font-semibold text-white/60">Sillones disponibles</label>
                                 <input type="number" min="1" max="20" placeholder="2"
-                                    className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-medical-500 outline-none"
+                                    className="w-full px-4 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white placeholder-white/20 focus:ring-2 focus:ring-blue-500 outline-none"
                                     value={formData.max_chairs} onChange={(e) => { const v = e.target.value; setFormData(prev => ({ ...prev, max_chairs: v })); }} />
-                                <p className="text-xs text-medical-400">Cantidad de sillones en la clinica. Limita cuantos turnos pueden ocurrir al mismo tiempo.</p>
+                                <p className="text-xs text-white/30">Cantidad de sillones en la clinica. Limita cuantos turnos pueden ocurrir al mismo tiempo.</p>
                             </div>
 
                             {/* Datos Bancarios */}
                             <div className="space-y-3 border-t pt-4 mt-4">
-                                <h3 className="text-sm font-bold text-medical-700 flex items-center gap-2"><DollarSign size={14} /> {t('clinics.bank_section')}</h3>
-                                <p className="text-xs text-medical-400">{t('clinics.bank_help')}</p>
+                                <h3 className="text-sm font-bold text-white/60 flex items-center gap-2"><DollarSign size={14} /> {t('clinics.bank_section')}</h3>
+                                <p className="text-xs text-white/30">{t('clinics.bank_help')}</p>
                                 <div className="space-y-2">
                                     <div className="space-y-1">
-                                        <label className="text-xs font-medium text-medical-600">{t('clinics.bank_cbu')}</label>
+                                        <label className="text-xs font-medium text-blue-400">{t('clinics.bank_cbu')}</label>
                                         <input type="text" placeholder="0000003100010000000001"
-                                            className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-medical-500 outline-none text-sm font-mono"
+                                            className="w-full px-4 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white placeholder-white/20 focus:ring-2 focus:ring-blue-500 outline-none text-sm font-mono"
                                             value={formData.bank_cbu} onChange={(e) => setFormData(prev => ({ ...prev, bank_cbu: e.target.value }))} />
                                     </div>
                                     <div className="space-y-1">
-                                        <label className="text-xs font-medium text-medical-600">{t('clinics.bank_alias')}</label>
+                                        <label className="text-xs font-medium text-blue-400">{t('clinics.bank_alias')}</label>
                                         <input type="text" placeholder="clinica.delgado"
-                                            className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-medical-500 outline-none text-sm"
+                                            className="w-full px-4 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white placeholder-white/20 focus:ring-2 focus:ring-blue-500 outline-none text-sm"
                                             value={formData.bank_alias} onChange={(e) => setFormData(prev => ({ ...prev, bank_alias: e.target.value }))} />
                                     </div>
                                     <div className="space-y-1">
-                                        <label className="text-xs font-medium text-medical-600">{t('clinics.bank_holder_name')}</label>
+                                        <label className="text-xs font-medium text-blue-400">{t('clinics.bank_holder_name')}</label>
                                         <input type="text" placeholder="Laura Delgado"
-                                            className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-medical-500 outline-none text-sm"
+                                            className="w-full px-4 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white placeholder-white/20 focus:ring-2 focus:ring-blue-500 outline-none text-sm"
                                             value={formData.bank_holder_name} onChange={(e) => setFormData(prev => ({ ...prev, bank_holder_name: e.target.value }))} />
                                     </div>
                                 </div>
@@ -501,17 +501,17 @@ export default function ClinicsView() {
 
                             {/* Email de derivación */}
                             <div className="space-y-1 border-t pt-4 mt-4">
-                                <label className="text-sm font-semibold text-medical-700">{t('clinics.derivation_email_label')}</label>
+                                <label className="text-sm font-semibold text-white/60">{t('clinics.derivation_email_label')}</label>
                                 <input type="email" placeholder="consultorio@ejemplo.com"
-                                    className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-medical-500 outline-none text-sm"
+                                    className="w-full px-4 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white placeholder-white/20 focus:ring-2 focus:ring-blue-500 outline-none text-sm"
                                     value={formData.derivation_email} onChange={(e) => setFormData(prev => ({ ...prev, derivation_email: e.target.value }))} />
-                                <p className="text-xs text-medical-400">{t('clinics.derivation_email_help')}</p>
+                                <p className="text-xs text-white/30">{t('clinics.derivation_email_help')}</p>
                             </div>
 
                             {/* Calendar provider */}
                             <div className="space-y-1">
-                                <label className="text-sm font-semibold text-medical-700 flex items-center gap-2"><Calendar size={14} /> {t('clinics.calendar_provider_label')}</label>
-                                <select className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-medical-500 outline-none"
+                                <label className="text-sm font-semibold text-white/60 flex items-center gap-2"><Calendar size={14} /> {t('clinics.calendar_provider_label')}</label>
+                                <select className="w-full px-4 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white placeholder-white/20 focus:ring-2 focus:ring-blue-500 outline-none"
                                     value={formData.calendar_provider}
                                     onChange={(e) => { const v = e.target.value as 'local' | 'google'; setFormData(prev => ({ ...prev, calendar_provider: v })); }}>
                                     {CALENDAR_PROVIDER_OPTIONS(t).map((opt) => (
@@ -522,55 +522,55 @@ export default function ClinicsView() {
 
                             {/* Horarios por día */}
                             <div className="space-y-3">
-                                <h3 className="text-sm font-bold text-medical-700 flex items-center gap-2"><Clock size={14} /> {t('clinics.working_hours_label')}</h3>
-                                <p className="text-xs text-medical-400">{t('clinics.working_hours_help')}</p>
+                                <h3 className="text-sm font-bold text-white/60 flex items-center gap-2"><Clock size={14} /> {t('clinics.working_hours_label')}</h3>
+                                <p className="text-xs text-white/30">{t('clinics.working_hours_help')}</p>
                                 <div className="space-y-2">
                                     {DAY_KEYS.map((dayKey) => {
                                         const config = formData.working_hours[dayKey];
                                         const isExpanded = expandedDays.includes(dayKey);
                                         return (
-                                            <div key={dayKey} className="rounded-xl border border-gray-200 overflow-hidden bg-white">
-                                                <div className="flex items-center justify-between px-4 py-3 hover:bg-gray-50/80 transition-colors">
+                                            <div key={dayKey} className="rounded-xl border border-white/[0.06] overflow-hidden bg-white/[0.03]">
+                                                <div className="flex items-center justify-between px-4 py-3 hover:bg-white/[0.04] transition-colors">
                                                     <label className="flex items-center gap-3 cursor-pointer flex-1">
                                                         <input type="checkbox" checked={config.enabled} onChange={() => toggleDayEnabled(dayKey)}
-                                                            className="w-4 h-4 rounded border-gray-300 text-medical-600" />
-                                                        <span className="text-sm font-medium text-gray-800">{t('approvals.day_' + dayKey)}</span>
+                                                            className="w-4 h-4 rounded border-white/[0.08] text-blue-400" />
+                                                        <span className="text-sm font-medium text-white">{t('approvals.day_' + dayKey)}</span>
                                                     </label>
                                                     <div className="flex items-center gap-2">
-                                                        <span className="text-xs text-gray-500">{config.slots.length} {t('approvals.slots')}</span>
+                                                        <span className="text-xs text-white/40">{config.slots.length} {t('approvals.slots')}</span>
                                                         <button type="button" onClick={() => setExpandedDays(prev => isExpanded ? prev.filter(d => d !== dayKey) : [...prev, dayKey])}
-                                                            className="p-2 rounded-lg hover:bg-gray-200 text-gray-500">
+                                                            className="p-2 rounded-lg hover:bg-white/[0.06] text-white/40">
                                                             <ChevronDown size={18} className={isExpanded ? 'rotate-180 transition-transform' : 'transition-transform'} />
                                                         </button>
                                                     </div>
                                                 </div>
                                                 {isExpanded && config.enabled && (
-                                                    <div className="px-4 pb-4 pt-1 space-y-3 bg-gray-50/50 border-t border-gray-100">
+                                                    <div className="px-4 pb-4 pt-1 space-y-3 bg-white/[0.02] border-t border-white/[0.06]">
                                                         {config.slots.map((slot, idx) => (
                                                             <div key={idx} className="flex items-center gap-3">
                                                                 <input type="time" value={slot.start} onChange={(e) => updateTimeSlot(dayKey, idx, 'start', e.target.value)}
-                                                                    className="px-3 py-1.5 border rounded-lg text-sm w-28" />
-                                                                <span className="text-gray-400">-</span>
+                                                                    className="px-3 py-1.5 bg-white/[0.04] border border-white/[0.08] rounded-lg text-sm text-white w-28" />
+                                                                <span className="text-white/30">-</span>
                                                                 <input type="time" value={slot.end} onChange={(e) => updateTimeSlot(dayKey, idx, 'end', e.target.value)}
-                                                                    className="px-3 py-1.5 border rounded-lg text-sm w-28" />
+                                                                    className="px-3 py-1.5 bg-white/[0.04] border border-white/[0.08] rounded-lg text-sm text-white w-28" />
                                                                 <button type="button" onClick={() => removeTimeSlot(dayKey, idx)} className="text-sm text-red-500 hover:text-red-700">{t('approvals.remove')}</button>
                                                             </div>
                                                         ))}
-                                                        <button type="button" onClick={() => addTimeSlot(dayKey)} className="text-sm font-medium text-medical-600 hover:text-medical-800">+ {t('approvals.add_schedule')}</button>
+                                                        <button type="button" onClick={() => addTimeSlot(dayKey)} className="text-sm font-medium text-blue-400 hover:text-blue-300">+ {t('approvals.add_schedule')}</button>
 
                                                         {/* Sede / Ubicación por día */}
-                                                        <div className="mt-3 pt-3 border-t border-gray-200 space-y-2">
-                                                            <p className="text-xs font-semibold text-gray-500 flex items-center gap-1"><MapPin size={12} /> {t('clinics.day_location_title')}</p>
+                                                        <div className="mt-3 pt-3 border-t border-white/[0.06] space-y-2">
+                                                            <p className="text-xs font-semibold text-white/40 flex items-center gap-1"><MapPin size={12} /> {t('clinics.day_location_title')}</p>
                                                             <input type="text" placeholder={t('clinics.day_location_name')}
-                                                                className="w-full px-3 py-1.5 border rounded-lg text-sm"
+                                                                className="w-full px-3 py-1.5 bg-white/[0.04] border border-white/[0.08] rounded-lg text-sm text-white"
                                                                 value={config.location || ''} onChange={(e) => updateDayField(dayKey, 'location', e.target.value)} />
                                                             <input type="text" placeholder={t('clinics.day_location_address')}
-                                                                className="w-full px-3 py-1.5 border rounded-lg text-sm"
+                                                                className="w-full px-3 py-1.5 bg-white/[0.04] border border-white/[0.08] rounded-lg text-sm text-white"
                                                                 value={config.address || ''} onChange={(e) => updateDayField(dayKey, 'address', e.target.value)} />
                                                             <input type="url" placeholder={t('clinics.day_location_maps')}
-                                                                className="w-full px-3 py-1.5 border rounded-lg text-sm"
+                                                                className="w-full px-3 py-1.5 bg-white/[0.04] border border-white/[0.08] rounded-lg text-sm text-white"
                                                                 value={config.maps_url || ''} onChange={(e) => updateDayField(dayKey, 'maps_url', e.target.value)} />
-                                                            <p className="text-xs text-gray-400">{t('clinics.day_location_help')}</p>
+                                                            <p className="text-xs text-white/30">{t('clinics.day_location_help')}</p>
                                                         </div>
                                                     </div>
                                                 )}
@@ -580,13 +580,13 @@ export default function ClinicsView() {
                                 </div>
                             </div>
 
-                            <div className="flex gap-3 pt-4 sticky bottom-0 bg-white pb-2">
+                            <div className="flex gap-3 pt-4 sticky bottom-0 bg-[#0d1117] pb-2">
                                 <button type="button" onClick={() => setIsModalOpen(false)}
-                                    className="flex-1 py-2 text-medical-700 font-medium hover:bg-medical-50 rounded-lg transition-all">
+                                    className="flex-1 py-2 text-white/70 font-medium hover:bg-white/[0.04] rounded-lg transition-all">
                                     {t('common.cancel')}
                                 </button>
                                 <button type="submit" disabled={saving}
-                                    className="flex-1 py-2 bg-medical-600 text-white font-bold rounded-lg hover:bg-medical-700 transition-all shadow-md disabled:opacity-50 flex items-center justify-center gap-2">
+                                    className="flex-1 py-2 bg-white text-[#0a0e1a] font-bold rounded-lg hover:bg-white/90 transition-all disabled:opacity-50 flex items-center justify-center gap-2">
                                     {saving ? <Loader2 className="animate-spin" size={20} /> : t('common.save')}
                                 </button>
                             </div>
@@ -598,50 +598,50 @@ export default function ClinicsView() {
             {/* ── Modal FAQs ── */}
             {faqModalOpen && (
                 <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl animate-scale-in max-h-[90vh] flex flex-col">
-                        <div className="p-4 sm:p-6 border-b shrink-0 flex justify-between items-center">
-                            <h2 className="text-xl font-bold flex items-center gap-2">
-                                <HelpCircle className="text-amber-600" />
+                    <div className="bg-[#0d1117] border border-white/[0.08] rounded-xl w-full max-w-2xl animate-scale-in max-h-[90vh] flex flex-col">
+                        <div className="p-4 sm:p-6 border-b border-white/[0.06] shrink-0 flex justify-between items-center">
+                            <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                                <HelpCircle className="text-amber-400" />
                                 {t('clinics.faq_title')} - {faqClinicName}
                             </h2>
-                            <button onClick={() => setFaqModalOpen(false)} className="p-2 hover:bg-gray-100 rounded-lg"><X size={20} /></button>
+                            <button onClick={() => setFaqModalOpen(false)} className="p-2 hover:bg-white/[0.04] rounded-lg text-white/40"><X size={20} /></button>
                         </div>
 
                         <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 space-y-6">
                             {/* Formulario agregar/editar FAQ */}
-                            <form onSubmit={handleFaqSubmit} className="space-y-3 bg-gray-50 p-4 rounded-xl border">
-                                <h3 className="text-sm font-bold text-gray-700">
+                            <form onSubmit={handleFaqSubmit} className="space-y-3 bg-white/[0.02] p-4 rounded-xl border border-white/[0.06]">
+                                <h3 className="text-sm font-bold text-white/60">
                                     {faqEditing ? t('clinics.faq_edit') : t('clinics.faq_add')}
                                 </h3>
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                     <div>
-                                        <label className="text-xs font-semibold text-gray-600">{t('clinics.faq_category')}</label>
+                                        <label className="text-xs font-semibold text-white/60">{t('clinics.faq_category')}</label>
                                         <input type="text" value={faqForm.category} onChange={e => setFaqForm({ ...faqForm, category: e.target.value })}
-                                            className="w-full px-3 py-1.5 border rounded-lg text-sm mt-1" placeholder="Ej: Pagos, General, Tratamientos" />
+                                            className="w-full px-3 py-1.5 bg-white/[0.04] border border-white/[0.08] rounded-lg text-sm text-white mt-1" placeholder="Ej: Pagos, General, Tratamientos" />
                                     </div>
                                     <div>
-                                        <label className="text-xs font-semibold text-gray-600">{t('clinics.faq_order')}</label>
+                                        <label className="text-xs font-semibold text-white/60">{t('clinics.faq_order')}</label>
                                         <input type="number" value={faqForm.sort_order} onChange={e => setFaqForm({ ...faqForm, sort_order: parseInt(e.target.value) || 0 })}
-                                            className="w-full px-3 py-1.5 border rounded-lg text-sm mt-1" />
+                                            className="w-full px-3 py-1.5 bg-white/[0.04] border border-white/[0.08] rounded-lg text-sm text-white mt-1" />
                                     </div>
                                 </div>
                                 <div>
-                                    <label className="text-xs font-semibold text-gray-600">{t('clinics.faq_question')}</label>
+                                    <label className="text-xs font-semibold text-white/60">{t('clinics.faq_question')}</label>
                                     <input required type="text" value={faqForm.question} onChange={e => setFaqForm({ ...faqForm, question: e.target.value })}
-                                        className="w-full px-3 py-1.5 border rounded-lg text-sm mt-1" placeholder={t('clinics.faq_question_placeholder')} />
+                                        className="w-full px-3 py-1.5 bg-white/[0.04] border border-white/[0.08] rounded-lg text-sm text-white mt-1" placeholder={t('clinics.faq_question_placeholder')} />
                                 </div>
                                 <div>
-                                    <label className="text-xs font-semibold text-gray-600">{t('clinics.faq_answer')}</label>
+                                    <label className="text-xs font-semibold text-white/60">{t('clinics.faq_answer')}</label>
                                     <textarea required value={faqForm.answer} onChange={e => setFaqForm({ ...faqForm, answer: e.target.value })}
-                                        className="w-full px-3 py-1.5 border rounded-lg text-sm mt-1 min-h-[60px]" placeholder={t('clinics.faq_answer_placeholder')} />
+                                        className="w-full px-3 py-1.5 bg-white/[0.04] border border-white/[0.08] rounded-lg text-sm text-white mt-1 min-h-[60px]" placeholder={t('clinics.faq_answer_placeholder')} />
                                 </div>
                                 <div className="flex gap-2">
                                     {faqEditing && (
                                         <button type="button" onClick={() => { setFaqEditing(null); setFaqForm({ category: 'General', question: '', answer: '', sort_order: 0 }); }}
-                                            className="px-4 py-1.5 text-sm text-gray-600 hover:bg-gray-200 rounded-lg">{t('common.cancel')}</button>
+                                            className="px-4 py-1.5 text-sm text-white/70 hover:bg-white/[0.06] rounded-lg">{t('common.cancel')}</button>
                                     )}
                                     <button type="submit" disabled={faqSaving}
-                                        className="px-4 py-1.5 text-sm bg-medical-600 text-white rounded-lg hover:bg-medical-700 disabled:opacity-50 flex items-center gap-2">
+                                        className="px-4 py-1.5 text-sm bg-white text-[#0a0e1a] rounded-lg hover:bg-white/90 disabled:opacity-50 flex items-center gap-2">
                                         {faqSaving && <Loader2 className="animate-spin" size={14} />}
                                         {faqEditing ? t('common.save') : t('clinics.faq_add_btn')}
                                     </button>
@@ -650,22 +650,22 @@ export default function ClinicsView() {
 
                             {/* Lista de FAQs */}
                             {faqLoading ? (
-                                <div className="flex justify-center py-8"><Loader2 className="animate-spin text-medical-600" size={24} /></div>
+                                <div className="flex justify-center py-8"><Loader2 className="animate-spin text-blue-400" size={24} /></div>
                             ) : faqs.length === 0 ? (
-                                <p className="text-center text-gray-400 py-8 text-sm">{t('clinics.faq_empty')}</p>
+                                <p className="text-center text-white/30 py-8 text-sm">{t('clinics.faq_empty')}</p>
                             ) : (
                                 <div className="space-y-3">
                                     {faqs.map((faq) => (
-                                        <div key={faq.id} className="bg-white border rounded-xl p-4 space-y-2 hover:shadow-sm transition-shadow">
+                                        <div key={faq.id} className="bg-white/[0.03] border border-white/[0.06] rounded-xl p-4 space-y-2 hover:border-white/[0.12] transition-all">
                                             <div className="flex justify-between items-start">
-                                                <span className="text-xs font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">{faq.category}</span>
+                                                <span className="text-xs font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full">{faq.category}</span>
                                                 <div className="flex gap-1">
-                                                    <button onClick={() => handleFaqEdit(faq)} className="p-1 text-medical-600 hover:bg-medical-50 rounded"><Edit size={14} /></button>
-                                                    <button onClick={() => faq.id && handleFaqDelete(faq.id)} className="p-1 text-red-500 hover:bg-red-50 rounded"><Trash2 size={14} /></button>
+                                                    <button onClick={() => handleFaqEdit(faq)} className="p-1 text-blue-400 hover:bg-blue-500/10 rounded"><Edit size={14} /></button>
+                                                    <button onClick={() => faq.id && handleFaqDelete(faq.id)} className="p-1 text-red-400 hover:bg-red-500/10 rounded"><Trash2 size={14} /></button>
                                                 </div>
                                             </div>
-                                            <p className="text-sm font-medium text-gray-800">{faq.question}</p>
-                                            <p className="text-sm text-gray-600">{faq.answer}</p>
+                                            <p className="text-sm font-medium text-white">{faq.question}</p>
+                                            <p className="text-sm text-white/60">{faq.answer}</p>
                                         </div>
                                     ))}
                                 </div>

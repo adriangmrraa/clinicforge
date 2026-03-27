@@ -90,12 +90,12 @@ const TRIGGER_COLORS: Record<string, string> = {
 };
 
 const STATUS_STYLES: Record<string, { bg: string; text: string }> = {
-  sent:      { bg: '#d1fae5', text: '#065f46' },
-  delivered: { bg: '#dbeafe', text: '#1e40af' },
-  read:      { bg: '#e0e7ff', text: '#3730a3' },
-  failed:    { bg: '#fee2e2', text: '#991b1b' },
-  skipped:   { bg: '#fef9c3', text: '#713f12' },
-  pending:   { bg: '#f1f5f9', text: '#475569' },
+  sent:      { bg: 'rgba(16,185,129,0.12)', text: '#34d399' },
+  delivered: { bg: 'rgba(59,130,246,0.12)', text: '#60a5fa' },
+  read:      { bg: 'rgba(99,102,241,0.12)', text: '#818cf8' },
+  failed:    { bg: 'rgba(239,68,68,0.12)', text: '#f87171' },
+  skipped:   { bg: 'rgba(245,158,11,0.12)', text: '#fbbf24' },
+  pending:   { bg: 'rgba(255,255,255,0.06)', text: 'rgba(255,255,255,0.5)' },
 };
 
 const CHANNEL_ICONS: Record<string, any> = {
@@ -237,30 +237,30 @@ function RuleFormModal({
       display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px',
     }} onClick={e => e.target === e.currentTarget && onClose()}>
       <div style={{
-        background: '#fff', borderRadius: isMobile ? '0' : '16px', width: '100%', 
+        background: '#0d1117', borderRadius: isMobile ? '0' : '16px', width: '100%',
         maxWidth: isMobile ? '100%' : '600px',
         height: isMobile ? '100%' : 'auto',
         maxHeight: isMobile ? '100%' : '90vh', overflowY: 'auto',
-        boxShadow: '0 20px 60px rgba(0,0,0,0.15)',
-        border: '1px solid #e2e8f0',
+        boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
+        border: '1px solid rgba(255,255,255,0.08)',
       }}>
         {/* Header */}
-        <div style={{ padding: '20px 24px 16px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ padding: '20px 24px 16px', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <div style={{ color: '#6366f1' }}>{isEdit ? icons.edit : icons.plus}</div>
             <div>
-              <h2 style={{ margin: 0, color: '#0f172a', fontSize: '18px', fontWeight: 700 }}>
+              <h2 style={{ margin: 0, color: '#fff', fontSize: '18px', fontWeight: 700 }}>
                 {messageOnly ? t('meta_templates.form.edit_message') : isEdit ? t('meta_templates.form.edit_rule') : t('meta_templates.form.new_rule')}
               </h2>
-              {messageOnly && <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: '13px' }}>{t('meta_templates.form.system_rule_hint')}</p>}
+              {messageOnly && <p style={{ margin: '4px 0 0', color: 'rgba(255,255,255,0.5)', fontSize: '13px' }}>{t('meta_templates.form.system_rule_hint')}</p>}
             </div>
           </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', display: 'flex', alignItems: 'center' }}><X size={20} /></button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.3)', cursor: 'pointer', display: 'flex', alignItems: 'center' }}><X size={20} /></button>
         </div>
 
         <div style={{ padding: '20px 24px' }}>
           {error && (
-            <div style={{ background: '#fee2e2', color: '#991b1b', padding: '10px 14px', borderRadius: '8px', marginBottom: '16px', fontSize: '14px' }}>{error}</div>
+            <div style={{ background: 'rgba(239,68,68,0.12)', color: '#f87171', padding: '10px 14px', borderRadius: '8px', marginBottom: '16px', fontSize: '14px' }}>{error}</div>
           )}
 
           {/* Nombre */}
@@ -268,17 +268,17 @@ function RuleFormModal({
             <label style={labelStyle}>{t('meta_templates.form.rule_name')}</label>
             <input value={name} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setName(e.target.value)} disabled={isSystem}
               placeholder={t('meta_templates.form.rule_name_placeholder')}
-              style={{ ...lightInputStyle, opacity: isSystem ? 0.6 : 1, background: isSystem ? '#f8fafc' : '#fff', cursor: isSystem ? 'not-allowed' : 'text' }} />
+              style={{ ...lightInputStyle, opacity: isSystem ? 0.6 : 1, background: isSystem ? 'rgba(255,255,255,0.02)' : 'rgba(255,255,255,0.04)', cursor: isSystem ? 'not-allowed' : 'text' }} />
           </div>
 
           {/* Trigger - solo informativo para reglas de sistema */}
           {messageOnly ? (
-            <div style={{ marginBottom: '16px', background: '#f8fafc', borderRadius: '10px', padding: '12px 16px', border: '1px solid #e2e8f0' }}>
-              <span style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{t('meta_templates.form.trigger_when')}</span>
+            <div style={{ marginBottom: '16px', background: 'rgba(255,255,255,0.03)', borderRadius: '10px', padding: '12px 16px', border: '1px solid rgba(255,255,255,0.06)' }}>
+              <span style={{ fontSize: '11px', fontWeight: 700, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{t('meta_templates.form.trigger_when')}</span>
               <div style={{ marginTop: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Lock size={12} style={{ color: '#94a3b8' }} />
-                <span style={{ color: '#334155', fontSize: '14px', fontWeight: 600 }}>{TRIGGER_LABELS[triggerType] ? t(TRIGGER_LABELS[triggerType]) : triggerType}</span>
-                <span style={{ fontSize: '11px', color: '#94a3b8' }}>{t('meta_templates.form.not_editable')}</span>
+                <Lock size={12} style={{ color: 'rgba(255,255,255,0.35)' }} />
+                <span style={{ color: 'rgba(255,255,255,0.8)', fontSize: '14px', fontWeight: 600 }}>{TRIGGER_LABELS[triggerType] ? t(TRIGGER_LABELS[triggerType]) : triggerType}</span>
+                <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.35)' }}>{t('meta_templates.form.not_editable')}</span>
               </div>
             </div>
           ) : (
@@ -296,7 +296,7 @@ function RuleFormModal({
 
           {/* Cond dinámica - solo si no es sistema */}
           {!messageOnly && (triggerType === 'lead_meta_no_booking' || triggerType === 'patient_reactivation') && (
-            <div style={{ marginBottom: '16px', background: '#f0f4ff', borderRadius: '10px', padding: '14px', border: '1px solid #c7d2fe' }}>
+            <div style={{ marginBottom: '16px', background: 'rgba(99,102,241,0.08)', borderRadius: '10px', padding: '14px', border: '1px solid rgba(99,102,241,0.2)' }}>
               <label style={{ ...labelStyle, color: '#4338ca' }}>
                 {triggerType === 'lead_meta_no_booking' ? t('meta_templates.form.delay_hours') : t('meta_templates.form.delay_days')}
               </label>
@@ -314,11 +314,11 @@ function RuleFormModal({
 
           {/* Canales - informativo para sistema */}
           {messageOnly ? (
-            <div style={{ marginBottom: '16px', background: '#f8fafc', borderRadius: '10px', padding: '12px 16px', border: '1px solid #e2e8f0' }}>
-              <span style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{t('meta_templates.form.channels')}</span>
+            <div style={{ marginBottom: '16px', background: 'rgba(255,255,255,0.03)', borderRadius: '10px', padding: '12px 16px', border: '1px solid rgba(255,255,255,0.06)' }}>
+              <span style={{ fontSize: '11px', fontWeight: 700, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{t('meta_templates.form.channels')}</span>
               <div style={{ marginTop: '4px', display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                 {channels.map(ch => (
-                  <span key={ch} style={{ padding: '4px 10px', borderRadius: '6px', background: '#ede9fe', color: '#6366f1', fontSize: '12px', fontWeight: 600 }}>
+                  <span key={ch} style={{ padding: '4px 10px', borderRadius: '6px', background: 'rgba(99,102,241,0.15)', color: '#818cf8', fontSize: '12px', fontWeight: 600 }}>
                     {CHANNEL_ICONS[ch]} {ch}
                   </span>
                 ))}
@@ -332,8 +332,8 @@ function RuleFormModal({
                   <button key={ch} onClick={() => handleChannelToggle(ch)} style={{
                     padding: '7px 14px', borderRadius: '8px', cursor: 'pointer',
                     fontSize: '14px', fontWeight: 600, transition: 'all 0.15s',
-                    border: channels.includes(ch) ? '2px solid #6366f1' : '2px solid #e2e8f0',
-                    background: channels.includes(ch) ? '#ede9fe' : '#fff',
+                    border: channels.includes(ch) ? '2px solid #6366f1' : '2px solid rgba(255,255,255,0.08)',
+                    background: channels.includes(ch) ? 'rgba(99,102,241,0.15)' : 'rgba(255,255,255,0.03)',
                     color: channels.includes(ch) ? '#6366f1' : '#64748b',
                   }}>
                     {CHANNEL_ICONS[ch]} {ch.charAt(0).toUpperCase() + ch.slice(1)}
@@ -352,8 +352,8 @@ function RuleFormModal({
                     <button key={type} onClick={() => setMessageType(type)} style={{
                       flex: 1, padding: '11px', borderRadius: '9px', cursor: 'pointer',
                       display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-                      border: messageType === type ? '2px solid #6366f1' : '2px solid #e2e8f0',
-                      background: messageType === type ? '#ede9fe' : '#fafafa',
+                      border: messageType === type ? '2px solid #6366f1' : '2px solid rgba(255,255,255,0.08)',
+                      background: messageType === type ? 'rgba(99,102,241,0.15)' : 'rgba(255,255,255,0.03)',
                       color: messageType === type ? '#6366f1' : '#64748b',
                       fontWeight: 600, fontSize: '14px', transition: 'all 0.15s',
                     }}>
@@ -362,7 +362,7 @@ function RuleFormModal({
                     </button>
                   ))}
                 </div>
-                <p style={{ margin: '6px 0 0', fontSize: '12px', color: '#94a3b8' }}>
+                <p style={{ margin: '6px 0 0', fontSize: '12px', color: 'rgba(255,255,255,0.35)' }}>
                   {messageType === 'free_text'
                     ? t('meta_templates.form.free_text_hint')
                     : t('meta_templates.form.hsm_hint')}
@@ -372,7 +372,7 @@ function RuleFormModal({
               {messageType === 'free_text' && (
                 <div style={{ marginBottom: '16px' }}>
                   <label style={labelStyle}>{t('meta_templates.form.message')}</label>
-                  <p style={{ margin: '0 0 6px', fontSize: '12px', color: '#94a3b8' }}>
+                  <p style={{ margin: '0 0 6px', fontSize: '12px', color: 'rgba(255,255,255,0.35)' }}>
                     {t('meta_templates.form.available_vars')} {'{{first_name}}'} {'{{appointment_time}}'} {'{{treatment_name}}'} {'{{clinic_name}}'}
                   </p>
                   <textarea value={freeText} onChange={e => setFreeText(e.target.value)} rows={4}
@@ -385,7 +385,7 @@ function RuleFormModal({
                 <div style={{ marginBottom: '16px' }}>
                   <label style={labelStyle}>{t('meta_templates.form.hsm_template')}</label>
                   {templates.length === 0 ? (
-                    <div style={{ padding: '12px', background: '#fffbeb', color: '#b45309', borderRadius: '8px', fontSize: '12px', border: '1px solid #fde68a' }}>
+                    <div style={{ padding: '12px', background: 'rgba(245,158,11,0.1)', color: '#fbbf24', borderRadius: '8px', fontSize: '12px', border: '1px solid rgba(245,158,11,0.2)' }}>
                       {t('meta_templates.form.no_templates')}
                     </div>
                   ) : (
@@ -400,17 +400,17 @@ function RuleFormModal({
                     </select>
                   )}
                   {selectedTemplate?.components?.find(c => c.type === 'BODY')?.text && (
-                    <div style={{ marginTop: '12px', padding: '12px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '12px', color: '#64748b' }}>
-                      <strong style={{ color: '#475569' }}>{t('meta_templates.form.preview')}:</strong><br/>
+                    <div style={{ marginTop: '12px', padding: '12px', background: 'rgba(255,255,255,0.04)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.08)', fontSize: '12px', color: 'rgba(255,255,255,0.5)' }}>
+                      <strong style={{ color: 'rgba(255,255,255,0.6)' }}>{t('meta_templates.form.preview')}:</strong><br/>
                       {selectedTemplate.components.find(c => c.type === 'BODY')?.text}
                     </div>
                   )}
                   {varMatches.length > 0 && (
-                    <div style={{ marginTop: '16px', background: '#f0fdf4', padding: '12px 16px', borderRadius: '8px', border: '1px solid #bbf7d0' }}>
-                      <label style={{ ...labelStyle, color: '#166534', marginBottom: '8px' }}>{t('meta_templates.form.var_mapping')}</label>
+                    <div style={{ marginTop: '16px', background: 'rgba(16,185,129,0.08)', padding: '12px 16px', borderRadius: '8px', border: '1px solid rgba(16,185,129,0.2)' }}>
+                      <label style={{ ...labelStyle, color: '#34d399', marginBottom: '8px' }}>{t('meta_templates.form.var_mapping')}</label>
                       {varMatches.map(v => (
                         <div key={v} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                          <span style={{ fontSize: '13px', color: '#15803d', fontWeight: 600, minWidth: '40px' }}>{v}:</span>
+                          <span style={{ fontSize: '13px', color: '#34d399', fontWeight: 600, minWidth: '40px' }}>{v}:</span>
                           <select
                             value={templateVars[v] || ''}
                             onChange={e => setTemplateVars({ ...templateVars, [v]: e.target.value })}
@@ -431,9 +431,9 @@ function RuleFormModal({
 
           {/* Horario - informativo para sistema */}
           {messageOnly ? (
-            <div style={{ marginBottom: '24px', background: '#f8fafc', borderRadius: '10px', padding: '12px 16px', border: '1px solid #e2e8f0' }}>
-              <span style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{t('meta_templates.form.schedule')}</span>
-              <div style={{ marginTop: '4px', fontSize: '14px', color: '#334155', fontWeight: 600 }}>
+            <div style={{ marginBottom: '24px', background: 'rgba(255,255,255,0.03)', borderRadius: '10px', padding: '12px 16px', border: '1px solid rgba(255,255,255,0.06)' }}>
+              <span style={{ fontSize: '11px', fontWeight: 700, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{t('meta_templates.form.schedule')}</span>
+              <div style={{ marginTop: '4px', fontSize: '14px', color: 'rgba(255,255,255,0.8)', fontWeight: 600 }}>
                 {schedule.start_time} {t('meta_templates.form.hs')} &nbsp;—&nbsp; {schedule.end_time} {t('meta_templates.form.hs')}
               </div>
             </div>
@@ -442,12 +442,12 @@ function RuleFormModal({
               <label style={{ ...labelStyle, marginBottom: '8px' }}>{t('meta_templates.form.schedule_label')}</label>
               <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
                 <div style={{ flex: 1 }}>
-                  <span style={{ fontSize: '11px', color: '#64748b', display: 'block', marginBottom: '4px' }}>{t('meta_templates.form.from')}</span>
+                  <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)', display: 'block', marginBottom: '4px' }}>{t('meta_templates.form.from')}</span>
                   <input type="time" value={schedule.start_time} onChange={e => setSchedule({ ...schedule, start_time: e.target.value })} style={lightInputStyle} />
                 </div>
-                <span style={{ color: '#cbd5e1', fontWeight: 300 }}>—</span>
+                <span style={{ color: 'rgba(255,255,255,0.2)', fontWeight: 300 }}>—</span>
                 <div style={{ flex: 1 }}>
-                  <span style={{ fontSize: '11px', color: '#64748b', display: 'block', marginBottom: '4px' }}>{t('meta_templates.form.to')}</span>
+                  <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)', display: 'block', marginBottom: '4px' }}>{t('meta_templates.form.to')}</span>
                   <input type="time" value={schedule.end_time} onChange={e => setSchedule({ ...schedule, end_time: e.target.value })} style={lightInputStyle} />
                 </div>
               </div>
@@ -455,7 +455,7 @@ function RuleFormModal({
           )}
 
           {/* Botones */}
-          <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', paddingTop: '16px', borderTop: '1px solid #f1f5f9' }}>
+          <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', paddingTop: '16px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
             <button onClick={onClose} style={btnSecondaryStyle}>{t('meta_templates.form.cancel')}</button>
             <button onClick={handleSave} disabled={saving} style={{ ...btnPrimaryStyle, opacity: saving ? 0.6 : 1, display: 'flex', alignItems: 'center', gap: '8px' }}>
               {saving ? <RefreshCw size={16} className="animate-spin" /> : icons.save}
@@ -478,23 +478,23 @@ function RuleCard({ rule, onEdit, onDelete, onToggle }: {
   const triggerColor = TRIGGER_COLORS[rule.trigger_type] || '#64748b';
   return (
     <div style={{
-      background: '#fff', borderRadius: '12px', padding: '14px 18px',
-      border: `1px solid ${rule.is_active ? '#e0e7ff' : '#f1f5f9'}`,
+      background: 'rgba(255,255,255,0.03)', borderRadius: '12px', padding: '14px 18px',
+      border: `1px solid ${rule.is_active ? 'rgba(99,102,241,0.2)' : 'rgba(255,255,255,0.06)'}`,
       display: 'flex', alignItems: 'center', gap: '14px',
-      boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+      boxShadow: 'none',
       transition: 'box-shadow 0.15s',
     }}>
       {/* Toggle */}
       <div onClick={onToggle} style={{
         width: '38px', height: '22px', borderRadius: '11px',
-        background: rule.is_active ? '#6366f1' : '#e2e8f0',
+        background: rule.is_active ? '#6366f1' : 'rgba(255,255,255,0.1)',
         position: 'relative', cursor: 'pointer', flexShrink: 0, transition: 'background 0.2s',
       }}>
         <div style={{
           position: 'absolute', top: '3px',
           left: rule.is_active ? '18px' : '3px',
           width: '16px', height: '16px', borderRadius: '50%',
-          background: '#fff', transition: 'left 0.2s',
+          background: 'rgba(255,255,255,0.03)', transition: 'left 0.2s',
           boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
         }} />
       </div>
@@ -502,22 +502,22 @@ function RuleCard({ rule, onEdit, onDelete, onToggle }: {
       {/* Info */}
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-          <span style={{ color: '#0f172a', fontSize: '15px', fontWeight: 700 }}>{rule.name}</span>
+          <span style={{ color: '#fff', fontSize: '15px', fontWeight: 700 }}>{rule.name}</span>
           {rule.is_system && (
-            <span style={{ padding: '1px 7px', borderRadius: '5px', fontSize: '11px', fontWeight: 700, background: '#ede9fe', color: '#6366f1', display: 'flex', alignItems: 'center', gap: '3px' }}>
+            <span style={{ padding: '1px 7px', borderRadius: '5px', fontSize: '11px', fontWeight: 700, background: 'rgba(99,102,241,0.15)', color: '#818cf8', display: 'flex', alignItems: 'center', gap: '3px' }}>
               <Lock size={10} /> {t('meta_templates.rules.system')}
             </span>
           )}
         </div>
         <div style={{ display: 'flex', gap: '8px', marginTop: '5px', flexWrap: 'wrap', alignItems: 'center' }}>
           <TriggerBadge type={rule.trigger_type} />
-          <span style={{ color: '#94a3b8', fontSize: '12px' }}>
+          <span style={{ color: 'rgba(255,255,255,0.35)', fontSize: '12px' }}>
             {rule.message_type === 'hsm' ? `📋 ${t('meta_templates.rules.hsm_template')}: ${rule.ycloud_template_name}` : `💬 ${t('meta_templates.rules.free_text')}`}
           </span>
           {rule.channels.map(ch => (
-            <span key={ch} style={{ color: '#94a3b8', fontSize: '12px' }}>{CHANNEL_ICONS[ch]}</span>
+            <span key={ch} style={{ color: 'rgba(255,255,255,0.35)', fontSize: '12px' }}>{CHANNEL_ICONS[ch]}</span>
           ))}
-          <span style={{ color: '#cbd5e1', fontSize: '12px' }}>{rule.send_hour_min}:00 – {rule.send_hour_max}:00 {t('meta_templates.rules.hours')}</span>
+          <span style={{ color: 'rgba(255,255,255,0.2)', fontSize: '12px' }}>{rule.send_hour_min}:00 – {rule.send_hour_max}:00 {t('meta_templates.rules.hours')}</span>
         </div>
       </div>
 
@@ -540,13 +540,13 @@ function RuleCard({ rule, onEdit, onDelete, onToggle }: {
 
 function StatCard({ icon: Icon, label, value, color }: { icon: any; label: string; value: string | number; color: string }) {
   return (
-    <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 sm:p-5 flex items-center gap-4 hover:shadow-md transition-shadow">
+    <div className="bg-white/[0.03] rounded-2xl border border-white/[0.06] p-4 sm:p-5 flex items-center gap-4 hover:bg-white/[0.05] transition-colors">
       <div className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0" style={{ background: color + '15', color }}>
         <Icon size={22} />
       </div>
       <div>
-        <p className="text-2xl font-bold text-slate-900 tracking-tight leading-none">{value}</p>
-        <p className="text-xs text-slate-500 mt-1">{label}</p>
+        <p className="text-2xl font-bold text-white tracking-tight leading-none">{value}</p>
+        <p className="text-xs text-white/40 mt-1">{label}</p>
       </div>
     </div>
   );
@@ -641,8 +641,8 @@ export default function MetaTemplatesView() {
   // Loading solo bloquea si rules aún no cargaron
   if (rulesLoading) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', background: '#f8fafc' }}>
-      <div style={{ textAlign: 'center', color: '#64748b' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', background: 'rgba(255,255,255,0.04)' }}>
+      <div style={{ textAlign: 'center', color: 'rgba(255,255,255,0.5)' }}>
         <RefreshCw size={32} className="animate-spin" style={{ margin: '0 auto 12px', color: '#6366f1' }} />
         <p style={{ margin: 0, fontSize: '14px', fontWeight: 500 }}>{t('meta_templates.loading_rules')}</p>
       </div>
@@ -651,7 +651,7 @@ export default function MetaTemplatesView() {
   }
 
   return (
-    <div className="h-full overflow-y-auto bg-slate-50 p-4 sm:p-6 lg:p-8">
+    <div className="h-full overflow-y-auto bg-[#0a0e1a] p-4 sm:p-6 lg:p-8">
       {/* Header */}
       <PageHeader
         title={t('meta_templates.title')}
@@ -666,15 +666,15 @@ export default function MetaTemplatesView() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-0.5 bg-slate-200 rounded-xl p-1 mb-6 w-full sm:w-fit overflow-hidden">
+      <div className="flex gap-0.5 bg-white/[0.06] rounded-xl p-1 mb-6 w-full sm:w-fit overflow-hidden">
         {(['rules', 'logs', 'templates'] as const).map(tab => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-[13px] font-semibold transition-all whitespace-nowrap ${
               activeTab === tab
-                ? 'bg-white text-indigo-600 shadow-sm'
-                : 'text-slate-500 hover:text-slate-700'
+                ? 'bg-white/[0.1] text-indigo-400'
+                : 'text-white/40 hover:text-white/60'
             }`}
           >
             {tab === 'rules' ? <Zap size={14} /> : tab === 'logs' ? <MessageSquare size={14} /> : <Files size={14} />}
@@ -690,8 +690,8 @@ export default function MetaTemplatesView() {
           <div style={{ marginBottom: '24px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
               <Zap size={18} style={{ color: '#6366f1' }} />
-              <h2 style={{ margin: 0, color: '#0f172a', fontSize: '15px', fontWeight: 700 }}>{t('meta_templates.rules.system_rules')}</h2>
-              <span style={{ padding: '1px 8px', background: '#ede9fe', color: '#6366f1', borderRadius: '6px', fontSize: '11px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <h2 style={{ margin: 0, color: '#fff', fontSize: '15px', fontWeight: 700 }}>{t('meta_templates.rules.system_rules')}</h2>
+              <span style={{ padding: '1px 8px', background: 'rgba(99,102,241,0.15)', color: '#818cf8', borderRadius: '6px', fontSize: '11px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}>
                 <Lock size={10} /> {t('meta_templates.form.not_editable')}
               </span>
             </div>
@@ -701,7 +701,7 @@ export default function MetaTemplatesView() {
                   onEdit={() => { setEditingRule(rule); setShowModal(true); }} onDelete={null} />
               ))}
               {systemRules.length === 0 && (
-                <div style={{ color: '#94a3b8', fontSize: '13px', padding: '14px', background: '#fff', borderRadius: '10px', border: '1px solid #f1f5f9' }}>
+                <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: '13px', padding: '14px', background: 'rgba(255,255,255,0.03)', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.06)' }}>
                   {t('meta_templates.rules.system_auto_created')}
                 </div>
               )}
@@ -713,7 +713,7 @@ export default function MetaTemplatesView() {
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <div style={{ width: '3px', height: '18px', background: '#10b981', borderRadius: '2px' }} />
-                <h2 style={{ margin: 0, color: '#0f172a', fontSize: '15px', fontWeight: 700 }}>{t('meta_templates.rules.custom_rules')}</h2>
+                <h2 style={{ margin: 0, color: '#fff', fontSize: '15px', fontWeight: 700 }}>{t('meta_templates.rules.custom_rules')}</h2>
               </div>
               <button onClick={() => { setEditingRule(null); setShowModal(true); }} style={{ ...btnPrimaryStyle, display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <Plus size={16} /> {t('meta_templates.rules.new_rule_btn')}
@@ -727,10 +727,10 @@ export default function MetaTemplatesView() {
               ))}
               {customRules.length === 0 && (
                 <div style={{
-                  padding: '40px', borderRadius: '12px', border: '2px dashed #e2e8f0',
-                  textAlign: 'center', color: '#94a3b8', background: '#fff',
+                  padding: '40px', borderRadius: '12px', border: '2px dashed rgba(255,255,255,0.08)',
+                  textAlign: 'center', color: 'rgba(255,255,255,0.35)', background: 'rgba(255,255,255,0.03)',
                 }}>
-                  <div style={{ marginBottom: '16px', color: '#e2e8f0' }}>
+                  <div style={{ marginBottom: '16px', color: 'rgba(255,255,255,0.1)' }}>
                     <Zap size={48} style={{ margin: '0 auto' }} />
                   </div>
                   <p style={{ margin: '0 0 14px', fontSize: '14px', fontWeight: 500 }}>{t('meta_templates.rules.no_custom_rules')}</p>
@@ -773,45 +773,45 @@ export default function MetaTemplatesView() {
             </button>
           </div>
 
-          <div style={{ background: '#fff', borderRadius: '12px', border: '1px solid #f1f5f9', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+          <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.06)', overflow: 'hidden', boxShadow: 'none' }}>
             {logsLoading ? (
-              <div style={{ padding: '40px', textAlign: 'center', color: '#94a3b8', fontSize: '14px' }}>{t('meta_templates.logs.loading_logs')}</div>
+              <div style={{ padding: '40px', textAlign: 'center', color: 'rgba(255,255,255,0.35)', fontSize: '14px' }}>{t('meta_templates.logs.loading_logs')}</div>
             ) : (
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
-                    <tr style={{ background: '#f8fafc' }}>
+                    <tr style={{ background: 'rgba(255,255,255,0.04)' }}>
                       {[t('meta_templates.logs.patient'), t('meta_templates.logs.trigger'), t('meta_templates.logs.channel'), t('meta_templates.logs.message'), t('meta_templates.logs.date_time'), t('meta_templates.logs.status')].map(h => (
-                        <th key={h} style={{ padding: '11px 14px', textAlign: 'left', color: '#94a3b8', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid #f1f5f9', whiteSpace: 'nowrap' }}>{h}</th>
+                        <th key={h} style={{ padding: '11px 14px', textAlign: 'left', color: 'rgba(255,255,255,0.35)', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid #f1f5f9', whiteSpace: 'nowrap' }}>{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
                     {logs.length === 0 && (
-                      <tr><td colSpan={6} style={{ padding: '40px', textAlign: 'center', color: '#94a3b8', fontSize: '14px' }}>
+                      <tr><td colSpan={6} style={{ padding: '40px', textAlign: 'center', color: 'rgba(255,255,255,0.35)', fontSize: '14px' }}>
                         {t('meta_templates.logs.no_logs_with_filters')}
                       </td></tr>
                     )}
                     {logs.map((log, i) => (
-                      <tr key={log.id} style={{ borderBottom: '1px solid #f8fafc', background: i % 2 === 0 ? '#fff' : '#fafafa' }}>
+                      <tr key={log.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)' }}>
                         <td style={{ padding: '12px 14px' }}>
-                          <div style={{ color: '#0f172a', fontSize: '13px', fontWeight: 600 }}>{log.patient_name || '—'}</div>
-                          <div style={{ color: '#94a3b8', fontSize: '11px' }}>{log.phone_number || ''}</div>
+                          <div style={{ color: '#fff', fontSize: '13px', fontWeight: 600 }}>{log.patient_name || '—'}</div>
+                          <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: '11px' }}>{log.phone_number || ''}</div>
                         </td>
                         <td style={{ padding: '12px 14px' }}>
                           <TriggerBadge type={log.trigger_type} />
-                          {log.rule_name && <div style={{ color: '#94a3b8', fontSize: '11px', marginTop: '2px' }}>{log.rule_name}</div>}
+                          {log.rule_name && <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: '11px', marginTop: '2px' }}>{log.rule_name}</div>}
                         </td>
-                        <td style={{ padding: '12px 14px', color: '#64748b', fontSize: '13px' }}>
+                        <td style={{ padding: '12px 14px', color: 'rgba(255,255,255,0.5)', fontSize: '13px' }}>
                           {CHANNEL_ICONS[log.channel || 'whatsapp']} {log.channel || 'whatsapp'}
                         </td>
                         <td style={{ padding: '12px 14px', maxWidth: '200px' }}>
-                          <div style={{ color: '#64748b', fontSize: '12px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '12px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             {log.message_preview || log.template_name || '—'}
                           </div>
-                          {log.skip_reason && <div style={{ color: '#b45309', fontSize: '11px', marginTop: '1px', display: 'flex', alignItems: 'center', gap: '4px' }}><SkipForward size={10} /> {log.skip_reason}</div>}
+                          {log.skip_reason && <div style={{ color: '#fbbf24', fontSize: '11px', marginTop: '1px', display: 'flex', alignItems: 'center', gap: '4px' }}><SkipForward size={10} /> {log.skip_reason}</div>}
                         </td>
-                        <td style={{ padding: '12px 14px', color: '#94a3b8', fontSize: '12px', whiteSpace: 'nowrap' }}>
+                        <td style={{ padding: '12px 14px', color: 'rgba(255,255,255,0.35)', fontSize: '12px', whiteSpace: 'nowrap' }}>
                           {new Date(log.triggered_at).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
                         </td>
                         <td style={{ padding: '12px 14px' }}><StatusBadge status={log.status} /></td>
@@ -823,7 +823,7 @@ export default function MetaTemplatesView() {
             )}
             {logPages > 1 && (
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', borderTop: '1px solid #f1f5f9' }}>
-                <span style={{ color: '#94a3b8', fontSize: '12px' }}>{logTotal} {t('meta_templates.logs.records')} · {t('meta_templates.logs.page')} {logPage} {t('meta_templates.logs.of')} {logPages}</span>
+                <span style={{ color: 'rgba(255,255,255,0.35)', fontSize: '12px' }}>{logTotal} {t('meta_templates.logs.records')} · {t('meta_templates.logs.page')} {logPage} {t('meta_templates.logs.of')} {logPages}</span>
                 <div style={{ display: 'flex', gap: '6px' }}>
                   <button disabled={logPage <= 1} onClick={() => setLogPage(p => p - 1)} style={{ ...btnSecondaryStyle, padding: '5px 12px', opacity: logPage <= 1 ? 0.4 : 1 }}>‹</button>
                   <button disabled={logPage >= logPages} onClick={() => setLogPage(p => p + 1)} style={{ ...btnSecondaryStyle, padding: '5px 12px', opacity: logPage >= logPages ? 0.4 : 1 }}>›</button>
@@ -839,18 +839,18 @@ export default function MetaTemplatesView() {
         <div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
             <div>
-              <h2 style={{ margin: '0 0 2px', color: '#0f172a', fontSize: '15px', fontWeight: 700 }}>{t('meta_templates.templates.title')}</h2>
-              <p style={{ margin: 0, color: '#94a3b8', fontSize: '12px' }}>{t('meta_templates.templates.subtitle')}</p>
+              <h2 style={{ margin: '0 0 2px', color: '#fff', fontSize: '15px', fontWeight: 700 }}>{t('meta_templates.templates.title')}</h2>
+              <p style={{ margin: 0, color: 'rgba(255,255,255,0.35)', fontSize: '12px' }}>{t('meta_templates.templates.subtitle')}</p>
             </div>
             <button onClick={loadTemplates} style={btnSecondaryStyle}>{t('meta_templates.templates.refresh')}</button>
           </div>
 
           {templates.length === 0 ? (
-            <div style={{ padding: '60px', textAlign: 'center', color: '#94a3b8', background: '#fff', borderRadius: '12px', border: '1px solid #f1f5f9' }}>
-              <div style={{ color: '#e2e8f0', marginBottom: '16px' }}>
+            <div style={{ padding: '60px', textAlign: 'center', color: 'rgba(255,255,255,0.35)', background: 'rgba(255,255,255,0.03)', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.06)' }}>
+              <div style={{ color: 'rgba(255,255,255,0.1)', marginBottom: '16px' }}>
                 <Inbox size={48} style={{ margin: '0 auto' }} />
               </div>
-              <p style={{ margin: '0 0 6px', fontSize: '14px', fontWeight: 500, color: '#64748b' }}>{t('meta_templates.templates.no_templates')}</p>
+              <p style={{ margin: '0 0 6px', fontSize: '14px', fontWeight: 500, color: 'rgba(255,255,255,0.5)' }}>{t('meta_templates.templates.no_templates')}</p>
               <p style={{ margin: 0, fontSize: '12px' }}>{t('meta_templates.templates.verify_api_key')}</p>
             </div>
           ) : (
@@ -860,19 +860,19 @@ export default function MetaTemplatesView() {
                 const catColors: Record<string, string> = { MARKETING: '#f59e0b', UTILITY: '#6366f1', AUTHENTICATION: '#10b981' };
                 const catColor = catColors[t.category] || '#64748b';
                 return (
-                  <div key={t.name} style={{ background: '#fff', borderRadius: '10px', padding: '16px', border: '1px solid #f1f5f9', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+                  <div key={t.name} style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '10px', padding: '16px', border: '1px solid rgba(255,255,255,0.06)', boxShadow: 'none' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
                       <div>
-                        <p style={{ margin: '0 0 2px', color: '#0f172a', fontSize: '13px', fontWeight: 700 }}>{t.name}</p>
-                        <span style={{ fontSize: '11px', color: '#94a3b8' }}>{t.language}</span>
+                        <p style={{ margin: '0 0 2px', color: '#fff', fontSize: '13px', fontWeight: 700 }}>{t.name}</p>
+                        <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.35)' }}>{t.language}</span>
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', alignItems: 'flex-end' }}>
                         <span style={{ padding: '1px 7px', borderRadius: '5px', fontSize: '10px', fontWeight: 700, background: catColor + '18', color: catColor }}>{t.category}</span>
-                        <span style={{ padding: '1px 7px', borderRadius: '5px', fontSize: '10px', fontWeight: 700, background: '#d1fae5', color: '#065f46', display: 'flex', alignItems: 'center', gap: '3px' }}><CheckCircle2 size={10} /> APPROVED</span>
+                        <span style={{ padding: '1px 7px', borderRadius: '5px', fontSize: '10px', fontWeight: 700, background: 'rgba(16,185,129,0.12)', color: '#34d399', display: 'flex', alignItems: 'center', gap: '3px' }}><CheckCircle2 size={10} /> APPROVED</span>
                       </div>
                     </div>
                     {body?.text && (
-                      <p style={{ margin: 0, color: '#64748b', fontSize: '12px', lineHeight: '1.5', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                      <p style={{ margin: 0, color: 'rgba(255,255,255,0.5)', fontSize: '12px', lineHeight: '1.5', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
                         {body.text}
                       </p>
                     )}
@@ -902,33 +902,33 @@ export default function MetaTemplatesView() {
 
 const labelStyle: React.CSSProperties = {
   display: 'block', marginBottom: '6px',
-  color: '#374151', fontSize: '13px', fontWeight: 600,
+  color: 'rgba(255,255,255,0.7)', fontSize: '13px', fontWeight: 600,
 };
 
 // ✅ Inputs tipo light: texto oscuro, fondo blanco — no invisible
 const lightInputStyle: React.CSSProperties = {
   display: 'block', width: '100%', boxSizing: 'border-box',
   padding: '9px 12px', borderRadius: '8px',
-  background: '#fff', border: '1px solid #e2e8f0',
-  color: '#1e293b', fontSize: '14px',
+  background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)',
+  color: '#fff', fontSize: '14px',
   outline: 'none', appearance: 'auto',
 };
 
 const btnPrimaryStyle: React.CSSProperties = {
   padding: '9px 18px', borderRadius: '8px', border: 'none', cursor: 'pointer',
-  background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-  color: '#fff', fontSize: '13px', fontWeight: 700,
-  boxShadow: '0 2px 8px rgba(99,102,241,0.3)', transition: 'all 0.15s',
+  background: '#fff',
+  color: '#0a0e1a', fontSize: '13px', fontWeight: 700,
+  boxShadow: '0 2px 8px rgba(255,255,255,0.1)', transition: 'all 0.15s',
 };
 
 const btnSecondaryStyle: React.CSSProperties = {
   padding: '9px 14px', borderRadius: '8px', cursor: 'pointer',
-  background: '#fff', border: '1px solid #e2e8f0',
-  color: '#64748b', fontSize: '13px', fontWeight: 600, transition: 'all 0.15s',
+  background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)',
+  color: 'rgba(255,255,255,0.7)', fontSize: '13px', fontWeight: 600, transition: 'all 0.15s',
 };
 
 const iconBtnStyle: React.CSSProperties = {
   padding: '6px 10px', borderRadius: '7px', cursor: 'pointer',
-  background: '#f8fafc', border: '1px solid #f1f5f9',
-  color: '#64748b', fontSize: '14px', transition: 'all 0.15s',
+  background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)',
+  color: 'rgba(255,255,255,0.5)', fontSize: '14px', transition: 'all 0.15s',
 };

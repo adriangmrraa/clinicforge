@@ -60,13 +60,13 @@ interface LeadsSummary {
 
 const getStatusOptions = (t: any) => [
   { value: '', label: t('leads.status_all') },
-  { value: 'new', label: t('leads.status_new'), color: 'bg-blue-100 text-blue-800' },
-  { value: 'contacted', label: t('leads.status_contacted'), color: 'bg-green-100 text-green-800' },
-  { value: 'consultation_scheduled', label: t('leads.status_consultation_scheduled'), color: 'bg-purple-100 text-purple-800' },
-  { value: 'treatment_planned', label: t('leads.status_treatment_planned'), color: 'bg-amber-100 text-amber-800' },
-  { value: 'converted', label: t('leads.status_converted'), color: 'bg-emerald-100 text-emerald-800' },
-  { value: 'not_interested', label: t('leads.status_not_interested'), color: 'bg-red-100 text-red-800' },
-  { value: 'spam', label: t('leads.status_spam'), color: 'bg-gray-100 text-gray-800' },
+  { value: 'new', label: t('leads.status_new'), color: 'bg-blue-500/10 text-blue-400' },
+  { value: 'contacted', label: t('leads.status_contacted'), color: 'bg-green-500/10 text-green-400' },
+  { value: 'consultation_scheduled', label: t('leads.status_consultation_scheduled'), color: 'bg-purple-500/10 text-purple-400' },
+  { value: 'treatment_planned', label: t('leads.status_treatment_planned'), color: 'bg-amber-500/10 text-amber-400' },
+  { value: 'converted', label: t('leads.status_converted'), color: 'bg-emerald-500/10 text-emerald-400' },
+  { value: 'not_interested', label: t('leads.status_not_interested'), color: 'bg-red-500/10 text-red-400' },
+  { value: 'spam', label: t('leads.status_spam'), color: 'bg-white/[0.06] text-white/60' },
 ];
 
 const STATUS_ICONS: Record<string, React.ReactNode> = {
@@ -241,7 +241,7 @@ export default function LeadsManagementView() {
   const getStatusColor = (status: string) => {
     const ST_OPTIONS = getStatusOptions(t);
     const option = ST_OPTIONS.find(opt => opt.value === status);
-    return option?.color || 'bg-gray-100 text-gray-800';
+    return option?.color || 'bg-white/[0.06] text-white/60';
   };
 
   // Calculate pagination
@@ -250,7 +250,7 @@ export default function LeadsManagementView() {
   const endItem = Math.min(currentPage * pageSize, totalLeads);
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen">
       <PageHeader
         title={t('leads.page_title')}
         subtitle={t('leads.page_subtitle')}
@@ -259,14 +259,14 @@ export default function LeadsManagementView() {
           <div className="flex flex-wrap gap-2">
             <button
               onClick={() => setShowFilters(!showFilters)}
-              className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50"
+              className="flex items-center gap-2 px-4 py-2 bg-white/[0.06] border border-white/[0.06] rounded-lg text-white/70 font-medium hover:bg-white/[0.04]"
             >
               <Filter className="w-4 h-4" />
               {t('leads.filters')}
             </button>
             <button
               onClick={handleExport}
-              className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50"
+              className="flex items-center gap-2 px-4 py-2 bg-white/[0.06] border border-white/[0.06] rounded-lg text-white/70 font-medium hover:bg-white/[0.04]"
             >
               <Download className="w-4 h-4" />
               {t('leads.export')}
@@ -286,43 +286,43 @@ export default function LeadsManagementView() {
       {summary && (
         <div className="px-6 pb-6">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="bg-white border border-gray-200 rounded-xl p-5">
+            <div className="bg-white/[0.03] border border-white/[0.06] rounded-xl p-5">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-500 font-medium">{t('leads.stats.total')}</p>
-                  <p className="text-lg sm:text-2xl font-black text-gray-900">{summary.totals.total_leads}</p>
+                  <p className="text-sm text-white/40 font-medium">{t('leads.stats.total')}</p>
+                  <p className="text-lg sm:text-2xl font-black text-white">{summary.totals.total_leads}</p>
                 </div>
                 <Users className="w-8 h-8 text-blue-500" />
               </div>
             </div>
             
-            <div className="bg-white border border-gray-200 rounded-xl p-5">
+            <div className="bg-white/[0.03] border border-white/[0.06] rounded-xl p-5">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-500 font-medium">{t('leads.stats.converted')}</p>
+                  <p className="text-sm text-white/40 font-medium">{t('leads.stats.converted')}</p>
                   <p className="text-lg sm:text-2xl font-black text-green-600">{summary.totals.converted_leads}</p>
                 </div>
                 <CheckCircle2 className="w-8 h-8 text-green-500" />
               </div>
             </div>
             
-            <div className="bg-white border border-gray-200 rounded-xl p-5">
+            <div className="bg-white/[0.03] border border-white/[0.06] rounded-xl p-5">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-500 font-medium">{t('leads.stats.conversion_rate')}</p>
+                  <p className="text-sm text-white/40 font-medium">{t('leads.stats.conversion_rate')}</p>
                   <p className="text-lg sm:text-2xl font-black text-indigo-600">{summary.totals.conversion_rate}%</p>
                 </div>
                 <BarChart3 className="w-8 h-8 text-indigo-500" />
               </div>
             </div>
             
-            <div className="bg-white border border-gray-200 rounded-xl p-5">
+            <div className="bg-white/[0.03] border border-white/[0.06] rounded-xl p-5">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-500 font-medium">{t('leads.stats.active')}</p>
+                  <p className="text-sm text-white/40 font-medium">{t('leads.stats.active')}</p>
                   <p className="text-lg sm:text-2xl font-black text-amber-600">{summary.totals.active_leads}</p>
                 </div>
-                <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center">
+                <div className="w-8 h-8 rounded-full bg-amber-500/10 flex items-center justify-center">
                   <span className="text-amber-600 font-bold">!</span>
                 </div>
               </div>
@@ -334,12 +334,12 @@ export default function LeadsManagementView() {
       {/* Filters Panel */}
       {showFilters && (
         <div className="px-6 pb-6">
-          <div className="bg-white border border-gray-200 rounded-xl p-6">
+          <div className="bg-white/[0.03] border border-white/[0.06] rounded-xl p-6">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="font-bold text-gray-900">{t('leads.filter_leads')}</h3>
+              <h3 className="font-bold text-white">{t('leads.filter_leads')}</h3>
               <button
                 onClick={() => setShowFilters(false)}
-                className="text-gray-500 hover:text-gray-700"
+                className="text-white/40 hover:text-white/60"
               >
                 ×
               </button>
@@ -348,13 +348,13 @@ export default function LeadsManagementView() {
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               {/* Status Filter */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-white/60 mb-2">
                   {t('leads.status')}
                 </label>
                 <select
                   value={statusFilter}
                   onChange={(e) => setStatusFilter(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white placeholder-white/20 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 >
                   {getStatusOptions(t).map(option => (
                     <option key={option.value} value={option.value}>
@@ -366,39 +366,39 @@ export default function LeadsManagementView() {
               
               {/* Date From */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-white/60 mb-2">
                   {t('leads.date_from')}
                 </label>
                 <input
                   type="date"
                   value={dateFrom}
                   onChange={(e) => setDateFrom(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white placeholder-white/20 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 />
               </div>
               
               {/* Date To */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-white/60 mb-2">
                   {t('leads.date_to')}
                 </label>
                 <input
                   type="date"
                   value={dateTo}
                   onChange={(e) => setDateTo(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white placeholder-white/20 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 />
               </div>
               
               {/* Campaign Filter */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-white/60 mb-2">
                   {t('leads.campaign')}
                 </label>
                 <select
                   value={campaignFilter}
                   onChange={(e) => setCampaignFilter(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white placeholder-white/20 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 >
                   <option value="">{t('leads.all_campaigns')}</option>
                   {summary?.by_campaign.map(campaign => (
@@ -414,13 +414,13 @@ export default function LeadsManagementView() {
             <div className="mt-4">
               <form onSubmit={handleSearch} className="flex gap-2">
                 <div className="flex-1 relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-white/30 w-5 h-5" />
                   <input
                     type="text"
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     placeholder={t('leads.search_placeholder')}
-                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    className="w-full pl-10 pr-4 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white placeholder-white/20 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   />
                 </div>
                 <button
@@ -437,13 +437,13 @@ export default function LeadsManagementView() {
 
       {/* Main Content */}
       <div className="px-6">
-        <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+        <div className="bg-white/[0.03] border border-white/[0.06] rounded-xl overflow-hidden">
           {/* Table Header */}
-          <div className="p-6 border-b border-gray-100">
+          <div className="p-6 border-b border-white/[0.06]">
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="text-lg font-bold text-gray-900">{t('leads.leads_list')}</h3>
-                <p className="text-sm text-gray-500">
+                <h3 className="text-lg font-bold text-white">{t('leads.leads_list')}</h3>
+                <p className="text-sm text-white/40">
                   {t('leads.showing')} {startItem}-{endItem} {t('leads.of')} {totalLeads} {t('leads.leads')}
                 </p>
               </div>
@@ -476,8 +476,8 @@ export default function LeadsManagementView() {
           {error && !loading && (
             <div className="p-8 text-center">
               <AlertCircle className="w-12 h-12 text-red-400 mx-auto mb-4" />
-              <h3 className="text-lg font-bold text-gray-800 mb-2">{t('common.error')}</h3>
-              <p className="text-gray-600 mb-4">{error}</p>
+              <h3 className="text-lg font-bold text-white mb-2">{t('common.error')}</h3>
+              <p className="text-white/60 mb-4">{error}</p>
               <button
                 onClick={loadLeads}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700"
@@ -490,9 +490,9 @@ export default function LeadsManagementView() {
           {/* Empty State */}
           {!loading && !error && leads.length === 0 && (
             <div className="p-8 text-center">
-              <Users className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-lg font-bold text-gray-800 mb-2">{t('leads.no_leads')}</h3>
-              <p className="text-gray-600 mb-4">{t('leads.no_leads_description')}</p>
+              <Users className="w-12 h-12 text-white/30 mx-auto mb-4" />
+              <h3 className="text-lg font-bold text-white mb-2">{t('leads.no_leads')}</h3>
+              <p className="text-white/60 mb-4">{t('leads.no_leads_description')}</p>
               <a
                 href="/configuracion?tab=leads"
                 className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700"
@@ -509,43 +509,43 @@ export default function LeadsManagementView() {
               {/* Desktop Table */}
               <div className="hidden lg:block overflow-x-auto">
                 <table className="w-full">
-                  <thead className="bg-gray-50">
+                  <thead className="bg-white/[0.02]">
                     <tr>
-                      <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">
+                      <th className="px-6 py-3 text-left text-xs font-bold text-white/40 uppercase tracking-wider">
                         {t('leads.lead')}
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">
+                      <th className="px-6 py-3 text-left text-xs font-bold text-white/40 uppercase tracking-wider">
                         {t('leads.contact')}
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">
+                      <th className="px-6 py-3 text-left text-xs font-bold text-white/40 uppercase tracking-wider">
                         {t('leads.campaign')}
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">
+                      <th className="px-6 py-3 text-left text-xs font-bold text-white/40 uppercase tracking-wider">
                         {t('leads.status')}
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">
+                      <th className="px-6 py-3 text-left text-xs font-bold text-white/40 uppercase tracking-wider">
                         {t('leads.date')}
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">
+                      <th className="px-6 py-3 text-left text-xs font-bold text-white/40 uppercase tracking-wider">
                         {t('leads.actions')}
                       </th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-100">
+                  <tbody className="divide-y divide-white/[0.06]">
                     {leads.map((lead) => (
-                      <tr key={lead.id} className="hover:bg-gray-50">
+                      <tr key={lead.id} className="hover:bg-white/[0.04]">
                         {/* Lead Info */}
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
+                            <div className="w-10 h-10 rounded-full bg-blue-500/10 flex items-center justify-center">
                               <span className="text-blue-600 font-bold">
                                 {lead.full_name?.charAt(0) || '?'}
                               </span>
                             </div>
                             <div>
-                              <div className="font-bold text-gray-900">{lead.full_name || t('leads.unnamed')}</div>
+                              <div className="font-bold text-white">{lead.full_name || t('leads.unnamed')}</div>
                               {lead.medical_interest && (
-                                <div className="text-xs text-gray-500">{lead.medical_interest}</div>
+                                <div className="text-xs text-white/40">{lead.medical_interest}</div>
                               )}
                             </div>
                           </div>
@@ -556,14 +556,14 @@ export default function LeadsManagementView() {
                           <div className="space-y-1">
                             {lead.phone_number && (
                               <div className="flex items-center gap-2 text-sm">
-                                <Phone className="w-3 h-3 text-gray-400" />
-                                <span className="text-gray-700">{lead.phone_number}</span>
+                                <Phone className="w-3 h-3 text-white/30" />
+                                <span className="text-white/60">{lead.phone_number}</span>
                               </div>
                             )}
                             {lead.email && (
                               <div className="flex items-center gap-2 text-sm">
-                                <Mail className="w-3 h-3 text-gray-400" />
-                                <span className="text-gray-700">{lead.email}</span>
+                                <Mail className="w-3 h-3 text-white/30" />
+                                <span className="text-white/60">{lead.email}</span>
                               </div>
                             )}
                           </div>
@@ -572,9 +572,9 @@ export default function LeadsManagementView() {
                         {/* Campaign Info */}
                         <td className="px-6 py-4">
                           <div className="space-y-1">
-                            <div className="font-medium text-gray-900">{lead.campaign_name || t('leads.no_campaign')}</div>
+                            <div className="font-medium text-white">{lead.campaign_name || t('leads.no_campaign')}</div>
                             {lead.ad_name && (
-                              <div className="text-xs text-gray-500">{lead.ad_name}</div>
+                              <div className="text-xs text-white/40">{lead.ad_name}</div>
                             )}
                           </div>
                         </td>
@@ -591,10 +591,10 @@ export default function LeadsManagementView() {
                         
                         {/* Date */}
                         <td className="px-6 py-4">
-                          <div className="text-sm text-gray-700">
+                          <div className="text-sm text-white/60">
                             {formatDate(lead.created_at)}
                           </div>
-                          <div className="text-xs text-gray-500">
+                          <div className="text-xs text-white/40">
                             {formatDateTime(lead.created_at)}
                           </div>
                         </td>
@@ -604,7 +604,7 @@ export default function LeadsManagementView() {
                           <div className="flex items-center gap-2">
                             <button
                               onClick={() => handleViewLead(lead.id)}
-                              className="p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg"
+                              className="p-2 text-white/60 hover:text-blue-400 hover:bg-blue-500/10 rounded-lg"
                               title={t('leads.view_details')}
                             >
                               <Eye className="w-4 h-4" />
@@ -616,7 +616,7 @@ export default function LeadsManagementView() {
                                 setNewStatus(lead.status);
                                 setShowStatusModal(true);
                               }}
-                              className="p-2 text-gray-600 hover:text-green-600 hover:bg-green-50 rounded-lg"
+                              className="p-2 text-white/60 hover:text-green-400 hover:bg-green-500/10 rounded-lg"
                               title={t('leads.change_status')}
                             >
                               <Edit className="w-4 h-4" />
@@ -625,7 +625,7 @@ export default function LeadsManagementView() {
                             {lead.status !== 'converted' && !lead.converted_to_patient_id && (
                               <button
                                 onClick={() => handleConvertToPatient(lead.id)}
-                                className="p-2 text-gray-600 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg"
+                                className="p-2 text-white/60 hover:text-emerald-400 hover:bg-emerald-500/10 rounded-lg"
                                 title={t('leads.convert_to_patient')}
                               >
                                 <UserPlus className="w-4 h-4" />
@@ -633,7 +633,7 @@ export default function LeadsManagementView() {
                             )}
                             
                             {lead.notes_count > 0 && (
-                              <div className="flex items-center gap-1 text-xs text-gray-500">
+                              <div className="flex items-center gap-1 text-xs text-white/40">
                                 <MessageSquare className="w-3 h-3" />
                                 <span>{lead.notes_count}</span>
                               </div>
@@ -647,19 +647,19 @@ export default function LeadsManagementView() {
               </div>
 
               {/* Mobile Cards */}
-              <div className="lg:hidden divide-y divide-gray-100">
+              <div className="lg:hidden divide-y divide-white/[0.06]">
                 {leads.map((lead) => (
-                  <div key={lead.id} className="p-5 hover:bg-gray-50">
+                  <div key={lead.id} className="p-5 hover:bg-white/[0.04]">
                     <div className="flex justify-between items-start mb-3">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
+                        <div className="w-10 h-10 rounded-full bg-blue-500/10 flex items-center justify-center">
                           <span className="text-blue-600 font-bold">
                             {lead.full_name?.charAt(0) || '?'}
                           </span>
                         </div>
                         <div>
-                          <div className="font-bold text-gray-900">{lead.full_name || t('leads.unnamed')}</div>
-                          <div className="text-xs text-gray-500">{formatDate(lead.created_at)}</div>
+                          <div className="font-bold text-white">{lead.full_name || t('leads.unnamed')}</div>
+                          <div className="text-xs text-white/40">{formatDate(lead.created_at)}</div>
                         </div>
                       </div>
                       <div className={`px-2 py-1 rounded-full text-xs font-bold ${getStatusColor(lead.status)}`}>
@@ -670,37 +670,37 @@ export default function LeadsManagementView() {
                     <div className="space-y-2 mb-3">
                       {lead.phone_number && (
                         <div className="flex items-center gap-2 text-sm">
-                          <Phone className="w-3 h-3 text-gray-400" />
-                          <span className="text-gray-700">{lead.phone_number}</span>
+                          <Phone className="w-3 h-3 text-white/30" />
+                          <span className="text-white/60">{lead.phone_number}</span>
                         </div>
                       )}
                       
                       {lead.email && (
                         <div className="flex items-center gap-2 text-sm">
-                          <Mail className="w-3 h-3 text-gray-400" />
-                          <span className="text-gray-700">{lead.email}</span>
+                          <Mail className="w-3 h-3 text-white/30" />
+                          <span className="text-white/60">{lead.email}</span>
                         </div>
                       )}
                       
                       {lead.campaign_name && (
                         <div className="flex items-center gap-2 text-sm">
-                          <Tag className="w-3 h-3 text-gray-400" />
-                          <span className="text-gray-700">{lead.campaign_name}</span>
+                          <Tag className="w-3 h-3 text-white/30" />
+                          <span className="text-white/60">{lead.campaign_name}</span>
                         </div>
                       )}
                       
                       {lead.medical_interest && (
-                        <div className="text-sm text-gray-600">
+                        <div className="text-sm text-white/60">
                           <span className="font-medium">Interés:</span> {lead.medical_interest}
                         </div>
                       )}
                     </div>
                     
-                    <div className="flex items-center justify-between pt-3 border-t border-gray-100">
+                    <div className="flex items-center justify-between pt-3 border-t border-white/[0.06]">
                       <div className="flex items-center gap-2">
                         <button
                           onClick={() => handleViewLead(lead.id)}
-                          className="px-3 py-1 text-sm text-blue-600 hover:bg-blue-50 rounded-lg"
+                          className="px-3 py-1 text-sm text-blue-400 hover:bg-blue-500/10 rounded-lg"
                         >
                           {t('leads.view')}
                         </button>
@@ -711,14 +711,14 @@ export default function LeadsManagementView() {
                             setNewStatus(lead.status);
                             setShowStatusModal(true);
                           }}
-                          className="px-3 py-1 text-sm text-green-600 hover:bg-green-50 rounded-lg"
+                          className="px-3 py-1 text-sm text-green-400 hover:bg-green-500/10 rounded-lg"
                         >
                           {t('leads.edit_status')}
                         </button>
                       </div>
                       
                       {lead.notes_count > 0 && (
-                        <div className="flex items-center gap-1 text-xs text-gray-500">
+                        <div className="flex items-center gap-1 text-xs text-white/40">
                           <MessageSquare className="w-3 h-3" />
                           <span>{lead.notes_count}</span>
                         </div>
@@ -730,16 +730,16 @@ export default function LeadsManagementView() {
 
               {/* Pagination */}
               {totalPages > 1 && (
-                <div className="px-6 py-4 border-t border-gray-100">
+                <div className="px-6 py-4 border-t border-white/[0.06]">
                   <div className="flex items-center justify-between">
-                    <div className="text-sm text-gray-500">
+                    <div className="text-sm text-white/40">
                       {t('leads.page')} {currentPage} {t('leads.of')} {totalPages}
                     </div>
                     <div className="flex items-center gap-2">
                       <button
                         onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
                         disabled={currentPage === 1}
-                        className="p-2 text-gray-600 hover:text-gray-900 disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="p-2 text-white/60 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <ChevronLeft className="w-5 h-5" />
                       </button>
@@ -763,7 +763,7 @@ export default function LeadsManagementView() {
                             className={`w-8 h-8 rounded-lg font-medium ${
                               currentPage === pageNum
                                 ? 'bg-blue-600 text-white'
-                                : 'text-gray-600 hover:bg-gray-100'
+                                : 'text-white/60 hover:bg-white/[0.04]'
                             }`}
                           >
                             {pageNum}
@@ -774,21 +774,21 @@ export default function LeadsManagementView() {
                       <button
                         onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
                         disabled={currentPage === totalPages}
-                        className="p-2 text-gray-600 hover:text-gray-900 disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="p-2 text-white/60 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <ChevronRight className="w-5 h-5" />
                       </button>
                     </div>
                     
                     <div className="flex items-center gap-2">
-                      <span className="text-sm text-gray-500">{t('leads.items_per_page')}:</span>
+                      <span className="text-sm text-white/40">{t('leads.items_per_page')}:</span>
                       <select
                         value={pageSize}
                         onChange={(e) => {
                           setPageSize(Number(e.target.value));
                           setCurrentPage(1);
                         }}
-                        className="px-2 py-1 border border-gray-300 rounded text-sm"
+                        className="px-2 py-1 bg-white/[0.04] border border-white/[0.08] rounded text-sm text-white"
                       >
                         <option value={10}>10</option>
                         <option value={20}>20</option>
@@ -817,24 +817,24 @@ export default function LeadsManagementView() {
       >
         {selectedLead && (
           <div className="space-y-4">
-            <div className="bg-gray-50 p-4 rounded-lg">
-              <div className="font-bold text-gray-900">{selectedLead.full_name || t('leads.unnamed')}</div>
-              <div className="text-sm text-gray-500">
+            <div className="bg-white/[0.02] p-4 rounded-lg">
+              <div className="font-bold text-white">{selectedLead.full_name || t('leads.unnamed')}</div>
+              <div className="text-sm text-white/40">
                 {selectedLead.phone_number} • {selectedLead.email}
               </div>
-              <div className="text-sm text-gray-500 mt-1">
+              <div className="text-sm text-white/40 mt-1">
                 {t('leads.current_status')}: <span className="font-bold">{getStatusLabel(selectedLead.status)}</span>
               </div>
             </div>
             
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-white/60 mb-2">
                 {t('leads.new_status')}
               </label>
               <select
                 value={newStatus}
                 onChange={(e) => setNewStatus(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white placeholder-white/20 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               >
                 {getStatusOptions(t).filter(opt => opt.value).map(option => (
                   <option key={option.value} value={option.value}>
@@ -845,14 +845,14 @@ export default function LeadsManagementView() {
             </div>
             
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-white/60 mb-2">
                 {t('leads.reason_for_change')} ({t('common.optional')})
               </label>
               <textarea
                 value={statusChangeReason}
                 onChange={(e) => setStatusChangeReason(e.target.value)}
                 rows={3}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white placeholder-white/20 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 placeholder={t('leads.reason_placeholder')}
               />
             </div>
@@ -866,7 +866,7 @@ export default function LeadsManagementView() {
                   setNewStatus('');
                   setStatusChangeReason('');
                 }}
-                className="px-4 py-2 text-gray-600 bg-gray-100 rounded-lg font-medium hover:bg-gray-200"
+                className="px-4 py-2 text-white/70 bg-white/[0.06] rounded-lg font-medium hover:bg-white/[0.04]"
               >
                 {t('common.cancel')}
               </button>
