@@ -161,7 +161,8 @@ async def _analyze_consolidated(pool, redis, tenants):
         per_sede_json=json.dumps(per_sede_stats, indent=2, ensure_ascii=False),
     )
 
-    analysis = await _analyze_with_gpt(prompt, OPENAI_API_KEY, tenant_id=tenant_id)
+    first_tenant_id = tenants[0]["id"] if tenants else 0
+    analysis = await _analyze_with_gpt(prompt, OPENAI_API_KEY, tenant_id=first_tenant_id)
     if analysis:
         payload = {
             **analysis,
