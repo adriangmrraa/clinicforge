@@ -115,7 +115,7 @@ function isAlertValue(val?: string): boolean {
 }
 
 function alertClass(level: 'none' | 'warning' | 'danger', hasValue: boolean): string {
-  if (!hasValue || level === 'none') return 'text-gray-500';
+  if (!hasValue || level === 'none') return 'text-white/40';
   if (level === 'danger') return 'text-red-500';
   return 'text-orange-500';
 }
@@ -200,7 +200,7 @@ export default function AnamnesisPanel({
   // ---- Render estados ----
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-6 text-gray-400 text-sm">
+      <div className="flex items-center justify-center py-6 text-white/30 text-sm">
         <div className="animate-spin mr-2">◌</div> Cargando anamnesis...
       </div>
     );
@@ -212,7 +212,7 @@ export default function AnamnesisPanel({
 
   if (!history || Object.keys(history).filter(k => !k.startsWith('anamnesis_')).length === 0) {
     return (
-      <div className={`flex flex-col items-center justify-center gap-2 ${compact ? 'py-4' : 'py-8'} text-gray-400`}>
+      <div className={`flex flex-col items-center justify-center gap-2 ${compact ? 'py-4' : 'py-8'} text-white/30`}>
         <HeartPulse size={compact ? 20 : 32} className="opacity-40" />
         <p className="text-xs text-center">Este paciente aún no<br/>completó la anamnesis.</p>
       </div>
@@ -225,12 +225,12 @@ export default function AnamnesisPanel({
       <div className="space-y-3 p-3">
         {ANAMNESIS_FIELDS.map(f => (
           <div key={f.key}>
-            <label className="block text-xs font-medium text-gray-600 mb-1 flex items-center gap-1">
+            <label className="block text-xs font-medium text-white/60 mb-1 flex items-center gap-1">
               <span className={alertClass(f.alertLevel, isAlertValue(history?.[f.key] ?? editData[f.key]))}>{f.icon}</span>
               {f.label}
             </label>
             <input
-              className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+              className="w-full px-2 py-1.5 border border-white/[0.08] rounded bg-white/[0.04] text-white text-sm focus:outline-none focus:ring-1 focus:ring-primary"
               defaultValue={history?.[f.key] ?? ''}
               onChange={e => setEditData(prev => ({ ...prev, [f.key]: e.target.value }))}
             />
@@ -247,7 +247,7 @@ export default function AnamnesisPanel({
           </button>
           <button
             onClick={() => { setEditing(false); setError(null); }}
-            className="flex items-center gap-1 px-3 py-1.5 bg-gray-100 text-gray-600 text-xs rounded hover:bg-gray-200"
+            className="flex items-center gap-1 px-3 py-1.5 bg-white/[0.04] text-white/60 text-xs rounded hover:bg-white/[0.08]"
           >
             <X size={12} /> Cancelar
           </button>
@@ -281,7 +281,7 @@ export default function AnamnesisPanel({
 
       {/* Campos */}
       {fieldsWithValues.length === 0 ? (
-        <p className="text-xs text-gray-400 text-center py-2">Sin datos cargados.</p>
+        <p className="text-xs text-white/30 text-center py-2">Sin datos cargados.</p>
       ) : (
         fieldsWithValues.map(f => {
           let val = history[f.key]!;
@@ -295,16 +295,16 @@ export default function AnamnesisPanel({
           return (
             <div
               key={f.key}
-              className={`flex items-start gap-2 ${compact ? 'text-xs' : 'text-sm'} ${hasAlert && f.alertLevel !== 'none' ? 'bg-red-50 border border-red-100 rounded p-1.5' : ''}`}
+              className={`flex items-start gap-2 ${compact ? 'text-xs' : 'text-sm'} ${hasAlert && f.alertLevel !== 'none' ? 'bg-red-500/10 border border-red-500/20 rounded p-1.5' : ''}`}
             >
               <span className={`mt-0.5 flex-shrink-0 ${alertClass(f.alertLevel, hasAlert)}`}>{f.icon}</span>
               <div className="min-w-0 flex-1">
-                <p className={`font-medium text-gray-600 flex items-center gap-1 ${compact ? 'text-[10px]' : 'text-xs'} leading-none mb-0.5`}>
+                <p className={`font-medium text-white/60 flex items-center gap-1 ${compact ? 'text-[10px]' : 'text-xs'} leading-none mb-0.5`}>
                   {f.label}
                   {hasAlert && f.alertLevel !== 'none' && <span className={badgeClass(f.alertLevel, hasAlert)} />}
                 </p>
-                <p className={`text-gray-800 break-words leading-tight ${compact ? 'text-[11px]' : ''}`}>
-                  {val === 'No' || val === 'no' ? <span className="text-gray-400">No</span> : val}
+                <p className={`text-white break-words leading-tight ${compact ? 'text-[11px]' : ''}`}>
+                  {val === 'No' || val === 'no' ? <span className="text-white/30">No</span> : val}
                 </p>
               </div>
             </div>
@@ -314,7 +314,7 @@ export default function AnamnesisPanel({
 
       {/* Fecha de completado */}
       {history.anamnesis_completed_at && (
-        <div className={`flex items-center gap-1 text-gray-400 ${compact ? 'text-[10px]' : 'text-xs'} pt-1 border-t`}>
+        <div className={`flex items-center gap-1 text-white/30 ${compact ? 'text-[10px]' : 'text-xs'} pt-1 border-t border-white/[0.06]`}>
           <CheckCircle size={10} className="text-green-500" />
           Completado:{' '}
           {new Date(history.anamnesis_completed_at).toLocaleDateString('es-AR', {

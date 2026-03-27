@@ -79,15 +79,15 @@ const StatCard = ({
   color: string;
   subtitle?: string;
 }) => (
-  <div className="bg-white/80 backdrop-blur-md border border-white/20 rounded-2xl p-3 sm:p-5 shadow-sm hover:shadow-md transition-all duration-300">
+  <div className="bg-white/[0.03] border border-white/[0.06] rounded-2xl p-3 sm:p-5 hover:bg-white/[0.05] transition-all duration-300">
     <div className="flex justify-between items-start mb-2">
       <div className={`p-2 sm:p-3 rounded-xl ${color} bg-opacity-10`}>
         <Icon className={`w-4 h-4 sm:w-6 sm:h-6 ${color.replace('bg-', 'text-')}`} />
       </div>
     </div>
-    <p className="text-slate-500 text-[11px] sm:text-sm font-medium leading-tight">{title}</p>
-    <h3 className="text-lg sm:text-2xl font-bold text-slate-800 mt-0.5">{value}</h3>
-    {subtitle && <p className="text-[10px] sm:text-xs text-slate-400 mt-0.5">{subtitle}</p>}
+    <p className="text-white/40 text-[11px] sm:text-sm font-medium leading-tight">{title}</p>
+    <h3 className="text-lg sm:text-2xl font-bold text-white mt-0.5">{value}</h3>
+    {subtitle && <p className="text-[10px] sm:text-xs text-white/30 mt-0.5">{subtitle}</p>}
   </div>
 );
 
@@ -189,14 +189,14 @@ export default function DashboardStatusView() {
 
   if (loading && !data) {
     return (
-      <div className="h-screen flex flex-col bg-slate-50">
+      <div className="h-screen flex flex-col">
         <div className="p-6">
           <PageHeader title="Dashboard de Tokens" subtitle="Cargando métricas del agente IA..." />
         </div>
         <div className="flex-1 flex items-center justify-center">
           <div className="flex flex-col items-center gap-4">
             <RefreshCw className="w-12 h-12 text-blue-500 animate-spin" />
-            <p className="text-slate-500">Cargando...</p>
+            <p className="text-white/40">Cargando...</p>
           </div>
         </div>
       </div>
@@ -210,8 +210,8 @@ export default function DashboardStatusView() {
   const dailyUsage = data?.daily_usage || [];
 
   return (
-    <div className="h-screen flex flex-col bg-slate-50 overflow-hidden">
-      <div className="flex-shrink-0 p-4 sm:p-6 bg-white/50 backdrop-blur-sm border-b border-slate-100">
+    <div className="h-screen flex flex-col overflow-hidden">
+      <div className="flex-shrink-0 p-4 sm:p-6 bg-white/[0.02] backdrop-blur-sm border-b border-white/[0.06]">
         <PageHeader
           title="Dashboard de Tokens y Métricas"
           subtitle="Uso de IA, costos y estado del agente"
@@ -221,11 +221,11 @@ export default function DashboardStatusView() {
               <select
                 value={days}
                 onChange={(e) => setDays(Number(e.target.value))}
-                className="px-3 py-2 rounded-xl border border-slate-200 text-sm font-medium bg-white focus:ring-2 focus:ring-medical-500"
+                className="px-3 py-2 rounded-xl border border-white/[0.08] text-sm font-medium bg-white/[0.04] text-white focus:ring-2 focus:ring-medical-500"
               >
-                <option value={7}>Últimos 7 días</option>
-                <option value={30}>Últimos 30 días</option>
-                <option value={90}>Últimos 90 días</option>
+                <option value={7} className="bg-[#0d1117] text-white">Últimos 7 días</option>
+                <option value={30} className="bg-[#0d1117] text-white">Últimos 30 días</option>
+                <option value={90} className="bg-[#0d1117] text-white">Últimos 90 días</option>
               </select>
               <button
                 onClick={fetchMetrics}
@@ -242,15 +242,15 @@ export default function DashboardStatusView() {
 
       <main className="flex-1 overflow-y-auto p-4 lg:p-6">
         {error && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl flex items-center gap-3">
-            <AlertCircle className="w-6 h-6 text-red-500 shrink-0" />
+          <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 rounded-xl flex items-center gap-3">
+            <AlertCircle className="w-6 h-6 text-red-400 shrink-0" />
             <div>
-              <p className="font-medium text-red-800">No se pudieron cargar las métricas</p>
-              <p className="text-sm text-red-600">{error}</p>
+              <p className="font-medium text-red-400">No se pudieron cargar las métricas</p>
+              <p className="text-sm text-red-400/70">{error}</p>
             </div>
             <button
               onClick={fetchMetrics}
-              className="ml-auto px-3 py-1.5 text-sm font-medium text-red-700 bg-red-100 hover:bg-red-200 rounded-lg"
+              className="ml-auto px-3 py-1.5 text-sm font-medium text-red-400 bg-red-500/10 hover:bg-red-500/20 rounded-lg"
             >
               Reintentar
             </button>
@@ -258,9 +258,9 @@ export default function DashboardStatusView() {
         )}
 
         {isSimplified && (
-          <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-center gap-3">
-            <AlertCircle className="w-6 h-6 text-amber-500 shrink-0" />
-            <p className="text-amber-800">{data?.message || 'Módulos del dashboard no disponibles. Métricas limitadas.'}</p>
+          <div className="mb-6 p-4 bg-amber-500/10 border border-amber-500/20 rounded-xl flex items-center gap-3">
+            <AlertCircle className="w-6 h-6 text-amber-400 shrink-0" />
+            <p className="text-amber-400">{data?.message || 'Módulos del dashboard no disponibles. Métricas limitadas.'}</p>
           </div>
         )}
 
@@ -300,31 +300,31 @@ export default function DashboardStatusView() {
 
             {/* Charts Row */}
             {dailyUsage.length > 0 && (
-              <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
-                <h2 className="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2">
+              <div className="bg-white/[0.03] rounded-2xl border border-white/[0.06] p-6">
+                <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
                   <Activity size={20} className="text-medical-600" />
                   Uso diario de tokens
                 </h2>
                 <div className="h-[260px]">
                   <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                     <BarChart data={dailyUsage} margin={{ top: 5, right: 5, left: -10, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" vertical={false} />
                       <XAxis
                         dataKey="date"
-                        tick={{ fill: '#64748b', fontSize: 10 }}
+                        tick={{ fill: 'rgba(255,255,255,0.4)', fontSize: 10 }}
                         tickLine={false}
                         axisLine={false}
                         tickFormatter={(v) => { const d = new Date(v + 'T00:00:00'); return `${d.getDate()}/${d.getMonth()+1}`; }}
                       />
                       <YAxis
-                        tick={{ fill: '#64748b', fontSize: 10 }}
+                        tick={{ fill: 'rgba(255,255,255,0.4)', fontSize: 10 }}
                         tickLine={false}
                         axisLine={false}
                         width={45}
                         tickFormatter={(v) => v >= 1000 ? `${(v/1000).toFixed(0)}K` : v}
                       />
                       <Tooltip
-                        contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)', fontSize: 13 }}
+                        contentStyle={{ borderRadius: '12px', border: '1px solid rgba(255,255,255,0.08)', backgroundColor: '#0d1117', color: '#fff', fontSize: 13 }}
                         labelFormatter={(v) => { const d = new Date(v + 'T00:00:00'); return d.toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric', month: 'short' }); }}
                         formatter={(value: number, name: string) => {
                           if (name === 'Tokens') return [value.toLocaleString('es-AR'), 'Tokens'];
@@ -337,21 +337,21 @@ export default function DashboardStatusView() {
                 </div>
                 {/* Cost summary below chart */}
                 {dailyUsage.length > 0 && (
-                  <div className="mt-3 flex items-center justify-between text-xs text-slate-500 px-1">
-                    <span>Costo total periodo: <strong className="text-emerald-600">${dailyUsage.reduce((s, d) => s + (d.cost_usd || 0), 0).toFixed(4)}</strong></span>
-                    <span>Promedio diario: <strong className="text-blue-600">{Math.round(dailyUsage.reduce((s, d) => s + (d.total_tokens || 0), 0) / dailyUsage.length).toLocaleString('es-AR')} tokens</strong></span>
+                  <div className="mt-3 flex items-center justify-between text-xs text-white/40 px-1">
+                    <span>Costo total periodo: <strong className="text-emerald-400">${dailyUsage.reduce((s, d) => s + (d.cost_usd || 0), 0).toFixed(4)}</strong></span>
+                    <span>Promedio diario: <strong className="text-blue-400">{Math.round(dailyUsage.reduce((s, d) => s + (d.total_tokens || 0), 0) / dailyUsage.length).toLocaleString('es-AR')} tokens</strong></span>
                   </div>
                 )}
               </div>
             )}
 
             {/* Model Configuration */}
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
-              <h2 className="text-lg font-semibold text-slate-800 mb-1 flex items-center gap-2">
+            <div className="bg-white/[0.03] rounded-2xl border border-white/[0.06] p-6">
+              <h2 className="text-lg font-semibold text-white mb-1 flex items-center gap-2">
                 <Settings size={20} className="text-medical-600" />
                 Configuración de modelos por acción
               </h2>
-              <p className="text-sm text-slate-500 mb-5">Seleccioná qué modelo usar para cada funcionalidad. Los cambios se aplican inmediatamente.</p>
+              <p className="text-sm text-white/40 mb-5">Seleccioná qué modelo usar para cada funcionalidad. Los cambios se aplican inmediatamente.</p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                 {MODEL_ACTIONS.map((action) => {
                   const ActionIcon = action.icon;
@@ -360,14 +360,14 @@ export default function DashboardStatusView() {
                   const currentModel = modelConfig[action.key] || defaultModel;
                   const filteredModels = AVAILABLE_MODELS.filter(m => isVoice ? m.type === 'realtime' : m.type === 'text');
                   return (
-                    <div key={action.key} className="border border-slate-200 rounded-xl p-4 hover:border-blue-200 transition-colors">
+                    <div key={action.key} className="border border-white/[0.06] rounded-xl p-4 hover:border-white/[0.12] transition-colors">
                       <div className="flex items-start gap-3 mb-3">
-                        <div className={`p-2 rounded-lg shrink-0 ${isVoice ? 'bg-violet-50 text-violet-600' : 'bg-blue-50 text-blue-600'}`}>
+                        <div className={`p-2 rounded-lg shrink-0 ${isVoice ? 'bg-violet-500/10 text-violet-400' : 'bg-blue-500/10 text-blue-400'}`}>
                           <ActionIcon size={18} />
                         </div>
                         <div className="min-w-0">
-                          <h3 className="text-sm font-semibold text-slate-800">{action.label}</h3>
-                          <p className="text-xs text-slate-400 mt-0.5">{action.description}</p>
+                          <h3 className="text-sm font-semibold text-white">{action.label}</h3>
+                          <p className="text-xs text-white/30 mt-0.5">{action.description}</p>
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
@@ -375,10 +375,10 @@ export default function DashboardStatusView() {
                           value={currentModel}
                           onChange={(e) => saveModelConfig(action.key, e.target.value)}
                           disabled={modelSaving === action.key}
-                          className={`flex-1 px-3 py-2 rounded-lg border text-sm font-medium bg-white outline-none disabled:opacity-50 ${isVoice ? 'border-violet-200 focus:ring-2 focus:ring-violet-500' : 'border-slate-200 focus:ring-2 focus:ring-blue-500'}`}
+                          className={`flex-1 px-3 py-2 rounded-lg border text-sm font-medium bg-white/[0.04] text-white outline-none disabled:opacity-50 ${isVoice ? 'border-violet-500/20 focus:ring-2 focus:ring-violet-500' : 'border-white/[0.08] focus:ring-2 focus:ring-blue-500'}`}
                         >
                           {filteredModels.map((m) => (
-                            <option key={m.id} value={m.id}>{m.label}</option>
+                            <option key={m.id} value={m.id} className="bg-[#0d1117] text-white">{m.label}</option>
                           ))}
                         </select>
                         {modelSaving === action.key && (
@@ -388,7 +388,7 @@ export default function DashboardStatusView() {
                           <Check size={18} className="text-green-500 shrink-0" />
                         )}
                       </div>
-                      {isVoice && <p className="text-[10px] text-violet-400 mt-1.5">Solo modelos Realtime (audio bidireccional)</p>}
+                      {isVoice && <p className="text-[10px] text-violet-400/70 mt-1.5">Solo modelos Realtime (audio bidireccional)</p>}
                     </div>
                   );
                 })}
@@ -397,8 +397,8 @@ export default function DashboardStatusView() {
 
             {/* Config & Projections */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
-                <h2 className="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2">
+              <div className="bg-white/[0.03] rounded-2xl border border-white/[0.06] p-6">
+                <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
                   <Cpu size={20} className="text-medical-600" />
                   Proyecciones y eficiencia
                 </h2>
@@ -409,30 +409,30 @@ export default function DashboardStatusView() {
                     ['Prom. tokens/conversación', projections.avg_tokens_per_conversation?.toLocaleString() ?? '—'],
                     ['Score eficiencia', projections.efficiency_score != null ? `${projections.efficiency_score}/100` : '—']
                   ].map(([label, val]) => (
-                    <div key={label} className="flex justify-between py-2 border-b border-slate-100 last:border-0">
-                      <dt className="text-slate-600">{label}</dt>
-                      <dd className="font-mono font-medium text-slate-800">{val}</dd>
+                    <div key={label} className="flex justify-between py-2 border-b border-white/[0.06] last:border-0">
+                      <dt className="text-white/60">{label}</dt>
+                      <dd className="font-mono font-medium text-white">{val}</dd>
                     </div>
                   ))}
                 </dl>
               </div>
 
-              <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
-                <h2 className="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2">
+              <div className="bg-white/[0.03] rounded-2xl border border-white/[0.06] p-6">
+                <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
                   <Database size={20} className="text-medical-600" />
                   Estadísticas de base de datos
                 </h2>
                 <dl className="space-y-3 text-sm">
                   {Object.entries(dbStats).map(([key, val]) => (
-                    <div key={key} className="flex justify-between py-2 border-b border-slate-100 last:border-0">
-                      <dt className="text-slate-600 capitalize">
+                    <div key={key} className="flex justify-between py-2 border-b border-white/[0.06] last:border-0">
+                      <dt className="text-white/60 capitalize">
                         {key.replace(/_/g, ' ')}
                       </dt>
-                      <dd className="font-mono font-medium text-slate-800">{typeof val === 'number' ? val.toLocaleString() : val}</dd>
+                      <dd className="font-mono font-medium text-white">{typeof val === 'number' ? val.toLocaleString() : val}</dd>
                     </div>
                   ))}
                   {Object.keys(dbStats).length === 0 && (
-                    <p className="text-slate-400 italic">Sin datos de BD disponibles</p>
+                    <p className="text-white/30 italic">Sin datos de BD disponibles</p>
                   )}
                 </dl>
               </div>

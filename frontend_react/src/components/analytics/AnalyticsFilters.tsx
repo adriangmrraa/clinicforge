@@ -49,36 +49,36 @@ const AnalyticsFilters: React.FC<AnalyticsFiltersProps> = ({ onFilterChange }) =
     }, [startDate, endDate, selectedProfs]);
 
     return (
-        <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-100 shadow-sm mb-6">
+        <div className="bg-white/[0.03] p-4 sm:p-5 rounded-2xl border border-white/[0.06] mb-6">
             <div className="flex flex-wrap gap-4 sm:gap-6 items-end">
                 <div className="flex items-center gap-2 min-w-0">
-                    <Calendar size={18} className="text-slate-500 shrink-0" />
+                    <Calendar size={18} className="text-white/40 shrink-0" />
                     <div>
-                        <label className="block text-xs font-semibold text-slate-600 mb-1 uppercase tracking-wider">{t('analytics.from_date')}</label>
+                        <label className="block text-xs font-semibold text-white/60 mb-1 uppercase tracking-wider">{t('analytics.from_date')}</label>
                         <input
                             type="date"
                             value={startDate}
                             onChange={(e) => setStartDate(e.target.value)}
-                            className="border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-medical-500/30 focus:border-medical-500 min-w-[140px]"
+                            className="border border-white/[0.08] rounded-xl px-3 py-2.5 text-sm text-white bg-white/[0.04] focus:outline-none focus:ring-2 focus:ring-medical-500/30 focus:border-medical-500 min-w-[140px]"
                         />
                     </div>
                 </div>
                 <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1 uppercase tracking-wider">{t('analytics.to_date')}</label>
+                    <label className="block text-xs font-semibold text-white/60 mb-1 uppercase tracking-wider">{t('analytics.to_date')}</label>
                     <input
                         type="date"
                         value={endDate}
                         onChange={(e) => setEndDate(e.target.value)}
-                        className="border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-medical-500/30 focus:border-medical-500 min-w-[140px]"
+                        className="border border-white/[0.08] rounded-xl px-3 py-2.5 text-sm text-white bg-white/[0.04] focus:outline-none focus:ring-2 focus:ring-medical-500/30 focus:border-medical-500 min-w-[140px]"
                     />
                 </div>
                 <div className="min-w-[200px] flex-1 sm:flex-initial">
-                    <label className="block text-xs font-semibold text-slate-600 mb-1 uppercase tracking-wider flex items-center gap-1">
+                    <label className="block text-xs font-semibold text-white/60 mb-1 uppercase tracking-wider flex items-center gap-1">
                         <Users size={14} /> {t('analytics.professionals_filter')}
                     </label>
                     <select
                         multiple
-                        className="border border-slate-200 rounded-xl px-3 py-2.5 text-sm w-full min-h-[88px] text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-medical-500/30 focus:border-medical-500"
+                        className="border border-white/[0.08] rounded-xl px-3 py-2.5 text-sm w-full min-h-[88px] text-white bg-white/[0.04] focus:outline-none focus:ring-2 focus:ring-medical-500/30 focus:border-medical-500"
                         value={selectedProfs.map(String)}
                         onChange={(e) => {
                             const options = Array.from(e.target.selectedOptions, option => parseInt(option.value));
@@ -86,10 +86,10 @@ const AnalyticsFilters: React.FC<AnalyticsFiltersProps> = ({ onFilterChange }) =
                         }}
                     >
                         {professionals.map(p => (
-                            <option key={p.id} value={p.id}>{professionalDisplayName(p)}</option>
+                            <option key={p.id} value={p.id} className="bg-[#0d1117] text-white">{professionalDisplayName(p)}</option>
                         ))}
                     </select>
-                    <p className="text-[11px] text-slate-500 mt-1">{t('chats.ctrl_click_multiple')}</p>
+                    <p className="text-[11px] text-white/40 mt-1">{t('chats.ctrl_click_multiple')}</p>
                 </div>
             </div>
         </div>
