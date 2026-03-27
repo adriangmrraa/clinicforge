@@ -4582,6 +4582,7 @@ async def _nova_realtime_handler(websocket: WebSocket, session_id: str):
                     }
                 }
             }))
+            logger.info(f"🎙️ NOVA: session.update sent with {len(NOVA_TOOLS_SCHEMA)} tools, prompt={len(config.get('system_prompt', ''))} chars")
 
             async def client_to_openai():
                 """Forward browser audio/text to OpenAI."""
@@ -4616,9 +4617,12 @@ async def _nova_realtime_handler(websocket: WebSocket, session_id: str):
                         event = json_mod.loads(message)
                         etype = event.get("type", "")
 
-                        # Log ALL event types for debugging (except audio deltas which are too frequent)
+                        # Log ALL event types for debugging
                         if etype not in ("response.audio.delta", "response.audio_transcript.delta", "input_audio_buffer.committed", "input_audio_buffer.speech_stopped"):
-                            logger.info(f"🎙️ NOVA EVENT: {etype} {json_mod.dumps(event, ensure_ascii=False)[:200] if 'error' in etype or 'function' in etype or 'done' in etype else ''}")
+                            extra = ""
+                            if "error" in etype or "function" in etype or "done" in etype or "session" in etype:
+                                extra = f" {json_mod.dumps(event, ensure_ascii=False)[:300]}"
+                            logger.info(f"🎙️ NOVA EVENT: {etype}{extra}")
 
                         if etype == "response.audio.delta":
                             audio_b64 = event.get("delta", "")
