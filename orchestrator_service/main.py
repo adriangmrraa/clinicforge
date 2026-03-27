@@ -4539,16 +4539,22 @@ async def _nova_realtime_handler(websocket: WebSocket, session_id: str):
         import websockets
         api_key = os.getenv("OPENAI_API_KEY")
         nova_voice_model = "gpt-4o-mini-realtime-preview"
+        tenant_id_nova = config.get("tenant_id", 1)
         try:
             _voice_model_row = await db.pool.fetchrow(
                 "SELECT value FROM system_config WHERE key = 'MODEL_NOVA_VOICE' AND tenant_id = $1",
-                config.get("tenant_id", 1)
+                tenant_id_nova
             )
             if _voice_model_row and _voice_model_row.get("value"):
                 nova_voice_model = str(_voice_model_row["value"]).strip()
-        except Exception:
-            pass
+                logger.info(f"🎙️ NOVA: Model from DB: '{nova_voice_model}' for tenant={tenant_id_nova}")
+            else:
+                logger.info(f"🎙️ NOVA: No model in DB, using default: '{nova_voice_model}'")
+        except Exception as model_err:
+            logger.error(f"🎙️ NOVA MODEL ERROR: {model_err}")
         openai_url = f"wss://api.openai.com/v1/realtime?model={nova_voice_model}"
+        logger.info(f"🎙️ NOVA: Connecting to OpenAI Realtime: model={nova_voice_model} tenant={tenant_id_nova} page={config.get('page', 'unknown')}")
+        logger.info(f"🎙️ NOVA: System prompt length: {len(config.get('system_prompt', ''))} chars, tools: {len(NOVA_TOOLS_SCHEMA)}")
 
         async with websockets.connect(
             openai_url,
@@ -4628,6 +4634,7 @@ async def _nova_realtime_handler(websocket: WebSocket, session_id: str):
                         elif etype == "conversation.item.input_audio_transcription.completed":
                             text = event.get("transcript", "")
                             if text:
+                                logger.info(f"🎙️ NOVA USER SAID: '{text[:200]}'")
                                 await websocket.send_text(json_mod.dumps({
                                     "type": "transcript", "role": "user", "text": text
                                 }))
@@ -4663,7 +4670,9 @@ async def _nova_realtime_handler(websocket: WebSocket, session_id: str):
                             user_role = config.get("user_role", "secretary")
                             user_id = config.get("user_id", "")
 
+                            logger.info(f"🎙️ NOVA TOOL CALL: {tool_name}({json_mod.dumps(tool_args, ensure_ascii=False)[:200]}) tenant={tenant_id} role={user_role}")
                             result = await execute_nova_tool(tool_name, tool_args, tenant_id, user_role, user_id)
+                            logger.info(f"🎙️ NOVA TOOL RESULT: {tool_name} → {result[:200] if result else 'empty'}")
 
                             await websocket.send_text(json_mod.dumps({
                                 "type": "tool_call", "name": tool_name, "args": tool_args, "result": result
@@ -4685,7 +4694,9 @@ async def _nova_realtime_handler(websocket: WebSocket, session_id: str):
             await asyncio.gather(client_to_openai(), openai_to_client())
 
     except Exception as e:
-        logger.error(f"nova_ws_error: {e}")
+        logger.error(f"🎙️ NOVA WS ERROR: {e}")
+        import traceback
+        logger.error(f"🎙️ NOVA WS TRACEBACK: {traceback.format_exc()}")
     finally:
         try:
             await websocket.close()

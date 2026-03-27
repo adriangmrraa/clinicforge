@@ -688,6 +688,81 @@ NOVA_TOOLS_SCHEMA: List[Dict[str, Any]] = [
             },
         },
     },
+    # -------------------------------------------------------------------------
+    # H. Anamnesis por voz (NEW)
+    # -------------------------------------------------------------------------
+    {
+        "type": "function",
+        "name": "guardar_anamnesis",
+        "description": "Guarda datos de anamnesis (ficha médica) del paciente. Usá esta tool cuando el paciente te cuente sus enfermedades, alergias, medicación, cirugías previas, miedos, etc. Podés llamarla múltiples veces para ir completando secciones.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "patient_id": {"type": "integer", "description": "ID del paciente"},
+                "base_diseases": {"type": "string", "description": "Enfermedades de base (diabetes, hipertensión, etc.)"},
+                "habitual_medication": {"type": "string", "description": "Medicación habitual"},
+                "allergies": {"type": "string", "description": "Alergias (penicilina, anestesia, etc.)"},
+                "previous_surgeries": {"type": "string", "description": "Cirugías previas"},
+                "is_smoker": {"type": "string", "description": "Si fuma: 'si' o 'no'"},
+                "smoker_amount": {"type": "string", "description": "Cantidad de cigarrillos por día"},
+                "pregnancy_lactation": {"type": "string", "description": "'embarazo', 'lactancia', 'no_aplica'"},
+                "negative_experiences": {"type": "string", "description": "Experiencias negativas previas en dentista"},
+                "specific_fears": {"type": "string", "description": "Miedos específicos (agujas, dolor, etc.)"},
+            },
+            "required": ["patient_id"],
+        },
+    },
+    {
+        "type": "function",
+        "name": "ver_anamnesis",
+        "description": "Lee la ficha médica (anamnesis) completa de un paciente para verificar qué datos ya están cargados y cuáles faltan.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "patient_id": {"type": "integer", "description": "ID del paciente"},
+            },
+            "required": ["patient_id"],
+        },
+    },
+    # -------------------------------------------------------------------------
+    # I. Consultas de datos avanzadas (NEW)
+    # -------------------------------------------------------------------------
+    {
+        "type": "function",
+        "name": "consultar_datos",
+        "description": "Consulta cualquier dato de la plataforma: pacientes, turnos, pagos, leads, métricas, tratamientos, profesionales. Describe qué necesitás y te devuelvo los datos.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "consulta": {"type": "string", "description": "Qué datos necesitás. Ej: 'cuántos turnos hay esta semana', 'pacientes sin turno en 3 meses', 'ingresos del mes', 'leads de Meta sin contactar', 'tasa de no-show por profesional'"},
+            },
+            "required": ["consulta"],
+        },
+    },
+    {
+        "type": "function",
+        "name": "resumen_marketing",
+        "description": "Obtiene resumen de marketing: inversión en Meta Ads, leads generados, costo por lead, pacientes convertidos, ROI. Usa datos de Meta Graph API si está conectado.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "periodo": {"type": "string", "enum": ["hoy", "semana", "mes", "trimestre", "año"], "description": "Período del reporte"},
+            },
+            "required": ["periodo"],
+        },
+    },
+    {
+        "type": "function",
+        "name": "resumen_financiero",
+        "description": "Resumen financiero: ingresos por tratamiento, pagos pendientes, seña cobradas, facturación por profesional. Solo CEO.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "periodo": {"type": "string", "enum": ["hoy", "semana", "mes", "trimestre", "año"], "description": "Período del reporte"},
+            },
+            "required": ["periodo"],
+        },
+    },
 ]
 
 
@@ -1989,6 +2064,20 @@ async def execute_nova_tool(
         elif name == "cambiar_estado_turno":
             return await _cambiar_estado_turno(args, tenant_id)
 
+        # H. Anamnesis
+        elif name == "guardar_anamnesis":
+            return await _guardar_anamnesis(args, tenant_id)
+        elif name == "ver_anamnesis":
+            return await _ver_anamnesis(args, tenant_id)
+
+        # I. Consultas avanzadas
+        elif name == "consultar_datos":
+            return await _consultar_datos(args, tenant_id, user_role)
+        elif name == "resumen_marketing":
+            return await _resumen_marketing(args, tenant_id, user_role)
+        elif name == "resumen_financiero":
+            return await _resumen_financiero(args, tenant_id, user_role)
+
         else:
             return f"Tool '{name}' no reconocida."
 
@@ -2214,9 +2303,340 @@ async def _cambiar_estado_turno(args: Dict, tenant_id: int) -> str:
     allowed = ["completed", "no-show", "in-progress", "confirmed", "cancelled"]
     if status not in allowed:
         return f"Estado '{status}' no valido. Opciones: {', '.join(allowed)}"
-    updates = {"status": status}
     if status == "completed":
         await db.pool.execute("UPDATE appointments SET status = $1, completed_at = NOW(), updated_at = NOW() WHERE id = $2 AND tenant_id = $3", status, apt_id, tenant_id)
     else:
         await db.pool.execute("UPDATE appointments SET status = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3", status, apt_id, tenant_id)
     return f"Turno {apt_id} → estado: {status}"
+
+
+# =============================================================================
+# H. ANAMNESIS POR VOZ (NEW)
+# =============================================================================
+
+async def _guardar_anamnesis(args: Dict, tenant_id: int) -> str:
+    """Guarda datos de anamnesis en medical_history JSONB del paciente."""
+    patient_id = args.get("patient_id")
+    if not patient_id:
+        return "Necesito el ID del paciente."
+
+    # Build update data from provided fields
+    fields = {}
+    for key in ["base_diseases", "habitual_medication", "allergies", "previous_surgeries",
+                "is_smoker", "smoker_amount", "pregnancy_lactation", "negative_experiences", "specific_fears"]:
+        val = args.get(key)
+        if val and str(val).strip():
+            fields[key] = str(val).strip()
+
+    if not fields:
+        return "No me pasaste ningún dato para guardar. Decime qué querés cargar: enfermedades, alergias, medicación, cirugías previas, miedos..."
+
+    # Merge with existing medical_history (don't overwrite)
+    existing = await db.pool.fetchval(
+        "SELECT medical_history FROM patients WHERE id = $1 AND tenant_id = $2",
+        patient_id, tenant_id
+    )
+    current = {}
+    if existing:
+        if isinstance(existing, str):
+            try:
+                current = json.loads(existing)
+            except Exception:
+                current = {}
+        elif isinstance(existing, dict):
+            current = existing
+
+    # Merge new fields (overwrite only what's provided)
+    current.update(fields)
+    current["anamnesis_completed_at"] = datetime.now().isoformat()
+    current["anamnesis_source"] = "nova_voice"
+
+    await db.pool.execute(
+        "UPDATE patients SET medical_history = $1::jsonb, updated_at = NOW() WHERE id = $2 AND tenant_id = $3",
+        json.dumps(current, ensure_ascii=False), patient_id, tenant_id
+    )
+
+    saved_fields = ", ".join(fields.keys())
+    logger.info(f"🎙️ NOVA: Anamnesis saved for patient {patient_id}: {saved_fields}")
+    return f"Guardé en la ficha médica: {saved_fields}. Hay algo más que quieras agregar? Puedo cargar: enfermedades de base, medicación, alergias, cirugías previas, si fuma, embarazo/lactancia, experiencias negativas, miedos."
+
+
+async def _ver_anamnesis(args: Dict, tenant_id: int) -> str:
+    """Lee la anamnesis completa de un paciente."""
+    patient_id = args.get("patient_id")
+    if not patient_id:
+        return "Necesito el ID del paciente."
+
+    row = await db.pool.fetchrow(
+        "SELECT first_name, last_name, medical_history FROM patients WHERE id = $1 AND tenant_id = $2",
+        patient_id, tenant_id
+    )
+    if not row:
+        return "Paciente no encontrado."
+
+    name = f"{row['first_name'] or ''} {row['last_name'] or ''}".strip()
+    mh = row.get("medical_history")
+    if not mh:
+        return f"{name} no tiene ficha médica cargada. Querés que la completemos ahora?"
+
+    if isinstance(mh, str):
+        try:
+            mh = json.loads(mh)
+        except Exception:
+            return f"{name} tiene datos pero no puedo leerlos."
+
+    labels = {
+        "base_diseases": "Enfermedades de base",
+        "habitual_medication": "Medicación habitual",
+        "allergies": "Alergias",
+        "previous_surgeries": "Cirugías previas",
+        "is_smoker": "Fumador",
+        "smoker_amount": "Cigarrillos/día",
+        "pregnancy_lactation": "Embarazo/Lactancia",
+        "negative_experiences": "Experiencias negativas",
+        "specific_fears": "Miedos específicos",
+    }
+
+    parts = [f"Ficha médica de {name}:"]
+    filled = []
+    missing = []
+    for key, label in labels.items():
+        val = mh.get(key)
+        if val and str(val).strip() and str(val).strip().lower() not in ["no", "none", "null", ""]:
+            parts.append(f"- {label}: {val}")
+            filled.append(label)
+        else:
+            missing.append(label)
+
+    if missing:
+        parts.append(f"\nFaltan: {', '.join(missing)}")
+
+    return "\n".join(parts)
+
+
+# =============================================================================
+# I. CONSULTAS AVANZADAS (NEW)
+# =============================================================================
+
+async def _consultar_datos(args: Dict, tenant_id: int, user_role: str) -> str:
+    """Consulta flexible de datos de la plataforma."""
+    consulta = args.get("consulta", "").lower()
+
+    if not consulta:
+        return "Decime qué datos necesitás."
+
+    try:
+        # Turnos de hoy/semana
+        if any(w in consulta for w in ["turno", "agenda", "cita", "appointment"]):
+            if "hoy" in consulta:
+                start = date.today()
+                end = start
+            elif "semana" in consulta:
+                start = date.today()
+                end = start + timedelta(days=7)
+            elif "mes" in consulta:
+                start = date.today()
+                end = start + timedelta(days=30)
+            else:
+                start = date.today()
+                end = start + timedelta(days=7)
+
+            rows = await db.pool.fetch("""
+                SELECT a.appointment_datetime, a.status, a.appointment_type, a.payment_status,
+                       p.first_name || ' ' || COALESCE(p.last_name, '') as patient_name,
+                       prof.first_name as prof_name
+                FROM appointments a
+                JOIN patients p ON a.patient_id = p.id
+                LEFT JOIN professionals prof ON a.professional_id = prof.id
+                WHERE a.tenant_id = $1 AND DATE(a.appointment_datetime) BETWEEN $2 AND $3
+                ORDER BY a.appointment_datetime ASC LIMIT 20
+            """, tenant_id, start, end)
+
+            if not rows:
+                return f"No hay turnos entre {start} y {end}."
+
+            parts = [f"{len(rows)} turnos encontrados:"]
+            for r in rows:
+                dt = r['appointment_datetime']
+                parts.append(f"- {dt.strftime('%d/%m %H:%M')} | {r['patient_name']} | {r['appointment_type'] or 'consulta'} | {r['prof_name'] or '?'} | {r['status']} | pago: {r['payment_status'] or 'pendiente'}")
+            return "\n".join(parts)
+
+        # Pacientes
+        elif any(w in consulta for w in ["paciente", "patient", "registrado"]):
+            count = await db.pool.fetchval("SELECT COUNT(*) FROM patients WHERE tenant_id = $1", tenant_id)
+            new_month = await db.pool.fetchval(
+                "SELECT COUNT(*) FROM patients WHERE tenant_id = $1 AND created_at >= NOW() - INTERVAL '30 days'", tenant_id
+            )
+            return f"Total pacientes: {count}. Nuevos último mes: {new_month}."
+
+        # Ingresos / pagos
+        elif any(w in consulta for w in ["ingreso", "pago", "facturación", "revenue", "cobr"]):
+            row = await db.pool.fetchrow("""
+                SELECT COUNT(*) as total, COUNT(*) FILTER (WHERE payment_status = 'paid') as paid,
+                       COALESCE(SUM(billing_amount) FILTER (WHERE payment_status = 'paid'), 0) as revenue
+                FROM appointments WHERE tenant_id = $1 AND appointment_datetime >= NOW() - INTERVAL '30 days'
+            """, tenant_id)
+            return f"Últimos 30 días: {row['total']} turnos, {row['paid']} pagados, ${int(row['revenue']):,} facturados.".replace(",", ".")
+
+        # Leads
+        elif any(w in consulta for w in ["lead", "prospecto", "meta", "formulario"]):
+            rows = await db.pool.fetch("""
+                SELECT status, COUNT(*) as cnt FROM patients
+                WHERE tenant_id = $1 AND acquisition_source IS NOT NULL
+                GROUP BY status
+            """, tenant_id)
+            if not rows:
+                return "No hay leads registrados."
+            parts = ["Leads por estado:"]
+            for r in rows:
+                parts.append(f"- {r['status'] or 'sin estado'}: {r['cnt']}")
+            return "\n".join(parts)
+
+        # No-shows
+        elif "no-show" in consulta or "no show" in consulta or "ausencia" in consulta:
+            row = await db.pool.fetchrow("""
+                SELECT COUNT(*) as total,
+                       COUNT(*) FILTER (WHERE status = 'no_show') as no_shows
+                FROM appointments WHERE tenant_id = $1 AND appointment_datetime >= NOW() - INTERVAL '30 days'
+            """, tenant_id)
+            rate = (row['no_shows'] / row['total'] * 100) if row['total'] > 0 else 0
+            return f"Últimos 30 días: {row['no_shows']} no-shows de {row['total']} turnos ({rate:.1f}%)."
+
+        # Cancelaciones
+        elif "cancel" in consulta:
+            row = await db.pool.fetchrow("""
+                SELECT COUNT(*) as total,
+                       COUNT(*) FILTER (WHERE status = 'cancelled') as cancelled
+                FROM appointments WHERE tenant_id = $1 AND appointment_datetime >= NOW() - INTERVAL '30 days'
+            """, tenant_id)
+            rate = (row['cancelled'] / row['total'] * 100) if row['total'] > 0 else 0
+            return f"Últimos 30 días: {row['cancelled']} cancelaciones de {row['total']} turnos ({rate:.1f}%)."
+
+        # Generic fallback
+        else:
+            # Try a broad stats query
+            stats = await db.pool.fetchrow("""
+                SELECT
+                    (SELECT COUNT(*) FROM patients WHERE tenant_id = $1) as patients,
+                    (SELECT COUNT(*) FROM appointments WHERE tenant_id = $1 AND status IN ('scheduled', 'confirmed') AND appointment_datetime > NOW()) as upcoming,
+                    (SELECT COUNT(*) FROM appointments WHERE tenant_id = $1 AND status = 'completed' AND appointment_datetime >= NOW() - INTERVAL '30 days') as completed_month
+            """, tenant_id)
+            return f"Resumen: {stats['patients']} pacientes, {stats['upcoming']} turnos próximos, {stats['completed_month']} completados este mes."
+
+    except Exception as e:
+        logger.error(f"consultar_datos error: {e}")
+        return f"Error consultando datos: {str(e)}"
+
+
+async def _resumen_marketing(args: Dict, tenant_id: int, user_role: str) -> str:
+    """Resumen de marketing con datos de Meta Ads si están disponibles."""
+    if user_role not in ("ceo",):
+        return "Solo el CEO puede ver datos de marketing."
+
+    periodo = args.get("periodo", "mes")
+    days = {"hoy": 1, "semana": 7, "mes": 30, "trimestre": 90, "año": 365}.get(periodo, 30)
+
+    try:
+        # Leads por fuente
+        leads = await db.pool.fetch("""
+            SELECT COALESCE(acquisition_source, 'DIRECTO') as source, COUNT(*) as cnt
+            FROM patients WHERE tenant_id = $1 AND created_at >= NOW() - INTERVAL '1 day' * $2
+            GROUP BY acquisition_source ORDER BY cnt DESC
+        """, tenant_id, days)
+
+        # Ads spend from meta if available
+        ad_spend = await db.pool.fetchval("""
+            SELECT COALESCE(SUM(spend), 0) FROM meta_ad_insights
+            WHERE tenant_id = $1 AND date_start >= NOW() - INTERVAL '1 day' * $2
+        """, tenant_id, days) if await _table_exists("meta_ad_insights") else 0
+
+        total_leads = sum(r['cnt'] for r in leads) if leads else 0
+        cost_per_lead = float(ad_spend) / total_leads if total_leads > 0 and ad_spend else 0
+
+        parts = [f"Marketing últimos {days} días:"]
+        if ad_spend:
+            parts.append(f"Inversión Meta Ads: ${int(float(ad_spend)):,}".replace(",", "."))
+        parts.append(f"Total leads: {total_leads}")
+        if cost_per_lead > 0:
+            parts.append(f"Costo por lead: ${int(cost_per_lead):,}".replace(",", "."))
+        if leads:
+            parts.append("Por fuente:")
+            for r in leads:
+                parts.append(f"  - {r['source']}: {r['cnt']}")
+        return "\n".join(parts)
+
+    except Exception as e:
+        logger.error(f"resumen_marketing error: {e}")
+        return f"Error obteniendo datos de marketing: {str(e)}"
+
+
+async def _resumen_financiero(args: Dict, tenant_id: int, user_role: str) -> str:
+    """Resumen financiero detallado."""
+    if user_role not in ("ceo",):
+        return "Solo el CEO puede ver datos financieros."
+
+    periodo = args.get("periodo", "mes")
+    days = {"hoy": 1, "semana": 7, "mes": 30, "trimestre": 90, "año": 365}.get(periodo, 30)
+
+    try:
+        # Revenue by treatment
+        by_treatment = await db.pool.fetch("""
+            SELECT a.appointment_type, COUNT(*) as cnt,
+                   COALESCE(SUM(a.billing_amount), 0) as revenue,
+                   COUNT(*) FILTER (WHERE a.payment_status = 'paid') as paid
+            FROM appointments a
+            WHERE a.tenant_id = $1 AND a.appointment_datetime >= NOW() - INTERVAL '1 day' * $2
+            AND a.status IN ('completed', 'confirmed', 'scheduled')
+            GROUP BY a.appointment_type ORDER BY revenue DESC
+        """, tenant_id, days)
+
+        # Revenue by professional
+        by_prof = await db.pool.fetch("""
+            SELECT prof.first_name, COUNT(*) as cnt,
+                   COALESCE(SUM(a.billing_amount), 0) as revenue
+            FROM appointments a
+            LEFT JOIN professionals prof ON a.professional_id = prof.id
+            WHERE a.tenant_id = $1 AND a.appointment_datetime >= NOW() - INTERVAL '1 day' * $2
+            AND a.status IN ('completed', 'confirmed', 'scheduled')
+            GROUP BY prof.first_name ORDER BY revenue DESC
+        """, tenant_id, days)
+
+        # Pending payments
+        pending = await db.pool.fetchrow("""
+            SELECT COUNT(*) as cnt, COALESCE(SUM(billing_amount), 0) as amount
+            FROM appointments WHERE tenant_id = $1 AND payment_status = 'pending'
+            AND billing_amount > 0 AND status IN ('scheduled', 'confirmed')
+        """, tenant_id)
+
+        total_revenue = sum(float(r['revenue']) for r in by_treatment)
+        parts = [f"Finanzas últimos {days} días:"]
+        parts.append(f"Facturación total: ${int(total_revenue):,}".replace(",", "."))
+        parts.append(f"Pagos pendientes: {pending['cnt']} turnos (${int(float(pending['amount'])):,})".replace(",", "."))
+
+        if by_treatment:
+            parts.append("\nPor tratamiento:")
+            for r in by_treatment:
+                parts.append(f"  - {r['appointment_type'] or 'consulta'}: {r['cnt']} turnos, ${int(float(r['revenue'])):,} ({r['paid']} pagados)".replace(",", "."))
+
+        if by_prof:
+            parts.append("\nPor profesional:")
+            for r in by_prof:
+                parts.append(f"  - {r['first_name'] or '?'}: {r['cnt']} turnos, ${int(float(r['revenue'])):,}".replace(",", "."))
+
+        return "\n".join(parts)
+
+    except Exception as e:
+        logger.error(f"resumen_financiero error: {e}")
+        return f"Error obteniendo datos financieros: {str(e)}"
+
+
+async def _table_exists(table_name: str) -> bool:
+    """Check if a table exists in the database."""
+    try:
+        exists = await db.pool.fetchval(
+            "SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_name = $1)",
+            table_name
+        )
+        return bool(exists)
+    except Exception:
+        return False
