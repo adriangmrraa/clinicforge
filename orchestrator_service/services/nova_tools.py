@@ -657,6 +657,37 @@ def _role_error(tool_name: str, allowed: List[str]) -> str:
     return f"No tenes permiso para usar '{tool_name}'. Solo disponible para: {roles_str}."
 
 
+def _parse_date_str(d: Any) -> date:
+    """Parse string to date object. Handles YYYY-MM-DD and other formats."""
+    if isinstance(d, date):
+        return d
+    if isinstance(d, datetime):
+        return d.date()
+    s = str(d).strip()
+    try:
+        return datetime.strptime(s[:10], "%Y-%m-%d").date()
+    except ValueError:
+        try:
+            return datetime.strptime(s[:10], "%d/%m/%Y").date()
+        except ValueError:
+            return date.today()
+
+
+def _parse_datetime_str(d: Any) -> datetime:
+    """Parse string to datetime object. Handles various formats."""
+    if isinstance(d, datetime):
+        return d
+    if isinstance(d, date):
+        return datetime.combine(d, datetime.min.time())
+    s = str(d).strip()
+    for fmt in ["%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M", "%Y-%m-%d"]:
+        try:
+            return datetime.strptime(s, fmt)
+        except ValueError:
+            continue
+    return datetime.now()
+
+
 def _fmt_date(d: Any) -> str:
     """Format a date/datetime for speech output (dd/mm/yyyy)."""
     if d is None:
@@ -951,7 +982,7 @@ async def _registrar_nota_clinica(args: Dict, tenant_id: int, user_role: str, us
 # --- B. Turnos ---
 
 async def _ver_agenda(args: Dict, tenant_id: int, user_role: str, user_id: str) -> str:
-    target_date = args.get("date", str(_today()))
+    target_date = _parse_date_str(args.get("date", str(_today())))
     prof_id = args.get("professional_id")
 
     # Default to current professional if role is professional
@@ -1029,7 +1060,7 @@ async def _proximo_paciente(tenant_id: int, user_role: str, user_id: str) -> str
 
 
 async def _verificar_disponibilidad(args: Dict, tenant_id: int) -> str:
-    target_date = args.get("date")
+    target_date = _parse_date_str(args.get("date", str(_today())))
     if not target_date:
         return "Necesito una fecha para verificar disponibilidad."
 
@@ -1134,12 +1165,12 @@ async def _verificar_disponibilidad(args: Dict, tenant_id: int) -> str:
 
 async def _agendar_turno(args: Dict, tenant_id: int) -> str:
     pid = args.get("patient_id")
-    target_date = args.get("date")
-    time_str = args.get("time")
+    target_date = str(args.get("date", ""))
+    time_str = str(args.get("time", ""))
     treatment_type = args.get("treatment_type")
 
     if not all([pid, target_date, time_str, treatment_type]):
-        return "Necesito patient_id, date, time y treatment_type."
+        return "Necesito patient_id, date (YYYY-MM-DD), time (HH:MM) y treatment_type."
 
     # Verify patient
     patient = await db.pool.fetchrow(
@@ -2003,12 +2034,13 @@ async def _reprogramar_turno(args: Dict, tenant_id: int) -> str:
     new_time = args.get("new_time", "")
     if not apt_id or not new_date or not new_time:
         return "Necesito appointment_id, new_date (YYYY-MM-DD) y new_time (HH:MM)."
-    new_dt = f"{new_date} {new_time}:00"
+    # Parse to proper datetime object (asyncpg needs datetime, not string)
+    new_dt = _parse_datetime_str(f"{new_date} {new_time}")
     await db.pool.execute(
         "UPDATE appointments SET appointment_datetime = $1, status = 'scheduled', updated_at = NOW() WHERE id = $2 AND tenant_id = $3",
         new_dt, apt_id, tenant_id,
     )
-    return f"Turno {apt_id} reprogramado para {new_date} a las {new_time}."
+    return f"Turno reprogramado para {_fmt_date(new_dt)}."
 
 
 async def _ver_configuracion(tenant_id: int) -> str:
@@ -2570,6 +2602,12 @@ async def _obtener_registros(args: Dict, tenant_id: int, user_role: str) -> str:
                         # Sanitize field name (only alphanumeric + underscore)
                         if not all(c.isalnum() or c == '_' for c in field):
                             continue
+                        # Auto-detect and convert datetime strings for date/datetime columns
+                        if 'date' in field or 'datetime' in field or 'created_at' in field or 'updated_at' in field:
+                            try:
+                                value = _parse_datetime_str(value)
+                            except Exception:
+                                pass
                         params.append(value)
                         query += f" AND {field} {op} ${len(params)}"
                         break
