@@ -1185,6 +1185,7 @@ async def book_appointment(date_time: str, treatment_reason: str,
     if not chat_phone:
         return "❌ Error: No pude identificar tu teléfono. Reinicia la conversación."
     tenant_id = current_tenant_id.get()
+    logger.info(f"📅 BOOK START: phone={chat_phone} tenant={tenant_id} date_time={date_time} treatment={treatment_reason} prof={professional_name} first_name={first_name} last_name={last_name} dni={dni} is_minor={is_minor} patient_phone={patient_phone}")
 
     # --- Resolve patient phone based on booking type ---
     is_third_party = bool(patient_phone) or bool(is_minor)
@@ -1209,6 +1210,7 @@ async def book_appointment(date_time: str, treatment_reason: str,
         phone = chat_phone
     try:
         apt_datetime = parse_datetime(date_time)
+        logger.info(f"📅 BOOK: parsed datetime={apt_datetime} from '{date_time}'")
         # No agendar en el pasado
         if apt_datetime < get_now_arg():
             return "❌ No se pueden agendar turnos para horarios que ya pasaron. Indicá un día y hora futuros. Formato esperado: date_time como 'día 17:00' (ej. miércoles 17:00)."
@@ -1284,6 +1286,7 @@ async def book_appointment(date_time: str, treatment_reason: str,
             treatment_code = t_data["code"]
             treatment_display_name = t_data["name"] or treatment_reason
             treatment_price = float(t_data["base_price"]) if t_data.get("base_price") else None
+            logger.info(f"📅 BOOK TREATMENT: code={treatment_code} name={treatment_display_name} duration={final_duration}min price={treatment_price}")
         elif treatment_reason:
             t_data = await db.pool.fetchrow("""
                 SELECT code, name, base_price FROM treatment_types
@@ -1295,6 +1298,7 @@ async def book_appointment(date_time: str, treatment_reason: str,
             treatment_code = t_data["code"]
             treatment_display_name = t_data["name"] or treatment_reason
             treatment_price = float(t_data["base_price"]) if t_data.get("base_price") else None
+            logger.info(f"📅 BOOK TREATMENT (alt): code={treatment_code} name={treatment_display_name} price={treatment_price}")
         else:
             treatment_code = "CONSULTA"
             if final_duration is None:
@@ -1336,6 +1340,7 @@ async def book_appointment(date_time: str, treatment_reason: str,
                     "SELECT id, status, phone_number FROM patients WHERE tenant_id = $1 AND dni = $2",
                     tenant_id, dni,
                 )
+        logger.info(f"📅 BOOK PATIENT: existing={existing_patient['id'] if existing_patient else 'NEW'} phone={phone} is_third_party={is_third_party} is_minor={is_minor}")
         # Validación temprana para pacientes nuevos: fallar antes de buscar profesionales
         if not existing_patient:
             required_fields = [
@@ -1359,7 +1364,9 @@ async def book_appointment(date_time: str, treatment_reason: str,
             p_query += " AND (p.first_name ILIKE $2 OR p.last_name ILIKE $2 OR (p.first_name || ' ' || COALESCE(p.last_name, '')) ILIKE $2)"
             p_params.append(f"%{clean_p_name}%")
         candidates = await db.pool.fetch(p_query, *p_params)
+        logger.info(f"📅 BOOK PROFESSIONALS: found {len(candidates)} candidates for query='{clean_p_name or 'ALL'}' [{', '.join(c['first_name'] for c in candidates)}]")
         if not candidates:
+            logger.warning(f"📅 BOOK: NO PROFESSIONALS FOUND for tenant={tenant_id} name_filter='{clean_p_name}'")
             return f"❌ No encontré al profesional '{professional_name or ''}' disponible. ¿Querés agendar con otro profesional?"
 
         # Filter candidates by treatment assignment (backward compatible: if none assigned, all can do it)
@@ -1445,8 +1452,10 @@ async def book_appointment(date_time: str, treatment_reason: str,
                         AND (appointment_datetime < $4 AND (appointment_datetime + interval '1 minute' * COALESCE(duration_minutes, 60)) > $3)
                     )
                 """, tenant_id, cand["id"], apt_datetime, end_apt)
+            logger.info(f"📅 BOOK CONFLICT CHECK: prof={cand['first_name']} (id={cand['id']}) conflict={conflict} at {apt_datetime.strftime('%H:%M')}-{end_apt.strftime('%H:%M')}")
             if not conflict:
                 target_prof = cand
+                logger.info(f"📅 BOOK: SELECTED PROFESSIONAL: {target_prof['first_name']} (id={target_prof['id']})")
                 break
 
         if not target_prof:
@@ -1456,6 +1465,7 @@ async def book_appointment(date_time: str, treatment_reason: str,
         # 3b. CHAIR CONSTRAINT — check total concurrent appointments doesn't exceed max_chairs
         try:
             max_chairs = await db.pool.fetchval("SELECT COALESCE(max_chairs, 99) FROM tenants WHERE id = $1", tenant_id)
+            logger.info(f"🪑 CHAIR CHECK: max_chairs={max_chairs} for tenant={tenant_id}")
             if max_chairs and max_chairs < 99:
                 concurrent = await db.pool.fetchval("""
                     SELECT COUNT(*) FROM appointments
