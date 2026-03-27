@@ -238,10 +238,13 @@ const OnboardingGuide: React.FC<OnboardingGuideProps> = ({ isOpen, onClose }) =>
     if (!touchStartRef.current) return;
     const threshold = 50;
     if (swipeX < -threshold) {
-      // Swiped left → next
+      // Swiped left → next or close on last step
       if (currentStep < (guide?.steps.length || 1) - 1) {
         setDirection('next');
         setCurrentStep(s => s + 1);
+      } else {
+        // Last step — swipe left closes
+        handleComplete();
       }
     } else if (swipeX > threshold) {
       // Swiped right → prev
