@@ -251,15 +251,15 @@ export default function DocumentGallery({ patientId, readOnly = false }: Documen
   };
 
   return (
-    <div className="bg-white rounded-lg shadow">
+    <div className="bg-white/[0.03] rounded-2xl border border-white/[0.06]">
       {/* Header */}
-      <div className="p-6 border-b">
+      <div className="p-6 border-b border-white/[0.06]">
         <div className="flex justify-between items-center">
           <div>
-            <h3 className="text-lg font-semibold text-gray-800">{t('document_gallery.title')}</h3>
-            <p className="text-sm text-gray-500">{t('document_gallery.subtitle')}</p>
+            <h3 className="text-lg font-semibold text-white">{t('document_gallery.title')}</h3>
+            <p className="text-sm text-white/40">{t('document_gallery.subtitle')}</p>
           </div>
-          <div className="text-sm text-gray-500">
+          <div className="text-sm text-white/40">
             {t('document_gallery.count', { count: documents.length })}
           </div>
         </div>
@@ -268,13 +268,13 @@ export default function DocumentGallery({ patientId, readOnly = false }: Documen
       <div className="p-6">
         {/* Mensajes de estado */}
         {error && (
-          <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg">
+          <div className="mb-4 p-3 bg-red-500/10 border border-red-500/20 text-red-400 rounded-lg">
             <span className="text-sm">{error}</span>
           </div>
         )}
 
         {success && (
-          <div className="mb-4 p-3 bg-green-50 border border-green-200 text-green-700 rounded-lg">
+          <div className="mb-4 p-3 bg-green-500/10 border border-green-500/20 text-green-400 rounded-lg">
             <span className="text-sm">{success}</span>
           </div>
         )}
@@ -284,9 +284,9 @@ export default function DocumentGallery({ patientId, readOnly = false }: Documen
           <div className="mb-8">
             <div
               className={`
-                border-2 border-dashed rounded-lg p-4 sm:p-8 text-center transition-colors
-                ${dragActive ? 'border-primary bg-primary/5' : 'border-gray-300 hover:border-primary'}
-                ${selectedFile ? 'bg-green-50 border-green-300' : ''}
+                border-2 border-dashed rounded-xl p-4 sm:p-8 text-center transition-colors
+                ${dragActive ? 'border-blue-500/50 bg-blue-500/5' : 'border-white/[0.12] hover:border-blue-500/30'}
+                ${selectedFile ? 'bg-green-500/5 border-green-500/30' : ''}
               `}
               onDragEnter={handleDrag}
               onDragLeave={handleDrag}
@@ -298,14 +298,14 @@ export default function DocumentGallery({ patientId, readOnly = false }: Documen
                   <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
                     {getFileIcon(selectedFile.type)}
                     <div className="text-center sm:text-left break-all">
-                      <p className="font-medium text-gray-800">{selectedFile.name}</p>
-                      <p className="text-sm text-gray-500">
+                      <p className="font-medium text-white">{selectedFile.name}</p>
+                      <p className="text-sm text-white/40">
                         {formatFileSize(selectedFile.size)} • {selectedFile.type}
                       </p>
                     </div>
                     <button
                       onClick={() => setSelectedFile(null)}
-                      className="p-1 hover:bg-gray-100 rounded"
+                      className="p-1 hover:bg-white/[0.06] rounded"
                     >
                       <X size={18} />
                     </button>
@@ -313,7 +313,7 @@ export default function DocumentGallery({ patientId, readOnly = false }: Documen
 
                   <div className="space-y-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                      <label className="block text-sm font-medium text-white/50 mb-2">
                         {t('document_gallery.select_type')}
                       </label>
                       <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
@@ -324,8 +324,8 @@ export default function DocumentGallery({ patientId, readOnly = false }: Documen
                             className={`
                               flex flex-col items-center p-3 rounded-lg border transition-colors
                               ${documentType === type.id
-                                ? 'bg-primary text-white border-primary'
-                                : 'bg-white border-gray-200 hover:bg-gray-50'
+                                ? 'bg-blue-500/20 text-blue-400 border-blue-500/40'
+                                : 'bg-white/[0.04] border-white/[0.08] text-white/50 hover:bg-white/[0.08]'
                               }
                             `}
                           >
@@ -348,12 +348,12 @@ export default function DocumentGallery({ patientId, readOnly = false }: Documen
                 </div>
               ) : (
                 <>
-                  <Upload className="mx-auto mb-4 text-gray-400" size={48} />
-                  <h4 className="text-lg font-medium text-gray-700 mb-2">
+                  <Upload className="mx-auto mb-4 text-white/20" size={48} />
+                  <h4 className="text-lg font-medium text-white/60 mb-2">
                     {t('document_gallery.drag_drop_title')}
                   </h4>
-                  <p className="text-gray-500 mb-4">{t('document_gallery.drag_drop_desc')}</p>
-                  <label className="inline-flex items-center gap-2 bg-gray-100 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-200 cursor-pointer">
+                  <p className="text-white/40 mb-4">{t('document_gallery.drag_drop_desc')}</p>
+                  <label className="inline-flex items-center gap-2 bg-white/[0.06] text-white/60 border border-white/[0.08] px-4 py-2 rounded-lg hover:bg-white/[0.10] cursor-pointer transition-colors">
                     <Upload size={16} />
                     {t('document_gallery.browse_files')}
                     <input
@@ -363,7 +363,7 @@ export default function DocumentGallery({ patientId, readOnly = false }: Documen
                       accept=".pdf,.jpg,.jpeg,.png,.gif,.doc,.docx"
                     />
                   </label>
-                  <p className="mt-3 text-xs text-gray-400">
+                  <p className="mt-3 text-xs text-white/30">
                     {t('document_gallery.supported_formats')}
                   </p>
                 </>
@@ -376,22 +376,22 @@ export default function DocumentGallery({ patientId, readOnly = false }: Documen
         {loading ? (
           <div className="text-center py-8">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
-            <p className="mt-2 text-gray-500">{t('document_gallery.loading')}</p>
+            <p className="mt-2 text-white/40">{t('document_gallery.loading')}</p>
           </div>
         ) : documents.length === 0 ? (
           <div className="text-center py-8">
-            <FileText className="mx-auto mb-4 text-gray-300" size={48} />
-            <h4 className="text-lg font-medium text-gray-700 mb-2">
+            <FileText className="mx-auto mb-4 text-white/20" size={48} />
+            <h4 className="text-lg font-medium text-white/50 mb-2">
               {t('document_gallery.no_documents_title')}
             </h4>
-            <p className="text-gray-500">{t('document_gallery.no_documents_desc')}</p>
+            <p className="text-white/40">{t('document_gallery.no_documents_desc')}</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {documents.map(document => (
               <div
                 key={document.id}
-                className="border rounded-lg overflow-hidden hover:shadow-md transition-shadow"
+                className="border border-white/[0.06] rounded-xl overflow-hidden hover:border-white/[0.12] transition-all bg-white/[0.02]"
               >
                 <div className="p-4">
                   <div className="flex items-start gap-3">
@@ -399,36 +399,36 @@ export default function DocumentGallery({ patientId, readOnly = false }: Documen
                       {getFileIcon(document.mime_type)}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="font-medium text-gray-800 truncate" title={document.filename}>
+                      <p className="font-medium text-white truncate" title={document.filename}>
                         {document.filename}
                       </p>
                       <div className="flex items-center gap-2 mt-1">
-                        <span className="inline-flex items-center px-2 py-0.5 bg-blue-100 text-blue-800 text-xs rounded-full">
+                        <span className="inline-flex items-center px-2 py-0.5 bg-blue-500/10 text-blue-400 text-xs rounded-full">
                           {t(`document_gallery.types.${document.document_type}`)}
                         </span>
-                        <span className="text-xs text-gray-500">
+                        <span className="text-xs text-white/40">
                           {formatFileSize(document.file_size)}
                         </span>
                         {document.source && (
-                          <span className="inline-flex items-center px-1.5 py-0.5 bg-gray-100 text-gray-600 text-[10px] rounded uppercase font-bold">
+                          <span className="inline-flex items-center px-1.5 py-0.5 bg-white/[0.06] text-white/50 text-[10px] rounded uppercase font-bold">
                             {document.source}
                           </span>
                         )}
                       </div>
-                      <p className="text-xs text-gray-400 mt-2">
+                      <p className="text-xs text-white/30 mt-2">
                         {t('document_gallery.uploaded_on')} {formatDate(document.uploaded_at || document.created_at)}
                       </p>
                     </div>
                   </div>
                 </div>
 
-                <div className="border-t px-4 py-3 bg-gray-50">
+                <div className="border-t border-white/[0.04] px-4 py-3 bg-white/[0.02]">
                   <div className="flex justify-end gap-2">
                     {document.mime_type?.startsWith('image/') && (
                       <button
                         onClick={() => handlePreview(document)}
                         disabled={downloadingId === document.id}
-                        className={`p-2 text-gray-600 hover:text-primary hover:bg-gray-100 rounded ${downloadingId === document.id ? 'opacity-50 cursor-wait' : ''}`}
+                        className={`p-2 text-white/40 hover:text-blue-400 hover:bg-white/[0.06] rounded transition-colors ${downloadingId === document.id ? 'opacity-50 cursor-wait' : ''}`}
                         title={t('document_gallery.preview')}
                       >
                         <Eye size={16} />
@@ -437,7 +437,7 @@ export default function DocumentGallery({ patientId, readOnly = false }: Documen
                     <button
                       onClick={() => handleDownload(document)}
                       disabled={downloadingId === document.id}
-                      className={`p-2 text-gray-600 hover:text-primary hover:bg-gray-100 rounded ${downloadingId === document.id ? 'opacity-50 cursor-wait' : ''}`}
+                      className={`p-2 text-white/40 hover:text-blue-400 hover:bg-white/[0.06] rounded transition-colors ${downloadingId === document.id ? 'opacity-50 cursor-wait' : ''}`}
                       title={t('document_gallery.download')}
                     >
                       <Download size={16} />
@@ -446,7 +446,7 @@ export default function DocumentGallery({ patientId, readOnly = false }: Documen
                       <button
                         onClick={() => handleDelete(document.id)}
                         disabled={deletingId === document.id}
-                        className="p-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded disabled:opacity-50"
+                        className="p-2 text-white/40 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors disabled:opacity-50"
                         title={t('document_gallery.delete')}
                       >
                         <Trash2 size={16} />
@@ -463,18 +463,18 @@ export default function DocumentGallery({ patientId, readOnly = false }: Documen
       {/* Modal de preview con Adaptación Mobile */}
       {previewUrl && (
         <div className="fixed inset-0 bg-black bg-opacity-75 flex items-end sm:items-center justify-center z-50">
-          <div className="bg-white w-full sm:max-w-4xl h-[90vh] sm:h-auto sm:max-h-[90vh] rounded-t-xl sm:rounded-lg overflow-hidden flex flex-col">
-            <div className="flex justify-between items-center p-4 border-b shrink-0 bg-white">
-              <h3 className="font-semibold text-gray-800">{t('document_gallery.preview_title')}</h3>
+          <div className="bg-[#0d1117] w-full sm:max-w-4xl h-[90vh] sm:h-auto sm:max-h-[90vh] rounded-t-xl sm:rounded-lg overflow-hidden flex flex-col border border-white/[0.08]">
+            <div className="flex justify-between items-center p-4 border-b border-white/[0.06] shrink-0">
+              <h3 className="font-semibold text-white">{t('document_gallery.preview_title')}</h3>
               <button
                 onClick={handleClosePreview}
-                className="p-1 hover:bg-gray-100 rounded-full bg-gray-50"
+                className="p-1 hover:bg-white/[0.06] rounded-full bg-white/[0.04] text-white/50"
               >
                 <X size={20} />
               </button>
             </div>
 
-            <div className="flex-1 overflow-auto bg-gray-50 p-4 flex items-center justify-center">
+            <div className="flex-1 overflow-auto bg-black/30 p-4 flex items-center justify-center">
               <img
                 src={previewUrl}
                 alt="Preview"
@@ -482,10 +482,10 @@ export default function DocumentGallery({ patientId, readOnly = false }: Documen
               />
             </div>
 
-            <div className="p-4 border-t flex flex-col sm:flex-row justify-end gap-3 bg-white shrink-0">
+            <div className="p-4 border-t border-white/[0.06] flex flex-col sm:flex-row justify-end gap-3 bg-white/[0.02] shrink-0">
               <button
                 onClick={handleClosePreview}
-                className="w-full sm:w-auto px-4 py-3 sm:py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 font-medium"
+                className="w-full sm:w-auto px-4 py-3 sm:py-2 text-white/60 bg-white/[0.06] border border-white/[0.08] rounded-lg hover:bg-white/[0.10] font-medium"
               >
                 {t('common.close')}
               </button>

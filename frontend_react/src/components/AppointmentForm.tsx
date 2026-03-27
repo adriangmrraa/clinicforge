@@ -329,7 +329,7 @@ export default function AppointmentForm({
 
                 <div className="flex-1 overflow-y-auto p-6 space-y-6">
                     {error && (
-                        <div className="p-3 bg-red-50 text-red-700 text-sm rounded-lg flex items-center gap-2">
+                        <div className="p-3 bg-red-500/10 text-red-400 text-sm rounded-lg flex items-center gap-2 border border-red-500/20">
                             <AlertTriangle size={16} />
                             {error}
                         </div>
@@ -406,7 +406,7 @@ export default function AppointmentForm({
                             </div>
 
                             {collisionWarning && (
-                                <div className="p-3 bg-yellow-50 text-yellow-800 text-xs rounded-lg flex items-start gap-2 border border-yellow-100">
+                                <div className="p-3 bg-yellow-500/10 text-yellow-400 text-xs rounded-lg flex items-start gap-2 border border-yellow-500/20">
                                     <AlertTriangle size={14} className="mt-0.5 flex-shrink-0" />
                                     <span>{collisionWarning}</span>
                                 </div>
@@ -423,7 +423,7 @@ export default function AppointmentForm({
                                             type="button"
                                             onClick={() => handleChange('appointment_type', s.code)}
                                             className={`px-3 py-2 text-xs font-medium rounded-lg border transition-all ${formData.appointment_type === s.code
-                                                ? 'bg-blue-50 border-blue-200 text-blue-700 shadow-sm'
+                                                ? 'bg-blue-500/15 border-blue-500/30 text-blue-400 shadow-sm'
                                                 : 'bg-white/[0.04] border-white/[0.08] text-white/50 hover:bg-white/[0.06]'
                                                 }`}
                                         >
@@ -435,7 +435,7 @@ export default function AppointmentForm({
 
                             {/* Estado del turno — solo en edición */}
                             {isEditing && (
-                                <div className="space-y-2 p-4 bg-slate-50 rounded-xl border border-slate-200">
+                                <div className="space-y-2 p-4 bg-white/[0.03] rounded-xl border border-white/[0.06]">
                                     <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">{t('agenda.appointment_status')}</label>
                                     <p className="text-xs text-slate-400">{t('agenda.status_completed_hint')}</p>
                                     <div className="grid grid-cols-3 gap-2">
@@ -542,7 +542,7 @@ export default function AppointmentForm({
                                                             ? ps === 'paid' ? 'bg-green-100 border-green-300 text-green-700'
                                                               : ps === 'partial' ? 'bg-yellow-100 border-yellow-300 text-yellow-700'
                                                               : 'bg-white/[0.04] border-white/[0.08] text-white/50'
-                                                            : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'
+                                                            : 'bg-white/[0.04] border-white/[0.08] text-white/50 hover:bg-white/[0.06]'
                                                     }`}>
                                                     {t(`agenda.payment_${ps}`)}
                                                 </button>
@@ -557,7 +557,7 @@ export default function AppointmentForm({
                                         const isVerified = parsed.status === 'verified';
                                         const filePath = parsed.receipt_file_path;
                                         return (
-                                            <div className={`rounded-xl border p-4 space-y-3 ${isVerified ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+                                            <div className={`rounded-xl border p-4 space-y-3 ${isVerified ? 'bg-green-500/10 border-green-500/20' : 'bg-red-500/10 border-red-500/20'}`}>
                                                 <div className="flex items-center justify-between">
                                                     <h4 className="text-xs font-bold text-gray-700 flex items-center gap-1.5">
                                                         <DollarSign size={14} /> Comprobante de pago
@@ -567,7 +567,7 @@ export default function AppointmentForm({
                                                     </span>
                                                 </div>
                                                 {filePath && (
-                                                    <div className="rounded-lg overflow-hidden border border-gray-200 bg-white">
+                                                    <div className="rounded-lg overflow-hidden border border-white/[0.08] bg-white/[0.04]">
                                                         <img
                                                             src={filePath.startsWith('/uploads') ? `${(window as any).__API_URL || ''}${filePath}` : filePath}
                                                             alt="Comprobante"
@@ -601,7 +601,7 @@ export default function AppointmentForm({
                                     })()}
 
                                     {billingSuccess && (
-                                        <div className="flex items-center gap-2 text-green-600 text-xs bg-green-50 px-3 py-2 rounded-lg">
+                                        <div className="flex items-center gap-2 text-green-400 text-xs bg-green-500/10 px-3 py-2 rounded-lg">
                                             <Check size={14} /> {billingSuccess}
                                         </div>
                                     )}
@@ -636,12 +636,12 @@ export default function AppointmentForm({
                     )}
                 </div>
 
-                <div className="sticky bottom-0 bg-white/80 backdrop-blur-md border-t border-gray-100 p-4 flex items-center justify-between gap-4">
+                <div className="sticky bottom-0 bg-[#0d1117]/90 backdrop-blur-md border-t border-white/[0.06] p-4 flex items-center justify-between gap-4">
                     {isEditing && onDelete ? (
                         <button
                             type="button"
                             onClick={handleDelete}
-                            className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                            className="p-2 text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
                         >
                             <Trash2 size={20} />
                         </button>
@@ -650,7 +650,7 @@ export default function AppointmentForm({
                             <button
                                 type="button"
                                 onClick={handleFollowup}
-                                className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors border border-blue-100"
+                                className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-blue-400 bg-blue-500/10 hover:bg-blue-500/20 rounded-lg transition-colors border border-blue-500/20"
                             >
                                 <Calendar size={14} />
                                 {t('agenda.schedule_followup')}
@@ -662,7 +662,7 @@ export default function AppointmentForm({
                         <button
                             type="button"
                             onClick={onClose}
-                            className="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                            className="px-4 py-2 text-sm font-medium text-white/50 hover:bg-white/[0.06] rounded-lg transition-colors"
                         >
                             {t('common.cancel')}
                         </button>

@@ -78,13 +78,13 @@ export const AppointmentCard: React.FC<EventContentArg> = (eventInfo) => {
     // --- GCal Block Rendering ---
     if (isGCal) {
         return (
-            <div className="flex flex-col h-full p-1.5 rounded-lg border-l-4 border-l-gray-400 bg-gray-50/80 backdrop-blur-sm overflow-hidden shadow-sm hover:shadow-md transition-all duration-200"
-                style={{ backgroundImage: 'repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(0,0,0,0.03) 10px, rgba(0,0,0,0.03) 20px)' }}>
-                <div className="flex items-center gap-1.5 text-gray-500 font-semibold text-[10px] uppercase tracking-wider mb-1 opacity-70">
+            <div className="flex flex-col h-full p-1.5 rounded-lg border-l-4 border-l-white/20 bg-white/[0.04] backdrop-blur-sm overflow-hidden hover:bg-white/[0.06] transition-all duration-200"
+                style={{ backgroundImage: 'repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(255,255,255,0.02) 10px, rgba(255,255,255,0.02) 20px)' }}>
+                <div className="flex items-center gap-1.5 text-white/40 font-semibold text-[10px] uppercase tracking-wider mb-1 opacity-70">
                     <CloudOff size={10} />
                     <span>GCalendar</span>
                 </div>
-                <div className="font-medium text-xs text-gray-700 truncate leading-tight">
+                <div className="font-medium text-xs text-white/60 truncate leading-tight">
                     {eventInfo.event.title.replace('🔒 ', '')}
                 </div>
             </div>
@@ -124,7 +124,7 @@ export const AppointmentCard: React.FC<EventContentArg> = (eventInfo) => {
 
                 {/* Treatment Badge */}
                 <div className="flex">
-                    <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-medium bg-white/60 backdrop-blur-sm text-slate-700 truncate max-w-full">
+                    <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-medium bg-white/[0.08] backdrop-blur-sm text-white/60 truncate max-w-full">
                         {props.appointment_name || props.appointment_type || 'Consulta'}
                     </span>
                 </div>
