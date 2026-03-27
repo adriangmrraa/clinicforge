@@ -496,198 +496,21 @@ NOVA_TOOLS_SCHEMA: List[Dict[str, Any]] = [
         },
     },
 
-    # === G. TOOLS QUE FALTAN — Staff operations ===
-
-    {
-        "type": "function",
-        "function": {
-            "name": "listar_profesionales",
-            "description": "Lista dentistas/profesionales activos con especialidad, horarios y precio de consulta.",
-            "parameters": {"type": "object", "properties": {}},
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "reprogramar_turno",
-            "description": "Reprograma un turno existente a nueva fecha/hora.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "appointment_id": {"type": "string", "description": "UUID del turno"},
-                    "new_date": {"type": "string", "description": "Nueva fecha YYYY-MM-DD"},
-                    "new_time": {"type": "string", "description": "Nueva hora HH:MM (24h)"},
-                },
-                "required": ["appointment_id", "new_date", "new_time"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "ver_configuracion",
-            "description": "Ver configuracion de la clinica: nombre, direccion, horarios, datos bancarios, precio consulta.",
-            "parameters": {"type": "object", "properties": {}},
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "actualizar_configuracion",
-            "description": "Actualizar configuracion de la clinica. Solo CEO.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "field": {"type": "string", "enum": ["clinic_name", "clinic_location", "clinic_phone", "working_hours_start", "working_hours_end", "bank_cbu", "bank_alias", "bank_holder_name", "consultation_price", "website"]},
-                    "value": {"type": "string"},
-                },
-                "required": ["field", "value"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "crear_tratamiento",
-            "description": "Crear nuevo tipo de tratamiento. Solo CEO.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "name": {"type": "string"},
-                    "code": {"type": "string", "description": "Codigo unico (ej: blanqueamiento, ortodoncia)"},
-                    "duration_minutes": {"type": "integer"},
-                    "base_price": {"type": "number"},
-                    "category": {"type": "string", "enum": ["prevention", "restorative", "surgical", "orthodontics", "emergency"]},
-                },
-                "required": ["name", "code", "duration_minutes"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "editar_tratamiento",
-            "description": "Editar un tipo de tratamiento existente. Solo CEO.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "code": {"type": "string"},
-                    "field": {"type": "string", "enum": ["name", "duration_minutes", "base_price", "category", "is_active"]},
-                    "value": {"type": "string"},
-                },
-                "required": ["code", "field", "value"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "ver_chats_recientes",
-            "description": "Ver ultimas conversaciones de WhatsApp/Instagram/Facebook con pacientes.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "limit": {"type": "integer", "description": "Cantidad de chats (default 10)"},
-                },
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "enviar_mensaje",
-            "description": "Enviar mensaje de WhatsApp a un paciente.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "phone": {"type": "string", "description": "Telefono del paciente con codigo de area"},
-                    "message": {"type": "string", "description": "Texto del mensaje"},
-                },
-                "required": ["phone", "message"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "ver_estadisticas",
-            "description": "Estadisticas generales: turnos, pacientes, facturacion, cancelaciones. Acepta periodo.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "period": {"type": "string", "enum": ["hoy", "semana", "mes", "año"], "description": "Periodo (default: semana)"},
-                },
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "bloquear_agenda",
-            "description": "Crear bloque de horario no disponible en la agenda (reunion, descanso, etc).",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "professional_id": {"type": "integer"},
-                    "start_datetime": {"type": "string", "description": "Inicio YYYY-MM-DD HH:MM"},
-                    "end_datetime": {"type": "string", "description": "Fin YYYY-MM-DD HH:MM"},
-                    "reason": {"type": "string"},
-                },
-                "required": ["professional_id", "start_datetime", "end_datetime"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "eliminar_paciente",
-            "description": "Desactivar un paciente (soft delete). Solo CEO.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "patient_id": {"type": "integer"},
-                },
-                "required": ["patient_id"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "ver_faqs",
-            "description": "Lista las FAQs configuradas para el chatbot de WhatsApp.",
-            "parameters": {"type": "object", "properties": {}},
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "eliminar_faq",
-            "description": "Eliminar una FAQ por ID.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "faq_id": {"type": "integer"},
-                },
-                "required": ["faq_id"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "cambiar_estado_turno",
-            "description": "Cambiar estado de un turno: completed, no-show, in-progress.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "appointment_id": {"type": "string"},
-                    "status": {"type": "string", "enum": ["completed", "no-show", "in-progress", "confirmed"]},
-                },
-                "required": ["appointment_id", "status"],
-            },
-        },
-    },
+    # === G. Staff operations ===
+    {"type": "function", "name": "listar_profesionales", "description": "Lista dentistas/profesionales activos con especialidad, horarios y precio de consulta.", "parameters": {"type": "object", "properties": {}}},
+    {"type": "function", "name": "reprogramar_turno", "description": "Reprograma un turno existente a nueva fecha/hora.", "parameters": {"type": "object", "properties": {"appointment_id": {"type": "string", "description": "UUID del turno"}, "new_date": {"type": "string", "description": "Nueva fecha YYYY-MM-DD"}, "new_time": {"type": "string", "description": "Nueva hora HH:MM"}}, "required": ["appointment_id", "new_date", "new_time"]}},
+    {"type": "function", "name": "ver_configuracion", "description": "Ver configuracion de la clinica: nombre, direccion, horarios, datos bancarios, precio consulta.", "parameters": {"type": "object", "properties": {}}},
+    {"type": "function", "name": "actualizar_configuracion", "description": "Actualizar configuracion de la clinica. Solo CEO.", "parameters": {"type": "object", "properties": {"field": {"type": "string", "enum": ["clinic_name", "clinic_location", "clinic_phone", "working_hours_start", "working_hours_end", "bank_cbu", "bank_alias", "bank_holder_name", "consultation_price", "website"]}, "value": {"type": "string"}}, "required": ["field", "value"]}},
+    {"type": "function", "name": "crear_tratamiento", "description": "Crear nuevo tipo de tratamiento. Solo CEO.", "parameters": {"type": "object", "properties": {"name": {"type": "string"}, "code": {"type": "string"}, "duration_minutes": {"type": "integer"}, "base_price": {"type": "number"}, "category": {"type": "string", "enum": ["prevention", "restorative", "surgical", "orthodontics", "emergency"]}}, "required": ["name", "code", "duration_minutes"]}},
+    {"type": "function", "name": "editar_tratamiento", "description": "Editar un tipo de tratamiento existente. Solo CEO.", "parameters": {"type": "object", "properties": {"code": {"type": "string"}, "field": {"type": "string", "enum": ["name", "duration_minutes", "base_price", "category", "is_active"]}, "value": {"type": "string"}}, "required": ["code", "field", "value"]}},
+    {"type": "function", "name": "ver_chats_recientes", "description": "Ver ultimas conversaciones de WhatsApp/Instagram/Facebook.", "parameters": {"type": "object", "properties": {"limit": {"type": "integer", "description": "Cantidad de chats (default 10)"}}}},
+    {"type": "function", "name": "enviar_mensaje", "description": "Enviar mensaje de WhatsApp a un paciente.", "parameters": {"type": "object", "properties": {"phone": {"type": "string", "description": "Telefono con codigo de area"}, "message": {"type": "string", "description": "Texto del mensaje"}}, "required": ["phone", "message"]}},
+    {"type": "function", "name": "ver_estadisticas", "description": "Estadisticas generales: turnos, pacientes, facturacion, cancelaciones.", "parameters": {"type": "object", "properties": {"period": {"type": "string", "enum": ["hoy", "semana", "mes", "año"]}}}},
+    {"type": "function", "name": "bloquear_agenda", "description": "Crear bloque de horario no disponible.", "parameters": {"type": "object", "properties": {"professional_id": {"type": "integer"}, "start_datetime": {"type": "string", "description": "Inicio YYYY-MM-DD HH:MM"}, "end_datetime": {"type": "string", "description": "Fin YYYY-MM-DD HH:MM"}, "reason": {"type": "string"}}, "required": ["professional_id", "start_datetime", "end_datetime"]}},
+    {"type": "function", "name": "eliminar_paciente", "description": "Desactivar paciente (soft delete). Solo CEO.", "parameters": {"type": "object", "properties": {"patient_id": {"type": "integer"}}, "required": ["patient_id"]}},
+    {"type": "function", "name": "ver_faqs", "description": "Lista FAQs del chatbot.", "parameters": {"type": "object", "properties": {}}},
+    {"type": "function", "name": "eliminar_faq", "description": "Eliminar FAQ por ID.", "parameters": {"type": "object", "properties": {"faq_id": {"type": "integer"}}, "required": ["faq_id"]}},
+    {"type": "function", "name": "cambiar_estado_turno", "description": "Cambiar estado de turno: completed, no-show, in-progress, confirmed.", "parameters": {"type": "object", "properties": {"appointment_id": {"type": "string"}, "status": {"type": "string", "enum": ["completed", "no-show", "in-progress", "confirmed"]}}, "required": ["appointment_id", "status"]}},
     # -------------------------------------------------------------------------
     # H. Anamnesis por voz (NEW)
     # -------------------------------------------------------------------------

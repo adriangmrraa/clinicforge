@@ -4572,7 +4572,7 @@ async def _nova_realtime_handler(websocket: WebSocket, session_id: str):
                     "input_audio_format": "pcm16",
                     "output_audio_format": "pcm16",
                     "input_audio_transcription": {"model": "whisper-1"},
-                    "tools": NOVA_TOOLS_SCHEMA[:20],
+                    "tools": NOVA_TOOLS_SCHEMA,
                     "tool_choice": "auto",
                     "turn_detection": {
                         "type": "server_vad",
@@ -4582,9 +4582,8 @@ async def _nova_realtime_handler(websocket: WebSocket, session_id: str):
                     }
                 }
             }))
-            tools_sent = NOVA_TOOLS_SCHEMA[:20]
-            tool_names = [t.get("name", "?") for t in tools_sent]
-            logger.info(f"🎙️ NOVA: session.update sent with {len(tools_sent)} tools: {tool_names}")
+            tool_names = [t.get("name", "?") for t in NOVA_TOOLS_SCHEMA]
+            logger.info(f"🎙️ NOVA: session.update sent with {len(NOVA_TOOLS_SCHEMA)} tools: {tool_names}")
             logger.info(f"🎙️ NOVA: prompt={len(config.get('system_prompt', ''))} chars")
 
             async def client_to_openai():
