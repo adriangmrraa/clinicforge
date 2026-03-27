@@ -24,6 +24,9 @@ export const Layout: React.FC<LayoutProps> = ({ children }: LayoutProps) => {
   const [isConnected, setIsConnected] = useState(true);
   const [isReconnecting, setIsReconnecting] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
+  const [novaTooltip, setNovaTooltip] = useState(false);
+  const [guideTooltip, setGuideTooltip] = useState(false);
+  const tooltipShownRef = useRef(false);
 
   // Notification State
   const [notification, setNotification] = useState<{
@@ -38,6 +41,20 @@ export const Layout: React.FC<LayoutProps> = ({ children }: LayoutProps) => {
   } | null>(null);
 
   // Global Socket Listener for Handoffs
+  // Tooltip sequence: Nova at 3s, Guide at 8s — only once per session
+  useEffect(() => {
+    if (tooltipShownRef.current) return;
+    const alreadyShown = sessionStorage.getItem('tooltips_shown');
+    if (alreadyShown) return;
+    tooltipShownRef.current = true;
+
+    const t1 = setTimeout(() => { setNovaTooltip(true); }, 3000);
+    const t2 = setTimeout(() => { setNovaTooltip(false); }, 7000);
+    const t3 = setTimeout(() => { setGuideTooltip(true); }, 8000);
+    const t4 = setTimeout(() => { setGuideTooltip(false); sessionStorage.setItem('tooltips_shown', '1'); }, 12000);
+    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); clearTimeout(t4); };
+  }, []);
+
   useEffect(() => {
     if (!user) return;
 
@@ -232,15 +249,26 @@ export const Layout: React.FC<LayoutProps> = ({ children }: LayoutProps) => {
 
           <div className="flex items-center gap-2 lg:gap-3">
             {/* Guide Button — animated attention-grabber */}
-            <button
-              onClick={() => setShowGuide(true)}
-              className="guide-btn relative flex items-center justify-center w-9 h-9 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20 hover:bg-blue-500/25 hover:scale-110 active:scale-90 transition-all duration-200"
-              title="Guia de la pagina"
-            >
-              <HelpCircle size={18} className="guide-icon" />
-              {/* Ping ring */}
-              <span className="absolute inset-0 rounded-full border-2 border-blue-400/40 animate-[guidePing_3s_ease-out_infinite]" />
-            </button>
+            <div className="relative">
+              <button
+                onClick={() => { setShowGuide(true); setGuideTooltip(false); }}
+                className="guide-btn relative flex items-center justify-center w-9 h-9 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20 hover:bg-blue-500/25 hover:scale-110 active:scale-90 transition-all duration-200"
+                title="Guia de la pagina"
+              >
+                <HelpCircle size={18} className="guide-icon" />
+                <span className="absolute inset-0 rounded-full border-2 border-blue-400/40 animate-[guidePing_3s_ease-out_infinite]" />
+              </button>
+              {/* Tooltip popup */}
+              {guideTooltip && (
+                <div
+                  className="absolute top-12 right-0 w-52 px-3 py-2 rounded-xl bg-blue-500/90 backdrop-blur-md text-white text-[11px] leading-snug shadow-xl shadow-blue-500/20 pointer-events-none"
+                  style={{ animation: 'tooltipIn 0.4s cubic-bezier(0.16,1,0.3,1)' }}
+                >
+                  <div className="absolute -top-1.5 right-4 w-3 h-3 bg-blue-500/90 rotate-45" />
+                  Toca aca para ver una guia de esta pagina y aprender que hace cada funcion
+                </div>
+              )}
+            </div>
 
             {/* Connection Status Chip */}
             <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] lg:text-xs font-medium transition-colors ${isReconnecting ? 'bg-orange-500/10 text-orange-400 animate-pulse' :
@@ -280,6 +308,22 @@ export const Layout: React.FC<LayoutProps> = ({ children }: LayoutProps) => {
 
       {/* Nova AI Widget */}
       <NovaWidget />
+
+      {/* Nova tooltip — positioned near the floating button */}
+      {novaTooltip && (
+        <div
+          className="fixed z-[9999] pointer-events-none"
+          style={{ bottom: 'calc(max(1.5rem, env(safe-area-inset-bottom)) + 60px)', right: '1.5rem' }}
+        >
+          <div
+            className="w-56 px-3 py-2.5 rounded-xl bg-violet-500/90 backdrop-blur-md text-white text-[11px] leading-snug shadow-xl shadow-violet-500/20"
+            style={{ animation: 'tooltipIn 0.4s cubic-bezier(0.16,1,0.3,1)' }}
+          >
+            Soy Nova, tu asistente de voz. Toca para hablarme y operar la clinica sin tocar la pantalla
+            <div className="absolute -bottom-1.5 right-5 w-3 h-3 bg-violet-500/90 rotate-45" />
+          </div>
+        </div>
+      )}
 
       {/* Onboarding Guide */}
       <OnboardingGuide isOpen={showGuide} onClose={() => setShowGuide(false)} />
