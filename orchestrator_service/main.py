@@ -1602,16 +1602,25 @@ async def book_appointment(date_time: str, treatment_reason: str,
                 "SELECT bank_cbu, bank_alias, bank_holder_name, consultation_price FROM tenants WHERE id = $1",
                 tenant_id
             )
+            logger.info(f"💰 SEÑA DEBUG: tenant_id={tenant_id} bank_holder={t_bank.get('bank_holder_name') if t_bank else 'NO_TENANT'} tenant_price={t_bank.get('consultation_price') if t_bank else 'N/A'}")
+
             if t_bank and t_bank.get("bank_holder_name"):
                 # Seña = 50% of: professional price > tenant price > treatment price
                 sena_price = None
                 prof_price = await db.pool.fetchval("SELECT consultation_price FROM professionals WHERE id = $1", target_prof["id"])
-                if prof_price and float(prof_price) > 0:
+                logger.info(f"💰 SEÑA DEBUG: prof_id={target_prof['id']} prof_name={target_prof['first_name']} prof_consultation_price={prof_price}")
+
+                if prof_price is not None and float(prof_price) > 0:
                     sena_price = float(prof_price) / 2
-                elif t_bank.get("consultation_price") and float(t_bank["consultation_price"]) > 0:
+                    logger.info(f"💰 SEÑA: Using professional price {prof_price} → seña = {sena_price}")
+                elif t_bank.get("consultation_price") is not None and float(t_bank["consultation_price"]) > 0:
                     sena_price = float(t_bank["consultation_price"]) / 2
+                    logger.info(f"💰 SEÑA: Using tenant price {t_bank['consultation_price']} → seña = {sena_price}")
                 elif treatment_price and treatment_price > 0:
                     sena_price = treatment_price / 2
+                    logger.info(f"💰 SEÑA: Using treatment price {treatment_price} → seña = {sena_price}")
+                else:
+                    logger.warning(f"💰 SEÑA: NO PRICE FOUND! prof_price={prof_price}, tenant_price={t_bank.get('consultation_price')}, treatment_price={treatment_price}")
 
                 if sena_price and sena_price > 0:
                     sena_str = f"${int(sena_price):,}".replace(",", ".")
@@ -1624,8 +1633,15 @@ async def book_appointment(date_time: str, treatment_reason: str,
                     bank_lines.append(f"Titular: {t_bank['bank_holder_name']}")
                     bank_lines.append("[/INTERNAL_SEÑA_DATA]")
                     sena_block = "\n".join(bank_lines)
-        except Exception:
-            pass
+                    logger.info(f"💰 SEÑA BLOCK GENERATED: {sena_str} for prof {target_prof['first_name']}")
+                else:
+                    logger.warning(f"💰 SEÑA BLOCK NOT GENERATED: sena_price={sena_price}")
+            else:
+                logger.warning(f"💰 SEÑA SKIPPED: No bank_holder_name configured for tenant {tenant_id}")
+        except Exception as sena_err:
+            logger.error(f"💰 SEÑA ERROR: {sena_err}")
+            import traceback
+            logger.error(f"💰 SEÑA TRACEBACK: {traceback.format_exc()}")
 
         # Build sede line with emoji
         sede_line = ""
@@ -1633,13 +1649,15 @@ async def book_appointment(date_time: str, treatment_reason: str,
             sede_clean = booking_sede.strip().replace("\nSede: ", "").replace("\nDirección: ", "")
             sede_line = f"\n📍 {sede_clean}"
 
+        logger.info(f"📋 BOOKING RESPONSE DEBUG: treatment={treatment_display_name} price={treatment_price} sena_block_len={len(sena_block)} has_sena={'INTERNAL_SEÑA_DATA' in sena_block}")
+
         if is_third_party:
             interlocutor = await db.pool.fetchrow(
                 "SELECT first_name, last_name FROM patients WHERE tenant_id = $1 AND phone_number = $2",
                 tenant_id, chat_phone,
             )
             interlocutor_name = f"{interlocutor['first_name']} {interlocutor.get('last_name', '')}".strip() if interlocutor else "el interlocutor"
-            return (
+            result = (
                 f"✅ Turno confirmado para {patient_label} (solicitado por {interlocutor_name}):\n"
                 f"🦷 {treatment_display_name}\n"
                 f"📅 {dia_nombre} {apt_datetime.strftime('%d/%m')} a las {apt_datetime.strftime('%H:%M')}\n"
@@ -1649,8 +1667,10 @@ async def book_appointment(date_time: str, treatment_reason: str,
                 f"[INTERNAL_PATIENT_PHONE:{phone}]\n"
                 f"[INTERNAL_ANAMNESIS_URL:{patient_anamnesis_url}]"
             )
+            logger.info(f"📋 BOOK_APPOINTMENT RETURN (third-party): {result[:200]}...")
+            return result
         else:
-            return (
+            result = (
                 f"✅ Turno confirmado para {patient_label}:\n"
                 f"🦷 {treatment_display_name}\n"
                 f"📅 {dia_nombre} {apt_datetime.strftime('%d/%m')} a las {apt_datetime.strftime('%H:%M')}\n"
@@ -1659,6 +1679,8 @@ async def book_appointment(date_time: str, treatment_reason: str,
                 f"{sena_block}\n"
                 f"[INTERNAL_ANAMNESIS_URL:{patient_anamnesis_url}]"
             )
+            logger.info(f"📋 BOOK_APPOINTMENT RETURN (self): {result[:300]}...")
+            return result
 
     except Exception as e:
         import traceback
