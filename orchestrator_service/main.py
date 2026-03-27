@@ -235,12 +235,54 @@ def parse_date(date_query: str) -> date:
     for key, func in day_map.items():
         if key in query:
             return func()
-    
+
+    # Month-based expressions: "mitad de abril", "principio de mayo", "fin de junio"
+    month_names = {
+        'enero': 1, 'february': 2, 'febrero': 2, 'marzo': 3, 'april': 4, 'abril': 4,
+        'mayo': 5, 'junio': 6, 'julio': 7, 'agosto': 8, 'septiembre': 9, 'setiembre': 9,
+        'octubre': 10, 'noviembre': 11, 'diciembre': 12,
+        'january': 1, 'march': 3, 'may': 5, 'june': 6, 'july': 7, 'august': 8,
+        'september': 9, 'october': 10, 'november': 11, 'december': 12,
+    }
+    for month_name, month_num in month_names.items():
+        if month_name in query:
+            year = today.year
+            if month_num < today.month or (month_num == today.month and today.day > 20):
+                year += 1  # Next year if month already passed
+            if 'mitad' in query or 'mediado' in query or 'medio' in query:
+                target_day = 15
+            elif 'principio' in query or 'inicio' in query or 'comienzo' in query or 'primera semana' in query:
+                target_day = 3  # First business day-ish
+            elif 'fin' in query or 'final' in query or 'última semana' in query or 'ultima semana' in query:
+                target_day = 25
+            else:
+                target_day = 1  # Default to first of month
+            try:
+                result = date(year, month_num, target_day)
+                logger.info(f"📅 parse_date: '{date_query}' → {result} (month expression)")
+                return result
+            except ValueError:
+                return date(year, month_num, 1)
+
+    # "próxima semana" / "la semana que viene"
+    if 'próxima semana' in query or 'proxima semana' in query or 'semana que viene' in query:
+        next_monday = get_next_weekday(0)
+        if next_monday == today or (next_monday - today).days <= 2:
+            next_monday += timedelta(days=7)
+        return next_monday
+
+    # "mes que viene" / "próximo mes"
+    if 'mes que viene' in query or 'próximo mes' in query or 'proximo mes' in query:
+        if today.month == 12:
+            return date(today.year + 1, 1, 1)
+        return date(today.year, today.month + 1, 1)
+
     # Intentar parsear como fecha
     try:
         return dateutil_parse(query, dayfirst=True).date()
     except:
-        return get_now_arg().date()
+        logger.warning(f"📅 parse_date: Could not parse '{date_query}', returning tomorrow")
+        return (get_now_arg() + timedelta(days=1)).date()
 
 def parse_datetime(datetime_query: str) -> datetime:
     """Convierte 'lunes 15:30', 'mañana 14:00', '2025-02-05 14:30' a datetime localizado."""
