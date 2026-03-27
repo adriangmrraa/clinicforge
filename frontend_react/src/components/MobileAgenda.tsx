@@ -1,12 +1,12 @@
 import { useState, useMemo } from 'react';
 import DateStrip from './DateStrip';
 import type { Appointment, Professional, GoogleCalendarBlock } from '../views/AgendaView';
-import { Clock, User, Phone, Lock, CalendarDays, CalendarRange, List } from 'lucide-react';
-import { format, parseISO, startOfWeek, endOfWeek, startOfMonth, endOfMonth, eachDayOfInterval, isWithinInterval, isSameDay } from 'date-fns';
+import { Clock, User, Phone, Lock, CalendarDays, CalendarRange, List, ListOrdered } from 'lucide-react';
+import { format, parseISO, startOfWeek, endOfWeek, startOfMonth, endOfMonth, eachDayOfInterval, isWithinInterval, isSameDay, isAfter, addYears } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { useTranslation } from '../context/LanguageContext';
 
-type ViewMode = 'day' | 'week' | 'month';
+type ViewMode = 'day' | 'week' | 'month' | 'list';
 
 interface MobileAgendaProps {
     appointments: Appointment[];
@@ -108,10 +108,29 @@ export default function MobileAgenda({
         return counts;
     }, [allEvents]);
 
+    // List view: all future events from now, grouped by date, up to 3 years
+    const listEvents = useMemo(() => {
+        if (viewMode !== 'list') return {};
+        const now = new Date();
+        const limit = addYears(now, 3);
+        const future = allEvents.filter((evt: any) => {
+            const evtDate = parseISO(evt.appointment_datetime || evt.start_datetime);
+            return isAfter(evtDate, now) && !isAfter(evtDate, limit);
+        });
+        const groups: Record<string, any[]> = {};
+        future.forEach((evt: any) => {
+            const dateKey = format(parseISO(evt.appointment_datetime || evt.start_datetime), 'yyyy-MM-dd');
+            if (!groups[dateKey]) groups[dateKey] = [];
+            groups[dateKey].push(evt);
+        });
+        return groups;
+    }, [allEvents, viewMode]);
+
     const views: { id: ViewMode; icon: any; label: string }[] = [
         { id: 'day', icon: CalendarDays, label: t('agenda.view_day') },
         { id: 'week', icon: CalendarRange, label: t('agenda.view_week') },
         { id: 'month', icon: List, label: t('agenda.view_month') },
+        { id: 'list', icon: ListOrdered, label: t('agenda.view_list') },
     ];
 
     // Render a single event card
@@ -348,6 +367,85 @@ export default function MobileAgenda({
                         })()}
                     </>
                 )}
+
+                {/* ===== LIST VIEW ===== */}
+                {viewMode === 'list' && (() => {
+                    const now = new Date();
+                    const limit = addYears(now, 3);
+                    // ALL events (past + future) sorted chronologically
+                    const allSorted = allEvents
+                        .filter((evt: any) => {
+                            const evtDate = parseISO(evt.appointment_datetime || evt.start_datetime);
+                            return !isAfter(evtDate, limit);
+                        })
+                        .sort((a: any, b: any) => {
+                            const ta = new Date(a.appointment_datetime || a.start_datetime).getTime();
+                            const tb = new Date(b.appointment_datetime || b.start_datetime).getTime();
+                            return ta - tb;
+                        });
+
+                    // Group by date
+                    const groups: Record<string, { events: any[]; isPast: boolean }> = {};
+                    allSorted.forEach((evt: any) => {
+                        const evtDate = parseISO(evt.appointment_datetime || evt.start_datetime);
+                        const dateKey = format(evtDate, 'yyyy-MM-dd');
+                        if (!groups[dateKey]) {
+                            groups[dateKey] = { events: [], isPast: !isAfter(evtDate, now) && !isSameDay(evtDate, now) };
+                        }
+                        groups[dateKey].events.push(evt);
+                    });
+
+                    const sortedKeys = Object.keys(groups).sort();
+                    // Find first future date to auto-scroll
+                    const todayKey = format(now, 'yyyy-MM-dd');
+                    const firstFutureIdx = sortedKeys.findIndex(k => k >= todayKey);
+
+                    if (sortedKeys.length === 0) {
+                        return (
+                            <div className="flex flex-col items-center justify-center h-48 text-white/20">
+                                <ListOrdered size={48} className="mb-2 opacity-30" />
+                                <p className="text-sm text-white/40">{t('agenda.no_appointments_week')}</p>
+                            </div>
+                        );
+                    }
+
+                    return sortedKeys.map((dateKey, idx) => {
+                        const { events, isPast } = groups[dateKey];
+                        const isToday = dateKey === todayKey;
+                        return (
+                            <div key={dateKey} id={`list-${dateKey}`} className={isPast ? 'opacity-50' : ''}>
+                                {/* Today marker */}
+                                {isToday && idx > 0 && (
+                                    <div className="flex items-center gap-2 my-3">
+                                        <div className="flex-1 h-px bg-blue-500/30" />
+                                        <span className="text-[10px] font-bold text-blue-400 uppercase tracking-wider px-2">Hoy</span>
+                                        <div className="flex-1 h-px bg-blue-500/30" />
+                                    </div>
+                                )}
+                                {/* First future marker if no today events */}
+                                {!isToday && idx === firstFutureIdx && firstFutureIdx > 0 && (
+                                    <div className="flex items-center gap-2 my-3">
+                                        <div className="flex-1 h-px bg-green-500/30" />
+                                        <span className="text-[10px] font-bold text-green-400 uppercase tracking-wider px-2">{t('agenda.view_list')}</span>
+                                        <div className="flex-1 h-px bg-green-500/30" />
+                                    </div>
+                                )}
+                                <div className="flex items-center gap-2 mb-2 mt-1">
+                                    <span className={`text-xs font-bold uppercase ${isToday ? 'text-blue-400' : isPast ? 'text-white/30' : 'text-white/50'}`}>
+                                        {format(parseISO(dateKey), 'EEE d MMM yyyy', { locale: es })}
+                                    </span>
+                                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/[0.06] text-white/40 font-semibold">
+                                        {events.length}
+                                    </span>
+                                    <div className="flex-1 h-px bg-white/[0.06]" />
+                                </div>
+                                <div className="space-y-2 mb-4">
+                                    {events.map((evt: any) => renderEventCard(evt, true))}
+                                </div>
+                            </div>
+                        );
+                    });
+                })()}
 
                 <div className="h-12" />
             </div>

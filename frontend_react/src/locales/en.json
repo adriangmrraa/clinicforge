@@ -269,6 +269,7 @@
     "view_day": "Day",
     "view_week": "Week",
     "view_month": "Month",
+    "view_list": "List",
     "no_appointments_week": "No appointments this week",
     "origin": "Origin",
     "appointment_status": "Appointment Status",

@@ -262,6 +262,7 @@
     "view_day": "Jour",
     "view_week": "Semaine",
     "view_month": "Mois",
+    "view_list": "Liste",
     "no_appointments_week": "Aucun rendez-vous cette semaine",
     "origin": "Origine",
     "appointment_status": "Statut du rendez-vous",
