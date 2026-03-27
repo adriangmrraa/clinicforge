@@ -252,14 +252,32 @@ def parse_date(date_query: str) -> Optional[date]:
     # Cubre: "30 de abril", "jueves 30 de abril", "abril 30", "2025-04-30",
     #         "30/04", "30-04-2025", "4 de mayo", "lunes 4 de mayo", etc.
     # Solo intentar si hay un número en el query (para no confundir "jueves" con una fecha)
+    has_month_name = any(m in query for m in ['enero','febrero','marzo','abril','mayo','junio',
+        'julio','agosto','septiembre','setiembre','octubre','noviembre','diciembre',
+        'january','february','march','april','may','june','july','august',
+        'september','october','november','december'])
+    has_month_number = bool(re.search(r'\d{1,2}[/\-]\d{1,2}', query_clean))  # "30/04", "15-05"
+    has_explicit_month = has_month_name or has_month_number
     if re.search(r'\d', query_clean):
         try:
             parsed = dateutil_parse(query_clean, dayfirst=True, fuzzy=True).date()
-            # Si el año no estaba en el query, dateutil usa el año actual.
-            # Si eso resulta en una fecha pasada, asumir año siguiente.
-            if parsed < today and not re.search(r'20\d{2}', query):
-                parsed = parsed.replace(year=parsed.year + 1)
-            logger.info(f"📅 parse_date: '{date_query}' → {parsed} (dateutil)")
+            if not re.search(r'20\d{2}', query):
+                # Si NO hay mes explícito (solo un número como "15" o "cerca del 15"),
+                # dateutil asume mes actual. Si eso resulta en el pasado, avanzar al próximo mes.
+                if not has_explicit_month and parsed < today:
+                    if parsed.month == 12:
+                        parsed = parsed.replace(year=parsed.year + 1, month=1)
+                    else:
+                        parsed = parsed.replace(month=parsed.month + 1)
+                    logger.info(f"📅 parse_date: '{date_query}' → {parsed} (dateutil, no month → advanced to next month)")
+                # Si hay mes explícito y el resultado es pasado, asumir año siguiente
+                elif has_explicit_month and parsed < today:
+                    parsed = parsed.replace(year=parsed.year + 1)
+                    logger.info(f"📅 parse_date: '{date_query}' → {parsed} (dateutil, past date → next year)")
+                else:
+                    logger.info(f"📅 parse_date: '{date_query}' → {parsed} (dateutil)")
+            else:
+                logger.info(f"📅 parse_date: '{date_query}' → {parsed} (dateutil with explicit year)")
             return parsed
         except Exception:
             pass
@@ -948,9 +966,10 @@ async def check_availability(date_query: str, professional_name: Optional[str] =
                              treatment_name: Optional[str] = None, time_preference: Optional[str] = None):
     """
     Consulta la disponibilidad REAL de turnos para una fecha. Llamar UNA sola vez por pregunta del paciente.
-    date_query: Pasá EXACTAMENTE lo que dijo el paciente sobre la fecha, sin recortar ni interpretar. Ejemplos:
-      "jueves 30 de abril", "4 de mayo", "mañana", "fines de abril", "lo antes posible", "para mayo",
-      "la semana que viene", "hoy", "pasado mañana", "cualquier día", "el más cercano".
+    date_query: Pasá lo que dijo el paciente sobre la fecha, SIEMPRE incluyendo el mes si se mencionó antes en la conversación.
+      Ejemplos: "jueves 30 de abril", "4 de mayo", "mañana", "fines de abril", "lo antes posible", "para mayo",
+      "la semana que viene", "hoy", "pasado mañana", "cualquier día", "el más cercano", "mitad de julio", "cerca del 15 de mayo".
+      IMPORTANTE: Si el paciente dice "el 15" o "cerca del 15" pero antes mencionó un mes (ej: mayo), pasá "15 de mayo" o "cerca del 15 de mayo". NUNCA pases solo un número sin mes.
       El sistema interpreta CUALQUIER formato. Si la clínica/profesional no atiende ese día, busca el más cercano automáticamente.
     professional_name: (Opcional) Nombre del profesional (uno de list_professionals).
     treatment_name: (Opcional) Tratamiento ya definido (ej. limpieza profunda, consulta).
@@ -3594,7 +3613,7 @@ PASO 3: PROFESIONAL ASIGNADO — Según lo que devolvió 'list_services' o 'get_
   • Si tiene VARIOS profesionales asignados → decí: "Este tratamiento lo realizan [nombres]. Preferís alguno/a?" Si el paciente elige uno → ejecutá check_availability con ese profesional. Si dice "no" / "cualquiera" / no responde claro → ejecutá check_availability SIN professional_name (el sistema asigna al primero disponible).
   • Si NO tiene profesionales asignados (no aparece "con: ...") → preguntá preferencia de profesional o asigná el primero disponible, como siempre.
 PASO 4: CONSULTAR DISPONIBILIDAD — Llamá 'check_availability' UNA vez con treatment_name y, si el paciente eligió profesional, con professional_name.
-  FECHA EN date_query (CRÍTICO): Pasá TEXTUALMENTE lo que dijo el paciente sobre la fecha, sin resumir ni interpretar. Si dijo "jueves 30 de abril" → date_query="jueves 30 de abril". Si dijo "para mayo" → date_query="para mayo". Si dijo "lo antes posible" → date_query="lo antes posible". Si dijo "cualquier día" → date_query="cualquier día". La tool entiende CUALQUIER formato y si el día está cerrado busca automáticamente el más cercano.
+  FECHA EN date_query (CRÍTICO): Pasá TEXTUALMENTE lo que dijo el paciente sobre la fecha, SIEMPRE incluyendo el mes si se mencionó en la conversación. Si dijo "jueves 30 de abril" → date_query="jueves 30 de abril". Si dijo "para mayo" → date_query="para mayo". Si dijo "lo antes posible" → date_query="lo antes posible". Si dijo "cerca del 15" pero antes había dicho "mayo" → date_query="cerca del 15 de mayo" (INCLUIR el mes del contexto). NUNCA pasar solo un número sin mes — siempre agregar el mes de la conversación. La tool entiende CUALQUIER formato y si el día está cerrado busca automáticamente el más cercano.
   La tool devuelve 2-3 opciones con emojis numerados (1️⃣ 2️⃣ 3️⃣) y la sede al final. Presentá el resultado TAL CUAL lo recibís, sin reformatear. NO agregues la dirección ni sede entre las opciones — ya viene al final del mensaje de la tool.
   Si el paciente elige una opción → pasar a PASO 4b.
   Si el paciente pide otro horario distinto a las opciones → volver a llamar 'check_availability' para verificar ese horario específico.
