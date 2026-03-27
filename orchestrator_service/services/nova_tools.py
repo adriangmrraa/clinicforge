@@ -505,7 +505,7 @@ NOVA_TOOLS_SCHEMA: List[Dict[str, Any]] = [
     {"type": "function", "name": "crear_tratamiento", "description": "Crear nuevo tipo de tratamiento. Solo CEO.", "parameters": {"type": "object", "properties": {"name": {"type": "string"}, "code": {"type": "string"}, "duration_minutes": {"type": "integer"}, "base_price": {"type": "number"}, "category": {"type": "string", "enum": ["prevention", "restorative", "surgical", "orthodontics", "emergency"]}}, "required": ["name", "code", "duration_minutes"]}},
     {"type": "function", "name": "editar_tratamiento", "description": "Editar un tipo de tratamiento existente. Solo CEO.", "parameters": {"type": "object", "properties": {"code": {"type": "string"}, "field": {"type": "string", "enum": ["name", "duration_minutes", "base_price", "category", "is_active"]}, "value": {"type": "string"}}, "required": ["code", "field", "value"]}},
     {"type": "function", "name": "ver_chats_recientes", "description": "Ver ultimas conversaciones de WhatsApp/Instagram/Facebook.", "parameters": {"type": "object", "properties": {"limit": {"type": "integer", "description": "Cantidad de chats (default 10)"}}}},
-    {"type": "function", "name": "enviar_mensaje", "description": "Enviar mensaje de WhatsApp a un paciente.", "parameters": {"type": "object", "properties": {"phone": {"type": "string", "description": "Telefono con codigo de area"}, "message": {"type": "string", "description": "Texto del mensaje"}}, "required": ["phone", "message"]}},
+    {"type": "function", "name": "enviar_mensaje", "description": "Enviar mensaje de WhatsApp a un paciente. Podés pasar el teléfono directo O el nombre/ID del paciente (el sistema busca su teléfono). Si decís 'mandále un mensaje a García diciendo X', usá patient_name='García' y message='X'. SIEMPRE usá esta tool cuando te pidan contactar, avisar, recordar o mandar mensaje a un paciente.", "parameters": {"type": "object", "properties": {"phone": {"type": "string", "description": "Teléfono directo con código de área (opcional si pasás patient_id o patient_name)"}, "patient_id": {"type": "integer", "description": "ID del paciente (el sistema busca su teléfono automáticamente)"}, "patient_name": {"type": "string", "description": "Nombre del paciente para buscar (si no tenés phone ni patient_id)"}, "message": {"type": "string", "description": "Texto del mensaje a enviar"}}, "required": ["message"]}},
     {"type": "function", "name": "ver_estadisticas", "description": "Estadisticas generales: turnos, pacientes, facturacion, cancelaciones.", "parameters": {"type": "object", "properties": {"period": {"type": "string", "enum": ["hoy", "semana", "mes", "año"]}}}},
     {"type": "function", "name": "bloquear_agenda", "description": "Crear bloque de horario no disponible.", "parameters": {"type": "object", "properties": {"professional_id": {"type": "integer"}, "start_datetime": {"type": "string", "description": "Inicio YYYY-MM-DD HH:MM"}, "end_datetime": {"type": "string", "description": "Fin YYYY-MM-DD HH:MM"}, "reason": {"type": "string"}}, "required": ["professional_id", "start_datetime", "end_datetime"]}},
     {"type": "function", "name": "eliminar_paciente", "description": "Desactivar paciente (soft delete). Solo CEO.", "parameters": {"type": "object", "properties": {"patient_id": {"type": "integer"}}, "required": ["patient_id"]}},
@@ -2243,29 +2243,98 @@ async def _ver_chats_recientes(args: Dict, tenant_id: int) -> str:
 
 
 async def _enviar_mensaje(args: Dict, tenant_id: int, user_role: str) -> str:
-    if user_role not in ("ceo", "secretary"):
-        return _role_error("enviar_mensaje", ["ceo", "secretary"])
-    phone = args.get("phone", "")
-    message = args.get("message", "")
-    if not phone or not message:
-        return "Necesito phone y message."
+    if user_role not in ("ceo", "secretary", "professional"):
+        return _role_error("enviar_mensaje", ["ceo", "secretary", "professional"])
+
+    phone = args.get("phone", "").strip()
+    patient_id = args.get("patient_id")
+    patient_name = args.get("patient_name", "").strip()
+    message = args.get("message", "").strip()
+
+    if not message:
+        return "Necesito el mensaje que querés enviar."
+
+    # Resolver teléfono: phone directo > patient_id > patient_name
+    resolved_name = ""
+    if not phone and patient_id:
+        row = await db.pool.fetchrow(
+            "SELECT phone_number, first_name, last_name FROM patients WHERE id = $1 AND tenant_id = $2",
+            int(patient_id), tenant_id,
+        )
+        if not row:
+            return f"No encontré al paciente con ID {patient_id}."
+        phone = row["phone_number"] or ""
+        resolved_name = f"{row['first_name']} {row['last_name'] or ''}".strip()
+        if not phone:
+            return f"El paciente {resolved_name} no tiene teléfono cargado."
+
+    if not phone and patient_name:
+        rows = await db.pool.fetch(
+            """SELECT id, phone_number, first_name, last_name FROM patients
+               WHERE tenant_id = $1 AND (
+                   first_name ILIKE $2 OR last_name ILIKE $2
+                   OR (first_name || ' ' || COALESCE(last_name, '')) ILIKE $2
+               )
+               ORDER BY created_at DESC LIMIT 5""",
+            tenant_id, f"%{patient_name}%",
+        )
+        if not rows:
+            return f"No encontré ningún paciente con el nombre '{patient_name}'."
+        if len(rows) > 1:
+            options = [f"  • ID {r['id']}: {r['first_name']} {r['last_name'] or ''} — {r['phone_number'] or 'sin tel'}" for r in rows]
+            return f"Encontré {len(rows)} pacientes con ese nombre:\n" + "\n".join(options) + "\n¿A cuál le mando el mensaje?"
+        phone = rows[0]["phone_number"] or ""
+        resolved_name = f"{rows[0]['first_name']} {rows[0]['last_name'] or ''}".strip()
+        if not phone:
+            return f"El paciente {resolved_name} no tiene teléfono cargado."
+
+    if not phone:
+        return "Necesito saber a quién enviar el mensaje. Decime el nombre del paciente, su ID, o su teléfono."
+
     try:
         import httpx
         from core.credentials import get_tenant_credential
         ycloud_key = await get_tenant_credential(tenant_id, "YCLOUD_API_KEY")
         if not ycloud_key:
             return "No hay YCloud API key configurada para este tenant."
+
+        # Get bot phone for this tenant
+        tenant_row = await db.pool.fetchrow(
+            "SELECT bot_phone_number FROM tenants WHERE id = $1", tenant_id
+        )
+        bot_phone = (tenant_row["bot_phone_number"] if tenant_row and tenant_row.get("bot_phone_number") else os.getenv("BOT_PHONE_NUMBER", ""))
+
         async with httpx.AsyncClient(timeout=15) as client:
             resp = await client.post(
                 "https://api.ycloud.com/v2/whatsapp/messages/sendDirectly",
                 headers={"X-API-Key": ycloud_key, "Content-Type": "application/json"},
-                json={"from": os.getenv("BOT_PHONE_NUMBER", ""), "to": phone, "type": "text", "text": {"body": message}},
+                json={"from": bot_phone, "to": phone, "type": "text", "text": {"body": message}},
             )
+
+        display = resolved_name or phone
         if resp.status_code == 200:
-            return f"Mensaje enviado a {phone}: '{message[:50]}...'"
-        return f"Error enviando mensaje: {resp.status_code}"
+            logger.info(f"📩 NOVA WhatsApp sent to {phone} ({resolved_name}): {message[:80]}")
+            return f"Mensaje enviado a {display}: \"{message[:80]}{'...' if len(message) > 80 else ''}\""
+
+        # Handle common WhatsApp API errors
+        error_body = ""
+        try:
+            error_body = resp.text
+        except Exception:
+            pass
+        logger.warning(f"📩 NOVA WhatsApp FAILED to {phone}: status={resp.status_code} body={error_body[:200]}")
+
+        # Detect 24-hour window closed (common WhatsApp Business API error)
+        if resp.status_code in (400, 403, 470) or "template" in error_body.lower() or "window" in error_body.lower() or "session" in error_body.lower():
+            return (
+                f"No se pudo enviar el mensaje a {display}. "
+                f"La ventana de 24 horas de WhatsApp probablemente está cerrada "
+                f"(el paciente no escribió recientemente). "
+                f"Para contactarlo fuera de la ventana, se necesita usar un template de mensaje aprobado por Meta."
+            )
+        return f"Error enviando mensaje a {display}: código {resp.status_code}"
     except Exception as e:
-        return f"Error: {e}"
+        return f"Error enviando mensaje: {e}"
 
 
 async def _ver_estadisticas(args: Dict, tenant_id: int) -> str:

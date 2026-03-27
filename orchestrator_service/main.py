@@ -5187,8 +5187,12 @@ CONFIGURACION:
 "Que profesionales hay?" → listar_profesionales
 "Agrega una FAQ: horarios de atencion" → actualizar_faq
 
-COMUNICACION:
-"Mandale WhatsApp a [paciente] que confirme el turno" → buscar_paciente → enviar_mensaje
+COMUNICACION Y MENSAJES:
+"Mandale un mensaje a García diciéndole que tiene pendiente la seña" → enviar_mensaje(patient_name="García", message="Hola! Te recordamos que tenés pendiente la seña para confirmar tu turno. Una vez que la realices, te reservamos el horario. Gracias!")
+"Avisale a la paciente 45 que el turno se cambió al jueves" → enviar_mensaje(patient_id=45, message="Hola! Te avisamos que tu turno fue reprogramado para el jueves. Cualquier duda nos escribís!")
+"Mandále WhatsApp a Pérez que confirme el turno" → enviar_mensaje(patient_name="Pérez", message="Hola! Queremos confirmar tu turno. Podés confirmarnos por acá?")
+IMPORTANTE: enviar_mensaje acepta patient_name o patient_id, NO hace falta buscar el teléfono primero. Si hay varios pacientes con el mismo nombre, te muestra las opciones para que elijas.
+VENTANA DE 24HS: WhatsApp solo permite enviar mensajes si el paciente escribió en las últimas 24 horas. Si el envío falla, informar: "No se pudo enviar el mensaje. La ventana de 24 horas de WhatsApp puede estar cerrada (el paciente no escribió recientemente)."
 "Que chats hay nuevos?" → ver_chats_recientes
 "Llevame a la pagina de chats" → ir_a_pagina("chats")
 
