@@ -3539,6 +3539,10 @@ async def get_agent_executable_for_tenant(tenant_id: int):
     key = await get_tenant_credential(tenant_id, "OPENAI_API_KEY")
     if not key:
         key = OPENAI_API_KEY
+        logger.info(f"🤖 MODEL: Using default OPENAI_API_KEY (no tenant credential)")
+    else:
+        logger.info(f"🤖 MODEL: Using tenant-specific API key for tenant={tenant_id}")
+
     model = DEFAULT_OPENAI_MODEL
     try:
         row = await db.pool.fetchrow(
@@ -3547,13 +3551,19 @@ async def get_agent_executable_for_tenant(tenant_id: int):
         )
         if row and row.get("value"):
             model = str(row["value"]).strip()
-    except Exception:
-        pass
+            logger.info(f"🤖 MODEL: Loaded from DB system_config: '{model}' for tenant={tenant_id}")
+        else:
+            logger.warning(f"🤖 MODEL: No model in system_config for tenant={tenant_id}, using default: '{DEFAULT_OPENAI_MODEL}'")
+    except Exception as model_err:
+        logger.error(f"🤖 MODEL ERROR: Failed to read model from DB for tenant={tenant_id}: {model_err}")
+        logger.warning(f"🤖 MODEL: Falling back to default: '{DEFAULT_OPENAI_MODEL}'")
 
     # If DeepSeek model, override key
     if model in DEEPSEEK_MODELS:
         key = DEEPSEEK_API_KEY
+        logger.info(f"🤖 MODEL: DeepSeek detected, using DeepSeek API key")
 
+    logger.info(f"🤖 MODEL FINAL: tenant={tenant_id} model='{model}' provider={'deepseek' if model in DEEPSEEK_MODELS else 'openai'}")
     return get_agent_executable(openai_api_key=key, model=model)
 
 
