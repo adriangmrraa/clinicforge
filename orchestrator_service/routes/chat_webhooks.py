@@ -378,7 +378,10 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
                                 media_type_str = m_item.type.value
                                 doc_type = f"{channel_name}_{media_type_str}"
                                 
-                                file_name = m_item.file_name or f"{doc_type}_{uuid.uuid4().hex[:8]}"
+                                # Always generate unique filename to avoid duplicate key constraint
+                                raw_name = m_item.file_name or doc_type
+                                base_no_ext = raw_name.rsplit('.', 1)[0] if '.' in raw_name else raw_name
+                                file_name = f"{base_no_ext}_{uuid.uuid4().hex[:8]}"
                                 
                                 # Extraer extensión del archivo si está disponible
                                 import mimetypes

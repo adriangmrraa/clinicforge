@@ -2775,14 +2775,32 @@ async def verify_payment_receipt(
             if full_price:
                 expected_amount = full_price / 2  # Seña = 50%
 
-        # 4. Verify holder name in receipt
-        receipt_lower = receipt_description.lower()
-        holder_match = bank_holder in receipt_lower
+        # 4. Verify holder name in receipt (fuzzy matching)
+        import unicodedata
+        def _normalize(text: str) -> str:
+            """Remove accents, lowercase, strip extra spaces."""
+            text = unicodedata.normalize('NFD', text)
+            text = ''.join(c for c in text if unicodedata.category(c) != 'Mn')
+            return ' '.join(text.lower().split())
 
-        # Also try matching parts of the name (first name + last name separately)
-        holder_parts = bank_holder.split()
+        receipt_norm = _normalize(receipt_description)
+        holder_norm = _normalize(bank_holder)
+
+        # Exact match
+        holder_match = holder_norm in receipt_norm
+
+        # Try each part of the holder name (first + last names individually)
+        holder_parts = [p for p in holder_norm.split() if len(p) > 2]
         if not holder_match and len(holder_parts) >= 2:
-            holder_match = all(part in receipt_lower for part in holder_parts)
+            holder_match = all(part in receipt_norm for part in holder_parts)
+
+        # Try reversed order (Mercado Pago sometimes shows "APELLIDO NOMBRE")
+        if not holder_match and len(holder_parts) >= 2:
+            holder_match = all(part in receipt_norm for part in reversed(holder_parts))
+
+        # Try just first + last name (ignore middle names)
+        if not holder_match and len(holder_parts) >= 3:
+            holder_match = (holder_parts[0] in receipt_norm and holder_parts[-1] in receipt_norm)
 
         # 5. Verify amount
         amount_match = True  # Default if no amount configured

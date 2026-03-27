@@ -64,29 +64,29 @@ async def check_lead_recovery():
             # Buscamos conversaciones que NO tengan turnos en appointments
             # Y que la última interacción haya sido en la ventana de tiempo
             candidates = await db.pool.fetch("""
-                SELECT 
+                SELECT
                     c.tenant_id,
-                    c.phone_number,
+                    c.external_user_id as phone_number,
                     c.last_user_message_at,
                     p.id as patient_id,
                     p.first_name,
                     p.last_name,
-                    t.name as clinic_name,
-                    t.whatsapp_credentials
+                    t.clinic_name,
+                    c.channel
                 FROM chat_conversations c
-                INNER JOIN patients p ON c.phone_number = p.phone_number AND p.tenant_id = c.tenant_id
+                INNER JOIN patients p ON c.external_user_id = p.phone_number AND p.tenant_id = c.tenant_id
                 INNER JOIN tenants t ON c.tenant_id = t.id
                 WHERE c.last_user_message_at >= $1
                   AND c.last_user_message_at <= $2
                   -- Exclusión: Personas que NUNCA agendaron (no están en appointments)
                   AND NOT EXISTS (
-                      SELECT 1 FROM appointments a 
-                      WHERE a.phone_number = c.phone_number AND a.tenant_id = c.tenant_id
+                      SELECT 1 FROM appointments a
+                      WHERE a.patient_id = p.id AND a.tenant_id = c.tenant_id
                   )
                   -- Deduplicación: no haber enviado este trigger a este paciente en las últimas 18-24h
                   AND NOT EXISTS (
-                      SELECT 1 FROM automation_logs al 
-                      WHERE al.patient_id = p.id 
+                      SELECT 1 FROM automation_logs al
+                      WHERE al.patient_id = p.id
                         AND al.trigger_type = $3
                         AND al.created_at > NOW() - INTERVAL '18 hours'
                   )
