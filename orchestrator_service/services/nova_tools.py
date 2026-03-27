@@ -15,6 +15,7 @@ Navigation tools return JSON strings with type="navigation" for frontend handlin
 
 import json
 import logging
+import os
 import uuid
 from datetime import date, datetime, timedelta
 from decimal import Decimal
@@ -2655,12 +2656,23 @@ async def _obtener_registros(args: Dict, tenant_id: int, user_role: str) -> str:
                         # Sanitize field name (only alphanumeric + underscore)
                         if not all(c.isalnum() or c == '_' for c in field):
                             continue
-                        # Auto-detect and convert datetime strings for date/datetime columns
+                        # Auto-detect and convert types for asyncpg
                         if 'date' in field or 'datetime' in field or 'created_at' in field or 'updated_at' in field:
                             try:
                                 value = _parse_datetime_str(value)
                             except Exception:
                                 pass
+                        elif field.endswith('_id') and field != 'external_user_id':
+                            # ID fields: try int first (patients, professionals), then UUID (appointments)
+                            try:
+                                value = int(value)
+                            except (ValueError, TypeError):
+                                try:
+                                    value = uuid.UUID(str(value))
+                                except ValueError:
+                                    pass  # keep as string
+                        elif value.isdigit() or (value.startswith('-') and value[1:].isdigit()):
+                            value = int(value)
                         params.append(value)
                         query += f" AND {field} {op} ${len(params)}"
                         break
@@ -2833,6 +2845,22 @@ async def _contar_registros(args: Dict, tenant_id: int) -> str:
                         value = value.strip().strip("'\"")
                         if not all(c.isalnum() or c == '_' for c in field):
                             continue
+                        # Auto-detect types (same logic as obtener_registros)
+                        if 'date' in field or 'datetime' in field or 'created_at' in field or 'updated_at' in field:
+                            try:
+                                value = _parse_datetime_str(value)
+                            except Exception:
+                                pass
+                        elif field.endswith('_id') and field != 'external_user_id':
+                            try:
+                                value = int(value)
+                            except (ValueError, TypeError):
+                                try:
+                                    value = uuid.UUID(str(value))
+                                except ValueError:
+                                    pass
+                        elif isinstance(value, str) and (value.isdigit() or (value.startswith('-') and value[1:].isdigit())):
+                            value = int(value)
                         params.append(value)
                         query += f" AND {field} {op} ${len(params)}"
                         break

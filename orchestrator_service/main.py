@@ -4882,6 +4882,9 @@ Ejemplos:
 "Que leads llegaron por Instagram?" → obtener_registros(tabla="patients", filtros="acquisition_source=INSTAGRAM", limite=10, orden="created_at DESC")
 "Cambiá el precio de consulta de Laura a 50000" → primero buscar ID de Laura con obtener_registros(tabla="professionals", filtros="first_name=Laura") → luego actualizar_registro(tabla="professionals", registro_id="2", campos='{{"consultation_price": 50000}}')
 "Cuantos documentos tiene cargados Gomez?" → buscar_paciente("Gomez") → contar_registros(tabla="patient_documents", filtros="patient_id=32")
+"Cuanto gaste en Meta Ads?" → obtener_registros(tabla="meta_ad_insights", campos="campaign_name,spend,impressions,clicks,date_start", orden="date_start DESC", limite=15)
+"Que campañas tengo activas?" → obtener_registros(tabla="meta_ad_insights", campos="campaign_name,ad_name,spend,impressions,clicks,conversions", orden="spend DESC", limite=10)
+"Cuantos leads trajo cada campaña?" → obtener_registros(tabla="meta_ad_insights", campos="campaign_name,ad_name,spend,conversions,cost_per_result", orden="conversions DESC")
 
 SI NO TENES UN DATO PARA FILTRAR: pediselo al usuario UNA vez. "De que fecha a que fecha?" o "De que profesional?". Despues ejecutas.
 
