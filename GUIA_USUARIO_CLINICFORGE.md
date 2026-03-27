@@ -683,6 +683,72 @@ Cuando Nova está en la página de anamnesis de un paciente, cambia su modo y ha
 
 ---
 
+#### H2. Odontograma Dental (2 herramientas)
+
+Nova puede ver y modificar el odontograma completo de cualquier paciente por voz. Los cambios quedan guardados permanentemente en la ficha clínica.
+
+| Comando de ejemplo | Qué hace Nova |
+|-------------------|---------------|
+| "Mostrame el odontograma de García" | Busca al paciente y muestra el estado de todas las piezas dentales, agrupadas por cuadrante (superior derecho, superior izquierdo, inferior izquierdo, inferior derecho) |
+| "El paciente tiene caries en la 1.6 y la 1.8" | Actualiza las piezas 16 y 18 como caries en el odontograma |
+| "La 36 tiene conducto" | Marca la pieza 36 como tratamiento de conducto |
+| "Le falta la muela de juicio de abajo a la derecha" | Marca la pieza 48 como ausente |
+| "La 21 tiene una corona" | Marca la pieza 21 como corona |
+| "Marcá la 14 y 15 como restauración, superficie oclusal tratada" | Actualiza dos piezas con detalle de superficies |
+| "Tiene dos dientes rotos" (sin número) | Nova PREGUNTA: "En qué piezas? Necesito los números" |
+
+**Estados disponibles para cada pieza:**
+
+| Estado | Significado | Color en el odontograma |
+|--------|------------|------------------------|
+| Sano (healthy) | Sin patología | Blanco |
+| Caries | Lesión cariosa activa | Rojo |
+| Restauración | Pieza restaurada/obturada | Azul |
+| Extracción | Pieza extraída | Oscuro con X |
+| Planificado | Tratamiento planificado | Amarillo |
+| Corona | Pieza con corona protésica | Violeta |
+| Implante | Pieza con implante | Indigo |
+| Ausente | Pieza ausente (nunca existió o perdida) | Mínimo con guion |
+| Prótesis | Pieza protésica removible | Teal |
+| Conducto | Tratamiento de conducto realizado | Naranja |
+
+**Superficies dentales (opcional, nivel de detalle adicional):**
+- Oclusal (cara de masticación)
+- Mesial (cara hacia el centro)
+- Distal (cara hacia atrás)
+- Bucal (cara hacia la mejilla)
+- Lingual (cara hacia la lengua)
+
+Cada superficie puede estar: sana, con caries, o tratada.
+
+**Numeración FDI (la que usa Nova):**
+
+```
+        Superior Derecho (Q1)  |  Superior Izquierdo (Q2)
+        18 17 16 15 14 13 12 11 | 21 22 23 24 25 26 27 28
+        ────────────────────────┼────────────────────────
+        48 47 46 45 44 43 42 41 | 31 32 33 34 35 36 37 38
+        Inferior Derecho (Q4)  |  Inferior Izquierdo (Q3)
+```
+
+Si decís "1.6" Nova interpreta como pieza 16 (primer molar superior derecho).
+
+**Reglas de seguridad del odontograma:**
+1. Nova SIEMPRE mira el odontograma actual antes de modificarlo
+2. Si no decís números de piezas, Nova pregunta cuáles son antes de tocar nada
+3. Si hay duda, Nova confirma: "Voy a marcar la 16 y 18 como caries, correcto?"
+4. Los cambios se guardan en la ficha clínica del paciente y se ven reflejados en la UI
+5. Se pueden modificar varias piezas en un solo comando
+
+**Ejemplo de flujo completo:**
+
+> **Vos:** "El paciente García tiene caries en la 1.6 y fractura en la 2.1"
+>
+> **Nova:** *(busca a García, ve su odontograma actual)*
+> "García tiene el odontograma con 3 piezas registradas. Voy a marcar la 16 como caries y la 21 como extracción. Listo, odontograma actualizado."
+
+---
+
 #### I. Consultas Avanzadas de Datos (3 herramientas)
 
 | Comando de ejemplo | Qué hace Nova |
