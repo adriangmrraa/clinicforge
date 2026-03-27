@@ -968,29 +968,28 @@ async def get_tenant_calendar_provider(tenant_id: int) -> str:
 # --- TOOLS DENTALES ---
 
 @tool
-async def check_availability(date_query: str, professional_name: Optional[str] = None,
-                             treatment_name: Optional[str] = None, time_preference: Optional[str] = None,
-                             interpreted_date: Optional[str] = None, search_mode: Optional[str] = None):
+async def check_availability(date_query: str, interpreted_date: str, search_mode: str,
+                             professional_name: Optional[str] = None,
+                             treatment_name: Optional[str] = None, time_preference: Optional[str] = None):
     """
     Consulta la disponibilidad REAL de turnos para una fecha. Llamar UNA sola vez por pregunta del paciente.
-    date_query: Texto ORIGINAL del paciente sobre la fecha. Ejemplos: "para fines de abril", "cerca del 15 te dije", "mitad de mayo sería".
-    interpreted_date: (MUY IMPORTANTE) Tu interpretación de la fecha en formato YYYY-MM-DD. Razoná qué fecha quiere el paciente combinando TODO el contexto de la conversación.
-      Ejemplos de razonamiento:
-      - Paciente dijo "mayo" antes y ahora dice "cerca del 15" → interpreted_date="2026-05-15"
-      - Paciente dice "jueves 30 de abril" → interpreted_date="2026-04-30"
-      - Paciente dice "fines de octubre" → interpreted_date="2026-10-25"
-      - Paciente dice "mañana" → interpreted_date="[fecha de mañana en YYYY-MM-DD]"
-      - Paciente dice "lo antes posible" → interpreted_date=null (el sistema busca)
-      SIEMPRE pasá interpreted_date cuando puedas calcular la fecha. Solo dejalo en null si realmente no se puede determinar (ej: "cualquier día").
-    search_mode: Cómo buscar turnos alrededor de interpreted_date. Opciones:
-      - "exact": Día específico (ej: "el 30 de abril"). Muestra 2-3 opciones de ese día + comodín.
-      - "week": Rango de ~7 días (ej: "mitad de mayo", "fines de julio"). Distribuye opciones en varios días del rango.
+    date_query: OBLIGATORIO. Texto del paciente sobre la fecha, SIEMPRE incluyendo el mes. Si el paciente dijo el mes en un mensaje anterior, incluirlo aquí. Ejemplos: "mitad de mayo", "fines de abril 22 en adelante", "cerca del 15 de mayo". NUNCA pasar solo un número sin mes.
+    interpreted_date: OBLIGATORIO. Tu interpretación de la fecha en formato YYYY-MM-DD. SIEMPRE calculá esto antes de llamar. Razoná combinando TODO el contexto de la conversación:
+      - Paciente dijo "mayo" antes y ahora dice "cerca del 15" → "2026-05-15"
+      - Paciente dice "jueves 30 de abril" → "2026-04-30"
+      - Paciente dice "fines de octubre" → "2026-10-25"
+      - Paciente dice "mañana" y hoy es 2026-03-27 → "2026-03-28"
+      - Paciente dice "lo antes posible" → "2026-03-28" (mañana)
+      - Paciente dice "para julio" → "2026-07-01"
+      NUNCA dejar vacío. SIEMPRE calculá una fecha concreta en YYYY-MM-DD.
+    search_mode: OBLIGATORIO. Cómo buscar turnos. Opciones:
+      - "exact": Día puntual (ej: "el 30 de abril", "mañana"). 2-3 opciones de ese día + comodín de otro día.
+      - "week": Rango ~7 días (ej: "mitad de mayo", "fines de julio", "cerca del 15"). Distribuye opciones en varios días.
       - "month": Mes completo (ej: "para mayo", "en julio"). Busca en todo el mes.
-      - "open": Sin restricción, buscar lo más cercano (ej: "lo antes posible", "cuando haya").
-      Default: "exact" si hay fecha específica, "week" si es rango, "open" si no hay preferencia.
-    professional_name: (Opcional) Nombre del profesional (uno de list_professionals).
-    treatment_name: (Opcional) Tratamiento ya definido (ej. limpieza profunda, consulta).
-    time_preference: OBLIGATORIO cuando el paciente pide horarios de un momento del día: si pide 'a la tarde', 'por la tarde', 'tarde' -> 'tarde'; si pide 'a la mañana', 'por la mañana', 'mañana' (en sentido horario) -> 'mañana'; si no especifica -> 'todo' o no pasar.
+      - "open": Lo más cercano posible (ej: "lo antes posible", "cuando haya", "cualquier día").
+    professional_name: (Opcional) Nombre del profesional.
+    treatment_name: (Opcional) Tratamiento definido (ej. limpieza profunda, consulta).
+    time_preference: Si el paciente pide horarios de un momento del día: 'mañana' (horario AM) o 'tarde'. Si no especifica no pasar.
     La tool devuelve 2-3 opciones concretas de horario con sede. Presentá las opciones al paciente tal cual las recibís.
     """
     try:
@@ -3685,18 +3684,20 @@ PASO 3: PROFESIONAL ASIGNADO — Según lo que devolvió 'list_services' o 'get_
   • Si tiene VARIOS profesionales asignados → decí: "Este tratamiento lo realizan [nombres]. Preferís alguno/a?" Si el paciente elige uno → ejecutá check_availability con ese profesional. Si dice "no" / "cualquiera" / no responde claro → ejecutá check_availability SIN professional_name (el sistema asigna al primero disponible).
   • Si NO tiene profesionales asignados (no aparece "con: ...") → preguntá preferencia de profesional o asigná el primero disponible, como siempre.
 PASO 4: CONSULTAR DISPONIBILIDAD — Llamá 'check_availability' UNA vez con treatment_name y, si el paciente eligió profesional, con professional_name.
-  RAZONAMIENTO DE FECHA (CRÍTICO): Antes de llamar a check_availability, RAZONÁ internamente qué fecha quiere el paciente combinando TODOS los mensajes de la conversación. Luego pasá:
-  • date_query: texto original del paciente (ej: "cerca del 15 te dije")
-  • interpreted_date: TU interpretación en YYYY-MM-DD (ej: "2026-05-15"). SIEMPRE pasá este campo si podés calcular la fecha. Combiná el contexto: si antes dijo "mayo" y ahora dice "el 15", interpreted_date="2026-05-15".
-  • search_mode: "exact" (día puntual), "week" (rango ~7 días como "mitad de mayo"), "month" (mes completo como "para julio"), "open" (sin preferencia, lo antes posible).
-  EJEMPLOS de razonamiento:
-  - "jueves 30 de abril" → interpreted_date="2026-04-30", search_mode="exact"
-  - "mitad de mayo" → interpreted_date="2026-05-15", search_mode="week"
-  - "fines de octubre" → interpreted_date="2026-10-25", search_mode="week"
-  - "para julio" → interpreted_date="2026-07-01", search_mode="month"
-  - "lo antes posible" → interpreted_date=null, search_mode="open"
-  - Paciente dijo "mayo" antes, ahora dice "cerca del 15" → interpreted_date="2026-05-15", search_mode="week"
-  Si NO podés determinar la fecha → no pases interpreted_date, el sistema intenta parsear date_query como fallback.
+  RAZONAMIENTO DE FECHA (OBLIGATORIO — los 3 campos son requeridos):
+  Antes de llamar a check_availability, RAZONÁ qué fecha quiere el paciente combinando TODOS los mensajes de la conversación. Los 3 parámetros de fecha son OBLIGATORIOS:
+  1. date_query: Texto del paciente SIEMPRE con el mes incluido. Si el paciente mencionó el mes en un mensaje anterior, AGREGARLO. Ej: paciente dijo "mayo" antes y ahora "cerca del 15" → date_query="cerca del 15 de mayo". NUNCA pasar solo un número sin mes.
+  2. interpreted_date: OBLIGATORIO. Fecha en YYYY-MM-DD que VOS calculás. Usá TIEMPO ACTUAL ({current_time}) para resolver fechas relativas. NUNCA dejarlo vacío.
+  3. search_mode: OBLIGATORIO. "exact" | "week" | "month" | "open".
+  EJEMPLOS (memorizá estos patrones):
+  - "jueves 30 de abril" → date_query="jueves 30 de abril", interpreted_date="2026-04-30", search_mode="exact"
+  - "mitad de mayo" → date_query="mitad de mayo", interpreted_date="2026-05-15", search_mode="week"
+  - "fines de octubre" → date_query="fines de octubre", interpreted_date="2026-10-25", search_mode="week"
+  - "para julio" → date_query="para julio", interpreted_date="2026-07-01", search_mode="month"
+  - "lo antes posible" → date_query="lo antes posible", interpreted_date="2026-03-28", search_mode="open"
+  - "mañana" → date_query="mañana", interpreted_date="2026-03-28", search_mode="exact"
+  - Paciente dijo "mayo" antes, ahora dice "cerca del 15" → date_query="cerca del 15 de mayo", interpreted_date="2026-05-15", search_mode="week"
+  - Paciente dijo "abril 22 en adelante" → date_query="abril 22 en adelante", interpreted_date="2026-04-22", search_mode="week"
   La tool devuelve 2-3 opciones con emojis numerados (1️⃣ 2️⃣ 3️⃣) y la sede al final. Presentá el resultado TAL CUAL lo recibís, sin reformatear. NO agregues la dirección ni sede entre las opciones — ya viene al final del mensaje de la tool.
   Si el paciente elige una opción → pasar a PASO 4b.
   Si el paciente pide otro horario distinto a las opciones → volver a llamar 'check_availability' para verificar ese horario específico.
@@ -5095,6 +5096,7 @@ PACIENTES: buscar_paciente, ver_paciente, registrar_paciente, actualizar_pacient
 TURNOS: ver_agenda, proximo_paciente, verificar_disponibilidad, agendar_turno, cancelar_turno, confirmar_turnos, reprogramar_turno, cambiar_estado_turno, bloquear_agenda
 FACTURACION: listar_tratamientos, registrar_pago, facturacion_pendiente
 ANAMNESIS: guardar_anamnesis (guardar ficha medica por voz sección por sección), ver_anamnesis (leer ficha, ver que falta)
+ODONTOGRAMA: ver_odontograma (ver estado completo del odontograma de un paciente), modificar_odontograma (modificar estado de una o varias piezas — SIEMPRE ver_odontograma ANTES de modificar)
 DATOS: consultar_datos (consulta CUALQUIER dato en lenguaje natural: turnos, pacientes, ingresos, leads, no-shows)
 ANALYTICS: resumen_semana, rendimiento_profesional, ver_estadisticas, resumen_marketing, resumen_financiero
 CONFIG: ver_configuracion, actualizar_configuracion, crear_tratamiento, editar_tratamiento, actualizar_faq, ver_faqs, eliminar_faq
@@ -5135,6 +5137,20 @@ PACIENTES:
 "Cargale que es alergico a la penicilina" → guardar_anamnesis(allergies="penicilina")
 "Tiene historial clinico?" → historial_clinico
 "Anotá que le hicimos limpieza en pieza 36" → registrar_nota_clinica
+
+ODONTOGRAMA (REGLAS QUIRÚRGICAS — MUY IMPORTANTE):
+"Mostrame el odontograma de [paciente]" → buscar_paciente → ver_odontograma
+"El paciente tiene caries en la 16 y la 18" → buscar_paciente → ver_odontograma → modificar_odontograma(piezas=[{numero:16,estado:"caries"},{numero:18,estado:"caries"}])
+"La 36 tiene conducto" → ver_odontograma → modificar_odontograma(piezas=[{numero:36,estado:"root_canal"}])
+"Le falta la muela de juicio de abajo a la derecha" → ver_odontograma → modificar_odontograma(piezas=[{numero:48,estado:"missing"}])
+"Tiene dos dientes rotos" (SIN número) → PREGUNTAR: "¿Qué piezas son? Necesito los números FDI."
+REGLAS INQUEBRABLES DEL ODONTOGRAMA:
+1. SIEMPRE ejecutar ver_odontograma ANTES de modificar_odontograma (ver estado actual primero).
+2. Si el usuario NO dice números de piezas → PREGUNTAR. NUNCA asumir qué pieza es.
+3. Confirmar los cambios antes de aplicar si hay duda: "Voy a marcar la 16 y 18 como caries, correcto?"
+4. Nomenclatura FDI: 1.6 = pieza 16, 3.6 = pieza 36, 4.8 = pieza 48. Si el usuario dice "1.6" interpretar como 16.
+5. Estados disponibles: sano (healthy), caries, restauración (restoration), extracción (extraction), planificado (treatment_planned), corona (crown), implante (implant), ausente (missing), prótesis (prosthesis), conducto (root_canal).
+6. Se pueden modificar VARIAS piezas en una sola llamada.
 
 FICHA MEDICA POR VOZ (anamnesis):
 "Cargame la ficha de [paciente]" → ver_anamnesis (ver que falta) → preguntar seccion por seccion:

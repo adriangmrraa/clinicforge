@@ -549,6 +549,68 @@ NOVA_TOOLS_SCHEMA: List[Dict[str, Any]] = [
         },
     },
     # -------------------------------------------------------------------------
+    # H2. Odontograma
+    # -------------------------------------------------------------------------
+    {
+        "type": "function",
+        "name": "ver_odontograma",
+        "description": "Muestra el estado actual COMPLETO del odontograma de un paciente. Llamá SIEMPRE esta tool antes de modificar el odontograma para ver el estado actual. Muestra cada pieza con su estado y superficies afectadas.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "patient_id": {"type": "integer", "description": "ID del paciente"},
+            },
+            "required": ["patient_id"],
+        },
+    },
+    {
+        "type": "function",
+        "name": "modificar_odontograma",
+        "description": """Modifica el estado de UNA O VARIAS piezas dentales en el odontograma del paciente. Los cambios se persisten en el registro clínico más reciente (o se crea uno nuevo si no existe).
+IMPORTANTE — REGLAS QUIRÚRGICAS:
+1. SIEMPRE llamá 'ver_odontograma' ANTES para conocer el estado actual.
+2. OBLIGATORIO: el parámetro 'piezas' con los números FDI exactos. Si el usuario NO dice números de piezas → NO llamar esta tool, PREGUNTAR primero cuáles son.
+3. NUNCA asumas números de piezas. Si el usuario dice 'tiene caries' sin decir qué pieza → preguntá: '¿En qué pieza o piezas?'
+4. Nomenclatura FDI: 1.1-1.8 (superior derecho), 2.1-2.8 (superior izquierdo), 3.1-3.8 (inferior izquierdo), 4.1-4.8 (inferior derecho). Pasá como número entero sin punto: 16, 18, 21, 36, etc.
+5. Podés modificar varias piezas en una sola llamada pasando múltiples entradas en 'piezas'.""",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "patient_id": {"type": "integer", "description": "ID del paciente"},
+                "piezas": {
+                    "type": "array",
+                    "description": "Lista de piezas a modificar. Cada entrada tiene número FDI, estado y opcionalmente superficies afectadas.",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "numero": {"type": "integer", "description": "Número FDI de la pieza (ej: 16, 21, 36, 48). SIN punto."},
+                            "estado": {
+                                "type": "string",
+                                "enum": ["healthy", "caries", "restoration", "extraction", "treatment_planned", "crown", "implant", "missing", "prosthesis", "root_canal"],
+                                "description": "Estado de la pieza: healthy=sano, caries=caries, restoration=restauración, extraction=extracción, treatment_planned=planificado, crown=corona, implant=implante, missing=ausente, prosthesis=prótesis, root_canal=conducto"
+                            },
+                            "superficies": {
+                                "type": "object",
+                                "description": "Superficies afectadas (opcional). Solo pasar las que cambian.",
+                                "properties": {
+                                    "oclusal": {"type": "string", "enum": ["healthy", "caries", "treated"]},
+                                    "mesial": {"type": "string", "enum": ["healthy", "caries", "treated"]},
+                                    "distal": {"type": "string", "enum": ["healthy", "caries", "treated"]},
+                                    "bucal": {"type": "string", "enum": ["healthy", "caries", "treated"]},
+                                    "lingual": {"type": "string", "enum": ["healthy", "caries", "treated"]},
+                                },
+                            },
+                            "notas": {"type": "string", "description": "Nota clínica para esta pieza (opcional)"},
+                        },
+                        "required": ["numero", "estado"],
+                    },
+                },
+                "diagnostico": {"type": "string", "description": "Diagnóstico general asociado a estos cambios (opcional, ej: 'Caries en piezas 16 y 18')"},
+            },
+            "required": ["patient_id", "piezas"],
+        },
+    },
+    # -------------------------------------------------------------------------
     # I. Consultas de datos avanzadas (NEW)
     # -------------------------------------------------------------------------
     {
@@ -1981,6 +2043,12 @@ async def execute_nova_tool(
         elif name == "ver_anamnesis":
             return await _ver_anamnesis(args, tenant_id)
 
+        # H2. Odontograma
+        elif name == "ver_odontograma":
+            return await _ver_odontograma(args, tenant_id, user_role)
+        elif name == "modificar_odontograma":
+            return await _modificar_odontograma(args, tenant_id, user_role, user_id)
+
         # I. Consultas avanzadas
         elif name == "consultar_datos":
             return await _consultar_datos(args, tenant_id, user_role)
@@ -2967,6 +3035,258 @@ async def _contar_registros(args: Dict, tenant_id: int) -> str:
     except Exception as e:
         logger.error(f"contar_registros error: {e}")
         return f"Error contando en {tabla}: {str(e)}"
+
+
+# =============================================================================
+# H2. ODONTOGRAMA TOOLS
+# =============================================================================
+
+# FDI tooth names for human-readable output
+_FDI_NAMES = {
+    18: "3er molar sup-der", 17: "2do molar sup-der", 16: "1er molar sup-der",
+    15: "2do premolar sup-der", 14: "1er premolar sup-der", 13: "canino sup-der",
+    12: "incisivo lateral sup-der", 11: "incisivo central sup-der",
+    21: "incisivo central sup-izq", 22: "incisivo lateral sup-izq",
+    23: "canino sup-izq", 24: "1er premolar sup-izq", 25: "2do premolar sup-izq",
+    26: "1er molar sup-izq", 27: "2do molar sup-izq", 28: "3er molar sup-izq",
+    38: "3er molar inf-izq", 37: "2do molar inf-izq", 36: "1er molar inf-izq",
+    35: "2do premolar inf-izq", 34: "1er premolar inf-izq", 33: "canino inf-izq",
+    32: "incisivo lateral inf-izq", 31: "incisivo central inf-izq",
+    41: "incisivo central inf-der", 42: "incisivo lateral inf-der",
+    43: "canino inf-der", 44: "1er premolar inf-der", 45: "2do premolar inf-der",
+    46: "1er molar inf-der", 47: "2do molar inf-der", 48: "3er molar inf-der",
+}
+
+_STATUS_ES = {
+    "healthy": "sano", "caries": "caries", "restoration": "restauración",
+    "extraction": "extracción", "treatment_planned": "planificado", "crown": "corona",
+    "implant": "implante", "missing": "ausente", "prosthesis": "prótesis",
+    "root_canal": "conducto",
+}
+
+_VALID_FDI = set(_FDI_NAMES.keys())
+_VALID_STATES = set(_STATUS_ES.keys())
+
+
+async def _get_latest_odontogram(patient_id: int, tenant_id: int):
+    """Returns (record_id, odontogram_data dict) for the most recent clinical record."""
+    row = await db.pool.fetchrow(
+        """
+        SELECT id, odontogram_data
+        FROM clinical_records
+        WHERE patient_id = $1 AND tenant_id = $2
+        ORDER BY record_date DESC, created_at DESC
+        LIMIT 1
+        """,
+        patient_id, tenant_id,
+    )
+    if not row:
+        return None, {}
+    odata = row["odontogram_data"]
+    if isinstance(odata, str):
+        try:
+            odata = json.loads(odata)
+        except Exception:
+            odata = {}
+    if not isinstance(odata, dict):
+        odata = {}
+    return row["id"], odata
+
+
+async def _ver_odontograma(args: Dict, tenant_id: int, user_role: str) -> str:
+    """Shows the full current odontogram for a patient."""
+    if user_role not in ("ceo", "professional"):
+        return _role_error("ver_odontograma", ["ceo", "professional"])
+
+    pid = args.get("patient_id")
+    if not pid:
+        return "Necesito el ID del paciente."
+
+    # Verify patient exists
+    patient = await db.pool.fetchrow(
+        "SELECT first_name, last_name FROM patients WHERE id = $1 AND tenant_id = $2",
+        int(pid), tenant_id,
+    )
+    if not patient:
+        return "No encontré a ese paciente."
+
+    record_id, odata = await _get_latest_odontogram(int(pid), tenant_id)
+
+    name = f"{patient['first_name']} {patient['last_name'] or ''}".strip()
+
+    if not odata:
+        return f"Odontograma de {name}: sin datos cargados. Todas las piezas se consideran sanas por defecto."
+
+    # Build readable output grouped by quadrant
+    lines = [f"Odontograma de {name} ({len(odata)} pieza(s) con datos):\n"]
+
+    quadrants = {1: [], 2: [], 3: [], 4: []}
+    for tooth_key, tooth_data in sorted(odata.items(), key=lambda x: int(x[0]) if x[0].isdigit() else 0):
+        try:
+            num = int(tooth_key)
+        except ValueError:
+            continue
+        q = num // 10
+        if q not in quadrants:
+            continue
+
+        status = tooth_data.get("status", "healthy") if isinstance(tooth_data, dict) else "healthy"
+        status_es = _STATUS_ES.get(status, status)
+        fdi_name = _FDI_NAMES.get(num, f"pieza {num}")
+
+        detail = f"  Pieza {num} ({fdi_name}): {status_es}"
+
+        # Surfaces
+        surfaces = tooth_data.get("surfaces", {}) if isinstance(tooth_data, dict) else {}
+        if surfaces and isinstance(surfaces, dict):
+            affected = [f"{s}={_STATUS_ES.get(v, v)}" for s, v in surfaces.items() if v and v != "healthy"]
+            if affected:
+                detail += f" [{', '.join(affected)}]"
+
+        # Notes
+        notes = tooth_data.get("notes", "") if isinstance(tooth_data, dict) else ""
+        if notes:
+            detail += f" — {notes}"
+
+        quadrants[q].append(detail)
+
+    q_names = {1: "Superior Derecho (Q1)", 2: "Superior Izquierdo (Q2)",
+               3: "Inferior Izquierdo (Q3)", 4: "Inferior Derecho (Q4)"}
+    for q in [1, 2, 3, 4]:
+        if quadrants[q]:
+            lines.append(f"{q_names[q]}:")
+            lines.extend(quadrants[q])
+            lines.append("")
+
+    # Summary: pieces NOT in data are healthy
+    registered = len(odata)
+    lines.append(f"Las {32 - registered} piezas restantes están sanas (sin modificaciones).")
+
+    return "\n".join(lines)
+
+
+async def _modificar_odontograma(args: Dict, tenant_id: int, user_role: str, user_id: str) -> str:
+    """Modifies one or more teeth in the patient's odontogram. Changes persist."""
+    if user_role not in ("ceo", "professional"):
+        return _role_error("modificar_odontograma", ["ceo", "professional"])
+
+    pid = args.get("patient_id")
+    piezas = args.get("piezas", [])
+    diagnostico = args.get("diagnostico", "")
+
+    if not pid:
+        return "Necesito el ID del paciente."
+    if not piezas or not isinstance(piezas, list) or len(piezas) == 0:
+        return "Necesito saber qué piezas modificar. Decime los números FDI de las piezas y el estado nuevo."
+
+    # Validate all pieces BEFORE writing anything
+    errors = []
+    for i, pieza in enumerate(piezas):
+        num = pieza.get("numero")
+        estado = pieza.get("estado", "")
+        if not num:
+            errors.append(f"Pieza #{i+1}: falta el número FDI.")
+            continue
+        if int(num) not in _VALID_FDI:
+            errors.append(f"Pieza {num}: número FDI inválido. Usá nomenclatura FDI (11-48).")
+            continue
+        if estado and estado not in _VALID_STATES:
+            errors.append(f"Pieza {num}: estado '{estado}' no válido. Opciones: {', '.join(_VALID_STATES)}")
+
+    if errors:
+        return "Errores de validación:\n" + "\n".join(errors)
+
+    # Verify patient exists
+    patient = await db.pool.fetchrow(
+        "SELECT id, first_name, last_name FROM patients WHERE id = $1 AND tenant_id = $2",
+        int(pid), tenant_id,
+    )
+    if not patient:
+        return "No encontré a ese paciente."
+
+    # Get or create clinical record
+    record_id, current_odata = await _get_latest_odontogram(int(pid), tenant_id)
+
+    prof_id = await _resolve_professional_id(user_id, tenant_id) if user_role == "professional" else None
+
+    if not record_id:
+        # Create a new clinical record for this odontogram
+        record_id = uuid.uuid4()
+        await db.pool.execute(
+            """
+            INSERT INTO clinical_records
+                (id, tenant_id, patient_id, professional_id, record_date, diagnosis, odontogram_data)
+            VALUES ($1, $2, $3, $4, $5, $6, '{}'::jsonb)
+            """,
+            record_id, tenant_id, int(pid), prof_id, _today(),
+            diagnostico or "Actualización de odontograma",
+        )
+        current_odata = {}
+
+    # Apply changes — MERGE with existing data (don't overwrite unrelated teeth)
+    today_str = str(_today())
+    changes_summary = []
+    for pieza in piezas:
+        num = int(pieza["numero"])
+        estado = pieza["estado"]
+        key = str(num)
+
+        # Build tooth entry preserving existing data
+        existing_tooth = current_odata.get(key, {})
+        if not isinstance(existing_tooth, dict):
+            existing_tooth = {}
+
+        existing_tooth["status"] = estado
+        existing_tooth["date"] = today_str
+
+        # Surfaces (merge, don't overwrite)
+        surfaces_input = pieza.get("superficies", {})
+        if surfaces_input and isinstance(surfaces_input, dict):
+            existing_surfaces = existing_tooth.get("surfaces", {})
+            if not isinstance(existing_surfaces, dict):
+                existing_surfaces = {}
+            # Map Spanish surface names to English keys
+            surface_map = {"oclusal": "occlusal", "mesial": "mesial", "distal": "distal",
+                           "bucal": "buccal", "lingual": "lingual",
+                           "occlusal": "occlusal", "buccal": "buccal"}
+            for s_name, s_val in surfaces_input.items():
+                en_name = surface_map.get(s_name.lower(), s_name.lower())
+                existing_surfaces[en_name] = s_val
+            existing_tooth["surfaces"] = existing_surfaces
+
+        # Notes
+        notas = pieza.get("notas", "")
+        if notas:
+            existing_tooth["notes"] = notas
+
+        current_odata[key] = existing_tooth
+        fdi_name = _FDI_NAMES.get(num, f"pieza {num}")
+        status_es = _STATUS_ES.get(estado, estado)
+        changes_summary.append(f"  Pieza {num} ({fdi_name}) → {status_es}")
+
+    # Persist to database
+    await db.pool.execute(
+        """
+        UPDATE clinical_records
+        SET odontogram_data = $1::jsonb, updated_at = NOW()
+        WHERE id = $2 AND tenant_id = $3
+        """,
+        json.dumps(current_odata), record_id, tenant_id,
+    )
+
+    # Also update diagnosis if provided
+    if diagnostico:
+        await db.pool.execute(
+            "UPDATE clinical_records SET diagnosis = $1 WHERE id = $2 AND tenant_id = $3",
+            diagnostico, record_id, tenant_id,
+        )
+
+    name = f"{patient['first_name']} {patient['last_name'] or ''}".strip()
+    logger.info(f"🦷 NOVA Odontograma: patient={pid} ({name}) updated {len(piezas)} teeth, record={record_id}")
+
+    result = f"Odontograma de {name} actualizado ({len(piezas)} pieza(s)):\n"
+    result += "\n".join(changes_summary)
+    return result
 
 
 async def _table_exists(table_name: str) -> bool:
