@@ -2254,21 +2254,23 @@ async def _enviar_mensaje(args: Dict, tenant_id: int, user_role: str) -> str:
     if not message:
         return "Necesito el mensaje que querés enviar."
 
-    # Resolver teléfono: phone directo > patient_id > patient_name
+    # ── PASO 1: Resolver paciente (phone, patient_id, o patient_name) ──
     resolved_name = ""
-    if not phone and patient_id:
+    resolved_patient_id = None
+
+    if patient_id:
         row = await db.pool.fetchrow(
-            "SELECT phone_number, first_name, last_name FROM patients WHERE id = $1 AND tenant_id = $2",
+            "SELECT id, phone_number, first_name, last_name FROM patients WHERE id = $1 AND tenant_id = $2",
             int(patient_id), tenant_id,
         )
         if not row:
             return f"No encontré al paciente con ID {patient_id}."
-        phone = row["phone_number"] or ""
-        resolved_name = f"{row['first_name']} {row['last_name'] or ''}".strip()
         if not phone:
-            return f"El paciente {resolved_name} no tiene teléfono cargado."
+            phone = row["phone_number"] or ""
+        resolved_name = f"{row['first_name']} {row['last_name'] or ''}".strip()
+        resolved_patient_id = row["id"]
 
-    if not phone and patient_name:
+    if not phone and not resolved_patient_id and patient_name:
         rows = await db.pool.fetch(
             """SELECT id, phone_number, first_name, last_name FROM patients
                WHERE tenant_id = $1 AND (
@@ -2285,55 +2287,186 @@ async def _enviar_mensaje(args: Dict, tenant_id: int, user_role: str) -> str:
             return f"Encontré {len(rows)} pacientes con ese nombre:\n" + "\n".join(options) + "\n¿A cuál le mando el mensaje?"
         phone = rows[0]["phone_number"] or ""
         resolved_name = f"{rows[0]['first_name']} {rows[0]['last_name'] or ''}".strip()
-        if not phone:
-            return f"El paciente {resolved_name} no tiene teléfono cargado."
+        resolved_patient_id = rows[0]["id"]
 
-    if not phone:
+    if not phone and not resolved_patient_id:
         return "Necesito saber a quién enviar el mensaje. Decime el nombre del paciente, su ID, o su teléfono."
 
+    # ── PASO 2: Buscar conversación más reciente del paciente (cualquier canal) ──
+    # Prioridad: conversación más reciente con actividad (puede ser WhatsApp, Instagram o Facebook)
+    conv = None
+    if phone:
+        # Buscar por teléfono (normalizado) o external_user_id
+        import re as _re
+        phone_digits = _re.sub(r'\D', '', phone)
+        conv = await db.pool.fetchrow(
+            """SELECT id, channel, provider, external_user_id, external_chatwoot_id, external_account_id
+               FROM chat_conversations
+               WHERE tenant_id = $1 AND (
+                   external_user_id = $2
+                   OR REGEXP_REPLACE(external_user_id, '[^0-9]', '', 'g') = $3
+               )
+               ORDER BY last_message_at DESC NULLS LAST
+               LIMIT 1""",
+            tenant_id, phone, phone_digits,
+        )
+
+    # Si no encontramos por teléfono, buscar por patient_id en la tabla patients → phone → conversación
+    if not conv and resolved_patient_id:
+        patient_phone = await db.pool.fetchval(
+            "SELECT phone_number FROM patients WHERE id = $1 AND tenant_id = $2",
+            resolved_patient_id, tenant_id,
+        )
+        if patient_phone:
+            phone = patient_phone
+            import re as _re
+            phone_digits = _re.sub(r'\D', '', phone)
+            conv = await db.pool.fetchrow(
+                """SELECT id, channel, provider, external_user_id, external_chatwoot_id, external_account_id
+                   FROM chat_conversations
+                   WHERE tenant_id = $1 AND (
+                       external_user_id = $2
+                       OR REGEXP_REPLACE(external_user_id, '[^0-9]', '', 'g') = $3
+                   )
+                   ORDER BY last_message_at DESC NULLS LAST
+                   LIMIT 1""",
+                tenant_id, patient_phone, phone_digits,
+            )
+
+    display = resolved_name or phone or "paciente"
+
+    # ── PASO 3: Enviar por el canal correcto ──
     try:
         import httpx
         from core.credentials import get_tenant_credential
-        ycloud_key = await get_tenant_credential(tenant_id, "YCLOUD_API_KEY")
-        if not ycloud_key:
-            return "No hay YCloud API key configurada para este tenant."
 
-        # Get bot phone for this tenant
-        tenant_row = await db.pool.fetchrow(
-            "SELECT bot_phone_number FROM tenants WHERE id = $1", tenant_id
-        )
-        bot_phone = (tenant_row["bot_phone_number"] if tenant_row and tenant_row.get("bot_phone_number") else os.getenv("BOT_PHONE_NUMBER", ""))
+        channel = conv["channel"] if conv else "whatsapp"
+        provider = conv["provider"] if conv else "ycloud"
+        external_user_id = conv["external_user_id"] if conv else phone
 
-        async with httpx.AsyncClient(timeout=15) as client:
-            resp = await client.post(
-                "https://api.ycloud.com/v2/whatsapp/messages/sendDirectly",
-                headers={"X-API-Key": ycloud_key, "Content-Type": "application/json"},
-                json={"from": bot_phone, "to": phone, "type": "text", "text": {"body": message}},
+        logger.info(f"📩 NOVA enviar_mensaje: to={display} channel={channel} provider={provider} ext_id={external_user_id}")
+
+        # ── CHATWOOT (Instagram / Facebook / WhatsApp via Chatwoot) ──
+        if provider == "chatwoot" and conv and conv.get("external_chatwoot_id"):
+            chatwoot_base = await get_tenant_credential(tenant_id, "CHATWOOT_BASE_URL")
+            chatwoot_token = await get_tenant_credential(tenant_id, "CHATWOOT_API_TOKEN")
+            account_id = conv["external_account_id"]
+            conv_id = conv["external_chatwoot_id"]
+
+            if not chatwoot_base or not chatwoot_token or not account_id or not conv_id:
+                return f"No pude enviar a {display} por {channel}: faltan credenciales de Chatwoot."
+
+            from chatwoot_client import ChatwootClient
+            cw = ChatwootClient(chatwoot_base, chatwoot_token)
+            await cw.send_text_message(int(account_id), int(conv_id), message)
+
+            # Persist message in DB
+            await db.pool.execute(
+                "INSERT INTO chat_messages (tenant_id, conversation_id, role, content, from_number, platform_metadata) VALUES ($1, $2, 'assistant', $3, $4, $5::jsonb)",
+                tenant_id, conv["id"], message, external_user_id, json.dumps({"provider": "chatwoot", "source": "nova"}),
             )
+            channel_es = {"instagram": "Instagram", "facebook": "Facebook Messenger", "whatsapp": "WhatsApp"}.get(channel, channel)
+            logger.info(f"📩 NOVA {channel_es} sent via Chatwoot to {display}: {message[:80]}")
+            return f"Mensaje enviado a {display} por {channel_es}: \"{message[:80]}{'...' if len(message) > 80 else ''}\""
 
-        display = resolved_name or phone
-        if resp.status_code == 200:
-            logger.info(f"📩 NOVA WhatsApp sent to {phone} ({resolved_name}): {message[:80]}")
-            return f"Mensaje enviado a {display}: \"{message[:80]}{'...' if len(message) > 80 else ''}\""
+        # ── META DIRECT (Instagram / Facebook via Graph API) ──
+        elif provider == "meta_direct" and conv:
+            page_token = await get_tenant_credential(tenant_id, "meta_page_token")
+            if not page_token:
+                return f"No pude enviar a {display} por {channel}: falta meta_page_token."
 
-        # Handle common WhatsApp API errors
-        error_body = ""
-        try:
-            error_body = resp.text
-        except Exception:
-            pass
-        logger.warning(f"📩 NOVA WhatsApp FAILED to {phone}: status={resp.status_code} body={error_body[:200]}")
+            if channel == "whatsapp":
+                # Meta Direct WhatsApp — need phone_number_id
+                wa_asset = await db.pool.fetchrow(
+                    "SELECT content FROM business_assets WHERE tenant_id = $1 AND asset_type = 'whatsapp_waba' AND is_active = true LIMIT 1",
+                    tenant_id,
+                )
+                phone_number_id = None
+                wa_token = page_token
+                if wa_asset:
+                    wa_content = wa_asset["content"] if isinstance(wa_asset["content"], dict) else json.loads(wa_asset["content"])
+                    phones = wa_content.get("phone_numbers", [])
+                    if phones:
+                        phone_number_id = phones[0].get("id")
+                    waba_token = await get_tenant_credential(tenant_id, f"META_WA_TOKEN_{wa_content.get('id')}")
+                    if waba_token:
+                        wa_token = waba_token
+                if not phone_number_id:
+                    return f"No pude enviar WhatsApp a {display}: falta phone_number_id de Meta."
 
-        # Detect 24-hour window closed (common WhatsApp Business API error)
-        if resp.status_code in (400, 403, 470) or "template" in error_body.lower() or "window" in error_body.lower() or "session" in error_body.lower():
-            return (
-                f"No se pudo enviar el mensaje a {display}. "
-                f"La ventana de 24 horas de WhatsApp probablemente está cerrada "
-                f"(el paciente no escribió recientemente). "
-                f"Para contactarlo fuera de la ventana, se necesita usar un template de mensaje aprobado por Meta."
-            )
-        return f"Error enviando mensaje a {display}: código {resp.status_code}"
+                async with httpx.AsyncClient(timeout=15) as client:
+                    resp = await client.post(
+                        f"https://graph.facebook.com/v22.0/{phone_number_id}/messages",
+                        headers={"Authorization": f"Bearer {wa_token}", "Content-Type": "application/json"},
+                        json={"messaging_product": "whatsapp", "recipient_type": "individual",
+                              "to": external_user_id, "type": "text", "text": {"body": message}},
+                    )
+            else:
+                # Instagram DM / Facebook Messenger via Graph API
+                async with httpx.AsyncClient(timeout=15) as client:
+                    resp = await client.post(
+                        "https://graph.facebook.com/v22.0/me/messages",
+                        params={"access_token": page_token},
+                        json={"recipient": {"id": external_user_id}, "message": {"text": message}, "messaging_type": "RESPONSE"},
+                    )
+
+            if resp.status_code == 200:
+                await db.pool.execute(
+                    "INSERT INTO chat_messages (tenant_id, conversation_id, role, content, from_number, platform_metadata) VALUES ($1, $2, 'assistant', $3, $4, $5::jsonb)",
+                    tenant_id, conv["id"], message, external_user_id, json.dumps({"provider": "meta_direct", "source": "nova"}),
+                )
+                channel_es = {"instagram": "Instagram", "facebook": "Facebook Messenger", "whatsapp": "WhatsApp"}.get(channel, channel)
+                logger.info(f"📩 NOVA {channel_es} sent via Meta Direct to {display}: {message[:80]}")
+                return f"Mensaje enviado a {display} por {channel_es}: \"{message[:80]}{'...' if len(message) > 80 else ''}\""
+
+            error_body = resp.text[:200] if hasattr(resp, 'text') else ""
+            logger.warning(f"📩 NOVA Meta Direct FAILED: status={resp.status_code} body={error_body}")
+            if resp.status_code in (400, 403, 10) or "window" in error_body.lower() or "outside" in error_body.lower():
+                channel_es = {"instagram": "Instagram", "facebook": "Facebook"}.get(channel, channel)
+                return f"No se pudo enviar el mensaje a {display} por {channel_es}. La ventana de 24 horas puede estar cerrada (el paciente no interactuó recientemente)."
+            return f"Error enviando mensaje a {display}: código {resp.status_code}"
+
+        # ── YCLOUD (WhatsApp default) ──
+        else:
+            ycloud_key = await get_tenant_credential(tenant_id, "YCLOUD_API_KEY")
+            if not ycloud_key:
+                return "No hay YCloud API key configurada para este tenant."
+
+            tenant_row = await db.pool.fetchrow("SELECT bot_phone_number FROM tenants WHERE id = $1", tenant_id)
+            bot_phone = (tenant_row["bot_phone_number"] if tenant_row and tenant_row.get("bot_phone_number") else os.getenv("BOT_PHONE_NUMBER", ""))
+
+            if not phone:
+                return f"El paciente {display} no tiene teléfono cargado."
+
+            async with httpx.AsyncClient(timeout=15) as client:
+                resp = await client.post(
+                    "https://api.ycloud.com/v2/whatsapp/messages/sendDirectly",
+                    headers={"X-API-Key": ycloud_key, "Content-Type": "application/json"},
+                    json={"from": bot_phone, "to": phone, "type": "text", "text": {"body": message}},
+                )
+
+            if resp.status_code == 200:
+                # Persist message if we have conversation
+                if conv:
+                    await db.pool.execute(
+                        "INSERT INTO chat_messages (tenant_id, conversation_id, role, content, from_number, platform_metadata) VALUES ($1, $2, 'assistant', $3, $4, $5::jsonb)",
+                        tenant_id, conv["id"], message, phone, json.dumps({"provider": "ycloud", "source": "nova"}),
+                    )
+                logger.info(f"📩 NOVA WhatsApp sent via YCloud to {display} ({phone}): {message[:80]}")
+                return f"Mensaje enviado a {display} por WhatsApp: \"{message[:80]}{'...' if len(message) > 80 else ''}\""
+
+            error_body = resp.text[:200] if hasattr(resp, 'text') else ""
+            logger.warning(f"📩 NOVA YCloud FAILED to {phone}: status={resp.status_code} body={error_body}")
+            if resp.status_code in (400, 403, 470) or "template" in error_body.lower() or "window" in error_body.lower() or "session" in error_body.lower():
+                return (
+                    f"No se pudo enviar el mensaje a {display} por WhatsApp. "
+                    f"La ventana de 24 horas probablemente está cerrada (el paciente no escribió recientemente). "
+                    f"Para contactarlo fuera de la ventana, se necesita un template de mensaje aprobado por Meta."
+                )
+            return f"Error enviando mensaje a {display}: código {resp.status_code}"
+
     except Exception as e:
+        logger.error(f"📩 NOVA enviar_mensaje error: {e}", exc_info=True)
         return f"Error enviando mensaje: {e}"
 
 
