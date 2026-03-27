@@ -968,15 +968,26 @@ async def get_tenant_calendar_provider(tenant_id: int) -> str:
 # --- TOOLS DENTALES ---
 
 @tool
-async def check_availability(date_query: str, professional_name: Optional[str] = None, 
-                             treatment_name: Optional[str] = None, time_preference: Optional[str] = None):
+async def check_availability(date_query: str, professional_name: Optional[str] = None,
+                             treatment_name: Optional[str] = None, time_preference: Optional[str] = None,
+                             interpreted_date: Optional[str] = None, search_mode: Optional[str] = None):
     """
     Consulta la disponibilidad REAL de turnos para una fecha. Llamar UNA sola vez por pregunta del paciente.
-    date_query: Pasá lo que dijo el paciente sobre la fecha, SIEMPRE incluyendo el mes si se mencionó antes en la conversación.
-      Ejemplos: "jueves 30 de abril", "4 de mayo", "mañana", "fines de abril", "lo antes posible", "para mayo",
-      "la semana que viene", "hoy", "pasado mañana", "cualquier día", "el más cercano", "mitad de julio", "cerca del 15 de mayo".
-      IMPORTANTE: Si el paciente dice "el 15" o "cerca del 15" pero antes mencionó un mes (ej: mayo), pasá "15 de mayo" o "cerca del 15 de mayo". NUNCA pases solo un número sin mes.
-      El sistema interpreta CUALQUIER formato. Si la clínica/profesional no atiende ese día, busca el más cercano automáticamente.
+    date_query: Texto ORIGINAL del paciente sobre la fecha. Ejemplos: "para fines de abril", "cerca del 15 te dije", "mitad de mayo sería".
+    interpreted_date: (MUY IMPORTANTE) Tu interpretación de la fecha en formato YYYY-MM-DD. Razoná qué fecha quiere el paciente combinando TODO el contexto de la conversación.
+      Ejemplos de razonamiento:
+      - Paciente dijo "mayo" antes y ahora dice "cerca del 15" → interpreted_date="2026-05-15"
+      - Paciente dice "jueves 30 de abril" → interpreted_date="2026-04-30"
+      - Paciente dice "fines de octubre" → interpreted_date="2026-10-25"
+      - Paciente dice "mañana" → interpreted_date="[fecha de mañana en YYYY-MM-DD]"
+      - Paciente dice "lo antes posible" → interpreted_date=null (el sistema busca)
+      SIEMPRE pasá interpreted_date cuando puedas calcular la fecha. Solo dejalo en null si realmente no se puede determinar (ej: "cualquier día").
+    search_mode: Cómo buscar turnos alrededor de interpreted_date. Opciones:
+      - "exact": Día específico (ej: "el 30 de abril"). Muestra 2-3 opciones de ese día + comodín.
+      - "week": Rango de ~7 días (ej: "mitad de mayo", "fines de julio"). Distribuye opciones en varios días del rango.
+      - "month": Mes completo (ej: "para mayo", "en julio"). Busca en todo el mes.
+      - "open": Sin restricción, buscar lo más cercano (ej: "lo antes posible", "cuando haya").
+      Default: "exact" si hay fecha específica, "week" si es rango, "open" si no hay preferencia.
     professional_name: (Opcional) Nombre del profesional (uno de list_professionals).
     treatment_name: (Opcional) Tratamiento ya definido (ej. limpieza profunda, consulta).
     time_preference: OBLIGATORIO cuando el paciente pide horarios de un momento del día: si pide 'a la tarde', 'por la tarde', 'tarde' -> 'tarde'; si pide 'a la mañana', 'por la mañana', 'mañana' (en sentido horario) -> 'mañana'; si no especifica -> 'todo' o no pasar.
@@ -984,7 +995,7 @@ async def check_availability(date_query: str, professional_name: Optional[str] =
     """
     try:
         tid = current_tenant_id.get()
-        logger.info(f"📅 check_availability date_query={date_query!r} tenant_id={tid} treatment={treatment_name!r} prof={professional_name!r}")
+        logger.info(f"📅 check_availability date_query={date_query!r} interpreted_date={interpreted_date!r} search_mode={search_mode!r} tenant_id={tid} treatment={treatment_name!r} prof={professional_name!r}")
         # 0. A) Limpiar nombre y obtener profesionales activos
         clean_name = professional_name
         if professional_name:
@@ -1020,9 +1031,22 @@ async def check_availability(date_query: str, professional_name: Optional[str] =
         if not active_professionals:
             return "❌ No hay profesionales activos en esta sede para consultar disponibilidad. Por favor contactá a la clínica."
 
-        target_date = parse_date(date_query)
+        # PRIORIDAD: interpreted_date del LLM > parse_date del texto
+        target_date = None
+        used_interpreted = False
+        if interpreted_date:
+            try:
+                target_date = dateutil_parse(str(interpreted_date), dayfirst=True).date()
+                used_interpreted = True
+                logger.info(f"📅 Using LLM interpreted_date: {interpreted_date} → {target_date}")
+            except Exception as e:
+                logger.warning(f"📅 Failed to parse interpreted_date={interpreted_date!r}: {e}, falling back to parse_date")
 
-        # Si parse_date no pudo interpretar la fecha, pedir aclaración
+        # Fallback: parse_date del texto original
+        if target_date is None:
+            target_date = parse_date(date_query)
+
+        # Si nada funcionó, pedir aclaración
         if target_date is None:
             return f"No pude entender la fecha '{date_query}'. ¿Podrías decirme el día que te gustaría? Por ejemplo: 'jueves 30 de abril', 'mañana', 'la semana que viene'."
 
@@ -1342,9 +1366,14 @@ async def check_availability(date_query: str, professional_name: Optional[str] =
         except Exception as e:
             logger.warning(f"Soft lock check failed (non-blocking): {e}")
 
-        # Determinar rango de búsqueda según el tipo de expresión del paciente
-        search_range = _get_search_range_days(date_query, target_date)
-        logger.info(f"📅 search_range={search_range} days for query={date_query!r} target={target_date}")
+        # Determinar rango de búsqueda: search_mode del LLM tiene prioridad, sino inferir del texto
+        search_mode_map = {"exact": 1, "week": 7, "month": 30, "open": 30}
+        if search_mode and search_mode.lower() in search_mode_map:
+            search_range = search_mode_map[search_mode.lower()]
+            logger.info(f"📅 search_range={search_range} days (from LLM search_mode={search_mode!r})")
+        else:
+            search_range = _get_search_range_days(date_query, target_date)
+            logger.info(f"📅 search_range={search_range} days (inferred from query={date_query!r} target={target_date})")
 
         # Seleccionar 2-3 opciones representativas (con multi-día si hace falta)
         options, total_today = await pick_representative_slots(
@@ -3625,7 +3654,18 @@ PASO 3: PROFESIONAL ASIGNADO — Según lo que devolvió 'list_services' o 'get_
   • Si tiene VARIOS profesionales asignados → decí: "Este tratamiento lo realizan [nombres]. Preferís alguno/a?" Si el paciente elige uno → ejecutá check_availability con ese profesional. Si dice "no" / "cualquiera" / no responde claro → ejecutá check_availability SIN professional_name (el sistema asigna al primero disponible).
   • Si NO tiene profesionales asignados (no aparece "con: ...") → preguntá preferencia de profesional o asigná el primero disponible, como siempre.
 PASO 4: CONSULTAR DISPONIBILIDAD — Llamá 'check_availability' UNA vez con treatment_name y, si el paciente eligió profesional, con professional_name.
-  FECHA EN date_query (CRÍTICO): Pasá TEXTUALMENTE lo que dijo el paciente sobre la fecha, SIEMPRE incluyendo el mes si se mencionó en la conversación. Si dijo "jueves 30 de abril" → date_query="jueves 30 de abril". Si dijo "para mayo" → date_query="para mayo". Si dijo "lo antes posible" → date_query="lo antes posible". Si dijo "cerca del 15" pero antes había dicho "mayo" → date_query="cerca del 15 de mayo" (INCLUIR el mes del contexto). NUNCA pasar solo un número sin mes — siempre agregar el mes de la conversación. La tool entiende CUALQUIER formato y si el día está cerrado busca automáticamente el más cercano.
+  RAZONAMIENTO DE FECHA (CRÍTICO): Antes de llamar a check_availability, RAZONÁ internamente qué fecha quiere el paciente combinando TODOS los mensajes de la conversación. Luego pasá:
+  • date_query: texto original del paciente (ej: "cerca del 15 te dije")
+  • interpreted_date: TU interpretación en YYYY-MM-DD (ej: "2026-05-15"). SIEMPRE pasá este campo si podés calcular la fecha. Combiná el contexto: si antes dijo "mayo" y ahora dice "el 15", interpreted_date="2026-05-15".
+  • search_mode: "exact" (día puntual), "week" (rango ~7 días como "mitad de mayo"), "month" (mes completo como "para julio"), "open" (sin preferencia, lo antes posible).
+  EJEMPLOS de razonamiento:
+  - "jueves 30 de abril" → interpreted_date="2026-04-30", search_mode="exact"
+  - "mitad de mayo" → interpreted_date="2026-05-15", search_mode="week"
+  - "fines de octubre" → interpreted_date="2026-10-25", search_mode="week"
+  - "para julio" → interpreted_date="2026-07-01", search_mode="month"
+  - "lo antes posible" → interpreted_date=null, search_mode="open"
+  - Paciente dijo "mayo" antes, ahora dice "cerca del 15" → interpreted_date="2026-05-15", search_mode="week"
+  Si NO podés determinar la fecha → no pases interpreted_date, el sistema intenta parsear date_query como fallback.
   La tool devuelve 2-3 opciones con emojis numerados (1️⃣ 2️⃣ 3️⃣) y la sede al final. Presentá el resultado TAL CUAL lo recibís, sin reformatear. NO agregues la dirección ni sede entre las opciones — ya viene al final del mensaje de la tool.
   Si el paciente elige una opción → pasar a PASO 4b.
   Si el paciente pide otro horario distinto a las opciones → volver a llamar 'check_availability' para verificar ese horario específico.
