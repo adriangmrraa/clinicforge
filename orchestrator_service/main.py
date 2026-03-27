@@ -1050,6 +1050,37 @@ async def check_availability(date_query: str, professional_name: Optional[str] =
         if target_date is None:
             return f"No pude entender la fecha '{date_query}'. ¿Podrías decirme el día que te gustaría? Por ejemplo: 'jueves 30 de abril', 'mañana', 'la semana que viene'."
 
+        # ── VALIDACIÓN CRUZADA: mes mencionado en date_query vs mes resuelto ──
+        # Si date_query menciona un mes explícito pero la fecha resuelta cayó en otro mes,
+        # corregir al mes correcto. Esto atrapa casos como:
+        # - LLM no pasó interpreted_date + parse_date falló: "cerca del 15" → marzo 15 en vez de mayo 15
+        # - dateutil confundido por texto ruidoso
+        _month_map = {
+            'enero': 1, 'febrero': 2, 'marzo': 3, 'abril': 4, 'mayo': 5, 'junio': 6,
+            'julio': 7, 'agosto': 8, 'septiembre': 9, 'setiembre': 9, 'octubre': 10,
+            'noviembre': 11, 'diciembre': 12,
+        }
+        dq_lower = date_query.lower()
+        mentioned_month = None
+        for mname, mnum in _month_map.items():
+            if mname in dq_lower:
+                mentioned_month = mnum
+                break
+        if mentioned_month and target_date.month != mentioned_month:
+            old_date = target_date
+            try:
+                target_date = target_date.replace(month=mentioned_month)
+                # Si el día no existe en ese mes (ej: 31 de febrero), usar el último día
+            except ValueError:
+                import calendar
+                _, last_day = calendar.monthrange(target_date.year, mentioned_month)
+                target_date = target_date.replace(month=mentioned_month, day=min(target_date.day, last_day))
+            # Si la corrección queda en el pasado, avanzar al año siguiente
+            today_date_check = get_now_arg().date()
+            if target_date < today_date_check:
+                target_date = target_date.replace(year=target_date.year + 1)
+            logger.warning(f"📅 CROSS-VALIDATION: date_query mentions '{mname}' (month {mentioned_month}) but resolved to {old_date.month}. Corrected {old_date} → {target_date}")
+
         # GUARDIA: NUNCA buscar en el pasado
         today_date = get_now_arg().date()
         if target_date < today_date:
