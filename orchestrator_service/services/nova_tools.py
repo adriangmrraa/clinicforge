@@ -500,7 +500,7 @@ NOVA_TOOLS_SCHEMA: List[Dict[str, Any]] = [
     {"type": "function", "name": "listar_profesionales", "description": "Lista dentistas/profesionales activos con especialidad, horarios y precio de consulta.", "parameters": {"type": "object", "properties": {}}},
     {"type": "function", "name": "reprogramar_turno", "description": "Reprograma un turno existente a nueva fecha/hora.", "parameters": {"type": "object", "properties": {"appointment_id": {"type": "string", "description": "UUID del turno"}, "new_date": {"type": "string", "description": "Nueva fecha YYYY-MM-DD"}, "new_time": {"type": "string", "description": "Nueva hora HH:MM"}}, "required": ["appointment_id", "new_date", "new_time"]}},
     {"type": "function", "name": "ver_configuracion", "description": "Ver configuracion de la clinica: nombre, direccion, horarios, datos bancarios, precio consulta.", "parameters": {"type": "object", "properties": {}}},
-    {"type": "function", "name": "actualizar_configuracion", "description": "Actualizar configuracion de la clinica. Solo CEO.", "parameters": {"type": "object", "properties": {"field": {"type": "string", "enum": ["clinic_name", "clinic_location", "clinic_phone", "working_hours_start", "working_hours_end", "bank_cbu", "bank_alias", "bank_holder_name", "consultation_price", "website"]}, "value": {"type": "string"}}, "required": ["field", "value"]}},
+    {"type": "function", "name": "actualizar_configuracion", "description": "Actualizar configuracion de la clinica. Solo CEO.", "parameters": {"type": "object", "properties": {"field": {"type": "string", "enum": ["clinic_name", "address", "clinic_phone", "bank_cbu", "bank_alias", "bank_holder_name", "consultation_price", "website", "owner_email"]}, "value": {"type": "string"}}, "required": ["field", "value"]}},
     {"type": "function", "name": "crear_tratamiento", "description": "Crear nuevo tipo de tratamiento. Solo CEO.", "parameters": {"type": "object", "properties": {"name": {"type": "string"}, "code": {"type": "string"}, "duration_minutes": {"type": "integer"}, "base_price": {"type": "number"}, "category": {"type": "string", "enum": ["prevention", "restorative", "surgical", "orthodontics", "emergency"]}}, "required": ["name", "code", "duration_minutes"]}},
     {"type": "function", "name": "editar_tratamiento", "description": "Editar un tipo de tratamiento existente. Solo CEO.", "parameters": {"type": "object", "properties": {"code": {"type": "string"}, "field": {"type": "string", "enum": ["name", "duration_minutes", "base_price", "category", "is_active"]}, "value": {"type": "string"}}, "required": ["code", "field", "value"]}},
     {"type": "function", "name": "ver_chats_recientes", "description": "Ver ultimas conversaciones de WhatsApp/Instagram/Facebook.", "parameters": {"type": "object", "properties": {"limit": {"type": "integer", "description": "Cantidad de chats (default 10)"}}}},
@@ -1078,11 +1078,8 @@ async def _verificar_disponibilidad(args: Dict, tenant_id: int) -> str:
     if isinstance(working_hours, str):
         working_hours = json.loads(working_hours)
 
-    # Parse target date to get day of week
-    try:
-        dt = datetime.strptime(target_date, "%Y-%m-%d").date()
-    except ValueError:
-        return "Formato de fecha invalido. Usa YYYY-MM-DD."
+    # target_date is already a date object from _parse_date_str()
+    dt = target_date if isinstance(target_date, date) else _parse_date_str(target_date)
 
     day_names = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
     day_key = day_names[dt.weekday()]
@@ -2034,24 +2031,55 @@ async def _reprogramar_turno(args: Dict, tenant_id: int) -> str:
     new_time = args.get("new_time", "")
     if not apt_id or not new_date or not new_time:
         return "Necesito appointment_id, new_date (YYYY-MM-DD) y new_time (HH:MM)."
-    # Parse to proper datetime object (asyncpg needs datetime, not string)
+    try:
+        appt_uuid = uuid.UUID(str(apt_id))
+    except ValueError:
+        return "ID de turno invalido."
     new_dt = _parse_datetime_str(f"{new_date} {new_time}")
-    await db.pool.execute(
+    result = await db.pool.execute(
         "UPDATE appointments SET appointment_datetime = $1, status = 'scheduled', updated_at = NOW() WHERE id = $2 AND tenant_id = $3",
-        new_dt, apt_id, tenant_id,
+        new_dt, appt_uuid, tenant_id,
     )
+    if result == "UPDATE 0":
+        return "No encontre ese turno."
     return f"Turno reprogramado para {_fmt_date(new_dt)}."
 
 
 async def _ver_configuracion(tenant_id: int) -> str:
-    row = await db.pool.fetchrow("SELECT * FROM tenants WHERE id = $1", tenant_id)
+    row = await db.pool.fetchrow(
+        """SELECT clinic_name, address, clinic_phone, website, working_hours,
+                  bank_cbu, bank_alias, bank_holder_name, consultation_price, owner_email,
+                  calendar_provider, max_chairs
+           FROM tenants WHERE id = $1""",
+        tenant_id,
+    )
     if not row:
         return "Clinica no encontrada."
-    lines = [f"Configuracion de {row.get('clinic_name', 'Clinica')}:"]
-    for field in ["clinic_name", "clinic_location", "clinic_phone", "website", "working_hours_start", "working_hours_end", "bank_cbu", "bank_alias", "bank_holder_name", "consultation_price", "owner_email"]:
-        val = row.get(field)
-        if val:
-            lines.append(f"• {field}: {val}")
+    lines = [f"Configuracion de {row['clinic_name'] or 'Clinica'}:"]
+    field_labels = {
+        "clinic_name": "Nombre", "address": "Direccion", "clinic_phone": "Telefono",
+        "website": "Web", "bank_cbu": "CBU", "bank_alias": "Alias",
+        "bank_holder_name": "Titular", "consultation_price": "Precio consulta",
+        "owner_email": "Email", "calendar_provider": "Calendario", "max_chairs": "Sillones",
+    }
+    for field, label in field_labels.items():
+        val = row[field]
+        if val is not None and str(val).strip():
+            lines.append(f"• {label}: {val}")
+    # Working hours
+    wh = row["working_hours"]
+    if wh:
+        if isinstance(wh, str):
+            wh = json.loads(wh)
+        if isinstance(wh, dict):
+            day_names = {"monday": "Lun", "tuesday": "Mar", "wednesday": "Mie", "thursday": "Jue", "friday": "Vie", "saturday": "Sab", "sunday": "Dom"}
+            wh_parts = []
+            for day, abbr in day_names.items():
+                dc = wh.get(day, {})
+                if dc.get("enabled"):
+                    wh_parts.append(f"{abbr} {dc.get('start', '?')}-{dc.get('end', '?')}")
+            if wh_parts:
+                lines.append(f"• Horarios: {', '.join(wh_parts)}")
     return "\n".join(lines)
 
 
@@ -2062,9 +2090,15 @@ async def _actualizar_configuracion(args: Dict, tenant_id: int, user_role: str) 
     value = args.get("value", "")
     if not field:
         return "Necesito field y value."
-    allowed = ["clinic_name", "clinic_location", "clinic_phone", "working_hours_start", "working_hours_end", "bank_cbu", "bank_alias", "bank_holder_name", "consultation_price", "website"]
+    allowed = ["clinic_name", "address", "clinic_phone", "bank_cbu", "bank_alias", "bank_holder_name", "consultation_price", "website", "owner_email"]
     if field not in allowed:
         return f"Campo '{field}' no permitido. Opciones: {', '.join(allowed)}"
+    # consultation_price needs numeric conversion
+    if field == "consultation_price":
+        try:
+            value = Decimal(str(value))
+        except Exception:
+            return "El precio debe ser un numero valido."
     await db.pool.execute(f"UPDATE tenants SET {field} = $1, updated_at = NOW() WHERE id = $2", value, tenant_id)
     return f"Configuracion actualizada: {field} = {value}"
 
@@ -2106,20 +2140,23 @@ async def _editar_tratamiento(args: Dict, tenant_id: int, user_role: str) -> str
 async def _ver_chats_recientes(args: Dict, tenant_id: int) -> str:
     limit = args.get("limit", 10)
     rows = await db.pool.fetch(
-        """SELECT cc.customer_phone, cc.channel, cc.updated_at,
+        """SELECT cc.external_user_id, cc.display_name, cc.channel, cc.updated_at,
+                  cc.last_message_preview,
                   (SELECT content FROM chat_messages WHERE conversation_id = cc.id ORDER BY created_at DESC LIMIT 1) as last_msg
            FROM chat_conversations cc WHERE cc.tenant_id = $1 ORDER BY cc.updated_at DESC LIMIT $2""",
-        tenant_id, limit,
+        tenant_id, int(limit),
     )
     if not rows:
         return "No hay conversaciones recientes."
-    lines = ["Conversaciones recientes:"]
+    lines = [f"Conversaciones recientes ({len(rows)}):"]
     for r in rows:
-        phone = r["customer_phone"] or "?"
+        phone = r["external_user_id"] or "?"
+        name = r["display_name"] or ""
         channel = r["channel"] or "whatsapp"
-        last = (r["last_msg"] or "")[:60]
+        last = (r["last_message_preview"] or r["last_msg"] or "")[:60]
         when = r["updated_at"].strftime("%d/%m %H:%M") if r["updated_at"] else "?"
-        lines.append(f"• {phone} ({channel}) — {when}: {last}")
+        name_part = f" {name}" if name else ""
+        lines.append(f"• {phone}{name_part} ({channel}) — {when}: {last}")
     return "\n".join(lines)
 
 
@@ -2183,12 +2220,15 @@ async def _bloquear_agenda(args: Dict, tenant_id: int) -> str:
     reason = args.get("reason", "Bloqueado")
     if not prof_id or not start or not end:
         return "Necesito professional_id, start_datetime y end_datetime."
+    start_dt = _parse_datetime_str(start)
+    end_dt = _parse_datetime_str(end)
+    block_id = uuid.uuid4()
     await db.pool.execute(
-        """INSERT INTO google_calendar_blocks (tenant_id, professional_id, start_time, end_time, title, source, created_at)
-           VALUES ($1, $2, $3, $4, $5, 'manual', NOW())""",
-        tenant_id, prof_id, start, end, reason,
+        """INSERT INTO google_calendar_blocks (id, tenant_id, google_event_id, professional_id, start_datetime, end_datetime, title, sync_status, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, 'manual', NOW())""",
+        block_id, tenant_id, f"nova-block-{block_id}", int(prof_id), start_dt, end_dt, reason,
     )
-    return f"Agenda bloqueada: {start} a {end} — {reason}"
+    return f"Agenda bloqueada: {_fmt_date(start_dt)} a {_fmt_date(end_dt)} — {reason}"
 
 
 async def _eliminar_paciente(args: Dict, tenant_id: int, user_role: str) -> str:
@@ -2197,7 +2237,9 @@ async def _eliminar_paciente(args: Dict, tenant_id: int, user_role: str) -> str:
     patient_id = args.get("patient_id")
     if not patient_id:
         return "Necesito patient_id."
-    await db.pool.execute("UPDATE patients SET status = 'archived' WHERE id = $1 AND tenant_id = $2", patient_id, tenant_id)
+    result = await db.pool.execute("UPDATE patients SET status = 'archived', updated_at = NOW() WHERE id = $1 AND tenant_id = $2", int(patient_id), tenant_id)
+    if result == "UPDATE 0":
+        return "No encontre a ese paciente."
     return f"Paciente {patient_id} archivado."
 
 
@@ -2215,7 +2257,9 @@ async def _eliminar_faq(args: Dict, tenant_id: int) -> str:
     faq_id = args.get("faq_id")
     if not faq_id:
         return "Necesito faq_id."
-    await db.pool.execute("DELETE FROM clinic_faqs WHERE id = $1 AND tenant_id = $2", faq_id, tenant_id)
+    result = await db.pool.execute("DELETE FROM clinic_faqs WHERE id = $1 AND tenant_id = $2", int(faq_id), tenant_id)
+    if result == "DELETE 0":
+        return "No encontre esa FAQ."
     return f"FAQ {faq_id} eliminada."
 
 
@@ -2224,14 +2268,20 @@ async def _cambiar_estado_turno(args: Dict, tenant_id: int) -> str:
     status = args.get("status", "")
     if not apt_id or not status:
         return "Necesito appointment_id y status."
+    try:
+        appt_uuid = uuid.UUID(str(apt_id))
+    except ValueError:
+        return "ID de turno invalido."
     allowed = ["completed", "no-show", "in-progress", "confirmed", "cancelled"]
     if status not in allowed:
         return f"Estado '{status}' no valido. Opciones: {', '.join(allowed)}"
     if status == "completed":
-        await db.pool.execute("UPDATE appointments SET status = $1, completed_at = NOW(), updated_at = NOW() WHERE id = $2 AND tenant_id = $3", status, apt_id, tenant_id)
+        result = await db.pool.execute("UPDATE appointments SET status = $1, completed_at = NOW(), updated_at = NOW() WHERE id = $2 AND tenant_id = $3", status, appt_uuid, tenant_id)
     else:
-        await db.pool.execute("UPDATE appointments SET status = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3", status, apt_id, tenant_id)
-    return f"Turno {apt_id} → estado: {status}"
+        result = await db.pool.execute("UPDATE appointments SET status = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3", status, appt_uuid, tenant_id)
+    if result == "UPDATE 0":
+        return "No encontre ese turno."
+    return f"Turno actualizado → estado: {status}"
 
 
 # =============================================================================
@@ -2569,6 +2619,9 @@ ALLOWED_TABLES = {
 # Tables that require CEO role to modify
 CEO_ONLY_TABLES = {"tenants", "professionals", "users", "treatment_types"}
 
+# Tables that use UUID as primary key (vs integer)
+UUID_ID_TABLES = {"appointments", "chat_conversations", "google_calendar_blocks", "clinical_records", "patient_documents"}
+
 # Max results to prevent context explosion
 MAX_RESULTS = 15
 
@@ -2681,11 +2734,23 @@ async def _actualizar_registro(args: Dict, tenant_id: int, user_role: str) -> st
             return "No hay campos válidos para actualizar."
 
         sets.append("updated_at = NOW()")
-        params.append(registro_id)
-        id_field = "id"
+        # Parse ID to correct type (UUID for some tables, integer for others)
+        if tabla in UUID_ID_TABLES:
+            try:
+                parsed_id = uuid.UUID(str(registro_id))
+            except ValueError:
+                return f"ID invalido para {tabla} (se espera UUID)."
+        else:
+            try:
+                parsed_id = int(registro_id)
+            except (ValueError, TypeError):
+                return f"ID invalido para {tabla} (se espera numero)."
+        params.append(parsed_id)
 
-        query = f"UPDATE {tabla} SET {', '.join(sets)} WHERE {id_field} = ${len(params)} AND tenant_id = $1"
-        await db.pool.execute(query, *params)
+        query = f"UPDATE {tabla} SET {', '.join(sets)} WHERE id = ${len(params)} AND tenant_id = $1"
+        result = await db.pool.execute(query, *params)
+        if result == "UPDATE 0":
+            return f"No encontre registro {registro_id} en {tabla}."
 
         logger.info(f"🎙️ NOVA CRUD: UPDATE {tabla} id={registro_id} fields={list(campos.keys())}")
         return f"Actualizado registro {registro_id} en {tabla}: {', '.join(f'{k}={v}' for k, v in campos.items())}"
@@ -2713,8 +2778,14 @@ async def _crear_registro(args: Dict, tenant_id: int, user_role: str) -> str:
             return "No especificaste datos para el registro."
 
         datos["tenant_id"] = tenant_id
-        if "id" not in datos and tabla == "appointments":
-            datos["id"] = str(uuid.uuid4())
+        # Auto-generate UUID for tables that need it
+        if "id" not in datos and tabla in UUID_ID_TABLES:
+            datos["id"] = uuid.uuid4()
+        elif "id" in datos and tabla in UUID_ID_TABLES:
+            try:
+                datos["id"] = uuid.UUID(str(datos["id"]))
+            except ValueError:
+                datos["id"] = uuid.uuid4()
 
         fields = []
         values = []
