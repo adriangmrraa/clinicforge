@@ -586,6 +586,65 @@ NOVA_TOOLS_SCHEMA: List[Dict[str, Any]] = [
             "required": ["periodo"],
         },
     },
+    # -------------------------------------------------------------------------
+    # J. CRUD GENÉRICO — Acceso directo a TODA la infraestructura
+    # -------------------------------------------------------------------------
+    {
+        "type": "function",
+        "name": "obtener_registros",
+        "description": "Obtiene registros de CUALQUIER tabla de la plataforma. Tablas: patients, appointments, professionals, treatment_types, tenants, chat_messages, chat_conversations, patient_documents, clinical_records, automation_logs, patient_memories, meta_ad_insights. Podés filtrar por cualquier campo y limitar resultados.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "tabla": {"type": "string", "description": "Nombre de la tabla: patients, appointments, professionals, treatment_types, tenants, clinical_records, patient_documents, automation_logs, chat_conversations, patient_memories"},
+                "filtros": {"type": "string", "description": "Filtros en lenguaje natural. Ej: 'status=scheduled', 'created_at > 2026-03-01', 'patient_id=32', 'professional_id=2 AND status=completed'"},
+                "campos": {"type": "string", "description": "Campos a devolver separados por coma. Ej: 'id,first_name,last_name,phone_number'. Dejar vacío para todos."},
+                "limite": {"type": "integer", "description": "Máximo de registros (default 10)"},
+                "orden": {"type": "string", "description": "Campo y dirección. Ej: 'created_at DESC', 'appointment_datetime ASC'"},
+            },
+            "required": ["tabla"],
+        },
+    },
+    {
+        "type": "function",
+        "name": "actualizar_registro",
+        "description": "Actualiza campos de UN registro en cualquier tabla. Requiere el ID del registro. Solo CEO puede modificar tenants y professionals.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "tabla": {"type": "string", "description": "Nombre de la tabla"},
+                "registro_id": {"type": "string", "description": "ID del registro a actualizar (puede ser integer o UUID)"},
+                "campos": {"type": "string", "description": "Campos a actualizar en formato JSON. Ej: '{\"status\": \"completed\", \"billing_amount\": 15000}'"},
+            },
+            "required": ["tabla", "registro_id", "campos"],
+        },
+    },
+    {
+        "type": "function",
+        "name": "crear_registro",
+        "description": "Crea un nuevo registro en cualquier tabla. Principalmente para: patients, appointments, clinical_records, patient_documents, clinic_faqs.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "tabla": {"type": "string", "description": "Nombre de la tabla"},
+                "datos": {"type": "string", "description": "Datos del registro en formato JSON. Ej: '{\"first_name\": \"Juan\", \"last_name\": \"Pérez\", \"phone_number\": \"+5493704123456\"}'"},
+            },
+            "required": ["tabla", "datos"],
+        },
+    },
+    {
+        "type": "function",
+        "name": "contar_registros",
+        "description": "Cuenta registros en cualquier tabla con filtros opcionales. Útil para estadísticas rápidas: cuántos pacientes, turnos del mes, cancelaciones, etc.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "tabla": {"type": "string", "description": "Nombre de la tabla"},
+                "filtros": {"type": "string", "description": "Filtros. Ej: 'status=cancelled AND appointment_datetime > 2026-03-01'"},
+            },
+            "required": ["tabla"],
+        },
+    },
 ]
 
 
@@ -1901,6 +1960,16 @@ async def execute_nova_tool(
         elif name == "resumen_financiero":
             return await _resumen_financiero(args, tenant_id, user_role)
 
+        # J. CRUD genérico
+        elif name == "obtener_registros":
+            return await _obtener_registros(args, tenant_id, user_role)
+        elif name == "actualizar_registro":
+            return await _actualizar_registro(args, tenant_id, user_role)
+        elif name == "crear_registro":
+            return await _crear_registro(args, tenant_id, user_role)
+        elif name == "contar_registros":
+            return await _contar_registros(args, tenant_id)
+
         else:
             return f"Tool '{name}' no reconocida."
 
@@ -2451,6 +2520,220 @@ async def _resumen_financiero(args: Dict, tenant_id: int, user_role: str) -> str
     except Exception as e:
         logger.error(f"resumen_financiero error: {e}")
         return f"Error obteniendo datos financieros: {str(e)}"
+
+
+# =============================================================================
+# J. CRUD GENÉRICO — Acceso a toda la infraestructura
+# =============================================================================
+
+# Tables that Nova can access (whitelist for security)
+ALLOWED_TABLES = {
+    "patients", "appointments", "professionals", "treatment_types", "tenants",
+    "chat_messages", "chat_conversations", "patient_documents", "clinical_records",
+    "automation_logs", "patient_memories", "clinic_faqs", "google_calendar_blocks",
+    "meta_ad_insights", "treatment_type_professionals", "users",
+}
+
+# Tables that require CEO role to modify
+CEO_ONLY_TABLES = {"tenants", "professionals", "users", "treatment_types"}
+
+# Max results to prevent context explosion
+MAX_RESULTS = 15
+
+
+async def _obtener_registros(args: Dict, tenant_id: int, user_role: str) -> str:
+    """GET — Obtiene registros de cualquier tabla con filtros."""
+    tabla = args.get("tabla", "").strip().lower()
+    if tabla not in ALLOWED_TABLES:
+        return f"Tabla '{tabla}' no disponible. Tablas: {', '.join(sorted(ALLOWED_TABLES))}"
+
+    filtros = args.get("filtros", "")
+    campos = args.get("campos", "")
+    limite = min(args.get("limite", 10), MAX_RESULTS)
+    orden = args.get("orden", "")
+
+    try:
+        select_fields = campos if campos else "*"
+        query = f"SELECT {select_fields} FROM {tabla} WHERE tenant_id = $1"
+
+        # Parse simple filters (field=value AND field>value)
+        params = [tenant_id]
+        if filtros:
+            # Security: only allow simple comparisons, no subqueries
+            for part in filtros.split(" AND "):
+                part = part.strip()
+                for op in [">=", "<=", "!=", ">", "<", "="]:
+                    if op in part:
+                        field, value = part.split(op, 1)
+                        field = field.strip()
+                        value = value.strip().strip("'\"")
+                        # Sanitize field name (only alphanumeric + underscore)
+                        if not all(c.isalnum() or c == '_' for c in field):
+                            continue
+                        params.append(value)
+                        query += f" AND {field} {op} ${len(params)}"
+                        break
+
+        if orden:
+            safe_order = orden.split()[0] if orden else ""
+            direction = "DESC" if "DESC" in orden.upper() else "ASC"
+            if safe_order and all(c.isalnum() or c == '_' for c in safe_order):
+                query += f" ORDER BY {safe_order} {direction}"
+
+        query += f" LIMIT {limite}"
+
+        rows = await db.pool.fetch(query, *params)
+        if not rows:
+            return f"Sin resultados en {tabla} con esos filtros."
+
+        # Format results concisely
+        results = []
+        for r in rows:
+            row_data = dict(r)
+            # Convert special types
+            for k, v in row_data.items():
+                if isinstance(v, (datetime, date)):
+                    row_data[k] = v.isoformat()
+                elif isinstance(v, Decimal):
+                    row_data[k] = float(v)
+                elif isinstance(v, uuid.UUID):
+                    row_data[k] = str(v)
+            results.append(row_data)
+
+        # Truncate large fields
+        output = json.dumps(results, ensure_ascii=False, default=str)
+        if len(output) > 3000:
+            output = output[:3000] + "... (truncado)"
+
+        return f"{len(rows)} registros de {tabla}:\n{output}"
+
+    except Exception as e:
+        logger.error(f"obtener_registros error: {e}")
+        return f"Error consultando {tabla}: {str(e)}"
+
+
+async def _actualizar_registro(args: Dict, tenant_id: int, user_role: str) -> str:
+    """PUT — Actualiza campos de un registro."""
+    tabla = args.get("tabla", "").strip().lower()
+    registro_id = args.get("registro_id", "")
+    campos_str = args.get("campos", "{}")
+
+    if tabla not in ALLOWED_TABLES:
+        return f"Tabla '{tabla}' no disponible."
+    if tabla in CEO_ONLY_TABLES and user_role != "ceo":
+        return f"Solo el CEO puede modificar {tabla}."
+    if not registro_id:
+        return "Necesito el ID del registro."
+
+    try:
+        campos = json.loads(campos_str)
+        if not campos:
+            return "No especificaste qué campos actualizar."
+
+        # Build UPDATE query
+        sets = []
+        params = [tenant_id]
+        for field, value in campos.items():
+            if not all(c.isalnum() or c == '_' for c in field):
+                continue
+            params.append(value)
+            sets.append(f"{field} = ${len(params)}")
+
+        if not sets:
+            return "No hay campos válidos para actualizar."
+
+        sets.append("updated_at = NOW()")
+        params.append(registro_id)
+        id_field = "id"
+
+        query = f"UPDATE {tabla} SET {', '.join(sets)} WHERE {id_field} = ${len(params)} AND tenant_id = $1"
+        await db.pool.execute(query, *params)
+
+        logger.info(f"🎙️ NOVA CRUD: UPDATE {tabla} id={registro_id} fields={list(campos.keys())}")
+        return f"Actualizado registro {registro_id} en {tabla}: {', '.join(f'{k}={v}' for k, v in campos.items())}"
+
+    except json.JSONDecodeError:
+        return "Los campos deben estar en formato JSON válido."
+    except Exception as e:
+        logger.error(f"actualizar_registro error: {e}")
+        return f"Error actualizando {tabla}: {str(e)}"
+
+
+async def _crear_registro(args: Dict, tenant_id: int, user_role: str) -> str:
+    """POST — Crea un nuevo registro."""
+    tabla = args.get("tabla", "").strip().lower()
+    datos_str = args.get("datos", "{}")
+
+    if tabla not in ALLOWED_TABLES:
+        return f"Tabla '{tabla}' no disponible."
+    if tabla in CEO_ONLY_TABLES and user_role != "ceo":
+        return f"Solo el CEO puede crear en {tabla}."
+
+    try:
+        datos = json.loads(datos_str)
+        if not datos:
+            return "No especificaste datos para el registro."
+
+        datos["tenant_id"] = tenant_id
+        if "id" not in datos and tabla == "appointments":
+            datos["id"] = str(uuid.uuid4())
+
+        fields = []
+        values = []
+        params = []
+        for field, value in datos.items():
+            if not all(c.isalnum() or c == '_' for c in field):
+                continue
+            fields.append(field)
+            params.append(value)
+            values.append(f"${len(params)}")
+
+        query = f"INSERT INTO {tabla} ({', '.join(fields)}) VALUES ({', '.join(values)}) RETURNING id"
+        row = await db.pool.fetchrow(query, *params)
+        new_id = row['id'] if row else 'desconocido'
+
+        logger.info(f"🎙️ NOVA CRUD: INSERT {tabla} id={new_id} fields={list(datos.keys())}")
+        return f"Registro creado en {tabla} con ID: {new_id}"
+
+    except json.JSONDecodeError:
+        return "Los datos deben estar en formato JSON válido."
+    except Exception as e:
+        logger.error(f"crear_registro error: {e}")
+        return f"Error creando registro en {tabla}: {str(e)}"
+
+
+async def _contar_registros(args: Dict, tenant_id: int) -> str:
+    """COUNT — Cuenta registros con filtros."""
+    tabla = args.get("tabla", "").strip().lower()
+    filtros = args.get("filtros", "")
+
+    if tabla not in ALLOWED_TABLES:
+        return f"Tabla '{tabla}' no disponible."
+
+    try:
+        query = f"SELECT COUNT(*) as cnt FROM {tabla} WHERE tenant_id = $1"
+        params = [tenant_id]
+
+        if filtros:
+            for part in filtros.split(" AND "):
+                part = part.strip()
+                for op in [">=", "<=", "!=", ">", "<", "="]:
+                    if op in part:
+                        field, value = part.split(op, 1)
+                        field = field.strip()
+                        value = value.strip().strip("'\"")
+                        if not all(c.isalnum() or c == '_' for c in field):
+                            continue
+                        params.append(value)
+                        query += f" AND {field} {op} ${len(params)}"
+                        break
+
+        count = await db.pool.fetchval(query, *params)
+        return f"{count} registros en {tabla}" + (f" con filtro: {filtros}" if filtros else "")
+
+    except Exception as e:
+        logger.error(f"contar_registros error: {e}")
+        return f"Error contando en {tabla}: {str(e)}"
 
 
 async def _table_exists(table_name: str) -> bool:
