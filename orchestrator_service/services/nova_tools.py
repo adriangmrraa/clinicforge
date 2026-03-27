@@ -962,7 +962,7 @@ async def _registrar_nota_clinica(args: Dict, tenant_id: int, user_role: str, us
         INSERT INTO clinical_records
             (id, tenant_id, patient_id, professional_id, record_date,
              diagnosis, clinical_notes, odontogram_data)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
         """,
         record_id,
         tenant_id,
@@ -971,7 +971,7 @@ async def _registrar_nota_clinica(args: Dict, tenant_id: int, user_role: str, us
         _today(),
         diagnosis,
         args.get("treatment_notes"),
-        json.dumps(odontogram_data),
+        json.dumps(odontogram_data) if odontogram_data else '{}'
     )
 
     tooth_msg = ""
@@ -2109,8 +2109,8 @@ async def _crear_tratamiento(args: Dict, tenant_id: int, user_role: str) -> str:
         return _role_error("crear_tratamiento", ["ceo"])
     name = args.get("name", "")
     code = args.get("code", "")
-    duration = args.get("duration_minutes", 30)
-    price = args.get("base_price", 0)
+    duration = int(args.get("duration_minutes", 30))
+    price = Decimal(str(args.get("base_price", 0)))
     category = args.get("category", "prevention")
     if not name or not code:
         return "Necesito name y code."
@@ -2134,6 +2134,19 @@ async def _editar_tratamiento(args: Dict, tenant_id: int, user_role: str) -> str
     db_field = field_map.get(field)
     if not db_field:
         return f"Campo '{field}' no valido. Opciones: {', '.join(field_map.keys())}"
+    # Cast value to correct type for the DB column
+    if field == "duration_minutes":
+        try:
+            value = int(value)
+        except (ValueError, TypeError):
+            return "La duración debe ser un número entero (minutos)."
+    elif field == "base_price":
+        try:
+            value = Decimal(str(value))
+        except Exception:
+            return "El precio debe ser un número válido."
+    elif field == "is_active":
+        value = str(value).lower() in ('true', '1', 'si', 'yes', 'activo')
     await db.pool.execute(f"UPDATE treatment_types SET {db_field} = $1 WHERE tenant_id = $2 AND code = $3", value, tenant_id, code)
     return f"Tratamiento '{code}' actualizado: {field} = {value}"
 
@@ -2192,17 +2205,39 @@ async def _ver_estadisticas(args: Dict, tenant_id: int) -> str:
     days_map = {"hoy": 0, "semana": 7, "mes": 30, "año": 365}
     days = days_map.get(period, 7)
 
-    if days == 0:
-        date_filter = "AND DATE(appointment_datetime) = CURRENT_DATE"
-    else:
-        date_filter = f"AND appointment_datetime >= NOW() - make_interval(days => {days})"
+    since = _today() - timedelta(days=max(days, 1))
 
-    total = await db.pool.fetchval(f"SELECT COUNT(*) FROM appointments WHERE tenant_id = $1 {date_filter}", tenant_id) or 0
-    completed = await db.pool.fetchval(f"SELECT COUNT(*) FROM appointments WHERE tenant_id = $1 AND status = 'completed' {date_filter}", tenant_id) or 0
-    cancelled = await db.pool.fetchval(f"SELECT COUNT(*) FROM appointments WHERE tenant_id = $1 AND status = 'cancelled' {date_filter}", tenant_id) or 0
-    no_shows = await db.pool.fetchval(f"SELECT COUNT(*) FROM appointments WHERE tenant_id = $1 AND status = 'no-show' {date_filter}", tenant_id) or 0
-    new_patients = await db.pool.fetchval(f"SELECT COUNT(*) FROM patients WHERE tenant_id = $1 AND created_at >= NOW() - make_interval(days => {max(days, 1)})", tenant_id) or 0
-    revenue = await db.pool.fetchval(f"SELECT COALESCE(SUM(billing_amount), 0) FROM appointments WHERE tenant_id = $1 AND payment_status = 'paid' {date_filter}", tenant_id) or 0
+    if days == 0:
+        # Today only
+        stats = await db.pool.fetchrow("""
+            SELECT
+                COUNT(*) AS total,
+                COUNT(*) FILTER (WHERE status = 'completed') AS completed,
+                COUNT(*) FILTER (WHERE status = 'cancelled') AS cancelled,
+                COUNT(*) FILTER (WHERE status = 'no-show') AS no_shows,
+                COALESCE(SUM(billing_amount) FILTER (WHERE payment_status = 'paid'), 0) AS revenue
+            FROM appointments WHERE tenant_id = $1 AND DATE(appointment_datetime) = CURRENT_DATE
+        """, tenant_id)
+    else:
+        stats = await db.pool.fetchrow("""
+            SELECT
+                COUNT(*) AS total,
+                COUNT(*) FILTER (WHERE status = 'completed') AS completed,
+                COUNT(*) FILTER (WHERE status = 'cancelled') AS cancelled,
+                COUNT(*) FILTER (WHERE status = 'no-show') AS no_shows,
+                COALESCE(SUM(billing_amount) FILTER (WHERE payment_status = 'paid'), 0) AS revenue
+            FROM appointments WHERE tenant_id = $1 AND appointment_datetime::date >= $2
+        """, tenant_id, since)
+
+    total = stats["total"] or 0
+    completed = stats["completed"] or 0
+    cancelled = stats["cancelled"] or 0
+    no_shows = stats["no_shows"] or 0
+    revenue = stats["revenue"] or 0
+    new_patients = await db.pool.fetchval(
+        "SELECT COUNT(*) FROM patients WHERE tenant_id = $1 AND created_at::date >= $2",
+        tenant_id, since,
+    ) or 0
 
     return f"""Estadisticas ({period}):
 • Turnos totales: {total}
@@ -2309,7 +2344,7 @@ async def _guardar_anamnesis(args: Dict, tenant_id: int) -> str:
     # Merge with existing medical_history (don't overwrite)
     existing = await db.pool.fetchval(
         "SELECT medical_history FROM patients WHERE id = $1 AND tenant_id = $2",
-        patient_id, tenant_id
+        int(patient_id), tenant_id
     )
     current = {}
     if existing:
@@ -2328,7 +2363,7 @@ async def _guardar_anamnesis(args: Dict, tenant_id: int) -> str:
 
     await db.pool.execute(
         "UPDATE patients SET medical_history = $1::jsonb, updated_at = NOW() WHERE id = $2 AND tenant_id = $3",
-        json.dumps(current, ensure_ascii=False), patient_id, tenant_id
+        json.dumps(current, ensure_ascii=False), int(patient_id), tenant_id
     )
 
     saved_fields = ", ".join(fields.keys())
@@ -2344,7 +2379,7 @@ async def _ver_anamnesis(args: Dict, tenant_id: int) -> str:
 
     row = await db.pool.fetchrow(
         "SELECT first_name, last_name, medical_history FROM patients WHERE id = $1 AND tenant_id = $2",
-        patient_id, tenant_id
+        int(patient_id), tenant_id
     )
     if not row:
         return "Paciente no encontrado."
@@ -2471,7 +2506,7 @@ async def _consultar_datos(args: Dict, tenant_id: int, user_role: str) -> str:
         elif "no-show" in consulta or "no show" in consulta or "ausencia" in consulta:
             row = await db.pool.fetchrow("""
                 SELECT COUNT(*) as total,
-                       COUNT(*) FILTER (WHERE status = 'no_show') as no_shows
+                       COUNT(*) FILTER (WHERE status = 'no-show') as no_shows
                 FROM appointments WHERE tenant_id = $1 AND appointment_datetime >= NOW() - INTERVAL '30 days'
             """, tenant_id)
             rate = (row['no_shows'] / row['total'] * 100) if row['total'] > 0 else 0
@@ -2605,6 +2640,50 @@ async def _resumen_financiero(args: Dict, tenant_id: int, user_role: str) -> str
         return f"Error obteniendo datos financieros: {str(e)}"
 
 
+def _coerce_crud_value(field: str, value: Any, tabla: str) -> Any:
+    """Coerce a CRUD value to the correct Python type for asyncpg based on field name."""
+    if value is None:
+        return None
+    # Date/datetime fields
+    if 'datetime' in field or field in ('created_at', 'updated_at', 'completed_at', 'last_visit',
+                                         'reminder_sent_at', 'followup_sent_at', 'uploaded_at',
+                                         'last_message_at', 'last_read_at', 'record_date',
+                                         'date_start', 'date_stop', 'insurance_valid_until'):
+        if isinstance(value, str):
+            return _parse_datetime_str(value)
+        return value
+    # ID fields
+    if field == 'id':
+        if tabla in UUID_ID_TABLES:
+            return uuid.UUID(str(value)) if not isinstance(value, uuid.UUID) else value
+        return int(value)
+    if field.endswith('_id') and field not in ('external_user_id', 'google_event_id', 'insurance_id'):
+        try:
+            return int(value)
+        except (ValueError, TypeError):
+            try:
+                return uuid.UUID(str(value))
+            except ValueError:
+                return value
+    # Money fields
+    if field in ('billing_amount', 'base_price', 'consultation_price', 'amount', 'spend',
+                 'cost_per_result', 'cost_per_click'):
+        return Decimal(str(value))
+    # Integer fields
+    if field in ('duration_minutes', 'default_duration_minutes', 'billing_installments',
+                 'max_chairs', 'chair_id', 'impressions', 'clicks', 'conversions'):
+        return int(value)
+    # Boolean fields
+    if field in ('is_active', 'reminder_sent', 'feedback_sent', 'followup_sent', 'all_day'):
+        if isinstance(value, bool):
+            return value
+        return str(value).lower() in ('true', '1', 'si', 'yes')
+    # Numeric-looking strings
+    if isinstance(value, str) and value.isdigit():
+        return int(value)
+    return value
+
+
 # =============================================================================
 # J. CRUD GENÉRICO — Acceso a toda la infraestructura
 # =============================================================================
@@ -2639,7 +2718,16 @@ async def _obtener_registros(args: Dict, tenant_id: int, user_role: str) -> str:
     orden = args.get("orden", "")
 
     try:
-        select_fields = campos if campos else "*"
+        # Sanitize campo names to prevent SQL injection
+        if campos:
+            safe_fields = []
+            for f in campos.split(","):
+                f = f.strip()
+                if f and all(c.isalnum() or c == '_' for c in f):
+                    safe_fields.append(f)
+            select_fields = ", ".join(safe_fields) if safe_fields else "*"
+        else:
+            select_fields = "*"
         query = f"SELECT {select_fields} FROM {tabla} WHERE tenant_id = $1"
 
         # Parse simple filters (field=value AND field>value)
@@ -2671,7 +2759,7 @@ async def _obtener_registros(args: Dict, tenant_id: int, user_role: str) -> str:
                                     value = uuid.UUID(str(value))
                                 except ValueError:
                                     pass  # keep as string
-                        elif value.isdigit() or (value.startswith('-') and value[1:].isdigit()):
+                        elif isinstance(value, str) and (value.isdigit() or (value.startswith('-') and value[1:].isdigit())):
                             value = int(value)
                         params.append(value)
                         query += f" AND {field} {op} ${len(params)}"
@@ -2733,12 +2821,16 @@ async def _actualizar_registro(args: Dict, tenant_id: int, user_role: str) -> st
         if not campos:
             return "No especificaste qué campos actualizar."
 
-        # Build UPDATE query
+        # Build UPDATE query with type coercion
         sets = []
         params = [tenant_id]
         for field, value in campos.items():
             if not all(c.isalnum() or c == '_' for c in field):
                 continue
+            try:
+                value = _coerce_crud_value(field, value, tabla)
+            except Exception:
+                pass  # keep original value
             params.append(value)
             sets.append(f"{field} = ${len(params)}")
 
@@ -2805,6 +2897,10 @@ async def _crear_registro(args: Dict, tenant_id: int, user_role: str) -> str:
         for field, value in datos.items():
             if not all(c.isalnum() or c == '_' for c in field):
                 continue
+            try:
+                value = _coerce_crud_value(field, value, tabla)
+            except Exception:
+                pass
             fields.append(field)
             params.append(value)
             values.append(f"${len(params)}")
