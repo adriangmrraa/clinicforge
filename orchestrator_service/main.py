@@ -5140,9 +5140,9 @@ PACIENTES:
 
 ODONTOGRAMA (REGLAS QUIRÚRGICAS — MUY IMPORTANTE):
 "Mostrame el odontograma de [paciente]" → buscar_paciente → ver_odontograma
-"El paciente tiene caries en la 16 y la 18" → buscar_paciente → ver_odontograma → modificar_odontograma(piezas=[{numero:16,estado:"caries"},{numero:18,estado:"caries"}])
-"La 36 tiene conducto" → ver_odontograma → modificar_odontograma(piezas=[{numero:36,estado:"root_canal"}])
-"Le falta la muela de juicio de abajo a la derecha" → ver_odontograma → modificar_odontograma(piezas=[{numero:48,estado:"missing"}])
+"El paciente tiene caries en la 16 y la 18" → buscar_paciente → ver_odontograma → modificar_odontograma con piezas: pieza 16 estado caries + pieza 18 estado caries
+"La 36 tiene conducto" → ver_odontograma → modificar_odontograma con pieza 36 estado root_canal
+"Le falta la muela de juicio de abajo a la derecha" → ver_odontograma → modificar_odontograma con pieza 48 estado missing
 "Tiene dos dientes rotos" (SIN número) → PREGUNTAR: "¿Qué piezas son? Necesito los números FDI."
 REGLAS INQUEBRABLES DEL ODONTOGRAMA:
 1. SIEMPRE ejecutar ver_odontograma ANTES de modificar_odontograma (ver estado actual primero).
