@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import AnalyticsFilters from '../components/analytics/AnalyticsFilters';
 import PageHeader from '../components/PageHeader';
+import GlassCard, { CARD_IMAGES } from '../components/GlassCard';
 
 interface MetricData {
   id: number;
@@ -103,20 +104,22 @@ export default function ProfessionalAnalyticsView() {
     );
   };
 
-  const KPI = ({ icon, label, value, sub, color, trend }: { icon: JSX.Element; label: string; value: string | number; sub?: string; color: string; trend?: 'up' | 'down' | null }) => (
-    <div className={`bg-white/[0.03] rounded-2xl border border-white/[0.06] p-4 sm:p-5 hover:bg-white/[0.06] transition-colors`}>
-      <div className="flex items-start justify-between mb-3">
-        <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${color}`}>{icon}</div>
-        {trend && (
-          <span className={`flex items-center gap-0.5 text-xs font-semibold ${trend === 'up' ? 'text-green-400' : 'text-red-400'}`}>
-            {trend === 'up' ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}
-          </span>
-        )}
+  const KPI = ({ icon, label, value, sub, color, trend, image }: { icon: JSX.Element; label: string; value: string | number; sub?: string; color: string; trend?: 'up' | 'down' | null; image?: string }) => (
+    <GlassCard image={image}>
+      <div className="p-4 sm:p-5">
+        <div className="flex items-start justify-between mb-3">
+          <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${color}`}>{icon}</div>
+          {trend && (
+            <span className={`flex items-center gap-0.5 text-xs font-semibold ${trend === 'up' ? 'text-green-400' : 'text-red-400'}`}>
+              {trend === 'up' ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}
+            </span>
+          )}
+        </div>
+        <p className="text-2xl font-bold text-white tracking-tight">{value}</p>
+        <p className="text-xs text-white/40 mt-0.5">{label}</p>
+        {sub && <p className="text-[10px] text-white/30 mt-1">{sub}</p>}
       </div>
-      <p className="text-2xl font-bold text-white tracking-tight">{value}</p>
-      <p className="text-xs text-white/40 mt-0.5">{label}</p>
-      {sub && <p className="text-[10px] text-white/30 mt-1">{sub}</p>}
-    </div>
+    </GlassCard>
   );
 
   return (
@@ -133,77 +136,81 @@ export default function ProfessionalAnalyticsView() {
 
         {/* KPI Grid — 8 cards */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
-          <KPI icon={<DollarSign size={20} className="text-green-400" />} label="Ingresos estimados" value={`$${totalRevenue.toLocaleString()}`} sub={`${totalPaid} turnos pagados`} color="bg-green-500/10" trend={totalRevenue > 0 ? 'up' : null} />
-          <KPI icon={<CalendarCheck size={20} className="text-blue-400" />} label="Turnos totales" value={totalAppointments} sub={`${totalPatients} pacientes unicos`} color="bg-blue-500/10" />
-          <KPI icon={<Percent size={20} className="text-purple-400" />} label="Tasa de asistencia" value={`${avgCompletion.toFixed(0)}%`} sub={`${avgCancellation.toFixed(0)}% cancelaciones`} color="bg-purple-500/10" trend={avgCompletion > 80 ? 'up' : 'down'} />
-          <KPI icon={<UserCheck size={20} className="text-emerald-400" />} label="Retencion" value={`${avgRetention.toFixed(0)}%`} sub="Pacientes que vuelven" color="bg-emerald-500/10" trend={avgRetention > 50 ? 'up' : null} />
-          <KPI icon={<XCircle size={20} className="text-red-400" />} label="No-shows" value={`${avgNoShow.toFixed(1)}%`} sub="Promedio del equipo" color="bg-red-500/10" trend={avgNoShow > 10 ? 'down' : 'up'} />
-          <KPI icon={<Target size={20} className="text-amber-400" />} label="Ticket promedio" value={`$${totalAppointments > 0 ? Math.round(totalRevenue / totalAppointments).toLocaleString() : 0}`} sub="Por turno" color="bg-amber-500/10" />
-          <KPI icon={<Users size={20} className="text-indigo-400" />} label="Profesionales activos" value={data.length} sub={data.map(d => d.specialty).filter((v, i, a) => a.indexOf(v) === i).length + ' especialidades'} color="bg-indigo-500/10" />
-          <KPI icon={<Star size={20} className="text-pink-400" />} label="Mejor profesional" value={data.length > 0 ? data.sort((a, b) => b.metrics.revenue - a.metrics.revenue)[0]?.name.split(' ')[0] || '-' : '-'} sub="Por facturacion" color="bg-pink-500/10" />
+          <KPI icon={<DollarSign size={20} className="text-green-400" />} label="Ingresos estimados" value={`$${totalRevenue.toLocaleString()}`} sub={`${totalPaid} turnos pagados`} color="bg-green-500/10" trend={totalRevenue > 0 ? 'up' : null} image={CARD_IMAGES.revenue} />
+          <KPI icon={<CalendarCheck size={20} className="text-blue-400" />} label="Turnos totales" value={totalAppointments} sub={`${totalPatients} pacientes unicos`} color="bg-blue-500/10" image={CARD_IMAGES.appointments} />
+          <KPI icon={<Percent size={20} className="text-purple-400" />} label="Tasa de asistencia" value={`${avgCompletion.toFixed(0)}%`} sub={`${avgCancellation.toFixed(0)}% cancelaciones`} color="bg-purple-500/10" trend={avgCompletion > 80 ? 'up' : 'down'} image={CARD_IMAGES.completion} />
+          <KPI icon={<UserCheck size={20} className="text-emerald-400" />} label="Retencion" value={`${avgRetention.toFixed(0)}%`} sub="Pacientes que vuelven" color="bg-emerald-500/10" trend={avgRetention > 50 ? 'up' : null} image={CARD_IMAGES.patients} />
+          <KPI icon={<XCircle size={20} className="text-red-400" />} label="No-shows" value={`${avgNoShow.toFixed(1)}%`} sub="Promedio del equipo" color="bg-red-500/10" trend={avgNoShow > 10 ? 'down' : 'up'} image={CARD_IMAGES.analytics} />
+          <KPI icon={<Target size={20} className="text-amber-400" />} label="Ticket promedio" value={`$${totalAppointments > 0 ? Math.round(totalRevenue / totalAppointments).toLocaleString() : 0}`} sub="Por turno" color="bg-amber-500/10" image={CARD_IMAGES.revenue} />
+          <KPI icon={<Users size={20} className="text-indigo-400" />} label="Profesionales activos" value={data.length} sub={data.map(d => d.specialty).filter((v, i, a) => a.indexOf(v) === i).length + ' especialidades'} color="bg-indigo-500/10" image={CARD_IMAGES.team} />
+          <KPI icon={<Star size={20} className="text-pink-400" />} label="Mejor profesional" value={data.length > 0 ? data.sort((a, b) => b.metrics.revenue - a.metrics.revenue)[0]?.name.split(' ')[0] || '-' : '-'} sub="Por facturacion" color="bg-pink-500/10" image={CARD_IMAGES.profile} />
         </div>
 
         {/* Charts Row */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           {/* Performance Comparison Chart */}
-          <div className="lg:col-span-2 bg-white/[0.03] rounded-2xl border border-white/[0.06] p-5">
-            <h3 className="text-sm font-bold text-white mb-4 flex items-center gap-2">
-              <Activity size={16} className="text-blue-400" /> Rendimiento comparativo
-            </h3>
-            <div className="h-72">
-              {chartData.length > 0 ? (
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={chartData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255,255,255,0.06)" />
-                    <XAxis dataKey="name" tick={{ fontSize: 11, fill: 'rgba(255,255,255,0.4)' }} stroke="rgba(255,255,255,0.1)" />
-                    <YAxis tick={{ fontSize: 11, fill: 'rgba(255,255,255,0.4)' }} stroke="rgba(255,255,255,0.1)" />
-                    <Tooltip
-                      contentStyle={{ borderRadius: '12px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(10,14,26,0.9)', boxShadow: '0 4px 12px rgba(0,0,0,0.3)', fontSize: '12px', color: '#fff' }}
-                    />
-                    <Bar dataKey="completionRate" name="Asistencia %" fill="#3b82f6" radius={[6, 6, 0, 0]} barSize={16} />
-                    <Bar dataKey="retentionRate" name="Retencion %" fill="#10b981" radius={[6, 6, 0, 0]} barSize={16} />
-                    <Bar dataKey="noShowRate" name="No-show %" fill="#ef4444" radius={[6, 6, 0, 0]} barSize={16} />
-                  </BarChart>
-                </ResponsiveContainer>
-              ) : (
-                <div className="h-full flex items-center justify-center text-white/30 text-sm">Selecciona un rango de fechas</div>
-              )}
+          <GlassCard image={CARD_IMAGES.analytics} className="lg:col-span-2" hoverScale={false}>
+            <div className="p-5">
+              <h3 className="text-sm font-bold text-white mb-4 flex items-center gap-2">
+                <Activity size={16} className="text-blue-400" /> Rendimiento comparativo
+              </h3>
+              <div className="h-72">
+                {chartData.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={chartData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255,255,255,0.06)" />
+                      <XAxis dataKey="name" tick={{ fontSize: 11, fill: 'rgba(255,255,255,0.4)' }} stroke="rgba(255,255,255,0.1)" />
+                      <YAxis tick={{ fontSize: 11, fill: 'rgba(255,255,255,0.4)' }} stroke="rgba(255,255,255,0.1)" />
+                      <Tooltip
+                        contentStyle={{ borderRadius: '12px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(10,14,26,0.9)', boxShadow: '0 4px 12px rgba(0,0,0,0.3)', fontSize: '12px', color: '#fff' }}
+                      />
+                      <Bar dataKey="completionRate" name="Asistencia %" fill="#3b82f6" radius={[6, 6, 0, 0]} barSize={16} />
+                      <Bar dataKey="retentionRate" name="Retencion %" fill="#10b981" radius={[6, 6, 0, 0]} barSize={16} />
+                      <Bar dataKey="noShowRate" name="No-show %" fill="#ef4444" radius={[6, 6, 0, 0]} barSize={16} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="h-full flex items-center justify-center text-white/30 text-sm">Selecciona un rango de fechas</div>
+                )}
+              </div>
             </div>
-          </div>
+          </GlassCard>
 
           {/* Treatment Distribution */}
-          <div className="bg-white/[0.03] rounded-2xl border border-white/[0.06] p-5">
-            <h3 className="text-sm font-bold text-white mb-4 flex items-center gap-2">
-              <Target size={16} className="text-amber-400" /> Tratamiento top por profesional
-            </h3>
-            {treatmentDist.length > 0 ? (
-              <>
-                <div className="h-44">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie data={treatmentDist} cx="50%" cy="50%" innerRadius={40} outerRadius={70} dataKey="value" paddingAngle={3}>
-                        {treatmentDist.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-                      </Pie>
-                      <Tooltip contentStyle={{ borderRadius: '12px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(10,14,26,0.9)', boxShadow: '0 4px 12px rgba(0,0,0,0.3)', fontSize: '12px', color: '#fff' }} />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </div>
-                <div className="space-y-2 mt-2">
-                  {treatmentDist.map((t, i) => (
-                    <div key={i} className="flex items-center justify-between text-xs">
-                      <div className="flex items-center gap-2">
-                        <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
-                        <span className="text-white/60 truncate max-w-[120px]">{t.name}</span>
+          <GlassCard image={CARD_IMAGES.dental} hoverScale={false}>
+            <div className="p-5">
+              <h3 className="text-sm font-bold text-white mb-4 flex items-center gap-2">
+                <Target size={16} className="text-amber-400" /> Tratamiento top por profesional
+              </h3>
+              {treatmentDist.length > 0 ? (
+                <>
+                  <div className="h-44">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie data={treatmentDist} cx="50%" cy="50%" innerRadius={40} outerRadius={70} dataKey="value" paddingAngle={3}>
+                          {treatmentDist.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                        </Pie>
+                        <Tooltip contentStyle={{ borderRadius: '12px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(10,14,26,0.9)', boxShadow: '0 4px 12px rgba(0,0,0,0.3)', fontSize: '12px', color: '#fff' }} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="space-y-2 mt-2">
+                    {treatmentDist.map((t, i) => (
+                      <div key={i} className="flex items-center justify-between text-xs">
+                        <div className="flex items-center gap-2">
+                          <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
+                          <span className="text-white/60 truncate max-w-[120px]">{t.name}</span>
+                        </div>
+                        <span className="text-white/40 font-medium">{t.value} turnos</span>
                       </div>
-                      <span className="text-white/40 font-medium">{t.value} turnos</span>
-                    </div>
-                  ))}
-                </div>
-              </>
-            ) : (
-              <div className="h-44 flex items-center justify-center text-white/30 text-sm">Sin datos</div>
-            )}
-          </div>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <div className="h-44 flex items-center justify-center text-white/30 text-sm">Sin datos</div>
+              )}
+            </div>
+          </GlassCard>
         </div>
 
         {/* Professional Detail Cards — 2 columns on desktop */}
@@ -212,72 +219,76 @@ export default function ProfessionalAnalyticsView() {
             <TrendingUp size={16} className="text-blue-400" /> Detalle por profesional
           </h3>
           {data.length === 0 && (
-            <div className="bg-white/[0.03] rounded-2xl border border-white/[0.06] p-8 text-center text-white/30 text-sm">
-              Selecciona un rango de fechas para ver las metricas
-            </div>
+            <GlassCard image={CARD_IMAGES.team} hoverScale={false}>
+              <div className="p-8 text-center text-white/30 text-sm">
+                Selecciona un rango de fechas para ver las metricas
+              </div>
+            </GlassCard>
           )}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {data.map((prof) => (
-            <div key={prof.id} className="bg-white/[0.03] rounded-2xl border border-white/[0.06] p-4 sm:p-5 hover:bg-white/[0.06] transition-colors">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-400 flex items-center justify-center text-white font-bold text-lg shrink-0">
-                    {prof.name.charAt(0)}
+            <GlassCard key={prof.id} image={CARD_IMAGES.team}>
+              <div className="p-4 sm:p-5">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-400 flex items-center justify-center text-white font-bold text-lg shrink-0">
+                      {prof.name.charAt(0)}
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-white">{prof.name}</h4>
+                      <p className="text-xs text-white/40">{prof.specialty}</p>
+                    </div>
                   </div>
-                  <div>
-                    <h4 className="font-bold text-white">{prof.name}</h4>
-                    <p className="text-xs text-white/40">{prof.specialty}</p>
+                  <div className="flex flex-wrap gap-1">
+                    {prof.tags.length > 0 ? prof.tags.map(tag => getTagBadge(tag)) : <span className="text-[10px] text-white/30">Sin tags</span>}
                   </div>
                 </div>
-                <div className="flex flex-wrap gap-1">
-                  {prof.tags.length > 0 ? prof.tags.map(tag => getTagBadge(tag)) : <span className="text-[10px] text-white/30">Sin tags</span>}
-                </div>
-              </div>
 
-              {/* Metrics grid */}
-              <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
-                <div className="text-center p-2 rounded-xl bg-white/[0.04]">
-                  <p className="text-lg font-bold text-white">{prof.metrics.total_appointments}</p>
-                  <p className="text-[10px] text-white/40">Turnos</p>
+                {/* Metrics grid */}
+                <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
+                  <div className="text-center p-2 rounded-xl bg-white/[0.04]">
+                    <p className="text-lg font-bold text-white">{prof.metrics.total_appointments}</p>
+                    <p className="text-[10px] text-white/40">Turnos</p>
+                  </div>
+                  <div className="text-center p-2 rounded-xl bg-white/[0.04]">
+                    <p className="text-lg font-bold text-green-400">${prof.metrics.revenue.toLocaleString()}</p>
+                    <p className="text-[10px] text-white/40">Facturado</p>
+                  </div>
+                  <div className="text-center p-2 rounded-xl bg-white/[0.04]">
+                    <p className={`text-lg font-bold ${prof.metrics.completion_rate > 80 ? 'text-blue-400' : 'text-orange-400'}`}>{prof.metrics.completion_rate}%</p>
+                    <p className="text-[10px] text-white/40">Asistencia</p>
+                  </div>
+                  <div className="text-center p-2 rounded-xl bg-white/[0.04]">
+                    <p className={`text-lg font-bold ${(prof.metrics.no_show_rate || 0) < 10 ? 'text-green-400' : 'text-red-400'}`}>{prof.metrics.no_show_rate || 0}%</p>
+                    <p className="text-[10px] text-white/40">No-show</p>
+                  </div>
+                  <div className="text-center p-2 rounded-xl bg-white/[0.04]">
+                    <p className={`text-lg font-bold ${prof.metrics.retention_rate > 50 ? 'text-emerald-400' : 'text-white/60'}`}>{prof.metrics.retention_rate}%</p>
+                    <p className="text-[10px] text-white/40">Retencion</p>
+                  </div>
+                  <div className="text-center p-2 rounded-xl bg-white/[0.04]">
+                    <p className="text-lg font-bold text-white">{prof.metrics.unique_patients}</p>
+                    <p className="text-[10px] text-white/40">Pacientes</p>
+                  </div>
                 </div>
-                <div className="text-center p-2 rounded-xl bg-white/[0.04]">
-                  <p className="text-lg font-bold text-green-400">${prof.metrics.revenue.toLocaleString()}</p>
-                  <p className="text-[10px] text-white/40">Facturado</p>
-                </div>
-                <div className="text-center p-2 rounded-xl bg-white/[0.04]">
-                  <p className={`text-lg font-bold ${prof.metrics.completion_rate > 80 ? 'text-blue-400' : 'text-orange-400'}`}>{prof.metrics.completion_rate}%</p>
-                  <p className="text-[10px] text-white/40">Asistencia</p>
-                </div>
-                <div className="text-center p-2 rounded-xl bg-white/[0.04]">
-                  <p className={`text-lg font-bold ${(prof.metrics.no_show_rate || 0) < 10 ? 'text-green-400' : 'text-red-400'}`}>{prof.metrics.no_show_rate || 0}%</p>
-                  <p className="text-[10px] text-white/40">No-show</p>
-                </div>
-                <div className="text-center p-2 rounded-xl bg-white/[0.04]">
-                  <p className={`text-lg font-bold ${prof.metrics.retention_rate > 50 ? 'text-emerald-400' : 'text-white/60'}`}>{prof.metrics.retention_rate}%</p>
-                  <p className="text-[10px] text-white/40">Retencion</p>
-                </div>
-                <div className="text-center p-2 rounded-xl bg-white/[0.04]">
-                  <p className="text-lg font-bold text-white">{prof.metrics.unique_patients}</p>
-                  <p className="text-[10px] text-white/40">Pacientes</p>
-                </div>
-              </div>
 
-              {/* Extra info row */}
-              <div className="flex flex-wrap gap-4 mt-3 pt-3 border-t border-white/[0.06] text-xs text-white/40">
-                {prof.top_treatment?.name !== 'N/A' && (
-                  <span>Top: <strong className="text-white/60">{prof.top_treatment.name}</strong> ({prof.top_treatment.count})</span>
-                )}
-                {prof.busiest_day !== 'N/A' && (
-                  <span>Dia mas activo: <strong className="text-white/60">{prof.busiest_day}</strong></span>
-                )}
-                {prof.metrics.avg_revenue_per_appointment > 0 && (
-                  <span>Ticket prom: <strong className="text-white/60">${prof.metrics.avg_revenue_per_appointment.toLocaleString()}</strong></span>
-                )}
-                {prof.metrics.paid_appointments > 0 && (
-                  <span>Pagados: <strong className="text-green-400">{prof.metrics.paid_appointments}</strong></span>
-                )}
+                {/* Extra info row */}
+                <div className="flex flex-wrap gap-4 mt-3 pt-3 border-t border-white/[0.06] text-xs text-white/40">
+                  {prof.top_treatment?.name !== 'N/A' && (
+                    <span>Top: <strong className="text-white/60">{prof.top_treatment.name}</strong> ({prof.top_treatment.count})</span>
+                  )}
+                  {prof.busiest_day !== 'N/A' && (
+                    <span>Dia mas activo: <strong className="text-white/60">{prof.busiest_day}</strong></span>
+                  )}
+                  {prof.metrics.avg_revenue_per_appointment > 0 && (
+                    <span>Ticket prom: <strong className="text-white/60">${prof.metrics.avg_revenue_per_appointment.toLocaleString()}</strong></span>
+                  )}
+                  {prof.metrics.paid_appointments > 0 && (
+                    <span>Pagados: <strong className="text-green-400">{prof.metrics.paid_appointments}</strong></span>
+                  )}
+                </div>
               </div>
-            </div>
+            </GlassCard>
           ))}
           </div>
         </div>

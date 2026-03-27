@@ -4,6 +4,7 @@ import { Search, Plus, Edit, Trash2, X, FileText, Brain, Calendar, User, Clock, 
 import api from '../api/axios';
 import { useTranslation } from '../context/LanguageContext';
 import PageHeader from '../components/PageHeader';
+import GlassCard, { CARD_IMAGES } from '../components/GlassCard';
 
 interface Patient {
   id: number;
@@ -388,7 +389,8 @@ export default function PatientsView() {
       </div>
 
       {/* Table */}
-      <div className="bg-white/[0.03] border border-white/[0.06] rounded-lg shadow overflow-hidden">
+      <GlassCard image={CARD_IMAGES.patients} hoverScale={false}>
+      <div className="overflow-hidden">
         {loading ? (
           <div className="p-8 text-center text-white/50">{t('patients.loading')}</div>
         ) : filteredPatients.length === 0 ? (
@@ -549,6 +551,7 @@ export default function PatientsView() {
           </>
         )}
       </div>
+      </GlassCard>
 
       {/* Modal: estilo slide-over como Agenda (Inspector Clínico) */}
       {showModal && (

@@ -14,6 +14,7 @@ import api, { BACKEND_URL } from '../api/axios';
 import { useTranslation } from '../context/LanguageContext';
 import PageHeader from '../components/PageHeader';
 import MarketingPerformanceCard from '../components/MarketingPerformanceCard';
+import GlassCard, { CARD_IMAGES } from '../components/GlassCard';
 
 // ============================================
 // INTERFACES & TYPES
@@ -47,23 +48,26 @@ interface KPICardProps {
   color: string;
   trend?: string;
   hint?: string;
+  image?: string;
 }
 
-const KPICard = ({ title, value, icon: Icon, color, trend, hint }: KPICardProps) => (
-  <div className="bg-white/[0.03] backdrop-blur-md border border-white/[0.06] rounded-2xl p-3 sm:p-5 hover:bg-white/[0.04] transition-all duration-300 group" title={hint}>
-    <div className="flex justify-between items-start mb-2 sm:mb-3">
-      <div className={`p-2 sm:p-3 rounded-xl ${color} bg-opacity-10 group-hover:scale-110 transition-transform`}>
-        <Icon className={`w-4 h-4 sm:w-6 sm:h-6 ${color.replace('bg-', 'text-')}`} />
+const KPICard = ({ title, value, icon: Icon, color, trend, hint, image }: KPICardProps) => (
+  <GlassCard image={image}>
+    <div className="p-3 sm:p-5 group" title={hint}>
+      <div className="flex justify-between items-start mb-2 sm:mb-3">
+        <div className={`p-2 sm:p-3 rounded-xl ${color} bg-opacity-10 group-hover:scale-110 transition-transform`}>
+          <Icon className={`w-4 h-4 sm:w-6 sm:h-6 ${color.replace('bg-', 'text-')}`} />
+        </div>
+        {trend && (
+          <span className="flex items-center gap-0.5 text-[10px] sm:text-xs font-medium text-green-400 bg-green-500/10 px-1.5 py-0.5 sm:px-2 sm:py-1 rounded-full">
+            <TrendingUp size={10} /> {trend}
+          </span>
+        )}
       </div>
-      {trend && (
-        <span className="flex items-center gap-0.5 text-[10px] sm:text-xs font-medium text-green-400 bg-green-500/10 px-1.5 py-0.5 sm:px-2 sm:py-1 rounded-full">
-          <TrendingUp size={10} /> {trend}
-        </span>
-      )}
+      <p className="text-white/50 text-[11px] sm:text-sm font-medium leading-tight">{title}</p>
+      <h3 className="text-lg sm:text-2xl font-bold text-white mt-0.5">{value}</h3>
     </div>
-    <p className="text-white/50 text-[11px] sm:text-sm font-medium leading-tight">{title}</p>
-    <h3 className="text-lg sm:text-2xl font-bold text-white mt-0.5">{value}</h3>
-  </div>
+  </GlassCard>
 );
 
 const UrgencyBadge = ({ level, t }: { level: UrgencyRecord['urgency_level'], t: any }) => {
@@ -229,6 +233,7 @@ export default function DashboardView() {
             icon={MessageSquare}
             color="bg-blue-500"
             trend={(stats as any)?.ia_conversations_trend}
+            image={CARD_IMAGES.patients}
           />
           <KPICard
             title={t('dashboard.appointments')}
@@ -237,12 +242,14 @@ export default function DashboardView() {
             color="bg-emerald-500"
             trend={(stats as any)?.ia_appointments_trend}
             hint={t('dashboard.appointments_hint')}
+            image={CARD_IMAGES.appointments}
           />
           <KPICard
             title={t('dashboard.urgencies')}
             value={stats?.active_urgencies}
             icon={LucideActivity}
             color="bg-rose-500"
+            image={CARD_IMAGES.completion}
           />
           <KPICard
             title={t('dashboard.revenue_confirmed')}
@@ -250,6 +257,7 @@ export default function DashboardView() {
             icon={DollarSign}
             color="bg-emerald-500"
             trend={(stats as any)?.total_revenue_trend}
+            image={CARD_IMAGES.revenue}
           />
           <KPICard
             title={t('dashboard.revenue_estimated')}
@@ -257,62 +265,65 @@ export default function DashboardView() {
             icon={TrendingUp}
             color="bg-amber-500"
             trend="+15%"
+            image={CARD_IMAGES.revenue}
           />
         </div>
 
         {/* MIDDLE ROW: CHARTS */}
         <div className="grid grid-cols-1 gap-6">
-          <div className="bg-white/[0.03] rounded-2xl border border-white/[0.06] p-6">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-lg font-semibold text-white">{t('dashboard.chart_title')}</h2>
-              <div className="hidden sm:flex gap-4 text-xs font-medium text-white/50">
-                <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-blue-500"></div> {t('dashboard.referrals')}</span>
-                <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-emerald-500"></div> {t('dashboard.completed')}</span>
+          <GlassCard image={CARD_IMAGES.analytics}>
+            <div className="p-6">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-lg font-semibold text-white">{t('dashboard.chart_title')}</h2>
+                <div className="hidden sm:flex gap-4 text-xs font-medium text-white/50">
+                  <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-blue-500"></div> {t('dashboard.referrals')}</span>
+                  <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-emerald-500"></div> {t('dashboard.completed')}</span>
+                </div>
+              </div>
+              <div className="h-[220px] sm:h-[300px] w-full">
+                {stats?.growth_data ? (
+                  <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+                    <AreaChart data={stats.growth_data} margin={{ top: 5, right: 5, left: -15, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="colorIA" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.15} />
+                          <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                        </linearGradient>
+                        <linearGradient id="colorDone" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#10b981" stopOpacity={0.15} />
+                          <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255,255,255,0.06)" />
+                      <XAxis
+                        dataKey="date"
+                        axisLine={false}
+                        tickLine={false}
+                        tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 10 }}
+                        dy={10}
+                        tickFormatter={(v) => { const d = new Date(v + 'T00:00:00'); return `${d.getDate()}/${d.getMonth()+1}`; }}
+                      />
+                      <YAxis axisLine={false} tickLine={false} tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 10 }} width={30} allowDecimals={false} />
+                      <Tooltip
+                        contentStyle={{ borderRadius: '12px', border: '1px solid rgba(255,255,255,0.08)', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.3)', fontSize: 13, backgroundColor: '#1a1e2e', color: '#fff' }}
+                        labelFormatter={(v) => { const d = new Date(v + 'T00:00:00'); return d.toLocaleDateString('es-AR', { day: 'numeric', month: 'short' }); }}
+                        formatter={(value: number, name: string) => [
+                          value,
+                          name === 'ia_referrals' ? 'Derivaciones IA' : name === 'completed_appointments' ? 'Turnos completados' : name
+                        ]}
+                      />
+                      <Area type="monotone" dataKey="ia_referrals" stroke="#3b82f6" strokeWidth={2.5} fillOpacity={1} fill="url(#colorIA)" name="Derivaciones IA" />
+                      <Area type="monotone" dataKey="completed_appointments" stroke="#10b981" strokeWidth={2.5} fillOpacity={1} fill="url(#colorDone)" name="Turnos completados" />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="h-full flex items-center justify-center text-white/30 italic text-sm">
+                    {t('dashboard.no_data_available')}
+                  </div>
+                )}
               </div>
             </div>
-            <div className="h-[220px] sm:h-[300px] w-full">
-              {stats?.growth_data ? (
-                <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
-                  <AreaChart data={stats.growth_data} margin={{ top: 5, right: 5, left: -15, bottom: 0 }}>
-                    <defs>
-                      <linearGradient id="colorIA" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.15} />
-                        <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
-                      </linearGradient>
-                      <linearGradient id="colorDone" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.15} />
-                        <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255,255,255,0.06)" />
-                    <XAxis
-                      dataKey="date"
-                      axisLine={false}
-                      tickLine={false}
-                      tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 10 }}
-                      dy={10}
-                      tickFormatter={(v) => { const d = new Date(v + 'T00:00:00'); return `${d.getDate()}/${d.getMonth()+1}`; }}
-                    />
-                    <YAxis axisLine={false} tickLine={false} tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 10 }} width={30} allowDecimals={false} />
-                    <Tooltip
-                      contentStyle={{ borderRadius: '12px', border: '1px solid rgba(255,255,255,0.08)', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.3)', fontSize: 13, backgroundColor: '#1a1e2e', color: '#fff' }}
-                      labelFormatter={(v) => { const d = new Date(v + 'T00:00:00'); return d.toLocaleDateString('es-AR', { day: 'numeric', month: 'short' }); }}
-                      formatter={(value: number, name: string) => [
-                        value,
-                        name === 'ia_referrals' ? 'Derivaciones IA' : name === 'completed_appointments' ? 'Turnos completados' : name
-                      ]}
-                    />
-                    <Area type="monotone" dataKey="ia_referrals" stroke="#3b82f6" strokeWidth={2.5} fillOpacity={1} fill="url(#colorIA)" name="Derivaciones IA" />
-                    <Area type="monotone" dataKey="completed_appointments" stroke="#10b981" strokeWidth={2.5} fillOpacity={1} fill="url(#colorDone)" name="Turnos completados" />
-                  </AreaChart>
-                </ResponsiveContainer>
-              ) : (
-                <div className="h-full flex items-center justify-center text-white/30 italic text-sm">
-                  {t('dashboard.no_data_available')}
-                </div>
-              )}
-            </div>
-          </div>
+          </GlassCard>
 
         </div>
 
@@ -322,56 +333,58 @@ export default function DashboardView() {
         </div>
 
         {/* BOTTOM ROW: RECENT URGENCIES TABLE */}
-        <div className="bg-white/[0.03] rounded-2xl border border-white/[0.06] overflow-hidden flex flex-col mb-4">
-          <div className="p-6 border-b border-white/[0.06] flex justify-between items-center">
-            <h2 className="text-lg font-semibold text-white">{t('dashboard.urgencies_recent')}</h2>
-            <button className="text-blue-400 text-sm font-semibold hover:underline px-3 py-2">{t('dashboard.see_all')}</button>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse min-w-[600px]">
-              <thead>
-                <tr className="bg-white/[0.02]">
-                  <th className="px-6 py-4 text-xs font-bold text-white/30 uppercase tracking-wider">{t('dashboard.patient')}</th>
-                  <th className="px-6 py-4 text-xs font-bold text-white/30 uppercase tracking-wider">{t('dashboard.reason')}</th>
-                  <th className="px-6 py-4 text-xs font-bold text-white/30 uppercase tracking-wider">{t('dashboard.severity')}</th>
-                  <th className="px-6 py-4 text-xs font-bold text-white/30 uppercase tracking-wider">{t('dashboard.time')}</th>
-                  <th className="px-6 py-4 text-xs font-bold text-white/30 uppercase tracking-wider"></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-white/[0.06]">
-                {urgencies.map((u) => (
-                  <tr key={u.id} className="hover:bg-white/[0.04] transition-colors group">
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-full bg-white/[0.06] flex items-center justify-center text-white/50 group-hover:bg-blue-500/10 group-hover:text-blue-400 transition-colors">
-                          <User size={18} />
-                        </div>
-                        <div>
-                          <p className="text-sm font-semibold text-white">{u.patient_name}</p>
-                          <p className="text-[11px] text-white/50 font-mono tracking-tighter">{u.phone}</p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-white/50 font-medium">{u.reason}</td>
-                    <td className="px-6 py-4">
-                      <UrgencyBadge level={u.urgency_level} t={t} />
-                    </td>
-                    <td className="px-6 py-4 text-sm text-white/50">
-                      <div className="flex items-center gap-1.5">
-                        <Clock size={14} className="text-white/30" /> {u.timestamp}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <button className="p-2 hover:bg-white/[0.04] rounded-lg border border-transparent hover:border-white/[0.06] text-white/30 hover:text-blue-400 transition-all min-h-[44px] min-w-[44px] flex items-center justify-center">
-                        <ArrowUpRight size={20} />
-                      </button>
-                    </td>
+        <GlassCard image={CARD_IMAGES.dental}>
+          <div className="overflow-hidden flex flex-col mb-4">
+            <div className="p-6 border-b border-white/[0.06] flex justify-between items-center">
+              <h2 className="text-lg font-semibold text-white">{t('dashboard.urgencies_recent')}</h2>
+              <button className="text-blue-400 text-sm font-semibold hover:underline px-3 py-2">{t('dashboard.see_all')}</button>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse min-w-[600px]">
+                <thead>
+                  <tr className="bg-white/[0.02]">
+                    <th className="px-6 py-4 text-xs font-bold text-white/30 uppercase tracking-wider">{t('dashboard.patient')}</th>
+                    <th className="px-6 py-4 text-xs font-bold text-white/30 uppercase tracking-wider">{t('dashboard.reason')}</th>
+                    <th className="px-6 py-4 text-xs font-bold text-white/30 uppercase tracking-wider">{t('dashboard.severity')}</th>
+                    <th className="px-6 py-4 text-xs font-bold text-white/30 uppercase tracking-wider">{t('dashboard.time')}</th>
+                    <th className="px-6 py-4 text-xs font-bold text-white/30 uppercase tracking-wider"></th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-white/[0.06]">
+                  {urgencies.map((u) => (
+                    <tr key={u.id} className="hover:bg-white/[0.04] transition-colors group">
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-full bg-white/[0.06] flex items-center justify-center text-white/50 group-hover:bg-blue-500/10 group-hover:text-blue-400 transition-colors">
+                            <User size={18} />
+                          </div>
+                          <div>
+                            <p className="text-sm font-semibold text-white">{u.patient_name}</p>
+                            <p className="text-[11px] text-white/50 font-mono tracking-tighter">{u.phone}</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 text-sm text-white/50 font-medium">{u.reason}</td>
+                      <td className="px-6 py-4">
+                        <UrgencyBadge level={u.urgency_level} t={t} />
+                      </td>
+                      <td className="px-6 py-4 text-sm text-white/50">
+                        <div className="flex items-center gap-1.5">
+                          <Clock size={14} className="text-white/30" /> {u.timestamp}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <button className="p-2 hover:bg-white/[0.04] rounded-lg border border-transparent hover:border-white/[0.06] text-white/30 hover:text-blue-400 transition-all min-h-[44px] min-w-[44px] flex items-center justify-center">
+                          <ArrowUpRight size={20} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
+        </GlassCard>
 
       </main>
     </div>

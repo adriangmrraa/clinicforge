@@ -4,6 +4,7 @@ import { User, Mail, Calendar, Save, CheckCircle, AlertCircle, Loader2 } from 'l
 import { useAuth } from '../context/AuthContext';
 import { useTranslation } from '../context/LanguageContext';
 import PageHeader from '../components/PageHeader';
+import GlassCard, { CARD_IMAGES } from '../components/GlassCard';
 
 interface UserProfile {
     id: string;
@@ -87,7 +88,8 @@ const ProfileView: React.FC = () => {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                 {/* Left: Summary Card */}
                 <div className="md:col-span-1">
-                    <div className="bg-white/[0.03] rounded-2xl p-6 border border-white/[0.06] flex flex-col items-center text-center">
+                    <GlassCard image={CARD_IMAGES.profile}>
+                    <div className="p-6 flex flex-col items-center text-center">
                         <div className="w-24 h-24 rounded-full bg-medical-500/10 flex items-center justify-center text-medical-400 font-bold text-2xl sm:text-3xl mb-4 border-4 border-white/[0.06]">
                             {firstName?.[0]?.toUpperCase() || profile?.email?.[0]?.toUpperCase()}
                         </div>
@@ -104,11 +106,13 @@ const ProfileView: React.FC = () => {
                             </div>
                         </div>
                     </div>
+                    </GlassCard>
                 </div>
 
                 {/* Right: Settings Form */}
                 <div className="md:col-span-2 space-y-6">
-                    <div className="bg-white/[0.03] rounded-2xl p-8 border border-white/[0.06]">
+                    <GlassCard image={CARD_IMAGES.tech} hoverScale={false}>
+                    <div className="p-8">
                         <form onSubmit={handleSave} className="space-y-6">
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                                 <div>
@@ -182,6 +186,7 @@ const ProfileView: React.FC = () => {
                             </div>
                         </form>
                     </div>
+                    </GlassCard>
                 </div>
             </div>
 

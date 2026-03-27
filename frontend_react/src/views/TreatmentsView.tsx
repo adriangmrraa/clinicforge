@@ -3,6 +3,7 @@ import { Clock, AlertCircle, CheckCircle, Save, X, Zap, Shield, Heart, Activity,
 import api from '../api/axios';
 import { useTranslation } from '../context/LanguageContext';
 import PageHeader from '../components/PageHeader';
+import GlassCard, { CARD_IMAGES } from '../components/GlassCard';
 
 interface Professional {
   id: number;
@@ -306,7 +307,8 @@ export default function TreatmentsView() {
         />
 
         {/* Quick Reference */}
-        <div className="mb-10 p-6 bg-white/[0.03] border border-white/[0.06] rounded-3xl">
+        <GlassCard image={CARD_IMAGES.dental} hoverScale={false} className="mb-10 rounded-3xl">
+        <div className="p-6">
           <h3 className="font-bold text-white mb-5 flex items-center gap-2">
             <Clock size={20} className="text-blue-400" />
             {t('treatments.recommended_durations')}
@@ -341,6 +343,7 @@ export default function TreatmentsView() {
             </div>
           </div>
         </div>
+        </GlassCard>
 
         {/* Modal: Nuevo Servicio / Crear tratamiento (centrado en mobile y desktop) */}
         {isCreating && (
@@ -525,7 +528,8 @@ export default function TreatmentsView() {
         ) : (
           <div className="space-y-12 pb-20">
             {Object.entries(groupedTreatments).map(([category, categoryTreatments]) => (
-              <div key={category} className="bg-white/[0.03] rounded-[2.5rem] border border-white/[0.06] overflow-hidden group">
+              <GlassCard key={category} image={CARD_IMAGES.dental} hoverScale={false} className="rounded-[2.5rem]">
+              <div className="overflow-hidden group">
                 <div className="p-6 border-b border-white/[0.06] bg-white/[0.02] flex justify-between items-center sticky top-0 z-10 backdrop-blur-md transition-colors group-hover:bg-white/[0.04]">
                   <div className="flex items-center gap-4">
                     <div className="p-3 bg-white/[0.06] rounded-2xl border border-white/[0.06]">
@@ -821,13 +825,15 @@ export default function TreatmentsView() {
                   ))}
                 </div>
               </div>
+              </GlassCard>
             ))}
           </div>
         )}
 
         {/* Empty State */}
         {!loading && treatments.length === 0 && (
-          <div className="p-8 sm:p-12 lg:p-20 text-center bg-white/[0.03] rounded-[2.5rem] border border-white/[0.06] animate-in fade-in duration-700">
+          <GlassCard image={CARD_IMAGES.dental} hoverScale={false} className="rounded-[2.5rem] animate-in fade-in duration-700">
+          <div className="p-8 sm:p-12 lg:p-20 text-center">
             <div className="w-24 h-24 bg-blue-500/10 text-blue-400/30 rounded-full flex items-center justify-center mx-auto mb-8">
               <Activity size={48} strokeWidth={1.5} />
             </div>
@@ -846,6 +852,7 @@ export default function TreatmentsView() {
               {t('treatments.tip_migration')}
             </div>
           </div>
+          </GlassCard>
         )}
       </div>
     </div>

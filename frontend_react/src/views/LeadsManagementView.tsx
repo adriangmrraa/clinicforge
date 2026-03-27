@@ -11,6 +11,7 @@ import api, { BACKEND_URL } from '../api/axios';
 import { useTranslation } from '../context/LanguageContext';
 import PageHeader from '../components/PageHeader';
 import { Modal } from '../components/Modal';
+import GlassCard, { CARD_IMAGES } from '../components/GlassCard';
 
 interface Lead {
   id: string;
@@ -286,47 +287,55 @@ export default function LeadsManagementView() {
       {summary && (
         <div className="px-6 pb-6">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="bg-white/[0.03] border border-white/[0.06] rounded-xl p-5">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-white/40 font-medium">{t('leads.stats.total')}</p>
-                  <p className="text-lg sm:text-2xl font-black text-white">{summary.totals.total_leads}</p>
-                </div>
-                <Users className="w-8 h-8 text-blue-500" />
-              </div>
-            </div>
-            
-            <div className="bg-white/[0.03] border border-white/[0.06] rounded-xl p-5">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-white/40 font-medium">{t('leads.stats.converted')}</p>
-                  <p className="text-lg sm:text-2xl font-black text-green-600">{summary.totals.converted_leads}</p>
-                </div>
-                <CheckCircle2 className="w-8 h-8 text-green-500" />
-              </div>
-            </div>
-            
-            <div className="bg-white/[0.03] border border-white/[0.06] rounded-xl p-5">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-white/40 font-medium">{t('leads.stats.conversion_rate')}</p>
-                  <p className="text-lg sm:text-2xl font-black text-indigo-600">{summary.totals.conversion_rate}%</p>
-                </div>
-                <BarChart3 className="w-8 h-8 text-indigo-500" />
-              </div>
-            </div>
-            
-            <div className="bg-white/[0.03] border border-white/[0.06] rounded-xl p-5">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-white/40 font-medium">{t('leads.stats.active')}</p>
-                  <p className="text-lg sm:text-2xl font-black text-amber-600">{summary.totals.active_leads}</p>
-                </div>
-                <div className="w-8 h-8 rounded-full bg-amber-500/10 flex items-center justify-center">
-                  <span className="text-amber-600 font-bold">!</span>
+            <GlassCard image={CARD_IMAGES.leads}>
+              <div className="p-5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-white/40 font-medium">{t('leads.stats.total')}</p>
+                    <p className="text-lg sm:text-2xl font-black text-white">{summary.totals.total_leads}</p>
+                  </div>
+                  <Users className="w-8 h-8 text-blue-500" />
                 </div>
               </div>
-            </div>
+            </GlassCard>
+
+            <GlassCard image={CARD_IMAGES.leads}>
+              <div className="p-5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-white/40 font-medium">{t('leads.stats.converted')}</p>
+                    <p className="text-lg sm:text-2xl font-black text-green-600">{summary.totals.converted_leads}</p>
+                  </div>
+                  <CheckCircle2 className="w-8 h-8 text-green-500" />
+                </div>
+              </div>
+            </GlassCard>
+
+            <GlassCard image={CARD_IMAGES.leads}>
+              <div className="p-5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-white/40 font-medium">{t('leads.stats.conversion_rate')}</p>
+                    <p className="text-lg sm:text-2xl font-black text-indigo-600">{summary.totals.conversion_rate}%</p>
+                  </div>
+                  <BarChart3 className="w-8 h-8 text-indigo-500" />
+                </div>
+              </div>
+            </GlassCard>
+
+            <GlassCard image={CARD_IMAGES.leads}>
+              <div className="p-5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-white/40 font-medium">{t('leads.stats.active')}</p>
+                    <p className="text-lg sm:text-2xl font-black text-amber-600">{summary.totals.active_leads}</p>
+                  </div>
+                  <div className="w-8 h-8 rounded-full bg-amber-500/10 flex items-center justify-center">
+                    <span className="text-amber-600 font-bold">!</span>
+                  </div>
+                </div>
+              </div>
+            </GlassCard>
           </div>
         </div>
       )}
@@ -437,7 +446,7 @@ export default function LeadsManagementView() {
 
       {/* Main Content */}
       <div className="px-6">
-        <div className="bg-white/[0.03] border border-white/[0.06] rounded-xl overflow-hidden">
+        <GlassCard image={CARD_IMAGES.leads} hoverScale={false} className="overflow-hidden">
           {/* Table Header */}
           <div className="p-6 border-b border-white/[0.06]">
             <div className="flex items-center justify-between">
@@ -801,7 +810,7 @@ export default function LeadsManagementView() {
               )}
             </>
           )}
-        </div>
+        </GlassCard>
       </div>
 
       {/* Status Update Modal */}

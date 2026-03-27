@@ -3,6 +3,7 @@ import { Building2, Plus, Edit, Trash2, Phone, Loader2, AlertCircle, CheckCircle
 import api from '../api/axios';
 import { useTranslation } from '../context/LanguageContext';
 import PageHeader from '../components/PageHeader';
+import GlassCard, { CARD_IMAGES } from '../components/GlassCard';
 
 /* ── Types ── */
 interface DayConfig { enabled: boolean; slots: { start: string; end: string }[]; location?: string; address?: string; maps_url?: string; }
@@ -347,9 +348,9 @@ export default function ClinicsView() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {clinicas.map((clinica) => (
-                    <div
+                    <GlassCard
                         key={clinica.id}
-                        className="bg-white/[0.03] rounded-xl border border-white/[0.06] overflow-hidden hover:border-white/[0.12] transition-all group"
+                        image={CARD_IMAGES.clinic}
                     >
                         <div className="p-5 space-y-4">
                             <div className="flex justify-between items-start">
@@ -402,7 +403,7 @@ export default function ClinicsView() {
                                 <span>{t('common.since')}: {new Date(clinica.created_at).toLocaleDateString()}</span>
                             </div>
                         </div>
-                    </div>
+                    </GlassCard>
                 ))}
             </div>
 

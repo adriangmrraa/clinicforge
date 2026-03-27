@@ -9,6 +9,7 @@ import GoogleConnectionWizard from '../components/integrations/GoogleConnectionW
 import { getCurrentTenantId } from '../api/axios';
 import { useSearchParams } from 'react-router-dom';
 import GoogleAdsApi from '../api/google_ads';
+import GlassCard, { CARD_IMAGES } from '../components/GlassCard';
 
 type Platform = 'meta' | 'google' | 'combined';
 type TimeRange = 'last_30d' | 'last_90d' | 'this_year' | 'lifetime' | 'all';
@@ -317,7 +318,7 @@ export default function MarketingHubView() {
                         )}
 
                         {/* Sub-tabs: Campanas / Creativos */}
-                        <div className="rounded-lg border border-white/[0.06] bg-white/[0.03] overflow-hidden">
+                        <GlassCard image={CARD_IMAGES.marketing} hoverScale={false} className="overflow-hidden">
                             {/* Tab bar */}
                             <div className="border-b border-white/[0.06] px-4">
                                 <nav className="-mb-px flex space-x-6">
@@ -425,7 +426,7 @@ export default function MarketingHubView() {
                                     </>
                                 )}
                             </div>
-                        </div>
+                        </GlassCard>
                     </div>
                 );
 
@@ -434,28 +435,30 @@ export default function MarketingHubView() {
                     <div className="space-y-4">
                         {/* Google KPIs — same card style as Meta */}
                         {googleStats && (
-                            <div className="bg-white/[0.03] border border-white/[0.06] rounded-2xl p-4 sm:p-6">
-                                <div className="grid grid-cols-2 gap-3 mb-4">
-                                    <div className="bg-blue-500/10 rounded-xl p-3 text-center">
-                                        <p className="text-lg sm:text-2xl font-bold text-blue-400">{GoogleAdsApi.formatNumber(googleStats.impressions || 0)}</p>
-                                        <p className="text-[10px] text-blue-400/60 font-semibold uppercase">Impresiones</p>
+                            <GlassCard image={CARD_IMAGES.marketing} hoverScale={false}>
+                                <div className="p-4 sm:p-6">
+                                    <div className="grid grid-cols-2 gap-3 mb-4">
+                                        <div className="bg-blue-500/10 rounded-xl p-3 text-center">
+                                            <p className="text-lg sm:text-2xl font-bold text-blue-400">{GoogleAdsApi.formatNumber(googleStats.impressions || 0)}</p>
+                                            <p className="text-[10px] text-blue-400/60 font-semibold uppercase">Impresiones</p>
+                                        </div>
+                                        <div className="bg-indigo-500/10 rounded-xl p-3 text-center">
+                                            <p className="text-lg sm:text-2xl font-bold text-indigo-400">{GoogleAdsApi.formatNumber(googleStats.clicks || 0)}</p>
+                                            <p className="text-[10px] text-indigo-400/60 font-semibold uppercase">Clicks</p>
+                                        </div>
                                     </div>
-                                    <div className="bg-indigo-500/10 rounded-xl p-3 text-center">
-                                        <p className="text-lg sm:text-2xl font-bold text-indigo-400">{GoogleAdsApi.formatNumber(googleStats.clicks || 0)}</p>
-                                        <p className="text-[10px] text-indigo-400/60 font-semibold uppercase">Clicks</p>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div className="bg-amber-500/10 rounded-xl p-3 text-center">
+                                            <p className="text-lg sm:text-2xl font-bold text-amber-400">{GoogleAdsApi.formatCurrency(googleStats.cost || 0, googleStats.currency)}</p>
+                                            <p className="text-[10px] text-amber-400/60 font-semibold uppercase">Costo</p>
+                                        </div>
+                                        <div className="bg-emerald-500/10 rounded-xl p-3 text-center">
+                                            <p className="text-lg sm:text-2xl font-bold text-emerald-400">{GoogleAdsApi.formatNumber(googleStats.conversions || 0)}</p>
+                                            <p className="text-[10px] text-emerald-400/60 font-semibold uppercase">Conversiones</p>
+                                        </div>
                                     </div>
                                 </div>
-                                <div className="grid grid-cols-2 gap-3">
-                                    <div className="bg-amber-500/10 rounded-xl p-3 text-center">
-                                        <p className="text-lg sm:text-2xl font-bold text-amber-400">{GoogleAdsApi.formatCurrency(googleStats.cost || 0, googleStats.currency)}</p>
-                                        <p className="text-[10px] text-amber-400/60 font-semibold uppercase">Costo</p>
-                                    </div>
-                                    <div className="bg-emerald-500/10 rounded-xl p-3 text-center">
-                                        <p className="text-lg sm:text-2xl font-bold text-emerald-400">{GoogleAdsApi.formatNumber(googleStats.conversions || 0)}</p>
-                                        <p className="text-[10px] text-emerald-400/60 font-semibold uppercase">Conversiones</p>
-                                    </div>
-                                </div>
-                            </div>
+                            </GlassCard>
                         )}
 
                         {/* Google campaigns as cards */}
@@ -463,31 +466,33 @@ export default function MarketingHubView() {
                             <h3 className="text-sm font-semibold text-white/60 uppercase tracking-wider px-1">{t('marketing_google.active_campaigns')}</h3>
                             {googleStats?.campaigns?.length > 0 ? (
                                 googleStats.campaigns.map((c: any, i: number) => (
-                                    <div key={i} className="bg-white/[0.03] border border-white/[0.06] rounded-xl p-3 sm:p-4">
-                                        <div className="flex items-start justify-between gap-2 mb-3">
-                                            <div className="min-w-0 flex-1">
-                                                <h4 className="text-sm font-semibold text-white truncate">{c.name || c.campaign_name || '—'}</h4>
-                                                <p className="text-xs text-white/30 mt-0.5">{c.type || 'Campaña'} · {GoogleAdsApi.formatCurrency(c.cost || c.spend || 0, googleStats.currency)}</p>
+                                    <GlassCard key={i} image={CARD_IMAGES.marketing}>
+                                        <div className="p-3 sm:p-4">
+                                            <div className="flex items-start justify-between gap-2 mb-3">
+                                                <div className="min-w-0 flex-1">
+                                                    <h4 className="text-sm font-semibold text-white truncate">{c.name || c.campaign_name || '—'}</h4>
+                                                    <p className="text-xs text-white/30 mt-0.5">{c.type || 'Campaña'} · {GoogleAdsApi.formatCurrency(c.cost || c.spend || 0, googleStats.currency)}</p>
+                                                </div>
+                                                <span className={`shrink-0 inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold ${c.status === 'ENABLED' || c.status === 'active' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-white/[0.04] text-white/60'}`}>
+                                                    {c.status === 'ENABLED' || c.status === 'active' ? '● Activo' : c.status || '—'}
+                                                </span>
                                             </div>
-                                            <span className={`shrink-0 inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold ${c.status === 'ENABLED' || c.status === 'active' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-white/[0.04] text-white/60'}`}>
-                                                {c.status === 'ENABLED' || c.status === 'active' ? '● Activo' : c.status || '—'}
-                                            </span>
+                                            <div className="grid grid-cols-3 gap-2">
+                                                <div className="text-center bg-blue-500/10 rounded-lg py-2">
+                                                    <p className="text-lg font-bold text-blue-400">{GoogleAdsApi.formatNumber(c.clicks || 0)}</p>
+                                                    <p className="text-[10px] text-blue-400/60 font-medium">Clicks</p>
+                                                </div>
+                                                <div className="text-center bg-emerald-500/10 rounded-lg py-2">
+                                                    <p className="text-lg font-bold text-emerald-400">{GoogleAdsApi.formatNumber(c.conversions || 0)}</p>
+                                                    <p className="text-[10px] text-emerald-400/60 font-medium">Conversiones</p>
+                                                </div>
+                                                <div className="text-center bg-white/[0.04] rounded-lg py-2">
+                                                    <p className="text-lg font-bold text-white/60">{c.roas?.toFixed(1) || '0.0'}</p>
+                                                    <p className="text-[10px] text-white/40 font-medium">ROAS</p>
+                                                </div>
+                                            </div>
                                         </div>
-                                        <div className="grid grid-cols-3 gap-2">
-                                            <div className="text-center bg-blue-500/10 rounded-lg py-2">
-                                                <p className="text-lg font-bold text-blue-400">{GoogleAdsApi.formatNumber(c.clicks || 0)}</p>
-                                                <p className="text-[10px] text-blue-400/60 font-medium">Clicks</p>
-                                            </div>
-                                            <div className="text-center bg-emerald-500/10 rounded-lg py-2">
-                                                <p className="text-lg font-bold text-emerald-400">{GoogleAdsApi.formatNumber(c.conversions || 0)}</p>
-                                                <p className="text-[10px] text-emerald-400/60 font-medium">Conversiones</p>
-                                            </div>
-                                            <div className="text-center bg-white/[0.04] rounded-lg py-2">
-                                                <p className="text-lg font-bold text-white/60">{c.roas?.toFixed(1) || '0.0'}</p>
-                                                <p className="text-[10px] text-white/40 font-medium">ROAS</p>
-                                            </div>
-                                        </div>
-                                    </div>
+                                    </GlassCard>
                                 ))
                             ) : (
                                 <p className="text-white/30 text-center py-6 text-sm">{t('marketing_google.no_campaigns')}</p>
@@ -501,32 +506,34 @@ export default function MarketingHubView() {
                     <div className="space-y-4">
                         {/* Combined KPIs */}
                         {combinedStats && (
-                            <div className="bg-white/[0.03] border border-white/[0.06] rounded-2xl p-4 sm:p-6">
-                                <div className="grid grid-cols-2 gap-3 mb-3">
-                                    <div className="bg-blue-500/10 rounded-xl p-3 text-center">
-                                        <p className="text-lg sm:text-2xl font-bold text-blue-400">{GoogleAdsApi.formatNumber(combinedStats.combined?.total_impressions || 0)}</p>
-                                        <p className="text-[10px] text-blue-400/60 font-semibold uppercase">Impresiones</p>
+                            <GlassCard image={CARD_IMAGES.marketing} hoverScale={false}>
+                                <div className="p-4 sm:p-6">
+                                    <div className="grid grid-cols-2 gap-3 mb-3">
+                                        <div className="bg-blue-500/10 rounded-xl p-3 text-center">
+                                            <p className="text-lg sm:text-2xl font-bold text-blue-400">{GoogleAdsApi.formatNumber(combinedStats.combined?.total_impressions || 0)}</p>
+                                            <p className="text-[10px] text-blue-400/60 font-semibold uppercase">Impresiones</p>
+                                        </div>
+                                        <div className="bg-indigo-500/10 rounded-xl p-3 text-center">
+                                            <p className="text-lg sm:text-2xl font-bold text-indigo-400">{GoogleAdsApi.formatNumber(combinedStats.combined?.total_clicks || 0)}</p>
+                                            <p className="text-[10px] text-indigo-400/60 font-semibold uppercase">Clicks</p>
+                                        </div>
                                     </div>
-                                    <div className="bg-indigo-500/10 rounded-xl p-3 text-center">
-                                        <p className="text-lg sm:text-2xl font-bold text-indigo-400">{GoogleAdsApi.formatNumber(combinedStats.combined?.total_clicks || 0)}</p>
-                                        <p className="text-[10px] text-indigo-400/60 font-semibold uppercase">Clicks</p>
+                                    <div className="grid grid-cols-3 gap-2">
+                                        <div className="bg-amber-500/10 rounded-xl p-2.5 text-center">
+                                            <p className="text-base sm:text-lg font-bold text-amber-400">{GoogleAdsApi.formatCurrency(combinedStats.combined?.total_cost || 0, 'ARS')}</p>
+                                            <p className="text-[10px] text-amber-400/60 font-semibold uppercase">Costo</p>
+                                        </div>
+                                        <div className="bg-emerald-500/10 rounded-xl p-2.5 text-center">
+                                            <p className="text-base sm:text-lg font-bold text-emerald-400">{GoogleAdsApi.formatNumber(combinedStats.combined?.total_conversions || 0)}</p>
+                                            <p className="text-[10px] text-emerald-400/60 font-semibold uppercase">Conversiones</p>
+                                        </div>
+                                        <div className="bg-violet-500/10 rounded-xl p-2.5 text-center">
+                                            <p className="text-base sm:text-lg font-bold text-violet-400">{GoogleAdsApi.formatCurrency(combinedStats.combined?.total_conversions_value || 0, 'ARS')}</p>
+                                            <p className="text-[10px] text-violet-400/60 font-semibold uppercase">Ingresos</p>
+                                        </div>
                                     </div>
                                 </div>
-                                <div className="grid grid-cols-3 gap-2">
-                                    <div className="bg-amber-500/10 rounded-xl p-2.5 text-center">
-                                        <p className="text-base sm:text-lg font-bold text-amber-400">{GoogleAdsApi.formatCurrency(combinedStats.combined?.total_cost || 0, 'ARS')}</p>
-                                        <p className="text-[10px] text-amber-400/60 font-semibold uppercase">Costo</p>
-                                    </div>
-                                    <div className="bg-emerald-500/10 rounded-xl p-2.5 text-center">
-                                        <p className="text-base sm:text-lg font-bold text-emerald-400">{GoogleAdsApi.formatNumber(combinedStats.combined?.total_conversions || 0)}</p>
-                                        <p className="text-[10px] text-emerald-400/60 font-semibold uppercase">Conversiones</p>
-                                    </div>
-                                    <div className="bg-violet-500/10 rounded-xl p-2.5 text-center">
-                                        <p className="text-base sm:text-lg font-bold text-violet-400">{GoogleAdsApi.formatCurrency(combinedStats.combined?.total_conversions_value || 0, 'ARS')}</p>
-                                        <p className="text-[10px] text-violet-400/60 font-semibold uppercase">Ingresos</p>
-                                    </div>
-                                </div>
-                            </div>
+                            </GlassCard>
                         )}
 
                         {/* Platform comparison as cards (not table) */}
@@ -534,58 +541,62 @@ export default function MarketingHubView() {
                             <h3 className="text-sm font-semibold text-white/60 uppercase tracking-wider px-1">Comparación de Plataformas</h3>
 
                             {/* Meta Ads card */}
-                            <div className="bg-white/[0.03] border border-white/[0.06] rounded-xl p-3 sm:p-4">
-                                <div className="flex items-center justify-between mb-3">
-                                    <div className="flex items-center gap-2">
-                                        <Megaphone size={16} className="text-blue-400" />
-                                        <span className="text-sm font-semibold text-white">Meta Ads</span>
+                            <GlassCard image={CARD_IMAGES.marketing}>
+                                <div className="p-3 sm:p-4">
+                                    <div className="flex items-center justify-between mb-3">
+                                        <div className="flex items-center gap-2">
+                                            <Megaphone size={16} className="text-blue-400" />
+                                            <span className="text-sm font-semibold text-white">Meta Ads</span>
+                                        </div>
+                                        <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold ${isMetaConnected ? 'bg-emerald-500/10 text-emerald-400' : 'bg-white/[0.04] text-white/40'}`}>
+                                            {isMetaConnected ? '● Conectado' : 'Desconectado'}
+                                        </span>
                                     </div>
-                                    <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold ${isMetaConnected ? 'bg-emerald-500/10 text-emerald-400' : 'bg-white/[0.04] text-white/40'}`}>
-                                        {isMetaConnected ? '● Conectado' : 'Desconectado'}
-                                    </span>
+                                    <div className="grid grid-cols-3 gap-2">
+                                        <div className="text-center bg-blue-500/10 rounded-lg py-2">
+                                            <p className="text-lg font-bold text-blue-400">${metaStats?.roi?.total_spend?.toLocaleString('es-AR', { maximumFractionDigits: 0 }) || '0'}</p>
+                                            <p className="text-[10px] text-blue-400/60 font-medium">Inversión</p>
+                                        </div>
+                                        <div className="text-center bg-emerald-500/10 rounded-lg py-2">
+                                            <p className="text-lg font-bold text-emerald-400">${metaStats?.roi?.total_revenue?.toLocaleString('es-AR', { maximumFractionDigits: 0 }) || '0'}</p>
+                                            <p className="text-[10px] text-emerald-400/60 font-medium">Ingresos</p>
+                                        </div>
+                                        <div className="text-center bg-white/[0.04] rounded-lg py-2">
+                                            <p className="text-lg font-bold text-white/60">{metaStats?.roi?.total_spend > 0 ? `${((metaStats.roi.total_revenue / metaStats.roi.total_spend) * 100).toFixed(0)}%` : '0%'}</p>
+                                            <p className="text-[10px] text-white/40 font-medium">ROI</p>
+                                        </div>
+                                    </div>
                                 </div>
-                                <div className="grid grid-cols-3 gap-2">
-                                    <div className="text-center bg-blue-500/10 rounded-lg py-2">
-                                        <p className="text-lg font-bold text-blue-400">${metaStats?.roi?.total_spend?.toLocaleString('es-AR', { maximumFractionDigits: 0 }) || '0'}</p>
-                                        <p className="text-[10px] text-blue-400/60 font-medium">Inversión</p>
-                                    </div>
-                                    <div className="text-center bg-emerald-500/10 rounded-lg py-2">
-                                        <p className="text-lg font-bold text-emerald-400">${metaStats?.roi?.total_revenue?.toLocaleString('es-AR', { maximumFractionDigits: 0 }) || '0'}</p>
-                                        <p className="text-[10px] text-emerald-400/60 font-medium">Ingresos</p>
-                                    </div>
-                                    <div className="text-center bg-white/[0.04] rounded-lg py-2">
-                                        <p className="text-lg font-bold text-white/60">{metaStats?.roi?.total_spend > 0 ? `${((metaStats.roi.total_revenue / metaStats.roi.total_spend) * 100).toFixed(0)}%` : '0%'}</p>
-                                        <p className="text-[10px] text-white/40 font-medium">ROI</p>
-                                    </div>
-                                </div>
-                            </div>
+                            </GlassCard>
 
                             {/* Google Ads card */}
-                            <div className="bg-white/[0.03] border border-white/[0.06] rounded-xl p-3 sm:p-4">
-                                <div className="flex items-center justify-between mb-3">
-                                    <div className="flex items-center gap-2">
-                                        <Globe size={16} className="text-red-400" />
-                                        <span className="text-sm font-semibold text-white">Google Ads</span>
+                            <GlassCard image={CARD_IMAGES.tech}>
+                                <div className="p-3 sm:p-4">
+                                    <div className="flex items-center justify-between mb-3">
+                                        <div className="flex items-center gap-2">
+                                            <Globe size={16} className="text-red-400" />
+                                            <span className="text-sm font-semibold text-white">Google Ads</span>
+                                        </div>
+                                        <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold ${isGoogleConnected ? 'bg-emerald-500/10 text-emerald-400' : 'bg-white/[0.04] text-white/40'}`}>
+                                            {isGoogleConnected ? '● Conectado' : 'Desconectado'}
+                                        </span>
                                     </div>
-                                    <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold ${isGoogleConnected ? 'bg-emerald-500/10 text-emerald-400' : 'bg-white/[0.04] text-white/40'}`}>
-                                        {isGoogleConnected ? '● Conectado' : 'Desconectado'}
-                                    </span>
+                                    <div className="grid grid-cols-3 gap-2">
+                                        <div className="text-center bg-blue-500/10 rounded-lg py-2">
+                                            <p className="text-lg font-bold text-blue-400">{GoogleAdsApi.formatCurrency(googleStats?.cost || 0, googleStats?.currency)}</p>
+                                            <p className="text-[10px] text-blue-400/60 font-medium">Inversión</p>
+                                        </div>
+                                        <div className="text-center bg-emerald-500/10 rounded-lg py-2">
+                                            <p className="text-lg font-bold text-emerald-400">{GoogleAdsApi.formatCurrency(googleStats?.conversions_value || 0, googleStats?.currency)}</p>
+                                            <p className="text-[10px] text-emerald-400/60 font-medium">Ingresos</p>
+                                        </div>
+                                        <div className="text-center bg-white/[0.04] rounded-lg py-2">
+                                            <p className="text-lg font-bold text-white/60">{googleStats?.roas ? `${googleStats.roas.toFixed(1)}x` : '0x'}</p>
+                                            <p className="text-[10px] text-white/40 font-medium">ROAS</p>
+                                        </div>
+                                    </div>
                                 </div>
-                                <div className="grid grid-cols-3 gap-2">
-                                    <div className="text-center bg-blue-500/10 rounded-lg py-2">
-                                        <p className="text-lg font-bold text-blue-400">{GoogleAdsApi.formatCurrency(googleStats?.cost || 0, googleStats?.currency)}</p>
-                                        <p className="text-[10px] text-blue-400/60 font-medium">Inversión</p>
-                                    </div>
-                                    <div className="text-center bg-emerald-500/10 rounded-lg py-2">
-                                        <p className="text-lg font-bold text-emerald-400">{GoogleAdsApi.formatCurrency(googleStats?.conversions_value || 0, googleStats?.currency)}</p>
-                                        <p className="text-[10px] text-emerald-400/60 font-medium">Ingresos</p>
-                                    </div>
-                                    <div className="text-center bg-white/[0.04] rounded-lg py-2">
-                                        <p className="text-lg font-bold text-white/60">{googleStats?.roas ? `${googleStats.roas.toFixed(1)}x` : '0x'}</p>
-                                        <p className="text-[10px] text-white/40 font-medium">ROAS</p>
-                                    </div>
-                                </div>
-                            </div>
+                            </GlassCard>
                         </div>
                     </div>
                 );

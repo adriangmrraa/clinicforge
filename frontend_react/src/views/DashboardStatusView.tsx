@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import api from '../api/axios';
 import PageHeader from '../components/PageHeader';
+import GlassCard, { CARD_IMAGES } from '../components/GlassCard';
 import {
   XAxis,
   YAxis,
@@ -71,24 +72,28 @@ const StatCard = ({
   value,
   icon: Icon,
   color,
-  subtitle
+  subtitle,
+  image
 }: {
   title: string;
   value: string | number;
   icon: any;
   color: string;
   subtitle?: string;
+  image?: string;
 }) => (
-  <div className="bg-white/[0.03] border border-white/[0.06] rounded-2xl p-3 sm:p-5 hover:bg-white/[0.05] transition-all duration-300">
-    <div className="flex justify-between items-start mb-2">
-      <div className={`p-2 sm:p-3 rounded-xl ${color} bg-opacity-10`}>
-        <Icon className={`w-4 h-4 sm:w-6 sm:h-6 ${color.replace('bg-', 'text-')}`} />
+  <GlassCard image={image}>
+    <div className="p-3 sm:p-5">
+      <div className="flex justify-between items-start mb-2">
+        <div className={`p-2 sm:p-3 rounded-xl ${color} bg-opacity-10`}>
+          <Icon className={`w-4 h-4 sm:w-6 sm:h-6 ${color.replace('bg-', 'text-')}`} />
+        </div>
       </div>
+      <p className="text-white/40 text-[11px] sm:text-sm font-medium leading-tight">{title}</p>
+      <h3 className="text-lg sm:text-2xl font-bold text-white mt-0.5">{value}</h3>
+      {subtitle && <p className="text-[10px] sm:text-xs text-white/30 mt-0.5">{subtitle}</p>}
     </div>
-    <p className="text-white/40 text-[11px] sm:text-sm font-medium leading-tight">{title}</p>
-    <h3 className="text-lg sm:text-2xl font-bold text-white mt-0.5">{value}</h3>
-    {subtitle && <p className="text-[10px] sm:text-xs text-white/30 mt-0.5">{subtitle}</p>}
-  </div>
+  </GlassCard>
 );
 
 const AVAILABLE_MODELS = [
@@ -274,6 +279,7 @@ export default function DashboardStatusView() {
                 icon={DollarSign}
                 color="bg-emerald-500"
                 subtitle={`${tokenMetrics?.totals?.total_tokens?.toLocaleString() ?? 0} tokens`}
+                image={CARD_IMAGES.revenue}
               />
               <StatCard
                 title="Tokens totales"
@@ -281,6 +287,7 @@ export default function DashboardStatusView() {
                 icon={Zap}
                 color="bg-blue-500"
                 subtitle={`${tokenMetrics?.totals?.total_conversations ?? 0} conversaciones`}
+                image={CARD_IMAGES.tokens}
               />
               <StatCard
                 title="Proyección mensual"
@@ -288,6 +295,7 @@ export default function DashboardStatusView() {
                 icon={TrendingUp}
                 color="bg-amber-500"
                 subtitle="Estimado según uso actual"
+                image={CARD_IMAGES.analytics}
               />
               <StatCard
                 title="BD: Pacientes / Turnos"
@@ -295,58 +303,62 @@ export default function DashboardStatusView() {
                 icon={Database}
                 color="bg-slate-600"
                 subtitle={`${dbStats.total_conversations ?? 0} conversaciones`}
+                image={CARD_IMAGES.tech}
               />
             </div>
 
             {/* Charts Row */}
             {dailyUsage.length > 0 && (
-              <div className="bg-white/[0.03] rounded-2xl border border-white/[0.06] p-6">
-                <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-                  <Activity size={20} className="text-medical-600" />
-                  Uso diario de tokens
-                </h2>
-                <div className="h-[260px]">
-                  <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
-                    <BarChart data={dailyUsage} margin={{ top: 5, right: 5, left: -10, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" vertical={false} />
-                      <XAxis
-                        dataKey="date"
-                        tick={{ fill: 'rgba(255,255,255,0.4)', fontSize: 10 }}
-                        tickLine={false}
-                        axisLine={false}
-                        tickFormatter={(v) => { const d = new Date(v + 'T00:00:00'); return `${d.getDate()}/${d.getMonth()+1}`; }}
-                      />
-                      <YAxis
-                        tick={{ fill: 'rgba(255,255,255,0.4)', fontSize: 10 }}
-                        tickLine={false}
-                        axisLine={false}
-                        width={45}
-                        tickFormatter={(v) => v >= 1000 ? `${(v/1000).toFixed(0)}K` : v}
-                      />
-                      <Tooltip
-                        contentStyle={{ borderRadius: '12px', border: '1px solid rgba(255,255,255,0.08)', backgroundColor: '#0d1117', color: '#fff', fontSize: 13 }}
-                        labelFormatter={(v) => { const d = new Date(v + 'T00:00:00'); return d.toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric', month: 'short' }); }}
-                        formatter={(value: number, name: string) => {
-                          if (name === 'Tokens') return [value.toLocaleString('es-AR'), 'Tokens'];
-                          return [value, name];
-                        }}
-                      />
-                      <Bar dataKey="total_tokens" fill="#3b82f6" radius={[6, 6, 0, 0]} name="Tokens" barSize={20} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-                {/* Cost summary below chart */}
-                {dailyUsage.length > 0 && (
-                  <div className="mt-3 flex items-center justify-between text-xs text-white/40 px-1">
-                    <span>Costo total periodo: <strong className="text-emerald-400">${dailyUsage.reduce((s, d) => s + (d.cost_usd || 0), 0).toFixed(4)}</strong></span>
-                    <span>Promedio diario: <strong className="text-blue-400">{Math.round(dailyUsage.reduce((s, d) => s + (d.total_tokens || 0), 0) / dailyUsage.length).toLocaleString('es-AR')} tokens</strong></span>
+              <GlassCard image={CARD_IMAGES.analytics}>
+                <div className="p-6">
+                  <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                    <Activity size={20} className="text-medical-600" />
+                    Uso diario de tokens
+                  </h2>
+                  <div className="h-[260px]">
+                    <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+                      <BarChart data={dailyUsage} margin={{ top: 5, right: 5, left: -10, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" vertical={false} />
+                        <XAxis
+                          dataKey="date"
+                          tick={{ fill: 'rgba(255,255,255,0.4)', fontSize: 10 }}
+                          tickLine={false}
+                          axisLine={false}
+                          tickFormatter={(v) => { const d = new Date(v + 'T00:00:00'); return `${d.getDate()}/${d.getMonth()+1}`; }}
+                        />
+                        <YAxis
+                          tick={{ fill: 'rgba(255,255,255,0.4)', fontSize: 10 }}
+                          tickLine={false}
+                          axisLine={false}
+                          width={45}
+                          tickFormatter={(v) => v >= 1000 ? `${(v/1000).toFixed(0)}K` : v}
+                        />
+                        <Tooltip
+                          contentStyle={{ borderRadius: '12px', border: '1px solid rgba(255,255,255,0.08)', backgroundColor: '#0d1117', color: '#fff', fontSize: 13 }}
+                          labelFormatter={(v) => { const d = new Date(v + 'T00:00:00'); return d.toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric', month: 'short' }); }}
+                          formatter={(value: number, name: string) => {
+                            if (name === 'Tokens') return [value.toLocaleString('es-AR'), 'Tokens'];
+                            return [value, name];
+                          }}
+                        />
+                        <Bar dataKey="total_tokens" fill="#3b82f6" radius={[6, 6, 0, 0]} name="Tokens" barSize={20} />
+                      </BarChart>
+                    </ResponsiveContainer>
                   </div>
-                )}
-              </div>
+                  {/* Cost summary below chart */}
+                  {dailyUsage.length > 0 && (
+                    <div className="mt-3 flex items-center justify-between text-xs text-white/40 px-1">
+                      <span>Costo total periodo: <strong className="text-emerald-400">${dailyUsage.reduce((s, d) => s + (d.cost_usd || 0), 0).toFixed(4)}</strong></span>
+                      <span>Promedio diario: <strong className="text-blue-400">{Math.round(dailyUsage.reduce((s, d) => s + (d.total_tokens || 0), 0) / dailyUsage.length).toLocaleString('es-AR')} tokens</strong></span>
+                    </div>
+                  )}
+                </div>
+              </GlassCard>
             )}
 
             {/* Model Configuration */}
-            <div className="bg-white/[0.03] rounded-2xl border border-white/[0.06] p-6">
+            <GlassCard image={CARD_IMAGES.tech}>
+              <div className="p-6">
               <h2 className="text-lg font-semibold text-white mb-1 flex items-center gap-2">
                 <Settings size={20} className="text-medical-600" />
                 Configuración de modelos por acción
@@ -393,49 +405,54 @@ export default function DashboardStatusView() {
                   );
                 })}
               </div>
-            </div>
+              </div>
+            </GlassCard>
 
             {/* Config & Projections */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <div className="bg-white/[0.03] rounded-2xl border border-white/[0.06] p-6">
-                <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-                  <Cpu size={20} className="text-medical-600" />
-                  Proyecciones y eficiencia
-                </h2>
-                <dl className="space-y-3 text-sm">
-                  {[
-                    ['Proyección anual', projections.projected_annual_cost_usd != null ? `$${projections.projected_annual_cost_usd.toFixed(2)}` : '—'],
-                    ['Coste/1000 tokens', projections.cost_per_1000_tokens != null ? `$${projections.cost_per_1000_tokens.toFixed(4)}` : '—'],
-                    ['Prom. tokens/conversación', projections.avg_tokens_per_conversation?.toLocaleString() ?? '—'],
-                    ['Score eficiencia', projections.efficiency_score != null ? `${projections.efficiency_score}/100` : '—']
-                  ].map(([label, val]) => (
-                    <div key={label} className="flex justify-between py-2 border-b border-white/[0.06] last:border-0">
-                      <dt className="text-white/60">{label}</dt>
-                      <dd className="font-mono font-medium text-white">{val}</dd>
-                    </div>
-                  ))}
-                </dl>
-              </div>
+              <GlassCard image={CARD_IMAGES.analytics}>
+                <div className="p-6">
+                  <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                    <Cpu size={20} className="text-medical-600" />
+                    Proyecciones y eficiencia
+                  </h2>
+                  <dl className="space-y-3 text-sm">
+                    {[
+                      ['Proyección anual', projections.projected_annual_cost_usd != null ? `$${projections.projected_annual_cost_usd.toFixed(2)}` : '—'],
+                      ['Coste/1000 tokens', projections.cost_per_1000_tokens != null ? `$${projections.cost_per_1000_tokens.toFixed(4)}` : '—'],
+                      ['Prom. tokens/conversación', projections.avg_tokens_per_conversation?.toLocaleString() ?? '—'],
+                      ['Score eficiencia', projections.efficiency_score != null ? `${projections.efficiency_score}/100` : '—']
+                    ].map(([label, val]) => (
+                      <div key={label} className="flex justify-between py-2 border-b border-white/[0.06] last:border-0">
+                        <dt className="text-white/60">{label}</dt>
+                        <dd className="font-mono font-medium text-white">{val}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                </div>
+              </GlassCard>
 
-              <div className="bg-white/[0.03] rounded-2xl border border-white/[0.06] p-6">
-                <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-                  <Database size={20} className="text-medical-600" />
-                  Estadísticas de base de datos
-                </h2>
-                <dl className="space-y-3 text-sm">
-                  {Object.entries(dbStats).map(([key, val]) => (
-                    <div key={key} className="flex justify-between py-2 border-b border-white/[0.06] last:border-0">
-                      <dt className="text-white/60 capitalize">
-                        {key.replace(/_/g, ' ')}
-                      </dt>
-                      <dd className="font-mono font-medium text-white">{typeof val === 'number' ? val.toLocaleString() : val}</dd>
-                    </div>
-                  ))}
-                  {Object.keys(dbStats).length === 0 && (
-                    <p className="text-white/30 italic">Sin datos de BD disponibles</p>
-                  )}
-                </dl>
-              </div>
+              <GlassCard image={CARD_IMAGES.tech}>
+                <div className="p-6">
+                  <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                    <Database size={20} className="text-medical-600" />
+                    Estadísticas de base de datos
+                  </h2>
+                  <dl className="space-y-3 text-sm">
+                    {Object.entries(dbStats).map(([key, val]) => (
+                      <div key={key} className="flex justify-between py-2 border-b border-white/[0.06] last:border-0">
+                        <dt className="text-white/60 capitalize">
+                          {key.replace(/_/g, ' ')}
+                        </dt>
+                        <dd className="font-mono font-medium text-white">{typeof val === 'number' ? val.toLocaleString() : val}</dd>
+                      </div>
+                    ))}
+                    {Object.keys(dbStats).length === 0 && (
+                      <p className="text-white/30 italic">Sin datos de BD disponibles</p>
+                    )}
+                  </dl>
+                </div>
+              </GlassCard>
             </div>
           </div>
         )}
