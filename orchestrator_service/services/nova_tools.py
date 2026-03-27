@@ -27,6 +27,19 @@ logger = logging.getLogger(__name__)
 
 
 # =============================================================================
+# Helper: emit Socket.IO events from Nova tools (for real-time UI sync)
+# =============================================================================
+async def _nova_emit(event: str, data: Dict[str, Any]):
+    """Emit a Socket.IO event so the frontend updates in real-time."""
+    try:
+        from main import sio, to_json_safe
+        await sio.emit(event, to_json_safe(data))
+        logger.info(f"📡 NOVA Socket: {event} → {list(data.keys())}")
+    except Exception as e:
+        logger.warning(f"📡 NOVA Socket emit failed ({event}): {e}")
+
+
+# =============================================================================
 # NOVA_TOOLS_SCHEMA — OpenAI function calling format
 # =============================================================================
 
@@ -918,6 +931,7 @@ async def _registrar_paciente(args: Dict, tenant_id: int) -> str:
         args.get("insurance_provider"),
         args.get("insurance_id"),
     )
+    await _nova_emit("PATIENT_UPDATED", {"patient_id": row['id'], "tenant_id": tenant_id, "action": "created"})
     return f"Paciente {first_name} {last_name} registrado con ID {row['id']}."
 
 
@@ -942,6 +956,7 @@ async def _actualizar_paciente(args: Dict, tenant_id: int) -> str:
     )
     if result == "UPDATE 0":
         return "No encontre a ese paciente."
+    await _nova_emit("PATIENT_UPDATED", {"patient_id": int(pid), "tenant_id": tenant_id})
     return f"Paciente {pid}: campo '{field}' actualizado."
 
 
@@ -1039,6 +1054,7 @@ async def _registrar_nota_clinica(args: Dict, tenant_id: int, user_role: str, us
     tooth_msg = ""
     if tooth_number:
         tooth_msg = f" Pieza {tooth_number}: {tooth_status or 'registrada'}."
+    await _nova_emit("PATIENT_UPDATED", {"patient_id": int(pid), "tenant_id": tenant_id})
     return f"Nota clinica registrada para paciente {pid}.{tooth_msg}"
 
 
@@ -1287,6 +1303,7 @@ async def _agendar_turno(args: Dict, tenant_id: int) -> str:
         if prof_name:
             prof_msg = f" con Dr. {prof_name}"
 
+    await _nova_emit("NEW_APPOINTMENT", {"patient_id": int(pid), "tenant_id": tenant_id, "appointment_id": str(appt_id)})
     return (
         f"Turno agendado: {patient_name} el {_fmt_date(appt_dt.date())} a las {time_str}"
         f" — {tt_name} ({duration}min){prof_msg}."
@@ -1329,6 +1346,7 @@ async def _cancelar_turno(args: Dict, tenant_id: int) -> str:
         reason, appt_uuid, tenant_id,
     )
 
+    await _nova_emit("APPOINTMENT_DELETED", {"appointment_id": str(appt_uuid), "tenant_id": tenant_id})
     return f"Turno cancelado: {row['patient_name']} — {row['appointment_type']} del {_fmt_date(row['appointment_datetime'])}."
 
 
@@ -1357,6 +1375,8 @@ async def _confirmar_turnos(args: Dict, tenant_id: int) -> str:
             tenant_id, uuids,
         )
         count = int(result.split()[-1]) if result else 0
+        if count > 0:
+            await _nova_emit("APPOINTMENT_UPDATED", {"tenant_id": tenant_id, "action": "confirmed_batch"})
         return f"{count} turno(s) confirmado(s)."
     else:
         # Confirm all pending today
@@ -1373,6 +1393,7 @@ async def _confirmar_turnos(args: Dict, tenant_id: int) -> str:
         count = int(result.split()[-1]) if result else 0
         if count == 0:
             return "No hay turnos pendientes de confirmar hoy."
+        await _nova_emit("APPOINTMENT_UPDATED", {"tenant_id": tenant_id, "action": "confirmed_all_today"})
         return f"Se confirmaron {count} turno(s) de hoy."
 
 
@@ -1473,6 +1494,7 @@ async def _registrar_pago(args: Dict, tenant_id: int, user_role: str) -> str:
     )
 
     method_labels = {"cash": "efectivo", "card": "tarjeta", "transfer": "transferencia", "insurance": "obra social"}
+    await _nova_emit("PAYMENT_CONFIRMED", {"appointment_id": str(appt_uuid), "tenant_id": tenant_id})
     return f"Pago de {_fmt_money(amount)} registrado para {appt['patient_name']} ({method_labels.get(method, method)})."
 
 
@@ -1625,12 +1647,14 @@ async def _actualizar_faq(args: Dict, tenant_id: int) -> str:
             "UPDATE clinic_faqs SET answer = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3",
             answer, existing, tenant_id,
         )
+        await _nova_emit("FAQ_UPDATED", {"tenant_id": tenant_id})
         return f"FAQ actualizada: '{question[:60]}...'"
     else:
         await db.pool.execute(
             "INSERT INTO clinic_faqs (tenant_id, question, answer) VALUES ($1, $2, $3)",
             tenant_id, question, answer,
         )
+        await _nova_emit("FAQ_UPDATED", {"tenant_id": tenant_id})
         return f"FAQ creada: '{question[:60]}...'"
 
 
@@ -2111,6 +2135,7 @@ async def _reprogramar_turno(args: Dict, tenant_id: int) -> str:
     )
     if result == "UPDATE 0":
         return "No encontre ese turno."
+    await _nova_emit("APPOINTMENT_UPDATED", {"appointment_id": str(appt_uuid), "tenant_id": tenant_id})
     return f"Turno reprogramado para {_fmt_date(new_dt)}."
 
 
@@ -2169,6 +2194,7 @@ async def _actualizar_configuracion(args: Dict, tenant_id: int, user_role: str) 
         except Exception:
             return "El precio debe ser un numero valido."
     await db.pool.execute(f"UPDATE tenants SET {field} = $1, updated_at = NOW() WHERE id = $2", value, tenant_id)
+    await _nova_emit("CONFIGURATION_UPDATED", {"tenant_id": tenant_id})
     return f"Configuracion actualizada: {field} = {value}"
 
 
@@ -2187,6 +2213,7 @@ async def _crear_tratamiento(args: Dict, tenant_id: int, user_role: str) -> str:
            VALUES ($1, $2, $3, $4, $5, $6, true, NOW())""",
         tenant_id, name, code, duration, price, category,
     )
+    await _nova_emit("TREATMENT_UPDATED", {"tenant_id": tenant_id})
     return f"Tratamiento '{name}' ({code}) creado — {duration} min, ${price}, categoria: {category}."
 
 
@@ -2216,6 +2243,7 @@ async def _editar_tratamiento(args: Dict, tenant_id: int, user_role: str) -> str
     elif field == "is_active":
         value = str(value).lower() in ('true', '1', 'si', 'yes', 'activo')
     await db.pool.execute(f"UPDATE treatment_types SET {db_field} = $1 WHERE tenant_id = $2 AND code = $3", value, tenant_id, code)
+    await _nova_emit("TREATMENT_UPDATED", {"tenant_id": tenant_id})
     return f"Tratamiento '{code}' actualizado: {field} = {value}"
 
 
@@ -2534,6 +2562,7 @@ async def _bloquear_agenda(args: Dict, tenant_id: int) -> str:
            VALUES ($1, $2, $3, $4, $5, $6, $7, 'manual', NOW())""",
         block_id, tenant_id, f"nova-block-{block_id}", int(prof_id), start_dt, end_dt, reason,
     )
+    await _nova_emit("APPOINTMENT_UPDATED", {"tenant_id": tenant_id, "action": "schedule_blocked"})
     return f"Agenda bloqueada: {_fmt_date(start_dt)} a {_fmt_date(end_dt)} — {reason}"
 
 
@@ -2546,6 +2575,7 @@ async def _eliminar_paciente(args: Dict, tenant_id: int, user_role: str) -> str:
     result = await db.pool.execute("UPDATE patients SET status = 'archived', updated_at = NOW() WHERE id = $1 AND tenant_id = $2", int(patient_id), tenant_id)
     if result == "UPDATE 0":
         return "No encontre a ese paciente."
+    await _nova_emit("PATIENT_UPDATED", {"patient_id": int(patient_id), "tenant_id": tenant_id, "action": "archived"})
     return f"Paciente {patient_id} archivado."
 
 
@@ -2566,6 +2596,7 @@ async def _eliminar_faq(args: Dict, tenant_id: int) -> str:
     result = await db.pool.execute("DELETE FROM clinic_faqs WHERE id = $1 AND tenant_id = $2", int(faq_id), tenant_id)
     if result == "DELETE 0":
         return "No encontre esa FAQ."
+    await _nova_emit("FAQ_UPDATED", {"tenant_id": tenant_id})
     return f"FAQ {faq_id} eliminada."
 
 
@@ -2587,6 +2618,7 @@ async def _cambiar_estado_turno(args: Dict, tenant_id: int) -> str:
         result = await db.pool.execute("UPDATE appointments SET status = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3", status, appt_uuid, tenant_id)
     if result == "UPDATE 0":
         return "No encontre ese turno."
+    await _nova_emit("APPOINTMENT_UPDATED", {"appointment_id": str(appt_uuid), "tenant_id": tenant_id, "status": status})
     return f"Turno actualizado → estado: {status}"
 
 
@@ -2638,6 +2670,7 @@ async def _guardar_anamnesis(args: Dict, tenant_id: int) -> str:
 
     saved_fields = ", ".join(fields.keys())
     logger.info(f"🎙️ NOVA: Anamnesis saved for patient {patient_id}: {saved_fields}")
+    await _nova_emit("PATIENT_UPDATED", {"patient_id": int(patient_id), "tenant_id": tenant_id})
     return f"Guardé en la ficha médica: {saved_fields}. Hay algo más que quieras agregar? Puedo cargar: enfermedades de base, medicación, alergias, cirugías previas, si fuma, embarazo/lactancia, experiencias negativas, miedos."
 
 
@@ -3127,6 +3160,7 @@ async def _actualizar_registro(args: Dict, tenant_id: int, user_role: str) -> st
             return f"No encontre registro {registro_id} en {tabla}."
 
         logger.info(f"🎙️ NOVA CRUD: UPDATE {tabla} id={registro_id} fields={list(campos.keys())}")
+        await _nova_emit("RECORD_UPDATED", {"tenant_id": tenant_id, "table": tabla})
         return f"Actualizado registro {registro_id} en {tabla}: {', '.join(f'{k}={v}' for k, v in campos.items())}"
 
     except json.JSONDecodeError:
@@ -3180,6 +3214,7 @@ async def _crear_registro(args: Dict, tenant_id: int, user_role: str) -> str:
         new_id = row['id'] if row else 'desconocido'
 
         logger.info(f"🎙️ NOVA CRUD: INSERT {tabla} id={new_id} fields={list(datos.keys())}")
+        await _nova_emit("RECORD_UPDATED", {"tenant_id": tenant_id, "table": tabla})
         return f"Registro creado en {tabla} con ID: {new_id}"
 
     except json.JSONDecodeError:
@@ -3528,17 +3563,12 @@ async def _modificar_odontograma(args: Dict, tenant_id: int, user_role: str, use
     logger.info(f"🦷 NOVA Odontograma: patient={pid} ({name}) updated {len(piezas)} teeth, record={record_id}")
 
     # Emit real-time Socket.IO event so any open Odontogram UI refreshes immediately
-    try:
-        from main import sio, to_json_safe
-        await sio.emit("ODONTOGRAM_UPDATED", to_json_safe({
-            "patient_id": int(pid),
-            "record_id": str(record_id),
-            "tenant_id": tenant_id,
-            "odontogram_data": odontogram_data_v2,
-        }))
-        logger.info(f"📡 Socket event emitted: ODONTOGRAM_UPDATED for patient {pid}")
-    except Exception as e:
-        logger.warning(f"Could not emit ODONTOGRAM_UPDATED socket event: {e}")
+    await _nova_emit("ODONTOGRAM_UPDATED", {
+        "patient_id": int(pid),
+        "record_id": str(record_id),
+        "tenant_id": tenant_id,
+        "odontogram_data": odontogram_data_v2,
+    })
 
     result = f"Odontograma de {name} actualizado ({len(piezas)} pieza(s)):\n"
     result += "\n".join(changes_summary)
