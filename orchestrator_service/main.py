@@ -3451,7 +3451,10 @@ def _format_working_hours(working_hours: dict) -> str:
 
 
 def _format_faqs(faqs: list) -> str:
-    """Genera sección de FAQs desde lista de dicts [{category, question, answer}]."""
+    """Genera sección de FAQs desde lista de dicts [{category, question, answer}].
+    This is the static fallback. For RAG-powered FAQ formatting, use
+    embedding_service.format_faqs_with_rag() instead.
+    """
     if not faqs:
         return ""
     lines = ["FAQs OBLIGATORIAS (responder SIEMPRE con estas respuestas cuando aplique):"]
@@ -4174,6 +4177,14 @@ async def lifespan(app: FastAPI):
         logger.info("nova_daily_analysis_started")
     except Exception as e:
         logger.error(f"nova_daily_analysis_start_failed: {e}")
+
+    # RAG: Sync FAQ embeddings for all tenants (background, non-blocking)
+    try:
+        from services.embedding_service import sync_all_tenants_faq_embeddings
+        asyncio.create_task(sync_all_tenants_faq_embeddings())
+        logger.info("rag_faq_embedding_sync_started")
+    except Exception as e:
+        logger.warning(f"rag_faq_embedding_sync_skipped: {e}")
 
     yield
     

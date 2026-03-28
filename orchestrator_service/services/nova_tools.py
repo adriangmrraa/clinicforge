@@ -721,6 +721,19 @@ IMPORTANTE — REGLAS QUIRÚRGICAS:
             "required": ["tabla"],
         },
     },
+    {
+        "type": "function",
+        "name": "buscar_en_base_conocimiento",
+        "description": "Busca información relevante en la base de conocimiento de la clínica usando búsqueda semántica (RAG). Útil para consultar FAQs, protocolos o información que no recordás. Ejemplo: 'qué dice nuestra FAQ sobre blanqueamiento?'",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Consulta en lenguaje natural. Ej: 'precio de ortodoncia', 'protocolo de implantes'"},
+                "tipo": {"type": "string", "enum": ["faq"], "description": "Tipo de búsqueda. Por ahora solo 'faq'."},
+            },
+            "required": ["query"],
+        },
+    },
 ]
 
 
@@ -2225,6 +2238,10 @@ async def execute_nova_tool(
         elif name == "resumen_financiero":
             return await _resumen_financiero(args, tenant_id, user_role)
 
+        # K. RAG / Knowledge Base
+        elif name == "buscar_en_base_conocimiento":
+            return await _buscar_en_base_conocimiento(args, tenant_id)
+
         # J. CRUD genérico
         elif name == "obtener_registros":
             return await _obtener_registros(args, tenant_id, user_role)
@@ -3427,6 +3444,49 @@ async def _contar_registros(args: Dict, tenant_id: int) -> str:
     except Exception as e:
         logger.error(f"contar_registros error: {e}")
         return f"Error contando en {tabla}: {str(e)}"
+
+
+# =============================================================================
+# K. RAG / KNOWLEDGE BASE TOOLS
+# =============================================================================
+
+async def _buscar_en_base_conocimiento(args: Dict, tenant_id: int) -> str:
+    """Semantic search over clinic knowledge base (FAQs)."""
+    query = str(args.get("query", "")).strip()
+    if not query:
+        return "Necesito una consulta para buscar. Ej: 'precio ortodoncia'"
+
+    try:
+        from services.embedding_service import search_similar_faqs, check_pgvector_available
+
+        if not await check_pgvector_available():
+            # Fallback: simple text search in clinic_faqs
+            rows = await db.pool.fetch("""
+                SELECT question, answer, category
+                FROM clinic_faqs
+                WHERE tenant_id = $1
+                AND (LOWER(question) LIKE $2 OR LOWER(answer) LIKE $2)
+                LIMIT 5
+            """, tenant_id, f"%{query.lower()}%")
+            if not rows:
+                return f"No encontré FAQs relacionadas con '{query}'."
+            lines = [f"Resultados para '{query}' (búsqueda por texto):"]
+            for r in rows:
+                lines.append(f"  [{r['category']}] {r['question']}: {r['answer']}")
+            return "\n".join(lines)
+
+        results = await search_similar_faqs(tenant_id, query, top_k=5)
+        if not results:
+            return f"No encontré información relevante sobre '{query}' en la base de conocimiento."
+
+        lines = [f"Resultados para '{query}' (búsqueda semántica):"]
+        for r in results:
+            sim_pct = round(r["similarity"] * 100)
+            lines.append(f"  [{r['category']}] {r['question']}: {r['answer']} ({sim_pct}% relevancia)")
+        return "\n".join(lines)
+    except Exception as e:
+        logger.error(f"buscar_en_base_conocimiento error: {e}")
+        return f"Error buscando en base de conocimiento: {str(e)}"
 
 
 # =============================================================================

@@ -15,6 +15,7 @@ import ClinicsView from './views/ClinicsView';
 import ConfigView from './views/ConfigView';
 import MetaTemplatesView from './views/MetaTemplatesView';
 import MarketingHubView from './views/MarketingHubView';
+import ROIDashboardView from './views/ROIDashboardView';
 import LeadsManagementView from './views/LeadsManagementView';
 import LeadDetailView from './views/LeadDetailView';
 import DashboardStatusView from './views/DashboardStatusView';
@@ -77,6 +78,11 @@ function App() {
                     <Route path="marketing" element={
                       <ProtectedRoute allowedRoles={['ceo']}>
                         <MarketingHubView />
+                      </ProtectedRoute>
+                    } />
+                    <Route path="roi" element={
+                      <ProtectedRoute allowedRoles={['ceo']}>
+                        <ROIDashboardView />
                       </ProtectedRoute>
                     } />
                     <Route path="templates" element={

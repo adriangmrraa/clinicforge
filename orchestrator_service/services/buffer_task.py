@@ -95,9 +95,9 @@ async def process_buffer_task(
             wh = tenant_row["working_hours"]
             clinic_working_hours = json.loads(wh) if isinstance(wh, str) else wh
 
-        # Fetch FAQs for this tenant
+        # Fetch FAQs for this tenant (no limit — RAG will select relevant ones)
         faq_rows = await pool.fetch(
-            "SELECT category, question, answer FROM clinic_faqs WHERE tenant_id = $1 ORDER BY sort_order ASC, id ASC LIMIT 20",
+            "SELECT category, question, answer FROM clinic_faqs WHERE tenant_id = $1 ORDER BY sort_order ASC, id ASC",
             tenant_id
         )
         faqs = [dict(r) for r in faq_rows] if faq_rows else []
@@ -315,6 +315,16 @@ async def process_buffer_task(
         now = get_now_arg()
         dias = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
         current_time_str = f"{dias[now.weekday()]} {now.strftime('%d/%m/%Y %H:%M')}"
+
+        # RAG: Use semantic FAQ search if available, else static fallback
+        rag_faqs_section = ""
+        try:
+            from services.embedding_service import format_faqs_with_rag
+            user_text_for_rag = " ".join(messages) if messages else ""
+            rag_faqs_section = await format_faqs_with_rag(tenant_id, user_text_for_rag, faqs)
+        except Exception as rag_err:
+            logger.debug(f"RAG FAQ fallback (non-fatal): {rag_err}")
+
         system_prompt = build_system_prompt(
             clinic_name=clinic_name,
             current_time=current_time_str,
@@ -326,7 +336,7 @@ async def process_buffer_task(
             clinic_address=clinic_address,
             clinic_maps_url=clinic_maps_url,
             clinic_working_hours=clinic_working_hours,
-            faqs=faqs,
+            faqs=faqs if not rag_faqs_section else None,
             patient_status=patient_status,
             consultation_price=consultation_price,
             anamnesis_url=anamnesis_url,
@@ -334,6 +344,10 @@ async def process_buffer_task(
             bank_alias=bank_alias,
             bank_holder_name=bank_holder_name,
         )
+
+        # Inject RAG FAQs section if available (replaces static FAQ section in prompt)
+        if rag_faqs_section:
+            system_prompt += f"\n\n{rag_faqs_section}"
 
         chat_history = []
         vision_context_str = ""

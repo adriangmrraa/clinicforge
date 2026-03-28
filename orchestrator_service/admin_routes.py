@@ -1866,6 +1866,13 @@ async def create_tenant_faq(tenant_id: int, data: Dict[str, Any], user_data=Depe
         "INSERT INTO clinic_faqs (tenant_id, category, question, answer, sort_order) VALUES ($1, $2, $3, $4, $5) RETURNING id",
         tenant_id, category, question, answer, sort_order
     )
+    # Sync FAQ embedding in background (fire-and-forget)
+    try:
+        import asyncio
+        from services.embedding_service import upsert_faq_embedding
+        asyncio.create_task(upsert_faq_embedding(tenant_id, new_id, question, answer))
+    except Exception:
+        pass
     return {"id": new_id, "status": "created"}
 
 @router.put("/faqs/{faq_id}", tags=["FAQs"], summary="Actualizar una FAQ")
@@ -1891,6 +1898,15 @@ async def update_faq(faq_id: int, data: Dict[str, Any], user_data=Depends(verify
     params.append(faq_id)
     query = f"UPDATE clinic_faqs SET {', '.join(updates)} WHERE id = ${len(params)}"
     await db.pool.execute(query, *params)
+    # Sync FAQ embedding in background
+    try:
+        import asyncio
+        from services.embedding_service import upsert_faq_embedding
+        updated_row = await db.pool.fetchrow("SELECT tenant_id, question, answer FROM clinic_faqs WHERE id = $1", faq_id)
+        if updated_row:
+            asyncio.create_task(upsert_faq_embedding(updated_row["tenant_id"], faq_id, updated_row["question"], updated_row["answer"]))
+    except Exception:
+        pass
     return {"status": "updated"}
 
 @router.delete("/faqs/{faq_id}", tags=["FAQs"], summary="Eliminar una FAQ")
@@ -1898,6 +1914,12 @@ async def delete_faq(faq_id: int, user_data=Depends(verify_admin_token)):
     """Elimina una FAQ."""
     if user_data.role != 'ceo':
         raise HTTPException(status_code=403, detail="Solo el CEO puede gestionar FAQs.")
+    # Delete embedding first (cascade should handle it, but be explicit)
+    try:
+        from services.embedding_service import delete_faq_embedding
+        await delete_faq_embedding(faq_id)
+    except Exception:
+        pass
     await db.pool.execute("DELETE FROM clinic_faqs WHERE id = $1", faq_id)
     return {"status": "deleted"}
 

@@ -73,7 +73,7 @@ class MetricsService:
             
             # Calculate ROI and other derived metrics
             enriched_metrics = await MetricsService._enrich_metrics_with_roi(
-                unified_metrics, tenant_id
+                unified_metrics, tenant_id, date_range
             )
             
             return {
@@ -328,78 +328,172 @@ class MetricsService:
         return unified_list
     
     @staticmethod
+    async def _get_real_spend_data(tenant_id: int, time_range: str = "last_30d") -> Dict[str, Any]:
+        """Fetch real spend data from MarketingService, with graceful fallback."""
+        try:
+            from services.marketing_service import MarketingService
+            roi_stats = await MarketingService.get_roi_stats(tenant_id, time_range)
+            return {
+                "total_spend": float(roi_stats.get("total_spend", 0)),
+                "total_revenue": float(roi_stats.get("total_revenue", 0)),
+                "is_connected": roi_stats.get("is_connected", False),
+                "currency": roi_stats.get("currency", "ARS"),
+                "data_source": "meta_api" if roi_stats.get("is_connected") and roi_stats.get("total_spend", 0) > 0 else "estimated"
+            }
+        except Exception as e:
+            logger.warning(f"Could not fetch real spend data, using estimates: {e}")
+            return {
+                "total_spend": 0,
+                "total_revenue": 0,
+                "is_connected": False,
+                "currency": "ARS",
+                "data_source": "estimated"
+            }
+
+    @staticmethod
+    async def _get_consultation_price(tenant_id: int) -> float:
+        """Get tenant consultation price for revenue estimation."""
+        try:
+            price = await db.pool.fetchval(
+                "SELECT consultation_price FROM tenants WHERE id = $1", tenant_id
+            )
+            return float(price) if price else 500.0
+        except Exception:
+            return 500.0
+
+    @staticmethod
+    async def _get_billing_revenue(tenant_id: int, date_from: str, date_to: str) -> float:
+        """Get real revenue from billing data."""
+        try:
+            revenue = await db.pool.fetchval("""
+                SELECT COALESCE(SUM(billing_amount), 0)
+                FROM appointments
+                WHERE tenant_id = $1
+                AND payment_status IN ('paid', 'partial')
+                AND appointment_datetime >= $2::timestamp
+                AND appointment_datetime <= $3::timestamp
+            """, tenant_id, date_from, date_to)
+            return float(revenue) if revenue else 0.0
+        except Exception:
+            return 0.0
+
+    @staticmethod
     async def _enrich_metrics_with_roi(
         metrics: List[Dict[str, Any]],
-        tenant_id: int
+        tenant_id: int,
+        date_range: Optional[Dict[str, str]] = None
     ) -> List[Dict[str, Any]]:
-        """Enrich metrics with ROI calculations"""
-        
-        # TODO: Integrate with Meta Ads API to get actual spend data
-        # For now, use placeholder ROI calculations
-        
+        """Enrich metrics with real ROI calculations from Meta API + billing data."""
+
+        # Map period to marketing service time_range
+        time_range = "last_30d"
+        if date_range:
+            from datetime import datetime as dt
+            try:
+                d_from = dt.fromisoformat(date_range["from"])
+                d_to = dt.fromisoformat(date_range["to"])
+                days = (d_to - d_from).days
+                if days <= 7:
+                    time_range = "last_30d"
+                elif days <= 30:
+                    time_range = "last_30d"
+                elif days <= 90:
+                    time_range = "last_90d"
+                else:
+                    time_range = "this_year"
+            except Exception:
+                pass
+
+        spend_data = await MetricsService._get_real_spend_data(tenant_id, time_range)
+        consultation_price = await MetricsService._get_consultation_price(tenant_id)
+
+        billing_revenue = 0.0
+        if date_range:
+            billing_revenue = await MetricsService._get_billing_revenue(
+                tenant_id, date_range["from"], date_range["to"]
+            )
+
+        total_spend = spend_data["total_spend"]
+        data_source = spend_data["data_source"]
+        total_patients_all = sum(m["total_patients"] for m in metrics) if metrics else 0
+
         enriched_metrics = []
         for metric in metrics:
-            # Placeholder ROI calculation
-            # In production, this would fetch actual spend from Meta API
-            estimated_spend = 100  # Placeholder
-            estimated_value_per_patient = 500  # Placeholder (average patient value)
-            
-            total_value = metric["total_patients"] * estimated_value_per_patient
-            roi = ((total_value - estimated_spend) / estimated_spend * 100) if estimated_spend > 0 else 0
-            
+            patient_count = metric["total_patients"]
+
+            # Distribute spend proportionally across campaigns
+            if total_patients_all > 0 and total_spend > 0:
+                campaign_spend = total_spend * (patient_count / total_patients_all)
+            else:
+                campaign_spend = 0
+
+            # Revenue: use billing if available, else estimate from consultation_price
+            if billing_revenue > 0 and total_patients_all > 0:
+                campaign_revenue = billing_revenue * (patient_count / total_patients_all)
+            else:
+                campaign_revenue = patient_count * consultation_price
+
+            roi = ((campaign_revenue - campaign_spend) / campaign_spend * 100) if campaign_spend > 0 else 0
+
             enriched_metrics.append({
                 **metric,
-                "estimated_spend": estimated_spend,
-                "estimated_value_per_patient": estimated_value_per_patient,
-                "total_estimated_value": total_value,
-                "estimated_roi": round(roi, 2),
-                "cost_per_patient": round(estimated_spend / metric["total_patients"], 2) if metric["total_patients"] > 0 else 0
+                "spend": round(campaign_spend, 2),
+                "revenue": round(campaign_revenue, 2),
+                "roi": round(roi, 2),
+                "cost_per_patient": round(campaign_spend / patient_count, 2) if patient_count > 0 else 0,
+                "value_per_patient": round(campaign_revenue / patient_count, 2) if patient_count > 0 else consultation_price,
+                "data_source": data_source,
+                "currency": spend_data["currency"]
             })
-        
+
         return enriched_metrics
     
     @staticmethod
     async def _calculate_summary(metrics: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Calculate summary statistics"""
-        
+
         if not metrics:
             return {
                 "total_campaigns": 0,
                 "total_patients": 0,
                 "total_interactions": 0,
                 "average_conversion_rate": 0,
-                "total_estimated_value": 0,
-                "total_estimated_spend": 0,
-                "average_roi": 0
+                "total_revenue": 0,
+                "total_spend": 0,
+                "average_roi": 0,
+                "cost_per_patient": 0,
+                "data_source": "estimated"
             }
-        
+
         total_campaigns = len(metrics)
         total_patients = sum(m["total_patients"] for m in metrics)
         total_interactions = sum(m["total_interactions"] for m in metrics)
-        total_estimated_value = sum(m["total_estimated_value"] for m in metrics)
-        total_estimated_spend = sum(m["estimated_spend"] for m in metrics)
-        
+        total_revenue = sum(m.get("revenue", 0) for m in metrics)
+        total_spend = sum(m.get("spend", 0) for m in metrics)
+        data_source = metrics[0].get("data_source", "estimated") if metrics else "estimated"
+
         # Calculate average conversion rate
         if total_interactions > 0:
             avg_conversion_rate = (total_patients / total_interactions * 100)
         else:
             avg_conversion_rate = 0
-        
-        # Calculate average ROI
-        if total_estimated_spend > 0:
-            avg_roi = ((total_estimated_value - total_estimated_spend) / total_estimated_spend * 100)
+
+        # Calculate ROI
+        if total_spend > 0:
+            avg_roi = ((total_revenue - total_spend) / total_spend * 100)
         else:
             avg_roi = 0
-        
+
         return {
             "total_campaigns": total_campaigns,
             "total_patients": total_patients,
             "total_interactions": total_interactions,
             "average_conversion_rate": round(avg_conversion_rate, 2),
-            "total_estimated_value": total_estimated_value,
-            "total_estimated_spend": total_estimated_spend,
+            "total_revenue": round(total_revenue, 2),
+            "total_spend": round(total_spend, 2),
             "average_roi": round(avg_roi, 2),
-            "cost_per_patient": round(total_estimated_spend / total_patients, 2) if total_patients > 0 else 0
+            "cost_per_patient": round(total_spend / total_patients, 2) if total_patients > 0 else 0,
+            "data_source": data_source
         }
     
     @staticmethod
@@ -872,3 +966,80 @@ class MetricsService:
         except Exception as e:
             logger.error(f"Error getting attribution mix: {e}")
             return {}
+
+    @staticmethod
+    async def get_executive_summary(
+        tenant_id: int,
+        period: str = "last_30d"
+    ) -> Dict[str, Any]:
+        """
+        Get executive ROI summary with real spend data.
+        Single-call endpoint for KPI cards.
+        """
+        period_map = {
+            "last_7d": (MetricPeriod.WEEKLY, "last_30d"),
+            "last_30d": (MetricPeriod.MONTHLY, "last_30d"),
+            "last_90d": (MetricPeriod.QUARTERLY, "last_90d"),
+            "this_year": (MetricPeriod.YEARLY, "this_year"),
+        }
+        metric_period, marketing_range = period_map.get(period, (MetricPeriod.MONTHLY, "last_30d"))
+
+        try:
+            spend_data = await MetricsService._get_real_spend_data(tenant_id, marketing_range)
+            date_range = await MetricsService._get_date_range(metric_period, None, None)
+            billing_revenue = await MetricsService._get_billing_revenue(
+                tenant_id, date_range["from"], date_range["to"]
+            )
+            consultation_price = await MetricsService._get_consultation_price(tenant_id)
+
+            # Count leads and conversions in period
+            leads = await db.pool.fetchval("""
+                SELECT COUNT(*) FROM patients
+                WHERE tenant_id = $1 AND acquisition_source = 'META_ADS'
+                AND created_at >= $2::timestamp AND created_at <= $3::timestamp
+            """, tenant_id, date_range["from"], date_range["to"]) or 0
+
+            conversions = await db.pool.fetchval("""
+                SELECT COUNT(DISTINCT p.id) FROM patients p
+                JOIN appointments a ON p.id = a.patient_id AND p.tenant_id = a.tenant_id
+                WHERE p.tenant_id = $1 AND p.acquisition_source = 'META_ADS'
+                AND a.status IN ('confirmed', 'completed')
+                AND a.appointment_datetime >= $2::timestamp AND a.appointment_datetime <= $3::timestamp
+            """, tenant_id, date_range["from"], date_range["to"]) or 0
+
+            total_spend = spend_data["total_spend"]
+            total_revenue = billing_revenue if billing_revenue > 0 else (conversions * consultation_price)
+            roi = ((total_revenue - total_spend) / total_spend * 100) if total_spend > 0 else 0
+            conversion_rate = (conversions / leads * 100) if leads > 0 else 0
+            cost_per_lead = total_spend / leads if leads > 0 else 0
+            cost_per_conversion = total_spend / conversions if conversions > 0 else 0
+
+            # Top campaign
+            top_campaigns = await MetricsService._get_top_campaigns(tenant_id, metric_period)
+            top_campaign = None
+            if top_campaigns:
+                tc = top_campaigns[0]
+                top_campaign = {
+                    "name": tc["campaign_name"],
+                    "patients": tc["total_patients"]
+                }
+
+            return {
+                "success": True,
+                "period": period,
+                "total_spend": round(total_spend, 2),
+                "total_revenue": round(total_revenue, 2),
+                "roi_percentage": round(roi, 2),
+                "total_leads": leads,
+                "total_conversions": conversions,
+                "conversion_rate": round(conversion_rate, 2),
+                "cost_per_lead": round(cost_per_lead, 2),
+                "cost_per_conversion": round(cost_per_conversion, 2),
+                "top_campaign": top_campaign,
+                "data_source": spend_data["data_source"],
+                "currency": spend_data["currency"],
+                "platforms": ["meta"] if spend_data["is_connected"] else []
+            }
+        except Exception as e:
+            logger.error(f"Error getting executive summary: {e}")
+            raise

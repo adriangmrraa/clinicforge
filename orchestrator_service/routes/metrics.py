@@ -257,6 +257,30 @@ async def get_top_campaigns(
         raise HTTPException(status_code=500, detail="Error retrieving top campaigns")
 
 
+@router.get("/executive-summary")
+async def get_executive_summary(
+    period: Optional[str] = Query("last_30d", description="Period: last_7d, last_30d, last_90d, this_year"),
+    auth_data: tuple = Depends(get_ceo_user_and_tenant)
+):
+    """
+    Get executive ROI summary with KPI metrics.
+
+    Returns spend, revenue, ROI, leads, conversions, and top campaign.
+    Uses real Meta API spend data when available, estimates otherwise.
+    """
+    user, tenant_id = auth_data
+
+    try:
+        summary = await MetricsService.get_executive_summary(
+            tenant_id=tenant_id,
+            period=period
+        )
+        return summary
+    except Exception as e:
+        logger.error(f"Error getting executive summary: {e}")
+        raise HTTPException(status_code=500, detail="Error retrieving executive summary")
+
+
 @router.get("/comparison/first-vs-last")
 async def compare_first_vs_last_touch(
     period: Optional[str] = Query("monthly", description="Time period: daily, weekly, monthly, quarterly, yearly"),
@@ -303,9 +327,10 @@ async def compare_first_vs_last_touch(
                     first_touch_metrics.get("summary", {}).get("average_conversion_rate", 0), 2
                 ),
                 "roi": round(
-                    last_touch_metrics.get("summary", {}).get("average_roi", 0) - 
+                    last_touch_metrics.get("summary", {}).get("average_roi", 0) -
                     first_touch_metrics.get("summary", {}).get("average_roi", 0), 2
-                )
+                ),
+                "data_source": first_touch_metrics.get("summary", {}).get("data_source", "estimated")
             }
         }
         
