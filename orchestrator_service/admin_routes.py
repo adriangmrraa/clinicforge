@@ -3275,6 +3275,9 @@ async def list_appointments(
                 d['payment_receipt_data'] = json.loads(d['payment_receipt_data'])
             except (json.JSONDecodeError, TypeError):
                 pass
+        # Log appointments that have receipt data for debugging
+        if d.get('payment_receipt_data'):
+            logger.info(f"📋 Appointment {d['id']} has payment_receipt_data: status={d['payment_receipt_data'].get('status') if isinstance(d['payment_receipt_data'], dict) else 'raw'} type={type(d['payment_receipt_data']).__name__}")
         result.append(d)
     return result
 
