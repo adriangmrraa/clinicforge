@@ -66,6 +66,7 @@ class TreatmentTypeResponse(BaseModel):
     is_active: bool
     is_available_for_booking: bool
     internal_notes: Optional[str] = None
+    base_price: Optional[float] = 0
     professional_ids: Optional[List[int]] = []
 
 router = APIRouter(prefix="/admin", tags=["Dental Admin"])
