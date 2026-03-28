@@ -1,12 +1,16 @@
 from fastapi import APIRouter, HTTPException, Depends, Request, status, Response
 from pydantic import BaseModel, EmailStr
 from typing import Optional, List
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 import uuid
 import json
 import logging
 import asyncpg
 from db import db
 from auth_service import auth_service
+
+limiter = Limiter(key_func=get_remote_address)
 
 router = APIRouter(prefix="/auth", tags=["Nexus Auth"])
 logger = logging.getLogger("auth_routes")
@@ -68,7 +72,8 @@ async def list_clinics_public():
 
 
 @router.post("/register")
-async def register(payload: UserRegister):
+@limiter.limit("3/minute")
+async def register(request: Request, payload: UserRegister):
     """
     Registers a new user in 'pending' status.
     Para professional/secretary exige tenant_id (sede). Crea fila en professionals con is_active=FALSE.
@@ -189,7 +194,8 @@ async def register(payload: UserRegister):
         raise HTTPException(status_code=500, detail="Error interno durante el registro.")
 
 @router.post("/login", response_model=TokenResponse)
-async def login(payload: UserLogin, response: Response):
+@limiter.limit("5/minute")
+async def login(request: Request, payload: UserLogin, response: Response):
     """ Authenticates user and returns JWT. Checks for 'active' status. Sets HttpOnly cookie. """
     user = await db.fetchrow("SELECT * FROM users WHERE email = $1", payload.email)
     

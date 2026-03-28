@@ -612,7 +612,11 @@ export default function AppointmentForm({
                                             const isVerified = parsed.status === 'verified';
                                             const filePath = parsed.receipt_file_path || '';
                                             const apiBase = import.meta.env.VITE_API_URL || '';
-                                            const imgSrc = filePath ? (filePath.startsWith('http') ? filePath : `${apiBase}${filePath.startsWith('/') ? '' : '/'}${filePath}`) : '';
+                                            const docId = parsed.receipt_doc_id;
+                                            const patientId = (initialData as any)?.patient_id || fullAppointment?.patient_id;
+                                            const imgSrc = docId && patientId
+                                                ? `${apiBase}/admin/patients/${patientId}/documents/${docId}/proxy`
+                                                : filePath ? (filePath.startsWith('http') ? filePath : `${apiBase}${filePath.startsWith('/') ? '' : '/'}${filePath}`) : '';
                                             return (
                                                 <div className={`rounded-xl border p-4 space-y-3 mt-4 ${isVerified ? 'bg-emerald-500/10 border-emerald-500/20' : 'bg-red-500/10 border-red-500/20'}`}>
                                                     <div className="flex items-center justify-between">

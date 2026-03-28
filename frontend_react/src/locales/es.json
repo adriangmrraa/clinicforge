@@ -1517,6 +1517,32 @@
       "load_accounts": "Error al cargar cuentas",
       "connect_account": "Error al conectar cuenta"
     }
+  },
+  "nova": {
+    "appointments_today": "Turnos hoy",
+    "total_patients": "Pacientes totales",
+    "pending_payments": "Pagos pendientes",
+    "continue_setup": "Continuar configuración",
+    "clinic_health": "Salud de la clínica",
+    "chat_tab": "Chat",
+    "health_tab": "Salud",
+    "insights_tab": "Insights",
+    "listening": "Escuchando...",
+    "speak_now": "Hablá ahora...",
+    "connected": "Conectado",
+    "disconnected": "Desconectado"
+  },
+  "anamnesis_fields": {
+    "base_diseases": "Enfermedades de base",
+    "habitual_medication": "Medicación habitual",
+    "allergies": "Alergias",
+    "previous_surgeries": "Cirugías previas",
+    "smoker": "Fumador",
+    "pregnancy_lactation": "Embarazo / Lactancia",
+    "negative_experiences": "Experiencias negativas",
+    "specific_fears": "Miedos específicos",
+    "completed": "Completado",
+    "not_completed": "Sin completar"
   }
 }
 

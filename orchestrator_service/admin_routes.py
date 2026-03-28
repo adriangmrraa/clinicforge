@@ -11,6 +11,8 @@ from pathlib import Path
 from datetime import datetime, timedelta, date, timezone
 from typing import List, Optional, Dict, Any, Union
 from fastapi import APIRouter, HTTPException, Query, Header, Depends, Request, status, BackgroundTasks, UploadFile, File, Form
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from fastapi.responses import JSONResponse, StreamingResponse, FileResponse
 from pydantic import BaseModel
 from db import db
@@ -18,6 +20,7 @@ from gcal_service import gcal_service
 from analytics_service import analytics_service
 
 logger = logging.getLogger(__name__)
+limiter = Limiter(key_func=get_remote_address)
 
 # Configuración
 from core.credentials import get_tenant_credential, CREDENTIALS_FERNET_KEY, encrypt_value, decrypt_value
@@ -1488,7 +1491,9 @@ async def send_chat_message(
 # ==================== ENDPOINTS DASHBOARD ====================
 
 @router.get("/dashboard/metrics", tags=["Dashboard"], summary="Métricas de tokens y agente IA (alias para frontend)")
+@limiter.limit("10/minute")
 async def get_dashboard_token_metrics(
+    request: Request,
     days: int = Query(30, ge=1, le=365),
     user_data=Depends(verify_admin_token),
     tenant_id: int = Depends(get_resolved_tenant_id),
@@ -1520,7 +1525,9 @@ async def get_dashboard_token_metrics(
         raise HTTPException(status_code=500, detail="Error interno del servidor")
 
 @router.get("/stats/summary", tags=["Estadísticas"], summary="Obtener resumen de métricas del dashboard")
+@limiter.limit("10/minute")
 async def get_dashboard_stats(
+    request: Request,
     range: str = 'all',
     user_data=Depends(verify_admin_token),
     tenant_id: int = Depends(get_resolved_tenant_id),
@@ -3252,6 +3259,14 @@ async def delete_patient_document(
     Elimina un documento de un paciente.
     Aislado por tenant_id (Regla de Oro).
     """
+    # Verify patient belongs to tenant
+    patient_exists = await db.pool.fetchval(
+        "SELECT 1 FROM patients WHERE id = $1 AND tenant_id = $2",
+        patient_id, tenant_id
+    )
+    if not patient_exists:
+        raise HTTPException(status_code=404, detail="Paciente no encontrado")
+
     # Verificar que el documento existe y pertenece al paciente/tenant
     document = await db.pool.fetchrow("""
         SELECT file_path FROM patient_documents

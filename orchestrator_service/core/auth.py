@@ -1,5 +1,6 @@
 import os
 import uuid
+import hashlib
 import logging
 from typing import Optional, List, Dict, Any, Tuple
 from fastapi import Header, HTTPException, Depends, Request, status
@@ -144,7 +145,8 @@ async def log_pii_access(request: Request, user_data, patient_id: Any, action: s
     """
     Registra auditoría de acceso a datos sensibles (Nexus Protocol v7.6).
     """
-    logger.info(f"🛡️ AUDIT: User {user_data.email} ({user_data.role}) accessed PII for Patient {patient_id}. Action: {action}. IP: {request.client.host if request.client else 'unknown'}")
+    pid_hash = hashlib.sha256(str(patient_id).encode()).hexdigest()[:8]
+    logger.info(f"🛡️ AUDIT: User {user_data.role} accessed PII for Patient #{pid_hash}. Action: {action}.")
 
 async def get_ceo_user_and_tenant(
     user_data=Depends(verify_ceo_token),

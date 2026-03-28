@@ -33,3 +33,4 @@ alembic
 psycopg2-binary
 openpyxl
 websockets
+slowapi==0.1.9
