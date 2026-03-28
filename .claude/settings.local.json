@@ -66,7 +66,10 @@
       "Bash(py -c \"import ast; ast.parse\\(open\\(''email_service.py'', encoding=''utf-8''\\).read\\(\\)\\); print\\(''email_service OK''\\)\")",
       "Bash(grep -r \"socket.emit\\\\|socket.on\\\\|socketio.emit\" 'C:\\\\Users\\\\Asus\\\\Documents\\\\estabilizacion\\\\Laura Delgado\\\\clinicforge' --include=*.py --include=*.ts --include=*.tsx --include=*.js)",
       "Bash(grep -r \"await sio.emit\\\\|sio\\\\.emit\\\\|socketio\\\\.emit\" 'C:\\\\Users\\\\Asus\\\\Documents\\\\estabilizacion\\\\Laura Delgado\\\\clinicforge\\\\orchestrator_service' --include=*.py)",
-      "Bash(grep -r \"\\\\.on\\\\|\\\\.emit\" 'C:\\\\Users\\\\Asus\\\\Documents\\\\estabilizacion\\\\Laura Delgado\\\\clinicforge\\\\frontend_react\\\\src' --include=*.tsx --include=*.ts)"
+      "Bash(grep -r \"\\\\.on\\\\|\\\\.emit\" 'C:\\\\Users\\\\Asus\\\\Documents\\\\estabilizacion\\\\Laura Delgado\\\\clinicforge\\\\frontend_react\\\\src' --include=*.tsx --include=*.ts)",
+      "Bash(find 'C:/Users/Asus/Documents/estabilizacion/CRM VENTAS/frontend_react/src/components' -type f \\\\\\(-name *.tsx -o -name *.ts -o -name *.jsx \\\\\\))",
+      "Bash(while read:*)",
+      "Bash(do echo:*)"
     ]
   }
 }

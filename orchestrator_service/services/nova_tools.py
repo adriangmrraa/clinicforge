@@ -3136,12 +3136,20 @@ def _coerce_crud_value(field: str, value: Any, tabla: str) -> Any:
 # =============================================================================
 
 # Tables that Nova can access (whitelist for security)
-ALLOWED_TABLES = {
+ALLOWED_TABLES = frozenset({
     "patients", "appointments", "professionals", "treatment_types", "tenants",
     "chat_messages", "chat_conversations", "patient_documents", "clinical_records",
     "automation_logs", "patient_memories", "clinic_faqs", "google_calendar_blocks",
     "meta_ad_insights", "treatment_type_professionals", "users",
-}
+})
+
+
+def _safe_table_name(tabla: str) -> str:
+    """Validate and return safe table name. Raises ValueError if not allowed."""
+    clean = tabla.strip().lower()
+    if clean not in ALLOWED_TABLES:
+        raise ValueError(f"Table '{tabla}' not allowed")
+    return clean
 
 # Tables that require CEO role to modify
 CEO_ONLY_TABLES = {"tenants", "professionals", "users", "treatment_types"}
@@ -3155,9 +3163,10 @@ MAX_RESULTS = 15
 
 async def _obtener_registros(args: Dict, tenant_id: int, user_role: str) -> str:
     """GET — Obtiene registros de cualquier tabla con filtros."""
-    tabla = args.get("tabla", "").strip().lower()
-    if tabla not in ALLOWED_TABLES:
-        return f"Tabla '{tabla}' no disponible. Tablas: {', '.join(sorted(ALLOWED_TABLES))}"
+    try:
+        tabla = _safe_table_name(args.get("tabla", ""))
+    except ValueError:
+        return f"Tabla '{args.get('tabla', '')}' no disponible. Tablas: {', '.join(sorted(ALLOWED_TABLES))}"
 
     filtros = args.get("filtros", "")
     campos = args.get("campos", "")
@@ -3252,12 +3261,13 @@ async def _obtener_registros(args: Dict, tenant_id: int, user_role: str) -> str:
 
 async def _actualizar_registro(args: Dict, tenant_id: int, user_role: str) -> str:
     """PUT — Actualiza campos de un registro."""
-    tabla = args.get("tabla", "").strip().lower()
+    try:
+        tabla = _safe_table_name(args.get("tabla", ""))
+    except ValueError:
+        return f"Tabla '{args.get('tabla', '')}' no disponible."
     registro_id = args.get("registro_id", "")
     campos_str = args.get("campos", "{}")
 
-    if tabla not in ALLOWED_TABLES:
-        return f"Tabla '{tabla}' no disponible."
     if tabla in CEO_ONLY_TABLES and user_role != "ceo":
         return f"Solo el CEO puede modificar {tabla}."
     if not registro_id:
@@ -3316,11 +3326,12 @@ async def _actualizar_registro(args: Dict, tenant_id: int, user_role: str) -> st
 
 async def _crear_registro(args: Dict, tenant_id: int, user_role: str) -> str:
     """POST — Crea un nuevo registro."""
-    tabla = args.get("tabla", "").strip().lower()
+    try:
+        tabla = _safe_table_name(args.get("tabla", ""))
+    except ValueError:
+        return f"Tabla '{args.get('tabla', '')}' no disponible."
     datos_str = args.get("datos", "{}")
 
-    if tabla not in ALLOWED_TABLES:
-        return f"Tabla '{tabla}' no disponible."
     if tabla in CEO_ONLY_TABLES and user_role != "ceo":
         return f"Solo el CEO puede crear en {tabla}."
 
@@ -3370,11 +3381,11 @@ async def _crear_registro(args: Dict, tenant_id: int, user_role: str) -> str:
 
 async def _contar_registros(args: Dict, tenant_id: int) -> str:
     """COUNT — Cuenta registros con filtros."""
-    tabla = args.get("tabla", "").strip().lower()
+    try:
+        tabla = _safe_table_name(args.get("tabla", ""))
+    except ValueError:
+        return f"Tabla '{args.get('tabla', '')}' no disponible."
     filtros = args.get("filtros", "")
-
-    if tabla not in ALLOWED_TABLES:
-        return f"Tabla '{tabla}' no disponible."
 
     try:
         query = f"SELECT COUNT(*) as cnt FROM {tabla} WHERE tenant_id = $1"

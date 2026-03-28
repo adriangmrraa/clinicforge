@@ -3303,7 +3303,7 @@ async def verify_payment_receipt(
                     payment_receipt_data = $3::jsonb,
                     billing_amount = COALESCE(NULLIF(billing_amount, 0), $6),
                     billing_notes = CASE
-                        WHEN $7 > 0 THEN COALESCE(billing_notes, '') || ' [Excedente seña: $' || $7::text || ']'
+                        WHEN $7 > 0 THEN '[Excedente seña: $' || $7::text || ']'
                         ELSE billing_notes
                     END,
                     updated_at = NOW()

@@ -308,30 +308,31 @@ class StatusUpdate(BaseModel):
 # --- RUTAS DE ADMINISTRACIÓN DE USUARIOS ---
 
 @router.get("/users/pending", tags=["Usuarios"], summary="Listar usuarios pendientes de aprobación")
-async def get_pending_users(user_data = Depends(verify_admin_token)):
+async def get_pending_users(user_data = Depends(verify_admin_token), tenant_id: int = Depends(get_resolved_tenant_id)):
     """ Retorna la lista de usuarios con estado 'pending' (Solo CEO/Secretary) """
     if user_data.role not in ['ceo', 'secretary']:
         raise HTTPException(status_code=403, detail="Solo el personal administrador puede ver usuarios pendientes.")
-        
+
     users = await db.fetch("""
         SELECT id, email, role, status, created_at, first_name, last_name
-        FROM users 
-        WHERE status = 'pending'
+        FROM users
+        WHERE status = 'pending' AND tenant_id = $1
         ORDER BY created_at DESC
-    """)
+    """, tenant_id)
     return [dict(u) for u in users]
 
 @router.get("/users", tags=["Usuarios"], summary="Listar todos los usuarios del sistema")
-async def get_all_users(user_data = Depends(verify_admin_token)):
+async def get_all_users(user_data = Depends(verify_admin_token), tenant_id: int = Depends(get_resolved_tenant_id)):
     """ Retorna la lista de todos los usuarios de la clínica (Solo CEO/Secretary) """
     if user_data.role not in ['ceo', 'secretary']:
         raise HTTPException(status_code=403, detail="Solo el personal administrador puede listar usuarios.")
-        
+
     users = await db.fetch("""
         SELECT id, email, role, status, created_at, updated_at, first_name, last_name
-        FROM users 
+        FROM users
+        WHERE tenant_id = $1
         ORDER BY status ASC, created_at DESC
-    """)
+    """, tenant_id)
     return [dict(u) for u in users]
 
 @router.post("/users/{user_id}/status", tags=["Usuarios"], summary="Aprobar o suspender un usuario")

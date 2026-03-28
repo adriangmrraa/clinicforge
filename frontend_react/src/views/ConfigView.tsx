@@ -684,7 +684,7 @@ export default function ConfigView() {
                 )}
 
                 {/* Tabs Header */}
-                <div className="flex border-b border-white/[0.06] mb-0 overflow-x-auto bg-white/[0.02] backdrop-blur-sm rounded-t-2xl px-2 scrollbar-hide">
+                <div className="flex flex-nowrap border-b border-white/[0.06] mb-0 overflow-x-auto bg-white/[0.02] backdrop-blur-sm rounded-t-2xl px-2 scrollbar-hide">
                     <button
                         onClick={() => setActiveTab('general')}
                         className={`px-6 py-4 font-medium text-sm whitespace-nowrap border-b-2 transition-all flex items-center gap-2 ${activeTab === 'general' ? 'border-indigo-600 text-indigo-600 font-semibold' : 'border-transparent text-white/40 hover:text-white/60 hover:border-white/[0.1]'}`}

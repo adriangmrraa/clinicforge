@@ -483,7 +483,7 @@ export default function DocumentGallery({ patientId, readOnly = false }: Documen
             <div className="flex-1 overflow-auto bg-black/30 p-4 flex items-center justify-center">
               <img
                 src={previewUrl}
-                alt="Preview"
+                alt="Documento adjunto"
                 className="max-w-full max-h-full object-contain mx-auto"
               />
             </div>

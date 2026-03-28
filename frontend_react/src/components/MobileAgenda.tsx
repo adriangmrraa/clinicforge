@@ -27,6 +27,15 @@ export default function MobileAgenda({
 }: MobileAgendaProps) {
     const { t } = useTranslation();
     const [viewMode, setViewMode] = useState<ViewMode>('day');
+    const todayRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (viewMode === 'list' && todayRef.current) {
+            setTimeout(() => {
+                todayRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }, 300);
+        }
+    }, [viewMode]);
 
     const getStatusColor = (status: string) => {
         switch (status) {
@@ -68,13 +77,16 @@ export default function MobileAgenda({
                 const evtDate = parseISO(evt.appointment_datetime || evt.start_datetime);
                 return isWithinInterval(evtDate, { start: weekStart, end: weekEnd });
             });
-        } else {
+        } else if (viewMode === 'month') {
             const monthStart = startOfMonth(selectedDate);
             const monthEnd = endOfMonth(selectedDate);
             return allEvents.filter((evt: any) => {
                 const evtDate = parseISO(evt.appointment_datetime || evt.start_datetime);
                 return isWithinInterval(evtDate, { start: monthStart, end: monthEnd });
             });
+        } else {
+            // LIST view: show ALL events (no date filtering)
+            return allEvents;
         }
     }, [allEvents, selectedDate, viewMode]);
 
@@ -419,7 +431,7 @@ export default function MobileAgenda({
                         const { events, isPast } = groups[dateKey];
                         const isToday = dateKey === todayKey;
                         return (
-                            <div key={dateKey} id={`list-${dateKey}`} className={isPast ? 'opacity-50' : ''}>
+                            <div key={dateKey} id={`list-${dateKey}`} ref={isToday ? todayRef : undefined} className={isPast ? 'opacity-50' : ''}>
                                 {/* Today marker */}
                                 {isToday && idx > 0 && (
                                     <div className="flex items-center gap-2 my-3">
