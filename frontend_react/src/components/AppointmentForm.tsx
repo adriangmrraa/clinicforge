@@ -93,6 +93,11 @@ export default function AppointmentForm({
     // Initialize form data
     useEffect(() => {
         if (isOpen) {
+            // Debug: log receipt data
+            console.log('🧾 AppointmentForm initialData keys:', Object.keys(initialData));
+            console.log('🧾 payment_receipt_data:', (initialData as any).payment_receipt_data);
+            console.log('🧾 payment_status:', (initialData as any).payment_status);
+            console.log('🧾 billing_amount:', (initialData as any).billing_amount);
             setFormData({
                 patient_id: initialData.patient_id?.toString() || '',
                 professional_id: initialData.professional_id?.toString() || (professionals.length > 0 ? professionals[0].id.toString() : ''),
