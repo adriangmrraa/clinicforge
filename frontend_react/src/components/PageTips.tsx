@@ -1,13 +1,4 @@
-/**
- * PageTips — Animated contextual hints that live permanently on each page.
- * Similar to Nova's wobble/ping animations, these highlight important data
- * and actions with constant subtle motion to give the page "life".
- *
- * Each page has floating animated badges/pills that point to key features.
- * They appear after a short delay and stay visible with gentle animations.
- * Can be dismissed individually, remembered per session.
- */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { X } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 
@@ -15,157 +6,117 @@ interface PageHint {
   id: string;
   text: string;
   icon: string;
-  position: string; // Tailwind positioning classes
-  animation: 'wobble' | 'pulse' | 'bounce' | 'glow' | 'float';
   color: 'blue' | 'violet' | 'emerald' | 'amber' | 'rose';
-  delay: number; // seconds before appearing
 }
 
 const COLOR_MAP = {
-  blue: { bg: 'bg-blue-500/10', border: 'border-blue-500/20', text: 'text-blue-400', ping: 'border-blue-400/30' },
-  violet: { bg: 'bg-violet-500/10', border: 'border-violet-500/20', text: 'text-violet-400', ping: 'border-violet-400/30' },
-  emerald: { bg: 'bg-emerald-500/10', border: 'border-emerald-500/20', text: 'text-emerald-400', ping: 'border-emerald-400/30' },
-  amber: { bg: 'bg-amber-500/10', border: 'border-amber-500/20', text: 'text-amber-400', ping: 'border-amber-400/30' },
-  rose: { bg: 'bg-rose-500/10', border: 'border-rose-500/20', text: 'text-rose-400', ping: 'border-rose-400/30' },
+  blue: { bg: 'bg-blue-500/10', border: 'border-blue-500/20', text: 'text-blue-400' },
+  violet: { bg: 'bg-violet-500/10', border: 'border-violet-500/20', text: 'text-violet-400' },
+  emerald: { bg: 'bg-emerald-500/10', border: 'border-emerald-500/20', text: 'text-emerald-400' },
+  amber: { bg: 'bg-amber-500/10', border: 'border-amber-500/20', text: 'text-amber-400' },
+  rose: { bg: 'bg-rose-500/10', border: 'border-rose-500/20', text: 'text-rose-400' },
 };
 
-const ANIM_MAP = {
-  wobble: 'animate-[hintWobble_4s_ease-in-out_infinite]',
-  pulse: 'animate-pulse',
-  bounce: 'animate-[hintBounce_3s_ease-in-out_infinite]',
-  glow: 'animate-[hintGlow_3s_ease-in-out_infinite]',
-  float: 'animate-[hintFloat_5s_ease-in-out_infinite]',
+// One tip per page, shown inline below the header — never overlaps content
+const HINTS: Record<string, PageHint> = {
+  '/': { id: 'dash', text: 'Los KPIs se actualizan en vivo. "Pagos Pendientes" muestra cuánto falta cobrar.', icon: '📊', color: 'blue' },
+  '/agenda': { id: 'agenda', text: '🟢 Pagado  🟡 Parcial  🔴 Pendiente — Tocá un turno para ver facturación.', icon: '🎯', color: 'blue' },
+  '/pacientes': { id: 'pac', text: '"Próximo turno" y "Balance" muestran turnos y deudas de cada paciente.', icon: '📅', color: 'emerald' },
+  '/chats': { id: 'chat', text: 'Chats en tiempo real. Tocá "Manual" para tomar el control de una conversación.', icon: '💬', color: 'violet' },
+  '/tratamientos': { id: 'trat', text: 'El precio base se usa para calcular el monto a cobrar en turnos.', icon: '💵', color: 'emerald' },
+  '/marketing': { id: 'mkt', text: 'Conectá Meta Ads para ver ROI: inversión vs pacientes convertidos.', icon: '📈', color: 'violet' },
+  '/configuracion': { id: 'conf', text: 'Configurá datos bancarios para que la IA cobre señas automáticamente.', icon: '🏦', color: 'blue' },
+  '/personal': { id: 'staff', text: 'Cada profesional tiene su precio. La seña es el 50% de ese valor.', icon: '👩‍⚕️', color: 'amber' },
 };
 
-const HINTS: Record<string, PageHint[]> = {
-  '/': [
-    { id: 'dash-kpi', text: 'KPIs en vivo', icon: '📊', position: 'top-[140px] left-4 sm:left-8', animation: 'glow', color: 'blue', delay: 2 },
-    { id: 'dash-pending', text: 'Pagos por cobrar', icon: '💰', position: 'top-[140px] right-4 sm:right-8', animation: 'pulse', color: 'amber', delay: 4 },
-  ],
-  '/agenda': [
-    { id: 'ag-dots', text: '🟢 Pagado  🟡 Parcial  🔴 Pendiente', icon: '🎯', position: 'top-[85px] left-4 sm:left-[280px]', animation: 'float', color: 'blue', delay: 2 },
-    { id: 'ag-alert', text: 'Alertas médicas activas', icon: '⚠️', position: 'top-[85px] right-4 sm:right-8', animation: 'bounce', color: 'rose', delay: 5 },
-  ],
-  '/pacientes': [
-    { id: 'pac-cols', text: 'Próximo turno + Balance', icon: '📅', position: 'top-[160px] right-4 sm:right-8', animation: 'glow', color: 'emerald', delay: 2 },
-    { id: 'pac-import', text: 'Importar desde Excel', icon: '📤', position: 'top-[85px] right-4 sm:right-[200px]', animation: 'wobble', color: 'violet', delay: 4 },
-  ],
-  '/chats': [
-    { id: 'chat-live', text: 'Chats en tiempo real', icon: '💬', position: 'top-[85px] left-4 sm:left-[280px]', animation: 'pulse', color: 'blue', delay: 2 },
-    { id: 'chat-manual', text: 'Tocá Manual para intervenir', icon: '🤝', position: 'top-[85px] right-4 sm:right-8', animation: 'float', color: 'amber', delay: 4 },
-  ],
-  '/tratamientos': [
-    { id: 'trat-price', text: 'Precio base → Monto del turno', icon: '💵', position: 'top-[85px] right-4 sm:right-8', animation: 'glow', color: 'emerald', delay: 2 },
-  ],
-  '/marketing': [
-    { id: 'mkt-roi', text: 'ROI en tiempo real', icon: '📈', position: 'top-[85px] left-4 sm:left-8', animation: 'float', color: 'violet', delay: 2 },
-  ],
-  '/configuracion': [
-    { id: 'conf-bank', text: 'Datos bancarios → Cobro automático', icon: '🏦', position: 'top-[85px] left-4 sm:left-8', animation: 'glow', color: 'blue', delay: 2 },
-  ],
-  '/personal': [
-    { id: 'staff-price', text: 'Precio por profesional → Seña 50%', icon: '👩‍⚕️', position: 'top-[85px] left-4 sm:left-8', animation: 'wobble', color: 'violet', delay: 2 },
-  ],
-};
+const MAX_SHOWS = 5;
+const VISIBLE_DURATION = 5000; // 5 seconds
+const APPEAR_DELAY = 1500; // 1.5s after page load
+
+function getShowCount(): number {
+  try {
+    return parseInt(localStorage.getItem('page_tips_count') || '0', 10);
+  } catch { return 0; }
+}
+
+function incrementShowCount(): void {
+  try {
+    const count = getShowCount() + 1;
+    localStorage.setItem('page_tips_count', String(count));
+  } catch {}
+}
 
 export default function PageTips() {
   const location = useLocation();
   const path = location.pathname.replace(/\/$/, '') || '/';
-  const hints = HINTS[path] || [];
+  const hint = HINTS[path];
 
-  const [visibleHints, setVisibleHints] = useState<Set<string>>(new Set());
-  const [dismissedHints, setDismissedHints] = useState<Set<string>>(new Set());
+  const [visible, setVisible] = useState(false);
+  const [exiting, setExiting] = useState(false);
 
-  // Reset on page change
+  const dismiss = useCallback(() => {
+    setExiting(true);
+    setTimeout(() => {
+      setVisible(false);
+      setExiting(false);
+    }, 300);
+  }, []);
+
   useEffect(() => {
-    setVisibleHints(new Set());
+    setVisible(false);
+    setExiting(false);
 
-    // Load dismissed from session
-    const key = `hints_dismissed_${path}`;
-    const stored = sessionStorage.getItem(key);
-    setDismissedHints(stored ? new Set(JSON.parse(stored)) : new Set());
+    if (!hint) return;
+    if (getShowCount() >= MAX_SHOWS) return;
 
-    // Schedule each hint to appear
-    const timers = hints.map(hint => {
-      return setTimeout(() => {
-        setVisibleHints(prev => new Set(prev).add(hint.id));
-      }, hint.delay * 1000);
-    });
+    const showTimer = setTimeout(() => {
+      setVisible(true);
+      incrementShowCount();
+    }, APPEAR_DELAY);
 
-    return () => timers.forEach(clearTimeout);
-  }, [path]);
+    return () => clearTimeout(showTimer);
+  }, [path, hint]);
 
-  const dismiss = (id: string) => {
-    setVisibleHints(prev => {
-      const next = new Set(prev);
-      next.delete(id);
-      return next;
-    });
-    setDismissedHints(prev => {
-      const next = new Set(prev).add(id);
-      const key = `hints_dismissed_${path}`;
-      sessionStorage.setItem(key, JSON.stringify([...next]));
-      return next;
-    });
-  };
+  // Auto-dismiss after 3 seconds
+  useEffect(() => {
+    if (!visible || exiting) return;
+    const hideTimer = setTimeout(dismiss, VISIBLE_DURATION);
+    return () => clearTimeout(hideTimer);
+  }, [visible, exiting, dismiss]);
+
+  if (!visible || !hint) return null;
+
+  const c = COLOR_MAP[hint.color];
 
   return (
     <>
-      {hints.map(hint => {
-        if (!visibleHints.has(hint.id) || dismissedHints.has(hint.id)) return null;
-        const c = COLOR_MAP[hint.color];
-        const anim = ANIM_MAP[hint.animation];
-
-        return (
-          <div
-            key={hint.id}
-            className={`fixed z-[80] ${hint.position} pointer-events-auto`}
-            style={{ animation: 'hintAppear 0.5s cubic-bezier(0.16,1,0.3,1)' }}
+      <div
+        className="fixed z-[80] left-4 right-4 sm:left-auto sm:right-8 sm:max-w-md"
+        style={{
+          top: 'calc(env(safe-area-inset-top, 0px) + 56px)',
+          animation: exiting ? 'tipSlideOut 0.3s ease-in forwards' : 'tipSlideIn 0.4s cubic-bezier(0.16,1,0.3,1)',
+        }}
+      >
+        <div className={`flex items-center gap-2.5 px-4 py-2.5 rounded-xl ${c.bg} border ${c.border} backdrop-blur-xl shadow-lg shadow-black/20`}>
+          <span className="text-base shrink-0">{hint.icon}</span>
+          <p className={`text-[12px] leading-snug font-medium ${c.text} flex-1`}>{hint.text}</p>
+          <button
+            onClick={dismiss}
+            className={`shrink-0 p-1 rounded-full hover:bg-white/[0.1] ${c.text} opacity-50 hover:opacity-100 transition-all`}
           >
-            <div className={`${anim} relative`}>
-              {/* Ping ring */}
-              <div className={`absolute inset-0 rounded-full border-2 ${c.ping} animate-[novaPing_3s_ease-out_infinite] pointer-events-none`} />
-
-              <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full ${c.bg} border ${c.border} backdrop-blur-xl shadow-lg cursor-default group`}>
-                <span className="text-sm">{hint.icon}</span>
-                <span className={`text-[11px] font-semibold ${c.text} whitespace-nowrap`}>{hint.text}</span>
-                <button
-                  onClick={() => dismiss(hint.id)}
-                  className={`ml-1 p-0.5 rounded-full opacity-0 group-hover:opacity-100 hover:bg-white/[0.1] ${c.text} transition-all duration-200`}
-                >
-                  <X size={10} />
-                </button>
-              </div>
-            </div>
-          </div>
-        );
-      })}
+            <X size={12} />
+          </button>
+        </div>
+      </div>
 
       <style>{`
-        @keyframes hintAppear {
-          0% { opacity: 0; transform: scale(0.7) translateY(8px); }
-          60% { opacity: 1; transform: scale(1.05) translateY(-2px); }
-          100% { opacity: 1; transform: scale(1) translateY(0); }
+        @keyframes tipSlideIn {
+          0% { opacity: 0; transform: translateY(-12px) scale(0.95); }
+          100% { opacity: 1; transform: translateY(0) scale(1); }
         }
-        @keyframes hintWobble {
-          0%, 100% { transform: rotate(0deg) scale(1); }
-          10% { transform: rotate(-3deg) scale(1.05); }
-          20% { transform: rotate(3deg) scale(1.05); }
-          30% { transform: rotate(-2deg) scale(1.02); }
-          40%, 100% { transform: rotate(0deg) scale(1); }
-        }
-        @keyframes hintBounce {
-          0%, 100% { transform: translateY(0); }
-          50% { transform: translateY(-6px); }
-        }
-        @keyframes hintGlow {
-          0%, 100% { filter: brightness(1); }
-          50% { filter: brightness(1.3); }
-        }
-        @keyframes hintFloat {
-          0%, 100% { transform: translateY(0) translateX(0); }
-          25% { transform: translateY(-4px) translateX(2px); }
-          75% { transform: translateY(2px) translateX(-2px); }
+        @keyframes tipSlideOut {
+          0% { opacity: 1; transform: translateY(0) scale(1); }
+          100% { opacity: 0; transform: translateY(-8px) scale(0.97); }
         }
       `}</style>
     </>
