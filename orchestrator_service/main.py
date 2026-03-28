@@ -3021,10 +3021,12 @@ async def verify_payment_receipt(
                 SELECT a.id, a.status, a.billing_amount, a.payment_status, a.appointment_datetime,
                        a.appointment_type, a.professional_id, a.payment_receipt_data,
                        p.first_name, p.last_name,
-                       prof.first_name as prof_name, prof.consultation_price as prof_price
+                       prof.first_name as prof_name, prof.consultation_price as prof_price,
+                       COALESCE(tt.name, a.appointment_type, 'consulta') as appointment_name
                 FROM appointments a
                 JOIN patients p ON a.patient_id = p.id
                 LEFT JOIN professionals prof ON a.professional_id = prof.id
+                LEFT JOIN treatment_types tt ON a.appointment_type = tt.code AND a.tenant_id = tt.tenant_id
                 WHERE a.id = $1 AND a.tenant_id = $2
             """, appointment_id, tenant_id)
         else:
@@ -3034,10 +3036,12 @@ async def verify_payment_receipt(
                 SELECT a.id, a.status, a.billing_amount, a.payment_status, a.appointment_datetime,
                        a.appointment_type, a.professional_id, a.payment_receipt_data,
                        p.first_name, p.last_name,
-                       prof.first_name as prof_name, prof.consultation_price as prof_price
+                       prof.first_name as prof_name, prof.consultation_price as prof_price,
+                       COALESCE(tt.name, a.appointment_type, 'consulta') as appointment_name
                 FROM appointments a
                 JOIN patients p ON a.patient_id = p.id
                 LEFT JOIN professionals prof ON a.professional_id = prof.id
+                LEFT JOIN treatment_types tt ON a.appointment_type = tt.code AND a.tenant_id = tt.tenant_id
                 WHERE REGEXP_REPLACE(p.phone_number, '[^0-9]', '', 'g') = $1 AND a.tenant_id = $2
                 AND a.status IN ('scheduled', 'confirmed')
                 AND a.appointment_datetime > NOW()
@@ -3193,31 +3197,45 @@ async def verify_payment_receipt(
                         pass
 
         # Check for accumulated partial payments on this appointment
+        # Only accumulate if the appointment is NOT already fully paid
         previous_paid = 0.0
-        try:
-            existing_receipt = apt.get('payment_receipt_data')
-            if existing_receipt:
-                if isinstance(existing_receipt, str):
-                    existing_receipt = json.loads(existing_receipt)
-                if isinstance(existing_receipt, dict):
-                    prev_amount = existing_receipt.get('amount_detected')
-                    if prev_amount:
-                        try:
-                            previous_paid = float(str(prev_amount).replace(".", "").replace(",", ".").replace("$", ""))
-                        except ValueError:
-                            pass
-        except Exception:
-            pass
+        already_paid = apt.get('payment_status') == 'paid'
+        if not already_paid:
+            try:
+                existing_receipt = apt.get('payment_receipt_data')
+                if existing_receipt:
+                    if isinstance(existing_receipt, str):
+                        existing_receipt = json.loads(existing_receipt)
+                    if isinstance(existing_receipt, dict):
+                        # Use total_paid from previous receipt if available (most reliable)
+                        prev_total = existing_receipt.get('total_paid')
+                        if prev_total is not None:
+                            try:
+                                previous_paid = float(prev_total)
+                            except (ValueError, TypeError):
+                                pass
+                        # Fallback: use amount_detected as number
+                        if previous_paid == 0:
+                            prev_amount = existing_receipt.get('amount_detected')
+                            if prev_amount is not None:
+                                try:
+                                    # amount_detected can be string "7500" or number 7500.0
+                                    previous_paid = float(str(prev_amount).replace("$", "").replace(",", ".").strip())
+                                except (ValueError, TypeError):
+                                    pass
+            except Exception:
+                pass
 
-        # Total paid = previous + current
-        total_paid = previous_paid + (amount_value or 0)
+        # Total paid = previous partial + current comprobante
+        total_paid = previous_paid + (amount_value or 0) if not already_paid else (amount_value or 0)
         if previous_paid > 0:
-            logger.info(f"💰 verify_receipt: partial payment detected. previous=${int(previous_paid)} + current=${int(amount_value or 0)} = total=${int(total_paid)}")
+            logger.info(f"💰 verify_receipt: partial payment. previous=${previous_paid} + current=${amount_value or 0} = total=${total_paid}")
 
         amount_overpaid = 0.0
         amount_underpaid = 0.0
         if expected_amount and (amount_value or total_paid > 0):
-            effective_amount = total_paid if total_paid > (amount_value or 0) else (amount_value or 0)
+            # Use the current comprobante amount OR total accumulated, whichever is higher
+            effective_amount = max(amount_value or 0, total_paid)
             if effective_amount >= expected_amount * 0.95:
                 amount_match = True
                 if effective_amount > expected_amount * 1.05:
@@ -3226,7 +3244,7 @@ async def verify_payment_receipt(
                 amount_match = False
                 amount_underpaid = expected_amount - effective_amount
 
-        logger.info(f"💰 verify_receipt: amount_value=${amount_value} previous_paid=${previous_paid} total=${total_paid} expected=${expected_amount} match={amount_match}")
+        logger.info(f"💰 verify_receipt: amount_value=${amount_value} previous=${previous_paid} total=${total_paid} expected=${expected_amount} already_paid={already_paid} match={amount_match}")
 
         # 5b. Find the receipt file (last uploaded image/document from this patient)
         receipt_file_path = None
@@ -3326,7 +3344,9 @@ async def verify_payment_receipt(
                 overpaid_str = f"${int(amount_overpaid):,}".replace(",", ".")
                 overpaid_msg = f"\n\n📝 Nota: transferiste {overpaid_str} de más sobre la seña. Queda registrado para que la clínica lo tenga en cuenta."
 
-            return f"✅ Comprobante verificado correctamente! Tu turno de {apt['appointment_type']} el {fecha} con {apt['prof_name'] or 'el profesional'} queda CONFIRMADO. Te esperamos! 😊{overpaid_msg}"
+            # Use treatment display name, not code
+            treatment_display = apt.get('appointment_name') or apt.get('appointment_type') or 'consulta'
+            return f"✅ Comprobante verificado correctamente! Tu turno de {treatment_display} el {fecha} con {apt['prof_name'] or 'el profesional'} queda CONFIRMADO. Te esperamos! 😊{overpaid_msg}"
 
         elif not holder_match:
             return (
