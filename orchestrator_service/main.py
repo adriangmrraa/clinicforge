@@ -3019,7 +3019,8 @@ async def verify_payment_receipt(
         if appointment_id:
             apt = await db.pool.fetchrow("""
                 SELECT a.id, a.status, a.billing_amount, a.payment_status, a.appointment_datetime,
-                       a.appointment_type, a.professional_id, p.first_name, p.last_name,
+                       a.appointment_type, a.professional_id, a.payment_receipt_data,
+                       p.first_name, p.last_name,
                        prof.first_name as prof_name, prof.consultation_price as prof_price
                 FROM appointments a
                 JOIN patients p ON a.patient_id = p.id
@@ -3031,7 +3032,8 @@ async def verify_payment_receipt(
             phone_digits_apt = normalize_phone_digits(phone)
             apt = await db.pool.fetchrow("""
                 SELECT a.id, a.status, a.billing_amount, a.payment_status, a.appointment_datetime,
-                       a.appointment_type, a.professional_id, p.first_name, p.last_name,
+                       a.appointment_type, a.professional_id, a.payment_receipt_data,
+                       p.first_name, p.last_name,
                        prof.first_name as prof_name, prof.consultation_price as prof_price
                 FROM appointments a
                 JOIN patients p ON a.patient_id = p.id
@@ -3164,29 +3166,67 @@ async def verify_payment_receipt(
 
         logger.info(f"💰 verify_receipt: holder_match={holder_match} parts={holder_parts} matching_in_receipt={[p for p in holder_parts if p in receipt_norm]}")
 
-        # 5. Verify amount
+        # 5. Verify amount — also try to extract from vision description if LLM didn't pass it well
         amount_match = True  # Default if no amount configured
         amount_value = None
         if amount_detected:
-            # Clean amount string: remove dots as thousands separator, handle commas
             clean_amount = amount_detected.replace(".", "").replace(",", ".").replace("$", "").strip()
             try:
                 amount_value = float(clean_amount)
             except ValueError:
                 pass
 
+        # If LLM didn't detect amount or it seems wrong, try extracting from receipt_description
+        if not amount_value or (expected_amount and amount_value and amount_value < expected_amount * 0.3):
+            import re as _re
+            # Look for dollar amounts in receipt description: $20000, $20.000, $ 20000
+            money_matches = _re.findall(r'\$\s*[\d.,]+', receipt_description)
+            if money_matches:
+                for m in money_matches:
+                    clean_m = m.replace("$", "").replace(".", "").replace(",", ".").strip()
+                    try:
+                        extracted = float(clean_m)
+                        if extracted > (amount_value or 0):
+                            amount_value = extracted
+                            logger.info(f"💰 verify_receipt: extracted higher amount from description: ${int(extracted)}")
+                    except ValueError:
+                        pass
+
+        # Check for accumulated partial payments on this appointment
+        previous_paid = 0.0
+        try:
+            existing_receipt = apt.get('payment_receipt_data')
+            if existing_receipt:
+                if isinstance(existing_receipt, str):
+                    existing_receipt = json.loads(existing_receipt)
+                if isinstance(existing_receipt, dict):
+                    prev_amount = existing_receipt.get('amount_detected')
+                    if prev_amount:
+                        try:
+                            previous_paid = float(str(prev_amount).replace(".", "").replace(",", ".").replace("$", ""))
+                        except ValueError:
+                            pass
+        except Exception:
+            pass
+
+        # Total paid = previous + current
+        total_paid = previous_paid + (amount_value or 0)
+        if previous_paid > 0:
+            logger.info(f"💰 verify_receipt: partial payment detected. previous=${int(previous_paid)} + current=${int(amount_value or 0)} = total=${int(total_paid)}")
+
         amount_overpaid = 0.0
         amount_underpaid = 0.0
-        if expected_amount and amount_value:
-            if amount_value >= expected_amount * 0.95:
-                # Paid enough (or more) — accept. Note overpayment if significant.
+        if expected_amount and (amount_value or total_paid > 0):
+            effective_amount = total_paid if total_paid > (amount_value or 0) else (amount_value or 0)
+            if effective_amount >= expected_amount * 0.95:
                 amount_match = True
-                if amount_value > expected_amount * 1.05:
-                    amount_overpaid = amount_value - expected_amount
+                if effective_amount > expected_amount * 1.05:
+                    amount_overpaid = effective_amount - expected_amount
             else:
-                # Underpaid — reject with specific amount missing
                 amount_match = False
-                amount_underpaid = expected_amount - amount_value
+                amount_underpaid = expected_amount - effective_amount
+
+        logger.info(f"💰 verify_receipt: amount_value=${amount_value} previous_paid=${previous_paid} total=${total_paid} expected=${expected_amount} match={amount_match}")
 
         # 5b. Find the receipt file (last uploaded image/document from this patient)
         receipt_file_path = None
@@ -3223,6 +3263,8 @@ async def verify_payment_receipt(
             "verified_at": datetime.now(timezone.utc).isoformat(),
             "receipt_file_path": receipt_file_path,
             "receipt_file_name": receipt_file_name,
+            "previous_paid": previous_paid,
+            "total_paid": total_paid,
             "status": "verified" if (holder_match and amount_match) else "failed",
         }
 
@@ -3294,11 +3336,13 @@ async def verify_payment_receipt(
         elif not amount_match:
             expected_str = f"${int(expected_amount):,}".replace(",", ".") if expected_amount else "el monto acordado"
             detected_str = f"${int(amount_value):,}".replace(",", ".") if amount_value else "no detectado"
+            total_str = f"${int(total_paid):,}".replace(",", ".") if total_paid > 0 else detected_str
             missing_str = f"${int(amount_underpaid):,}".replace(",", ".") if amount_underpaid > 0 else ""
+            partial_note = f" (acumulado con pagos anteriores: {total_str})" if previous_paid > 0 else ""
             return (
-                f"⚠️ El monto del comprobante ({detected_str}) es menor a la seña de {expected_str}. "
-                f"Faltarían {missing_str} para completar la seña. "
-                f"Podés transferir la diferencia y enviarnos el nuevo comprobante para verificarlo. "
+                f"⚠️ El comprobante es por {detected_str}{partial_note}, pero la seña total es de {expected_str}. "
+                f"Faltarían {missing_str} para completar. "
+                f"Podés transferir la diferencia y enviarnos el nuevo comprobante. "
                 f"[INTERNAL_VERIFICATION_FAILED:amount_underpaid]"
             )
 
