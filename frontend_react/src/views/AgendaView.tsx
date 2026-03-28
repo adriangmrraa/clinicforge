@@ -630,7 +630,7 @@ export default function AgendaView() {
 
       {/* Mobile View or Desktop Calendar — OUTSIDE the flex-shrink-0 header */}
       {isMobile ? (
-        <div className="flex-1 min-h-0 overflow-hidden">
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
           <MobileAgenda
               appointments={filteredAppointments}
               googleBlocks={filteredBlocks}
