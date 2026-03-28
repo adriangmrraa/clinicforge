@@ -90,14 +90,12 @@ export default function AppointmentForm({
         return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
     };
 
-    // Initialize form data
+    // Full appointment data (fetched fresh when modal opens, includes billing + receipt)
+    const [fullAppointment, setFullAppointment] = useState<any>(null);
+
+    // Initialize form data + fetch full appointment for billing/receipt
     useEffect(() => {
         if (isOpen) {
-            // Debug: log receipt data
-            console.log('🧾 AppointmentForm initialData keys:', Object.keys(initialData));
-            console.log('🧾 payment_receipt_data:', (initialData as any).payment_receipt_data);
-            console.log('🧾 payment_status:', (initialData as any).payment_status);
-            console.log('🧾 billing_amount:', (initialData as any).billing_amount);
             setFormData({
                 patient_id: initialData.patient_id?.toString() || '',
                 professional_id: initialData.professional_id?.toString() || (professionals.length > 0 ? professionals[0].id.toString() : ''),
@@ -107,19 +105,45 @@ export default function AppointmentForm({
                 duration_minutes: initialData.duration_minutes || 30
             });
             setAppointmentStatus((initialData as any).status || 'scheduled');
-            setBillingData({
-                billing_amount: (initialData as any).billing_amount != null ? String((initialData as any).billing_amount) : '',
-                billing_installments: (initialData as any).billing_installments != null ? String((initialData as any).billing_installments) : '',
-                billing_notes: (initialData as any).billing_notes || '',
-                payment_status: (initialData as any).payment_status || 'pending',
-            });
             setBillingSuccess(null);
             setStatusSuccess(null);
             setError(null);
             setCollisionWarning(null);
             setActiveTab('general');
+            setFullAppointment(null);
+
+            // Fetch full appointment data (billing, receipt, etc.) directly from API
+            if (isEditing && initialData.id) {
+                api.get(`/admin/appointments/${initialData.id}`)
+                    .then(res => {
+                        const apt = res.data;
+                        setFullAppointment(apt);
+                        setBillingData({
+                            billing_amount: apt.billing_amount != null ? String(apt.billing_amount) : '',
+                            billing_installments: apt.billing_installments != null ? String(apt.billing_installments) : '',
+                            billing_notes: apt.billing_notes || '',
+                            payment_status: apt.payment_status || 'pending',
+                        });
+                    })
+                    .catch(() => {
+                        // Fallback to initialData if individual fetch fails
+                        setBillingData({
+                            billing_amount: (initialData as any).billing_amount != null ? String((initialData as any).billing_amount) : '',
+                            billing_installments: (initialData as any).billing_installments != null ? String((initialData as any).billing_installments) : '',
+                            billing_notes: (initialData as any).billing_notes || '',
+                            payment_status: (initialData as any).payment_status || 'pending',
+                        });
+                    });
+            } else {
+                setBillingData({
+                    billing_amount: '',
+                    billing_installments: '',
+                    billing_notes: '',
+                    payment_status: 'pending',
+                });
+            }
         }
-    }, [isOpen, initialData, professionals]);
+    }, [isOpen, initialData, professionals, isEditing]);
 
     // Cambio de estado del turno (event-driven → dispara feedback si es 'completed')
     const handleStatusChange = async (newStatus: string) => {
@@ -516,7 +540,7 @@ export default function AppointmentForm({
                                             <div className="relative">
                                                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30 text-sm">$</span>
                                                 <input type="number" step="0.01" min="0" placeholder="0.00"
-                                                    className="w-full pl-7 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                                                    className="w-full pl-7 pr-4 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm text-white"
                                                     value={billingData.billing_amount}
                                                     onChange={(e) => setBillingData(prev => ({ ...prev, billing_amount: e.target.value }))} />
                                             </div>
@@ -557,7 +581,7 @@ export default function AppointmentForm({
                                     {/* Payment Receipt Section */}
                                     {(() => {
                                         try {
-                                            const raw = (initialData as any)?.payment_receipt_data;
+                                            const raw = fullAppointment?.payment_receipt_data || (initialData as any)?.payment_receipt_data;
                                             if (!raw) return null;
                                             const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
                                             if (!parsed || typeof parsed !== 'object') return null;

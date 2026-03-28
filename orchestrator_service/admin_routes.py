@@ -3287,6 +3287,54 @@ async def list_appointments(
     return result
 
 
+# ==================== ENDPOINT: GET SINGLE APPOINTMENT ====================
+
+@router.get("/appointments/{appointment_id}", dependencies=[Depends(verify_admin_token)], tags=["Turnos"], summary="Obtener un turno por ID con todos los campos")
+async def get_appointment_by_id(
+    appointment_id: str,
+    tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    """Get a single appointment with ALL fields including billing and receipt data."""
+    from decimal import Decimal as _Decimal
+    try:
+        apt_uuid = uuid.UUID(appointment_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="ID de turno inválido")
+
+    row = await db.pool.fetchrow("""
+        SELECT a.id, a.patient_id, a.appointment_datetime, a.duration_minutes, a.status, a.urgency_level,
+               a.source, a.appointment_type, a.notes,
+               a.billing_amount, a.billing_installments, a.billing_notes, a.payment_status, a.payment_receipt_data,
+               (p.first_name || ' ' || COALESCE(p.last_name, '')) as patient_name,
+               p.phone_number as patient_phone,
+               prof.first_name as professional_name, prof.id as professional_id,
+               COALESCE(tt.name, a.appointment_type, 'Consulta') as appointment_name
+        FROM appointments a
+        JOIN patients p ON a.patient_id = p.id
+        LEFT JOIN professionals prof ON a.professional_id = prof.id
+        LEFT JOIN treatment_types tt ON a.appointment_type = tt.code AND a.tenant_id = tt.tenant_id
+        WHERE a.id = $1 AND a.tenant_id = $2
+    """, apt_uuid, tenant_id)
+
+    if not row:
+        raise HTTPException(status_code=404, detail="Turno no encontrado")
+
+    d = {}
+    for key, val in dict(row).items():
+        if isinstance(val, _Decimal):
+            d[key] = float(val)
+        elif isinstance(val, uuid.UUID):
+            d[key] = str(val)
+        elif isinstance(val, str) and key.endswith('_data'):
+            try:
+                d[key] = json.loads(val)
+            except (json.JSONDecodeError, TypeError):
+                d[key] = val
+        else:
+            d[key] = val
+    return d
+
+
 # ==================== ENDPOINT COLISION DETECTION ====================
 
 @router.get("/appointments/check-collisions", dependencies=[Depends(verify_admin_token)], tags=["Turnos"], summary="Verificar colisiones de horario para un turno")
