@@ -132,6 +132,15 @@ export default function AgendaView() {
   const [showModal, setShowModal] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<Appointment | null>(null);
+  // Keep selectedEvent in sync when appointments reload (e.g., after PAYMENT_CONFIRMED socket event)
+  useEffect(() => {
+    if (selectedEvent && appointments.length > 0) {
+      const fresh = appointments.find((a: Appointment) => a.id === selectedEvent.id);
+      if (fresh && JSON.stringify(fresh) !== JSON.stringify(selectedEvent)) {
+        setSelectedEvent(fresh);
+      }
+    }
+  }, [appointments]);
   const [selectedProfessionalId, setSelectedProfessionalId] = useState<string>('all');
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [currentView, setCurrentView] = useState(() => {

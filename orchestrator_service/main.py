@@ -3315,9 +3315,11 @@ async def verify_payment_receipt(
 
             patient_name = f"{apt['first_name']} {apt['last_name'] or ''}".strip()
             apt_dt = apt['appointment_datetime']
+            # Convert UTC to Argentina timezone for display
+            apt_dt_arg = apt_dt.astimezone(ARG_TZ) if apt_dt.tzinfo else apt_dt
             dias = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
-            dia_nombre = dias[apt_dt.weekday()]
-            fecha = apt_dt.strftime(f"{dia_nombre} %d/%m a las %H:%M")
+            dia_nombre = dias[apt_dt_arg.weekday()]
+            fecha = apt_dt_arg.strftime(f"{dia_nombre} %d/%m a las %H:%M")
 
             overpaid_msg = ""
             if amount_overpaid > 0:
