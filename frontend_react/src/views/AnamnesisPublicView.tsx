@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import { HeartPulse, Pill, AlertTriangle, Scissors, Cigarette, Baby, Frown, Brain, Loader2, CheckCircle2, XCircle, Lock, Mic, MicOff, Volume2, ArrowRight } from 'lucide-react';
 import api, { BACKEND_URL } from '../api/axios';
+import ParticleBackground from '../components/public/ParticleBackground';
 
 /* ── Checklist Options (dental standard) ── */
 const DISEASE_OPTIONS = [
@@ -424,7 +425,8 @@ export default function AnamnesisPublicView() {
   }
 
   return (
-    <div className="min-h-screen bg-[#0a0f1a]">
+    <div className="min-h-screen bg-[#0a0f1a] relative">
+      <ParticleBackground particleCount={30} className="opacity-25" />
       {/* Header + Nova Voice (sticky) */}
       <div className="bg-[#0d1320]/90 backdrop-blur-md border-b border-white/5 sticky top-0 z-10">
         <div className="max-w-lg mx-auto px-4 py-3">

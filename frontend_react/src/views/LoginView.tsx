@@ -8,6 +8,7 @@ import {
   Info, User, Phone, Building2, Stethoscope, CalendarDays, BadgeCheck, ArrowRight, ChevronRight,
   Sparkles, Zap, BarChart3, MessageCircle, Eye, EyeOff
 } from 'lucide-react';
+import ParticleBackground from '../components/public/ParticleBackground';
 
 const DEMO_EMAIL = 'gamarraadrian200@gmail.com';
 const DEMO_PASSWORD = 'Wstg1793.';
@@ -411,6 +412,7 @@ const LoginView: React.FC = () => {
           <div className="absolute top-2/3 left-1/2 w-[300px] h-[300px] bg-gradient-to-r from-cyan-500/8 to-emerald-500/5 rounded-full blur-[80px]" style={{ animation: 'float 10s ease-in-out infinite', animationDelay: '3s' }} />
 
           <FloatingParticles />
+          <ParticleBackground particleCount={50} className="opacity-50" />
 
           {/* Content */}
           <div className="relative z-10 flex flex-col justify-between h-full">
