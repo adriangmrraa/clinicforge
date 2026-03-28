@@ -3064,6 +3064,7 @@ async def verify_payment_receipt(
                     "SELECT base_price FROM treatment_types WHERE tenant_id = $1 AND (code = $2 OR name ILIKE $2) AND is_active = true LIMIT 1",
                     tenant_id, apt['appointment_type']
                 )
+                logger.info(f"💰 verify_receipt: treatment_price lookup for '{apt['appointment_type']}' → {treatment_price}")
                 if treatment_price and float(treatment_price) > 0:
                     full_price = float(treatment_price)
             # c) Tenant's consultation_price (last resort)
@@ -3120,28 +3121,44 @@ async def verify_payment_receipt(
                 logger.info(f"💰 verify_receipt: holder matched by alias")
 
         # Also try fetching the raw vision description from the latest image message
-        # (receipt_description from the LLM might be summarized, but raw vision is more detailed)
+        # Vision stores description inside content_attributes array: [{"description": "..."}]
         if not holder_match:
             try:
                 phone_digits_v = normalize_phone_digits(phone)
-                raw_vision = await db.pool.fetchval("""
-                    SELECT cm.content_attributes->>'vision_description'
+                # content_attributes is a JSONB array, description is inside each element
+                raw_attrs = await db.pool.fetchval("""
+                    SELECT cm.content_attributes::text
                     FROM chat_messages cm
                     WHERE cm.tenant_id = $1
                       AND REGEXP_REPLACE(cm.from_number, '[^0-9]', '', 'g') = $2
-                      AND cm.content_attributes::text LIKE '%vision_description%'
+                      AND cm.content_attributes::text LIKE '%description%'
+                      AND cm.role = 'user'
                     ORDER BY cm.created_at DESC LIMIT 1
                 """, tenant_id, phone_digits_v)
-                if raw_vision:
-                    vision_norm = _normalize(raw_vision)
-                    if holder_norm in vision_norm:
-                        holder_match = True
-                    elif all(part in vision_norm for part in holder_parts):
-                        holder_match = True
-                    elif sum(1 for part in holder_parts if part in vision_norm) >= 2:
-                        holder_match = True
-                    if holder_match:
-                        logger.info(f"💰 verify_receipt: holder matched via raw vision description")
+                if raw_attrs:
+                    # Extract all "description" values from the JSON array
+                    try:
+                        attrs_list = json.loads(raw_attrs) if isinstance(raw_attrs, str) else raw_attrs
+                        if isinstance(attrs_list, list):
+                            all_descriptions = " ".join(
+                                att.get("description", "") for att in attrs_list if isinstance(att, dict) and att.get("description")
+                            )
+                        else:
+                            all_descriptions = str(raw_attrs)
+                    except Exception:
+                        all_descriptions = str(raw_attrs)
+
+                    if all_descriptions:
+                        vision_norm = _normalize(all_descriptions)
+                        logger.info(f"💰 verify_receipt: raw vision text ({len(vision_norm)} chars): '{vision_norm[:200]}'")
+                        if holder_norm in vision_norm:
+                            holder_match = True
+                        elif all(part in vision_norm for part in holder_parts):
+                            holder_match = True
+                        elif sum(1 for part in holder_parts if part in vision_norm) >= 2:
+                            holder_match = True
+                        if holder_match:
+                            logger.info(f"💰 verify_receipt: holder matched via raw vision description")
             except Exception as vision_err:
                 logger.warning(f"💰 verify_receipt: raw vision lookup failed (non-fatal): {vision_err}")
 
