@@ -3020,27 +3020,28 @@ async def verify_payment_receipt(
             apt = await db.pool.fetchrow("""
                 SELECT a.id, a.status, a.billing_amount, a.payment_status, a.appointment_datetime,
                        a.appointment_type, a.professional_id, p.first_name, p.last_name,
-                       prof.first_name as prof_name
+                       prof.first_name as prof_name, prof.consultation_price as prof_price
                 FROM appointments a
                 JOIN patients p ON a.patient_id = p.id
                 LEFT JOIN professionals prof ON a.professional_id = prof.id
                 WHERE a.id = $1 AND a.tenant_id = $2
             """, appointment_id, tenant_id)
         else:
-            # Find next scheduled appointment for this patient
+            # Find next scheduled appointment for this patient (normalize phone for robust matching)
+            phone_digits_apt = normalize_phone_digits(phone)
             apt = await db.pool.fetchrow("""
                 SELECT a.id, a.status, a.billing_amount, a.payment_status, a.appointment_datetime,
                        a.appointment_type, a.professional_id, p.first_name, p.last_name,
-                       prof.first_name as prof_name
+                       prof.first_name as prof_name, prof.consultation_price as prof_price
                 FROM appointments a
                 JOIN patients p ON a.patient_id = p.id
                 LEFT JOIN professionals prof ON a.professional_id = prof.id
-                WHERE p.phone_number = $1 AND a.tenant_id = $2
+                WHERE REGEXP_REPLACE(p.phone_number, '[^0-9]', '', 'g') = $1 AND a.tenant_id = $2
                 AND a.status IN ('scheduled', 'confirmed')
                 AND a.appointment_datetime > NOW()
                 ORDER BY a.appointment_datetime ASC
                 LIMIT 1
-            """, phone, tenant_id)
+            """, phone_digits_apt, tenant_id)
 
         if not apt:
             return "No encontré un turno pendiente asociado a tu número. Verificá con la clínica."
@@ -3051,19 +3052,17 @@ async def verify_payment_receipt(
         if apt['billing_amount'] and float(apt['billing_amount']) > 0:
             expected_amount = float(apt['billing_amount'])
         else:
-            # Seña = 50% of consultation price
+            # Seña = 50% of consultation price (professional price has priority over tenant price)
             full_price = None
-            prof_id = apt.get('professional_id') if isinstance(apt, dict) else apt['professional_id']
-            if prof_id:
-                prof_price = await db.pool.fetchval(
-                    "SELECT consultation_price FROM professionals WHERE id = $1", prof_id
-                )
-                if prof_price and float(prof_price) > 0:
-                    full_price = float(prof_price)
+            prof_price = apt.get('prof_price')
+            if prof_price and float(prof_price) > 0:
+                full_price = float(prof_price)
             if full_price is None and tenant['consultation_price']:
                 full_price = float(tenant['consultation_price'])
             if full_price:
                 expected_amount = full_price / 2  # Seña = 50%
+
+        logger.info(f"💰 verify_receipt: phone={phone} apt={apt['id']} prof_price={apt.get('prof_price')} tenant_price={tenant['consultation_price']} expected_seña={expected_amount} amount_detected={amount_value}")
 
         # 4. Verify holder name in receipt (fuzzy matching)
         import unicodedata
@@ -3103,10 +3102,18 @@ async def verify_payment_receipt(
             except ValueError:
                 pass
 
+        amount_overpaid = 0.0
+        amount_underpaid = 0.0
         if expected_amount and amount_value:
-            # Allow 5% tolerance for rounding
-            tolerance = expected_amount * 0.05
-            amount_match = abs(amount_value - expected_amount) <= tolerance
+            if amount_value >= expected_amount * 0.95:
+                # Paid enough (or more) — accept. Note overpayment if significant.
+                amount_match = True
+                if amount_value > expected_amount * 1.05:
+                    amount_overpaid = amount_value - expected_amount
+            else:
+                # Underpaid — reject with specific amount missing
+                amount_match = False
+                amount_underpaid = expected_amount - amount_value
 
         # 5b. Find the receipt file (last uploaded image/document from this patient)
         receipt_file_path = None
@@ -3151,16 +3158,25 @@ async def verify_payment_receipt(
             new_status = 'confirmed' if apt['status'] == 'scheduled' else apt['status']
             payment_status = 'paid'
 
+            # Add overpayment note if applicable
+            if amount_overpaid > 0:
+                receipt_data["overpaid"] = amount_overpaid
+                receipt_data["overpaid_note"] = f"Paciente transfirió ${int(amount_overpaid):,} de más sobre la seña.".replace(",", ".")
+
             await db.pool.execute("""
                 UPDATE appointments SET
                     status = $1,
                     payment_status = $2,
                     payment_receipt_data = $3::jsonb,
                     billing_amount = COALESCE(NULLIF(billing_amount, 0), $6),
+                    billing_notes = CASE
+                        WHEN $7 > 0 THEN COALESCE(billing_notes, '') || ' [Excedente seña: $' || $7::text || ']'
+                        ELSE billing_notes
+                    END,
                     updated_at = NOW()
                 WHERE id = $4 AND tenant_id = $5
             """, new_status, payment_status, json.dumps(receipt_data), str(apt['id']), tenant_id,
-                amount_value or expected_amount)
+                amount_value or expected_amount, int(amount_overpaid))
 
             # Emit WebSocket events
             try:
@@ -3188,7 +3204,12 @@ async def verify_payment_receipt(
             dia_nombre = dias[apt_dt.weekday()]
             fecha = apt_dt.strftime(f"{dia_nombre} %d/%m a las %H:%M")
 
-            return f"✅ Comprobante verificado correctamente! Tu turno de {apt['appointment_type']} el {fecha} con {apt['prof_name'] or 'el profesional'} queda CONFIRMADO. Te esperamos! 😊"
+            overpaid_msg = ""
+            if amount_overpaid > 0:
+                overpaid_str = f"${int(amount_overpaid):,}".replace(",", ".")
+                overpaid_msg = f"\n\n📝 Nota: transferiste {overpaid_str} de más sobre la seña. Queda registrado para que la clínica lo tenga en cuenta."
+
+            return f"✅ Comprobante verificado correctamente! Tu turno de {apt['appointment_type']} el {fecha} con {apt['prof_name'] or 'el profesional'} queda CONFIRMADO. Te esperamos! 😊{overpaid_msg}"
 
         elif not holder_match:
             return (
@@ -3200,11 +3221,12 @@ async def verify_payment_receipt(
         elif not amount_match:
             expected_str = f"${int(expected_amount):,}".replace(",", ".") if expected_amount else "el monto acordado"
             detected_str = f"${int(amount_value):,}".replace(",", ".") if amount_value else "no detectado"
+            missing_str = f"${int(amount_underpaid):,}".replace(",", ".") if amount_underpaid > 0 else ""
             return (
-                f"⚠️ El monto del comprobante ({detected_str}) no coincide con la seña de {expected_str}. "
-                f"La seña es el 50% del valor de la consulta. "
-                f"Verificá el monto y reenviá el comprobante. "
-                f"[INTERNAL_VERIFICATION_FAILED:amount_mismatch]"
+                f"⚠️ El monto del comprobante ({detected_str}) es menor a la seña de {expected_str}. "
+                f"Faltarían {missing_str} para completar la seña. "
+                f"Podés transferir la diferencia y enviarnos el nuevo comprobante para verificarlo. "
+                f"[INTERNAL_VERIFICATION_FAILED:amount_underpaid]"
             )
 
         return "⚠️ No pude verificar el comprobante. Reenviá una foto más clara o contactá a la clínica. [INTERNAL_VERIFICATION_FAILED:unknown]"
