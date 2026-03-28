@@ -118,9 +118,16 @@ export default function AppointmentForm({
                     .then(res => {
                         const apt = res.data;
                         setFullAppointment(apt);
-                        // If billing_amount is 0/null, try to auto-fill from treatment base_price
-                        let amount = apt.billing_amount != null && apt.billing_amount > 0 ? String(apt.billing_amount) : '';
-                        if (!amount && apt.appointment_type && treatmentTypes.length > 0) {
+                        // billing_amount = treatment base_price (the actual cost of the procedure)
+                        // The seña (deposit) is shown separately in the receipt section
+                        let amount = '';
+                        // First priority: if billing_amount was manually set and is different from seña, use it
+                        if (apt.billing_amount != null && apt.billing_amount > 0) {
+                            amount = String(apt.billing_amount);
+                        }
+                        // Always try to use treatment base_price as the billing amount
+                        // (overrides seña amount that may have been auto-set during booking)
+                        if (apt.appointment_type && treatmentTypes.length > 0) {
                             const tt = treatmentTypes.find((t: any) => t.code === apt.appointment_type);
                             if (tt?.base_price && tt.base_price > 0) {
                                 amount = String(tt.base_price);
@@ -128,7 +135,7 @@ export default function AppointmentForm({
                         }
                         setBillingData({
                             billing_amount: amount,
-                            billing_installments: apt.billing_installments != null ? String(apt.billing_installments) : '',
+                            billing_installments: apt.billing_installments != null ? String(apt.billing_installments) : '1',
                             billing_notes: apt.billing_notes || '',
                             payment_status: apt.payment_status || 'pending',
                         });
