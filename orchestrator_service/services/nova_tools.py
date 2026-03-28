@@ -815,7 +815,12 @@ async def _buscar_paciente(args: Dict, tenant_id: int) -> str:
     if not q:
         return "Necesito un nombre, apellido, DNI o telefono para buscar."
 
+    # Strategy: search by full name concatenated, first_name, last_name, DNI, phone
+    # Also split multi-word queries to search each word independently
     like_q = f"%{q}%"
+    words = q.split()
+
+    # Build a flexible query that handles "Lucas Puig", "Lucas", "Puig", "4989310", etc.
     rows = await db.pool.fetch(
         """
         SELECT id, first_name, last_name, phone_number, dni,
@@ -823,17 +828,54 @@ async def _buscar_paciente(args: Dict, tenant_id: int) -> str:
         FROM patients
         WHERE tenant_id = $1
           AND (
-            first_name ILIKE $2 OR last_name ILIKE $2
+            -- Full name match (first + last concatenated)
+            (first_name || ' ' || COALESCE(last_name, '')) ILIKE $2
+            -- Individual field match
+            OR first_name ILIKE $2 OR last_name ILIKE $2
             OR dni ILIKE $2 OR phone_number ILIKE $2
+            -- Unaccented match (handles á/a, é/e, ñ/n, etc.)
+            OR TRANSLATE(LOWER(first_name), 'áéíóúüñ', 'aeiouun') LIKE TRANSLATE(LOWER($2), 'áéíóúüñ', 'aeiouun')
+            OR TRANSLATE(LOWER(last_name), 'áéíóúüñ', 'aeiouun') LIKE TRANSLATE(LOWER($2), 'áéíóúüñ', 'aeiouun')
+            OR TRANSLATE(LOWER(first_name || ' ' || COALESCE(last_name, '')), 'áéíóúüñ', 'aeiouun') LIKE TRANSLATE(LOWER($2), 'áéíóúüñ', 'aeiouun')
           )
-        ORDER BY last_name, first_name
+        ORDER BY
+          -- Prioritize exact matches
+          CASE WHEN LOWER(first_name) = LOWER($3) OR LOWER(last_name) = LOWER($3) THEN 0
+               WHEN LOWER(first_name || ' ' || COALESCE(last_name, '')) = LOWER($3) THEN 0
+               ELSE 1 END,
+          last_name, first_name
         LIMIT 5
         """,
-        tenant_id, like_q,
+        tenant_id, like_q, q,
     )
 
+    # If no results and query has multiple words, try searching each word separately
+    if not rows and len(words) > 1:
+        # Search where ALL words appear somewhere in name
+        conditions = []
+        params: list = [tenant_id]
+        for i, word in enumerate(words):
+            idx = i + 2
+            params.append(f"%{word}%")
+            conditions.append(
+                f"((first_name || ' ' || COALESCE(last_name, '')) ILIKE ${idx} "
+                f"OR TRANSLATE(LOWER(first_name || ' ' || COALESCE(last_name, '')), 'áéíóúüñ', 'aeiouun') LIKE TRANSLATE(LOWER(${idx}), 'áéíóúüñ', 'aeiouun'))"
+            )
+        where_clause = " AND ".join(conditions)
+        rows = await db.pool.fetch(
+            f"""
+            SELECT id, first_name, last_name, phone_number, dni,
+                   insurance_provider, insurance_id, status
+            FROM patients
+            WHERE tenant_id = $1 AND ({where_clause})
+            ORDER BY last_name, first_name
+            LIMIT 5
+            """,
+            *params,
+        )
+
     if not rows:
-        return f"No encontre ningun paciente con '{q}'."
+        return f"No encontre ningun paciente con '{q}'. Probá con solo el nombre o solo el apellido."
 
     lines = [f"Encontre {len(rows)} paciente(s):"]
     for r in rows:
