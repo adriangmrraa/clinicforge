@@ -3265,19 +3265,24 @@ async def list_appointments(
         params.append(professional_id)
     query += " ORDER BY a.appointment_datetime ASC"
     rows = await db.pool.fetch(query, *params)
-    # Ensure JSONB fields are properly parsed (asyncpg may return as string)
+    # Serialize all fields properly (UUID, Decimal, JSONB)
+    from decimal import Decimal as _Decimal
     result = []
     for row in rows:
-        d = dict(row)
-        # Parse payment_receipt_data if it's a string
-        if d.get('payment_receipt_data') and isinstance(d['payment_receipt_data'], str):
-            try:
-                d['payment_receipt_data'] = json.loads(d['payment_receipt_data'])
-            except (json.JSONDecodeError, TypeError):
-                pass
-        # Log appointments that have receipt data for debugging
-        if d.get('payment_receipt_data'):
-            logger.info(f"📋 Appointment {d['id']} has payment_receipt_data: status={d['payment_receipt_data'].get('status') if isinstance(d['payment_receipt_data'], dict) else 'raw'} type={type(d['payment_receipt_data']).__name__}")
+        d = {}
+        for key, val in dict(row).items():
+            if isinstance(val, _Decimal):
+                d[key] = float(val)
+            elif isinstance(val, uuid.UUID):
+                d[key] = str(val)
+            elif isinstance(val, str) and key.endswith('_data'):
+                # Try to parse JSONB string fields
+                try:
+                    d[key] = json.loads(val)
+                except (json.JSONDecodeError, TypeError):
+                    d[key] = val
+            else:
+                d[key] = val
         result.append(d)
     return result
 
