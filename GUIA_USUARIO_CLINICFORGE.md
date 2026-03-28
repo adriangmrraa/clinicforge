@@ -44,6 +44,8 @@ Al ingresar a la plataforma, el Dashboard muestra un resumen ejecutivo en tiempo
 - **Urgencias activas**: Pacientes que el agente clasificó como urgentes (dolor, emergencias)
 - **Facturación confirmada**: Monto total de turnos pagados
 - **Facturación estimada**: Monto de turnos pendientes de pago
+- **Pagos pendientes**: Monto total de turnos con pago pendiente o parcial (ámbar)
+- **Facturación hoy**: Monto total cobrado en el día actual (teal)
 
 **Gráficos:**
 - Tendencia de conversaciones vs turnos completados (semanal, mensual, anual)
@@ -218,6 +220,17 @@ La agenda muestra todos los turnos en formato calendario con código de colores:
 
 **Vistas disponibles:** Semana, Día, Lista
 
+**Indicadores en cada tarjeta de turno:**
+
+| Indicador | Significado |
+|-----------|------------|
+| **Punto verde** | Pago completado (seña o tratamiento pagado) |
+| **Punto amarillo** | Pago parcial |
+| **Punto rojo parpadeante** | Pago pendiente |
+| **"ALERTA" rojo** | El paciente tiene condiciones médicas críticas (diabetes, hipertensión, alergias, etc.) |
+
+Estos indicadores aparecen tanto en la vista de escritorio como en la vista móvil.
+
 ### 6.2 Crear turno manualmente
 
 Al hacer click en un espacio del calendario se abre el formulario:
@@ -264,6 +277,20 @@ Cada turno tiene campos de facturación:
 | **Obra Social** | Prepaga/seguro médico |
 | **Ciudad** | Ciudad de residencia |
 | **Fecha de nacimiento** | Datos demográficos |
+
+**Indicadores en la lista de pacientes:**
+
+| Columna | Qué muestra |
+|---------|------------|
+| **Próximo turno** | Fecha y hora del siguiente turno agendado, o "Sin turno" |
+| **Balance** | Monto pendiente de pago (ámbar si hay deuda) |
+
+**Resumen financiero en la ficha del paciente (pestaña Resumen):**
+Al abrir la ficha de un paciente, se muestra una tarjeta con 4 indicadores:
+- **Turnos**: Cantidad total de registros clínicos
+- **Próximo turno**: Fecha del siguiente turno
+- **Última visita**: Fecha de la última consulta
+- **Balance pendiente**: Monto adeudado (verde "Al día" o ámbar con el monto)
 
 ### 7.2 Ficha clínica del paciente
 
