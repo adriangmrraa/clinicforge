@@ -617,11 +617,12 @@ export default function AgendaView() {
 
           </div>
         </div>
+      </div>
 
-        {/* Mobile View or Desktop Calendar */}
-        {isMobile ? (
-          <div className="flex-1 min-h-0">
-            <MobileAgenda
+      {/* Mobile View or Desktop Calendar — OUTSIDE the flex-shrink-0 header */}
+      {isMobile ? (
+        <div className="flex-1 min-h-0 overflow-hidden">
+          <MobileAgenda
               appointments={filteredAppointments}
               googleBlocks={filteredBlocks}
               selectedDate={selectedDate || new Date()}
@@ -633,9 +634,9 @@ export default function AgendaView() {
               onEventClick={handleEventClick}
               professionals={professionals}
             />
-          </div>
-        ) : (
-          <div className="flex-1 min-h-0 px-4 lg:px-6 pb-4 lg:pb-6">
+        </div>
+      ) : (
+        <div className="flex-1 min-h-0 px-4 lg:px-6 pb-4 lg:pb-6">
             <div className="h-[calc(100vh-140px)] bg-white/[0.03] backdrop-blur-lg md:backdrop-blur-2xl border border-white/[0.06] shadow-2xl rounded-2xl md:rounded-3xl p-2 sm:p-4 overflow-y-auto">
               {/* Calendar */}
 
@@ -979,10 +980,10 @@ export default function AgendaView() {
                 />
               </div>
             </div>
-          </div>
-        )}
+        </div>
+      )}
 
-        {/* Clinical Inspector Drawer */}
+      {/* Clinical Inspector Drawer */}
         <AppointmentForm
           isOpen={showModal}
           onClose={() => setShowModal(false)}
@@ -1000,7 +1001,6 @@ export default function AgendaView() {
           onDelete={handleDelete}
           isEditing={!!selectedEvent}
         />
-      </div>
     </div>
   );
 }
