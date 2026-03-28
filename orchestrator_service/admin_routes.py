@@ -3304,7 +3304,7 @@ async def list_appointments(
                p.phone_number as patient_phone,
                prof.first_name as professional_name, prof.id as professional_id,
                COALESCE(tt.name, a.appointment_type, 'Consulta') as appointment_name,
-               CASE WHEN LOWER(COALESCE(p.medical_notes, '')) ~ '(diabetes|hipertension|cardiopatia|hemofilia|alergia penicilina|embarazo|anticoagulacion|vih|hepatitis|asma severa)' THEN true ELSE false END as has_medical_alerts
+               CASE WHEN LOWER(COALESCE(p.notes, '') || ' ' || COALESCE(p.medical_history::text, '')) ~ '(diabetes|hipertension|cardiopatia|hemofilia|alergia penicilina|embarazo|anticoagulacion|vih|hepatitis|asma severa)' THEN true ELSE false END as has_medical_alerts
         FROM appointments a
         JOIN patients p ON a.patient_id = p.id
         LEFT JOIN professionals prof ON a.professional_id = prof.id
