@@ -810,36 +810,39 @@ async def _resolve_professional_id(user_id: str, tenant_id: int) -> Optional[int
 
 # --- A. Pacientes ---
 
+def _normalize_for_search(text: str) -> str:
+    """Remove accents and normalize for fuzzy search."""
+    import unicodedata
+    nfkd = unicodedata.normalize('NFKD', text.lower())
+    return ''.join(c for c in nfkd if not unicodedata.combining(c))
+
+
 async def _buscar_paciente(args: Dict, tenant_id: int) -> str:
     q = args.get("query", "").strip()
     if not q:
         return "Necesito un nombre, apellido, DNI o telefono para buscar."
 
-    # Strategy: search by full name concatenated, first_name, last_name, DNI, phone
-    # Also split multi-word queries to search each word independently
+    _TRANSLATE = "TRANSLATE(LOWER({field}), 'áéíóúüñàèìòùâêîôûäëïöü', 'aeiounaeiouaeiouaeiou')"
     like_q = f"%{q}%"
     words = q.split()
 
-    # Build a flexible query that handles "Lucas Puig", "Lucas", "Puig", "4989310", etc.
+    # ── NIVEL 1: Búsqueda exacta (nombre completo, campos individuales, sin acentos) ──
     rows = await db.pool.fetch(
-        """
+        f"""
         SELECT id, first_name, last_name, phone_number, dni,
                insurance_provider, insurance_id, status
         FROM patients
         WHERE tenant_id = $1
           AND (
-            -- Full name match (first + last concatenated)
             (first_name || ' ' || COALESCE(last_name, '')) ILIKE $2
-            -- Individual field match
             OR first_name ILIKE $2 OR last_name ILIKE $2
             OR dni ILIKE $2 OR phone_number ILIKE $2
-            -- Unaccented match (handles á/a, é/e, ñ/n, etc.)
-            OR TRANSLATE(LOWER(first_name), 'áéíóúüñ', 'aeiouun') LIKE TRANSLATE(LOWER($2), 'áéíóúüñ', 'aeiouun')
-            OR TRANSLATE(LOWER(last_name), 'áéíóúüñ', 'aeiouun') LIKE TRANSLATE(LOWER($2), 'áéíóúüñ', 'aeiouun')
-            OR TRANSLATE(LOWER(first_name || ' ' || COALESCE(last_name, '')), 'áéíóúüñ', 'aeiouun') LIKE TRANSLATE(LOWER($2), 'áéíóúüñ', 'aeiouun')
+            OR REGEXP_REPLACE(phone_number, '[^0-9]', '', 'g') LIKE REGEXP_REPLACE($2, '[^0-9]', '', 'g')
+            OR {_TRANSLATE.format(field="first_name")} LIKE {_TRANSLATE.format(field="$2")}
+            OR {_TRANSLATE.format(field="last_name")} LIKE {_TRANSLATE.format(field="$2")}
+            OR {_TRANSLATE.format(field="first_name || ' ' || COALESCE(last_name, '')")} LIKE {_TRANSLATE.format(field="$2")}
           )
         ORDER BY
-          -- Prioritize exact matches
           CASE WHEN LOWER(first_name) = LOWER($3) OR LOWER(last_name) = LOWER($3) THEN 0
                WHEN LOWER(first_name || ' ' || COALESCE(last_name, '')) = LOWER($3) THEN 0
                ELSE 1 END,
@@ -848,10 +851,11 @@ async def _buscar_paciente(args: Dict, tenant_id: int) -> str:
         """,
         tenant_id, like_q, q,
     )
+    if rows:
+        return _format_patient_results(rows, q)
 
-    # If no results and query has multiple words, try searching each word separately
-    if not rows and len(words) > 1:
-        # Search where ALL words appear somewhere in name
+    # ── NIVEL 2: Multi-palabra con AND (cada palabra en algún campo) ──
+    if len(words) > 1:
         conditions = []
         params: list = [tenant_id]
         for i, word in enumerate(words):
@@ -859,7 +863,7 @@ async def _buscar_paciente(args: Dict, tenant_id: int) -> str:
             params.append(f"%{word}%")
             conditions.append(
                 f"((first_name || ' ' || COALESCE(last_name, '')) ILIKE ${idx} "
-                f"OR TRANSLATE(LOWER(first_name || ' ' || COALESCE(last_name, '')), 'áéíóúüñ', 'aeiouun') LIKE TRANSLATE(LOWER(${idx}), 'áéíóúüñ', 'aeiouun'))"
+                f"OR {_TRANSLATE.format(field='first_name || chr(32) || COALESCE(last_name, chr(32))')} LIKE {_TRANSLATE.format(field=f'${idx}')})"
             )
         where_clause = " AND ".join(conditions)
         rows = await db.pool.fetch(
@@ -868,19 +872,117 @@ async def _buscar_paciente(args: Dict, tenant_id: int) -> str:
                    insurance_provider, insurance_id, status
             FROM patients
             WHERE tenant_id = $1 AND ({where_clause})
-            ORDER BY last_name, first_name
-            LIMIT 5
+            ORDER BY last_name, first_name LIMIT 5
             """,
             *params,
         )
+        if rows:
+            return _format_patient_results(rows, q)
 
-    if not rows:
-        return f"No encontre ningun paciente con '{q}'. Probá con solo el nombre o solo el apellido."
+    # ── NIVEL 3: Multi-palabra con OR (cualquier palabra matchea algo) ──
+    if len(words) > 1:
+        or_conditions = []
+        params2: list = [tenant_id]
+        for i, word in enumerate(words):
+            idx = i + 2
+            params2.append(f"%{word}%")
+            or_conditions.append(f"(first_name ILIKE ${idx} OR last_name ILIKE ${idx})")
+        or_clause = " OR ".join(or_conditions)
+        rows = await db.pool.fetch(
+            f"""
+            SELECT id, first_name, last_name, phone_number, dni,
+                   insurance_provider, insurance_id, status
+            FROM patients
+            WHERE tenant_id = $1 AND ({or_clause})
+            ORDER BY last_name, first_name LIMIT 5
+            """,
+            *params2,
+        )
+        if rows:
+            return _format_patient_results(rows, q, partial=True)
 
-    lines = [f"Encontre {len(rows)} paciente(s):"]
+    # ── NIVEL 4: Prefijo (primeros 3+ caracteres de cada palabra) ──
+    prefix_conditions = []
+    params3: list = [tenant_id]
+    for i, word in enumerate(words):
+        prefix = word[:3] if len(word) >= 3 else word
+        idx = i + 2
+        params3.append(f"{prefix}%")
+        prefix_conditions.append(
+            f"(LOWER(first_name) LIKE LOWER(${idx}) OR LOWER(last_name) LIKE LOWER(${idx}))"
+        )
+    prefix_clause = " OR ".join(prefix_conditions)
+    rows = await db.pool.fetch(
+        f"""
+        SELECT id, first_name, last_name, phone_number, dni,
+               insurance_provider, insurance_id, status
+        FROM patients
+        WHERE tenant_id = $1 AND ({prefix_clause})
+        ORDER BY last_name, first_name LIMIT 5
+        """,
+        *params3,
+    )
+    if rows:
+        return _format_patient_results(rows, q, partial=True)
+
+    # ── NIVEL 5: Fonético (letras duplicadas removidas, consonantes similares) ──
+    # "Gamara" → "Gamarra", "Lukas" → "Lucas", "Gonzales" → "González"
+    normalized_q = _normalize_for_search(q)
+    # Remove doubled consonants: "gamarra" → "gamara", "gonzalez" → "gonzalez"
+    import re as _re
+    simplified_q = _re.sub(r'(.)\1+', r'\1', normalized_q)
+    if simplified_q != normalized_q or len(simplified_q) >= 3:
+        rows = await db.pool.fetch(
+            """
+            SELECT id, first_name, last_name, phone_number, dni,
+                   insurance_provider, insurance_id, status
+            FROM patients
+            WHERE tenant_id = $1
+              AND (
+                REGEXP_REPLACE(TRANSLATE(LOWER(first_name), 'áéíóúüñàèìòùâêîôûäëïöü', 'aeiounaeiouaeiouaeiou'), '(.)\\1+', '\\1', 'g') LIKE '%' || $2 || '%'
+                OR REGEXP_REPLACE(TRANSLATE(LOWER(last_name), 'áéíóúüñàèìòùâêîôûäëïöü', 'aeiounaeiouaeiouaeiou'), '(.)\\1+', '\\1', 'g') LIKE '%' || $2 || '%'
+                OR REGEXP_REPLACE(TRANSLATE(LOWER(first_name || ' ' || COALESCE(last_name, '')), 'áéíóúüñàèìòùâêîôûäëïöü', 'aeiounaeiouaeiouaeiou'), '(.)\\1+', '\\1', 'g') LIKE '%' || $2 || '%'
+              )
+            ORDER BY last_name, first_name LIMIT 5
+            """,
+            tenant_id, simplified_q,
+        )
+        if rows:
+            return _format_patient_results(rows, q, partial=True)
+
+    # ── NIVEL 6: ÚLTIMO RECURSO — mostrar pacientes recientes como sugerencia ──
+    recent = await db.pool.fetch(
+        """
+        SELECT id, first_name, last_name, phone_number, dni,
+               insurance_provider, insurance_id, status
+        FROM patients
+        WHERE tenant_id = $1 AND status != 'archived'
+        ORDER BY updated_at DESC NULLS LAST, created_at DESC
+        LIMIT 8
+        """,
+        tenant_id,
+    )
+    if recent:
+        lines = [f"No encontré '{q}'. Estos son los pacientes mas recientes:"]
+        for r in recent:
+            name = f"{r['first_name'] or ''} {r['last_name'] or ''}".strip()
+            lines.append(f"• ID {r['id']}: {name} | Tel: {r['phone_number'] or 'sin tel'}")
+        lines.append("\nDecime cuál de estos es o dame otro dato para buscar.")
+        return "\n".join(lines)
+
+    return f"No hay pacientes registrados en esta clinica."
+
+
+def _format_patient_results(rows, query: str, partial: bool = False) -> str:
+    """Format patient search results."""
+    prefix = f"Encontré {len(rows)} paciente(s)"
+    if partial:
+        prefix += f" (coincidencia parcial con '{query}')"
+    prefix += ":"
+    lines = [prefix]
     for r in rows:
         name = f"{r['first_name'] or ''} {r['last_name'] or ''}".strip()
-        ins = f" — OS: {r['insurance_provider']}" if r["insurance_provider"] else ""
+        ins = f" — OS: {r['insurance_provider']}" if r.get("insurance_provider") else ""
         lines.append(f"• ID {r['id']}: {name} | Tel: {r['phone_number'] or 'sin tel'} | DNI: {r['dni'] or 'sin DNI'}{ins}")
     return "\n".join(lines)
 
