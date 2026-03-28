@@ -551,53 +551,76 @@ export default function AppointmentForm({
                                     </div>
                                     {/* Payment Receipt Section */}
                                     {(() => {
-                                        const receiptData = (initialData as any).payment_receipt_data;
-                                        if (!receiptData) return null;
-                                        const parsed = typeof receiptData === 'string' ? JSON.parse(receiptData) : receiptData;
-                                        const isVerified = parsed.status === 'verified';
-                                        const filePath = parsed.receipt_file_path;
-                                        return (
-                                            <div className={`rounded-xl border p-4 space-y-3 ${isVerified ? 'bg-green-500/10 border-green-500/20' : 'bg-red-500/10 border-red-500/20'}`}>
-                                                <div className="flex items-center justify-between">
-                                                    <h4 className="text-xs font-bold text-gray-700 flex items-center gap-1.5">
-                                                        <DollarSign size={14} /> Comprobante de pago
-                                                    </h4>
-                                                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${isVerified ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                                                        {isVerified ? 'Verificado' : 'No verificado'}
-                                                    </span>
-                                                </div>
-                                                {filePath && (
-                                                    <div className="rounded-lg overflow-hidden border border-white/[0.08] bg-white/[0.04]">
-                                                        <img
-                                                            src={filePath.startsWith('/uploads') ? `${(window as any).__API_URL || ''}${filePath}` : filePath}
-                                                            alt="Comprobante"
-                                                            className="w-full max-h-48 object-contain cursor-pointer hover:opacity-90 transition-opacity"
-                                                            onClick={() => window.open(filePath.startsWith('/uploads') ? `${(window as any).__API_URL || ''}${filePath}` : filePath, '_blank')}
-                                                        />
+                                        try {
+                                            const raw = (initialData as any)?.payment_receipt_data;
+                                            if (!raw) return null;
+                                            const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+                                            if (!parsed || typeof parsed !== 'object') return null;
+                                            const isVerified = parsed.status === 'verified';
+                                            const filePath = parsed.receipt_file_path || '';
+                                            const apiBase = import.meta.env.VITE_API_URL || '';
+                                            const imgSrc = filePath ? (filePath.startsWith('http') ? filePath : `${apiBase}${filePath.startsWith('/') ? '' : '/'}${filePath}`) : '';
+                                            return (
+                                                <div className={`rounded-xl border p-4 space-y-3 mt-4 ${isVerified ? 'bg-emerald-500/10 border-emerald-500/20' : 'bg-red-500/10 border-red-500/20'}`}>
+                                                    <div className="flex items-center justify-between">
+                                                        <h4 className="text-xs font-bold text-white/70 flex items-center gap-1.5">
+                                                            <DollarSign size={14} className={isVerified ? 'text-emerald-400' : 'text-red-400'} /> Comprobante de pago
+                                                        </h4>
+                                                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${isVerified ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}>
+                                                            {isVerified ? '✅ Verificado' : '⚠️ No verificado'}
+                                                        </span>
                                                     </div>
-                                                )}
-                                                <div className="grid grid-cols-2 gap-2 text-[11px]">
-                                                    {parsed.amount_detected && (
-                                                        <div>
-                                                            <span className="text-gray-500">Monto detectado:</span>
-                                                            <span className="ml-1 font-semibold text-gray-800">${parsed.amount_detected}</span>
+                                                    {imgSrc && (
+                                                        <div className="rounded-lg overflow-hidden border border-white/[0.08] bg-white/[0.04]">
+                                                            <img
+                                                                src={imgSrc}
+                                                                alt="Comprobante"
+                                                                className="w-full max-h-48 object-contain cursor-pointer hover:opacity-90 transition-opacity"
+                                                                onClick={() => window.open(imgSrc, '_blank')}
+                                                                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                                                            />
                                                         </div>
                                                     )}
-                                                    {parsed.amount_expected && (
-                                                        <div>
-                                                            <span className="text-gray-500">Monto esperado:</span>
-                                                            <span className="ml-1 font-semibold text-gray-800">${Math.round(parsed.amount_expected).toLocaleString()}</span>
-                                                        </div>
-                                                    )}
-                                                    {parsed.verified_at && (
-                                                        <div className="col-span-2">
-                                                            <span className="text-gray-500">Verificado:</span>
-                                                            <span className="ml-1 font-semibold text-gray-800">{new Date(parsed.verified_at).toLocaleString('es-AR')}</span>
-                                                        </div>
-                                                    )}
+                                                    <div className="grid grid-cols-2 gap-2 text-[11px]">
+                                                        {parsed.amount_detected && (
+                                                            <div>
+                                                                <span className="text-white/40">Monto detectado:</span>
+                                                                <span className="ml-1 font-semibold text-white">${parsed.amount_detected}</span>
+                                                            </div>
+                                                        )}
+                                                        {parsed.amount_expected && (
+                                                            <div>
+                                                                <span className="text-white/40">Seña esperada:</span>
+                                                                <span className="ml-1 font-semibold text-white">${Math.round(parsed.amount_expected).toLocaleString('es-AR')}</span>
+                                                            </div>
+                                                        )}
+                                                        {parsed.total_paid > 0 && (
+                                                            <div>
+                                                                <span className="text-white/40">Total pagado:</span>
+                                                                <span className="ml-1 font-semibold text-emerald-400">${Math.round(parsed.total_paid).toLocaleString('es-AR')}</span>
+                                                            </div>
+                                                        )}
+                                                        {parsed.overpaid > 0 && (
+                                                            <div>
+                                                                <span className="text-white/40">Excedente:</span>
+                                                                <span className="ml-1 font-semibold text-amber-400">${Math.round(parsed.overpaid).toLocaleString('es-AR')}</span>
+                                                            </div>
+                                                        )}
+                                                        {parsed.verified_at && (
+                                                            <div className="col-span-2">
+                                                                <span className="text-white/40">Verificado:</span>
+                                                                <span className="ml-1 font-semibold text-white/70">{new Date(parsed.verified_at).toLocaleString('es-AR')}</span>
+                                                            </div>
+                                                        )}
+                                                        {parsed.holder_match === false && (
+                                                            <div className="col-span-2">
+                                                                <span className="text-red-400 text-[10px]">⚠ Titular no coincide con datos bancarios de la clínica</span>
+                                                            </div>
+                                                        )}
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        );
+                                            );
+                                        } catch { return null; }
                                     })()}
 
                                     {billingSuccess && (
