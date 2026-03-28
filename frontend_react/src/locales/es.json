@@ -188,7 +188,9 @@
     "responses_generated": "Respuestas generadas",
     "severity_critical": "CRÍTICO",
     "severity_high": "ALTO",
-    "severity_normal": "NORMAL"
+    "severity_normal": "NORMAL",
+    "pending_payments": "Pagos Pendientes",
+    "today_revenue": "Facturación Hoy"
   },
   "analytics": {
     "strategic_title": "Analytics Estratégico",
