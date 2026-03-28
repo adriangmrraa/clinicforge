@@ -210,7 +210,7 @@ The LangChain agent exposes these tools (defined in `orchestrator_service/main.p
 | `save_patient_anamnesis` | Save medical history from AI chat conversation |
 | `save_patient_email` | Save patient email (supports `patient_phone` for third-party bookings) |
 | `get_patient_anamnesis` | Read completed anamnesis form data for verification |
-| `verify_payment_receipt` | **(NEW)** Verify bank transfer receipt via vision (matches holder name + amount) |
+| `verify_payment_receipt` | Verify bank transfer receipt via vision (matches holder name + amount, handles partial payments) |
 | `derivhumano` | Hand off to human + 24h silence window + comprehensive email to clinic & professionals |
 
 ---
@@ -293,19 +293,19 @@ Nova is the voice-powered AI copilot that runs inside ClinicForge. Available as 
 ```
 NovaWidget (React)  →  WebSocket  →  Nova Handler (main.py)  →  OpenAI Realtime API
                                           ↕
-                                    Nova Tools (47 tools)  →  PostgreSQL
+                                    Nova Tools (49 tools)  →  PostgreSQL
 ```
 
 ### Files
 | File | Purpose |
 |------|---------|
 | `frontend_react/src/components/NovaWidget.tsx` | Voice widget UI, WebSocket client, audio playback |
-| `orchestrator_service/services/nova_tools.py` | 47 tool definitions + implementations |
+| `orchestrator_service/services/nova_tools.py` | 49 tool definitions + implementations |
 | `orchestrator_service/main.py` (~line 4713) | WebSocket handler, Realtime API bridge, system prompt |
 | `orchestrator_service/services/nova_daily_analysis.py` | Automated daily insights (every 12h) |
 | `orchestrator_service/routes/nova_routes.py` | REST endpoints (context, health, sessions) |
 
-### Tools (47 total)
+### Tools (49 total)
 Organized in categories:
 
 | Category | Tools | Count |
@@ -318,6 +318,7 @@ Organized in categories:
 | **F. Multi-sede** | resumen_sedes, comparar_sedes, switch_sede, onboarding_status | 4 |
 | **G. Staff** | listar_profesionales, ver_configuracion, actualizar_configuracion, crear_tratamiento, editar_tratamiento, ver_chats_recientes, enviar_mensaje, ver_faqs, eliminar_faq, actualizar_faq | 10 |
 | **H. Anamnesis** | guardar_anamnesis, ver_anamnesis | 2 |
+| **H2. Odontograma** | ver_odontograma, modificar_odontograma | 2 |
 | **I. Datos** | consultar_datos | 1 |
 | **J. CRUD** | obtener_registros, actualizar_registro, crear_registro, contar_registros | 4 |
 
@@ -330,6 +331,27 @@ OpenAI Realtime API requires **flat** tool schema format:
 ```json
 {"type": "function", "function": {"name": "tool_name", ...}}  // WRONG for Realtime
 ```
+
+### Payment Verification Flow
+The AI agent automatically detects payment receipts when a patient with pending seña sends an image:
+- `buffer_task.py` checks if patient has pending payment before processing image
+- If yes, injects "PROBABLE COMPROBANTE DE PAGO" context
+- Agent calls `verify_payment_receipt` instead of saving as medical document
+- Verification checks holder name (fuzzy match + CBU/alias) and amount (accepts overpayment)
+- Success: appointment status → confirmed, payment_status → paid
+- Failure: explains issue, asks for corrected receipt
+
+### Date Parsing System
+`parse_date()` uses 7-layer priority for robust date interpretation:
+1. Exact shortcuts (hoy, mañana, pasado mañana)
+2. ASAP/no preference (lo antes posible, cualquier día)
+3. dateutil fuzzy parsing (30 de abril, jueves 30 de abril)
+4. Month expressions (fines de abril, mitad de julio)
+5. Weekday only (jueves, lunes)
+6. Relative phrases (próxima semana, mes que viene)
+7. Fallback: None (never invents dates)
+
+`check_availability` uses `interpreted_date` (YYYY-MM-DD from LLM reasoning) + `search_mode` (exact/week/month/open) for accurate date resolution. Auto-advances to next valid day if clinic/professional is closed.
 
 ### CRUD Tools
 Generic tools that give Nova access to ALL database tables:
@@ -357,7 +379,7 @@ Nova's prompt follows the "Jarvis" principle:
 - NEVER say "no puedo" if a tool can solve it
 
 ### MCP Server (Planned)
-A Model Context Protocol server is planned to replace the 47 individual tools with a more fluid resource-based architecture. See `MCP_SERVER_SPEC.md` for the complete specification.
+A Model Context Protocol server is planned to replace the 49 individual tools with a more fluid resource-based architecture. See `MCP_SERVER_SPEC.md` for the complete specification.
 
 ---
 

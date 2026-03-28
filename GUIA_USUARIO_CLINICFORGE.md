@@ -183,7 +183,7 @@ Desde la sección **Tratamientos** se configuran todos los servicios que la clí
 | **Duración mínima/máxima** | Rango permitido | Flexibilidad para agendamiento |
 | **Complejidad** | Baja, Media, Alta | Información para el equipo |
 | **Categoría** | Prevención, Restauración, Cirugía, Ortodoncia, Emergencia | Organización visual |
-| **Precio base** | Costo del tratamiento | El agente lo muestra cuando ofrece opciones de turno |
+| **Precio base** | Costo del tratamiento (ej: $9.500.000) | Se usa para calcular el monto a cobrar cuando la secretaria asigna un tratamiento a un turno. El agente de IA lo muestra cuando el paciente pregunta "cuánto sale?" |
 | **Activo** | Si el tratamiento está habilitado | Solo tratamientos activos aparecen en búsquedas |
 | **Disponible para reserva** | Si los pacientes pueden agendarlo | Si está desactivado, el agente no lo ofrece |
 | **Profesionales asignados** | Qué profesionales realizan este tratamiento | El agente solo ofrece disponibilidad con esos profesionales |
@@ -576,6 +576,37 @@ En la sección de Tokens y Métricas se puede ver:
 - Costo por conversación promedio
 - Distribución de uso por modelo
 - Proyección de capacidad del sistema
+
+---
+
+## 12b. Sistema de Verificación de Pagos
+
+### Cómo funciona la verificación automática de comprobantes
+
+1. El paciente recibe datos bancarios después de agendar un turno (alias, CBU, titular)
+2. El paciente transfiere la seña (50% del precio de consulta del profesional)
+3. El paciente envía foto del comprobante por WhatsApp
+4. El agente de IA detecta automáticamente que es un comprobante de pago (no un documento médico)
+5. Ejecuta verificación automática:
+   - Compara el titular del comprobante con los datos bancarios de la clínica
+   - Verifica que el monto coincida con la seña esperada
+6. Si es correcto: confirma el turno y marca como pagado
+7. Si es incorrecto: explica qué falló y pide reenvío
+
+### Casos especiales
+
+| Caso | Qué hace el agente |
+|------|-------------------|
+| Monto mayor a la seña | Acepta y anota el excedente en notas de facturación |
+| Monto menor a la seña | Informa cuánto falta y pide que complete la diferencia |
+| Titular no coincide | Pide que verifique la cuenta destino y reenvíe |
+| Imagen no legible | Pide que reenvíe una foto más clara |
+| Múltiples comprobantes | Suma los pagos parciales automáticamente |
+
+### Dónde ver los comprobantes
+
+- **Ficha del paciente → Archivos**: aparece con etiqueta verde "Comprobante de Pago"
+- **Editar turno → Facturación**: muestra el comprobante verificado con badge verde, montos y fecha
 
 ---
 

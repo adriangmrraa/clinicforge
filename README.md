@@ -43,6 +43,11 @@ ClinicForge implementa un protocolo de **Endurecimiento Proactivo** para protege
 - **AI Guardrails**: Capa de protección híbrida que detecta y bloquea intentos de Prompt Injection antes de que lleguen al modelo.
 - **Sanitización XSS**: Uso obligatorio de `DOMPurify` en el frontend para renderizar contenido dinámico de forma segura.
 - **Auth de Infraestructura**: Las rutas administrativas requieren **JWT + X-Admin-Token** para prevenir accesos no autorizados incluso con tokens comprometidos.
+- **Rate Limiting**: Login (5/min), register (3/min), expensive endpoints (10/min) via slowapi.
+- **SSRF Protection**: Media proxy blocks private IPs, localhost, and cloud metadata endpoints.
+- **File Upload Validation**: Extension whitelist (jpg/png/gif/webp/pdf) + 10MB size limit.
+- **Path Traversal Protection**: Document proxy validates resolved paths within allowed directories.
+- **PII Protection**: Patient IDs hashed in audit logs. No email/IP in log output.
 
 ---
 
@@ -159,6 +164,55 @@ Operations Center shows ALL conversations in one unified view
 - **Same AI brain**: The LangChain agent processes messages identically regardless of source channel, maintaining context across platforms.
 - **Human handoff**: `derivhumano` tool works across all channels with 24h silence window per clinic/phone, synchronizing state between DB and UI.
 - **Credential isolation**: Chatwoot tokens, YCloud Keys, and OPENAI_API_KEY stored per-tenant (Vault).
+
+---
+
+## 🎙️ Nova — AI Voice Assistant (Jarvis for Clinics)
+
+Nova is the voice-powered AI copilot that runs inside ClinicForge. Available as a floating widget on every page, it uses OpenAI Realtime API for bidirectional audio + function calling.
+
+**49 tools** organized in 10 categories:
+
+| Category | Tools | Examples |
+|----------|-------|---------|
+| **Patients** | 7 | Search, register, update, clinical history, odontogram |
+| **Appointments** | 9 | View schedule, book, cancel, reschedule, block agenda |
+| **Billing** | 3 | Register payments, list treatments, pending invoices |
+| **Analytics** | 5 | Weekly summary, professional performance, financial reports |
+| **Navigation** | 2 | Navigate to any page, open patient record |
+| **Multi-sede CEO** | 4 | Compare locations, switch active clinic, onboarding status |
+| **Staff Operations** | 10 | Manage professionals, config, FAQs, send WhatsApp messages |
+| **Anamnesis** | 2 | Voice-guided medical history intake |
+| **Odontogram** | 2 | View and modify dental chart with surgical safety rules |
+| **Data Access** | 5 | Natural language queries, CRUD on any table |
+
+**Key capabilities:**
+- Execute tools first, talk after (Jarvis principle)
+- Chain 2-3 tools without asking for confirmation
+- All actions emit Socket.IO events for real-time UI sync
+- Omnichannel messaging: send WhatsApp, Instagram, Facebook messages by patient name
+- Automated daily insights every 12 hours (conversation analysis + recommendations)
+
+---
+
+## 💰 Payment Verification System
+
+Automated payment receipt verification via WhatsApp:
+
+1. Patient sends bank transfer receipt photo
+2. AI vision service analyzes the image
+3. `verify_payment_receipt` tool verifies:
+   - Bank account holder name matches clinic's configuration
+   - Amount matches expected seña (50% of professional's consultation price)
+   - Accepts overpayment (notes excess), calculates underpayment (shows remaining)
+4. On success: appointment auto-confirmed, receipt stored in billing tab
+5. On failure: explains what's wrong, asks for corrected receipt
+
+**Features:**
+- Partial payment accumulation (multiple receipts sum up)
+- Receipt visible in patient's document gallery (green "Comprobante de Pago" badge)
+- Receipt visible in appointment's billing tab with verification status
+- Real-time Socket.IO events update all connected clients
 
 ---
 
