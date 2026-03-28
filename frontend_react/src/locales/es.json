@@ -779,6 +779,7 @@
       "radiology": "Radiología",
       "consent": "Consentimiento",
       "lab": "Laboratorio",
+      "payment_receipt": "Comprobante de Pago",
       "other": "Otro"
     },
     "size_not_available": "N/D"

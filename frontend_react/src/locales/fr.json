@@ -770,6 +770,7 @@
       "radiology": "Radiologie",
       "consent": "Consentement",
       "lab": "Laboratoire",
+      "payment_receipt": "Reçu de Paiement",
       "other": "Autre"
     },
     "size_not_available": "N/D"

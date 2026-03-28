@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from '../context/LanguageContext';
-import { Upload, FileText, Image, File, Trash2, Download, Eye, X, Activity } from 'lucide-react';
+import { Upload, FileText, Image, File, Trash2, Download, Eye, X, Activity, DollarSign } from 'lucide-react';
 import api from '../api/axios';
 
 interface PatientDocument {
@@ -22,7 +22,7 @@ interface DocumentGalleryProps {
   readOnly?: boolean;
 }
 
-type DocumentType = 'clinical' | 'prescription' | 'radiology' | 'consent' | 'lab' | 'other';
+type DocumentType = 'clinical' | 'prescription' | 'radiology' | 'consent' | 'lab' | 'payment_receipt' | 'other';
 
 const DOCUMENT_TYPES: { id: DocumentType; label: string; icon: React.ReactNode }[] = [
   { id: 'clinical', label: 'document_gallery.types.clinical', icon: <FileText size={20} /> },
@@ -30,6 +30,7 @@ const DOCUMENT_TYPES: { id: DocumentType; label: string; icon: React.ReactNode }
   { id: 'radiology', label: 'document_gallery.types.radiology', icon: <Image size={20} /> },
   { id: 'consent', label: 'document_gallery.types.consent', icon: <File size={20} /> },
   { id: 'lab', label: 'document_gallery.types.lab', icon: <FileText size={20} /> },
+  { id: 'payment_receipt', label: 'document_gallery.types.payment_receipt', icon: <DollarSign size={20} /> },
   { id: 'other', label: 'document_gallery.types.other', icon: <File size={20} /> }
 ];
 
@@ -403,7 +404,12 @@ export default function DocumentGallery({ patientId, readOnly = false }: Documen
                         {document.filename}
                       </p>
                       <div className="flex items-center gap-2 mt-1">
-                        <span className="inline-flex items-center px-2 py-0.5 bg-blue-500/10 text-blue-400 text-xs rounded-full">
+                        <span className={`inline-flex items-center px-2 py-0.5 text-xs rounded-full ${
+                          document.document_type === 'payment_receipt'
+                            ? 'bg-emerald-500/15 text-emerald-400 font-semibold'
+                            : 'bg-blue-500/10 text-blue-400'
+                        }`}>
+                          {document.document_type === 'payment_receipt' && <DollarSign size={12} className="mr-1" />}
                           {t(`document_gallery.types.${document.document_type}`)}
                         </span>
                         <span className="text-xs text-white/40">

@@ -592,7 +592,35 @@ async def process_buffer_task(
                     "Si es para el interlocutor, no hagas nada extra, ya está guardado."
                 )
             elif has_patient:
-                media_context += "Responde confirmando que recibiste el archivo y que ya lo guardaste en su ficha médica para que la Dra. lo vea. Usa un tono amable y profesional."
+                # Check if patient has a pending payment (seña) — if so, the image is likely a payment receipt
+                has_pending_payment = False
+                try:
+                    clean_ext_pay = external_user_id.replace("+", "") if external_user_id else ""
+                    pending_apt = await pool.fetchval("""
+                        SELECT a.id FROM appointments a
+                        JOIN patients p ON p.id = a.patient_id
+                        WHERE a.tenant_id = $1
+                          AND (p.phone_number = $2 OR p.phone_number = $3
+                               OR REGEXP_REPLACE(p.phone_number, '[^0-9]', '', 'g') = REGEXP_REPLACE($2, '[^0-9]', '', 'g'))
+                          AND a.status IN ('scheduled', 'confirmed')
+                          AND (a.payment_status IS NULL OR a.payment_status = 'pending' OR a.payment_status = 'partial')
+                        ORDER BY a.appointment_datetime ASC LIMIT 1
+                    """, tenant_id, external_user_id, clean_ext_pay)
+                    has_pending_payment = pending_apt is not None
+                except Exception as pay_check_err:
+                    logger.warning(f"Error checking pending payment: {pay_check_err}")
+
+                if has_pending_payment:
+                    media_context += (
+                        "PROBABLE COMPROBANTE DE PAGO: El paciente tiene un turno con seña pendiente y acaba de enviar una imagen/documento. "
+                        "Es MUY probable que sea un comprobante de transferencia bancaria. "
+                        "ACCIÓN OBLIGATORIA: Usá 'verify_payment_receipt' para verificar el comprobante. "
+                        "Pasá la descripción de la imagen del CONTEXTO VISUAL como 'receipt_description' y el monto que detectes como 'amount_detected'. "
+                        "NO digas 'ya lo guardé en tu ficha'. Decí 'Recibí tu comprobante, voy a verificarlo' y ejecutá la tool. "
+                        "Si la verificación es exitosa → confirmá el pago. Si falla → explicá qué falló."
+                    )
+                else:
+                    media_context += "Responde confirmando que recibiste el archivo y que ya lo guardaste en su ficha médica para que la Dra. lo vea. Usa un tono amable y profesional."
             else:
                 media_context += (
                     "NOTA: Este contacto AUN NO tiene ficha de paciente registrada. "
