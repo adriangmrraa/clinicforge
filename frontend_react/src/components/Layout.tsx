@@ -9,6 +9,7 @@ import { X, Wifi, WifiOff, Bell, UserPlus, Calendar, AlertTriangle, HelpCircle }
 import MetaTokenBanner from './MetaTokenBanner';
 import { NovaWidget } from './NovaWidget';
 import OnboardingGuide from './OnboardingGuide';
+import PageTips from './PageTips';
 
 interface LayoutProps {
   children: ReactNode;
@@ -305,6 +306,9 @@ export const Layout: React.FC<LayoutProps> = ({ children }: LayoutProps) => {
           {children}
         </div>
       </main>
+
+      {/* Page Tips — contextual animated tips per page */}
+      <PageTips />
 
       {/* Nova AI Widget */}
       <NovaWidget />
