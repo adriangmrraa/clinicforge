@@ -3215,7 +3215,8 @@ async def list_treatment_types_legacy(
 
     query += " ORDER BY name ASC"
     rows = await db.pool.fetch(query, *params)
-    treatments = [dict(row) for row in rows]
+    from decimal import Decimal as _Dec2
+    treatments = [{k: float(v) if isinstance(v, _Dec2) else v for k, v in dict(row).items()} for row in rows]
     # Batch-fetch professional assignments
     if treatments:
         tt_ids = [t['id'] for t in treatments]
@@ -4483,12 +4484,13 @@ async def list_treatment_types(tenant_id: int = Depends(get_resolved_tenant_id))
         SELECT id, code, name, description, default_duration_minutes,
                min_duration_minutes, max_duration_minutes, complexity_level,
                category, requires_multiple_sessions, session_gap_days,
-               is_active, is_available_for_booking, internal_notes
+               is_active, is_available_for_booking, internal_notes, base_price
         FROM treatment_types
         WHERE tenant_id = $1
         ORDER BY category, name
     """, tenant_id)
-    treatments = [dict(row) for row in rows]
+    from decimal import Decimal as _Dec
+    treatments = [{k: float(v) if isinstance(v, _Dec) else v for k, v in dict(row).items()} for row in rows]
     # Batch-fetch professional assignments
     if treatments:
         tt_ids = [t['id'] for t in treatments]

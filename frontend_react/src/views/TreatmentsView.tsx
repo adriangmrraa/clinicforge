@@ -27,6 +27,7 @@ interface TreatmentType {
   is_active: boolean;
   is_available_for_booking: boolean;
   internal_notes: string;
+  base_price?: number;
   professional_ids?: number[];
 }
 
@@ -161,6 +162,7 @@ export default function TreatmentsView() {
     is_active: true,
     is_available_for_booking: true,
     internal_notes: '',
+    base_price: 0,
     professional_ids: []
   });
 
@@ -432,6 +434,18 @@ export default function TreatmentsView() {
                     </div>
                   </div>
                   <div className="space-y-2">
+                    <label className="block text-xs font-bold text-white/40 uppercase tracking-wider">{t('treatments.base_price_label') || 'Precio base ($)'}</label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30 text-sm font-bold">$</span>
+                      <input
+                        type="number" step="1" min="0" placeholder="0"
+                        value={newForm.base_price || ''}
+                        onChange={(e) => setNewForm({ ...newForm, base_price: e.target.value ? parseFloat(e.target.value) : 0 })}
+                        className="w-full pl-8 pr-4 py-3 bg-white/[0.04] border border-white/[0.08] rounded-xl text-white focus:ring-2 focus:ring-blue-500/20 outline-none font-bold text-lg"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
                     <label className="block text-xs font-bold text-white/40 uppercase tracking-wider">{t('treatments.complexity')}</label>
                     <select
                       value={newForm.complexity_level || 'medium'}
@@ -614,6 +628,24 @@ export default function TreatmentsView() {
                                 />
                               </div>
                             </div>
+                          </div>
+
+                          {/* Precio base */}
+                          <div className="space-y-2">
+                            <label className="block text-xs font-bold text-white/40 ml-1 uppercase">{t('treatments.base_price_label') || 'Precio base ($)'}</label>
+                            <div className="relative">
+                              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30 text-sm font-bold">$</span>
+                              <input
+                                type="number"
+                                step="1"
+                                min="0"
+                                placeholder="0"
+                                value={editForm.base_price || ''}
+                                onChange={(e) => setEditForm({ ...editForm, base_price: e.target.value ? parseFloat(e.target.value) : 0 })}
+                                className="w-full pl-8 pr-4 py-3 bg-white/[0.04] border border-white/[0.08] rounded-xl text-white focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none font-bold text-lg"
+                              />
+                            </div>
+                            <p className="text-[10px] text-white/30 ml-1">Valor del tratamiento. Se usa para calcular el monto a cobrar en los turnos.</p>
                           </div>
 
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">

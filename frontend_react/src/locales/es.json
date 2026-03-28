@@ -622,6 +622,7 @@
     "max_label": "Máxima",
     "default_label": "Estándar",
     "complexity_level_label": "Nivel de Complejidad",
+    "base_price_label": "Precio Base ($)",
     "emergency": "Urgencia",
     "active": "Activo",
     "in_catalog": "En Catálogo",

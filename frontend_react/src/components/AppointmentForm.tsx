@@ -450,7 +450,16 @@ export default function AppointmentForm({
                                         <button
                                             key={s.code}
                                             type="button"
-                                            onClick={() => handleChange('appointment_type', s.code)}
+                                            onClick={() => {
+                                                handleChange('appointment_type', s.code);
+                                                // Auto-fill billing amount with treatment base_price
+                                                if (s.base_price && s.base_price > 0) {
+                                                    setBillingData(prev => ({
+                                                        ...prev,
+                                                        billing_amount: String(s.base_price),
+                                                    }));
+                                                }
+                                            }}
                                             className={`px-3 py-2 text-xs font-medium rounded-lg border transition-all ${formData.appointment_type === s.code
                                                 ? 'bg-blue-500/15 border-blue-500/30 text-blue-400 shadow-sm'
                                                 : 'bg-white/[0.04] border-white/[0.08] text-white/50 hover:bg-white/[0.06]'
