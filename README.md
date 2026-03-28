@@ -2,7 +2,7 @@
 
 **The first AI-driven Operating System for clinical practice management that connects patient care with advertising ROI.** Full-funnel attribution from Meta Ads click to appointment, multi-tenant data sovereignty, AI-powered triage, and true omnichannel (WhatsApp + Instagram + Facebook) — all in one platform.
 
-`Python` `React` `TypeScript` `FastAPI` `LangChain` `Meta Graph API`
+`Python` `React` `TypeScript` `FastAPI` `LangChain` `pgvector` `Meta Graph API`
 
 ---
 
@@ -14,6 +14,8 @@
 - [Technology Stack & Architecture](#-technology-stack--architecture)
 - [AI Models & Capabilities](#-ai-models--capabilities)
 - [Key Features](#-key-features)
+- [RAG System — Semantic FAQ Search](#-rag-system--semantic-faq-search)
+- [ROI Dashboard — Real Attribution Analytics](#-roi-dashboard--real-attribution-analytics)
 - [Project Structure](#-project-structure)
 - [Deployment Guide (Quick Start)](#-deployment-guide-quick-start)
 - [Documentation Hub](#-documentation-hub)
@@ -246,8 +248,8 @@ ClinicForge uses a **Sovereign Microservices Architecture**, designed to scale w
 
 | Layer | Technology |
 |-------|------------|
-| **Database** | PostgreSQL (clinical records, patients, appointments, tenants, professionals, Meta Ads attribution) |
-| **ORM & Migrations** | SQLAlchemy 2.0 (30 model classes) + **Alembic** (versioned schema migrations, auto-run on startup) |
+| **Database** | PostgreSQL 13+ with **pgvector** extension (clinical records, patients, appointments, tenants, professionals, Meta Ads attribution, FAQ embeddings) |
+| **ORM & Migrations** | SQLAlchemy 2.0 (31+ model classes) + **Alembic** (9 versioned schema migrations, auto-run on startup) |
 | **Cache / Locks** | Redis (deduplication, context, Meta Ads enrichment cache) |
 | **Containers** | Docker & Docker Compose |
 | **Deployment** | EasyPanel, Render, AWS ECS compatible |
@@ -262,6 +264,7 @@ ClinicForge uses a **Sovereign Microservices Architecture**, designed to scale w
 | **Tools** | `check_availability`, `book_appointment`, `list_services`, `list_professionals`, `list_my_appointments`, `cancel_appointment`, `reschedule_appointment`, `triage_urgency`, `derivhumano` |
 | **Hybrid calendar** | Per-tenant: local (BD) or Google Calendar; JIT sync and collision checks |
 | **Ad-Aware AI** | System prompt enriched with Meta Ad context; urgency detection cross-referenced with ad intent |
+| **RAG (Semantic Search)** | pgvector + OpenAI `text-embedding-3-small` (1536 dims); semantic FAQ retrieval replaces static injection; fallback to first-20 FAQs if pgvector unavailable |
 
 ### 🔐 Security & Authentication
 
@@ -365,6 +368,51 @@ ClinicForge cuenta con un motor de tareas en segundo plano (`orchestrator_servic
 
 ---
 
+## 🧠 RAG System — Semantic FAQ Search
+
+ClinicForge uses **Retrieval-Augmented Generation (RAG)** to make the AI agent smarter about clinic-specific knowledge:
+
+```
+Patient message: "cuánto cuesta una limpieza?"
+    ↓
+OpenAI Embedding (text-embedding-3-small) → vector [1536 dims]
+    ↓
+pgvector cosine similarity search → faq_embeddings WHERE tenant_id = $X
+    ↓
+Top-5 most relevant FAQs injected into system prompt
+    ↓
+AI responds with accurate, clinic-specific pricing
+```
+
+**Key benefits:**
+- **Token efficiency**: Only relevant FAQs are injected (5 vs 20), saving ~500 tokens/request
+- **Scalability**: Works with 100+ FAQs per tenant (no hard limit of 20)
+- **Accuracy**: Semantic matching finds relevant FAQs even with different wording
+- **Zero-downtime fallback**: If pgvector isn't available, falls back to static FAQ injection
+- **Auto-sync**: Embeddings auto-generate when FAQs are created/updated/deleted
+- **Nova integration**: Voice assistant can search the knowledge base on-demand via `buscar_en_base_conocimiento` tool
+
+---
+
+## 📊 ROI Dashboard — Real Attribution Analytics
+
+A dedicated dashboard (`/roi`) that consolidates marketing ROI with real data:
+
+| KPI | Source |
+|-----|--------|
+| **Total Spend** | Meta Ads API (real) or estimation if no token |
+| **Total Revenue** | `appointments.billing_amount` (paid/partial) or `consultation_price × patients` |
+| **ROI %** | `((revenue - spend) / spend) × 100` |
+| **Leads / Conversions** | `patients WHERE acquisition_source = 'META_ADS'` + appointments |
+| **Cost per Lead** | `spend / leads` |
+| **Attribution Mix** | First Touch / Last Touch / Conversion / Organic (%) |
+
+**Transparency**: Every response includes `data_source: "meta_api" | "estimated"` so the UI shows a badge indicating whether data is real or estimated.
+
+**8 API endpoints** at `/admin/metrics/*`: executive-summary, campaigns, roi/dashboard, attribution/mix, trend, top/campaigns, comparison/first-vs-last, attribution/report.
+
+---
+
 ## 📁 Project Structure
 
 ```
@@ -372,7 +420,7 @@ ClinicForge/
 ├── 📂 frontend_react/            # React 18 + Vite SPA (Operations Center)
 │   ├── src/
 │   │   ├── components/           # Layout, Sidebar, MarketingPerformanceCard, AdContextCard, Vault components, etc.
-│   │   ├── views/                # Dashboard, Agenda, Patients, Chats, MetaTemplatesView, ConfigView, Landing, etc.
+│   │   ├── views/                # Dashboard, Agenda, Patients, Chats, ROIDashboard, MarketingHub, Config, Landing, etc.
 │   │   ├── context/              # AuthContext, LanguageContext
 │   │   ├── locales/              # es.json, en.json, fr.json
 │   │   └── api/                  # axios (JWT + X-Admin-Token)
@@ -396,6 +444,8 @@ ClinicForge/
 │   ├── services/
 │   │   ├── meta_ads_service.py   # Meta Graph API client (ad enrichment)
 │   │   ├── marketing_service.py  # ROI & Performance intelligence
+│   │   ├── metrics_service.py    # Unified attribution metrics (ROI dashboard)
+│   │   ├── embedding_service.py  # RAG: pgvector embeddings, semantic FAQ search
 │   │   └── tasks.py              # Background tasks (Redis cache + enrichment)
 │   ├── jobs/                     # Modular background jobs system (The Scheduler)
 │   │   ├── lead_recovery.py      # Lead recovery AI-driven logic

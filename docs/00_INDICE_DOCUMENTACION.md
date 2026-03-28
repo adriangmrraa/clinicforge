@@ -87,7 +87,18 @@ Documentos usados durante el desarrollo, auditorías cerradas y especificaciones
 
 ---
 
-## 🔄 Últimas Actualizaciones (2026-03-24)
+## 🔄 Últimas Actualizaciones (2026-03-28)
+
+| Documento | Cambio |
+|-----------|--------|
+| `API_REFERENCE.md` | +8 endpoints de métricas ROI `/admin/metrics/*`, +endpoint `executive-summary` |
+| `INTEGRATIONS_LOGIC_DEEP_DIVE.md` | +Sección 8: RAG System (pgvector, embedding_service, búsqueda semántica FAQs), +Sección 9: ROI Analytics Pipeline |
+| `01_architecture.md` | +tablas `faq_embeddings`/`document_embeddings`, +Sección 3.2 RAG System |
+| `migraciones_y_roadmap_alembic.md` | +Migraciones 007-009 (tenant_logo_url, max_chairs, pgvector_faq_embeddings) |
+| `CLAUDE.md` | +RAG System pattern, +ROI Dashboard pattern, +embedding_service, +Nova tool buscar_en_base_conocimiento, +pgvector en tech stack |
+| `README.md` | +Sección RAG System, +Sección ROI Dashboard, +pgvector en stack, +embedding_service en project structure |
+
+### Actualizaciones anteriores (2026-03-24)
 
 | Documento | Cambio |
 |-----------|--------|

@@ -303,8 +303,27 @@ Para optimizar el rendimiento en conversaciones extensas, Dentalogic utiliza un 
 | **token_usage** | **(NUEVA 2026-03)** Registro detallado de consumo de tokens por conversación, modelo y costo USD. |
 | **system_config** | **(NUEVA 2026-03)** Configuración dinámica del sistema (modelos IA, temperaturas, limits). Categorías: ai, monitoring, limits, clinic, features. |
 | **business_assets** | **(NUEVA 2026-03)** Assets descubiertos via Meta: Pages, IG accounts, WABAs. |
+| **faq_embeddings** | **(NUEVA 2026-03)** Embeddings vectoriales (1536 dims, pgvector) para búsqueda semántica de FAQs del agente IA. FK a clinic_faqs con CASCADE. |
+| **document_embeddings** | **(NUEVA 2026-03)** Embeddings vectoriales para documentos clínicos y notas (fase 2). source_type + source_id para polimorfismo. |
 
-### 3.2 Maintenance Robot (Self-Healing)
+### 3.2 RAG System (Retrieval-Augmented Generation)
+
+El sistema RAG utiliza **pgvector** (extensión PostgreSQL) para búsqueda semántica de FAQs:
+
+```
+Mensaje paciente → OpenAI embedding (text-embedding-3-small, 1536 dims)
+    → pgvector cosine similarity search (faq_embeddings WHERE tenant_id = $X)
+    → Top-5 FAQs relevantes → Inyección en system prompt
+```
+
+**Componentes clave:**
+- **`services/embedding_service.py`**: Generación de embeddings, upsert/delete, búsqueda semántica, sync masivo.
+- **Hooks en `admin_routes.py`**: Sincronización automática al crear/editar/eliminar FAQs (fire-and-forget con `asyncio.create_task`).
+- **Startup sync**: `sync_all_tenants_faq_embeddings()` ejecuta al arrancar el servicio para llenar embeddings faltantes.
+- **Fallback**: Si pgvector no está disponible, el sistema usa el método original (primeras 20 FAQs estáticas). Cero breaking changes.
+- **Configuración**: Modelo de embeddings configurable en `system_config` (key `MODEL_EMBEDDINGS`), top-K y threshold también configurables.
+
+### 3.3 Maintenance Robot (Self-Healing)
 El sistema utiliza un **Robot de Mantenimiento** integrado en `orchestrator_service/db.py` que garantiza la integridad del esquema en cada arranque:
 - **Foundation**: Si no existe la tabla `tenants`, aplica el esquema base completo.
 - **Evolution Pipeline**: Una lista de parches (`patches`) en Python que ejecutan bloques `DO $$` para agregar columnas o tablas nuevas de forma idempotente y segura.

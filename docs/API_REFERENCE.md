@@ -622,6 +622,58 @@ Lista los últimos casos de urgencia detectados por el sistema de triaje IA.
 ]
 ```
 
+### Métricas Unificadas de ROI (Spec 07)
+
+`GET /admin/metrics/executive-summary?period=last_30d`
+
+Resumen ejecutivo de ROI con datos reales de Meta API (o estimaciones si no hay token). Períodos: `last_7d`, `last_30d`, `last_90d`, `this_year`.
+
+**Response:**
+```json
+{
+  "total_spend": 1500.00,
+  "total_revenue": 8500.00,
+  "roi_percentage": 466.7,
+  "total_leads": 45,
+  "total_conversions": 12,
+  "conversion_rate": 26.7,
+  "cost_per_lead": 33.33,
+  "cost_per_conversion": 125.00,
+  "top_campaign": { "name": "Implantes Premium", "patients": 8 },
+  "data_source": "meta_api",
+  "currency": "ARS",
+  "platforms": ["meta"]
+}
+```
+
+`GET /admin/metrics/campaigns?period=monthly&attribution_type=first_touch`
+
+Métricas por campaña con atribución (WhatsApp referrals + Leads Forms). Soporta `first_touch` y `last_touch`.
+
+`GET /admin/metrics/roi/dashboard?period=monthly`
+
+Dashboard completo: first/last touch comparison, trend data, top campaigns, attribution mix.
+
+`GET /admin/metrics/attribution/mix?period=monthly`
+
+Mix de atribución: % First Touch, Last Touch, Conversion, Organic.
+
+`GET /admin/metrics/trend?period=monthly`
+
+Datos de tendencia temporal (leads, pacientes, conversiones por período).
+
+`GET /admin/metrics/top/campaigns?period=monthly&limit=10`
+
+Top campañas ordenadas por pacientes generados.
+
+`GET /admin/metrics/comparison/first-vs-last?period=monthly`
+
+Comparación directa First Touch vs Last Touch: pacientes, conversion rate, ROI.
+
+`GET /admin/metrics/attribution/report?campaign_id=X&date_from=YYYY-MM-DD`
+
+Reporte detallado de atribución por paciente (journey: first touch → last touch → conversion).
+
 ---
 
 ## Marketing Hub (Meta Ads + Google Ads)

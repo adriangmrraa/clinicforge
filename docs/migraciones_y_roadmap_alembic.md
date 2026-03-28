@@ -185,5 +185,10 @@ La migración a Alembic se completó. Las migraciones viven en `orchestrator_ser
 | 004 | `004_guardian_phone.py` | `patients.guardian_phone` para menores |
 | 005 | `005_meta_native_connection.py` | Tabla `business_assets`, columnas `instagram_psid`/`facebook_psid` en patients, `source_entity_id`/`platform_origin` en conversations |
 | **006** | **`006_add_billing_bank_derivation.py`** | **(NUEVO 2026-03-24)** Billing: `bank_cbu`/`bank_alias`/`bank_holder_name`/`derivation_email` en tenants. `billing_amount`/`billing_installments`/`billing_notes`/`payment_status`/`payment_receipt_data` en appointments. `consultation_price` en professionals. |
+| 007 | `007_add_tenant_logo_url.py` | `tenants.logo_url` para branding por tenant. |
+| 008 | `008_add_max_chairs.py` | `tenants.max_chairs` para control de sillones simultáneos. |
+| **009** | **`009_add_pgvector_faq_embeddings.py`** | **(NUEVO 2026-03-28)** RAG System: extensión `pgvector`, tabla `faq_embeddings` (vector 1536 dims + ivfflat index), tabla `document_embeddings` (fase 2). Índices de cosine similarity para búsqueda semántica. |
 
 El startup script (`start.sh`) ejecuta `alembic upgrade head` automáticamente al iniciar el servicio.
+
+> **Nota pgvector**: La migración 009 requiere que PostgreSQL tenga soporte para la extensión `vector`. En PostgreSQL 13+ con paquete pgvector instalado, `CREATE EXTENSION IF NOT EXISTS vector` es idempotente. Si el hosting no soporta pgvector, el sistema funciona en modo fallback (FAQs estáticas).

@@ -375,3 +375,74 @@ El sistema ahora opera con módulos independientes acoplados al ciclo de vida de
 
 ### Ejecución
 Se basa en un Scheduler Asíncrono Central que inicializa todas las rutinas registradas al encender la app y procesa cada rutina iterativamente sin bloquear los request-handling concurrentes.
+
+---
+
+## 8. RAG System — Búsqueda Semántica de FAQs (Spec 07, 2026-03-28)
+
+### Problema
+El agente IA inyectaba las primeras 20 FAQs de la clínica en cada prompt sin filtrar por relevancia. Esto desperdiciaba tokens y no escalaba para tenants con 50+ FAQs.
+
+### Arquitectura
+
+```
+Mensaje del paciente
+    ↓
+embedding_service.generate_embedding(message)  →  vector 1536 dims (OpenAI text-embedding-3-small)
+    ↓
+pgvector cosine similarity: SELECT ... FROM faq_embeddings WHERE tenant_id = $1 ORDER BY embedding <=> query LIMIT 5
+    ↓
+Top-5 FAQs relevantes  →  inyectadas en system prompt con score de relevancia
+```
+
+### Componentes
+
+| Archivo | Función |
+|---------|---------|
+| `services/embedding_service.py` | Servicio central: `generate_embedding()`, `upsert_faq_embedding()`, `search_similar_faqs()`, `sync_all_tenants_faq_embeddings()`, `format_faqs_with_rag()` |
+| `alembic/versions/009_*` | Migración: extensión pgvector, tablas `faq_embeddings` + `document_embeddings` con índices ivfflat |
+| `admin_routes.py` | Hooks en FAQ CRUD: auto-sync embeddings al crear/editar/eliminar FAQs |
+| `services/buffer_task.py` | Integración: llama a `format_faqs_with_rag(tenant_id, user_message, static_faqs)` antes de construir el prompt |
+| `services/nova_tools.py` | Tool `buscar_en_base_conocimiento`: búsqueda semántica on-demand para Nova |
+
+### Fallback
+Si pgvector no está disponible (detección automática via `check_pgvector_available()`), el sistema usa el método original: primeras 20 FAQs estáticas. Cero breaking changes, cero errores.
+
+### Configuración (system_config)
+| Key | Default | Descripción |
+|-----|---------|-------------|
+| `MODEL_EMBEDDINGS` | `text-embedding-3-small` | Modelo de OpenAI para embeddings |
+| `RAG_TOP_K` | `5` | Cantidad de FAQs relevantes a retornar |
+| `RAG_SIMILARITY_THRESHOLD` | `0.7` | Umbral mínimo de similaridad coseno |
+
+---
+
+## 9. ROI Analytics Pipeline (Spec 07, 2026-03-28)
+
+### Arquitectura
+
+```
+Meta Ads API (spend real)  ──┐
+                              ├──→  MetricsService._enrich_metrics_with_roi()  ──→  Dashboard Frontend
+Billing data (appointments) ──┘                                                         (/roi)
+```
+
+### Fuentes de datos para ROI
+1. **Spend**: `MarketingService.get_roi_stats()` → Meta Ads API (real) o estimaciones si no hay token.
+2. **Revenue**: `appointments.billing_amount WHERE payment_status IN ('paid', 'partial')` (real) o `consultation_price × patients` (estimado).
+3. **Attribution**: `patients.first_touch_*` / `last_touch_*` + `meta_form_leads.status = 'converted'`.
+
+### Endpoints (`/admin/metrics/*`)
+| Endpoint | Descripción |
+|----------|-------------|
+| `/executive-summary` | KPIs: spend, revenue, ROI %, leads, conversions, cost/lead, top campaign |
+| `/campaigns` | Métricas por campaña con tipo de atribución seleccionable |
+| `/roi/dashboard` | Dashboard completo: comparación first/last touch, trends, top campaigns, attribution mix |
+| `/attribution/mix` | Distribución porcentual: First Touch / Last Touch / Conversion / Organic |
+| `/trend` | Series temporales de leads, pacientes y conversiones |
+| `/top/campaigns` | Top 10 campañas por pacientes generados |
+| `/comparison/first-vs-last` | Comparación directa de modelos de atribución |
+| `/attribution/report` | Reporte detallado por paciente con journey de atribución |
+
+### Transparencia
+Cada response incluye `data_source: "meta_api" | "estimated"` para que el frontend muestre un badge indicando si los datos son reales o estimados.

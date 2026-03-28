@@ -26,7 +26,7 @@ WhatsApp Service (:8002)  ←→  Orchestrator  ←→  YCloud / Chatwoot
 
 ### Infrastructure
 
-- **Database**: PostgreSQL 13 with SQLAlchemy 2.0 ORM (31 model classes in `orchestrator_service/models.py`)
+- **Database**: PostgreSQL 13 with SQLAlchemy 2.0 ORM (31 model classes in `orchestrator_service/models.py`) + pgvector extension for RAG embeddings
 - **Migrations**: Alembic (`orchestrator_service/alembic/`) — auto-runs `alembic upgrade head` on startup via `start.sh`
 - **Cache**: Redis (deduplication, message buffers, Meta Ads enrichment cache)
 - **Containers**: Docker Compose (`docker-compose.yml`)
@@ -47,8 +47,11 @@ WhatsApp Service (:8002)  ←→  Orchestrator  ←→  YCloud / Chatwoot
 - `analytics_service.py` — Professional metrics and reporting
 - `services/meta_ads_service.py` — Meta Graph API client
 - `services/marketing_service.py` — ROI & performance intelligence
+- `services/embedding_service.py` — RAG system: pgvector embeddings, semantic FAQ search
+- `services/metrics_service.py` — Unified attribution metrics (first/last touch, ROI dashboard)
+- `routes/metrics.py` — `/admin/metrics/*` endpoints (campaigns, attribution, ROI, trends)
 - `jobs/` — Background jobs: lead recovery, reminders, followups
-- `alembic/` — Database migrations (001 baseline → 002 treatment_type_professionals → 003 consultation_price/anamnesis_token → 004 guardian_phone → 005 meta_native_connection → 006 billing_bank_derivation)
+- `alembic/` — Database migrations (001 baseline → 002 treatment_type_professionals → 003 consultation_price/anamnesis_token → 004 guardian_phone → 005 meta_native_connection → 006 billing_bank_derivation → 007 tenant_logo_url → 008 max_chairs → 009 pgvector_faq_embeddings)
 - `email_service.py` — Handoff email service (multi-channel, multi-recipient)
 - `dashboard/config_manager.py` — Dynamic AI model configuration (system_config table)
 - `dashboard/token_tracker.py` — Token usage tracking per conversation
@@ -175,7 +178,7 @@ Follow conventional style: `feat:`, `fix:`, `docs:`, `refactor:` with concise de
 ### Backend
 - Python 3.11+ / FastAPI / Uvicorn (ASGI)
 - LangChain 0.1.0 + OpenAI gpt-4o-mini
-- PostgreSQL 13 / asyncpg / SQLAlchemy 2.0 / Alembic
+- PostgreSQL 13 / asyncpg / SQLAlchemy 2.0 / Alembic / pgvector (RAG)
 - Redis / Socket.IO / Pydantic
 - Google Calendar API / YCloud (WhatsApp) / Meta Graph API
 
@@ -282,6 +285,20 @@ Unique link to a mobile-optimized anamnesis checklist form (`/anamnesis/{tenant_
 ### BFF Proxy Pattern
 Frontend (port 4173) never calls the orchestrator directly. All API calls go through the BFF Express proxy (port 3000), which handles CORS and 60s timeouts.
 
+### RAG System (Retrieval-Augmented Generation)
+Semantic FAQ search powered by pgvector. Instead of injecting all 20 FAQs into the AI prompt, the system embeds each FAQ as a 1536-dim vector (OpenAI `text-embedding-3-small`) and retrieves only the top-5 most relevant FAQs based on the patient's message.
+
+**Architecture:** `patient message → embedding → pgvector cosine similarity → top-K FAQs → inject into prompt`
+
+**Tables:** `faq_embeddings` (per-FAQ vectors), `document_embeddings` (future: clinical docs).
+
+**Fallback:** If pgvector is not available (hosting limitation), the system automatically falls back to the original static FAQ injection (first 20 FAQs). No breakage.
+
+**Sync:** Embeddings auto-generate on FAQ create/update/delete via hooks in `admin_routes.py`. Bulk sync runs at startup for all tenants (`embedding_service.sync_all_tenants_faq_embeddings`).
+
+### ROI Dashboard
+Dedicated analytics view (`/roi`) with real spend data from Meta API and billing revenue from appointments. Executive summary endpoint consolidates: total spend, revenue, ROI %, leads, conversions, cost per lead, top campaign. Attribution mix shows First Touch vs Last Touch vs Organic distribution. All metrics scoped by `tenant_id`.
+
 ---
 
 ## Nova — AI Voice Assistant (Jarvis for Dental Clinics)
@@ -293,7 +310,7 @@ Nova is the voice-powered AI copilot that runs inside ClinicForge. Available as 
 ```
 NovaWidget (React)  →  WebSocket  →  Nova Handler (main.py)  →  OpenAI Realtime API
                                           ↕
-                                    Nova Tools (49 tools)  →  PostgreSQL
+                                    Nova Tools (50 tools)  →  PostgreSQL
 ```
 
 ### Files
@@ -305,7 +322,7 @@ NovaWidget (React)  →  WebSocket  →  Nova Handler (main.py)  →  OpenAI Rea
 | `orchestrator_service/services/nova_daily_analysis.py` | Automated daily insights (every 12h) |
 | `orchestrator_service/routes/nova_routes.py` | REST endpoints (context, health, sessions) |
 
-### Tools (49 total)
+### Tools (50 total)
 Organized in categories:
 
 | Category | Tools | Count |
@@ -320,6 +337,7 @@ Organized in categories:
 | **H. Anamnesis** | guardar_anamnesis, ver_anamnesis | 2 |
 | **H2. Odontograma** | ver_odontograma, modificar_odontograma | 2 |
 | **I. Datos** | consultar_datos | 1 |
+| **K. RAG** | buscar_en_base_conocimiento | 1 |
 | **J. CRUD** | obtener_registros, actualizar_registro, crear_registro, contar_registros | 4 |
 
 ### Tool Schema Format (CRITICAL)
