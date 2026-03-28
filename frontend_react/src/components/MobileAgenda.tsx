@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import DateStrip from './DateStrip';
 import type { Appointment, Professional, GoogleCalendarBlock } from '../views/AgendaView';
 import { Clock, User, Phone, Lock, CalendarDays, CalendarRange, List, ListOrdered } from 'lucide-react';
@@ -159,9 +159,15 @@ export default function MobileAgenda({
                         </span>
                     )}
                 </div>
-                <span className="text-[9px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-white/[0.04] text-white/40">
-                    {evt.uiType === 'block' ? 'Bloqueado' : evt.status}
-                </span>
+                <div className="flex items-center gap-1.5">
+                    {/* Payment status dot */}
+                    {evt.payment_status === 'paid' && <div className="w-2 h-2 rounded-full bg-emerald-400" />}
+                    {evt.payment_status === 'partial' && <div className="w-2 h-2 rounded-full bg-amber-400" />}
+                    {evt.payment_status === 'pending' && evt.billing_amount > 0 && <div className="w-2 h-2 rounded-full bg-red-400 animate-pulse" />}
+                    <span className="text-[9px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-white/[0.04] text-white/40">
+                        {evt.uiType === 'block' ? 'Bloqueado' : evt.status}
+                    </span>
+                </div>
             </div>
 
             <div className="mb-1">

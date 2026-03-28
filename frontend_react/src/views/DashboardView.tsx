@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
-import { MessageSquare, Calendar, Activity as LucideActivity, DollarSign, TrendingUp, TrendingDown, Target, Zap, Clock, ArrowUpRight, User } from 'lucide-react';
+import { MessageSquare, Calendar, Activity as LucideActivity, DollarSign, TrendingUp, TrendingDown, Target, Zap, Clock, ArrowUpRight, User, AlertCircle } from 'lucide-react';
 import {
   XAxis,
   YAxis,
@@ -25,6 +25,8 @@ interface AnalyticsStats {
   ia_appointments: number;
   active_urgencies: number;
   total_revenue: number;
+  pending_payments?: number;
+  today_revenue?: number;
   growth_data: { date: string; ia_referrals: number; completed_appointments: number }[];
 }
 
@@ -266,6 +268,20 @@ export default function DashboardView() {
             color="bg-amber-500"
             trend="+15%"
             image={CARD_IMAGES.revenue}
+          />
+          <KPICard
+            title={t('dashboard.pending_payments')}
+            value={`$${Math.round(stats.pending_payments || 0).toLocaleString('es-AR')}`}
+            icon={AlertCircle}
+            color="bg-amber-500"
+            image={CARD_IMAGES?.pending}
+          />
+          <KPICard
+            title={t('dashboard.today_revenue')}
+            value={`$${Math.round(stats.today_revenue || 0).toLocaleString('es-AR')}`}
+            icon={DollarSign}
+            color="bg-teal-500"
+            image={CARD_IMAGES?.revenue_today}
           />
         </div>
 

@@ -33,6 +33,9 @@ interface Patient {
   meta_ad_id?: string;
   meta_ad_headline?: string;
   meta_campaign_id?: string;
+  next_appointment_date?: string;
+  last_visit?: string;
+  pending_balance?: number;
 }
 
 interface ClinicalRecord {
@@ -257,6 +260,43 @@ export default function PatientDetail() {
       case 'summary':
         return (
           <div className="space-y-6">
+            {/* Financial Summary */}
+            {(() => {
+              // Calculate from records if available — or use placeholder
+              return (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+                  <div className="bg-white/[0.03] border border-white/[0.06] rounded-xl p-3">
+                    <p className="text-[10px] text-white/40 uppercase font-bold">Turnos</p>
+                    <p className="text-lg font-bold text-white">{records.length}</p>
+                  </div>
+                  <div className="bg-white/[0.03] border border-white/[0.06] rounded-xl p-3">
+                    <p className="text-[10px] text-white/40 uppercase font-bold">Próximo turno</p>
+                    <p className="text-sm font-semibold text-blue-400">
+                      {patient?.next_appointment_date
+                        ? new Date(patient.next_appointment_date).toLocaleDateString('es-AR', {day:'2-digit', month:'short'})
+                        : 'Sin turno'}
+                    </p>
+                  </div>
+                  <div className="bg-white/[0.03] border border-white/[0.06] rounded-xl p-3">
+                    <p className="text-[10px] text-white/40 uppercase font-bold">Última visita</p>
+                    <p className="text-sm font-semibold text-white/60">
+                      {patient?.last_visit
+                        ? new Date(patient.last_visit).toLocaleDateString('es-AR', {day:'2-digit', month:'short', year:'numeric'})
+                        : 'Sin visitas'}
+                    </p>
+                  </div>
+                  <div className="bg-white/[0.03] border border-white/[0.06] rounded-xl p-3">
+                    <p className="text-[10px] text-white/40 uppercase font-bold">Balance pendiente</p>
+                    <p className={`text-sm font-bold ${(patient?.pending_balance || 0) > 0 ? 'text-amber-400' : 'text-emerald-400'}`}>
+                      {(patient?.pending_balance || 0) > 0
+                        ? `$${Math.round(patient.pending_balance).toLocaleString('es-AR')}`
+                        : 'Al día'}
+                    </p>
+                  </div>
+                </div>
+              );
+            })()}
+
             {/* Componente Odontograma */}
             <Odontogram
               patientId={parseInt(id!)}

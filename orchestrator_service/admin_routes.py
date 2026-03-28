@@ -1628,6 +1628,21 @@ async def get_dashboard_stats(
             AND at.created_at >= CURRENT_DATE - {interval_expr} * 2
         """, tenant_id) or 0
 
+        # 7. Pending payments (non-cancelled appointments with pending/partial payment)
+        pending_payments = await db.pool.fetchval("""
+            SELECT COALESCE(SUM(billing_amount), 0)
+            FROM appointments
+            WHERE tenant_id = $1 AND payment_status IN ('pending', 'partial') AND status NOT IN ('cancelled')
+        """, tenant_id) or 0
+
+        # 8. Today's revenue (paid appointments for today in Argentina timezone)
+        today_revenue = await db.pool.fetchval("""
+            SELECT COALESCE(SUM(billing_amount), 0)
+            FROM appointments
+            WHERE tenant_id = $1 AND payment_status = 'paid'
+            AND DATE(appointment_datetime AT TIME ZONE 'America/Argentina/Buenos_Aires') = CURRENT_DATE
+        """, tenant_id) or 0
+
         def calc_trend(current, previous):
             if previous == 0:
                 return "+100%" if current > 0 else "0%"
@@ -1643,6 +1658,8 @@ async def get_dashboard_stats(
             "total_revenue": float(confirmed_revenue),
             "total_revenue_trend": calc_trend(float(confirmed_revenue), float(prev_confirmed_revenue)),
             "estimated_revenue": float(estimated_revenue),
+            "pending_payments": float(pending_payments),
+            "today_revenue": float(today_revenue),
             "growth_data": growth_data
         }
     except Exception as e:
@@ -2509,7 +2526,37 @@ async def list_patients(
         query += " ORDER BY p.created_at DESC LIMIT $2"
         params.append(limit)
     rows = await db.pool.fetch(query, *params)
-    return [dict(row) for row in rows]
+    patients = [dict(row) for row in rows]
+
+    if patients:
+        patient_ids = [p['id'] for p in patients]
+
+        # Batch query: next appointment per patient
+        next_apts = await db.pool.fetch("""
+            SELECT DISTINCT ON (patient_id) patient_id, appointment_datetime
+            FROM appointments
+            WHERE tenant_id = $1 AND status IN ('scheduled','confirmed') AND appointment_datetime > NOW()
+              AND patient_id = ANY($2::int[])
+            ORDER BY patient_id, appointment_datetime ASC
+        """, tenant_id, patient_ids)
+
+        # Batch query: pending balance per patient
+        balances = await db.pool.fetch("""
+            SELECT patient_id, COALESCE(SUM(billing_amount), 0) as pending
+            FROM appointments
+            WHERE tenant_id = $1 AND payment_status IN ('pending','partial') AND status NOT IN ('cancelled')
+              AND patient_id = ANY($2::int[])
+            GROUP BY patient_id
+        """, tenant_id, patient_ids)
+
+        next_apt_map = {r['patient_id']: r['appointment_datetime'] for r in next_apts}
+        balance_map = {r['patient_id']: float(r['pending']) for r in balances}
+
+        for p in patients:
+            p['next_appointment_date'] = next_apt_map.get(p['id'])
+            p['pending_balance'] = balance_map.get(p['id'], 0.0)
+
+    return patients
 
 @router.post("/professionals", dependencies=[Depends(verify_admin_token)], tags=["Profesionales"], summary="Crear un nuevo profesional de la salud")
 async def create_professional(
@@ -3256,7 +3303,8 @@ async def list_appointments(
                (p.first_name || ' ' || COALESCE(p.last_name, '')) as patient_name,
                p.phone_number as patient_phone,
                prof.first_name as professional_name, prof.id as professional_id,
-               COALESCE(tt.name, a.appointment_type, 'Consulta') as appointment_name
+               COALESCE(tt.name, a.appointment_type, 'Consulta') as appointment_name,
+               CASE WHEN LOWER(COALESCE(p.medical_notes, '')) ~ '(diabetes|hipertension|cardiopatia|hemofilia|alergia penicilina|embarazo|anticoagulacion|vih|hepatitis|asma severa)' THEN true ELSE false END as has_medical_alerts
         FROM appointments a
         JOIN patients p ON a.patient_id = p.id
         LEFT JOIN professionals prof ON a.professional_id = prof.id

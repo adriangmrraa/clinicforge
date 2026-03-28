@@ -14,6 +14,7 @@ interface ExtendedProps {
     appointment_name?: string;
     notes?: string;
     urgency_level?: string;
+    has_medical_alerts?: boolean;
 }
 
 // Status Visual Configuration
@@ -106,18 +107,31 @@ export const AppointmentCard: React.FC<EventContentArg> = (eventInfo) => {
       transition-all duration-200 cursor-pointer overflow-hidden
       ${urgency_level === 'emergency' ? 'animate-pulse-soft' : ''}
     `}>
-            {/* Top: Time & Status Icon */}
+            {/* Top: Time & Status Icon + Payment Dot */}
             <div className="flex justify-between items-start mb-0.5">
                 <span className={`text-[10px] font-mono opacity-60 ${styles.text}`}>
                     {eventInfo.timeText}
                 </span>
-                <StatusIcon size={12} className={`opacity-80 ${styles.text}`} />
+                <div className="flex items-center gap-1">
+                    {/* Payment status dot */}
+                    {props.payment_status === 'paid' && <div className="w-2 h-2 rounded-full bg-emerald-400" title="Pagado" />}
+                    {props.payment_status === 'partial' && <div className="w-2 h-2 rounded-full bg-amber-400" title="Pago parcial" />}
+                    {props.payment_status === 'pending' && props.billing_amount > 0 && <div className="w-2 h-2 rounded-full bg-red-400 animate-pulse" title="Pago pendiente" />}
+                    <StatusIcon size={12} className={`opacity-80 ${styles.text}`} />
+                </div>
             </div>
 
             {/* Center: Patient Name */}
             <div className={`font-semibold text-xs truncate leading-snug mb-1 ${styles.text}`}>
                 {eventInfo.event.title?.split(' - ')[0] || t('agenda.no_name')}
             </div>
+
+            {/* Medical Alert */}
+            {props.has_medical_alerts && (
+              <div className="flex items-center gap-0.5 text-[8px] text-red-400 font-bold" title="Alerta médica">
+                <AlertTriangle size={8} /> ALERTA
+              </div>
+            )}
 
             {/* Bottom: Badge & Professional */}
             <div className="mt-auto flex flex-col gap-1">

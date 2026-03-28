@@ -19,6 +19,8 @@ interface Patient {
   created_at: string;
   status?: string;
   health_conditions?: string[];
+  next_appointment_date?: string;
+  pending_balance?: number;
 }
 
 interface TreatmentType {
@@ -413,7 +415,10 @@ export default function PatientsView() {
                       {t('patients.dni_obra_social')}
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-white/50 uppercase tracking-wider">
-                      {t('patients.health')}
+                      Próximo turno
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-white/50 uppercase tracking-wider">
+                      Balance
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-white/50 uppercase tracking-wider">
                       {t('patients.date_added')}
@@ -451,7 +456,24 @@ export default function PatientsView() {
                         <div className="text-sm text-white">{patient.dni || '-'}</div>
                         <div className="text-sm text-white/50">{patient.obra_social || '-'}</div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-white/50">-</td>
+                      {/* Next appointment */}
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        {patient.next_appointment_date ? (
+                          <span className="text-xs text-blue-400">
+                            {new Date(patient.next_appointment_date).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-white/20">Sin turno</span>
+                        )}
+                      </td>
+                      {/* Pending balance */}
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        {patient.pending_balance > 0 ? (
+                          <span className="text-xs font-semibold text-amber-400">
+                            ${Math.round(patient.pending_balance).toLocaleString('es-AR')}
+                          </span>
+                        ) : null}
+                      </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-white/50">
                         {new Date(patient.created_at).toLocaleDateString(language)}
                       </td>
