@@ -1,182 +1,173 @@
+/**
+ * PageTips — Animated contextual hints that live permanently on each page.
+ * Similar to Nova's wobble/ping animations, these highlight important data
+ * and actions with constant subtle motion to give the page "life".
+ *
+ * Each page has floating animated badges/pills that point to key features.
+ * They appear after a short delay and stay visible with gentle animations.
+ * Can be dismissed individually, remembered per session.
+ */
 import { useState, useEffect } from 'react';
-import { X, Lightbulb, ArrowRight } from 'lucide-react';
+import { X } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 
-interface Tip {
+interface PageHint {
   id: string;
-  message: string;
-  position: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | 'center';
-  delay: number; // ms before showing
-  duration: number; // ms before auto-hide
-  icon?: string; // emoji
+  text: string;
+  icon: string;
+  position: string; // Tailwind positioning classes
+  animation: 'wobble' | 'pulse' | 'bounce' | 'glow' | 'float';
+  color: 'blue' | 'violet' | 'emerald' | 'amber' | 'rose';
+  delay: number; // seconds before appearing
 }
 
-interface PageTipsConfig {
-  [path: string]: Tip[];
-}
-
-const TIPS: PageTipsConfig = {
-  '/': [
-    { id: 'dash-1', message: 'Los KPIs se actualizan en tiempo real cuando el agente de IA agenda turnos o cobra pagos.', position: 'top-left', delay: 2000, duration: 6000, icon: '📊' },
-    { id: 'dash-2', message: 'Revisá "Pagos Pendientes" para ver cuánto falta cobrar. Tocá Nova para gestionar cobros por voz.', position: 'bottom-right', delay: 10000, duration: 6000, icon: '💰' },
-  ],
-  '/agenda': [
-    { id: 'agenda-1', message: 'Los puntos de colores en cada turno indican el estado de pago: verde=pagado, amarillo=parcial, rojo=pendiente.', position: 'top-left', delay: 2000, duration: 7000, icon: '🔴' },
-    { id: 'agenda-2', message: 'Tocá cualquier turno para ver la facturación, el comprobante de pago y la anamnesis del paciente.', position: 'center', delay: 11000, duration: 6000, icon: '📋' },
-    { id: 'agenda-3', message: 'Si ves "ALERTA" rojo en un turno, el paciente tiene condiciones médicas importantes. Revisá su ficha.', position: 'top-right', delay: 19000, duration: 6000, icon: '⚠️' },
-  ],
-  '/pacientes': [
-    { id: 'pac-1', message: 'La columna "Próximo turno" muestra cuándo tiene turno cada paciente. "Balance" muestra deudas pendientes.', position: 'top-right', delay: 2000, duration: 7000, icon: '📅' },
-    { id: 'pac-2', message: 'Podés importar pacientes masivamente desde Excel o CSV. Hasta 1000 pacientes por archivo.', position: 'top-left', delay: 11000, duration: 6000, icon: '📤' },
-    { id: 'pac-3', message: 'Usá la búsqueda semántica (ícono cerebro) para buscar pacientes por condición médica: "diabetes", "embarazo", etc.', position: 'center', delay: 19000, duration: 6000, icon: '🧠' },
-  ],
-  '/chats': [
-    { id: 'chat-1', message: 'Los chats se actualizan en tiempo real. El agente de IA responde automáticamente a pacientes por WhatsApp, Instagram y Facebook.', position: 'top-left', delay: 2000, duration: 7000, icon: '💬' },
-    { id: 'chat-2', message: 'Tocá "Manual" para tomar el control de un chat. La IA se silencia 24 horas cuando un humano interviene.', position: 'center', delay: 11000, duration: 6000, icon: '🤝' },
-    { id: 'chat-3', message: 'Si el candado aparece en un chat, la ventana de 24hs de WhatsApp está cerrada. Se necesita un template para contactar.', position: 'bottom-left', delay: 19000, duration: 6000, icon: '🔒' },
-  ],
-  '/tratamientos': [
-    { id: 'trat-1', message: 'Cada tratamiento tiene un precio base que se usa para calcular el monto a cobrar en los turnos.', position: 'top-left', delay: 2000, duration: 6000, icon: '💵' },
-    { id: 'trat-2', message: 'Asigná profesionales específicos a cada tratamiento. Si no asignás ninguno, todos pueden atenderlo.', position: 'center', delay: 10000, duration: 6000, icon: '👨‍⚕️' },
-  ],
-  '/marketing': [
-    { id: 'mkt-1', message: 'Conectá tu cuenta de Meta Ads para ver el ROI real: cuánto invertiste vs cuántos pacientes convirtieron.', position: 'top-left', delay: 2000, duration: 7000, icon: '📈' },
-    { id: 'mkt-2', message: 'Los leads se atribuyen automáticamente a la campaña/anuncio que los trajo. Filtrá por período para ver tendencias.', position: 'center', delay: 11000, duration: 6000, icon: '🎯' },
-  ],
-  '/configuracion': [
-    { id: 'conf-1', message: 'Configurá los datos bancarios (CBU, Alias, Titular) para que el agente de IA pueda cobrar señas automáticamente.', position: 'top-left', delay: 2000, duration: 7000, icon: '🏦' },
-    { id: 'conf-2', message: 'Las FAQs que cargues acá las usa el agente de IA para responder preguntas frecuentes de pacientes.', position: 'center', delay: 11000, duration: 6000, icon: '❓' },
-  ],
-  '/personal': [
-    { id: 'staff-1', message: 'Cada profesional puede tener su propio precio de consulta y horarios independientes de la clínica.', position: 'top-left', delay: 2000, duration: 7000, icon: '👩‍⚕️' },
-    { id: 'staff-2', message: 'La seña que paga el paciente es el 50% del precio de consulta del profesional que lo atiende.', position: 'center', delay: 10000, duration: 6000, icon: '💳' },
-  ],
+const COLOR_MAP = {
+  blue: { bg: 'bg-blue-500/10', border: 'border-blue-500/20', text: 'text-blue-400', ping: 'border-blue-400/30' },
+  violet: { bg: 'bg-violet-500/10', border: 'border-violet-500/20', text: 'text-violet-400', ping: 'border-violet-400/30' },
+  emerald: { bg: 'bg-emerald-500/10', border: 'border-emerald-500/20', text: 'text-emerald-400', ping: 'border-emerald-400/30' },
+  amber: { bg: 'bg-amber-500/10', border: 'border-amber-500/20', text: 'text-amber-400', ping: 'border-amber-400/30' },
+  rose: { bg: 'bg-rose-500/10', border: 'border-rose-500/20', text: 'text-rose-400', ping: 'border-rose-400/30' },
 };
 
-// Position classes for each tip position
-const POSITION_CLASSES: Record<string, string> = {
-  'top-left': 'top-20 left-4 sm:left-8',
-  'top-right': 'top-20 right-4 sm:right-24',
-  'bottom-left': 'bottom-24 left-4 sm:left-8',
-  'bottom-right': 'bottom-24 right-4 sm:right-24',
-  'center': 'top-1/3 left-1/2 -translate-x-1/2',
+const ANIM_MAP = {
+  wobble: 'animate-[hintWobble_4s_ease-in-out_infinite]',
+  pulse: 'animate-pulse',
+  bounce: 'animate-[hintBounce_3s_ease-in-out_infinite]',
+  glow: 'animate-[hintGlow_3s_ease-in-out_infinite]',
+  float: 'animate-[hintFloat_5s_ease-in-out_infinite]',
+};
+
+const HINTS: Record<string, PageHint[]> = {
+  '/': [
+    { id: 'dash-kpi', text: 'KPIs en vivo', icon: '📊', position: 'top-[140px] left-4 sm:left-8', animation: 'glow', color: 'blue', delay: 2 },
+    { id: 'dash-pending', text: 'Pagos por cobrar', icon: '💰', position: 'top-[140px] right-4 sm:right-8', animation: 'pulse', color: 'amber', delay: 4 },
+  ],
+  '/agenda': [
+    { id: 'ag-dots', text: '🟢 Pagado  🟡 Parcial  🔴 Pendiente', icon: '🎯', position: 'top-[85px] left-4 sm:left-[280px]', animation: 'float', color: 'blue', delay: 2 },
+    { id: 'ag-alert', text: 'Alertas médicas activas', icon: '⚠️', position: 'top-[85px] right-4 sm:right-8', animation: 'bounce', color: 'rose', delay: 5 },
+  ],
+  '/pacientes': [
+    { id: 'pac-cols', text: 'Próximo turno + Balance', icon: '📅', position: 'top-[160px] right-4 sm:right-8', animation: 'glow', color: 'emerald', delay: 2 },
+    { id: 'pac-import', text: 'Importar desde Excel', icon: '📤', position: 'top-[85px] right-4 sm:right-[200px]', animation: 'wobble', color: 'violet', delay: 4 },
+  ],
+  '/chats': [
+    { id: 'chat-live', text: 'Chats en tiempo real', icon: '💬', position: 'top-[85px] left-4 sm:left-[280px]', animation: 'pulse', color: 'blue', delay: 2 },
+    { id: 'chat-manual', text: 'Tocá Manual para intervenir', icon: '🤝', position: 'top-[85px] right-4 sm:right-8', animation: 'float', color: 'amber', delay: 4 },
+  ],
+  '/tratamientos': [
+    { id: 'trat-price', text: 'Precio base → Monto del turno', icon: '💵', position: 'top-[85px] right-4 sm:right-8', animation: 'glow', color: 'emerald', delay: 2 },
+  ],
+  '/marketing': [
+    { id: 'mkt-roi', text: 'ROI en tiempo real', icon: '📈', position: 'top-[85px] left-4 sm:left-8', animation: 'float', color: 'violet', delay: 2 },
+  ],
+  '/configuracion': [
+    { id: 'conf-bank', text: 'Datos bancarios → Cobro automático', icon: '🏦', position: 'top-[85px] left-4 sm:left-8', animation: 'glow', color: 'blue', delay: 2 },
+  ],
+  '/personal': [
+    { id: 'staff-price', text: 'Precio por profesional → Seña 50%', icon: '👩‍⚕️', position: 'top-[85px] left-4 sm:left-8', animation: 'wobble', color: 'violet', delay: 2 },
+  ],
 };
 
 export default function PageTips() {
   const location = useLocation();
-  const [activeTip, setActiveTip] = useState<Tip | null>(null);
-  const [tipIndex, setTipIndex] = useState(0);
-  const [dismissed, setDismissed] = useState(false);
+  const path = location.pathname.replace(/\/$/, '') || '/';
+  const hints = HINTS[path] || [];
 
-  // Get current page path (normalize)
-  const currentPath = location.pathname.replace(/\/$/, '') || '/';
+  const [visibleHints, setVisibleHints] = useState<Set<string>>(new Set());
+  const [dismissedHints, setDismissedHints] = useState<Set<string>>(new Set());
 
-  // Get tips for current page
-  const pageTips = TIPS[currentPath] || [];
-
+  // Reset on page change
   useEffect(() => {
-    // Reset on page change
-    setActiveTip(null);
-    setTipIndex(0);
-    setDismissed(false);
-  }, [currentPath]);
+    setVisibleHints(new Set());
 
-  useEffect(() => {
-    if (dismissed || pageTips.length === 0 || tipIndex >= pageTips.length) return;
+    // Load dismissed from session
+    const key = `hints_dismissed_${path}`;
+    const stored = sessionStorage.getItem(key);
+    setDismissedHints(stored ? new Set(JSON.parse(stored)) : new Set());
 
-    // Check if tips were already shown for this page in this session
-    const shownKey = `tips_shown_${currentPath}`;
-    if (sessionStorage.getItem(shownKey)) return;
+    // Schedule each hint to appear
+    const timers = hints.map(hint => {
+      return setTimeout(() => {
+        setVisibleHints(prev => new Set(prev).add(hint.id));
+      }, hint.delay * 1000);
+    });
 
-    const tip = pageTips[tipIndex];
-    const showTimer = setTimeout(() => {
-      setActiveTip(tip);
-    }, tip.delay);
+    return () => timers.forEach(clearTimeout);
+  }, [path]);
 
-    return () => clearTimeout(showTimer);
-  }, [tipIndex, dismissed, currentPath, pageTips]);
-
-  useEffect(() => {
-    if (!activeTip) return;
-
-    const hideTimer = setTimeout(() => {
-      setActiveTip(null);
-      // Show next tip after a short gap
-      setTimeout(() => {
-        setTipIndex(prev => prev + 1);
-      }, 1000);
-    }, activeTip.duration);
-
-    return () => clearTimeout(hideTimer);
-  }, [activeTip]);
-
-  const handleDismissAll = () => {
-    setActiveTip(null);
-    setDismissed(true);
-    const shownKey = `tips_shown_${currentPath}`;
-    sessionStorage.setItem(shownKey, '1');
+  const dismiss = (id: string) => {
+    setVisibleHints(prev => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+    setDismissedHints(prev => {
+      const next = new Set(prev).add(id);
+      const key = `hints_dismissed_${path}`;
+      sessionStorage.setItem(key, JSON.stringify([...next]));
+      return next;
+    });
   };
-
-  const handleNext = () => {
-    setActiveTip(null);
-    setTimeout(() => {
-      setTipIndex(prev => prev + 1);
-    }, 300);
-  };
-
-  if (!activeTip) return null;
 
   return (
-    <div
-      className={`fixed z-[90] max-w-sm w-[calc(100%-2rem)] sm:w-auto ${POSITION_CLASSES[activeTip.position]}`}
-      style={{ animation: 'tooltipIn 0.4s cubic-bezier(0.16,1,0.3,1)' }}
-    >
-      <div className="relative bg-[#0d1117]/95 backdrop-blur-2xl border border-white/[0.1] rounded-2xl shadow-2xl shadow-black/40 p-4 overflow-hidden">
-        {/* Gradient accent top */}
-        <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-blue-500 via-cyan-400 to-blue-500" />
+    <>
+      {hints.map(hint => {
+        if (!visibleHints.has(hint.id) || dismissedHints.has(hint.id)) return null;
+        const c = COLOR_MAP[hint.color];
+        const anim = ANIM_MAP[hint.animation];
 
-        {/* Content */}
-        <div className="flex items-start gap-3">
-          <span className="text-xl shrink-0 mt-0.5">{activeTip.icon || '💡'}</span>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm text-white/90 leading-relaxed">{activeTip.message}</p>
-            <div className="flex items-center gap-3 mt-3">
-              {tipIndex < pageTips.length - 1 && (
+        return (
+          <div
+            key={hint.id}
+            className={`fixed z-[80] ${hint.position} pointer-events-auto`}
+            style={{ animation: 'hintAppear 0.5s cubic-bezier(0.16,1,0.3,1)' }}
+          >
+            <div className={`${anim} relative`}>
+              {/* Ping ring */}
+              <div className={`absolute inset-0 rounded-full border-2 ${c.ping} animate-[novaPing_3s_ease-out_infinite] pointer-events-none`} />
+
+              <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full ${c.bg} border ${c.border} backdrop-blur-xl shadow-lg cursor-default group`}>
+                <span className="text-sm">{hint.icon}</span>
+                <span className={`text-[11px] font-semibold ${c.text} whitespace-nowrap`}>{hint.text}</span>
                 <button
-                  onClick={handleNext}
-                  className="flex items-center gap-1 text-[10px] font-bold text-blue-400 hover:text-blue-300 uppercase tracking-wider transition-colors"
+                  onClick={() => dismiss(hint.id)}
+                  className={`ml-1 p-0.5 rounded-full opacity-0 group-hover:opacity-100 hover:bg-white/[0.1] ${c.text} transition-all duration-200`}
                 >
-                  Siguiente <ArrowRight size={10} />
+                  <X size={10} />
                 </button>
-              )}
-              <button
-                onClick={handleDismissAll}
-                className="text-[10px] font-bold text-white/30 hover:text-white/60 uppercase tracking-wider transition-colors ml-auto"
-              >
-                Cerrar tips
-              </button>
+              </div>
             </div>
           </div>
-          <button
-            onClick={handleDismissAll}
-            className="shrink-0 p-1 rounded-full hover:bg-white/[0.08] text-white/30 hover:text-white/60 transition-all"
-          >
-            <X size={14} />
-          </button>
-        </div>
+        );
+      })}
 
-        {/* Progress dots */}
-        <div className="flex items-center justify-center gap-1.5 mt-3">
-          {pageTips.map((_, i) => (
-            <div
-              key={i}
-              className={`h-1 rounded-full transition-all duration-300 ${
-                i === tipIndex ? 'w-4 bg-blue-400' : i < tipIndex ? 'w-1.5 bg-blue-400/40' : 'w-1.5 bg-white/10'
-              }`}
-            />
-          ))}
-        </div>
-      </div>
-    </div>
+      <style>{`
+        @keyframes hintAppear {
+          0% { opacity: 0; transform: scale(0.7) translateY(8px); }
+          60% { opacity: 1; transform: scale(1.05) translateY(-2px); }
+          100% { opacity: 1; transform: scale(1) translateY(0); }
+        }
+        @keyframes hintWobble {
+          0%, 100% { transform: rotate(0deg) scale(1); }
+          10% { transform: rotate(-3deg) scale(1.05); }
+          20% { transform: rotate(3deg) scale(1.05); }
+          30% { transform: rotate(-2deg) scale(1.02); }
+          40%, 100% { transform: rotate(0deg) scale(1); }
+        }
+        @keyframes hintBounce {
+          0%, 100% { transform: translateY(0); }
+          50% { transform: translateY(-6px); }
+        }
+        @keyframes hintGlow {
+          0%, 100% { filter: brightness(1); }
+          50% { filter: brightness(1.3); }
+        }
+        @keyframes hintFloat {
+          0%, 100% { transform: translateY(0) translateX(0); }
+          25% { transform: translateY(-4px) translateX(2px); }
+          75% { transform: translateY(2px) translateX(-2px); }
+        }
+      `}</style>
+    </>
   );
 }
