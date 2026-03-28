@@ -2421,7 +2421,7 @@ async def list_services(category: str = None):
     """
     tenant_id = current_tenant_id.get()
     try:
-        query = """SELECT tt.id, tt.code, tt.name
+        query = """SELECT tt.id, tt.code, tt.name, tt.base_price
                    FROM treatment_types tt
                    WHERE tt.tenant_id = $1 AND tt.is_active = true AND tt.is_available_for_booking = true"""
         params = [tenant_id]
@@ -2448,10 +2448,9 @@ async def list_services(category: str = None):
         res = "🦷 Tratamientos disponibles:\n"
         for r in rows:
             profs = prof_map.get(r['id'])
-            if profs:
-                res += f"• {r['name']} (código: {r['code']}) — con: {', '.join(profs)}\n"
-            else:
-                res += f"• {r['name']} (código: {r['code']})\n"
+            price = f" — ${int(r['base_price']):,}".replace(",", ".") if r.get('base_price') and float(r['base_price']) > 0 else ""
+            prof_str = f" — con: {', '.join(profs)}" if profs else ""
+            res += f"• {r['name']} (código: {r['code']}){price}{prof_str}\n"
         res += "\n💡 Para más detalles o fotos de un tratamiento, pedimelo usando su nombre o código."
         return res
     except Exception as e:
@@ -2473,15 +2472,15 @@ async def get_service_details(code: str):
     try:
         # 1. Intentar buscar por código exacto
         row = await db.pool.fetchrow("""
-            SELECT code, name, description, default_duration_minutes, complexity_level
+            SELECT code, name, description, default_duration_minutes, complexity_level, base_price
             FROM treatment_types
             WHERE tenant_id = $1 AND code = $2 AND is_active = true AND is_available_for_booking = true
         """, tenant_id, code)
-        
+
         # 2. Fallback: Intentar buscar por nombre si no se encontró por código (el agente a veces pasa el nombre)
         if not row:
             row = await db.pool.fetchrow("""
-                SELECT code, name, description, default_duration_minutes, complexity_level
+                SELECT code, name, description, default_duration_minutes, complexity_level, base_price
                 FROM treatment_types
                 WHERE tenant_id = $1 AND name ILIKE $2 AND is_active = true AND is_available_for_booking = true
                 LIMIT 1
@@ -2509,7 +2508,8 @@ async def get_service_details(code: str):
             """, tenant_id, tt_row['id'])
             assigned_profs = [f"{r['first_name']} {r['last_name'] or ''}".strip() for r in prof_rows]
 
-        res = f"Detalles de {row['name']}:\nDescripción: {row['description']}\nDuración: {row['default_duration_minutes']} min\nComplejidad: {row['complexity_level']}\n"
+        price_str = f"${int(row['base_price']):,}".replace(",", ".") if row.get('base_price') and float(row['base_price']) > 0 else "Consultar"
+        res = f"Detalles de {row['name']}:\nDescripción: {row['description']}\nDuración: {row['default_duration_minutes']} min\nComplejidad: {row['complexity_level']}\nPrecio: {price_str}\n"
         if assigned_profs:
             res += f"Profesionales que realizan este tratamiento: {', '.join(assigned_profs)}\n"
 
