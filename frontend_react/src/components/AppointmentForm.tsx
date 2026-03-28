@@ -360,7 +360,7 @@ export default function AppointmentForm({
                         </div>
                         <p className="text-xs text-slate-500">{t('agenda.clinical_inspector')}</p>
                     </div>
-                    <button onClick={onClose} className="p-2 hover:bg-white/[0.06] rounded-full text-white/30 hover:text-white/60 transition-colors">
+                    <button onClick={onClose} aria-label="Cerrar" className="p-2 hover:bg-white/[0.06] rounded-full text-white/30 hover:text-white/60 transition-colors">
                         <X size={20} />
                     </button>
                 </div>

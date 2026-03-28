@@ -314,6 +314,8 @@
     "health": "Santé",
     "date_added": "Date d'inscription",
     "actions": "Actions",
+    "next_appointment": "Prochain rendez-vous",
+    "balance": "Solde",
     "loading": "Chargement des patients...",
     "view_chart": "Voir fiche",
     "phone_label": "T\u00e9l\u00e9phone",

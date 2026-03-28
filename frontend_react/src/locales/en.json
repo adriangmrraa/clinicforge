@@ -321,6 +321,8 @@
     "health": "Health",
     "date_added": "Date added",
     "actions": "Actions",
+    "next_appointment": "Next Appointment",
+    "balance": "Balance",
     "loading": "Loading patients...",
     "view_chart": "View chart",
     "phone_label": "Phone",

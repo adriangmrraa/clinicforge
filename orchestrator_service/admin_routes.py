@@ -24,7 +24,7 @@ from core.credentials import get_tenant_credential, CREDENTIALS_FERNET_KEY, encr
 from core.auth import verify_admin_token, get_resolved_tenant_id, ADMIN_TOKEN
 from core.security_utils import generate_signed_url
 
-INTERNAL_API_TOKEN = os.getenv("INTERNAL_API_TOKEN", "internal-secret-token")
+INTERNAL_API_TOKEN = os.getenv("INTERNAL_API_TOKEN", "")
 WHATSAPP_SERVICE_URL = os.getenv("WHATSAPP_SERVICE_URL", "http://whatsapp:8002")
 
 # Usar encrypt_value y decrypt_value importados de core.credentials
@@ -75,7 +75,7 @@ router = APIRouter(prefix="/admin", tags=["Dental Admin"])
 # DEBUG ENDPOINTS - Para diagnóstico en producción
 # ============================================
 
-@router.get("/debug/auth-test")
+@router.get("/debug/auth-test", dependencies=[Depends(verify_admin_token)])
 async def debug_auth_test(request: Request, x_admin_token: str = Header(None)):
     """
     Endpoint de debug para verificar problemas de autenticación 401.
@@ -109,7 +109,7 @@ async def debug_auth_test(request: Request, x_admin_token: str = Header(None)):
     return debug_info
 
 
-@router.get("/debug/health")
+@router.get("/debug/health", dependencies=[Depends(verify_admin_token)])
 async def debug_health():
     """
     Health check público.
@@ -122,7 +122,7 @@ async def debug_health():
     }
 
 
-@router.get("/debug/env-safe")
+@router.get("/debug/env-safe", dependencies=[Depends(verify_admin_token)])
 async def debug_env_safe():
     """
     Variables de entorno seguras (sin exponer valores sensibles).
@@ -1093,7 +1093,9 @@ async def remove_silence(
 @router.get("/internal/credentials/{name}", tags=["Internal"])
 async def get_internal_credential(name: str, x_internal_token: str = Header(None)):
     """Permite a servicios internos obtener credenciales de forma segura."""
-    if not INTERNAL_API_TOKEN or x_internal_token != INTERNAL_API_TOKEN:
+    if not INTERNAL_API_TOKEN:
+        raise HTTPException(status_code=503, detail="Internal credentials endpoint disabled")
+    if x_internal_token != INTERNAL_API_TOKEN:
         raise HTTPException(status_code=401, detail="Internal token invalid")
     
     # Mapeo de nombres a variables de entorno o valores de BD
@@ -1121,6 +1123,15 @@ async def media_proxy(url: str, user_data=Depends(verify_admin_token)):
     Proxy seguro para servir archivos multimedia (YCloud, Local, Chatwoot).
     Permite visualizar contenido sin exponer URLs directas o lidiar con CORS/Expiración.
     """
+    # SSRF protection: validate URL before proxying
+    from urllib.parse import urlparse
+    parsed = urlparse(url)
+    if parsed.scheme not in ('http', 'https'):
+        raise HTTPException(status_code=400, detail="Only HTTP/HTTPS URLs allowed")
+    hostname = parsed.hostname or ''
+    if hostname in ('localhost', '127.0.0.1', '0.0.0.0') or hostname.startswith('10.') or hostname.startswith('192.168.') or hostname.startswith('172.') or hostname == '169.254.169.254':
+        raise HTTPException(status_code=400, detail="Internal URLs not allowed")
+
     # Headers con autenticación para YCloud si disponible
     headers = {}
     ycloud_key = os.getenv("YCLOUD_API_KEY")
@@ -1137,8 +1148,11 @@ async def media_proxy(url: str, user_data=Depends(verify_admin_token)):
                 resp.iter_bytes(),
                 media_type=resp.headers.get("Content-Type", "application/octet-stream")
             )
+        except HTTPException:
+            raise
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Proxy error: {str(e)}")
+            logger.error(f"Proxy error: {e}")
+            raise HTTPException(status_code=500, detail="Error interno del servidor")
 
 @router.post("/chat/transcribe-again", tags=["Chat"])
 async def transcribe_again(
@@ -1328,7 +1342,7 @@ async def create_or_update_credential(
         
     except Exception as e:
         logger.error(f"Error saving credential: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Error interno del servidor")
 
 @router.delete("/credentials/{id}", dependencies=[Depends(verify_admin_token)], tags=["Credenciales"])
 async def delete_credential(
@@ -1411,7 +1425,7 @@ async def update_credential(
         raise
     except Exception as e:
         logger.error(f"Error updating credential {cred_id}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Error interno del servidor")
 
 
 @router.post("/chat/send", dependencies=[Depends(verify_admin_token)], tags=["Chat"])
@@ -1467,7 +1481,7 @@ async def send_chat_message(
         raise
     except Exception as e:
         logger.error(f"Error sending manual message: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Error interno del servidor")
 
 
 # ==================== ENDPOINTS DASHBOARD ====================
@@ -1502,7 +1516,7 @@ async def get_dashboard_token_metrics(
                 "projections": {}
             }
         logger.error(f"Error obteniendo métricas dashboard: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Error interno del servidor")
 
 @router.get("/stats/summary", tags=["Estadísticas"], summary="Obtener resumen de métricas del dashboard")
 async def get_dashboard_stats(
@@ -2058,7 +2072,8 @@ async def search_patients_by_symptoms(
         return [dict(row) for row in patients]
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error en búsqueda semántica: {str(e)}")
+        logger.error(f"Error en búsqueda semántica: {e}")
+        raise HTTPException(status_code=500, detail="Error interno del servidor")
 
 # ==================== ENDPOINTS SEGURO / OBRAS SOCIALES ====================
 
@@ -2156,7 +2171,8 @@ async def get_patient_insurance_status(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error verificando seguro: {str(e)}")
+        logger.error(f"Error verificando seguro: {e}")
+        raise HTTPException(status_code=500, detail="Error interno del servidor")
 
 # ==================== ENDPOINTS PACIENTES ====================
 
@@ -2733,7 +2749,7 @@ async def create_professional(
         if "foreign key" in err_msg or "violates foreign key" in err_msg or "tenant" in err_msg:
             raise HTTPException(status_code=400, detail="La clínica elegida no existe. Creá una sede primero en Sedes (Clínicas).")
         logger.exception("Error creating professional")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Error interno del servidor")
 
 @router.put("/professionals/{id}", dependencies=[Depends(verify_admin_token)], tags=["Profesionales"], summary="Actualizar datos de un profesional")
 async def update_professional(
@@ -2838,7 +2854,7 @@ async def update_professional(
         raise
     except Exception as e:
         logger.error(f"Error updating professional {id}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Error interno del servidor")
 
 @router.get("/patients/{id}", dependencies=[Depends(verify_admin_token)], tags=["Pacientes"], summary="Obtener detalle de un paciente específico")
 async def get_patient(id: int, tenant_id: int = Depends(get_resolved_tenant_id)):
@@ -3202,6 +3218,18 @@ async def download_patient_document_proxy(
             detail="Falta el archivo en el servidor. (Posible reinicio del contenedor sin volumen persistente)"
         )
 
+    # Path traversal protection: ensure resolved path is within allowed roots
+    import pathlib
+    resolved = pathlib.Path(full_path).resolve()
+    allowed_roots = [
+        pathlib.Path('/app/uploads').resolve(),
+        pathlib.Path('/app/media').resolve(),
+        pathlib.Path(os.getcwd(), 'uploads').resolve(),
+        pathlib.Path(os.getcwd(), 'media').resolve(),
+    ]
+    if not any(str(resolved).startswith(str(root)) for root in allowed_roots):
+        raise HTTPException(status_code=403, detail="Acceso denegado al archivo")
+
     download_filename = document["file_name"] or os.path.basename(clean_path)
 
     return FileResponse(
@@ -3553,7 +3581,8 @@ async def create_appointment_manual(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error creando turno: {str(e)}")
+        logger.error(f"Error creando turno: {e}")
+        raise HTTPException(status_code=500, detail="Error interno del servidor")
 
 @router.put("/appointments/{id}/status", dependencies=[Depends(verify_admin_token)], tags=["Turnos"], summary="Actualizar el estado de un turno (confirmed, cancelled, etc.)")
 @router.patch("/appointments/{id}/status", dependencies=[Depends(verify_admin_token)], tags=["Turnos"], summary="Actualizar el estado de un turno (vía PATCH)")
@@ -3774,7 +3803,7 @@ async def update_appointment(id: str, apt: AppointmentCreate, request: Request, 
         raise
     except Exception as e:
         logger.error(f"Error updating appointment: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Error interno del servidor")
 
 @router.put("/appointments/{id}/billing", dependencies=[Depends(verify_admin_token)], tags=["Turnos"], summary="Actualizar facturación de un turno")
 async def update_appointment_billing(
@@ -3870,7 +3899,7 @@ async def delete_appointment(id: str, request: Request, tenant_id: int = Depends
         return {"status": "deleted", "id": id}
     except Exception as e:
         logger.error(f"Error deleting appointment: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Error interno del servidor")
 
 # ==================== ENDPOINTS SLOTS DISPONIBLES ====================
 
@@ -4610,7 +4639,7 @@ async def create_treatment_type(treatment: TreatmentTypeCreate, tenant_id: int =
         raise HTTPException(status_code=400, detail=f"El código de tratamiento '{treatment.code}' ya existe.")
     except Exception as e:
         logger.error(f"Error creating treatment type: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Error interno del servidor")
 
 
 @router.put("/treatment-types/{code}", dependencies=[Depends(verify_admin_token)], tags=["Tratamientos"], summary="Actualizar datos de un tipo de tratamiento")
@@ -4775,13 +4804,21 @@ async def upload_treatment_image(
         
     upload_dir = f"uploads/treatments/{tenant_id}/{code}"
     os.makedirs(upload_dir, exist_ok=True)
-    
-    file_ext = os.path.splitext(file.filename)[1]
+
+    # Validate file extension
+    ALLOWED_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.gif', '.webp', '.pdf'}
+    file_ext = os.path.splitext(file.filename)[1].lower()
+    if file_ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(status_code=400, detail=f"Tipo de archivo no permitido. Permitidos: {', '.join(ALLOWED_EXTENSIONS)}")
+
     safe_filename = f"{uuid.uuid4()}{file_ext}"
     file_path = os.path.join(upload_dir, safe_filename)
-    
+
     try:
         content = await file.read()
+        # Check file size (max 10MB)
+        if len(content) > 10 * 1024 * 1024:
+            raise HTTPException(status_code=400, detail="Archivo demasiado grande. Máximo 10MB.")
         with open(file_path, "wb") as f:
             f.write(content)
             
@@ -4882,7 +4919,7 @@ async def get_professionals_analytics(
         
     except Exception as e:
         logger.error(f"Error in analytics endpoint: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Error interno del servidor")
 
 
 # ==================== END OF ANALYTICS ====================

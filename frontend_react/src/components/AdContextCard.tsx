@@ -15,10 +15,10 @@ export default function AdContextCard({ headline, body, sourceUrl }: AdContextCa
     if (!headline && !body) return null;
 
     return (
-        <div className="mx-4 mb-3 p-3 bg-gradient-to-r from-blue-50 to-indigo-50 border border-dashed border-blue-200 rounded-xl shadow-sm">
+        <div className="mx-4 mb-3 p-3 bg-gradient-to-r from-blue-500/10 to-indigo-500/10 border border-dashed border-blue-500/20 rounded-xl shadow-sm">
             <div className="flex items-start gap-3">
                 {/* Icon */}
-                <div className="flex-shrink-0 w-9 h-9 bg-blue-100 rounded-lg flex items-center justify-center">
+                <div className="flex-shrink-0 w-9 h-9 bg-blue-500/15 rounded-lg flex items-center justify-center">
                     <Megaphone size={18} className="text-blue-600" />
                 </div>
 
@@ -28,12 +28,12 @@ export default function AdContextCard({ headline, body, sourceUrl }: AdContextCa
                         Contexto de Anuncio
                     </p>
                     {headline && (
-                        <p className="text-sm font-medium text-gray-800 truncate" title={headline}>
+                        <p className="text-sm font-medium text-white truncate" title={headline}>
                             {headline}
                         </p>
                     )}
                     {body && (
-                        <p className="text-xs text-gray-500 mt-0.5 line-clamp-2" title={body}>
+                        <p className="text-xs text-white/50 mt-0.5 line-clamp-2" title={body}>
                             {body}
                         </p>
                     )}
@@ -45,7 +45,7 @@ export default function AdContextCard({ headline, body, sourceUrl }: AdContextCa
                         href={sourceUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="flex-shrink-0 p-1.5 text-blue-400 hover:text-blue-600 hover:bg-blue-100 rounded-md transition-colors"
+                        className="flex-shrink-0 p-1.5 text-blue-400 hover:text-blue-600 hover:bg-blue-500/15 rounded-md transition-colors"
                         title="Ver anuncio original"
                     >
                         <ExternalLink size={14} />

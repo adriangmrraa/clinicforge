@@ -388,7 +388,7 @@ export default function AnamnesisPublicView() {
                   inputMode="numeric"
                   pattern="[0-9]*"
                   placeholder="Ingresa tu DNI"
-                  className="w-full pl-10 pr-4 py-3.5 bg-white/5 border border-white/10 rounded-xl text-white text-base font-mono tracking-wider placeholder-gray-600 focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500/30 outline-none transition-colors"
+                  className="w-full pl-10 pr-4 py-3.5 bg-white/5 border border-white/10 rounded-xl text-white text-base font-mono tracking-wider placeholder-white/30 focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500/30 outline-none transition-colors"
                   value={dniInput}
                   onChange={e => setDniInput(e.target.value.replace(/[^0-9]/g, ''))}
                   onKeyDown={e => e.key === 'Enter' && handleDniVerify()}
@@ -418,7 +418,7 @@ export default function AnamnesisPublicView() {
         </div>
 
         {/* Footer */}
-        <p className="text-[10px] text-gray-700 mt-6">Powered by Dentalogic AI</p>
+        <p className="text-[10px] text-white/70 mt-6">Powered by Dentalogic AI</p>
       </div>
     );
   }
@@ -451,23 +451,23 @@ export default function AnamnesisPublicView() {
         {/* Enfermedades de base */}
         <Section icon={<HeartPulse size={18} className="text-red-500" />} title="Enfermedades de base" subtitle="Seleccioná todas las que apliquen">
           <CheckboxGroup options={DISEASE_OPTIONS} selected={baseDiseases} toggle={(v) => toggleCheck(baseDiseases, setBaseDiseases, v)} />
-          <input type="text" placeholder="Otra (especificar)" className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-gray-600 focus:border-cyan-500 outline-none" value={baseDiseasesOther} onChange={e => setBaseDiseasesOther(e.target.value)} />
+          <input type="text" placeholder="Otra (especificar)" className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-white/30 focus:border-cyan-500 outline-none" value={baseDiseasesOther} onChange={e => setBaseDiseasesOther(e.target.value)} />
         </Section>
 
         {/* Medicación habitual */}
         <Section icon={<Pill size={18} className="text-orange-500" />} title="Medicación habitual">
-          <textarea placeholder="Ej: Metformina 850mg, Enalapril 10mg..." className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-gray-600 focus:border-cyan-500 outline-none min-h-[60px]" value={medication} onChange={e => setMedication(e.target.value)} />
+          <textarea placeholder="Ej: Metformina 850mg, Enalapril 10mg..." className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-white/30 focus:border-cyan-500 outline-none min-h-[60px]" value={medication} onChange={e => setMedication(e.target.value)} />
         </Section>
 
         {/* Alergias */}
         <Section icon={<AlertTriangle size={18} className="text-red-600" />} title="Alergias" subtitle="Seleccioná todas las que apliquen">
           <CheckboxGroup options={ALLERGY_OPTIONS} selected={allergies} toggle={(v) => toggleCheck(allergies, setAllergies, v)} />
-          <input type="text" placeholder="Otra alergia (especificar)" className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-gray-600 focus:border-cyan-500 outline-none" value={allergiesOther} onChange={e => setAllergiesOther(e.target.value)} />
+          <input type="text" placeholder="Otra alergia (especificar)" className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-white/30 focus:border-cyan-500 outline-none" value={allergiesOther} onChange={e => setAllergiesOther(e.target.value)} />
         </Section>
 
         {/* Cirugías previas */}
         <Section icon={<Scissors size={18} className="text-gray-300" />} title="Cirugías previas">
-          <textarea placeholder="Ej: Apendicectomía 2019, cesárea 2021..." className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-gray-600 focus:border-cyan-500 outline-none min-h-[60px]" value={surgeries} onChange={e => setSurgeries(e.target.value)} />
+          <textarea placeholder="Ej: Apendicectomía 2019, cesárea 2021..." className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-white/30 focus:border-cyan-500 outline-none min-h-[60px]" value={surgeries} onChange={e => setSurgeries(e.target.value)} />
         </Section>
 
         {/* Fumador */}
@@ -478,7 +478,7 @@ export default function AnamnesisPublicView() {
             <RadioBtn label="Ex fumador" value="ex" selected={isSmoker} onSelect={setIsSmoker} />
           </div>
           {(isSmoker === 'si' || isSmoker === 'ex') && (
-            <input type="text" placeholder="Cuántos por día? (aprox)" className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-gray-600 focus:border-cyan-500 outline-none mt-2" value={smokerAmount} onChange={e => setSmokerAmount(e.target.value)} />
+            <input type="text" placeholder="Cuántos por día? (aprox)" className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-white/30 focus:border-cyan-500 outline-none mt-2" value={smokerAmount} onChange={e => setSmokerAmount(e.target.value)} />
           )}
         </Section>
 
@@ -493,13 +493,13 @@ export default function AnamnesisPublicView() {
 
         {/* Experiencias negativas */}
         <Section icon={<Frown size={18} className="text-gray-500" />} title="Experiencias negativas en odontología">
-          <textarea placeholder="Contanos si tuviste alguna mala experiencia previa..." className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-gray-600 focus:border-cyan-500 outline-none min-h-[60px]" value={negativeExperiences} onChange={e => setNegativeExperiences(e.target.value)} />
+          <textarea placeholder="Contanos si tuviste alguna mala experiencia previa..." className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-white/30 focus:border-cyan-500 outline-none min-h-[60px]" value={negativeExperiences} onChange={e => setNegativeExperiences(e.target.value)} />
         </Section>
 
         {/* Miedos dentales */}
         <Section icon={<Brain size={18} className="text-purple-500" />} title="Miedos dentales" subtitle="Seleccioná todos los que apliquen">
           <CheckboxGroup options={FEAR_OPTIONS} selected={fears} toggle={(v) => toggleCheck(fears, setFears, v)} />
-          <input type="text" placeholder="Otro miedo (especificar)" className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-gray-600 focus:border-cyan-500 outline-none" value={fearsOther} onChange={e => setFearsOther(e.target.value)} />
+          <input type="text" placeholder="Otro miedo (especificar)" className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-white/30 focus:border-cyan-500 outline-none" value={fearsOther} onChange={e => setFearsOther(e.target.value)} />
         </Section>
 
         {/* Submit */}

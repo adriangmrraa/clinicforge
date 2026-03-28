@@ -415,10 +415,10 @@ export default function PatientsView() {
                       {t('patients.dni_obra_social')}
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-white/50 uppercase tracking-wider">
-                      Próximo turno
+                      {t('patients.next_appointment')}
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-white/50 uppercase tracking-wider">
-                      Balance
+                      {t('patients.balance')}
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-white/50 uppercase tracking-wider">
                       {t('patients.date_added')}
