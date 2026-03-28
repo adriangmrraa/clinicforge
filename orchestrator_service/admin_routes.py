@@ -492,6 +492,7 @@ class TreatmentTypeCreate(BaseModel):
     is_active: bool = True
     is_available_for_booking: bool = True
     internal_notes: Optional[str] = ""
+    base_price: Optional[float] = 0
     professional_ids: Optional[List[int]] = None
 
 class TreatmentTypeUpdate(BaseModel):
@@ -507,6 +508,7 @@ class TreatmentTypeUpdate(BaseModel):
     is_active: bool
     is_available_for_booking: bool
     internal_notes: Optional[str] = ""
+    base_price: Optional[float] = 0
 
 
 class ChatSendMessage(BaseModel):
@@ -4471,6 +4473,7 @@ class TreatmentTypeUpdate(BaseModel):
     is_active: bool = True
     is_available_for_booking: bool = True
     internal_notes: Optional[str] = None
+    base_price: Optional[float] = 0
 
 
 @router.get("/treatment-types", 
@@ -4537,14 +4540,14 @@ async def create_treatment_type(treatment: TreatmentTypeCreate, tenant_id: int =
                 tenant_id, code, name, description, default_duration_minutes,
                 min_duration_minutes, max_duration_minutes, complexity_level,
                 category, requires_multiple_sessions, session_gap_days,
-                is_active, is_available_for_booking, internal_notes, created_at
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW())
+                is_active, is_available_for_booking, internal_notes, base_price, created_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NOW())
             RETURNING id
         """, tenant_id, treatment.code, treatment.name, treatment.description, treatment.default_duration_minutes,
             treatment.min_duration_minutes, treatment.max_duration_minutes,
             treatment.complexity_level, treatment.category, treatment.requires_multiple_sessions,
             treatment.session_gap_days, treatment.is_active, treatment.is_available_for_booking,
-            treatment.internal_notes)
+            treatment.internal_notes, treatment.base_price or 0)
         # Insert professional assignments if provided
         if treatment.professional_ids and row:
             tt_id = row['id']
@@ -4570,13 +4573,13 @@ async def update_treatment_type(code: str, treatment: TreatmentTypeUpdate, tenan
             min_duration_minutes = $4, max_duration_minutes = $5,
             complexity_level = $6, category = $7, requires_multiple_sessions = $8,
             session_gap_days = $9, is_active = $10, is_available_for_booking = $11,
-            internal_notes = $12, updated_at = NOW()
-        WHERE tenant_id = $13 AND code = $14
+            internal_notes = $12, base_price = $13, updated_at = NOW()
+        WHERE tenant_id = $14 AND code = $15
     """, treatment.name, treatment.description, treatment.default_duration_minutes,
         treatment.min_duration_minutes, treatment.max_duration_minutes,
         treatment.complexity_level, treatment.category, treatment.requires_multiple_sessions,
         treatment.session_gap_days, treatment.is_active, treatment.is_available_for_booking,
-        treatment.internal_notes, tenant_id, code)
+        treatment.internal_notes, treatment.base_price or 0, tenant_id, code)
     if result == "UPDATE 0":
         raise HTTPException(status_code=404, detail="Tipo de tratamiento no encontrado")
     return {"status": "updated", "code": code}
