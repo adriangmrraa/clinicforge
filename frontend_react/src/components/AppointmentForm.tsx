@@ -118,8 +118,16 @@ export default function AppointmentForm({
                     .then(res => {
                         const apt = res.data;
                         setFullAppointment(apt);
+                        // If billing_amount is 0/null, try to auto-fill from treatment base_price
+                        let amount = apt.billing_amount != null && apt.billing_amount > 0 ? String(apt.billing_amount) : '';
+                        if (!amount && apt.appointment_type && treatmentTypes.length > 0) {
+                            const tt = treatmentTypes.find((t: any) => t.code === apt.appointment_type);
+                            if (tt?.base_price && tt.base_price > 0) {
+                                amount = String(tt.base_price);
+                            }
+                        }
                         setBillingData({
-                            billing_amount: apt.billing_amount != null ? String(apt.billing_amount) : '',
+                            billing_amount: amount,
                             billing_installments: apt.billing_installments != null ? String(apt.billing_installments) : '',
                             billing_notes: apt.billing_notes || '',
                             payment_status: apt.payment_status || 'pending',
