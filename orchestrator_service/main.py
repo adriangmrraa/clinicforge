@@ -3047,22 +3047,32 @@ async def verify_payment_receipt(
             return "No encontré un turno pendiente asociado a tu número. Verificá con la clínica."
 
         # 3. Determine expected SEÑA amount (50% of consultation price)
-        # Priority: billing_amount (if already set) > 50% of professional price > 50% of tenant price
+        # Priority: billing_amount > 50% of professional price > 50% of treatment price > 50% of tenant price
+        # MUST match the same priority chain used in book_appointment
         expected_amount = None
         if apt['billing_amount'] and float(apt['billing_amount']) > 0:
             expected_amount = float(apt['billing_amount'])
         else:
-            # Seña = 50% of consultation price (professional price has priority over tenant price)
             full_price = None
+            # a) Professional's consultation_price
             prof_price = apt.get('prof_price')
             if prof_price and float(prof_price) > 0:
                 full_price = float(prof_price)
+            # b) Treatment's base_price (fallback — same as book_appointment uses)
+            if full_price is None and apt.get('appointment_type'):
+                treatment_price = await db.pool.fetchval(
+                    "SELECT base_price FROM treatment_types WHERE tenant_id = $1 AND (code = $2 OR name ILIKE $2) AND is_active = true LIMIT 1",
+                    tenant_id, apt['appointment_type']
+                )
+                if treatment_price and float(treatment_price) > 0:
+                    full_price = float(treatment_price)
+            # c) Tenant's consultation_price (last resort)
             if full_price is None and tenant['consultation_price']:
                 full_price = float(tenant['consultation_price'])
             if full_price:
                 expected_amount = full_price / 2  # Seña = 50%
 
-        logger.info(f"💰 verify_receipt: phone={phone} apt={apt['id']} prof_price={apt.get('prof_price')} tenant_price={tenant['consultation_price']} expected_seña={expected_amount} amount_detected={amount_detected}")
+        logger.info(f"💰 verify_receipt: phone={phone} apt_id={apt['id']} professional_id={apt.get('professional_id')} prof_name={apt.get('prof_name')} prof_price={apt.get('prof_price')} treatment={apt.get('appointment_type')} tenant_price={tenant['consultation_price']} expected_seña={expected_amount} amount_detected={amount_detected}")
 
         # 4. Verify holder name in receipt (fuzzy matching)
         import unicodedata
@@ -3074,6 +3084,8 @@ async def verify_payment_receipt(
 
         receipt_norm = _normalize(receipt_description)
         holder_norm = _normalize(bank_holder)
+
+        logger.info(f"💰 verify_receipt holder check: holder_config='{bank_holder}' holder_norm='{holder_norm}' receipt_len={len(receipt_norm)} receipt_preview='{receipt_norm[:200]}'")
 
         # Exact match
         holder_match = holder_norm in receipt_norm
@@ -3090,6 +3102,50 @@ async def verify_payment_receipt(
         # Try just first + last name (ignore middle names)
         if not holder_match and len(holder_parts) >= 3:
             holder_match = (holder_parts[0] in receipt_norm and holder_parts[-1] in receipt_norm)
+
+        # Try matching at least 2 out of 3 name parts (handles partial OCR/description)
+        if not holder_match and len(holder_parts) >= 2:
+            matching_parts = sum(1 for part in holder_parts if part in receipt_norm)
+            holder_match = matching_parts >= 2
+
+        # Try matching bank CBU or alias in receipt (alternative proof of correct destination)
+        if not holder_match:
+            bank_cbu = (tenant.get('bank_cbu') or '').strip()
+            bank_alias = (tenant.get('bank_alias') or '').strip().lower()
+            if bank_cbu and bank_cbu in receipt_description:
+                holder_match = True
+                logger.info(f"💰 verify_receipt: holder matched by CBU")
+            elif bank_alias and bank_alias in receipt_norm:
+                holder_match = True
+                logger.info(f"💰 verify_receipt: holder matched by alias")
+
+        # Also try fetching the raw vision description from the latest image message
+        # (receipt_description from the LLM might be summarized, but raw vision is more detailed)
+        if not holder_match:
+            try:
+                phone_digits_v = normalize_phone_digits(phone)
+                raw_vision = await db.pool.fetchval("""
+                    SELECT cm.content_attributes->>'vision_description'
+                    FROM chat_messages cm
+                    WHERE cm.tenant_id = $1
+                      AND REGEXP_REPLACE(cm.from_number, '[^0-9]', '', 'g') = $2
+                      AND cm.content_attributes::text LIKE '%vision_description%'
+                    ORDER BY cm.created_at DESC LIMIT 1
+                """, tenant_id, phone_digits_v)
+                if raw_vision:
+                    vision_norm = _normalize(raw_vision)
+                    if holder_norm in vision_norm:
+                        holder_match = True
+                    elif all(part in vision_norm for part in holder_parts):
+                        holder_match = True
+                    elif sum(1 for part in holder_parts if part in vision_norm) >= 2:
+                        holder_match = True
+                    if holder_match:
+                        logger.info(f"💰 verify_receipt: holder matched via raw vision description")
+            except Exception as vision_err:
+                logger.warning(f"💰 verify_receipt: raw vision lookup failed (non-fatal): {vision_err}")
+
+        logger.info(f"💰 verify_receipt: holder_match={holder_match} parts={holder_parts} matching_in_receipt={[p for p in holder_parts if p in receipt_norm]}")
 
         # 5. Verify amount
         amount_match = True  # Default if no amount configured
