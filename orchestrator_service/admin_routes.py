@@ -3265,7 +3265,18 @@ async def list_appointments(
         params.append(professional_id)
     query += " ORDER BY a.appointment_datetime ASC"
     rows = await db.pool.fetch(query, *params)
-    return [dict(row) for row in rows]
+    # Ensure JSONB fields are properly parsed (asyncpg may return as string)
+    result = []
+    for row in rows:
+        d = dict(row)
+        # Parse payment_receipt_data if it's a string
+        if d.get('payment_receipt_data') and isinstance(d['payment_receipt_data'], str):
+            try:
+                d['payment_receipt_data'] = json.loads(d['payment_receipt_data'])
+            except (json.JSONDecodeError, TypeError):
+                pass
+        result.append(d)
+    return result
 
 
 # ==================== ENDPOINT COLISION DETECTION ====================
