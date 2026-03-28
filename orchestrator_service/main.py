@@ -3062,7 +3062,7 @@ async def verify_payment_receipt(
             if full_price:
                 expected_amount = full_price / 2  # Seña = 50%
 
-        logger.info(f"💰 verify_receipt: phone={phone} apt={apt['id']} prof_price={apt.get('prof_price')} tenant_price={tenant['consultation_price']} expected_seña={expected_amount} amount_detected={amount_value}")
+        logger.info(f"💰 verify_receipt: phone={phone} apt={apt['id']} prof_price={apt.get('prof_price')} tenant_price={tenant['consultation_price']} expected_seña={expected_amount} amount_detected={amount_detected}")
 
         # 4. Verify holder name in receipt (fuzzy matching)
         import unicodedata
