@@ -2201,11 +2201,11 @@ async def triage_urgency(symptoms: str):
     return responses.get(urgency_level, responses['normal'])
 
 @tool
-async def list_my_appointments(upcoming_days: int = 60):
+async def list_my_appointments():
     """
-    Lista los turnos del paciente que tiene la conversación (próximos o recientes).
+    Lista TODOS los turnos futuros del paciente (sin límite de fecha).
     Usar SIEMPRE cuando pregunten si tienen turno, cuándo es su próximo turno, qué turnos tienen, mis turnos, etc.
-    upcoming_days: Cantidad de días hacia adelante a partir de hoy (default 60).
+    Devuelve todos los turnos con status scheduled o confirmed desde hoy en adelante.
     """
     phone = current_customer_phone.get()
     if not phone:
@@ -2214,7 +2214,6 @@ async def list_my_appointments(upcoming_days: int = 60):
     phone_digits = normalize_phone_digits(phone)
     try:
         start = get_now_arg().date()
-        end = start + timedelta(days=max(1, min(upcoming_days, 90)))
         rows = await db.pool.fetch("""
             SELECT a.appointment_datetime, a.status, a.appointment_type,
                    p_prof.first_name || ' ' || COALESCE(p_prof.last_name, '') as professional_name
@@ -2222,13 +2221,13 @@ async def list_my_appointments(upcoming_days: int = 60):
             JOIN patients p ON a.patient_id = p.id
             LEFT JOIN professionals p_prof ON a.professional_id = p_prof.id
             WHERE p.tenant_id = $1 AND REGEXP_REPLACE(p.phone_number, '[^0-9]', '', 'g') = $2
-            AND DATE(a.appointment_datetime) >= $3 AND DATE(a.appointment_datetime) <= $4
+            AND DATE(a.appointment_datetime) >= $3
             AND a.status IN ('scheduled', 'confirmed')
             ORDER BY a.appointment_datetime ASC
-        """, tenant_id, phone_digits, start, end)
+        """, tenant_id, phone_digits, start)
         logger.info(f"list_my_appointments phone_digits={phone_digits} tenant={tenant_id} found={len(rows)}")
         if not rows:
-            return f"No tenés turnos registrados en los próximos {upcoming_days} días. ¿Querés que busquemos disponibilidad para agendar?"
+            return "No tenés turnos registrados. ¿Querés que busquemos disponibilidad para agendar?"
         lines = []
         for r in rows:
             dt = r['appointment_datetime']
