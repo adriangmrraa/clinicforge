@@ -2,7 +2,6 @@ import { useState, useCallback } from 'react';
 import { getEnv } from '../utils/env';
 
 const API_BASE = getEnv('VITE_API_BASE_URL') || detectApiBase();
-const ADMIN_TOKEN = getEnv('VITE_ADMIN_TOKEN') || "";
 
 function detectApiBase() {
     if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
@@ -36,9 +35,14 @@ export function useApi() {
         try {
             const headers: Record<string, string> = {
                 'Content-Type': 'application/json',
-                'x-admin-token': ADMIN_TOKEN,
                 ...options.headers
             };
+
+            // JWT Bearer token
+            const jwtToken = localStorage.getItem('access_token');
+            if (jwtToken) {
+                headers['Authorization'] = `Bearer ${jwtToken}`;
+            }
 
             // Handle BFF proxying if we use relative paths
             const url = endpoint.startsWith('http') ? endpoint : `${API_BASE}${endpoint}`;
