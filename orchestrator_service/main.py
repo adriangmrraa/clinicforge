@@ -2217,7 +2217,8 @@ async def list_my_appointments():
             SELECT a.appointment_datetime, a.status, a.appointment_type,
                    p_prof.first_name || ' ' || COALESCE(p_prof.last_name, '') as professional_name,
                    a.payment_status, a.billing_amount,
-                   tt.base_price as treatment_price
+                   tt.base_price as treatment_price,
+                   p_prof.consultation_price as prof_consultation_price
             FROM appointments a
             JOIN patients p ON a.patient_id = p.id
             LEFT JOIN professionals p_prof ON a.professional_id = p_prof.id
@@ -2243,7 +2244,9 @@ async def list_my_appointments():
             seña = f"${int(amt)}" if amt else "—"
             tprice = r.get('treatment_price')
             precio_trat = f"${int(tprice)}" if tprice and float(tprice) > 0 else "—"
-            line = f"{fecha}|{tipo}|{prof}|{st}|seña:{pay}({seña})|tratamiento:{precio_trat}"
+            prof_cp = r.get('prof_consultation_price')
+            consulta = f"${int(prof_cp)}" if prof_cp and float(prof_cp) > 0 else "—"
+            line = f"{fecha}|{tipo}|{prof}|{st}|seña:{pay}({seña})|consulta_prof:{consulta}|tratamiento:{precio_trat}"
             if dt >= now:
                 upcoming.append(line)
             else:
@@ -3726,25 +3729,32 @@ REGLAS:
    → La seña es importante pero NO bloqueante. El turno existe, el paciente puede pagar después.
 
 PAGO DE TURNOS EXISTENTES (cuando el paciente quiere pagar un turno YA agendado):
-list_my_appointments ahora muestra: seña:{status}({monto})|tratamiento:{precio}
+list_my_appointments ahora muestra: seña:{status}({monto})|consulta_prof:{valor}|tratamiento:{precio}
+
+CÁLCULO DE LA SEÑA — CADENA DE PRIORIDAD:
+  1ro: consulta_prof (consultation_price del profesional asignado al turno) → seña = 50% de ese valor
+  2do: valor de consulta general del tenant (si el profesional no tiene precio)
+  3ro: tratamiento (base_price del treatment_type, último recurso)
+SIEMPRE usá el campo consulta_prof si tiene valor. Es el dato que carga la clínica por profesional.
+
 Hay 3 escenarios:
 
 ESCENARIO A — PAGAR SEÑA:
 Si el paciente dice "quiero pagar la seña":
-1. Monto = billing_amount del turno (o 50% del valor de consulta si no hay monto).
+1. Monto = 50% del campo consulta_prof (prioridad). Si no hay, usar billing_amount del turno.
 2. Compartí datos bancarios (alias, CBU, titular de la sección DATOS BANCARIOS).
 3. Pedile el comprobante → verificar con verify_payment_receipt.
 
 ESCENARIO B — PAGAR TRATAMIENTO COMPLETO:
 Si el paciente dice "quiero pagar el tratamiento completo" o "pagar todo":
-1. Monto = el campo "tratamiento:" del turno (es el base_price del treatment_type).
+1. Monto = el campo "tratamiento:" del turno (base_price del treatment_type).
 2. Compartí datos bancarios.
 3. Decile: "El tratamiento completo es de ${tratamiento}. Con este pago ya no necesitás la seña."
 4. Pedile el comprobante → verificar con verify_payment_receipt.
 IMPORTANTE: Si paga tratamiento completo, la seña queda cubierta. NO pedir seña adicional.
 
 ESCENARIO C — SI NO QUEDA CLARO:
-Preguntale: "¿Querés pagar la seña (${monto_seña}) o el tratamiento completo (${precio_tratamiento})?"
+Preguntale: "¿Querés pagar la seña (${50% de consulta_prof}) o el tratamiento completo (${tratamiento})?"
 
 NO necesitás ninguna tool extra — los datos bancarios YA están en tu contexto.
 
