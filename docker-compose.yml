@@ -48,6 +48,9 @@ services:
   orchestrator_service:
     build: ./orchestrator_service
     # Port not exposed to host — only accessible via BFF on Docker network
+    volumes:
+      - orchestrator_uploads:/app/uploads
+      - orchestrator_media:/app/media
     environment:
       - WHATSAPP_SERVICE_URL=http://whatsapp_service:8002
       - REDIS_URL=redis://redis:6379
@@ -174,3 +177,5 @@ services:
 volumes:
   postgres_data:
   postgres_backups:
+  orchestrator_uploads:
+  orchestrator_media:
