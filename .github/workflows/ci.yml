@@ -51,6 +51,10 @@ jobs:
           cache: 'pip'
       - run: pip install -r orchestrator_service/requirements.txt
       - run: pip install pytest pytest-asyncio httpx
+      - name: Run Alembic migrations
+        run: cd orchestrator_service && alembic upgrade head
+        env:
+          POSTGRES_DSN: postgresql://test:test@localhost:5432/clinicforge_test
       - run: pytest tests/ -v
         env:
           POSTGRES_DSN: postgresql://test:test@localhost:5432/clinicforge_test

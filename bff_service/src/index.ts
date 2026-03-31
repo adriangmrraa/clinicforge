@@ -3,6 +3,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import axios from 'axios';
 import path from 'path';
+import { createProxyMiddleware } from 'http-proxy-middleware';
 
 // Buscar .env en la carpeta actual o en la raíz
 dotenv.config();
@@ -59,8 +60,15 @@ app.use(cors({
     allowedHeaders: ['Content-Type', 'Authorization', 'x-tenant-id', 'x-signature']
 }));
 
-app.options('*', cors());
 app.use(express.json());
+
+// --- Socket.IO WebSocket proxy (BEFORE catch-all) ---
+app.use('/socket.io', createProxyMiddleware({
+    target: ORCHESTRATOR_URL,
+    ws: true,
+    changeOrigin: true,
+    logLevel: 'warn',
+}));
 
 // Root Route
 app.get('/', (req: Request, res: Response) => {
@@ -119,8 +127,9 @@ app.use(async (req: Request, res: Response) => {
     }
 });
 
-app.listen(port, () => {
+const server = app.listen(port, () => {
     console.log(`BFF Service running on port ${port}`);
     console.log(`Proxying to Orchestrator at: ${ORCHESTRATOR_URL}`);
+    console.log(`Socket.IO WebSocket proxy enabled on /socket.io`);
     console.log(`CORS allowed origins: ${allowedOrigins.length > 0 ? allowedOrigins.join(', ') : '(none — rejecting all cross-origin)'}`);
 });
