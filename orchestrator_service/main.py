@@ -4593,9 +4593,26 @@ async def verify_payment_receipt(
             return f"✅ Comprobante verificado correctamente! Tu turno de {treatment_display} el {fecha} con {apt['prof_name'] or 'el profesional'} queda CONFIRMADO. Te esperamos! 😊{overpaid_msg}"
 
         elif not holder_match:
+            # Notify clinic via email
+            try:
+                tenant_info = await db.pool.fetchrow("SELECT derivation_email, clinic_name FROM tenants WHERE id = $1", tenant_id)
+                if tenant_info and tenant_info.get("derivation_email"):
+                    email_service.send_payment_verification_failed_email(
+                        to_email=tenant_info["derivation_email"],
+                        clinic_name=tenant_info.get("clinic_name", "Clínica"),
+                        patient_name=patient_name,
+                        patient_phone=phone,
+                        appointment_date=fecha,
+                        treatment=treatment_display,
+                        failure_reason="El titular de la cuenta destino no coincide con los datos configurados de la clínica.",
+                        amount_detected=f"${int(amount_value):,}".replace(",", ".") if amount_value else "",
+                        amount_expected=f"${int(expected_amount):,}".replace(",", ".") if expected_amount else "",
+                    )
+            except Exception as email_err:
+                logger.warning(f"Payment failure email error (non-fatal): {email_err}")
             return (
                 f"⚠️ No pude verificar el comprobante: el titular de la cuenta destino no coincide con los datos de la clínica. "
-                f"Verificá que la transferencia se haya realizado a la cuenta correcta y reenviá el comprobante. "
+                f"Ya notifiqué al equipo para que lo revisen manualmente. "
                 f"[INTERNAL_VERIFICATION_FAILED:holder_mismatch]"
             )
 
@@ -4631,6 +4648,24 @@ async def verify_payment_receipt(
                 f"Podés transferir la diferencia y enviarnos el nuevo comprobante. "
                 f"[INTERNAL_VERIFICATION_FAILED:amount_underpaid]"
             )
+
+        # Generic failure — also notify clinic
+        try:
+            tenant_info = await db.pool.fetchrow("SELECT derivation_email, clinic_name FROM tenants WHERE id = $1", tenant_id)
+            if tenant_info and tenant_info.get("derivation_email"):
+                email_service.send_payment_verification_failed_email(
+                    to_email=tenant_info["derivation_email"],
+                    clinic_name=tenant_info.get("clinic_name", "Clínica"),
+                    patient_name=patient_name,
+                    patient_phone=phone,
+                    appointment_date=fecha,
+                    treatment=treatment_display,
+                    failure_reason="No se pudo verificar el comprobante automáticamente (imagen ilegible o datos no reconocibles).",
+                    amount_detected=f"${int(amount_value):,}".replace(",", ".") if amount_value else "",
+                    amount_expected=f"${int(expected_amount):,}".replace(",", ".") if expected_amount else "",
+                )
+        except Exception as email_err:
+            logger.warning(f"Payment failure email error (non-fatal): {email_err}")
 
         return "⚠️ No pude verificar el comprobante. Reenviá una foto más clara o contactá a la clínica. [INTERNAL_VERIFICATION_FAILED:unknown]"
 
