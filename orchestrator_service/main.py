@@ -2203,9 +2203,8 @@ async def triage_urgency(symptoms: str):
 @tool
 async def list_my_appointments():
     """
-    Lista TODOS los turnos futuros del paciente (sin límite de fecha).
-    Usar SIEMPRE cuando pregunten si tienen turno, cuándo es su próximo turno, qué turnos tienen, mis turnos, etc.
-    Devuelve todos los turnos con status scheduled o confirmed desde hoy en adelante.
+    Lista TODOS los turnos del paciente — futuros Y anteriores. Es el historial completo.
+    Usar SIEMPRE cuando pregunten si tienen turno, cuándo es su próximo turno, qué turnos tienen, historial, turnos pasados, etc.
     """
     phone = current_customer_phone.get()
     if not phone:
@@ -2213,7 +2212,7 @@ async def list_my_appointments():
     tenant_id = current_tenant_id.get()
     phone_digits = normalize_phone_digits(phone)
     try:
-        start = get_now_arg().date()
+        now = get_now_arg()
         rows = await db.pool.fetch("""
             SELECT a.appointment_datetime, a.status, a.appointment_type,
                    p_prof.first_name || ' ' || COALESCE(p_prof.last_name, '') as professional_name
@@ -2221,22 +2220,36 @@ async def list_my_appointments():
             JOIN patients p ON a.patient_id = p.id
             LEFT JOIN professionals p_prof ON a.professional_id = p_prof.id
             WHERE p.tenant_id = $1 AND REGEXP_REPLACE(p.phone_number, '[^0-9]', '', 'g') = $2
-            AND DATE(a.appointment_datetime) >= $3
-            AND a.status IN ('scheduled', 'confirmed')
-            ORDER BY a.appointment_datetime ASC
-        """, tenant_id, phone_digits, start)
+            ORDER BY a.appointment_datetime DESC
+        """, tenant_id, phone_digits)
         logger.info(f"list_my_appointments phone_digits={phone_digits} tenant={tenant_id} found={len(rows)}")
         if not rows:
             return "No tenés turnos registrados. ¿Querés que busquemos disponibilidad para agendar?"
-        lines = []
+        upcoming = []
+        past = []
         for r in rows:
             dt = r['appointment_datetime']
             if hasattr(dt, 'astimezone'):
                 dt = dt.astimezone(ARG_TZ)
             fecha_hora = dt.strftime("%d/%m/%Y %H:%M") if hasattr(dt, 'strftime') else str(dt)
             prof = (r['professional_name'] or '').strip() or "Profesional"
-            lines.append(f"• {fecha_hora} con {prof} ({r['appointment_type'] or 'consulta'})")
-        return "Tus próximos turnos:\n" + "\n".join(lines) + "\n\n¿Querés cancelar o reprogramar alguno?"
+            status_label = r['status'] or 'scheduled'
+            line = f"• {fecha_hora} — {r['appointment_type'] or 'consulta'} con {prof} ({status_label})"
+            if dt >= now:
+                upcoming.append(line)
+            else:
+                past.append(line)
+        result = ""
+        if upcoming:
+            upcoming.reverse()
+            result += "📅 Próximos turnos:\n" + "\n".join(upcoming)
+        if past:
+            if result:
+                result += "\n\n"
+            result += "📋 Turnos anteriores:\n" + "\n".join(past[:10])
+            if len(past) > 10:
+                result += f"\n(y {len(past) - 10} turnos anteriores más)"
+        return result
     except Exception as e:
         logger.error(f"Error en list_my_appointments: {e}")
         return "Hubo un error al buscar tus turnos. ¿Probamos de nuevo?"
