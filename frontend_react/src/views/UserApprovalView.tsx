@@ -607,7 +607,7 @@ const UserApprovalView: React.FC = () => {
                                                     </span>
                                                     {p.is_priority_professional && (
                                                         <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 shrink-0">
-                                                            ★ Prioritario
+                                                            ★ {t('professionals.priorityProfessional')}
                                                         </span>
                                                     )}
                                                 </li>
@@ -877,7 +877,7 @@ const UserApprovalView: React.FC = () => {
                                     </label>
                                     <label className="flex items-center gap-3 cursor-pointer mt-2">
                                         <input type="checkbox" checked={editFormData.is_priority_professional} onChange={(e) => setEditFormData((p) => ({ ...p, is_priority_professional: e.target.checked }))} className="w-4 h-4 rounded border-white/[0.08] text-yellow-400 focus:ring-yellow-500" />
-                                        <span className="text-sm font-medium text-white/70">Profesional prioritario</span>
+                                        <span className="text-sm font-medium text-white/70">{t('professionals.priorityProfessional')}</span>
                                     </label>
                                 </div>
                                 <div className="lg:col-span-4 space-y-4">

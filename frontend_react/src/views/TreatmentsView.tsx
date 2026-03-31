@@ -461,16 +461,16 @@ export default function TreatmentsView() {
                     </select>
                   </div>
                   <div className="space-y-2">
-                    <label className="block text-xs font-bold text-white/40 uppercase tracking-wider">Prioridad</label>
+                    <label className="block text-xs font-bold text-white/40 uppercase tracking-wider">{t('professionals.priority.label')}</label>
                     <select
                       value={newForm.priority || 'medium'}
                       onChange={(e) => setNewForm({ ...newForm, priority: e.target.value as TreatmentType['priority'] })}
                       className="w-full px-4 py-3 bg-white/[0.04] border border-white/[0.08] rounded-xl text-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none appearance-none cursor-pointer font-bold"
                     >
-                      <option value="high">Alta</option>
-                      <option value="medium-high">Media-Alta</option>
-                      <option value="medium">Media</option>
-                      <option value="low">Baja</option>
+                      <option value="high">{t('professionals.priority.high')}</option>
+                      <option value="medium-high">{t('professionals.priority.mediumHigh')}</option>
+                      <option value="medium">{t('professionals.priority.medium')}</option>
+                      <option value="low">{t('professionals.priority.low')}</option>
                     </select>
                   </div>
                 </div>
@@ -679,16 +679,16 @@ export default function TreatmentsView() {
                               </select>
                             </div>
                             <div className="space-y-2">
-                              <label className="block text-xs font-bold text-white/40 ml-1 uppercase">Prioridad</label>
+                              <label className="block text-xs font-bold text-white/40 ml-1 uppercase">{t('professionals.priority.label')}</label>
                               <select
                                 value={editForm.priority || 'medium'}
                                 onChange={(e) => setEditForm({ ...editForm, priority: e.target.value as TreatmentType['priority'] })}
                                 className="w-full px-4 py-3 bg-white/[0.04] border border-white/[0.08] rounded-xl text-white focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none appearance-none font-bold"
                               >
-                                <option value="high">Alta</option>
-                                <option value="medium-high">Media-Alta</option>
-                                <option value="medium">Media</option>
-                                <option value="low">Baja</option>
+                                <option value="high">{t('professionals.priority.high')}</option>
+                                <option value="medium-high">{t('professionals.priority.mediumHigh')}</option>
+                                <option value="medium">{t('professionals.priority.medium')}</option>
+                                <option value="low">{t('professionals.priority.low')}</option>
                               </select>
                             </div>
 
@@ -810,9 +810,12 @@ export default function TreatmentsView() {
                                   treatment.priority === 'medium' ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20' :
                                   'bg-green-500/10 text-green-400 border-green-500/20'
                                 }`}>
-                                  {treatment.priority === 'high' ? 'Alta' :
-                                   treatment.priority === 'medium-high' ? 'Media-Alta' :
-                                   treatment.priority === 'medium' ? 'Media' : 'Baja'}
+                                  {({
+                                    high: t('professionals.priority.high'),
+                                    'medium-high': t('professionals.priority.mediumHigh'),
+                                    medium: t('professionals.priority.medium'),
+                                    low: t('professionals.priority.low'),
+                                  } as Record<string, string>)[treatment.priority] ?? t('professionals.priority.medium')}
                                 </span>
                               )}
                               {treatment.requires_multiple_sessions && (

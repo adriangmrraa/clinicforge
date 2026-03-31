@@ -1489,10 +1489,11 @@ async def check_availability(
         # 0. B) Obtener duración y precio del tratamiento
         duration = 30  # Default cuando no se especifica tratamiento
         avail_price = None
+        treatment_priority = "medium"  # Default; overridden if treatment found
         if treatment_name:
             t_data = await db.pool.fetchrow(
                 """
-                SELECT id, default_duration_minutes, base_price, name FROM treatment_types
+                SELECT id, default_duration_minutes, base_price, name, priority FROM treatment_types
                 WHERE tenant_id = $1 AND (name ILIKE $2 OR code ILIKE $2) AND is_active = true AND is_available_for_booking = true
                 LIMIT 1
             """,
@@ -1502,6 +1503,7 @@ async def check_availability(
             if not t_data:
                 return "❌ Ese tratamiento no está en la lista de servicios de esta clínica. Los horarios solo se pueden consultar para tratamientos que devuelve 'list_services'. Llamá a list_services y usá solo uno de esos nombres para consultar disponibilidad."
             duration = t_data["default_duration_minutes"]
+            treatment_priority = t_data.get("priority", "medium") or "medium"
             avail_price = (
                 float(t_data["base_price"])
                 if t_data.get("base_price") and float(t_data["base_price"]) > 0
@@ -1829,6 +1831,15 @@ async def check_availability(
             logger.info(
                 f"📅 search_range={search_range} days (inferred from query={date_query!r} target={target_date})"
             )
+
+        # SPEC-5: High-priority treatments get nearest slots — cap search window
+        if treatment_priority in ("high", "medium-high"):
+            max_search_days = 3
+            if search_range > max_search_days:
+                search_range = max_search_days
+                logger.info(
+                    f"📅 search_range capped to {max_search_days} days (treatment priority={treatment_priority!r})"
+                )
 
         # Seleccionar 2-3 opciones representativas (con multi-día si hace falta)
         options, total_today = await pick_representative_slots(
