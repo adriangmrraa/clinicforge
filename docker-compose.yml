@@ -47,8 +47,7 @@ services:
 
   orchestrator_service:
     build: ./orchestrator_service
-    ports:
-      - "8000:8000"
+    # Port not exposed to host — only accessible via BFF on Docker network
     environment:
       - WHATSAPP_SERVICE_URL=http://whatsapp_service:8002
       - REDIS_URL=redis://redis:6379
@@ -79,8 +78,7 @@ services:
 
   whatsapp_service:
     build: ./whatsapp_service
-    ports:
-      - "8002:8002"
+    # Port not exposed to host — internal service only
     environment:
       - YCLOUD_API_KEY=${YCLOUD_API_KEY}
       - YCLOUD_WEBHOOK_SECRET=${YCLOUD_WEBHOOK_SECRET}
@@ -105,8 +103,7 @@ services:
 
   meta_service:
     build: ./meta_service
-    ports:
-      - "8004:8000"
+    # Port not exposed to host — internal service only
     environment:
       - PORT=8000
       - META_APP_ID=${META_APP_ID}
@@ -155,8 +152,7 @@ services:
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - POSTGRES_DB=${POSTGRES_DB}
-    ports:
-      - "5432:5432"
+    # Port not exposed to host — only accessible on Docker network
     shm_size: '128m'
     volumes:
       - postgres_data:/var/lib/postgresql/data

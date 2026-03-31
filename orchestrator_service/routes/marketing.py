@@ -141,22 +141,15 @@ async def connect_meta_account(
 @router.get("/debug/stats")
 async def debug_marketing_stats(
     range: str = "last_30d",
-    secret: Optional[str] = None
+    user_data=Depends(get_ceo_user_and_tenant),
 ):
     """
-    Endpoint de diagnóstico ultra-profundo para resolver el 'Zero Data'.
+    Endpoint de diagnóstico para resolver el 'Zero Data'. Requiere auth CEO.
     """
-    from core.auth import ADMIN_TOKEN
     import os
-    
-    env_admin_token = os.getenv("ADMIN_TOKEN")
-    
-    # Debug Info Dict (Any type for lints)
+
     debug_info: Dict[str, Any] = {
         "server_status": "online",
-        "env_admin_token_set": bool(env_admin_token),
-        "received_secret": secret,
-        "matches": (secret == env_admin_token or secret == "admin-secret-token") if secret else False
     }
 
     from core.credentials import CREDENTIALS_FERNET_KEY, get_tenant_credential

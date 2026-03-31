@@ -16,8 +16,8 @@ if not SECRET_KEY:
     if SECRET_KEY:
         logger.warning("⚠️ Using legacy INTERNAL_SECRET_KEY. Please migrate to JWT_SECRET_KEY.")
     else:
-        SECRET_KEY = "nexus-super-secret-key-v7.6"
-        logger.error("🛑 NO SECRET KEY DEFINED! Using insecure default. Set JWT_SECRET_KEY immediately.")
+        logger.critical("JWT_SECRET_KEY is not defined. Cannot start without a signing key.")
+        raise RuntimeError("JWT_SECRET_KEY environment variable is required. Set it before starting the service.")
 
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 1 week

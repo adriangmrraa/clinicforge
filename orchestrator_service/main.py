@@ -21,7 +21,16 @@ from urllib.parse import urlparse
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
-from fastapi import BackgroundTasks, FastAPI, Request, HTTPException, Depends, Query, Header, WebSocket
+from fastapi import (
+    BackgroundTasks,
+    FastAPI,
+    Request,
+    HTTPException,
+    Depends,
+    Query,
+    Header,
+    WebSocket,
+)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 from pydantic import BaseModel, Field
@@ -31,6 +40,7 @@ from sqlalchemy.orm import sessionmaker, declarative_base
 from sqlalchemy import text
 
 from langchain_openai import ChatOpenAI
+
 # Busca la línea que falla y reemplázala por estas:
 from langchain.agents import AgentExecutor
 from langchain.agents import create_openai_tools_agent
@@ -48,6 +58,7 @@ from admin_routes import router as admin_router
 from auth_routes import router as auth_router
 from routes import chat_webhooks, chat_api, meta_auth, marketing
 from email_service import email_service
+
 # from services.automation_service import automation_service # Deprecated: reemplazado por jobs/
 from core.security_middleware import SecurityHeadersMiddleware
 from core.prompt_security import detect_prompt_injection, sanitize_input
@@ -55,11 +66,13 @@ from services.vision_service import process_vision_task
 
 # --- CONFIGURACIÓN ---
 import logging
+
 logger = logging.getLogger("orchestrator")
 
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 logging.basicConfig(level=LOG_LEVEL)
 from core.log_sanitizer import install_log_sanitizer  # noqa: E402
+
 install_log_sanitizer()
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
@@ -70,32 +83,35 @@ CLINIC_HOURS_START = os.getenv("CLINIC_HOURS_START", "08:00")
 CLINIC_HOURS_END = os.getenv("CLINIC_HOURS_END", "19:00")
 ARG_TZ = timezone(timedelta(hours=-3))
 
+
 def get_now_arg():
     """Obtiene la fecha y hora actual garantizando zona horaria de Argentina."""
     return datetime.now(ARG_TZ)
 
+
 # download_media moved to services.media_downloader
 from services.media_downloader import download_media
+
 
 def normalize_whatsapp_attachments(media_items: list) -> list:
     """
     Normaliza attachments de WhatsApp a estructura estándar (Spec 20).
     Compatible con estructura de Chatwoot.
-    
+
     Args:
         media_items: Lista de items de media del payload de YCloud/WhatsApp
-    
+
     Returns:
         Lista normalizada con estructura: {type, url, file_name, file_size, mime_type, transcription}
     """
     if not media_items:
         return []
-    
+
     normalized = []
-    
+
     for item in media_items:
         media_type = (item.get("type") or "file").lower()
-        
+
         # Normalización de tipos
         if media_type in ["voice", "ptt"]:
             media_type = "audio"
@@ -103,22 +119,31 @@ def normalize_whatsapp_attachments(media_items: list) -> list:
             media_type = "file"
         elif media_type in ["picture", "photo"]:
             media_type = "image"
-        
-        normalized.append({
-            "type": media_type,
-            "url": item.get("url", ""),
-            "file_name": item.get("file_name") or item.get("filename") or "attachment",
-            "file_size": item.get("file_size") or item.get("size"),
-            "mime_type": item.get("mime_type") or item.get("mimeType"),
-            "provider_id": item.get("provider_id"),  # Para referencia
-            "transcription": item.get("transcription")  # Para audios
-        })
-    
+
+        normalized.append(
+            {
+                "type": media_type,
+                "url": item.get("url", ""),
+                "file_name": item.get("file_name")
+                or item.get("filename")
+                or "attachment",
+                "file_size": item.get("file_size") or item.get("size"),
+                "mime_type": item.get("mime_type") or item.get("mimeType"),
+                "provider_id": item.get("provider_id"),  # Para referencia
+                "transcription": item.get("transcription"),  # Para audios
+            }
+        )
+
     return normalized
 
+
 # ContextVars para rastrear el usuario en la sesión de LangChain
-current_customer_phone: ContextVar[Optional[str]] = ContextVar("current_customer_phone", default=None)
-current_patient_id: ContextVar[Optional[int]] = ContextVar("current_patient_id", default=None)
+current_customer_phone: ContextVar[Optional[str]] = ContextVar(
+    "current_customer_phone", default=None
+)
+current_patient_id: ContextVar[Optional[int]] = ContextVar(
+    "current_patient_id", default=None
+)
 current_tenant_id: ContextVar[int] = ContextVar("current_tenant_id", default=1)
 
 # --- DATABASE SETUP ---
@@ -129,9 +154,14 @@ if _sa_dsn.startswith("postgres://"):
 elif _sa_dsn.startswith("postgresql://"):
     _sa_dsn = _sa_dsn.replace("postgresql://", "postgresql+asyncpg://", 1)
 elif not _sa_dsn.startswith("postgresql+asyncpg://"):
-    _sa_dsn = "postgresql+asyncpg://" + _sa_dsn.split("://", 1)[-1] if "://" in _sa_dsn else _sa_dsn
+    _sa_dsn = (
+        "postgresql+asyncpg://" + _sa_dsn.split("://", 1)[-1]
+        if "://" in _sa_dsn
+        else _sa_dsn
+    )
 engine = create_async_engine(_sa_dsn, echo=False) if _sa_dsn else None
 AsyncSessionLocal = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
 
 # --- MODELOS DE DATOS (API) ---
 class ChatRequest(BaseModel):
@@ -148,8 +178,8 @@ class ChatRequest(BaseModel):
     provider: Optional[str] = None
     event_id: Optional[str] = None
     provider_message_id: Optional[str] = None
-    referral: Optional[Dict[str, Any]] = None # Meta Ads Referral Data
-    role: Optional[str] = "user" # 'user' or 'assistant' (for echoes)
+    referral: Optional[Dict[str, Any]] = None  # Meta Ads Referral Data
+    role: Optional[str] = "user"  # 'user' or 'assistant' (for echoes)
 
     @property
     def final_message(self) -> str:
@@ -169,14 +199,15 @@ class ChatRequest(BaseModel):
     def final_phone(self) -> str:
         phone = self.phone or self.from_number or ""
         # Normalización E.164 básica para consistencia en BD (con +)
-        clean = re.sub(r'\D', '', phone)
-        if clean and not phone.startswith('+'):
-            return '+' + clean
-        return phone # Si ya tiene + o está vacío
-    
+        clean = re.sub(r"\D", "", phone)
+        if clean and not phone.startswith("+"):
+            return "+" + clean
+        return phone  # Si ya tiene + o está vacío
+
     @property
     def final_name(self) -> str:
         return self.customer_name or self.name or "Paciente"
+
 
 def to_json_safe(obj: Any) -> Any:
     """Helper para serializar objetos datetime/date para JSON/SocketIO."""
@@ -184,14 +215,17 @@ def to_json_safe(obj: Any) -> Any:
         return obj.isoformat()
     return obj
 
+
 def normalize_phone_digits(phone: Optional[str]) -> str:
     """Normaliza teléfono a solo dígitos (E.164 sin +) para comparaciones robustas.
     Permite match entre +54911..., 54911..., 54 9 11... etc."""
     if not phone:
         return ""
-    return re.sub(r'\D', '', str(phone))
+    return re.sub(r"\D", "", str(phone))
+
 
 # --- HELPERS PARA PARSING DE FECHAS ---
+
 
 def get_next_weekday(target_weekday: int) -> date:
     """Obtiene el próximo día de la semana (0=lunes, 6=domingo)."""
@@ -200,6 +234,7 @@ def get_next_weekday(target_weekday: int) -> date:
     if days_ahead <= 0:
         days_ahead += 7
     return (today + timedelta(days=days_ahead)).date()
+
 
 def parse_date(date_query: str) -> Optional[date]:
     """
@@ -217,9 +252,13 @@ def parse_date(date_query: str) -> Optional[date]:
     """
     query = date_query.lower().strip()
     # Limpiar preposiciones/artículos y frases que confunden al parser de fechas
-    query_clean = re.sub(r'^(para el |para |el día |el |del |al )', '', query).strip()
+    query_clean = re.sub(r"^(para el |para |el día |el |del |al )", "", query).strip()
     # Eliminar sufijos de rango que no aportan a la fecha en sí
-    query_clean = re.sub(r'\s*(en adelante|para adelante|de ahí en más|de ahi en mas|o después|o despues|o más tarde|o mas tarde|más o menos|mas o menos|maso|masomenos|aproximadamente|aprox)\s*', ' ', query_clean).strip()
+    query_clean = re.sub(
+        r"\s*(en adelante|para adelante|de ahí en más|de ahi en mas|o después|o despues|o más tarde|o mas tarde|más o menos|mas o menos|maso|masomenos|aproximadamente|aprox)\s*",
+        " ",
+        query_clean,
+    ).strip()
     today = get_now_arg().date()
 
     # ── CAPA 1: Atajos exactos (palabras clave inequívocas) ──
@@ -227,15 +266,18 @@ def parse_date(date_query: str) -> Optional[date]:
         return (get_now_arg() + timedelta(days=2)).date()
 
     exact_map = {
-        'hoy': today, 'today': today,
+        "hoy": today,
+        "today": today,
     }
     # "mañana" solo como día (no como "mañana" = morning en contexto de hora)
     # Solo matchear si query ES "mañana" o empieza/termina con "mañana" como palabra completa
-    if re.search(r'\bmañana\b', query_clean) and not re.search(r'\b(por la|a la|de la)\s+mañana\b', query):
+    if re.search(r"\bmañana\b", query_clean) and not re.search(
+        r"\b(por la|a la|de la)\s+mañana\b", query
+    ):
         # Solo si no hay otros indicadores de fecha (evitar "mañana 30 de abril")
-        if not re.search(r'\d', query_clean):
+        if not re.search(r"\d", query_clean):
             return (get_now_arg() + timedelta(days=1)).date()
-    if 'tomorrow' in query_clean and not re.search(r'\d', query_clean):
+    if "tomorrow" in query_clean and not re.search(r"\d", query_clean):
         return (get_now_arg() + timedelta(days=1)).date()
     for key, val in exact_map.items():
         if query_clean == key or query == key:
@@ -243,11 +285,26 @@ def parse_date(date_query: str) -> Optional[date]:
 
     # ── CAPA 2: "Lo antes posible" / sin preferencia → mañana ──
     asap_patterns = [
-        'lo antes posible', 'lo más pronto', 'lo mas pronto', 'cuanto antes',
-        'lo más rápido', 'lo mas rapido', 'sin preferencia', 'cualquier',
-        'cuando puedan', 'cuando haya', 'el primero que haya', 'el más cercano',
-        'el mas cercano', 'primer turno', 'primer horario', 'asap', 'urgente',
-        'lo antes que se pueda', 'lo antes que puedan', 'lo más temprano',
+        "lo antes posible",
+        "lo más pronto",
+        "lo mas pronto",
+        "cuanto antes",
+        "lo más rápido",
+        "lo mas rapido",
+        "sin preferencia",
+        "cualquier",
+        "cuando puedan",
+        "cuando haya",
+        "el primero que haya",
+        "el más cercano",
+        "el mas cercano",
+        "primer turno",
+        "primer horario",
+        "asap",
+        "urgente",
+        "lo antes que se pueda",
+        "lo antes que puedan",
+        "lo más temprano",
     ]
     if any(p in query for p in asap_patterns):
         logger.info(f"📅 parse_date: '{date_query}' → tomorrow (ASAP/sin preferencia)")
@@ -257,16 +314,44 @@ def parse_date(date_query: str) -> Optional[date]:
     # Cubre: "30 de abril", "jueves 30 de abril", "abril 30", "2025-04-30",
     #         "30/04", "30-04-2025", "4 de mayo", "lunes 4 de mayo", etc.
     # Solo intentar si hay un número en el query (para no confundir "jueves" con una fecha)
-    has_month_name = any(m in query for m in ['enero','febrero','marzo','abril','mayo','junio',
-        'julio','agosto','septiembre','setiembre','octubre','noviembre','diciembre',
-        'january','february','march','april','may','june','july','august',
-        'september','october','november','december'])
-    has_month_number = bool(re.search(r'\d{1,2}[/\-]\d{1,2}', query_clean))  # "30/04", "15-05"
+    has_month_name = any(
+        m in query
+        for m in [
+            "enero",
+            "febrero",
+            "marzo",
+            "abril",
+            "mayo",
+            "junio",
+            "julio",
+            "agosto",
+            "septiembre",
+            "setiembre",
+            "octubre",
+            "noviembre",
+            "diciembre",
+            "january",
+            "february",
+            "march",
+            "april",
+            "may",
+            "june",
+            "july",
+            "august",
+            "september",
+            "october",
+            "november",
+            "december",
+        ]
+    )
+    has_month_number = bool(
+        re.search(r"\d{1,2}[/\-]\d{1,2}", query_clean)
+    )  # "30/04", "15-05"
     has_explicit_month = has_month_name or has_month_number
-    if re.search(r'\d', query_clean):
+    if re.search(r"\d", query_clean):
         try:
             parsed = dateutil_parse(query_clean, dayfirst=True, fuzzy=True).date()
-            if not re.search(r'20\d{2}', query):
+            if not re.search(r"20\d{2}", query):
                 # Si NO hay mes explícito (solo un número como "15" o "cerca del 15"),
                 # dateutil asume mes actual. Si eso resulta en el pasado, avanzar al próximo mes.
                 if not has_explicit_month and parsed < today:
@@ -274,39 +359,68 @@ def parse_date(date_query: str) -> Optional[date]:
                         parsed = parsed.replace(year=parsed.year + 1, month=1)
                     else:
                         parsed = parsed.replace(month=parsed.month + 1)
-                    logger.info(f"📅 parse_date: '{date_query}' → {parsed} (dateutil, no month → advanced to next month)")
+                    logger.info(
+                        f"📅 parse_date: '{date_query}' → {parsed} (dateutil, no month → advanced to next month)"
+                    )
                 # Si hay mes explícito y el resultado es pasado, asumir año siguiente
                 elif has_explicit_month and parsed < today:
                     parsed = parsed.replace(year=parsed.year + 1)
-                    logger.info(f"📅 parse_date: '{date_query}' → {parsed} (dateutil, past date → next year)")
+                    logger.info(
+                        f"📅 parse_date: '{date_query}' → {parsed} (dateutil, past date → next year)"
+                    )
                 else:
                     logger.info(f"📅 parse_date: '{date_query}' → {parsed} (dateutil)")
             else:
-                logger.info(f"📅 parse_date: '{date_query}' → {parsed} (dateutil with explicit year)")
+                logger.info(
+                    f"📅 parse_date: '{date_query}' → {parsed} (dateutil with explicit year)"
+                )
             return parsed
         except Exception:
             pass
 
     # ── CAPA 4: Expresiones con mes (sin número): "para mayo", "fines de abril" ──
     month_names = {
-        'enero': 1, 'febrero': 2, 'marzo': 3, 'abril': 4,
-        'mayo': 5, 'junio': 6, 'julio': 7, 'agosto': 8,
-        'septiembre': 9, 'setiembre': 9, 'octubre': 10,
-        'noviembre': 11, 'diciembre': 12,
-        'january': 1, 'february': 2, 'march': 3, 'april': 4,
-        'may': 5, 'june': 6, 'july': 7, 'august': 8,
-        'september': 9, 'october': 10, 'november': 11, 'december': 12,
+        "enero": 1,
+        "febrero": 2,
+        "marzo": 3,
+        "abril": 4,
+        "mayo": 5,
+        "junio": 6,
+        "julio": 7,
+        "agosto": 8,
+        "septiembre": 9,
+        "setiembre": 9,
+        "octubre": 10,
+        "noviembre": 11,
+        "diciembre": 12,
+        "january": 1,
+        "february": 2,
+        "march": 3,
+        "april": 4,
+        "may": 5,
+        "june": 6,
+        "july": 7,
+        "august": 8,
+        "september": 9,
+        "october": 10,
+        "november": 11,
+        "december": 12,
     }
     for month_name, month_num in month_names.items():
         if month_name in query:
             year = today.year
             if month_num < today.month or (month_num == today.month and today.day > 20):
                 year += 1
-            if any(w in query for w in ['mitad', 'mediado', 'medio']):
+            if any(w in query for w in ["mitad", "mediado", "medio"]):
                 target_day = 15
-            elif any(w in query for w in ['principio', 'inicio', 'comienzo', 'primera semana']):
+            elif any(
+                w in query
+                for w in ["principio", "inicio", "comienzo", "primera semana"]
+            ):
                 target_day = 3
-            elif any(w in query for w in ['fin', 'final', 'última semana', 'ultima semana']):
+            elif any(
+                w in query for w in ["fin", "final", "última semana", "ultima semana"]
+            ):
                 target_day = 25
             else:
                 target_day = 1
@@ -319,26 +433,39 @@ def parse_date(date_query: str) -> Optional[date]:
 
     # ── CAPA 5: Día de semana solo (sin número ni mes) ──
     weekday_map = {
-        'lunes': 0, 'monday': 0, 'martes': 1, 'tuesday': 1,
-        'miércoles': 2, 'miercoles': 2, 'wednesday': 2,
-        'jueves': 3, 'thursday': 3, 'viernes': 4, 'friday': 4,
-        'sábado': 5, 'sabado': 5, 'saturday': 5,
-        'domingo': 6, 'sunday': 6,
+        "lunes": 0,
+        "monday": 0,
+        "martes": 1,
+        "tuesday": 1,
+        "miércoles": 2,
+        "miercoles": 2,
+        "wednesday": 2,
+        "jueves": 3,
+        "thursday": 3,
+        "viernes": 4,
+        "friday": 4,
+        "sábado": 5,
+        "sabado": 5,
+        "saturday": 5,
+        "domingo": 6,
+        "sunday": 6,
     }
     for day_name, day_num in weekday_map.items():
-        if re.search(r'\b' + day_name + r'\b', query_clean):
+        if re.search(r"\b" + day_name + r"\b", query_clean):
             result = get_next_weekday(day_num)
             logger.info(f"📅 parse_date: '{date_query}' → {result} (weekday)")
             return result
 
     # ── CAPA 6: Frases relativas ──
-    if any(p in query for p in ['próxima semana', 'proxima semana', 'semana que viene']):
+    if any(
+        p in query for p in ["próxima semana", "proxima semana", "semana que viene"]
+    ):
         next_monday = get_next_weekday(0)
         if next_monday == today or (next_monday - today).days <= 2:
             next_monday += timedelta(days=7)
         return next_monday
 
-    if any(p in query for p in ['mes que viene', 'próximo mes', 'proximo mes']):
+    if any(p in query for p in ["mes que viene", "próximo mes", "proximo mes"]):
         if today.month == 12:
             return date(today.year + 1, 1, 1)
         return date(today.year, today.month + 1, 1)
@@ -348,7 +475,9 @@ def parse_date(date_query: str) -> Optional[date]:
         parsed = dateutil_parse(query_clean, dayfirst=True, fuzzy=True).date()
         if parsed < today:
             parsed = parsed.replace(year=parsed.year + 1)
-        logger.info(f"📅 parse_date: '{date_query}' → {parsed} (dateutil fuzzy fallback)")
+        logger.info(
+            f"📅 parse_date: '{date_query}' → {parsed} (dateutil fuzzy fallback)"
+        )
         return parsed
     except Exception:
         pass
@@ -357,35 +486,36 @@ def parse_date(date_query: str) -> Optional[date]:
     logger.warning(f"📅 parse_date: Could not parse '{date_query}', returning None")
     return None
 
+
 def parse_datetime(datetime_query: str) -> datetime:
     """Convierte 'lunes 15:30', 'mañana 14:00', '2025-02-05 14:30' a datetime localizado."""
     query = datetime_query.lower().strip()
     target_date = None
-    target_time = (14, 0) # Default
+    target_time = (14, 0)  # Default
 
     # 1. Extraer hora (HH:MM, HH:00, o "17 hs" / "17h")
-    time_match = re.search(r'(\d{1,2})[:h](\d{2})', query)
+    time_match = re.search(r"(\d{1,2})[:h](\d{2})", query)
     if time_match:
         target_time = (int(time_match.group(1)), int(time_match.group(2)))
     else:
         # "17 hs", "a las 17", "17 horas", "5 pm", "10 am" -> 17:00, 17:00, 10:00
-        hour_only = re.search(r'(?:las?\s+)?(\d{1,2})\s*(?:hs?|horas?)?\b', query)
+        hour_only = re.search(r"(?:las?\s+)?(\d{1,2})\s*(?:hs?|horas?)?\b", query)
         if hour_only:
             h = int(hour_only.group(1))
             if 0 <= h <= 23:
                 target_time = (h, 0)
         # Formato 12h: "5 pm", "5pm", "10 am" (12 am = medianoche, 12 pm = mediodía)
-        pm_am = re.search(r'(\d{1,2})\s*(am|pm|a\.m\.|p\.m\.)', query, re.IGNORECASE)
+        pm_am = re.search(r"(\d{1,2})\s*(am|pm|a\.m\.|p\.m\.)", query, re.IGNORECASE)
         if pm_am:
             h = int(pm_am.group(1))
-            is_pm = 'p' in pm_am.group(2).lower()
+            is_pm = "p" in pm_am.group(2).lower()
             if h == 12:
                 target_time = (0, 0) if not is_pm else (12, 0)
             elif is_pm:
                 target_time = (h + 12, 0)
             else:
                 target_time = (h, 0)
-    
+
     # 2. Extraer fecha: primero intentar el query completo con parse_date
     target_date = parse_date(query)
     # Si retornó None, intentar palabra por palabra
@@ -403,13 +533,19 @@ def parse_datetime(datetime_query: str) -> datetime:
             dt = dateutil_parse(query, dayfirst=True)
             if dt.year > 2000:
                 target_date = dt.date()
-                if not time_match: target_time = (dt.hour, dt.minute)
+                if not time_match:
+                    target_time = (dt.hour, dt.minute)
         except:
             target_date = (get_now_arg() + timedelta(days=1)).date()
 
     return datetime.combine(target_date, datetime.min.time()).replace(
-        hour=target_time[0], minute=target_time[1], second=0, microsecond=0, tzinfo=ARG_TZ
+        hour=target_time[0],
+        minute=target_time[1],
+        second=0,
+        microsecond=0,
+        tzinfo=ARG_TZ,
     )
+
 
 def to_json_safe(data):
     """
@@ -425,45 +561,58 @@ def to_json_safe(data):
         return data.isoformat()
     return data
 
+
 def is_time_in_working_hours(time_str: str, day_config: Dict[str, Any]) -> bool:
     """Verifica si un HH:MM está dentro de los slots habilitados del día."""
     if not day_config.get("enabled", False):
         return False
-    
+
     # Normalizar time_str a minutos desde medianoche para comparación fácil
     try:
-        th, tm = map(int, time_str.split(':'))
+        th, tm = map(int, time_str.split(":"))
         current_m = th * 60 + tm
-        
+
         for slot in day_config.get("slots", []):
-            sh, sm = map(int, slot['start'].split(':'))
-            eh, em = map(int, slot['end'].split(':'))
+            sh, sm = map(int, slot["start"].split(":"))
+            eh, em = map(int, slot["end"].split(":"))
             start_m = sh * 60 + sm
             end_m = eh * 60 + em
-            
+
             if start_m <= current_m < end_m:
                 return True
     except:
         pass
     return False
 
-def generate_free_slots(target_date: date, busy_intervals_by_prof: Dict[int, set],
-                        start_time_str="09:00", end_time_str="18:00", interval_minutes=30,
-                        duration_minutes=30, limit=20, time_preference: Optional[str] = None) -> List[str]:
+
+def generate_free_slots(
+    target_date: date,
+    busy_intervals_by_prof: Dict[int, set],
+    start_time_str="09:00",
+    end_time_str="18:00",
+    interval_minutes=30,
+    duration_minutes=30,
+    limit=20,
+    time_preference: Optional[str] = None,
+) -> List[str]:
     """Genera lista de horarios disponibles (si al menos un profesional tiene el hueco COMPLETO
     para la duración del tratamiento). Verificación con granularidad de 15 min para evitar solapamientos."""
     slots = []
 
     # Parse start and end times
     try:
-        sh, sm = map(int, start_time_str.split(':'))
-        eh, em = map(int, end_time_str.split(':'))
+        sh, sm = map(int, start_time_str.split(":"))
+        eh, em = map(int, end_time_str.split(":"))
     except:
         sh, sm = 9, 0
         eh, em = 18, 0
 
-    current = datetime.combine(target_date, datetime.min.time()).replace(hour=sh, minute=sm, tzinfo=ARG_TZ)
-    end_limit = datetime.combine(target_date, datetime.min.time()).replace(hour=eh, minute=em, tzinfo=ARG_TZ)
+    current = datetime.combine(target_date, datetime.min.time()).replace(
+        hour=sh, minute=sm, tzinfo=ARG_TZ
+    )
+    end_limit = datetime.combine(target_date, datetime.min.time()).replace(
+        hour=eh, minute=em, tzinfo=ARG_TZ
+    )
 
     now = get_now_arg()
 
@@ -475,16 +624,16 @@ def generate_free_slots(target_date: date, busy_intervals_by_prof: Dict[int, set
             continue
 
         # Filtro por preferencia de horario
-        if time_preference == 'mañana' and current.hour >= 13:
+        if time_preference == "mañana" and current.hour >= 13:
             current += timedelta(minutes=interval_minutes)
             continue
-        if time_preference == 'tarde' and current.hour < 13:
+        if time_preference == "tarde" and current.hour < 13:
             current += timedelta(minutes=interval_minutes)
             continue
 
         # Verificar si algún profesional tiene el hueco libre para TODA la duración
         time_needed = current + timedelta(minutes=duration_minutes)
-        if time_needed > end_limit: # No cabe al final del día
+        if time_needed > end_limit:  # No cabe al final del día
             current += timedelta(minutes=interval_minutes)
             continue
 
@@ -523,12 +672,15 @@ def slots_to_ranges(slots: List[str], interval_minutes: int = 30) -> str:
     if not slots:
         return ""
     try:
+
         def to_minutes(hhmm: str) -> int:
             h, m = map(int, hhmm.split(":"))
             return h * 60 + m
+
         def to_hhmm(m: int) -> str:
             h, m = divmod(m, 60)
             return f"{h:02d}:{m:02d}"
+
         minutes_list = sorted(set(to_minutes(s) for s in slots))
         ranges = []
         i = 0
@@ -572,10 +724,15 @@ def _resolve_sede_text(tenant_day_cfg, tenant_row) -> str:
 
 
 DIAS_ES = {
-    "monday": "Lunes", "tuesday": "Martes", "wednesday": "Miércoles",
-    "thursday": "Jueves", "friday": "Viernes", "saturday": "Sábado", "sunday": "Domingo"
+    "monday": "Lunes",
+    "tuesday": "Martes",
+    "wednesday": "Miércoles",
+    "thursday": "Jueves",
+    "friday": "Viernes",
+    "saturday": "Sábado",
+    "sunday": "Domingo",
 }
-DAYS_EN = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+DAYS_EN = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
 
 
 def _get_search_range_days(date_query: str, start_date: date) -> int:
@@ -585,30 +742,70 @@ def _get_search_range_days(date_query: str, start_date: date) -> int:
     """
     query = date_query.lower()
     # Rangos parciales de mes
-    if any(w in query for w in ['mitad', 'mediado', 'medio']):
-        return 7   # "mitad de julio" → Jul 15-22
-    if any(w in query for w in ['fin', 'fines', 'final', 'última semana', 'ultima semana']):
-        return 7   # "fines de octubre" → Oct 25-31
-    if any(w in query for w in ['principio', 'inicio', 'comienzo', 'primera semana']):
+    if any(w in query for w in ["mitad", "mediado", "medio"]):
+        return 7  # "mitad de julio" → Jul 15-22
+    if any(
+        w in query for w in ["fin", "fines", "final", "última semana", "ultima semana"]
+    ):
+        return 7  # "fines de octubre" → Oct 25-31
+    if any(w in query for w in ["principio", "inicio", "comienzo", "primera semana"]):
         return 10  # "principio de mayo" → May 1-10
     # Mes completo sin especificar parte (ej: "para mayo", "en julio")
-    month_names = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto',
-                   'septiembre','setiembre','octubre','noviembre','diciembre']
-    if any(m in query for m in month_names) and not re.search(r'\d', query):
+    month_names = [
+        "enero",
+        "febrero",
+        "marzo",
+        "abril",
+        "mayo",
+        "junio",
+        "julio",
+        "agosto",
+        "septiembre",
+        "setiembre",
+        "octubre",
+        "noviembre",
+        "diciembre",
+    ]
+    if any(m in query for m in month_names) and not re.search(r"\d", query):
         import calendar
+
         _, last_day = calendar.monthrange(start_date.year, start_date.month)
         return last_day  # Todo el mes
     # "próxima semana" / "semana que viene"
-    if any(p in query for p in ['semana que viene', 'próxima semana', 'proxima semana']):
+    if any(
+        p in query for p in ["semana que viene", "próxima semana", "proxima semana"]
+    ):
         return 5
     # "en adelante" / "de ahí en más" / "para adelante" → rango abierto desde esa fecha
-    if any(p in query for p in ['en adelante', 'para adelante', 'de ahí en más', 'de ahi en mas',
-                                 'en más', 'en mas', 'o después', 'o despues', 'o más tarde', 'o mas tarde']):
+    if any(
+        p in query
+        for p in [
+            "en adelante",
+            "para adelante",
+            "de ahí en más",
+            "de ahi en mas",
+            "en más",
+            "en mas",
+            "o después",
+            "o despues",
+            "o más tarde",
+            "o mas tarde",
+        ]
+    ):
         return 14  # Buscar 2 semanas desde la fecha indicada
     # ASAP / sin preferencia → buscar 30 días
-    asap_patterns = ['lo antes posible', 'cuanto antes', 'cualquier', 'sin preferencia',
-                     'cuando puedan', 'cuando haya', 'el más cercano', 'el mas cercano',
-                     'primer turno', 'urgente']
+    asap_patterns = [
+        "lo antes posible",
+        "cuanto antes",
+        "cualquier",
+        "sin preferencia",
+        "cuando puedan",
+        "cuando haya",
+        "el más cercano",
+        "el mas cercano",
+        "primer turno",
+        "urgente",
+    ]
     if any(p in query for p in asap_patterns):
         return 30
     # Fecha específica o día de semana → 1 día principal + comodín
@@ -648,9 +845,12 @@ def _pick_from_slots(slots: List[str], max_picks: int = 3) -> List[str]:
 
 
 async def _get_slots_for_extra_day(
-    target_date, tenant_id: int, tenant_wh: dict,
-    professional_name: Optional[str], treatment_name: Optional[str],
-    duration: int = 30
+    target_date,
+    tenant_id: int,
+    tenant_wh: dict,
+    professional_name: Optional[str],
+    treatment_name: Optional[str],
+    duration: int = 30,
 ) -> List[str]:
     """Obtiene slots libres para un día extra (para completar opciones multi-día). Versión simplificada."""
     day_name_en = DAYS_EN[target_date.weekday()]
@@ -665,7 +865,12 @@ async def _get_slots_for_extra_day(
     # Obtener profesionales activos
     clean_name = None
     if professional_name:
-        clean_name = re.sub(r'^(dr|dra|doctor|doctora)\.?\s+', '', professional_name, flags=re.IGNORECASE).strip()
+        clean_name = re.sub(
+            r"^(dr|dra|doctor|doctora)\.?\s+",
+            "",
+            professional_name,
+            flags=re.IGNORECASE,
+        ).strip()
 
     query = """SELECT p.id, p.first_name, p.last_name, p.google_calendar_id, p.working_hours
                FROM professionals p
@@ -682,20 +887,27 @@ async def _get_slots_for_extra_day(
 
     # Filtrar por tratamiento si aplica
     if treatment_name and not clean_name:
-        t_data = await db.pool.fetchrow("""
+        t_data = await db.pool.fetchrow(
+            """
             SELECT id, default_duration_minutes FROM treatment_types
             WHERE tenant_id = $1 AND (name ILIKE $2 OR code ILIKE $2) AND is_active = true AND is_available_for_booking = true
             LIMIT 1
-        """, tenant_id, f"%{treatment_name}%")
+        """,
+            tenant_id,
+            f"%{treatment_name}%",
+        )
         if t_data:
-            duration = t_data['default_duration_minutes']
+            duration = t_data["default_duration_minutes"]
             assigned_ids = await db.pool.fetch(
                 "SELECT professional_id FROM treatment_type_professionals WHERE tenant_id = $1 AND treatment_type_id = $2",
-                tenant_id, t_data['id']
+                tenant_id,
+                t_data["id"],
             )
             if assigned_ids:
-                assigned_set = {r['professional_id'] for r in assigned_ids}
-                active_professionals = [p for p in active_professionals if p['id'] in assigned_set]
+                assigned_set = {r["professional_id"] for r in assigned_ids}
+                active_professionals = [
+                    p for p in active_professionals if p["id"] in assigned_set
+                ]
                 if not active_professionals:
                     return []
 
@@ -704,58 +916,75 @@ async def _get_slots_for_extra_day(
     start_day = datetime.combine(target_date, datetime.min.time(), tzinfo=ARG_TZ)
     end_day = datetime.combine(target_date, datetime.max.time(), tzinfo=ARG_TZ)
 
-    appointments = await db.pool.fetch("""
+    appointments = await db.pool.fetch(
+        """
         SELECT professional_id, appointment_datetime as start, duration_minutes
         FROM appointments
         WHERE tenant_id = $1 AND professional_id = ANY($2) AND status IN ('scheduled', 'confirmed')
         AND (appointment_datetime < $4 AND (appointment_datetime + interval '1 minute' * COALESCE(duration_minutes, 60)) > $3)
-    """, tenant_id, prof_ids, start_day, end_day)
+    """,
+        tenant_id,
+        prof_ids,
+        start_day,
+        end_day,
+    )
 
     # GCal blocks (si existen en DB, sin JIT fetch para no ralentizar)
-    gcal_blocks = await db.pool.fetch("""
+    gcal_blocks = await db.pool.fetch(
+        """
         SELECT professional_id, start_datetime as start, end_datetime as end
         FROM google_calendar_blocks
         WHERE tenant_id = $1 AND (professional_id = ANY($2) OR professional_id IS NULL)
         AND (start_datetime < $4 AND end_datetime > $3)
-    """, tenant_id, prof_ids, start_day, end_day)
+    """,
+        tenant_id,
+        prof_ids,
+        start_day,
+        end_day,
+    )
 
     busy_map = {pid: set() for pid in prof_ids}
 
     for prof in active_professionals:
-        wh = prof.get('working_hours')
+        wh = prof.get("working_hours")
         if isinstance(wh, str):
-            try: wh = json.loads(wh) if wh else {}
-            except Exception: wh = {}
-        if not isinstance(wh, dict): wh = {}
+            try:
+                wh = json.loads(wh) if wh else {}
+            except Exception:
+                wh = {}
+        if not isinstance(wh, dict):
+            wh = {}
         day_config = wh.get(day_name_en, {"enabled": False, "slots": []})
         if day_config.get("enabled") and day_config.get("slots"):
-            check_time = datetime.combine(target_date, datetime.min.time()).replace(hour=8, minute=0)
+            check_time = datetime.combine(target_date, datetime.min.time()).replace(
+                hour=8, minute=0
+            )
             for _ in range(24):
                 h_m = check_time.strftime("%H:%M")
                 if not is_time_in_working_hours(h_m, day_config):
-                    busy_map[prof['id']].add(h_m)
+                    busy_map[prof["id"]].add(h_m)
                 check_time += timedelta(minutes=30)
                 if check_time.hour >= 20:
                     break
 
     global_busy = set()
     for b in gcal_blocks:
-        it = b['start'].astimezone(ARG_TZ)
-        while it < b['end'].astimezone(ARG_TZ):
+        it = b["start"].astimezone(ARG_TZ)
+        while it < b["end"].astimezone(ARG_TZ):
             h_m = it.strftime("%H:%M")
-            if b['professional_id']:
-                if b['professional_id'] in busy_map:
-                    busy_map[b['professional_id']].add(h_m)
+            if b["professional_id"]:
+                if b["professional_id"] in busy_map:
+                    busy_map[b["professional_id"]].add(h_m)
             else:
                 global_busy.add(h_m)
             it += timedelta(minutes=30)
 
     for appt in appointments:
-        it = appt['start'].astimezone(ARG_TZ)
-        end_it = it + timedelta(minutes=appt['duration_minutes'])
+        it = appt["start"].astimezone(ARG_TZ)
+        end_it = it + timedelta(minutes=appt["duration_minutes"])
         while it < end_it:
-            if appt['professional_id'] in busy_map:
-                busy_map[appt['professional_id']].add(it.strftime("%H:%M"))
+            if appt["professional_id"] in busy_map:
+                busy_map[appt["professional_id"]].add(it.strftime("%H:%M"))
             it += timedelta(minutes=30)
 
     for pid in busy_map:
@@ -764,7 +993,9 @@ async def _get_slots_for_extra_day(
     # Determinar rango horario
     day_start = CLINIC_HOURS_START
     day_end = CLINIC_HOURS_END
-    tenant_day_slots = tenant_day_cfg.get("slots", []) if tenant_day_cfg.get("enabled") else []
+    tenant_day_slots = (
+        tenant_day_cfg.get("slots", []) if tenant_day_cfg.get("enabled") else []
+    )
     if tenant_day_slots:
         day_start = min(s["start"] for s in tenant_day_slots)
         day_end = max(s["end"] for s in tenant_day_slots)
@@ -773,18 +1004,27 @@ async def _get_slots_for_extra_day(
             for i in range(len(sorted_slots) - 1):
                 gap_start = sorted_slots[i]["end"]
                 gap_end = sorted_slots[i + 1]["start"]
-                gs_h, gs_m = map(int, gap_start.split(':'))
-                ge_h, ge_m = map(int, gap_end.split(':'))
-                gap_t = datetime.combine(target_date, datetime.min.time()).replace(hour=gs_h, minute=gs_m)
-                gap_end_t = datetime.combine(target_date, datetime.min.time()).replace(hour=ge_h, minute=ge_m)
+                gs_h, gs_m = map(int, gap_start.split(":"))
+                ge_h, ge_m = map(int, gap_end.split(":"))
+                gap_t = datetime.combine(target_date, datetime.min.time()).replace(
+                    hour=gs_h, minute=gs_m
+                )
+                gap_end_t = datetime.combine(target_date, datetime.min.time()).replace(
+                    hour=ge_h, minute=ge_m
+                )
                 while gap_t < gap_end_t:
                     for pid in busy_map:
                         busy_map[pid].add(gap_t.strftime("%H:%M"))
                     gap_t += timedelta(minutes=15)
 
     return generate_free_slots(
-        target_date, busy_map, duration_minutes=duration,
-        start_time_str=day_start, end_time_str=day_end, interval_minutes=15, limit=50
+        target_date,
+        busy_map,
+        duration_minutes=duration,
+        start_time_str=day_start,
+        end_time_str=day_end,
+        interval_minutes=15,
+        limit=50,
     )
 
 
@@ -798,7 +1038,7 @@ async def pick_representative_slots(
     treatment_name: Optional[str] = None,
     duration: int = 30,
     max_options: int = 3,
-    search_range_days: int = 1
+    search_range_days: int = 1,
 ) -> tuple:
     """
     Selecciona hasta max_options slots representativos.
@@ -824,11 +1064,15 @@ async def pick_representative_slots(
         picked = _pick_from_slots(slots, slots_from_today)
         for time_str in picked:
             hour = int(time_str.split(":")[0])
-            options.append({
-                "time": time_str, "date": target_date,
-                "date_display": date_display, "sede": sede_text,
-                "period": "mañana" if hour < 13 else "tarde"
-            })
+            options.append(
+                {
+                    "time": time_str,
+                    "date": target_date,
+                    "date_display": date_display,
+                    "sede": sede_text,
+                    "period": "mañana" if hour < 13 else "tarde",
+                }
+            )
     else:
         # ── MODO RANGO: distribuir opciones en distintos días del rango ──
         # Primero recolectar todos los días con disponibilidad dentro del rango
@@ -838,12 +1082,14 @@ async def pick_representative_slots(
         if slots:
             day_name_en = DAYS_EN[target_date.weekday()]
             tenant_day_cfg = tenant_wh.get(day_name_en, {})
-            days_with_slots.append({
-                "date": target_date,
-                "slots": slots,
-                "sede": _resolve_sede_text(tenant_day_cfg, tenant_row),
-                "day_en": day_name_en,
-            })
+            days_with_slots.append(
+                {
+                    "date": target_date,
+                    "slots": slots,
+                    "sede": _resolve_sede_text(tenant_day_cfg, tenant_row),
+                    "day_en": day_name_en,
+                }
+            )
 
         # Buscar en el resto del rango
         for day_offset in range(1, search_range_days):
@@ -858,18 +1104,25 @@ async def pick_representative_slots(
                 continue
             try:
                 extra_slots = await _get_slots_for_extra_day(
-                    extra_date, tenant_id, tenant_wh,
-                    professional_name, treatment_name, duration
+                    extra_date,
+                    tenant_id,
+                    tenant_wh,
+                    professional_name,
+                    treatment_name,
+                    duration,
                 )
             except Exception as e:
                 logger.warning(f"Error getting range day slots for {extra_date}: {e}")
                 continue
             if extra_slots:
-                days_with_slots.append({
-                    "date": extra_date, "slots": extra_slots,
-                    "sede": _resolve_sede_text(extra_day_cfg, tenant_row),
-                    "day_en": extra_day_en,
-                })
+                days_with_slots.append(
+                    {
+                        "date": extra_date,
+                        "slots": extra_slots,
+                        "sede": _resolve_sede_text(extra_day_cfg, tenant_row),
+                        "day_en": extra_day_en,
+                    }
+                )
 
         if days_with_slots:
             # Distribuir: elegir días espaciados dentro del rango
@@ -879,7 +1132,9 @@ async def pick_representative_slots(
                 # Espaciar: tomar el primero, uno del medio, y el último
                 step = max(1, (len(days_with_slots) - 1) / (max_options - 1))
                 indices = [round(i * step) for i in range(max_options)]
-                indices = sorted(set(min(idx, len(days_with_slots) - 1) for idx in indices))
+                indices = sorted(
+                    set(min(idx, len(days_with_slots) - 1) for idx in indices)
+                )
                 selected_days = [days_with_slots[i] for i in indices]
 
             for day_info in selected_days:
@@ -892,11 +1147,15 @@ async def pick_representative_slots(
                 picked = _pick_from_slots(day_info["slots"], 1)
                 for time_str in picked:
                     hour = int(time_str.split(":")[0])
-                    options.append({
-                        "time": time_str, "date": d,
-                        "date_display": display, "sede": day_info["sede"],
-                        "period": "mañana" if hour < 13 else "tarde"
-                    })
+                    options.append(
+                        {
+                            "time": time_str,
+                            "date": d,
+                            "date_display": display,
+                            "sede": day_info["sede"],
+                            "period": "mañana" if hour < 13 else "tarde",
+                        }
+                    )
 
         # Contar total disponible en el rango para informar
         total_today = sum(len(d["slots"]) for d in days_with_slots)
@@ -916,8 +1175,12 @@ async def pick_representative_slots(
                 continue
             try:
                 extra_slots = await _get_slots_for_extra_day(
-                    extra_date, tenant_id, tenant_wh,
-                    professional_name, treatment_name, duration
+                    extra_date,
+                    tenant_id,
+                    tenant_wh,
+                    professional_name,
+                    treatment_name,
+                    duration,
                 )
             except Exception as e:
                 logger.warning(f"Error getting extra day slots for {extra_date}: {e}")
@@ -925,18 +1188,24 @@ async def pick_representative_slots(
             if not extra_slots:
                 continue
             extra_sede = _resolve_sede_text(extra_day_cfg, tenant_row)
-            extra_display = f"{DIAS_ES.get(extra_day_en, '')} {extra_date.strftime('%d/%m')}"
+            extra_display = (
+                f"{DIAS_ES.get(extra_day_en, '')} {extra_date.strftime('%d/%m')}"
+            )
             remaining = max_options - len(options)
             extra_picked = _pick_from_slots(extra_slots, min(remaining, 1))
             for time_str in extra_picked:
                 if len(options) >= max_options:
                     break
                 hour = int(time_str.split(":")[0])
-                options.append({
-                    "time": time_str, "date": extra_date,
-                    "date_display": extra_display, "sede": extra_sede,
-                    "period": "mañana" if hour < 13 else "tarde"
-                })
+                options.append(
+                    {
+                        "time": time_str,
+                        "date": extra_date,
+                        "date_display": extra_display,
+                        "sede": extra_sede,
+                        "period": "mañana" if hour < 13 else "tarde",
+                    }
+                )
 
     return options, total_today
 
@@ -959,7 +1228,9 @@ async def get_tenant_calendar_provider(tenant_id: int) -> str:
     elif isinstance(cfg, str):
         try:
             cfg = json.loads(cfg)
-            cp = (cfg.get("calendar_provider") if isinstance(cfg, dict) else "local") or "local"
+            cp = (
+                cfg.get("calendar_provider") if isinstance(cfg, dict) else "local"
+            ) or "local"
             cp = str(cp).lower()
         except Exception:
             cp = "local"
@@ -970,10 +1241,16 @@ async def get_tenant_calendar_provider(tenant_id: int) -> str:
 
 # --- TOOLS DENTALES ---
 
+
 @tool
-async def check_availability(date_query: str, interpreted_date: str, search_mode: str,
-                             professional_name: Optional[str] = None,
-                             treatment_name: Optional[str] = None, time_preference: Optional[str] = None):
+async def check_availability(
+    date_query: str,
+    interpreted_date: str,
+    search_mode: str,
+    professional_name: Optional[str] = None,
+    treatment_name: Optional[str] = None,
+    time_preference: Optional[str] = None,
+):
     """
     Consulta la disponibilidad REAL de turnos para una fecha. Llamar UNA sola vez por pregunta del paciente.
     date_query: OBLIGATORIO. Texto del paciente sobre la fecha, SIEMPRE incluyendo el mes. Si el paciente dijo el mes en un mensaje anterior, incluirlo aquí. Ejemplos: "mitad de mayo", "fines de abril 22 en adelante", "cerca del 15 de mayo". NUNCA pasar solo un número sin mes.
@@ -997,18 +1274,26 @@ async def check_availability(date_query: str, interpreted_date: str, search_mode
     """
     try:
         tid = current_tenant_id.get()
-        logger.info(f"📅 check_availability date_query={date_query!r} interpreted_date={interpreted_date!r} search_mode={search_mode!r} tenant_id={tid} treatment={treatment_name!r} prof={professional_name!r}")
+        logger.info(
+            f"📅 check_availability date_query={date_query!r} interpreted_date={interpreted_date!r} search_mode={search_mode!r} tenant_id={tid} treatment={treatment_name!r} prof={professional_name!r}"
+        )
         # 0. A) Limpiar nombre y obtener profesionales activos
         clean_name = professional_name
         if professional_name:
             # Remover títulos comunes y normalizar
-            clean_name = re.sub(r'^(dr|dra|doctor|doctora)\.?\s+', '', professional_name, flags=re.IGNORECASE).strip()
+            clean_name = re.sub(
+                r"^(dr|dra|doctor|doctora)\.?\s+",
+                "",
+                professional_name,
+                flags=re.IGNORECASE,
+            ).strip()
 
         tenant_id = current_tenant_id.get()
 
         # 0. Pre) Cargar working_hours y max_chairs del tenant
         tenant_row = await db.pool.fetchrow(
-            "SELECT working_hours, address, google_maps_url, max_chairs FROM tenants WHERE id = $1", tenant_id
+            "SELECT working_hours, address, google_maps_url, max_chairs FROM tenants WHERE id = $1",
+            tenant_id,
         )
         tenant_wh_raw = tenant_row["working_hours"] if tenant_row else None
         if isinstance(tenant_wh_raw, str):
@@ -1026,7 +1311,7 @@ async def check_availability(date_query: str, interpreted_date: str, search_mode
         if clean_name:
             query += " AND (p.first_name ILIKE $2 OR p.last_name ILIKE $2 OR (p.first_name || ' ' || COALESCE(p.last_name, '')) ILIKE $2)"
             params.append(f"%{clean_name}%")
-        
+
         active_professionals = await db.pool.fetch(query, *params)
         if not active_professionals and professional_name:
             return f"❌ No encontré al profesional '{professional_name}'. ¿Querés consultar disponibilidad general?"
@@ -1038,11 +1323,17 @@ async def check_availability(date_query: str, interpreted_date: str, search_mode
         used_interpreted = False
         if interpreted_date:
             try:
-                target_date = dateutil_parse(str(interpreted_date), dayfirst=True).date()
+                target_date = dateutil_parse(
+                    str(interpreted_date), dayfirst=True
+                ).date()
                 used_interpreted = True
-                logger.info(f"📅 Using LLM interpreted_date: {interpreted_date} → {target_date}")
+                logger.info(
+                    f"📅 Using LLM interpreted_date: {interpreted_date} → {target_date}"
+                )
             except Exception as e:
-                logger.warning(f"📅 Failed to parse interpreted_date={interpreted_date!r}: {e}, falling back to parse_date")
+                logger.warning(
+                    f"📅 Failed to parse interpreted_date={interpreted_date!r}: {e}, falling back to parse_date"
+                )
 
         # Fallback: parse_date del texto original
         if target_date is None:
@@ -1058,9 +1349,19 @@ async def check_availability(date_query: str, interpreted_date: str, search_mode
         # - LLM no pasó interpreted_date + parse_date falló: "cerca del 15" → marzo 15 en vez de mayo 15
         # - dateutil confundido por texto ruidoso
         _month_map = {
-            'enero': 1, 'febrero': 2, 'marzo': 3, 'abril': 4, 'mayo': 5, 'junio': 6,
-            'julio': 7, 'agosto': 8, 'septiembre': 9, 'setiembre': 9, 'octubre': 10,
-            'noviembre': 11, 'diciembre': 12,
+            "enero": 1,
+            "febrero": 2,
+            "marzo": 3,
+            "abril": 4,
+            "mayo": 5,
+            "junio": 6,
+            "julio": 7,
+            "agosto": 8,
+            "septiembre": 9,
+            "setiembre": 9,
+            "octubre": 10,
+            "noviembre": 11,
+            "diciembre": 12,
         }
         dq_lower = date_query.lower()
         mentioned_month = None
@@ -1075,24 +1376,47 @@ async def check_availability(date_query: str, interpreted_date: str, search_mode
                 # Si el día no existe en ese mes (ej: 31 de febrero), usar el último día
             except ValueError:
                 import calendar
+
                 _, last_day = calendar.monthrange(target_date.year, mentioned_month)
-                target_date = target_date.replace(month=mentioned_month, day=min(target_date.day, last_day))
+                target_date = target_date.replace(
+                    month=mentioned_month, day=min(target_date.day, last_day)
+                )
             # Si la corrección queda en el pasado, avanzar al año siguiente
             today_date_check = get_now_arg().date()
             if target_date < today_date_check:
                 target_date = target_date.replace(year=target_date.year + 1)
-            logger.warning(f"📅 CROSS-VALIDATION: date_query mentions '{mname}' (month {mentioned_month}) but resolved to {old_date.month}. Corrected {old_date} → {target_date}")
+            logger.warning(
+                f"📅 CROSS-VALIDATION: date_query mentions '{mname}' (month {mentioned_month}) but resolved to {old_date.month}. Corrected {old_date} → {target_date}"
+            )
 
         # GUARDIA: NUNCA buscar en el pasado
         today_date = get_now_arg().date()
         if target_date < today_date:
-            logger.warning(f"📅 check_availability: parsed date {target_date} is in the past, advancing to today {today_date}")
+            logger.warning(
+                f"📅 check_availability: parsed date {target_date} is in the past, advancing to today {today_date}"
+            )
             target_date = today_date
 
         # 0. B) Auto-avanzar si el día está cerrado (clínica o profesional)
         # En vez de retornar error, buscamos el próximo día válido automáticamente.
-        days_en = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
-        dias_es = {"monday": "lunes", "tuesday": "martes", "wednesday": "miércoles", "thursday": "jueves", "friday": "viernes", "saturday": "sábado", "sunday": "domingo"}
+        days_en = [
+            "monday",
+            "tuesday",
+            "wednesday",
+            "thursday",
+            "friday",
+            "saturday",
+            "sunday",
+        ]
+        dias_es = {
+            "monday": "lunes",
+            "tuesday": "martes",
+            "wednesday": "miércoles",
+            "thursday": "jueves",
+            "friday": "viernes",
+            "saturday": "sábado",
+            "sunday": "domingo",
+        }
         original_date = target_date
         auto_advanced = False
         auto_advance_reason = ""
@@ -1119,10 +1443,13 @@ async def check_availability(date_query: str, interpreted_date: str, search_mode
 
             # Verificar si es feriado
             from services.holiday_service import is_holiday as check_is_holiday
+
             _is_hol, _hol_name = await check_is_holiday(db.pool, tid, target_date)
             if _is_hol:
                 if not auto_advanced:
-                    auto_advance_reason = f"El {target_date.strftime('%d/%m')} es feriado ({_hol_name})"
+                    auto_advance_reason = (
+                        f"El {target_date.strftime('%d/%m')} es feriado ({_hol_name})"
+                    )
                     auto_advanced = True
                 target_date += timedelta(days=1)
                 continue
@@ -1131,7 +1458,7 @@ async def check_availability(date_query: str, interpreted_date: str, search_mode
             prof_closed = False
             if clean_name and active_professionals:
                 prof = active_professionals[0]
-                wh = prof.get('working_hours')
+                wh = prof.get("working_hours")
                 if isinstance(wh, str):
                     try:
                         wh = json.loads(wh) if wh else {}
@@ -1163,24 +1490,35 @@ async def check_availability(date_query: str, interpreted_date: str, search_mode
         duration = 30  # Default cuando no se especifica tratamiento
         avail_price = None
         if treatment_name:
-            t_data = await db.pool.fetchrow("""
+            t_data = await db.pool.fetchrow(
+                """
                 SELECT id, default_duration_minutes, base_price, name FROM treatment_types
                 WHERE tenant_id = $1 AND (name ILIKE $2 OR code ILIKE $2) AND is_active = true AND is_available_for_booking = true
                 LIMIT 1
-            """, tenant_id, f"%{treatment_name}%")
+            """,
+                tenant_id,
+                f"%{treatment_name}%",
+            )
             if not t_data:
                 return "❌ Ese tratamiento no está en la lista de servicios de esta clínica. Los horarios solo se pueden consultar para tratamientos que devuelve 'list_services'. Llamá a list_services y usá solo uno de esos nombres para consultar disponibilidad."
-            duration = t_data['default_duration_minutes']
-            avail_price = float(t_data['base_price']) if t_data.get('base_price') and float(t_data['base_price']) > 0 else None
+            duration = t_data["default_duration_minutes"]
+            avail_price = (
+                float(t_data["base_price"])
+                if t_data.get("base_price") and float(t_data["base_price"]) > 0
+                else None
+            )
             # Filter professionals by treatment assignment (backward compatible: if none assigned, all can do it)
             if not clean_name:
                 assigned_ids = await db.pool.fetch(
                     "SELECT professional_id FROM treatment_type_professionals WHERE tenant_id = $1 AND treatment_type_id = $2",
-                    tenant_id, t_data['id']
+                    tenant_id,
+                    t_data["id"],
                 )
                 if assigned_ids:
-                    assigned_set = {r['professional_id'] for r in assigned_ids}
-                    active_professionals = [p for p in active_professionals if p['id'] in assigned_set]
+                    assigned_set = {r["professional_id"] for r in assigned_ids}
+                    active_professionals = [
+                        p for p in active_professionals if p["id"] in assigned_set
+                    ]
                     if not active_professionals:
                         return "❌ No hay profesionales asignados a este tratamiento con disponibilidad. Contactá a la clínica."
 
@@ -1191,41 +1529,71 @@ async def check_availability(date_query: str, interpreted_date: str, search_mode
                 "SELECT google_calendar_event_id FROM appointments WHERE google_calendar_event_id IS NOT NULL AND tenant_id = $1",
                 tenant_id,
             )
-            apt_gids_set = {row["google_calendar_event_id"] for row in existing_apt_gids}
+            apt_gids_set = {
+                row["google_calendar_event_id"] for row in existing_apt_gids
+            }
             for prof in active_professionals:
                 prof_id = prof["id"]
                 cal_id = prof.get("google_calendar_id")
                 if not cal_id:
                     continue
                 try:
-                    g_events = gcal_service.get_events_for_day(calendar_id=cal_id, date_obj=target_date)
-                    start_day = datetime.combine(target_date, datetime.min.time(), tzinfo=ARG_TZ)
-                    end_day = datetime.combine(target_date, datetime.max.time(), tzinfo=ARG_TZ)
-                    await db.pool.execute("""
+                    g_events = gcal_service.get_events_for_day(
+                        calendar_id=cal_id, date_obj=target_date
+                    )
+                    start_day = datetime.combine(
+                        target_date, datetime.min.time(), tzinfo=ARG_TZ
+                    )
+                    end_day = datetime.combine(
+                        target_date, datetime.max.time(), tzinfo=ARG_TZ
+                    )
+                    await db.pool.execute(
+                        """
                         DELETE FROM google_calendar_blocks
                         WHERE professional_id = $1 AND (start_datetime < $3 AND end_datetime > $2) AND tenant_id = $4
-                    """, prof_id, start_day, end_day, tenant_id)
+                    """,
+                        prof_id,
+                        start_day,
+                        end_day,
+                        tenant_id,
+                    )
                     for event in g_events:
                         g_id = event["id"]
                         if g_id in apt_gids_set:
                             continue
                         summary = event.get("summary", "Ocupado (GCal)")
                         description = event.get("description", "")
-                        start = event["start"].get("dateTime") or event["start"].get("date")
+                        start = event["start"].get("dateTime") or event["start"].get(
+                            "date"
+                        )
                         end = event["end"].get("dateTime") or event["end"].get("date")
                         all_day = "date" in event["start"]
                         try:
-                            dt_start = datetime.fromisoformat(start.replace("Z", "+00:00"))
+                            dt_start = datetime.fromisoformat(
+                                start.replace("Z", "+00:00")
+                            )
                             dt_end = datetime.fromisoformat(end.replace("Z", "+00:00"))
-                            await db.pool.execute("""
+                            await db.pool.execute(
+                                """
                                 INSERT INTO google_calendar_blocks (
                                     tenant_id, google_event_id, title, description,
                                     start_datetime, end_datetime, all_day, professional_id, sync_status
                                 ) VALUES ($8, $1, $2, $3, $4, $5, $6, $7, 'synced')
                                 ON CONFLICT (google_event_id) DO NOTHING
-                            """, g_id, summary, description, dt_start, dt_end, all_day, prof_id, tenant_id)
+                            """,
+                                g_id,
+                                summary,
+                                description,
+                                dt_start,
+                                dt_end,
+                                all_day,
+                                prof_id,
+                                tenant_id,
+                            )
                         except Exception as ins_err:
-                            logger.error(f"Error inserting GCal block {g_id}: {ins_err}")
+                            logger.error(
+                                f"Error inserting GCal block {g_id}: {ins_err}"
+                            )
                 except Exception as e:
                     logger.error(f"JIT Fetch error for prof {prof_id}: {e}")
 
@@ -1234,30 +1602,42 @@ async def check_availability(date_query: str, interpreted_date: str, search_mode
         start_day = datetime.combine(target_date, datetime.min.time(), tzinfo=ARG_TZ)
         end_day = datetime.combine(target_date, datetime.max.time(), tzinfo=ARG_TZ)
 
-        appointments = await db.pool.fetch("""
+        appointments = await db.pool.fetch(
+            """
             SELECT professional_id, appointment_datetime as start, duration_minutes
             FROM appointments
             WHERE tenant_id = $1 AND professional_id = ANY($2) AND status IN ('scheduled', 'confirmed')
             AND (appointment_datetime < $4 AND (appointment_datetime + interval '1 minute' * COALESCE(duration_minutes, 60)) > $3)
-        """, tenant_id, prof_ids, start_day, end_day)
+        """,
+            tenant_id,
+            prof_ids,
+            start_day,
+            end_day,
+        )
 
         if calendar_provider == "google":
-            gcal_blocks = await db.pool.fetch("""
+            gcal_blocks = await db.pool.fetch(
+                """
                 SELECT professional_id, start_datetime as start, end_datetime as end
                 FROM google_calendar_blocks
                 WHERE tenant_id = $1 AND (professional_id = ANY($2) OR professional_id IS NULL)
                 AND (start_datetime < $4 AND end_datetime > $3)
-            """, tenant_id, prof_ids, start_day, end_day)
+            """,
+                tenant_id,
+                prof_ids,
+                start_day,
+                end_day,
+            )
         else:
             gcal_blocks = []
 
         # Mapear intervalos ocupados por profesional
         busy_map = {pid: set() for pid in prof_ids}
-        
+
         # --- Pre-llenar busy_map con horarios NO LABORALES del profesional ---
         # Si working_hours está vacío o el día no tiene slots, el profesional se considera disponible en horario clínica (no se marca nada como ocupado).
         for prof in active_professionals:
-            wh = prof.get('working_hours')
+            wh = prof.get("working_hours")
             if isinstance(wh, str):
                 try:
                     wh = json.loads(wh) if wh else {}
@@ -1266,10 +1646,12 @@ async def check_availability(date_query: str, interpreted_date: str, search_mode
             if not isinstance(wh, dict):
                 wh = {}
             day_config = wh.get(day_name_en, {"enabled": False, "slots": []})
-            prof_id = prof['id']
+            prof_id = prof["id"]
             # Solo marcar como ocupados los horarios fuera de working_hours cuando el día tiene slots configurados
             if day_config.get("enabled") and day_config.get("slots"):
-                check_time = datetime.combine(target_date, datetime.min.time()).replace(hour=8, minute=0)
+                check_time = datetime.combine(target_date, datetime.min.time()).replace(
+                    hour=8, minute=0
+                )
                 while check_time.hour < 20:
                     h_m = check_time.strftime("%H:%M")
                     if not is_time_in_working_hours(h_m, day_config):
@@ -1280,24 +1662,26 @@ async def check_availability(date_query: str, interpreted_date: str, search_mode
         # Agregar bloqueos de GCal (granularidad 15 min)
         global_busy = set()
         for b in gcal_blocks:
-            it = b['start'].astimezone(ARG_TZ)
-            b_end = b['end'].astimezone(ARG_TZ)
+            it = b["start"].astimezone(ARG_TZ)
+            b_end = b["end"].astimezone(ARG_TZ)
             while it < b_end:
                 h_m = it.strftime("%H:%M")
-                if b['professional_id']:
-                    if b['professional_id'] in busy_map:
-                        busy_map[b['professional_id']].add(h_m)
+                if b["professional_id"]:
+                    if b["professional_id"] in busy_map:
+                        busy_map[b["professional_id"]].add(h_m)
                 else:
                     global_busy.add(h_m)
                 it += timedelta(minutes=15)
-        
+
         for appt in appointments:
-            it = appt['start'].astimezone(ARG_TZ)
-            appt_duration = appt['duration_minutes'] if appt['duration_minutes'] is not None else 60
+            it = appt["start"].astimezone(ARG_TZ)
+            appt_duration = (
+                appt["duration_minutes"] if appt["duration_minutes"] is not None else 60
+            )
             if appt_duration <= 0:
                 appt_duration = 30
             end_it = it + timedelta(minutes=appt_duration)
-            pid = appt['professional_id']
+            pid = appt["professional_id"]
             if pid not in busy_map:
                 continue
             # Mark EVERY 15-min slot from exact start to end as busy
@@ -1306,12 +1690,16 @@ async def check_availability(date_query: str, interpreted_date: str, search_mode
                 busy_map[pid].add(check.strftime("%H:%M"))
                 check += timedelta(minutes=15)
             # Also mark 30-min boundaries within range (defensive)
-            boundary = it.replace(minute=(it.minute // 30) * 30, second=0, microsecond=0)
+            boundary = it.replace(
+                minute=(it.minute // 30) * 30, second=0, microsecond=0
+            )
             while boundary < end_it:
                 busy_map[pid].add(boundary.strftime("%H:%M"))
                 boundary += timedelta(minutes=30)
-            logger.info(f"📅 busy_map prof={pid} appt={it.strftime('%H:%M')}-{end_it.strftime('%H:%M')} ({appt_duration}min) busy_slots={sorted(s for s in busy_map[pid] if ':' in s)[:20]}")
-        
+            logger.info(
+                f"📅 busy_map prof={pid} appt={it.strftime('%H:%M')}-{end_it.strftime('%H:%M')} ({appt_duration}min) busy_slots={sorted(s for s in busy_map[pid] if ':' in s)[:20]}"
+            )
+
         # Unir globales a todos
         for pid in busy_map:
             busy_map[pid].update(global_busy)
@@ -1319,7 +1707,9 @@ async def check_availability(date_query: str, interpreted_date: str, search_mode
         # 3. Determinar rango horario del día desde tenant working_hours
         day_start = CLINIC_HOURS_START
         day_end = CLINIC_HOURS_END
-        tenant_day_slots = tenant_day_cfg.get("slots", []) if tenant_day_cfg.get("enabled") else []
+        tenant_day_slots = (
+            tenant_day_cfg.get("slots", []) if tenant_day_cfg.get("enabled") else []
+        )
         if tenant_day_slots:
             # Usar el rango más amplio de los slots del tenant para este día
             day_start = min(s["start"] for s in tenant_day_slots)
@@ -1330,10 +1720,14 @@ async def check_availability(date_query: str, interpreted_date: str, search_mode
                 for i in range(len(sorted_slots) - 1):
                     gap_start = sorted_slots[i]["end"]
                     gap_end = sorted_slots[i + 1]["start"]
-                    gs_h, gs_m = map(int, gap_start.split(':'))
-                    ge_h, ge_m = map(int, gap_end.split(':'))
-                    gap_t = datetime.combine(target_date, datetime.min.time()).replace(hour=gs_h, minute=gs_m)
-                    gap_end_t = datetime.combine(target_date, datetime.min.time()).replace(hour=ge_h, minute=ge_m)
+                    gs_h, gs_m = map(int, gap_start.split(":"))
+                    ge_h, ge_m = map(int, gap_end.split(":"))
+                    gap_t = datetime.combine(target_date, datetime.min.time()).replace(
+                        hour=gs_h, minute=gs_m
+                    )
+                    gap_end_t = datetime.combine(
+                        target_date, datetime.min.time()
+                    ).replace(hour=ge_h, minute=ge_m)
                     while gap_t < gap_end_t:
                         gap_hm = gap_t.strftime("%H:%M")
                         for pid in busy_map:
@@ -1344,18 +1738,22 @@ async def check_availability(date_query: str, interpreted_date: str, search_mode
         max_chairs = tenant_row.get("max_chairs") or 99 if tenant_row else 99
         if max_chairs < 99:
             # Count concurrent appointments at each 15-min slot across ALL professionals
-            all_day_apts = await db.pool.fetch("""
+            all_day_apts = await db.pool.fetch(
+                """
                 SELECT appointment_datetime as start, COALESCE(duration_minutes, 60) as duration
                 FROM appointments
                 WHERE tenant_id = $1 AND status IN ('scheduled', 'confirmed')
                 AND DATE(appointment_datetime AT TIME ZONE 'America/Argentina/Buenos_Aires') = $2
-            """, tenant_id, target_date)
+            """,
+                tenant_id,
+                target_date,
+            )
 
             # Build a counter per 15-min slot
             chair_usage: dict[str, int] = {}
             for apt in all_day_apts:
-                apt_start = apt['start'].astimezone(ARG_TZ)
-                apt_end = apt_start + timedelta(minutes=apt['duration'])
+                apt_start = apt["start"].astimezone(ARG_TZ)
+                apt_end = apt_start + timedelta(minutes=apt["duration"])
                 t = apt_start.replace(second=0, microsecond=0)
                 while t < apt_end:
                     hm = t.strftime("%H:%M")
@@ -1363,11 +1761,15 @@ async def check_availability(date_query: str, interpreted_date: str, search_mode
                     t += timedelta(minutes=15)
 
             # Mark slots where chairs are full as globally busy for ALL professionals
-            chairs_full_slots = {hm for hm, count in chair_usage.items() if count >= max_chairs}
+            chairs_full_slots = {
+                hm for hm, count in chair_usage.items() if count >= max_chairs
+            }
             if chairs_full_slots:
                 for pid in busy_map:
                     busy_map[pid].update(chairs_full_slots)
-                logger.info(f"🪑 Chair constraint: max_chairs={max_chairs}, full_slots={sorted(chairs_full_slots)}")
+                logger.info(
+                    f"🪑 Chair constraint: max_chairs={max_chairs}, full_slots={sorted(chairs_full_slots)}"
+                )
 
         available_slots = generate_free_slots(
             target_date,
@@ -1377,13 +1779,14 @@ async def check_availability(date_query: str, interpreted_date: str, search_mode
             end_time_str=day_end,
             time_preference=time_preference,
             interval_minutes=15,
-            limit=50
+            limit=50,
         )
 
         # Filtrar slots con soft lock activo de otro paciente
         my_phone = current_customer_phone.get()
         try:
             from services.relay import get_redis
+
             r = get_redis()
             if r and available_slots:
                 date_str = target_date.strftime("%Y-%m-%d")
@@ -1413,16 +1816,27 @@ async def check_availability(date_query: str, interpreted_date: str, search_mode
         search_mode_map = {"exact": 1, "week": 7, "month": 30, "open": 30}
         if search_mode and search_mode.lower() in search_mode_map:
             search_range = search_mode_map[search_mode.lower()]
-            logger.info(f"📅 search_range={search_range} days (from LLM search_mode={search_mode!r})")
+            logger.info(
+                f"📅 search_range={search_range} days (from LLM search_mode={search_mode!r})"
+            )
         else:
             search_range = _get_search_range_days(date_query, target_date)
-            logger.info(f"📅 search_range={search_range} days (inferred from query={date_query!r} target={target_date})")
+            logger.info(
+                f"📅 search_range={search_range} days (inferred from query={date_query!r} target={target_date})"
+            )
 
         # Seleccionar 2-3 opciones representativas (con multi-día si hace falta)
         options, total_today = await pick_representative_slots(
-            available_slots, target_date, tenant_id, tenant_wh, tenant_row,
-            professional_name=professional_name, treatment_name=treatment_name,
-            duration=duration, max_options=3, search_range_days=search_range
+            available_slots,
+            target_date,
+            tenant_id,
+            tenant_wh,
+            tenant_row,
+            professional_name=professional_name,
+            treatment_name=treatment_name,
+            duration=duration,
+            max_options=3,
+            search_range_days=search_range,
         )
 
         if options:
@@ -1441,10 +1855,14 @@ async def check_availability(date_query: str, interpreted_date: str, search_mode
             lines.append(f"🗓️ Opciones disponibles para tu {treatment_display}:\n")
 
             for i, opt in enumerate(options):
-                lines.append(f"{emoji_nums[i]}  {opt['date_display']} — {opt['time']} hs")
+                lines.append(
+                    f"{emoji_nums[i]}  {opt['date_display']} — {opt['time']} hs"
+                )
 
             if total_today > 3:
-                lines.append(f"\nHay {total_today - 3} turnos más disponibles si preferís otro horario.")
+                lines.append(
+                    f"\nHay {total_today - 3} turnos más disponibles si preferís otro horario."
+                )
 
             if professional_name:
                 lines.append(f"\nConsultando con Dr/a. {professional_name}.")
@@ -1454,7 +1872,7 @@ async def check_availability(date_query: str, interpreted_date: str, search_mode
                 lines.append(f"\n💰 Valor: ${avail_price:,.0f} ({duration} min)")
 
             # Sede info grouped at the end (only once if all same)
-            sedes = [opt['sede'] for opt in options if opt.get('sede')]
+            sedes = [opt["sede"] for opt in options if opt.get("sede")]
             unique_sedes = list(dict.fromkeys(sedes))
             if unique_sedes:
                 if len(unique_sedes) == 1:
@@ -1464,37 +1882,55 @@ async def check_availability(date_query: str, interpreted_date: str, search_mode
                         lines.append(f"📍 {sede}")
 
             resp = "\n".join(lines)
-            logger.info(f"📅 check_availability OK options={len(options)} total_today={total_today} price={avail_price} for {date_query} auto_advanced={auto_advanced}")
+            logger.info(
+                f"📅 check_availability OK options={len(options)} total_today={total_today} price={avail_price} for {date_query} auto_advanced={auto_advanced}"
+            )
             return resp
         else:
             # Sin turnos incluso con multi-day search — informar pero no dejar al paciente colgado
-            logger.info(f"📅 check_availability no slots for {date_query} (duration={duration} min, searched +7 days)")
+            logger.info(
+                f"📅 check_availability no slots for {date_query} (duration={duration} min, searched +7 days)"
+            )
             no_slots_msg = f"No encontré turnos de {duration} min"
             if auto_advanced:
-                no_slots_msg += f" cercanos a la fecha que pediste ({auto_advance_reason})"
+                no_slots_msg += (
+                    f" cercanos a la fecha que pediste ({auto_advance_reason})"
+                )
             else:
                 no_slots_msg += f" para {date_query} ni en los días cercanos"
-            no_slots_msg += ". ¿Querés que busque en otra semana o te anoto en lista de espera?"
+            no_slots_msg += (
+                ". ¿Querés que busque en otra semana o te anoto en lista de espera?"
+            )
             return no_slots_msg
-            
+
     except Exception as e:
         import traceback
-        logger.exception(f"Error en check_availability (tenant_id={current_tenant_id.get()}): {e}")
-        logger.warning(f"check_availability FAIL date_query={date_query!r} error={e!r} traceback={traceback.format_exc()}")
+
+        logger.exception(
+            f"Error en check_availability (tenant_id={current_tenant_id.get()}): {e}"
+        )
+        logger.warning(
+            f"check_availability FAIL date_query={date_query!r} error={e!r} traceback={traceback.format_exc()}"
+        )
         return f"No pude consultar la disponibilidad para {date_query}. ¿Probamos una fecha diferente?"
 
+
 @tool
-async def book_appointment(date_time: str, treatment_reason: str,
-                         first_name: Optional[str] = None, last_name: Optional[str] = None,
-                         dni: Optional[str] = None,
-                         birth_date: Optional[str] = None,
-                         email: Optional[str] = None,
-                         city: Optional[str] = None,
-                         acquisition_source: Optional[str] = None,
-                         duration_minutes: Optional[int] = 30,
-                         professional_name: Optional[str] = None,
-                         patient_phone: Optional[str] = None,
-                         is_minor: Optional[bool] = False):
+async def book_appointment(
+    date_time: str,
+    treatment_reason: str,
+    first_name: Optional[str] = None,
+    last_name: Optional[str] = None,
+    dni: Optional[str] = None,
+    birth_date: Optional[str] = None,
+    email: Optional[str] = None,
+    city: Optional[str] = None,
+    acquisition_source: Optional[str] = None,
+    duration_minutes: Optional[int] = 30,
+    professional_name: Optional[str] = None,
+    patient_phone: Optional[str] = None,
+    is_minor: Optional[bool] = False,
+):
     """
     Registra un turno en la BD.
     Para pacientes NUEVOS (status='guest'), OBLIGATORIAMENTE debes recolectar estos datos ANTES de ejecutar:
@@ -1526,26 +1962,34 @@ async def book_appointment(date_time: str, treatment_reason: str,
     if not chat_phone:
         return "❌ Error: No pude identificar tu teléfono. Reinicia la conversación."
     tenant_id = current_tenant_id.get()
-    logger.info(f"📅 BOOK START: phone={chat_phone} tenant={tenant_id} date_time={date_time} treatment={treatment_reason} prof={professional_name} first_name={first_name} last_name={last_name} dni={dni} is_minor={is_minor} patient_phone={patient_phone}")
+    logger.info(
+        f"📅 BOOK START: phone={chat_phone} tenant={tenant_id} date_time={date_time} treatment={treatment_reason} prof={professional_name} first_name={first_name} last_name={last_name} dni={dni} is_minor={is_minor} patient_phone={patient_phone}"
+    )
 
     # --- Resolve patient phone based on booking type ---
     is_third_party = bool(patient_phone) or bool(is_minor)
     guardian_phone_value = None
     if is_minor:
         # Minor: use parent phone + -M{N} suffix
-        minor_count = await db.pool.fetchval(
-            "SELECT COUNT(*) FROM patients WHERE tenant_id = $1 AND guardian_phone = $2",
-            tenant_id, chat_phone
-        ) or 0
+        minor_count = (
+            await db.pool.fetchval(
+                "SELECT COUNT(*) FROM patients WHERE tenant_id = $1 AND guardian_phone = $2",
+                tenant_id,
+                chat_phone,
+            )
+            or 0
+        )
         phone = f"{chat_phone}-M{minor_count + 1}"
         guardian_phone_value = chat_phone
     elif patient_phone:
         # Adult third party: use their phone
         phone = re.sub(r"[^\d+]", "", str(patient_phone).strip())
         if not phone:
-            return "❌ El teléfono del paciente no es válido. Pedile el número correcto."
-        if not phone.startswith('+'):
-            phone = '+' + phone
+            return (
+                "❌ El teléfono del paciente no es válido. Pedile el número correcto."
+            )
+        if not phone.startswith("+"):
+            phone = "+" + phone
     else:
         # For themselves: current flow
         phone = chat_phone
@@ -1557,63 +2001,99 @@ async def book_appointment(date_time: str, treatment_reason: str,
             return "❌ No se pueden agendar turnos para horarios que ya pasaron. Indicá un día y hora futuros. Formato esperado: date_time como 'día 17:00' (ej. miércoles 17:00)."
         # No agendar en feriados
         from services.holiday_service import is_holiday as check_is_holiday
-        _is_hol, _hol_name = await check_is_holiday(db.pool, tenant_id, apt_datetime.date())
+
+        _is_hol, _hol_name = await check_is_holiday(
+            db.pool, tenant_id, apt_datetime.date()
+        )
         if _is_hol:
             return f"❌ No se puede agendar el {apt_datetime.strftime('%d/%m/%Y')}: es feriado ({_hol_name}). Por favor elegí otro día."
-        first_name = str(first_name).strip() if first_name and str(first_name).strip() else None
-        last_name = str(last_name).strip() if last_name and str(last_name).strip() else None
+        first_name = (
+            str(first_name).strip() if first_name and str(first_name).strip() else None
+        )
+        last_name = (
+            str(last_name).strip() if last_name and str(last_name).strip() else None
+        )
         dni_raw = str(dni).strip() if dni and str(dni).strip() else None
-        dni = re.sub(r"\D", "", dni_raw) if dni_raw else None  # Solo dígitos (quitar puntos, espacios)
-        
+        dni = (
+            re.sub(r"\D", "", dni_raw) if dni_raw else None
+        )  # Solo dígitos (quitar puntos, espacios)
+
         # Procesar fecha de nacimiento (formato DD/MM/AAAA)
         birth_date_parsed = None
-        if birth_date and str(birth_date).strip() not in ["00/00/0000", "0", "None", "null", ""]:
+        if birth_date and str(birth_date).strip() not in [
+            "00/00/0000",
+            "0",
+            "None",
+            "null",
+            "",
+        ]:
             try:
                 # Parsear fecha en formato DD/MM/AAAA
-                day, month, year = map(int, str(birth_date).split('/'))
+                day, month, year = map(int, str(birth_date).split("/"))
                 birth_date_parsed = date(year, month, day)
             except (ValueError, AttributeError):
                 # En lugar de fallar, logueamos el error y dejamos NULL, la IA ya confirmó turno.
                 logger.warning(f"⚠️ Fecha de nac inválida omitida: {birth_date}")
-        
+
         # Procesar email
         email_clean = str(email).strip().lower() if email else None
-        if email_clean in ["sin_email@placeholder.com", "none", "null", "", "a_confirmar@placeholder.com"]:
+        if email_clean in [
+            "sin_email@placeholder.com",
+            "none",
+            "null",
+            "",
+            "a_confirmar@placeholder.com",
+        ]:
             email_clean = None
-        elif email_clean and not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', email_clean):
+        elif email_clean and not re.match(
+            r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$", email_clean
+        ):
             # En lugar de fallar, lo omitimos para no detener turno
             logger.warning(f"⚠️ Email inválido omitido: {email_clean}")
             email_clean = None
-        
+
         # Procesar ciudad (Placeholder "Neuquén", "a_confirmar")
         city_clean = str(city).strip() if city else None
-        if city_clean and city_clean.lower() in ["neuquén", "neuquen", "a_confirmar", "none", "null", "sin especificar"]:
+        if city_clean and city_clean.lower() in [
+            "neuquén",
+            "neuquen",
+            "a_confirmar",
+            "none",
+            "null",
+            "sin especificar",
+        ]:
             city_clean = None
-        
+
         # Procesar fuente de adquisición
-        acquisition_source_clean = str(acquisition_source).strip().upper() if acquisition_source else None
+        acquisition_source_clean = (
+            str(acquisition_source).strip().upper() if acquisition_source else None
+        )
         # Normalizar valores comunes
         if acquisition_source_clean:
-            if acquisition_source_clean in ['INSTAGRAM', 'IG']:
-                acquisition_source_clean = 'INSTAGRAM'
-            elif acquisition_source_clean in ['GOOGLE', 'BUSCADOR']:
-                acquisition_source_clean = 'GOOGLE'
-            elif acquisition_source_clean in ['REFERIDO', 'RECOMENDACIÓN', 'RECOMENDADO']:
-                acquisition_source_clean = 'REFERRED'
-            elif acquisition_source_clean in ['OTRO', 'OTROS']:
-                acquisition_source_clean = 'OTHER'
+            if acquisition_source_clean in ["INSTAGRAM", "IG"]:
+                acquisition_source_clean = "INSTAGRAM"
+            elif acquisition_source_clean in ["GOOGLE", "BUSCADOR"]:
+                acquisition_source_clean = "GOOGLE"
+            elif acquisition_source_clean in [
+                "REFERIDO",
+                "RECOMENDACIÓN",
+                "RECOMENDADO",
+            ]:
+                acquisition_source_clean = "REFERRED"
+            elif acquisition_source_clean in ["OTRO", "OTROS"]:
+                acquisition_source_clean = "OTHER"
             else:
-                acquisition_source_clean = 'OTHER'
+                acquisition_source_clean = "OTHER"
 
         # --- VALIDACIÓN TÉCNICA (Spec Security v2.0) ---
         if dni_raw and not re.search(r"\d", dni_raw):
-             return "❌ Error Técnico: DNI_MALFORMED. El DNI debe contener al menos 7-8 dígitos numéricos. Pedí el DNI correcto."
-        
+            return "❌ Error Técnico: DNI_MALFORMED. El DNI debe contener al menos 7-8 dígitos numéricos. Pedí el DNI correcto."
+
         if first_name and len(first_name) < 2:
-             return "❌ Error Técnico: NAME_TOO_SHORT. El nombre provisto es demasiado corto. Pedí el nombre completo."
-        
+            return "❌ Error Técnico: NAME_TOO_SHORT. El nombre provisto es demasiado corto. Pedí el nombre completo."
+
         if last_name and len(last_name) < 2:
-             return "❌ Error Técnico: LASTNAME_TOO_SHORT. El apellido provisto es demasiado corto. Pedí el apellido completo."
+            return "❌ Error Técnico: LASTNAME_TOO_SHORT. El apellido provisto es demasiado corto. Pedí el apellido completo."
         # -----------------------------------------------
 
         # Use provided duration_minutes if available, otherwise fetch from treatment_types
@@ -1621,37 +2101,55 @@ async def book_appointment(date_time: str, treatment_reason: str,
         treatment_display_name = "Consulta"
         treatment_price = None
         if treatment_reason and (final_duration is None or final_duration == 30):
-            t_data = await db.pool.fetchrow("""
+            t_data = await db.pool.fetchrow(
+                """
                 SELECT code, name, default_duration_minutes, base_price FROM treatment_types
                 WHERE tenant_id = $1 AND (name ILIKE $2 OR code ILIKE $2) AND is_active = true AND is_available_for_booking = true
                 LIMIT 1
-            """, tenant_id, f"%{treatment_reason}%")
+            """,
+                tenant_id,
+                f"%{treatment_reason}%",
+            )
             if not t_data:
                 return "❌ Ese tratamiento no está disponible en esta clínica. Los únicos que se pueden agendar son los que devuelve la tool 'list_services'. Llamá a list_services y ofrecé solo esos al paciente; si pide otro, decile que en esta sede solo se agendan los de esa lista."
             final_duration = t_data["default_duration_minutes"]
             treatment_code = t_data["code"]
             treatment_display_name = t_data["name"] or treatment_reason
-            treatment_price = float(t_data["base_price"]) if t_data.get("base_price") else None
-            logger.info(f"📅 BOOK TREATMENT: code={treatment_code} name={treatment_display_name} duration={final_duration}min price={treatment_price}")
+            treatment_price = (
+                float(t_data["base_price"]) if t_data.get("base_price") else None
+            )
+            logger.info(
+                f"📅 BOOK TREATMENT: code={treatment_code} name={treatment_display_name} duration={final_duration}min price={treatment_price}"
+            )
         elif treatment_reason:
-            t_data = await db.pool.fetchrow("""
+            t_data = await db.pool.fetchrow(
+                """
                 SELECT code, name, base_price FROM treatment_types
                 WHERE tenant_id = $1 AND (name ILIKE $2 OR code ILIKE $2) AND is_active = true AND is_available_for_booking = true
                 LIMIT 1
-            """, tenant_id, f"%{treatment_reason}%")
+            """,
+                tenant_id,
+                f"%{treatment_reason}%",
+            )
             if not t_data:
                 return "❌ Ese tratamiento no está disponible en esta clínica. Los únicos que se pueden agendar son los que devuelve la tool 'list_services'. Llamá a list_services y ofrecé solo esos al paciente; si pide otro, decile que en esta sede solo se agendan los de esa lista."
             treatment_code = t_data["code"]
             treatment_display_name = t_data["name"] or treatment_reason
-            treatment_price = float(t_data["base_price"]) if t_data.get("base_price") else None
-            logger.info(f"📅 BOOK TREATMENT (alt): code={treatment_code} name={treatment_display_name} price={treatment_price}")
+            treatment_price = (
+                float(t_data["base_price"]) if t_data.get("base_price") else None
+            )
+            logger.info(
+                f"📅 BOOK TREATMENT (alt): code={treatment_code} name={treatment_display_name} price={treatment_price}"
+            )
         else:
             treatment_code = "CONSULTA"
             if final_duration is None:
                 final_duration = 30
             # Fallback price: consultation_price from professional or tenant
             try:
-                t_price_row = await db.pool.fetchrow("SELECT consultation_price FROM tenants WHERE id = $1", tenant_id)
+                t_price_row = await db.pool.fetchrow(
+                    "SELECT consultation_price FROM tenants WHERE id = $1", tenant_id
+                )
                 if t_price_row and t_price_row.get("consultation_price"):
                     treatment_price = float(t_price_row["consultation_price"])
             except Exception:
@@ -1667,40 +2165,57 @@ async def book_appointment(date_time: str, treatment_reason: str,
             if dni:
                 existing_patient = await db.pool.fetchrow(
                     "SELECT id, status, phone_number FROM patients WHERE tenant_id = $1 AND guardian_phone = $2 AND dni = $3",
-                    tenant_id, guardian_phone_value, dni,
+                    tenant_id,
+                    guardian_phone_value,
+                    dni,
                 )
             if not existing_patient and first_name:
                 existing_patient = await db.pool.fetchrow(
                     "SELECT id, status, phone_number FROM patients WHERE tenant_id = $1 AND guardian_phone = $2 AND first_name = $3",
-                    tenant_id, guardian_phone_value, first_name,
+                    tenant_id,
+                    guardian_phone_value,
+                    first_name,
                 )
             if existing_patient:
-                phone = existing_patient['phone_number']  # Reuse existing -M{N}
+                phone = existing_patient["phone_number"]  # Reuse existing -M{N}
         else:
             existing_patient = await db.pool.fetchrow(
                 "SELECT id, status, phone_number FROM patients WHERE tenant_id = $1 AND phone_number = $2",
-                tenant_id, phone,
+                tenant_id,
+                phone,
             )
             if not existing_patient and dni:
                 existing_patient = await db.pool.fetchrow(
                     "SELECT id, status, phone_number FROM patients WHERE tenant_id = $1 AND dni = $2",
-                    tenant_id, dni,
+                    tenant_id,
+                    dni,
                 )
-        logger.info(f"📅 BOOK PATIENT: existing={existing_patient['id'] if existing_patient else 'NEW'} phone={phone} is_third_party={is_third_party} is_minor={is_minor}")
+        logger.info(
+            f"📅 BOOK PATIENT: existing={existing_patient['id'] if existing_patient else 'NEW'} phone={phone} is_third_party={is_third_party} is_minor={is_minor}"
+        )
         # Validación temprana para pacientes nuevos: fallar antes de buscar profesionales
         if not existing_patient:
             required_fields = [
                 ("Nombre", first_name),
                 ("Apellido", last_name),
-                ("DNI", dni)
+                ("DNI", dni),
             ]
-            missing_fields = [field_name for field_name, field_value in required_fields if not field_value]
+            missing_fields = [
+                field_name
+                for field_name, field_value in required_fields
+                if not field_value
+            ]
             if missing_fields:
                 fields_list = ", ".join(missing_fields)
                 return f"❌ Para agendar por primera vez necesito: {fields_list}. Formato esperado: Nombre y Apellido por separado; DNI solo números."
 
         # 3. Profesionales del tenant (solo aprobados: u.status = 'active')
-        clean_p_name = re.sub(r"^(dr|dra|doctor|doctora)\.?\s+", "", (professional_name or ""), flags=re.IGNORECASE).strip()
+        clean_p_name = re.sub(
+            r"^(dr|dra|doctor|doctora)\.?\s+",
+            "",
+            (professional_name or ""),
+            flags=re.IGNORECASE,
+        ).strip()
         p_query = """SELECT p.id, p.first_name, p.last_name, p.google_calendar_id, p.working_hours
                      FROM professionals p
                      INNER JOIN users u ON p.user_id = u.id AND u.role = 'professional' AND u.status = 'active'
@@ -1710,24 +2225,31 @@ async def book_appointment(date_time: str, treatment_reason: str,
             p_query += " AND (p.first_name ILIKE $2 OR p.last_name ILIKE $2 OR (p.first_name || ' ' || COALESCE(p.last_name, '')) ILIKE $2)"
             p_params.append(f"%{clean_p_name}%")
         candidates = await db.pool.fetch(p_query, *p_params)
-        logger.info(f"📅 BOOK PROFESSIONALS: found {len(candidates)} candidates for query='{clean_p_name or 'ALL'}' [{', '.join(c['first_name'] for c in candidates)}]")
+        logger.info(
+            f"📅 BOOK PROFESSIONALS: found {len(candidates)} candidates for query='{clean_p_name or 'ALL'}' [{', '.join(c['first_name'] for c in candidates)}]"
+        )
         if not candidates:
-            logger.warning(f"📅 BOOK: NO PROFESSIONALS FOUND for tenant={tenant_id} name_filter='{clean_p_name}'")
+            logger.warning(
+                f"📅 BOOK: NO PROFESSIONALS FOUND for tenant={tenant_id} name_filter='{clean_p_name}'"
+            )
             return f"❌ No encontré al profesional '{professional_name or ''}' disponible. ¿Querés agendar con otro profesional?"
 
         # Filter candidates by treatment assignment (backward compatible: if none assigned, all can do it)
         if treatment_code and treatment_code != "CONSULTA":
             tt_row = await db.pool.fetchrow(
-                "SELECT id FROM treatment_types WHERE tenant_id = $1 AND code = $2", tenant_id, treatment_code
+                "SELECT id FROM treatment_types WHERE tenant_id = $1 AND code = $2",
+                tenant_id,
+                treatment_code,
             )
             if tt_row:
                 assigned_ids = await db.pool.fetch(
                     "SELECT professional_id FROM treatment_type_professionals WHERE tenant_id = $1 AND treatment_type_id = $2",
-                    tenant_id, tt_row['id']
+                    tenant_id,
+                    tt_row["id"],
                 )
                 if assigned_ids:
-                    assigned_set = {r['professional_id'] for r in assigned_ids}
-                    candidates = [c for c in candidates if c['id'] in assigned_set]
+                    assigned_set = {r["professional_id"] for r in assigned_ids}
+                    candidates = [c for c in candidates if c["id"] in assigned_set]
                     if not candidates:
                         return f"❌ No hay profesionales asignados a este tratamiento disponibles en ese horario. ¿Querés probar otro horario o tratamiento?"
 
@@ -1737,7 +2259,9 @@ async def book_appointment(date_time: str, treatment_reason: str,
                 "SELECT google_calendar_event_id FROM appointments WHERE tenant_id = $1 AND google_calendar_event_id IS NOT NULL",
                 tenant_id,
             )
-            apt_gids_set = {row["google_calendar_event_id"] for row in existing_apt_gids}
+            apt_gids_set = {
+                row["google_calendar_event_id"] for row in existing_apt_gids
+            }
         target_prof = None
 
         for cand in candidates:
@@ -1750,38 +2274,69 @@ async def book_appointment(date_time: str, treatment_reason: str,
             if not isinstance(wh, dict):
                 wh = {}
             day_idx = apt_datetime.weekday()
-            days_en = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+            days_en = [
+                "monday",
+                "tuesday",
+                "wednesday",
+                "thursday",
+                "friday",
+                "saturday",
+                "sunday",
+            ]
             day_config = wh.get(days_en[day_idx], {"enabled": False, "slots": []})
             # Solo exigir horario laboral si el profesional tiene ese día configurado; si no, considerarlo disponible (igual que check_availability)
             if day_config.get("enabled") and day_config.get("slots"):
-                if not is_time_in_working_hours(apt_datetime.strftime("%H:%M"), day_config):
+                if not is_time_in_working_hours(
+                    apt_datetime.strftime("%H:%M"), day_config
+                ):
                     continue
             if calendar_provider == "google" and cand.get("google_calendar_id"):
                 try:
-                    g_events = gcal_service.get_events_for_day(calendar_id=cand["google_calendar_id"], date_obj=apt_datetime.date())
-                    day_start = datetime.combine(apt_datetime.date(), datetime.min.time(), tzinfo=ARG_TZ)
-                    day_end = datetime.combine(apt_datetime.date(), datetime.max.time(), tzinfo=ARG_TZ)
+                    g_events = gcal_service.get_events_for_day(
+                        calendar_id=cand["google_calendar_id"],
+                        date_obj=apt_datetime.date(),
+                    )
+                    day_start = datetime.combine(
+                        apt_datetime.date(), datetime.min.time(), tzinfo=ARG_TZ
+                    )
+                    day_end = datetime.combine(
+                        apt_datetime.date(), datetime.max.time(), tzinfo=ARG_TZ
+                    )
                     await db.pool.execute(
                         "DELETE FROM google_calendar_blocks WHERE tenant_id = $1 AND professional_id = $2 AND start_datetime < $4 AND end_datetime > $3",
-                        tenant_id, cand["id"], day_start, day_end,
+                        tenant_id,
+                        cand["id"],
+                        day_start,
+                        day_end,
                     )
                     for event in g_events:
                         g_id = event["id"]
                         if g_id in apt_gids_set:
                             continue
-                        start = event["start"].get("dateTime") or event["start"].get("date")
+                        start = event["start"].get("dateTime") or event["start"].get(
+                            "date"
+                        )
                         end = event["end"].get("dateTime") or event["end"].get("date")
                         dt_start = datetime.fromisoformat(start.replace("Z", "+00:00"))
                         dt_end = datetime.fromisoformat(end.replace("Z", "+00:00"))
-                        await db.pool.execute("""
+                        await db.pool.execute(
+                            """
                             INSERT INTO google_calendar_blocks (tenant_id, google_event_id, title, start_datetime, end_datetime, professional_id, sync_status)
                             VALUES ($1, $2, $3, $4, $5, $6, 'synced') ON CONFLICT (google_event_id) DO NOTHING
-                        """, tenant_id, g_id, event.get("summary", "Ocupado"), dt_start, dt_end, cand["id"])
+                        """,
+                            tenant_id,
+                            g_id,
+                            event.get("summary", "Ocupado"),
+                            dt_start,
+                            dt_end,
+                            cand["id"],
+                        )
                 except Exception as jit_err:
                     logger.error(f"JIT GCal error in booking: {jit_err}")
 
             if calendar_provider == "google":
-                conflict = await db.pool.fetchval("""
+                conflict = await db.pool.fetchval(
+                    """
                     SELECT EXISTS(
                         SELECT 1 FROM appointments WHERE tenant_id = $1 AND professional_id = $2 AND status IN ('scheduled', 'confirmed')
                         AND (appointment_datetime < $4 AND (appointment_datetime + interval '1 minute' * COALESCE(duration_minutes, 60)) > $3)
@@ -1789,38 +2344,66 @@ async def book_appointment(date_time: str, treatment_reason: str,
                         SELECT 1 FROM google_calendar_blocks WHERE tenant_id = $1 AND (professional_id = $2 OR professional_id IS NULL)
                         AND (start_datetime < $4 AND end_datetime > $3)
                     )
-                """, tenant_id, cand["id"], apt_datetime, end_apt)
+                """,
+                    tenant_id,
+                    cand["id"],
+                    apt_datetime,
+                    end_apt,
+                )
             else:
-                conflict = await db.pool.fetchval("""
+                conflict = await db.pool.fetchval(
+                    """
                     SELECT EXISTS(
                         SELECT 1 FROM appointments
                         WHERE tenant_id = $1 AND professional_id = $2 AND status IN ('scheduled', 'confirmed')
                         AND (appointment_datetime < $4 AND (appointment_datetime + interval '1 minute' * COALESCE(duration_minutes, 60)) > $3)
                     )
-                """, tenant_id, cand["id"], apt_datetime, end_apt)
-            logger.info(f"📅 BOOK CONFLICT CHECK: prof={cand['first_name']} (id={cand['id']}) conflict={conflict} at {apt_datetime.strftime('%H:%M')}-{end_apt.strftime('%H:%M')}")
+                """,
+                    tenant_id,
+                    cand["id"],
+                    apt_datetime,
+                    end_apt,
+                )
+            logger.info(
+                f"📅 BOOK CONFLICT CHECK: prof={cand['first_name']} (id={cand['id']}) conflict={conflict} at {apt_datetime.strftime('%H:%M')}-{end_apt.strftime('%H:%M')}"
+            )
             if not conflict:
                 target_prof = cand
-                logger.info(f"📅 BOOK: SELECTED PROFESSIONAL: {target_prof['first_name']} (id={target_prof['id']})")
+                logger.info(
+                    f"📅 BOOK: SELECTED PROFESSIONAL: {target_prof['first_name']} (id={target_prof['id']})"
+                )
                 break
 
         if not target_prof:
-            logger.info(f"book_appointment: sin disponibilidad phone={phone} tenant={tenant_id} datetime={apt_datetime} tratamiento={treatment_code} (paciente no creado por spec)")
+            logger.info(
+                f"book_appointment: sin disponibilidad phone={phone} tenant={tenant_id} datetime={apt_datetime} tratamiento={treatment_code} (paciente no creado por spec)"
+            )
             return f"❌ Lo siento, no hay disponibilidad a las {apt_datetime.strftime('%H:%M')} para el tratamiento de {final_duration} min. ¿Probamos otro horario?"
 
         # 3b. CHAIR CONSTRAINT — check total concurrent appointments doesn't exceed max_chairs
         try:
-            max_chairs = await db.pool.fetchval("SELECT COALESCE(max_chairs, 99) FROM tenants WHERE id = $1", tenant_id)
-            logger.info(f"🪑 CHAIR CHECK: max_chairs={max_chairs} for tenant={tenant_id}")
+            max_chairs = await db.pool.fetchval(
+                "SELECT COALESCE(max_chairs, 99) FROM tenants WHERE id = $1", tenant_id
+            )
+            logger.info(
+                f"🪑 CHAIR CHECK: max_chairs={max_chairs} for tenant={tenant_id}"
+            )
             if max_chairs and max_chairs < 99:
-                concurrent = await db.pool.fetchval("""
+                concurrent = await db.pool.fetchval(
+                    """
                     SELECT COUNT(*) FROM appointments
                     WHERE tenant_id = $1 AND status IN ('scheduled', 'confirmed')
                     AND appointment_datetime < $3
                     AND (appointment_datetime + interval '1 minute' * COALESCE(duration_minutes, 60)) > $2
-                """, tenant_id, apt_datetime, end_apt)
+                """,
+                    tenant_id,
+                    apt_datetime,
+                    end_apt,
+                )
                 if concurrent and concurrent >= max_chairs:
-                    logger.info(f"🪑 book_appointment: CHAIRS FULL at {apt_datetime} (concurrent={concurrent}, max={max_chairs})")
+                    logger.info(
+                        f"🪑 book_appointment: CHAIRS FULL at {apt_datetime} (concurrent={concurrent}, max={max_chairs})"
+                    )
                     return f"❌ Lo siento, todos los sillones están ocupados a las {apt_datetime.strftime('%H:%M')}. La clínica tiene {max_chairs} sillones y ya hay {concurrent} turnos simultáneos. ¿Probamos otro horario?"
         except Exception as chair_err:
             logger.warning(f"Chair check (non-fatal): {chair_err}")
@@ -1828,7 +2411,8 @@ async def book_appointment(date_time: str, treatment_reason: str,
         # 4. Crear/actualizar paciente SOLO cuando hay disponibilidad confirmada (Spec 2026-03-13)
         # PROTECCIÓN: Si es turno para tercero, NO tocar el registro del interlocutor
         if existing_patient:
-            await db.pool.execute("""
+            await db.pool.execute(
+                """
                 UPDATE patients
                 SET first_name = COALESCE($1, first_name),
                     last_name = COALESCE($2, last_name),
@@ -1842,45 +2426,80 @@ async def book_appointment(date_time: str, treatment_reason: str,
                     status = 'active',
                     updated_at = NOW()
                 WHERE id = $8
-            """, first_name, last_name, dni, birth_date_parsed, email_clean,
-                city_clean, acquisition_source_clean, existing_patient["id"], phone,
-                guardian_phone_value)
+            """,
+                first_name,
+                last_name,
+                dni,
+                birth_date_parsed,
+                email_clean,
+                city_clean,
+                acquisition_source_clean,
+                existing_patient["id"],
+                phone,
+                guardian_phone_value,
+            )
             patient_id = existing_patient["id"]
         else:
-            row = await db.pool.fetchrow("""
+            row = await db.pool.fetchrow(
+                """
                 INSERT INTO patients (
                     tenant_id, phone_number, first_name, last_name, dni,
                     birth_date, email, city, first_touch_source, guardian_phone, status, created_at
                 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'active', NOW())
                 RETURNING id
-            """, tenant_id, phone, first_name, last_name, dni,
-                birth_date_parsed, email_clean, city_clean, acquisition_source_clean,
-                guardian_phone_value)
+            """,
+                tenant_id,
+                phone,
+                first_name,
+                last_name,
+                dni,
+                birth_date_parsed,
+                email_clean,
+                city_clean,
+                acquisition_source_clean,
+                guardian_phone_value,
+            )
             patient_id = row["id"]
 
         apt_id = str(uuid.uuid4())
-        await db.pool.execute("""
+        await db.pool.execute(
+            """
             INSERT INTO appointments (id, tenant_id, patient_id, professional_id, appointment_datetime, duration_minutes, appointment_type, status, source, created_at)
             VALUES ($1, $2, $3, $4, $5, $6, $7, 'scheduled', 'ai', NOW())
-        """, apt_id, tenant_id, patient_id, target_prof["id"], apt_datetime, final_duration, treatment_code)
-        logger.info(f"✅ book_appointment OK phone={phone} tenant={tenant_id} apt_id={apt_id} patient_id={patient_id} prof={target_prof['first_name']} datetime={apt_datetime}")
+        """,
+            apt_id,
+            tenant_id,
+            patient_id,
+            target_prof["id"],
+            apt_datetime,
+            final_duration,
+            treatment_code,
+        )
+        logger.info(
+            f"✅ book_appointment OK phone={phone} tenant={tenant_id} apt_id={apt_id} patient_id={patient_id} prof={target_prof['first_name']} datetime={apt_datetime}"
+        )
 
         # Limpiar soft lock si existe (booking exitoso)
         try:
             from services.relay import get_redis
+
             r = get_redis()
             if r:
                 date_str = apt_datetime.strftime("%Y-%m-%d")
                 time_str = apt_datetime.strftime("%H:%M")
                 for lock_prof_id in [target_prof["id"], 0]:
-                    lock_key = f"slot_lock:{tenant_id}:{lock_prof_id}:{date_str}:{time_str}"
+                    lock_key = (
+                        f"slot_lock:{tenant_id}:{lock_prof_id}:{date_str}:{time_str}"
+                    )
                     await r.delete(lock_key)
         except Exception as e:
             logger.warning(f"Soft lock cleanup failed (non-blocking): {e}")
 
         if calendar_provider == "google" and target_prof.get("google_calendar_id"):
             try:
-                summary = f"Cita Dental AI: {first_name or 'Paciente'} - {treatment_code}"
+                summary = (
+                    f"Cita Dental AI: {first_name or 'Paciente'} - {treatment_code}"
+                )
                 gcal_service.create_event(
                     calendar_id=target_prof["google_calendar_id"],
                     summary=summary,
@@ -1893,34 +2512,58 @@ async def book_appointment(date_time: str, treatment_reason: str,
 
         # 6. Notificar Socket.IO si está disponible
         try:
-            from main import sio # Ensure we have sio
-            # Sanitizar para evitar errores de serialización
-            safe_data = to_json_safe({
-                "id": apt_id, 
-                "patient_name": f"{first_name} {last_name or ''}",
-                "appointment_datetime": apt_datetime.isoformat(),
-                "professional_name": target_prof['first_name'],
-                "tenant_id": tenant_id,
-                "source": "ai"
-            })
-            await sio.emit("NEW_APPOINTMENT", safe_data)
-        except: pass
+            from main import sio  # Ensure we have sio
 
-        dias = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
+            # Sanitizar para evitar errores de serialización
+            safe_data = to_json_safe(
+                {
+                    "id": apt_id,
+                    "patient_name": f"{first_name} {last_name or ''}",
+                    "appointment_datetime": apt_datetime.isoformat(),
+                    "professional_name": target_prof["first_name"],
+                    "tenant_id": tenant_id,
+                    "source": "ai",
+                }
+            )
+            await sio.emit("NEW_APPOINTMENT", safe_data)
+        except:
+            pass
+
+        dias = [
+            "Lunes",
+            "Martes",
+            "Miércoles",
+            "Jueves",
+            "Viernes",
+            "Sábado",
+            "Domingo",
+        ]
         dia_nombre = dias[apt_datetime.weekday()]
         patient_label = f"{first_name or ''} {last_name or ''}".strip() or "Paciente"
 
         # Resolver sede del día del turno
         booking_sede = ""
         try:
-            t_row = await db.pool.fetchrow("SELECT working_hours, address FROM tenants WHERE id = $1", tenant_id)
+            t_row = await db.pool.fetchrow(
+                "SELECT working_hours, address FROM tenants WHERE id = $1", tenant_id
+            )
             if t_row:
                 b_wh = t_row["working_hours"]
                 if isinstance(b_wh, str):
-                    try: b_wh = json.loads(b_wh)
-                    except: b_wh = {}
+                    try:
+                        b_wh = json.loads(b_wh)
+                    except:
+                        b_wh = {}
                 if isinstance(b_wh, dict):
-                    days_en = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+                    days_en = [
+                        "monday",
+                        "tuesday",
+                        "wednesday",
+                        "thursday",
+                        "friday",
+                        "saturday",
+                        "sunday",
+                    ]
                     b_day_cfg = b_wh.get(days_en[apt_datetime.weekday()], {})
                     if b_day_cfg.get("location"):
                         booking_sede = f"\nSede: {b_day_cfg['location']}"
@@ -1934,6 +2577,7 @@ async def book_appointment(date_time: str, treatment_reason: str,
             pass
         # Generate anamnesis URL for the patient (not the interlocutor)
         import uuid as uuid_mod_book
+
         patient_anamnesis_token = await db.pool.fetchval(
             "SELECT anamnesis_token FROM patients WHERE id = $1", patient_id
         )
@@ -1941,10 +2585,18 @@ async def book_appointment(date_time: str, treatment_reason: str,
             patient_anamnesis_token = str(uuid_mod_book.uuid4())
             await db.pool.execute(
                 "UPDATE patients SET anamnesis_token = $1 WHERE id = $2",
-                patient_anamnesis_token, patient_id
+                patient_anamnesis_token,
+                patient_id,
             )
-        frontend_url = os.getenv("FRONTEND_URL", "http://localhost:4173").split(",")[0].strip().rstrip("/")
-        patient_anamnesis_url = f"{frontend_url}/anamnesis/{tenant_id}/{patient_anamnesis_token}"
+        frontend_url = (
+            os.getenv("FRONTEND_URL", "http://localhost:4173")
+            .split(",")[0]
+            .strip()
+            .rstrip("/")
+        )
+        patient_anamnesis_url = (
+            f"{frontend_url}/anamnesis/{tenant_id}/{patient_anamnesis_token}"
+        )
 
         # Build price + seña lines
         price_line = ""
@@ -1956,27 +2608,45 @@ async def book_appointment(date_time: str, treatment_reason: str,
         try:
             t_bank = await db.pool.fetchrow(
                 "SELECT bank_cbu, bank_alias, bank_holder_name, consultation_price FROM tenants WHERE id = $1",
-                tenant_id
+                tenant_id,
             )
-            logger.info(f"💰 SEÑA DEBUG: tenant_id={tenant_id} bank_holder={t_bank.get('bank_holder_name') if t_bank else 'NO_TENANT'} tenant_price={t_bank.get('consultation_price') if t_bank else 'N/A'}")
+            logger.info(
+                f"💰 SEÑA DEBUG: tenant_id={tenant_id} bank_holder={t_bank.get('bank_holder_name') if t_bank else 'NO_TENANT'} tenant_price={t_bank.get('consultation_price') if t_bank else 'N/A'}"
+            )
 
             if t_bank and t_bank.get("bank_holder_name"):
                 # Seña = 50% of: professional price > tenant price > treatment price
                 sena_price = None
-                prof_price = await db.pool.fetchval("SELECT consultation_price FROM professionals WHERE id = $1", target_prof["id"])
-                logger.info(f"💰 SEÑA DEBUG: prof_id={target_prof['id']} prof_name={target_prof['first_name']} prof_consultation_price={prof_price}")
+                prof_price = await db.pool.fetchval(
+                    "SELECT consultation_price FROM professionals WHERE id = $1",
+                    target_prof["id"],
+                )
+                logger.info(
+                    f"💰 SEÑA DEBUG: prof_id={target_prof['id']} prof_name={target_prof['first_name']} prof_consultation_price={prof_price}"
+                )
 
                 if prof_price is not None and float(prof_price) > 0:
                     sena_price = float(prof_price) / 2
-                    logger.info(f"💰 SEÑA: Using professional price {prof_price} → seña = {sena_price}")
-                elif t_bank.get("consultation_price") is not None and float(t_bank["consultation_price"]) > 0:
+                    logger.info(
+                        f"💰 SEÑA: Using professional price {prof_price} → seña = {sena_price}"
+                    )
+                elif (
+                    t_bank.get("consultation_price") is not None
+                    and float(t_bank["consultation_price"]) > 0
+                ):
                     sena_price = float(t_bank["consultation_price"]) / 2
-                    logger.info(f"💰 SEÑA: Using tenant price {t_bank['consultation_price']} → seña = {sena_price}")
+                    logger.info(
+                        f"💰 SEÑA: Using tenant price {t_bank['consultation_price']} → seña = {sena_price}"
+                    )
                 elif treatment_price and treatment_price > 0:
                     sena_price = treatment_price / 2
-                    logger.info(f"💰 SEÑA: Using treatment price {treatment_price} → seña = {sena_price}")
+                    logger.info(
+                        f"💰 SEÑA: Using treatment price {treatment_price} → seña = {sena_price}"
+                    )
                 else:
-                    logger.warning(f"💰 SEÑA: NO PRICE FOUND! prof_price={prof_price}, tenant_price={t_bank.get('consultation_price')}, treatment_price={treatment_price}")
+                    logger.warning(
+                        f"💰 SEÑA: NO PRICE FOUND! prof_price={prof_price}, tenant_price={t_bank.get('consultation_price')}, treatment_price={treatment_price}"
+                    )
 
                 if sena_price and sena_price > 0:
                     sena_str = f"${int(sena_price):,}".replace(",", ".")
@@ -1989,30 +2659,48 @@ async def book_appointment(date_time: str, treatment_reason: str,
                     bank_lines.append(f"Titular: {t_bank['bank_holder_name']}")
                     bank_lines.append("[/INTERNAL_SEÑA_DATA]")
                     sena_block = "\n".join(bank_lines)
-                    logger.info(f"💰 SEÑA BLOCK GENERATED: {sena_str} for prof {target_prof['first_name']}")
+                    logger.info(
+                        f"💰 SEÑA BLOCK GENERATED: {sena_str} for prof {target_prof['first_name']}"
+                    )
                 else:
-                    logger.warning(f"💰 SEÑA BLOCK NOT GENERATED: sena_price={sena_price}")
+                    logger.warning(
+                        f"💰 SEÑA BLOCK NOT GENERATED: sena_price={sena_price}"
+                    )
             else:
-                logger.warning(f"💰 SEÑA SKIPPED: No bank_holder_name configured for tenant {tenant_id}")
+                logger.warning(
+                    f"💰 SEÑA SKIPPED: No bank_holder_name configured for tenant {tenant_id}"
+                )
         except Exception as sena_err:
             logger.error(f"💰 SEÑA ERROR: {sena_err}")
             import traceback
+
             logger.error(f"💰 SEÑA TRACEBACK: {traceback.format_exc()}")
 
         # Build sede line with emoji
         sede_line = ""
         if booking_sede:
-            sede_clean = booking_sede.strip().replace("\nSede: ", "").replace("\nDirección: ", "")
+            sede_clean = (
+                booking_sede.strip()
+                .replace("\nSede: ", "")
+                .replace("\nDirección: ", "")
+            )
             sede_line = f"\n📍 {sede_clean}"
 
-        logger.info(f"📋 BOOKING RESPONSE DEBUG: treatment={treatment_display_name} price={treatment_price} sena_block_len={len(sena_block)} has_sena={'INTERNAL_SEÑA_DATA' in sena_block}")
+        logger.info(
+            f"📋 BOOKING RESPONSE DEBUG: treatment={treatment_display_name} price={treatment_price} sena_block_len={len(sena_block)} has_sena={'INTERNAL_SEÑA_DATA' in sena_block}"
+        )
 
         if is_third_party:
             interlocutor = await db.pool.fetchrow(
                 "SELECT first_name, last_name FROM patients WHERE tenant_id = $1 AND phone_number = $2",
-                tenant_id, chat_phone,
+                tenant_id,
+                chat_phone,
             )
-            interlocutor_name = f"{interlocutor['first_name']} {interlocutor.get('last_name', '')}".strip() if interlocutor else "el interlocutor"
+            interlocutor_name = (
+                f"{interlocutor['first_name']} {interlocutor.get('last_name', '')}".strip()
+                if interlocutor
+                else "el interlocutor"
+            )
             result = (
                 f"✅ Turno confirmado para {patient_label} (solicitado por {interlocutor_name}):\n"
                 f"🦷 {treatment_display_name}\n"
@@ -2040,15 +2728,17 @@ async def book_appointment(date_time: str, treatment_reason: str,
 
     except Exception as e:
         import traceback
+
         logger.exception(f"Error en book_appointment: {e}")
         logger.warning(f"book_appointment FAIL traceback={traceback.format_exc()}")
         return "⚠️ Tuve un problema al procesar la reserva. Por favor, intenta de nuevo indicando fecha y hora. Formato esperado: día de la semana + hora 24h (ej. miércoles 17:00, Wednesday 17:00)."
+
 
 @tool
 async def triage_urgency(symptoms: str):
     """
     Analiza síntomas para clasificar urgencia según protocolos médicos de la Dra. María Laura Delgado.
-    
+
     CRITERIOS OBLIGATORIOS PARA EMERGENCY/HIGH (protocolo estricto):
     1. Dolor intenso que no cede con analgésicos.
     2. Inflamación importante en cara o cuello con dificultad para abrir la boca, hablar o tragar.
@@ -2056,64 +2746,143 @@ async def triage_urgency(symptoms: str):
     4. Traumatismo en cara o boca (golpe, caída, accidente).
     5. Fiebre asociada a dolor dental o inflamación.
     6. Pérdida brusca de una prótesis fija o fractura que impida comer o hablar.
-    
+
     Solo marcar como emergency o high si se cumple AL MENOS UNO de estos 6 criterios.
     Devuelve: Nivel de urgencia (emergency, high, normal, low) + recomendación
     """
     phone = current_customer_phone.get()
-    
+
     # Criterios específicos para emergency/high según protocolo médico
     emergency_criteria = [
         # 1. Dolor intenso que no cede con analgésicos
-        ['dolor intenso', 'dolor fuerte', 'dolor insoportable', 'no cede con analgésicos', 
-         'analgésico no funciona', 'ibuprofeno no funciona', 'paracetamol no funciona'],
+        [
+            "dolor intenso",
+            "dolor fuerte",
+            "dolor insoportable",
+            "no cede con analgésicos",
+            "analgésico no funciona",
+            "ibuprofeno no funciona",
+            "paracetamol no funciona",
+        ],
         # 2. Inflamación importante con dificultad funcional
-        ['inflamación cara', 'hinchazón cara', 'cuello inflamado', 'no puedo abrir la boca', 
-         'dificultad para tragar', 'dificultad para hablar', 'trismus', 'me cuesta abrir la boca'],
+        [
+            "inflamación cara",
+            "hinchazón cara",
+            "cuello inflamado",
+            "no puedo abrir la boca",
+            "dificultad para tragar",
+            "dificultad para hablar",
+            "trismus",
+            "me cuesta abrir la boca",
+        ],
         # 3. Sangrado abundante no controlable
-        ['sangrado abundante', 'sangra mucho', 'no para de sangrar', 'hemorragia', 
-         'presión local no funciona', 'sangre mucho', 'no se detiene el sangrado'],
+        [
+            "sangrado abundante",
+            "sangra mucho",
+            "no para de sangrar",
+            "hemorragia",
+            "presión local no funciona",
+            "sangre mucho",
+            "no se detiene el sangrado",
+        ],
         # 4. Traumatismo facial/bucal
-        ['traumatismo', 'golpe en la cara', 'caída', 'accidente', 'choque', 'impacto facial',
-         'me golpeé', 'me caí', 'golpe facial', 'trauma facial',
-         'se me cayó', 'se me rompió', 'se me partió'],
+        [
+            "traumatismo",
+            "golpe en la cara",
+            "caída",
+            "accidente",
+            "choque",
+            "impacto facial",
+            "me golpeé",
+            "me caí",
+            "golpe facial",
+            "trauma facial",
+            "se me cayó",
+            "se me rompió",
+            "se me partió",
+        ],
         # 5. Fiebre asociada a dolor/inflamación
-        ['fiebre y dolor dental', 'fiebre con inflamación', 'temperatura alta y dolor',
-         'fiebre y muela', 'calentura y dolor', 'fiebre dental'],
+        [
+            "fiebre y dolor dental",
+            "fiebre con inflamación",
+            "temperatura alta y dolor",
+            "fiebre y muela",
+            "calentura y dolor",
+            "fiebre dental",
+        ],
         # 6. Pérdida prótesis/fractura funcional
-        ['prótesis se cayó', 'corona se despegó', 'puente roto', 'fractura diente',
-         'no puedo comer', 'no puedo hablar', 'diente roto', 'corona rota', 'puente despegado',
-         'se me cayó un diente', 'se me cayó el diente', 'se cayó un diente',
-         'se me partió un diente', 'diente partido', 'se me partió el diente',
-         'se me rompió un diente', 'se me rompió el diente',
-         'se me salió un diente', 'se me salió el diente', 'se salió un diente',
-         'perdí un diente', 'se me perdió un diente',
-         'se me quebró', 'diente quebrado',
-         'se me aflojó un diente', 'diente flojo', 'diente suelto',
-         'se me movió un diente']
+        [
+            "prótesis se cayó",
+            "corona se despegó",
+            "puente roto",
+            "fractura diente",
+            "no puedo comer",
+            "no puedo hablar",
+            "diente roto",
+            "corona rota",
+            "puente despegado",
+            "se me cayó un diente",
+            "se me cayó el diente",
+            "se cayó un diente",
+            "se me partió un diente",
+            "diente partido",
+            "se me partió el diente",
+            "se me rompió un diente",
+            "se me rompió el diente",
+            "se me salió un diente",
+            "se me salió el diente",
+            "se salió un diente",
+            "perdí un diente",
+            "se me perdió un diente",
+            "se me quebró",
+            "diente quebrado",
+            "se me aflojó un diente",
+            "diente flojo",
+            "diente suelto",
+            "se me movió un diente",
+        ],
     ]
-    
+
     high_criteria = [
         # Casos que requieren atención pronta pero no son emergencias inmediatas
-        ['dolor moderado', 'hinchazón leve', 'inflamación', 'infección', 'absceso', 'pus'],
-        ['sangrado leve', 'sangrado controlado', 'ligero sangrado', 'sangra un poco', 'sangrado encía'],
-        ['sensibilidad', 'molestia constante', 'dolor al masticar', 'duele al comer', 'molestia al frío/calor']
+        [
+            "dolor moderado",
+            "hinchazón leve",
+            "inflamación",
+            "infección",
+            "absceso",
+            "pus",
+        ],
+        [
+            "sangrado leve",
+            "sangrado controlado",
+            "ligero sangrado",
+            "sangra un poco",
+            "sangrado encía",
+        ],
+        [
+            "sensibilidad",
+            "molestia constante",
+            "dolor al masticar",
+            "duele al comer",
+            "molestia al frío/calor",
+        ],
     ]
-    
+
     symptoms_lower = symptoms.lower()
-    
+
     # Clasificar urgencia según protocolo estricto
-    urgency_level = 'low'
-    
+    urgency_level = "low"
+
     # Primero verificar criterios de EMERGENCY
     emergency_detected = False
     for criterion_group in emergency_criteria:
         if any(kw in symptoms_lower for kw in criterion_group):
             emergency_detected = True
             break
-    
+
     if emergency_detected:
-        urgency_level = 'emergency'
+        urgency_level = "emergency"
     else:
         # Verificar criterios de HIGH (si no es emergency)
         high_detected = False
@@ -2121,84 +2890,119 @@ async def triage_urgency(symptoms: str):
             if any(kw in symptoms_lower for kw in criterion_group):
                 high_detected = True
                 break
-        
+
         if high_detected:
-            urgency_level = 'high'
+            urgency_level = "high"
         else:
             # Casos normales de rutina
-            normal_keywords = ['revisión', 'limpieza', 'control', 'checkup', 'consulta', 'preventivo']
+            normal_keywords = [
+                "revisión",
+                "limpieza",
+                "control",
+                "checkup",
+                "consulta",
+                "preventivo",
+            ]
             if any(kw in symptoms_lower for kw in normal_keywords):
-                urgency_level = 'normal'
+                urgency_level = "normal"
             else:
-                urgency_level = 'low'
-    
+                urgency_level = "low"
+
     # Persistir urgencia en el paciente si lo identificamos
     if phone:
         try:
             patient_row = await db.ensure_patient_exists(phone)
-            
+
             # --- Spec 06: Registrar ad_intent_match ---
             ad_intent_match = False
-            meta_headline = patient_row.get("meta_ad_headline") or "" if patient_row else ""
+            meta_headline = (
+                patient_row.get("meta_ad_headline") or "" if patient_row else ""
+            )
             if meta_headline:
-                ad_urgency_kws = ["urgencia", "dolor", "emergencia", "trauma", "emergency", "pain", "urgent"]
-                ad_is_urgency = any(kw in meta_headline.lower() for kw in ad_urgency_kws)
-                clinical_is_urgency = urgency_level in ('emergency', 'high')
+                ad_urgency_kws = [
+                    "urgencia",
+                    "dolor",
+                    "emergencia",
+                    "trauma",
+                    "emergency",
+                    "pain",
+                    "urgent",
+                ]
+                ad_is_urgency = any(
+                    kw in meta_headline.lower() for kw in ad_urgency_kws
+                )
+                clinical_is_urgency = urgency_level in ("emergency", "high")
                 ad_intent_match = ad_is_urgency and clinical_is_urgency
                 if ad_intent_match:
-                    logger.info(f"🎯 ad_intent_match=True para {phone}: ad='{meta_headline}', triage={urgency_level}")
+                    logger.info(
+                        f"🎯 ad_intent_match=True para {phone}: ad='{meta_headline}', triage={urgency_level}"
+                    )
             # -------------------------------------------
-            
-            await db.pool.execute("""
+
+            await db.pool.execute(
+                """
                 UPDATE patients 
                 SET urgency_level = $1, urgency_reason = $2, updated_at = NOW()
                 WHERE id = $3
-            """, urgency_level, symptoms, patient_row['id'])
-            
+            """,
+                urgency_level,
+                symptoms,
+                patient_row["id"],
+            )
+
             # Notificar al dashboard el cambio de prioridad
             try:
-                name = f"{patient_row.get('first_name', '')} {patient_row.get('last_name', '') or ''}".strip() or phone
-                await sio.emit("PATIENT_UPDATED", to_json_safe({
-                    "phone_number": phone,
-                    "patient_name": name,
-                    "urgency_level": urgency_level,
-                    "urgency_reason": symptoms,
-                    "ad_intent_match": ad_intent_match,
-                    "tenant_id": tenant_id
-                }))
+                name = (
+                    f"{patient_row.get('first_name', '')} {patient_row.get('last_name', '') or ''}".strip()
+                    or phone
+                )
+                await sio.emit(
+                    "PATIENT_UPDATED",
+                    to_json_safe(
+                        {
+                            "phone_number": phone,
+                            "patient_name": name,
+                            "urgency_level": urgency_level,
+                            "urgency_reason": symptoms,
+                            "ad_intent_match": ad_intent_match,
+                            "tenant_id": tenant_id,
+                        }
+                    ),
+                )
             except Exception:
                 pass  # Socket notification is non-critical
         except Exception as e:
             logger.error(f"Error persisting triage: {e}")
 
     responses = {
-        'emergency': "🚨 **URGENCIA MÉDICA DETECTADA** - Protocolo de emergencia activado.\n\n"
-                    "🔴 **ACCIONES INMEDIATAS:**\n"
-                    "1. Si es fuera de horario de atención: Dirigite a la guardia odontológica más cercana\n"
-                    "2. Si es en horario de atención: Vení HOY MISMO al consultorio\n"
-                    "3. Si tenés dificultad para respirar o tragar: Llamá al 107 (emergencias médicas)\n\n"
-                    "📞 **Contacto directo:** Llamá al consultorio para prioridad inmediata",
-        'high': "⚠️ **URGENCIA ALTA** - Requiere atención pronta\n\n"
-                "🟡 **Recomendaciones:**\n"
-                "1. Agendá un turno para las próximas 48-72 horas\n"
-                "2. Si empeora, contactá al consultorio para reprogramar a prioridad\n"
-                "3. Seguí las indicaciones de primeros auxilios según síntomas\n\n"
-                "📅 **Acción:** Buscá disponibilidad para esta semana",
-        'normal': "✅ **CONSULTA PROGRAMADA**\n\n"
-                  "🟢 **Recomendaciones:**\n"
-                  "1. Podés agendar en la fecha que te venga bien\n"
-                  "2. Mantené buena higiene oral mientras tanto\n"
-                  "3. Si aparecen síntomas de urgencia, volvé a contactarnos\n\n"
-                  "📅 **Acción:** Buscá disponibilidad según tu conveniencia",
-        'low': "ℹ️ **REVISIÓN DE RUTINA**\n\n"
-               "🔵 **Recomendaciones:**\n"
-               "1. Podés agendar una revisión cuando lo necesites\n"
-               "2. Mantené tus controles periódicos\n"
-               "3. No presenta signos de urgencia dental\n\n"
-               "📅 **Acción:** Buscá disponibilidad para control preventivo"
+        "emergency": "🚨 **URGENCIA MÉDICA DETECTADA** - Protocolo de emergencia activado.\n\n"
+        "🔴 **ACCIONES INMEDIATAS:**\n"
+        "1. Si es fuera de horario de atención: Dirigite a la guardia odontológica más cercana\n"
+        "2. Si es en horario de atención: Vení HOY MISMO al consultorio\n"
+        "3. Si tenés dificultad para respirar o tragar: Llamá al 107 (emergencias médicas)\n\n"
+        "📞 **Contacto directo:** Llamá al consultorio para prioridad inmediata",
+        "high": "⚠️ **URGENCIA ALTA** - Requiere atención pronta\n\n"
+        "🟡 **Recomendaciones:**\n"
+        "1. Agendá un turno para las próximas 48-72 horas\n"
+        "2. Si empeora, contactá al consultorio para reprogramar a prioridad\n"
+        "3. Seguí las indicaciones de primeros auxilios según síntomas\n\n"
+        "📅 **Acción:** Buscá disponibilidad para esta semana",
+        "normal": "✅ **CONSULTA PROGRAMADA**\n\n"
+        "🟢 **Recomendaciones:**\n"
+        "1. Podés agendar en la fecha que te venga bien\n"
+        "2. Mantené buena higiene oral mientras tanto\n"
+        "3. Si aparecen síntomas de urgencia, volvé a contactarnos\n\n"
+        "📅 **Acción:** Buscá disponibilidad según tu conveniencia",
+        "low": "ℹ️ **REVISIÓN DE RUTINA**\n\n"
+        "🔵 **Recomendaciones:**\n"
+        "1. Podés agendar una revisión cuando lo necesites\n"
+        "2. Mantené tus controles periódicos\n"
+        "3. No presenta signos de urgencia dental\n\n"
+        "📅 **Acción:** Buscá disponibilidad para control preventivo",
     }
-    
-    return responses.get(urgency_level, responses['normal'])
+
+    return responses.get(urgency_level, responses["normal"])
+
 
 @tool
 async def list_my_appointments():
@@ -2213,7 +3017,8 @@ async def list_my_appointments():
     phone_digits = normalize_phone_digits(phone)
     try:
         now = get_now_arg()
-        rows = await db.pool.fetch("""
+        rows = await db.pool.fetch(
+            """
             SELECT a.appointment_datetime, a.status, a.appointment_type,
                    p_prof.first_name || ' ' || COALESCE(p_prof.last_name, '') as professional_name,
                    a.payment_status, a.billing_amount,
@@ -2225,26 +3030,35 @@ async def list_my_appointments():
             LEFT JOIN treatment_types tt ON a.appointment_type = tt.code AND tt.tenant_id = p.tenant_id
             WHERE p.tenant_id = $1 AND REGEXP_REPLACE(p.phone_number, '[^0-9]', '', 'g') = $2
             ORDER BY a.appointment_datetime DESC
-        """, tenant_id, phone_digits)
-        logger.info(f"list_my_appointments phone_digits={phone_digits} tenant={tenant_id} found={len(rows)}")
+        """,
+            tenant_id,
+            phone_digits,
+        )
+        logger.info(
+            f"list_my_appointments phone_digits={phone_digits} tenant={tenant_id} found={len(rows)}"
+        )
         if not rows:
             return "Sin turnos. ¿Agendamos?"
         upcoming = []
         past = []
         for r in rows:
-            dt = r['appointment_datetime']
-            if hasattr(dt, 'astimezone'):
+            dt = r["appointment_datetime"]
+            if hasattr(dt, "astimezone"):
                 dt = dt.astimezone(ARG_TZ)
             fecha = dt.strftime("%d/%m/%y %H:%M")
-            prof = (r['professional_name'] or '').strip().split()[0] if r.get('professional_name') else "—"
-            tipo = r['appointment_type'] or 'consulta'
-            st = r['status'] or 'scheduled'
-            pay = r.get('payment_status') or 'pending'
-            amt = r.get('billing_amount')
+            prof = (
+                (r["professional_name"] or "").strip().split()[0]
+                if r.get("professional_name")
+                else "—"
+            )
+            tipo = r["appointment_type"] or "consulta"
+            st = r["status"] or "scheduled"
+            pay = r.get("payment_status") or "pending"
+            amt = r.get("billing_amount")
             seña = f"${int(amt)}" if amt else "—"
-            tprice = r.get('treatment_price')
+            tprice = r.get("treatment_price")
             precio_trat = f"${int(tprice)}" if tprice and float(tprice) > 0 else "—"
-            prof_cp = r.get('prof_consultation_price')
+            prof_cp = r.get("prof_consultation_price")
             consulta = f"${int(prof_cp)}" if prof_cp and float(prof_cp) > 0 else "—"
             line = f"{fecha}|{tipo}|{prof}|{st}|seña:{pay}({seña})|consulta_prof:{consulta}|tratamiento:{precio_trat}"
             if dt >= now:
@@ -2266,10 +3080,11 @@ async def list_my_appointments():
         logger.error(f"Error en list_my_appointments: {e}")
         return "Hubo un error al buscar tus turnos. ¿Probamos de nuevo?"
 
+
 @tool
 async def cancel_appointment(date_query: str):
     """
-    Cancela un turno existente. 
+    Cancela un turno existente.
     date_query: Fecha del turno a cancelar (ej: 'mañana', '2025-05-10', 'el martes')
     """
     phone = current_customer_phone.get()
@@ -2282,7 +3097,8 @@ async def cancel_appointment(date_query: str):
         target_date = parse_date(date_query)
         if target_date is None:
             return f"No pude entender la fecha '{date_query}'. ¿Podrías indicarme qué turno querés cancelar?"
-        apt = await db.pool.fetchrow("""
+        apt = await db.pool.fetchrow(
+            """
             SELECT a.id, a.google_calendar_event_id, a.billing_amount, a.payment_status,
                    a.appointment_datetime, tt.name as treatment_name
             FROM appointments a
@@ -2291,7 +3107,11 @@ async def cancel_appointment(date_query: str):
             WHERE p.tenant_id = $1 AND REGEXP_REPLACE(p.phone_number, '[^0-9]', '', 'g') = $2 AND DATE(a.appointment_datetime) = $3
             AND a.status IN ('scheduled', 'confirmed')
             LIMIT 1
-        """, tenant_id, phone_digits, target_date)
+        """,
+            tenant_id,
+            phone_digits,
+            target_date,
+        )
         if not apt:
             return f"No encontré ningún turno activo para el día {date_query}. ¿Querés que revisemos otra fecha?"
 
@@ -2302,24 +3122,33 @@ async def cancel_appointment(date_query: str):
                 apt["id"],
             )
             if google_calendar_id:
-                gcal_service.delete_event(calendar_id=google_calendar_id, event_id=apt["google_calendar_event_id"])
+                gcal_service.delete_event(
+                    calendar_id=google_calendar_id,
+                    event_id=apt["google_calendar_event_id"],
+                )
         # 2. Marcar como cancelado en BD
-        await db.pool.execute("""
+        await db.pool.execute(
+            """
             UPDATE appointments SET status = 'cancelled', google_calendar_sync_status = 'cancelled'
             WHERE id = $1
-        """, apt['id'])
+        """,
+            apt["id"],
+        )
 
         # 3. Notificar a la UI (Borrado visual)
         try:
             from main import sio
-            await sio.emit("APPOINTMENT_DELETED", apt['id'])
+
+            await sio.emit("APPOINTMENT_DELETED", apt["id"])
         except Exception:
             pass  # Socket notification is non-critical
 
         logger.info(f"🚫 Turno cancelado por IA: {apt['id']} ({phone})")
 
         # 4. Build response — warn about non-refundable deposit if applicable
-        has_payment = apt.get("payment_status") in ("partial", "paid") and apt.get("billing_amount")
+        has_payment = apt.get("payment_status") in ("partial", "paid") and apt.get(
+            "billing_amount"
+        )
         treatment = apt.get("treatment_name") or "consulta"
         if has_payment:
             amount = apt["billing_amount"]
@@ -2333,6 +3162,7 @@ async def cancel_appointment(date_query: str):
     except Exception as e:
         logger.error(f"Error en cancel_appointment: {e}")
         return "⚠️ Hubo un error al intentar cancelar el turno. Por favor, intenta nuevamente."
+
 
 @tool
 async def reschedule_appointment(original_date: str, new_date_time: str):
@@ -2351,24 +3181,36 @@ async def reschedule_appointment(original_date: str, new_date_time: str):
         if orig_date is None:
             return f"No pude entender la fecha original '{original_date}'. ¿Podrías indicarme qué turno querés reprogramar?"
         new_dt = parse_datetime(new_date_time)
-        apt = await db.pool.fetchrow("""
+        apt = await db.pool.fetchrow(
+            """
             SELECT a.id, a.google_calendar_event_id, a.professional_id, a.duration_minutes
             FROM appointments a
             JOIN patients p ON a.patient_id = p.id
             WHERE p.tenant_id = $1 AND REGEXP_REPLACE(p.phone_number, '[^0-9]', '', 'g') = $2 AND DATE(a.appointment_datetime) = $3
             AND a.status IN ('scheduled', 'confirmed')
             LIMIT 1
-        """, tenant_id, phone_digits, orig_date)
+        """,
+            tenant_id,
+            phone_digits,
+            orig_date,
+        )
         if not apt:
             return f"No encontré tu turno para el {original_date}. ¿Podrías confirmarme la fecha original?"
 
-        apt_dur = apt['duration_minutes'] or 60
-        overlap = await db.pool.fetchval("""
+        apt_dur = apt["duration_minutes"] or 60
+        overlap = await db.pool.fetchval(
+            """
             SELECT COUNT(*) FROM appointments
             WHERE tenant_id = $1 AND professional_id = $2 AND status IN ('scheduled', 'confirmed') AND id != $3
             AND appointment_datetime < $4 + interval '1 minute' * $5
             AND (appointment_datetime + interval '1 minute' * COALESCE(duration_minutes, 60)) > $4
-        """, tenant_id, apt["professional_id"], apt["id"], new_dt, apt_dur)
+        """,
+            tenant_id,
+            apt["professional_id"],
+            apt["id"],
+            new_dt,
+            apt_dur,
+        )
 
         if overlap and overlap > 0:
             return f"Lo siento, el horario {new_date_time} ya está ocupado. ¿Probamos con otro?"
@@ -2379,8 +3221,14 @@ async def reschedule_appointment(original_date: str, new_date_time: str):
             apt["professional_id"],
         )
         new_gcal = None
-        if calendar_provider == "google" and apt.get("google_calendar_event_id") and google_calendar_id:
-            gcal_service.delete_event(calendar_id=google_calendar_id, event_id=apt["google_calendar_event_id"])
+        if (
+            calendar_provider == "google"
+            and apt.get("google_calendar_event_id")
+            and google_calendar_id
+        ):
+            gcal_service.delete_event(
+                calendar_id=google_calendar_id, event_id=apt["google_calendar_event_id"]
+            )
             summary = f"Cita Dental AI (Reprogramada): {phone}"
             new_gcal = gcal_service.create_event(
                 calendar_id=google_calendar_id,
@@ -2389,7 +3237,8 @@ async def reschedule_appointment(original_date: str, new_date_time: str):
                 end_time=(new_dt + timedelta(minutes=60)).isoformat(),
             )
         sync_status = "synced" if new_gcal else "local"
-        await db.pool.execute("""
+        await db.pool.execute(
+            """
             UPDATE appointments SET
                 appointment_datetime = $1,
                 google_calendar_event_id = COALESCE($2, google_calendar_event_id),
@@ -2398,18 +3247,26 @@ async def reschedule_appointment(original_date: str, new_date_time: str):
                 reminder_sent_at = NULL,
                 updated_at = NOW()
             WHERE id = $4
-        """, new_dt, new_gcal["id"] if new_gcal else None, sync_status, apt["id"])
-        
+        """,
+            new_dt,
+            new_gcal["id"] if new_gcal else None,
+            sync_status,
+            apt["id"],
+        )
+
         # 5. Emitir evento Socket.IO (Actualizar UI)
         try:
             # Obtener datos actualizados para el frontend
-            updated_apt = await db.pool.fetchrow("""
+            updated_apt = await db.pool.fetchrow(
+                """
                 SELECT a.*, p.first_name, p.last_name, p.phone_number, prof.first_name as professional_name
                 FROM appointments a
                 JOIN patients p ON a.patient_id = p.id
                 JOIN professionals prof ON a.professional_id = prof.id
                 WHERE a.id = $1
-            """, apt['id'])
+            """,
+                apt["id"],
+            )
             if updated_apt:
                 await sio.emit("APPOINTMENT_UPDATED", to_json_safe(dict(updated_apt)))
         except Exception as se:
@@ -2422,6 +3279,7 @@ async def reschedule_appointment(original_date: str, new_date_time: str):
         logger.error(f"Error en reschedule_appointment: {e}")
         return "⚠️ No pude reprogramar el turno. Por favor, intenta de nuevo."
 
+
 @tool
 async def list_professionals():
     """
@@ -2431,26 +3289,37 @@ async def list_professionals():
     """
     tenant_id = current_tenant_id.get()
     try:
-        rows = await db.pool.fetch("""
+        rows = await db.pool.fetch(
+            """
             SELECT p.first_name, p.last_name, p.specialty, p.consultation_price
             FROM professionals p
             INNER JOIN users u ON p.user_id = u.id AND u.role = 'professional' AND u.status = 'active'
             WHERE p.tenant_id = $1 AND p.is_active = true
             ORDER BY p.first_name, p.last_name
-        """, tenant_id)
+        """,
+            tenant_id,
+        )
         if not rows:
             return "No hay profesionales cargados en esta sede por el momento. El paciente puede contactar a la clínica por otro medio."
         res = "👨‍⚕️ Profesionales de la clínica:\n"
         for r in rows:
-            name = f"{r['first_name'] or ''} {r['last_name'] or ''}".strip() or "Profesional"
-            specialty = (r['specialty'] or "Odontología general").strip()
-            price = r.get('consultation_price')
-            price_str = f" (consulta: ${int(price):,})".replace(",", ".") if price and float(price) > 0 else ""
+            name = (
+                f"{r['first_name'] or ''} {r['last_name'] or ''}".strip()
+                or "Profesional"
+            )
+            specialty = (r["specialty"] or "Odontología general").strip()
+            price = r.get("consultation_price")
+            price_str = (
+                f" (consulta: ${int(price):,})".replace(",", ".")
+                if price and float(price) > 0
+                else ""
+            )
             res += f"• {name} - {specialty}{price_str}\n"
         return res
     except Exception as e:
         logger.error(f"Error en list_professionals: {e}")
         return "⚠️ Error al consultar profesionales."
+
 
 @tool
 async def list_services(category: str = None):
@@ -2475,22 +3344,30 @@ async def list_services(category: str = None):
         if not rows:
             return "No hay tratamientos disponibles para reservar en esta sede en este momento."
         # Fetch assigned professionals for all treatments
-        tt_ids = [r['id'] for r in rows]
-        ttp_rows = await db.pool.fetch("""
+        tt_ids = [r["id"] for r in rows]
+        ttp_rows = await db.pool.fetch(
+            """
             SELECT ttp.treatment_type_id, p.first_name, p.last_name
             FROM treatment_type_professionals ttp
             JOIN professionals p ON ttp.professional_id = p.id AND p.is_active = true
             WHERE ttp.tenant_id = $1 AND ttp.treatment_type_id = ANY($2)
-        """, tenant_id, tt_ids)
+        """,
+            tenant_id,
+            tt_ids,
+        )
         prof_map: dict = {}
         for tr in ttp_rows:
-            prof_map.setdefault(tr['treatment_type_id'], []).append(
+            prof_map.setdefault(tr["treatment_type_id"], []).append(
                 f"{tr['first_name']} {tr['last_name'] or ''}".strip()
             )
         res = "🦷 Tratamientos disponibles:\n"
         for r in rows:
-            profs = prof_map.get(r['id'])
-            price = f" — ${int(r['base_price']):,}".replace(",", ".") if r.get('base_price') and float(r['base_price']) > 0 else ""
+            profs = prof_map.get(r["id"])
+            price = (
+                f" — ${int(r['base_price']):,}".replace(",", ".")
+                if r.get("base_price") and float(r["base_price"]) > 0
+                else ""
+            )
             prof_str = f" — con: {', '.join(profs)}" if profs else ""
             res += f"• {r['name']} (código: {r['code']}){price}{prof_str}\n"
         res += "\n💡 Para más detalles o fotos de un tratamiento, pedimelo usando su nombre o código."
@@ -2498,6 +3375,7 @@ async def list_services(category: str = None):
     except Exception as e:
         logger.error(f"Error en list_services: {e}")
         return "⚠️ Error al consultar servicios."
+
 
 @tool
 async def get_service_details(code: str):
@@ -2513,44 +3391,70 @@ async def get_service_details(code: str):
     tenant_id = current_tenant_id.get()
     try:
         # 1. Intentar buscar por código exacto
-        row = await db.pool.fetchrow("""
+        row = await db.pool.fetchrow(
+            """
             SELECT code, name, description, default_duration_minutes, complexity_level, base_price
             FROM treatment_types
             WHERE tenant_id = $1 AND code = $2 AND is_active = true AND is_available_for_booking = true
-        """, tenant_id, code)
+        """,
+            tenant_id,
+            code,
+        )
 
         # 2. Fallback: Intentar buscar por nombre si no se encontró por código (el agente a veces pasa el nombre)
         if not row:
-            row = await db.pool.fetchrow("""
+            row = await db.pool.fetchrow(
+                """
                 SELECT code, name, description, default_duration_minutes, complexity_level, base_price
                 FROM treatment_types
                 WHERE tenant_id = $1 AND name ILIKE $2 AND is_active = true AND is_available_for_booking = true
                 LIMIT 1
-            """, tenant_id, f"%{code}%")
-            
+            """,
+                tenant_id,
+                f"%{code}%",
+            )
+
         if not row:
             return f"No encontré el tratamiento '{code}' en esta sede. Por favor, verificá el listado general con 'list_services'."
-            
+
         # Actualizar el código real encontrado
-        actual_code = row['code']
-            
-        images = await db.pool.fetch("""
+        actual_code = row["code"]
+
+        images = await db.pool.fetch(
+            """
             SELECT id FROM treatment_images WHERE tenant_id = $1 AND treatment_code = $2
-        """, tenant_id, actual_code)
-        
+        """,
+            tenant_id,
+            actual_code,
+        )
+
         # Fetch assigned professionals
-        tt_row = await db.pool.fetchrow("SELECT id FROM treatment_types WHERE tenant_id = $1 AND code = $2", tenant_id, actual_code)
+        tt_row = await db.pool.fetchrow(
+            "SELECT id FROM treatment_types WHERE tenant_id = $1 AND code = $2",
+            tenant_id,
+            actual_code,
+        )
         assigned_profs = []
         if tt_row:
-            prof_rows = await db.pool.fetch("""
+            prof_rows = await db.pool.fetch(
+                """
                 SELECT p.first_name, p.last_name
                 FROM treatment_type_professionals ttp
                 JOIN professionals p ON ttp.professional_id = p.id AND p.is_active = true
                 WHERE ttp.tenant_id = $1 AND ttp.treatment_type_id = $2
-            """, tenant_id, tt_row['id'])
-            assigned_profs = [f"{r['first_name']} {r['last_name'] or ''}".strip() for r in prof_rows]
+            """,
+                tenant_id,
+                tt_row["id"],
+            )
+            assigned_profs = [
+                f"{r['first_name']} {r['last_name'] or ''}".strip() for r in prof_rows
+            ]
 
-        price_str = f"${int(row['base_price']):,}".replace(",", ".") if row.get('base_price') and float(row['base_price']) > 0 else "Consultar"
+        price_str = (
+            f"${int(row['base_price']):,}".replace(",", ".")
+            if row.get("base_price") and float(row["base_price"]) > 0
+            else "Consultar"
+        )
         res = f"Detalles de {row['name']}:\nDescripción: {row['description']}\nDuración: {row['default_duration_minutes']} min\nComplejidad: {row['complexity_level']}\nPrecio: {price_str}\n"
         if assigned_profs:
             res += f"Profesionales que realizan este tratamiento: {', '.join(assigned_profs)}\n"
@@ -2561,11 +3465,12 @@ async def get_service_details(code: str):
             for img in images:
                 public_url = f"{os.getenv('ORCHESTRATOR_PUBLIC_URL', 'http://127.0.0.1:8000')}/api/admin/public/media/{img['id']}"
                 res += f"[LOCAL_IMAGE:{public_url}]\n"
-                
+
         return res
     except Exception as e:
         logger.error(f"Error en get_service_details: {e}")
         return "⚠️ Error al consultar detalles del servicio."
+
 
 @tool
 async def derivhumano(reason: str):
@@ -2578,44 +3483,71 @@ async def derivhumano(reason: str):
     tenant_id = current_tenant_id.get()
     try:
         override_until = datetime.now(timezone.utc) + timedelta(hours=24)
-        await db.pool.execute("""
+        await db.pool.execute(
+            """
             UPDATE patients SET
                 human_handoff_requested = true,
                 human_override_until = $1,
                 last_derivhumano_at = NOW(),
                 updated_at = NOW()
             WHERE tenant_id = $2 AND phone_number = $3
-        """, override_until, tenant_id, phone)
-        logger.info(f"👤 Derivación humana solicitada para {phone} (tenant={tenant_id}): {reason}")
+        """,
+            override_until,
+            tenant_id,
+            phone,
+        )
+        logger.info(
+            f"👤 Derivación humana solicitada para {phone} (tenant={tenant_id}): {reason}"
+        )
         try:
             from main import sio
-            await sio.emit("HUMAN_HANDOFF", to_json_safe({"phone_number": phone, "tenant_id": tenant_id, "reason": reason}))
+
+            await sio.emit(
+                "HUMAN_HANDOFF",
+                to_json_safe(
+                    {"phone_number": phone, "tenant_id": tenant_id, "reason": reason}
+                ),
+            )
         except Exception:
             pass  # Socket notification is non-critical
 
         # 1. Full patient data + PSIDs for social links
-        patient = await db.pool.fetchrow("""
+        patient = await db.pool.fetchrow(
+            """
             SELECT first_name, last_name, email, dni, city, urgency_level, urgency_reason,
                    first_touch_source, medical_history, instagram_psid, facebook_psid
             FROM patients WHERE tenant_id = $1 AND phone_number = $2
-        """, tenant_id, phone)
-        patient_name = f"{patient['first_name'] or ''} {patient['last_name'] or ''}".strip() if patient else "Desconocido"
+        """,
+            tenant_id,
+            phone,
+        )
+        patient_name = (
+            f"{patient['first_name'] or ''} {patient['last_name'] or ''}".strip()
+            if patient
+            else "Desconocido"
+        )
         patient_info = dict(patient) if patient else {}
 
         # Detect channel from conversation
-        conv_row = await db.pool.fetchrow("""
+        conv_row = await db.pool.fetchrow(
+            """
             SELECT channel, channel_source, external_user_id FROM chat_conversations
             WHERE tenant_id = $1 AND external_user_id = $2
             ORDER BY updated_at DESC LIMIT 1
-        """, tenant_id, phone)
-        channel = (conv_row['channel'] if conv_row else 'whatsapp') or 'whatsapp'
-        patient_info['_channel'] = channel
-        patient_info['_external_user_id'] = conv_row['external_user_id'] if conv_row else phone
+        """,
+            tenant_id,
+            phone,
+        )
+        channel = (conv_row["channel"] if conv_row else "whatsapp") or "whatsapp"
+        patient_info["_channel"] = channel
+        patient_info["_external_user_id"] = (
+            conv_row["external_user_id"] if conv_row else phone
+        )
 
         # 2. Anamnesis data from medical_history JSONB
         anamnesis_data = None
-        if patient and patient.get('medical_history'):
-            mh = patient['medical_history']
+        if patient and patient.get("medical_history"):
+            mh = patient["medical_history"]
             if isinstance(mh, str):
                 try:
                     mh = json.loads(mh)
@@ -2626,7 +3558,8 @@ async def derivhumano(reason: str):
 
         # 3. Next appointment
         next_appointment = None
-        apt_row = await db.pool.fetchrow("""
+        apt_row = await db.pool.fetchrow(
+            """
             SELECT a.appointment_datetime, a.appointment_type, a.status,
                    prof.first_name as prof_name
             FROM appointments a
@@ -2636,28 +3569,43 @@ async def derivhumano(reason: str):
             AND a.status IN ('scheduled', 'confirmed')
             AND a.appointment_datetime > NOW()
             ORDER BY a.appointment_datetime ASC LIMIT 1
-        """, phone, tenant_id)
+        """,
+            phone,
+            tenant_id,
+        )
         if apt_row:
-            dias = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
-            dt = apt_row['appointment_datetime']
+            dias = [
+                "Lunes",
+                "Martes",
+                "Miércoles",
+                "Jueves",
+                "Viernes",
+                "Sábado",
+                "Domingo",
+            ]
+            dt = apt_row["appointment_datetime"]
             next_appointment = {
                 "datetime": f"{dias[dt.weekday()]} {dt.strftime('%d/%m/%Y %H:%M')}",
-                "type": apt_row['appointment_type'] or '—',
-                "professional": apt_row['prof_name'] or '—',
-                "status": apt_row['status'] or '—',
+                "type": apt_row["appointment_type"] or "—",
+                "professional": apt_row["prof_name"] or "—",
+                "status": apt_row["status"] or "—",
             }
 
         # 4. Chat history (last 15 messages for full context)
-        history = await db.pool.fetch("""
+        history = await db.pool.fetch(
+            """
             SELECT role, content, created_at FROM chat_messages
             WHERE from_number = $1 AND tenant_id = $2 ORDER BY created_at DESC LIMIT 15
-        """, phone, tenant_id)
+        """,
+            phone,
+            tenant_id,
+        )
         history_html_parts = []
         for msg in reversed(history):
-            role = msg['role']
-            content = (msg['content'] or '').replace('<', '&lt;').replace('>', '&gt;')
-            ts = msg['created_at'].strftime('%H:%M') if msg.get('created_at') else ''
-            if role == 'user':
+            role = msg["role"]
+            content = (msg["content"] or "").replace("<", "&lt;").replace(">", "&gt;")
+            ts = msg["created_at"].strftime("%H:%M") if msg.get("created_at") else ""
+            if role == "user":
                 history_html_parts.append(
                     f'<div style="margin:6px 0; padding:8px 12px; background:#dbeafe; border-radius:8px 8px 8px 2px;">'
                     f'<span style="font-size:11px; color:#1e40af; font-weight:bold;">👤 Paciente</span> '
@@ -2671,17 +3619,29 @@ async def derivhumano(reason: str):
                     f'<span style="font-size:10px; color:#c4b5fd;">{ts}</span>'
                     f'<p style="margin:4px 0 0; font-size:13px;">{content}</p></div>'
                 )
-        chat_history_html = "\n".join(history_html_parts) if history_html_parts else "<p style='color:#999;'>Sin historial disponible</p>"
+        chat_history_html = (
+            "\n".join(history_html_parts)
+            if history_html_parts
+            else "<p style='color:#999;'>Sin historial disponible</p>"
+        )
 
         # 5. Build suggestions based on reason
         suggestions_parts = []
-        if patient and patient.get('urgency_level') in ('emergency', 'high'):
-            suggestions_parts.append(f"<p>⚡ <strong>Paciente con urgencia {patient['urgency_level']}</strong>: {patient.get('urgency_reason', 'sin detalle')}. Contactar lo antes posible.</p>")
+        if patient and patient.get("urgency_level") in ("emergency", "high"):
+            suggestions_parts.append(
+                f"<p>⚡ <strong>Paciente con urgencia {patient['urgency_level']}</strong>: {patient.get('urgency_reason', 'sin detalle')}. Contactar lo antes posible.</p>"
+            )
         if next_appointment:
-            suggestions_parts.append(f"<p>📅 El paciente tiene turno próximo ({next_appointment['datetime']}). Verificar si la derivación afecta el turno agendado.</p>")
+            suggestions_parts.append(
+                f"<p>📅 El paciente tiene turno próximo ({next_appointment['datetime']}). Verificar si la derivación afecta el turno agendado.</p>"
+            )
         if not anamnesis_data:
-            suggestions_parts.append("<p>📋 El paciente no completó la ficha médica. Solicitar que la complete antes de la consulta.</p>")
-        suggestions_parts.append(f"<p>💬 Motivo reportado por la IA: <em>{reason}</em></p>")
+            suggestions_parts.append(
+                "<p>📋 El paciente no completó la ficha médica. Solicitar que la complete antes de la consulta.</p>"
+            )
+        suggestions_parts.append(
+            f"<p>💬 Motivo reportado por la IA: <em>{reason}</em></p>"
+        )
         suggestions = "\n".join(suggestions_parts)
 
         # 6. Collect all destination emails: clinic derivation email + all active professionals
@@ -2689,18 +3649,21 @@ async def derivhumano(reason: str):
         tenant_data = await db.pool.fetchrow(
             "SELECT derivation_email, clinic_name FROM tenants WHERE id = $1", tenant_id
         )
-        if tenant_data and tenant_data.get('derivation_email'):
-            emails.add(tenant_data['derivation_email'].strip())
+        if tenant_data and tenant_data.get("derivation_email"):
+            emails.add(tenant_data["derivation_email"].strip())
 
         # Add all active professionals' emails
-        prof_rows = await db.pool.fetch("""
+        prof_rows = await db.pool.fetch(
+            """
             SELECT p.email FROM professionals p
             INNER JOIN users u ON p.user_id = u.id AND u.status = 'active'
             WHERE p.tenant_id = $1 AND p.is_active = true AND p.email IS NOT NULL AND p.email != ''
-        """, tenant_id)
+        """,
+            tenant_id,
+        )
         for pr in prof_rows:
-            if pr['email'] and pr['email'].strip():
-                emails.add(pr['email'].strip())
+            if pr["email"] and pr["email"].strip():
+                emails.add(pr["email"].strip())
 
         # Fallback to env var if no emails found
         if not emails:
@@ -2723,11 +3686,16 @@ async def derivhumano(reason: str):
         if email_sent:
             return "He notificado al equipo de la clínica. Un profesional te contactará por WhatsApp en breve."
         else:
-            return "Ya he solicitado que un humano revise tu caso. Aguardanos un momento."
+            return (
+                "Ya he solicitado que un humano revise tu caso. Aguardanos un momento."
+            )
 
     except Exception as e:
         logger.error(f"Error en derivhumano: {e}")
-        return "Hubo un problema al derivarte, pero ya he dejado el aviso en el sistema."
+        return (
+            "Hubo un problema al derivarte, pero ya he dejado el aviso en el sistema."
+        )
+
 
 @tool
 async def save_patient_anamnesis(
@@ -2739,14 +3707,14 @@ async def save_patient_anamnesis(
     smoker_amount: Optional[str] = None,
     pregnancy_lactation: Optional[str] = None,
     negative_experiences: Optional[str] = None,
-    specific_fears: Optional[str] = None
+    specific_fears: Optional[str] = None,
 ):
     """
     GUARDA LA ANAMNESIS (HISTORIAL MÉDICO) DEL PACIENTE EN LA BASE DE DATOS.
-    
-    USO OBLIGATORIO: Esta tool debe usarse INMEDIATAMENTE DESPUÉS de haber ejecutado 
+
+    USO OBLIGATORIO: Esta tool debe usarse INMEDIATAMENTE DESPUÉS de haber ejecutado
     'book_appointment' con un paciente nuevo, tras haberle hecho las preguntas de salud.
-    
+
     Parámetros (todos opcionales pero recomendados):
     - base_diseases: Enfermedades de base (hipertensión, diabetes, etc.)
     - habitual_medication: Medicación habitual que toma
@@ -2757,16 +3725,16 @@ async def save_patient_anamnesis(
     - pregnancy_lactation: Embarazo o lactancia (Sí/No, semanas si aplica)
     - negative_experiences: Experiencias negativas previas en odontología
     - specific_fears: Miedos específicos relacionados con tratamientos dentales
-    
+
     La tool actualiza el campo medical_history (JSONB) en la tabla patients
     con todos estos datos, preservando cualquier información previa.
     """
     phone = current_customer_phone.get()
     if not phone:
         return "❌ Error: No pude identificar tu teléfono. Reinicia la conversación."
-    
+
     tenant_id = current_tenant_id.get()
-    
+
     try:
         # Preparar el objeto de anamnesis
         anamnesis_data = {
@@ -2780,47 +3748,66 @@ async def save_patient_anamnesis(
             "negative_experiences": negative_experiences,
             "specific_fears": specific_fears,
             "anamnesis_completed_at": datetime.now(timezone.utc).isoformat(),
-            "anamnesis_completed_via": "ai_assistant"
+            "anamnesis_completed_via": "ai_assistant",
         }
-        
+
         # Filtrar valores None para no sobreescribir con nulls
         filtered_data = {k: v for k, v in anamnesis_data.items() if v is not None}
-        
+
         # Actualizar el campo medical_history (normalización de teléfono para match robusto)
         phone_digits = normalize_phone_digits(phone)
-        row = await db.pool.fetchrow("""
+        row = await db.pool.fetchrow(
+            """
             UPDATE patients 
             SET medical_history = COALESCE(medical_history, '{}'::jsonb) || $1::jsonb,
                 updated_at = NOW()
             WHERE tenant_id = $2 AND REGEXP_REPLACE(phone_number, '[^0-9]', '', 'g') = $3
             RETURNING id
-        """, json.dumps(filtered_data), tenant_id, phone_digits)
-        
+        """,
+            json.dumps(filtered_data),
+            tenant_id,
+            phone_digits,
+        )
+
         if not row:
-            logger.warning(f"save_patient_anamnesis: paciente no encontrado phone={phone} tenant={tenant_id}")
+            logger.warning(
+                f"save_patient_anamnesis: paciente no encontrado phone={phone} tenant={tenant_id}"
+            )
             return "❌ No se encontró un paciente con este número de teléfono. Asegúrate de haber agendado un turno primero con 'book_appointment'."
 
-        logger.info(f"✅ Anamnesis guardada para paciente {phone} (tenant={tenant_id}) patient_id={row['id']} campos={list(filtered_data.keys())}")
+        logger.info(
+            f"✅ Anamnesis guardada para paciente {phone} (tenant={tenant_id}) patient_id={row['id']} campos={list(filtered_data.keys())}"
+        )
 
         # Notificar al dashboard para refrescar AnamnesisPanel en tiempo real
         try:
             from main import sio
-            await sio.emit("PATIENT_UPDATED", to_json_safe({
-                "phone_number": phone,
-                "tenant_id": tenant_id,
-                "update_type": "anamnesis_saved",
-                "patient_id": row['id']
-            }))
+
+            await sio.emit(
+                "PATIENT_UPDATED",
+                to_json_safe(
+                    {
+                        "phone_number": phone,
+                        "tenant_id": tenant_id,
+                        "update_type": "anamnesis_saved",
+                        "patient_id": row["id"],
+                    }
+                ),
+            )
         except Exception as e:
             logger.warning(f"No se pudo emitir evento Socket.IO: {e}")
 
         return "✅ He guardado tu historial médico (anamnesis) en tu ficha. Esto ayudará al profesional a brindarte una atención más segura y personalizada."
-        
+
     except Exception as e:
         logger.error(f"Error en save_patient_anamnesis: {e}")
         import traceback
-        logger.warning(f"save_patient_anamnesis FAIL traceback={traceback.format_exc()}")
+
+        logger.warning(
+            f"save_patient_anamnesis FAIL traceback={traceback.format_exc()}"
+        )
         return "⚠️ Hubo un problema al guardar tu historial médico. Por favor, intenta de nuevo o comunícate con la clínica."
+
 
 @tool
 async def save_patient_email(email: str, patient_phone: Optional[str] = None):
@@ -2835,35 +3822,59 @@ async def save_patient_email(email: str, patient_phone: Optional[str] = None):
         return "❌ No pude identificar tu número. Escribí desde el mismo WhatsApp con el que agendaste."
     tenant_id = current_tenant_id.get()
     email_clean = str(email).strip().lower() if email else None
-    if not email_clean or email_clean in ["sin_email@placeholder.com", "none", "null", ""]:
+    if not email_clean or email_clean in [
+        "sin_email@placeholder.com",
+        "none",
+        "null",
+        "",
+    ]:
         return "❌ No es un email válido. Decime tu correo electrónico (ej: tu@ejemplo.com) y lo guardo."
-    if not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', email_clean):
-        return "❌ Ese formato no parece un email válido. Revisalo y escribilo de nuevo."
+    if not re.match(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$", email_clean):
+        return (
+            "❌ Ese formato no parece un email válido. Revisalo y escribilo de nuevo."
+        )
     try:
         # If patient_phone provided (third party / minor), use that to find the patient
-        target_phone = patient_phone.strip() if patient_phone and patient_phone.strip() else phone
+        target_phone = (
+            patient_phone.strip() if patient_phone and patient_phone.strip() else phone
+        )
         phone_digits = normalize_phone_digits(target_phone)
-        row = await db.pool.fetchrow("""
+        row = await db.pool.fetchrow(
+            """
             UPDATE patients
             SET email = $1, updated_at = NOW()
             WHERE tenant_id = $2 AND REGEXP_REPLACE(phone_number, '[^0-9]', '', 'g') = $3
             RETURNING id
-        """, email_clean, tenant_id, phone_digits)
+        """,
+            email_clean,
+            tenant_id,
+            phone_digits,
+        )
         # Fallback: if third party phone didn't match (e.g. minor with -M1 suffix), try exact match
         if not row and patient_phone:
-            row = await db.pool.fetchrow("""
+            row = await db.pool.fetchrow(
+                """
                 UPDATE patients
                 SET email = $1, updated_at = NOW()
                 WHERE tenant_id = $2 AND phone_number = $3
                 RETURNING id
-            """, email_clean, tenant_id, target_phone)
+            """,
+                email_clean,
+                tenant_id,
+                target_phone,
+            )
         if not row:
             return "No encontré la ficha del paciente. Asegurate de haber agendado primero."
-        logger.info(f"✅ save_patient_email OK target_phone={target_phone} tenant={tenant_id} patient_id={row['id']}")
+        logger.info(
+            f"✅ save_patient_email OK target_phone={target_phone} tenant={tenant_id} patient_id={row['id']}"
+        )
         return "✅ Guardé el email correctamente."
     except Exception as e:
         logger.error(f"Error en save_patient_email: {e}")
-        return "Hubo un problema al guardar el email. Probá de nuevo o avisá a la clínica."
+        return (
+            "Hubo un problema al guardar el email. Probá de nuevo o avisá a la clínica."
+        )
+
 
 @tool
 async def get_patient_anamnesis():
@@ -2877,10 +3888,14 @@ async def get_patient_anamnesis():
     tenant_id = current_tenant_id.get()
     phone_digits = normalize_phone_digits(phone)
     try:
-        row = await db.pool.fetchrow("""
+        row = await db.pool.fetchrow(
+            """
             SELECT first_name, last_name, medical_history FROM patients
             WHERE tenant_id = $1 AND REGEXP_REPLACE(phone_number, '[^0-9]', '', 'g') = $2
-        """, tenant_id, phone_digits)
+        """,
+            tenant_id,
+            phone_digits,
+        )
         if not row:
             return "No encontré tu ficha. Asegurate de estar registrado/a."
         mh = row["medical_history"]
@@ -2888,7 +3903,17 @@ async def get_patient_anamnesis():
             return "Todavía no completaste tu ficha médica. Podés hacerlo desde el link que te envié."
         if isinstance(mh, str):
             mh = json.loads(mh)
-        if not isinstance(mh, dict) or not any(v for k, v in mh.items() if k not in ('anamnesis_completed_at', 'anamnesis_completed_via', 'anamnesis_last_edited_by', 'anamnesis_last_edited_at')):
+        if not isinstance(mh, dict) or not any(
+            v
+            for k, v in mh.items()
+            if k
+            not in (
+                "anamnesis_completed_at",
+                "anamnesis_completed_via",
+                "anamnesis_last_edited_by",
+                "anamnesis_last_edited_at",
+            )
+        ):
             return "Todavía no completaste tu ficha médica. Podés hacerlo desde el link que te envié."
         name = f"{row['first_name'] or ''} {row['last_name'] or ''}".strip()
         lines = [f"Ficha médica de {name}:"]
@@ -2909,10 +3934,15 @@ async def get_patient_anamnesis():
                 if isinstance(val, list):
                     val = ", ".join(val)
                 lines.append(f"• {label}: {val}")
-        return "\n".join(lines) if len(lines) > 1 else "La ficha está vacía. Pedile al paciente que la complete desde el link."
+        return (
+            "\n".join(lines)
+            if len(lines) > 1
+            else "La ficha está vacía. Pedile al paciente que la complete desde el link."
+        )
     except Exception as e:
         logger.error(f"Error en get_patient_anamnesis: {e}")
         return "Hubo un error al leer la ficha médica."
+
 
 @tool
 async def reassign_document(patient_phone: str):
@@ -2932,7 +3962,8 @@ async def reassign_document(patient_phone: str):
         phone_digits = normalize_phone_digits(chat_phone)
         interlocutor = await db.pool.fetchrow(
             "SELECT id FROM patients WHERE tenant_id = $1 AND REGEXP_REPLACE(phone_number, '[^0-9]', '', 'g') = $2",
-            tenant_id, phone_digits
+            tenant_id,
+            phone_digits,
         )
         if not interlocutor:
             return "❌ No encontré tu ficha de paciente."
@@ -2940,33 +3971,47 @@ async def reassign_document(patient_phone: str):
         # Find the target patient
         target = await db.pool.fetchrow(
             "SELECT id, first_name FROM patients WHERE tenant_id = $1 AND phone_number = $2",
-            tenant_id, patient_phone.strip()
+            tenant_id,
+            patient_phone.strip(),
         )
         if not target:
             return f"❌ No encontré al paciente con teléfono {patient_phone}."
 
         # Get the latest document from the interlocutor
-        last_doc = await db.pool.fetchrow("""
+        last_doc = await db.pool.fetchrow(
+            """
             SELECT id, file_name FROM patient_documents
             WHERE tenant_id = $1 AND patient_id = $2 AND source = 'whatsapp'
             ORDER BY uploaded_at DESC LIMIT 1
-        """, tenant_id, interlocutor["id"])
+        """,
+            tenant_id,
+            interlocutor["id"],
+        )
         if not last_doc:
             return "No encontré archivos recientes en tu ficha para reasignar."
 
         # Move the document to the target patient
         await db.pool.execute(
             "UPDATE patient_documents SET patient_id = $1 WHERE id = $2 AND tenant_id = $3",
-            target["id"], last_doc["id"], tenant_id
+            target["id"],
+            last_doc["id"],
+            tenant_id,
         )
-        logger.info(f"📁 Documento reasignado: {last_doc['file_name']} de paciente {interlocutor['id']} a {target['id']} ({target['first_name']})")
+        logger.info(
+            f"📁 Documento reasignado: {last_doc['file_name']} de paciente {interlocutor['id']} a {target['id']} ({target['first_name']})"
+        )
         return f"✅ Listo, moví el archivo a la ficha de {target['first_name']}."
     except Exception as e:
         logger.error(f"Error en reassign_document: {e}")
         return "❌ Hubo un error al reasignar el documento."
 
+
 @tool
-async def confirm_slot(date_time: str, professional_name: Optional[str] = None, treatment_name: Optional[str] = None):
+async def confirm_slot(
+    date_time: str,
+    professional_name: Optional[str] = None,
+    treatment_name: Optional[str] = None,
+):
     """
     Confirma y reserva temporalmente un turno por 30 segundos mientras se recopilan datos del paciente.
     Llamar SIEMPRE cuando el paciente elige una de las opciones de check_availability, ANTES de pedir datos de admisión.
@@ -2990,16 +4035,25 @@ async def confirm_slot(date_time: str, professional_name: Optional[str] = None, 
         # Resolver profesional (si se especificó)
         prof_id = 0
         if professional_name:
-            clean_name = re.sub(r'^(dr|dra|doctor|doctora)\.?\s+', '', professional_name, flags=re.IGNORECASE).strip()
-            prof_row = await db.pool.fetchrow("""
+            clean_name = re.sub(
+                r"^(dr|dra|doctor|doctora)\.?\s+",
+                "",
+                professional_name,
+                flags=re.IGNORECASE,
+            ).strip()
+            prof_row = await db.pool.fetchrow(
+                """
                 SELECT p.id FROM professionals p
                 INNER JOIN users u ON p.user_id = u.id AND u.role = 'professional' AND u.status = 'active'
                 WHERE p.is_active = true AND p.tenant_id = $1
                 AND (p.first_name ILIKE $2 OR p.last_name ILIKE $2 OR (p.first_name || ' ' || COALESCE(p.last_name, '')) ILIKE $2)
                 LIMIT 1
-            """, tenant_id, f"%{clean_name}%")
+            """,
+                tenant_id,
+                f"%{clean_name}%",
+            )
             if prof_row:
-                prof_id = prof_row['id']
+                prof_id = prof_row["id"]
 
         # Crear soft lock en Redis
         date_str = apt_datetime.strftime("%Y-%m-%d")
@@ -3008,6 +4062,7 @@ async def confirm_slot(date_time: str, professional_name: Optional[str] = None, 
 
         try:
             from services.relay import get_redis
+
             r = get_redis()
             if r:
                 existing_lock = await r.get(lock_key)
@@ -3047,19 +4102,24 @@ async def verify_payment_receipt(
     tenant_id = current_tenant_id.get()
     try:
         # 1. Get tenant bank config
-        tenant = await db.pool.fetchrow("""
-            SELECT bank_cbu, bank_alias, bank_holder_name, consultation_price
+        tenant = await db.pool.fetchrow(
+            """
+            SELECT bank_cbu, bank_alias, bank_holder_name, consultation_price,
+                   country_code, clinic_name, address, phone
             FROM tenants WHERE id = $1
-        """, tenant_id)
+        """,
+            tenant_id,
+        )
 
-        if not tenant or not tenant['bank_holder_name']:
+        if not tenant or not tenant["bank_holder_name"]:
             return "⚠️ La clínica no tiene configurados los datos bancarios para verificación. Contactá a la clínica directamente."
 
-        bank_holder = tenant['bank_holder_name'].strip().lower()
+        bank_holder = tenant["bank_holder_name"].strip().lower()
 
         # 2. Find the appointment
         if appointment_id:
-            apt = await db.pool.fetchrow("""
+            apt = await db.pool.fetchrow(
+                """
                 SELECT a.id, a.status, a.billing_amount, a.payment_status, a.appointment_datetime,
                        a.appointment_type, a.professional_id, a.payment_receipt_data,
                        p.first_name, p.last_name,
@@ -3070,11 +4130,15 @@ async def verify_payment_receipt(
                 LEFT JOIN professionals prof ON a.professional_id = prof.id
                 LEFT JOIN treatment_types tt ON a.appointment_type = tt.code AND a.tenant_id = tt.tenant_id
                 WHERE a.id = $1 AND a.tenant_id = $2
-            """, appointment_id, tenant_id)
+            """,
+                appointment_id,
+                tenant_id,
+            )
         else:
             # Find next scheduled appointment for this patient (normalize phone for robust matching)
             phone_digits_apt = normalize_phone_digits(phone)
-            apt = await db.pool.fetchrow("""
+            apt = await db.pool.fetchrow(
+                """
                 SELECT a.id, a.status, a.billing_amount, a.payment_status, a.appointment_datetime,
                        a.appointment_type, a.professional_id, a.payment_receipt_data,
                        p.first_name, p.last_name,
@@ -3089,7 +4153,10 @@ async def verify_payment_receipt(
                 AND a.appointment_datetime > NOW()
                 ORDER BY a.appointment_datetime ASC
                 LIMIT 1
-            """, phone_digits_apt, tenant_id)
+            """,
+                phone_digits_apt,
+                tenant_id,
+            )
 
         if not apt:
             return "No encontré un turno pendiente asociado a tu número. Verificá con la clínica."
@@ -3098,43 +4165,51 @@ async def verify_payment_receipt(
         # Priority: billing_amount > 50% of professional price > 50% of treatment price > 50% of tenant price
         # MUST match the same priority chain used in book_appointment
         expected_amount = None
-        if apt['billing_amount'] and float(apt['billing_amount']) > 0:
-            expected_amount = float(apt['billing_amount'])
+        if apt["billing_amount"] and float(apt["billing_amount"]) > 0:
+            expected_amount = float(apt["billing_amount"])
         else:
             full_price = None
             # a) Professional's consultation_price
-            prof_price = apt.get('prof_price')
+            prof_price = apt.get("prof_price")
             if prof_price and float(prof_price) > 0:
                 full_price = float(prof_price)
             # b) Treatment's base_price (fallback — same as book_appointment uses)
-            if full_price is None and apt.get('appointment_type'):
+            if full_price is None and apt.get("appointment_type"):
                 treatment_price = await db.pool.fetchval(
                     "SELECT base_price FROM treatment_types WHERE tenant_id = $1 AND (code = $2 OR name ILIKE $2) AND is_active = true LIMIT 1",
-                    tenant_id, apt['appointment_type']
+                    tenant_id,
+                    apt["appointment_type"],
                 )
-                logger.info(f"💰 verify_receipt: treatment_price lookup for '{apt['appointment_type']}' → {treatment_price}")
+                logger.info(
+                    f"💰 verify_receipt: treatment_price lookup for '{apt['appointment_type']}' → {treatment_price}"
+                )
                 if treatment_price and float(treatment_price) > 0:
                     full_price = float(treatment_price)
             # c) Tenant's consultation_price (last resort)
-            if full_price is None and tenant['consultation_price']:
-                full_price = float(tenant['consultation_price'])
+            if full_price is None and tenant["consultation_price"]:
+                full_price = float(tenant["consultation_price"])
             if full_price:
                 expected_amount = full_price / 2  # Seña = 50%
 
-        logger.info(f"💰 verify_receipt: phone={phone} apt_id={apt['id']} professional_id={apt.get('professional_id')} prof_name={apt.get('prof_name')} prof_price={apt.get('prof_price')} treatment={apt.get('appointment_type')} tenant_price={tenant['consultation_price']} expected_seña={expected_amount} amount_detected={amount_detected}")
+        logger.info(
+            f"💰 verify_receipt: phone={phone} apt_id={apt['id']} professional_id={apt.get('professional_id')} prof_name={apt.get('prof_name')} prof_price={apt.get('prof_price')} treatment={apt.get('appointment_type')} tenant_price={tenant['consultation_price']} expected_seña={expected_amount} amount_detected={amount_detected}"
+        )
 
         # 4. Verify holder name in receipt (fuzzy matching)
         import unicodedata
+
         def _normalize(text: str) -> str:
             """Remove accents, lowercase, strip extra spaces."""
-            text = unicodedata.normalize('NFD', text)
-            text = ''.join(c for c in text if unicodedata.category(c) != 'Mn')
-            return ' '.join(text.lower().split())
+            text = unicodedata.normalize("NFD", text)
+            text = "".join(c for c in text if unicodedata.category(c) != "Mn")
+            return " ".join(text.lower().split())
 
         receipt_norm = _normalize(receipt_description)
         holder_norm = _normalize(bank_holder)
 
-        logger.info(f"💰 verify_receipt holder check: holder_config='{bank_holder}' holder_norm='{holder_norm}' receipt_len={len(receipt_norm)} receipt_preview='{receipt_norm[:200]}'")
+        logger.info(
+            f"💰 verify_receipt holder check: holder_config='{bank_holder}' holder_norm='{holder_norm}' receipt_len={len(receipt_norm)} receipt_preview='{receipt_norm[:200]}'"
+        )
 
         # Exact match
         holder_match = holder_norm in receipt_norm
@@ -3150,7 +4225,9 @@ async def verify_payment_receipt(
 
         # Try just first + last name (ignore middle names)
         if not holder_match and len(holder_parts) >= 3:
-            holder_match = (holder_parts[0] in receipt_norm and holder_parts[-1] in receipt_norm)
+            holder_match = (
+                holder_parts[0] in receipt_norm and holder_parts[-1] in receipt_norm
+            )
 
         # Try matching at least 2 out of 3 name parts (handles partial OCR/description)
         if not holder_match and len(holder_parts) >= 2:
@@ -3159,8 +4236,8 @@ async def verify_payment_receipt(
 
         # Try matching bank CBU or alias in receipt (alternative proof of correct destination)
         if not holder_match:
-            bank_cbu = (tenant.get('bank_cbu') or '').strip()
-            bank_alias = (tenant.get('bank_alias') or '').strip().lower()
+            bank_cbu = (tenant.get("bank_cbu") or "").strip()
+            bank_alias = (tenant.get("bank_alias") or "").strip().lower()
             if bank_cbu and bank_cbu in receipt_description:
                 holder_match = True
                 logger.info(f"💰 verify_receipt: holder matched by CBU")
@@ -3174,7 +4251,8 @@ async def verify_payment_receipt(
             try:
                 phone_digits_v = normalize_phone_digits(phone)
                 # content_attributes is a JSONB array, description is inside each element
-                raw_attrs = await db.pool.fetchval("""
+                raw_attrs = await db.pool.fetchval(
+                    """
                     SELECT cm.content_attributes::text
                     FROM chat_messages cm
                     WHERE cm.tenant_id = $1
@@ -3182,14 +4260,23 @@ async def verify_payment_receipt(
                       AND cm.content_attributes::text LIKE '%description%'
                       AND cm.role = 'user'
                     ORDER BY cm.created_at DESC LIMIT 1
-                """, tenant_id, phone_digits_v)
+                """,
+                    tenant_id,
+                    phone_digits_v,
+                )
                 if raw_attrs:
                     # Extract all "description" values from the JSON array
                     try:
-                        attrs_list = json.loads(raw_attrs) if isinstance(raw_attrs, str) else raw_attrs
+                        attrs_list = (
+                            json.loads(raw_attrs)
+                            if isinstance(raw_attrs, str)
+                            else raw_attrs
+                        )
                         if isinstance(attrs_list, list):
                             all_descriptions = " ".join(
-                                att.get("description", "") for att in attrs_list if isinstance(att, dict) and att.get("description")
+                                att.get("description", "")
+                                for att in attrs_list
+                                if isinstance(att, dict) and att.get("description")
                             )
                         else:
                             all_descriptions = str(raw_attrs)
@@ -3198,59 +4285,81 @@ async def verify_payment_receipt(
 
                     if all_descriptions:
                         vision_norm = _normalize(all_descriptions)
-                        logger.info(f"💰 verify_receipt: raw vision text ({len(vision_norm)} chars): '{vision_norm[:200]}'")
+                        logger.info(
+                            f"💰 verify_receipt: raw vision text ({len(vision_norm)} chars): '{vision_norm[:200]}'"
+                        )
                         if holder_norm in vision_norm:
                             holder_match = True
                         elif all(part in vision_norm for part in holder_parts):
                             holder_match = True
-                        elif sum(1 for part in holder_parts if part in vision_norm) >= 2:
+                        elif (
+                            sum(1 for part in holder_parts if part in vision_norm) >= 2
+                        ):
                             holder_match = True
                         if holder_match:
-                            logger.info(f"💰 verify_receipt: holder matched via raw vision description")
+                            logger.info(
+                                f"💰 verify_receipt: holder matched via raw vision description"
+                            )
             except Exception as vision_err:
-                logger.warning(f"💰 verify_receipt: raw vision lookup failed (non-fatal): {vision_err}")
+                logger.warning(
+                    f"💰 verify_receipt: raw vision lookup failed (non-fatal): {vision_err}"
+                )
 
-        logger.info(f"💰 verify_receipt: holder_match={holder_match} parts={holder_parts} matching_in_receipt={[p for p in holder_parts if p in receipt_norm]}")
+        logger.info(
+            f"💰 verify_receipt: holder_match={holder_match} parts={holder_parts} matching_in_receipt={[p for p in holder_parts if p in receipt_norm]}"
+        )
 
         # 5. Verify amount — also try to extract from vision description if LLM didn't pass it well
         amount_match = True  # Default if no amount configured
         amount_value = None
         if amount_detected:
-            clean_amount = amount_detected.replace(".", "").replace(",", ".").replace("$", "").strip()
+            clean_amount = (
+                amount_detected.replace(".", "")
+                .replace(",", ".")
+                .replace("$", "")
+                .strip()
+            )
             try:
                 amount_value = float(clean_amount)
             except ValueError:
                 pass
 
         # If LLM didn't detect amount or it seems wrong, try extracting from receipt_description
-        if not amount_value or (expected_amount and amount_value and amount_value < expected_amount * 0.3):
+        if not amount_value or (
+            expected_amount and amount_value and amount_value < expected_amount * 0.3
+        ):
             import re as _re
+
             # Look for dollar amounts in receipt description: $20000, $20.000, $ 20000
-            money_matches = _re.findall(r'\$\s*[\d.,]+', receipt_description)
+            money_matches = _re.findall(r"\$\s*[\d.,]+", receipt_description)
             if money_matches:
                 for m in money_matches:
-                    clean_m = m.replace("$", "").replace(".", "").replace(",", ".").strip()
+                    clean_m = (
+                        m.replace("$", "").replace(".", "").replace(",", ".").strip()
+                    )
                     try:
                         extracted = float(clean_m)
                         if extracted > (amount_value or 0):
                             amount_value = extracted
-                            logger.info(f"💰 verify_receipt: extracted higher amount from description: ${int(extracted)}")
+                            logger.info(
+                                f"💰 verify_receipt: extracted higher amount from description: ${int(extracted)}"
+                            )
                     except ValueError:
                         pass
 
         # Check for accumulated partial payments on this appointment
         # Only accumulate if the appointment is NOT already fully paid
         previous_paid = 0.0
-        already_paid = apt.get('payment_status') == 'paid'
+        already_paid = apt.get("payment_status") == "paid"
         if not already_paid:
             try:
-                existing_receipt = apt.get('payment_receipt_data')
+                existing_receipt = apt.get("payment_receipt_data")
                 if existing_receipt:
                     if isinstance(existing_receipt, str):
                         existing_receipt = json.loads(existing_receipt)
                     if isinstance(existing_receipt, dict):
                         # Use total_paid from previous receipt if available (most reliable)
-                        prev_total = existing_receipt.get('total_paid')
+                        prev_total = existing_receipt.get("total_paid")
                         if prev_total is not None:
                             try:
                                 previous_paid = float(prev_total)
@@ -3258,20 +4367,31 @@ async def verify_payment_receipt(
                                 pass
                         # Fallback: use amount_detected as number
                         if previous_paid == 0:
-                            prev_amount = existing_receipt.get('amount_detected')
+                            prev_amount = existing_receipt.get("amount_detected")
                             if prev_amount is not None:
                                 try:
                                     # amount_detected can be string "7500" or number 7500.0
-                                    previous_paid = float(str(prev_amount).replace("$", "").replace(",", ".").strip())
+                                    previous_paid = float(
+                                        str(prev_amount)
+                                        .replace("$", "")
+                                        .replace(",", ".")
+                                        .strip()
+                                    )
                                 except (ValueError, TypeError):
                                     pass
             except Exception:
                 pass
 
         # Total paid = previous partial + current comprobante
-        total_paid = previous_paid + (amount_value or 0) if not already_paid else (amount_value or 0)
+        total_paid = (
+            previous_paid + (amount_value or 0)
+            if not already_paid
+            else (amount_value or 0)
+        )
         if previous_paid > 0:
-            logger.info(f"💰 verify_receipt: partial payment. previous=${previous_paid} + current=${amount_value or 0} = total=${total_paid}")
+            logger.info(
+                f"💰 verify_receipt: partial payment. previous=${previous_paid} + current=${amount_value or 0} = total=${total_paid}"
+            )
 
         amount_overpaid = 0.0
         amount_underpaid = 0.0
@@ -3286,30 +4406,40 @@ async def verify_payment_receipt(
                 amount_match = False
                 amount_underpaid = expected_amount - effective_amount
 
-        logger.info(f"💰 verify_receipt: amount_value=${amount_value} previous=${previous_paid} total=${total_paid} expected=${expected_amount} already_paid={already_paid} match={amount_match}")
+        logger.info(
+            f"💰 verify_receipt: amount_value=${amount_value} previous=${previous_paid} total=${total_paid} expected=${expected_amount} already_paid={already_paid} match={amount_match}"
+        )
 
         # 5b. Find the receipt file (last uploaded image/document from this patient)
         receipt_file_path = None
         receipt_file_name = None
         try:
             phone_digits_r = normalize_phone_digits(phone)
-            last_doc = await db.pool.fetchrow("""
+            last_doc = await db.pool.fetchrow(
+                """
                 SELECT pd.id, pd.file_path, pd.file_name, pd.mime_type
                 FROM patient_documents pd
                 JOIN patients p ON pd.patient_id = p.id
                 WHERE p.tenant_id = $1 AND REGEXP_REPLACE(p.phone_number, '[^0-9]', '', 'g') = $2
                 AND pd.document_type IN ('whatsapp_image', 'whatsapp_document')
                 ORDER BY pd.uploaded_at DESC LIMIT 1
-            """, tenant_id, phone_digits_r)
+            """,
+                tenant_id,
+                phone_digits_r,
+            )
             if last_doc:
-                receipt_file_path = last_doc['file_path']
-                receipt_file_name = last_doc['file_name']
+                receipt_file_path = last_doc["file_path"]
+                receipt_file_name = last_doc["file_name"]
                 # Re-classify this document as payment receipt
-                await db.pool.execute("""
+                await db.pool.execute(
+                    """
                     UPDATE patient_documents SET document_type = 'payment_receipt',
                     source_details = COALESCE(source_details, '{}'::jsonb) || '{"reclassified": "payment_receipt"}'::jsonb
                     WHERE file_path = $1 AND tenant_id = $2
-                """, receipt_file_path, tenant_id)
+                """,
+                    receipt_file_path,
+                    tenant_id,
+                )
         except Exception as doc_err:
             logger.warning(f"Receipt file lookup (non-fatal): {doc_err}")
 
@@ -3323,7 +4453,7 @@ async def verify_payment_receipt(
             "verified_at": datetime.now(timezone.utc).isoformat(),
             "receipt_file_path": receipt_file_path,
             "receipt_file_name": receipt_file_name,
-            "receipt_doc_id": last_doc['id'] if last_doc else None,
+            "receipt_doc_id": last_doc["id"] if last_doc else None,
             "previous_paid": previous_paid,
             "total_paid": total_paid,
             "status": "verified" if (holder_match and amount_match) else "failed",
@@ -3331,15 +4461,20 @@ async def verify_payment_receipt(
 
         if holder_match and amount_match:
             # SUCCESS - Update appointment
-            new_status = 'confirmed' if apt['status'] == 'scheduled' else apt['status']
-            payment_status = 'paid'
+            new_status = "confirmed" if apt["status"] == "scheduled" else apt["status"]
+            payment_status = "paid"
 
             # Add overpayment note if applicable
             if amount_overpaid > 0:
                 receipt_data["overpaid"] = amount_overpaid
-                receipt_data["overpaid_note"] = f"Paciente transfirió ${int(amount_overpaid):,} de más sobre la seña.".replace(",", ".")
+                receipt_data["overpaid_note"] = (
+                    f"Paciente transfirió ${int(amount_overpaid):,} de más sobre la seña.".replace(
+                        ",", "."
+                    )
+                )
 
-            await db.pool.execute("""
+            await db.pool.execute(
+                """
                 UPDATE appointments SET
                     status = $1,
                     payment_status = $2,
@@ -3351,34 +4486,60 @@ async def verify_payment_receipt(
                     END,
                     updated_at = NOW()
                 WHERE id = $4 AND tenant_id = $5
-            """, new_status, payment_status, json.dumps(receipt_data), str(apt['id']), tenant_id,
-                amount_value or expected_amount, int(amount_overpaid))
+            """,
+                new_status,
+                payment_status,
+                json.dumps(receipt_data),
+                str(apt["id"]),
+                tenant_id,
+                amount_value or expected_amount,
+                int(amount_overpaid),
+            )
 
             # Emit WebSocket events
             try:
                 from main import sio
-                dias = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
-                apt_dt = apt['appointment_datetime']
+
+                dias = [
+                    "Lunes",
+                    "Martes",
+                    "Miércoles",
+                    "Jueves",
+                    "Viernes",
+                    "Sábado",
+                    "Domingo",
+                ]
+                apt_dt = apt["appointment_datetime"]
                 dia_nombre = dias[apt_dt.weekday()]
-                safe_data = to_json_safe({
-                    "id": str(apt['id']),
-                    "patient_name": f"{apt['first_name']} {apt['last_name'] or ''}".strip(),
-                    "appointment_datetime": apt_dt.isoformat(),
-                    "professional_name": apt['prof_name'],
-                    "tenant_id": tenant_id,
-                    "status": new_status,
-                    "payment_status": payment_status,
-                })
+                safe_data = to_json_safe(
+                    {
+                        "id": str(apt["id"]),
+                        "patient_name": f"{apt['first_name']} {apt['last_name'] or ''}".strip(),
+                        "appointment_datetime": apt_dt.isoformat(),
+                        "professional_name": apt["prof_name"],
+                        "tenant_id": tenant_id,
+                        "status": new_status,
+                        "payment_status": payment_status,
+                    }
+                )
                 await sio.emit("PAYMENT_CONFIRMED", safe_data)
                 await sio.emit("APPOINTMENT_UPDATED", safe_data)
             except Exception:
                 pass
 
             patient_name = f"{apt['first_name']} {apt['last_name'] or ''}".strip()
-            apt_dt = apt['appointment_datetime']
+            apt_dt = apt["appointment_datetime"]
             # Convert UTC to Argentina timezone for display
             apt_dt_arg = apt_dt.astimezone(ARG_TZ) if apt_dt.tzinfo else apt_dt
-            dias = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
+            dias = [
+                "Lunes",
+                "Martes",
+                "Miércoles",
+                "Jueves",
+                "Viernes",
+                "Sábado",
+                "Domingo",
+            ]
             dia_nombre = dias[apt_dt_arg.weekday()]
             fecha = apt_dt_arg.strftime(f"{dia_nombre} %d/%m a las %H:%M")
 
@@ -3388,7 +4549,9 @@ async def verify_payment_receipt(
                 overpaid_msg = f"\n\n📝 Nota: transferiste {overpaid_str} de más sobre la seña. Queda registrado para que la clínica lo tenga en cuenta."
 
             # Use treatment display name, not code
-            treatment_display = apt.get('appointment_name') or apt.get('appointment_type') or 'consulta'
+            treatment_display = (
+                apt.get("appointment_name") or apt.get("appointment_type") or "consulta"
+            )
             return f"✅ Comprobante verificado correctamente! Tu turno de {treatment_display} el {fecha} con {apt['prof_name'] or 'el profesional'} queda CONFIRMADO. Te esperamos! 😊{overpaid_msg}"
 
         elif not holder_match:
@@ -3399,11 +4562,31 @@ async def verify_payment_receipt(
             )
 
         elif not amount_match:
-            expected_str = f"${int(expected_amount):,}".replace(",", ".") if expected_amount else "el monto acordado"
-            detected_str = f"${int(amount_value):,}".replace(",", ".") if amount_value else "no detectado"
-            total_str = f"${int(total_paid):,}".replace(",", ".") if total_paid > 0 else detected_str
-            missing_str = f"${int(amount_underpaid):,}".replace(",", ".") if amount_underpaid > 0 else ""
-            partial_note = f" (acumulado con pagos anteriores: {total_str})" if previous_paid > 0 else ""
+            expected_str = (
+                f"${int(expected_amount):,}".replace(",", ".")
+                if expected_amount
+                else "el monto acordado"
+            )
+            detected_str = (
+                f"${int(amount_value):,}".replace(",", ".")
+                if amount_value
+                else "no detectado"
+            )
+            total_str = (
+                f"${int(total_paid):,}".replace(",", ".")
+                if total_paid > 0
+                else detected_str
+            )
+            missing_str = (
+                f"${int(amount_underpaid):,}".replace(",", ".")
+                if amount_underpaid > 0
+                else ""
+            )
+            partial_note = (
+                f" (acumulado con pagos anteriores: {total_str})"
+                if previous_paid > 0
+                else ""
+            )
             return (
                 f"⚠️ El comprobante es por {detected_str}{partial_note}, pero la seña total es de {expected_str}. "
                 f"Faltarían {missing_str} para completar. "
@@ -3430,7 +4613,8 @@ async def get_patient_payment_status():
     tenant_id = current_tenant_id.get()
     phone_digits = normalize_phone_digits(phone)
     try:
-        rows = await db.pool.fetch("""
+        rows = await db.pool.fetch(
+            """
             SELECT a.appointment_datetime, a.appointment_type, a.status,
                    a.payment_status, a.billing_amount,
                    p_prof.consultation_price as prof_price,
@@ -3444,21 +4628,31 @@ async def get_patient_payment_status():
             AND a.appointment_datetime >= NOW()
             AND a.status IN ('scheduled', 'confirmed')
             ORDER BY a.appointment_datetime ASC
-        """, tenant_id, phone_digits)
+        """,
+            tenant_id,
+            phone_digits,
+        )
         if not rows:
             return "No tenés turnos futuros con pagos pendientes."
         lines = []
         for r in rows:
-            dt = r['appointment_datetime']
-            if hasattr(dt, 'astimezone'): dt = dt.astimezone(ARG_TZ)
+            dt = r["appointment_datetime"]
+            if hasattr(dt, "astimezone"):
+                dt = dt.astimezone(ARG_TZ)
             fecha = dt.strftime("%d/%m/%y")
-            pay = r.get('payment_status') or 'pending'
-            amt = r.get('billing_amount')
-            prof_cp = r.get('prof_price')
-            tprice = r.get('treatment_price')
-            sena_base = float(prof_cp) / 2 if prof_cp and float(prof_cp) > 0 else (float(amt) if amt else 0)
+            pay = r.get("payment_status") or "pending"
+            amt = r.get("billing_amount")
+            prof_cp = r.get("prof_price")
+            tprice = r.get("treatment_price")
+            sena_base = (
+                float(prof_cp) / 2
+                if prof_cp and float(prof_cp) > 0
+                else (float(amt) if amt else 0)
+            )
             treat = f"${int(tprice)}" if tprice and float(tprice) > 0 else "—"
-            lines.append(f"{fecha}|{r['appointment_type']}|{r.get('prof_name','—')}|pago:{pay}|seña:${int(sena_base)}|tratamiento:{treat}")
+            lines.append(
+                f"{fecha}|{r['appointment_type']}|{r.get('prof_name', '—')}|pago:{pay}|seña:${int(sena_base)}|tratamiento:{treat}"
+            )
         return "\n".join(lines)
     except Exception as e:
         logger.error(f"Error en get_patient_payment_status: {e}")
@@ -3477,32 +4671,40 @@ async def get_patient_clinical_history():
     tenant_id = current_tenant_id.get()
     phone_digits = normalize_phone_digits(phone)
     try:
-        patient = await db.pool.fetchrow("""
+        patient = await db.pool.fetchrow(
+            """
             SELECT id, first_name, last_name FROM patients
             WHERE tenant_id = $1 AND REGEXP_REPLACE(phone_number, '[^0-9]', '', 'g') = $2
-        """, tenant_id, phone_digits)
+        """,
+            tenant_id,
+            phone_digits,
+        )
         if not patient:
             return "No encontré tu ficha de paciente."
-        rows = await db.pool.fetch("""
+        rows = await db.pool.fetch(
+            """
             SELECT cr.record_date, cr.diagnosis, cr.clinical_notes, cr.treatments, cr.recommendations,
                    p.first_name as prof_name
             FROM clinical_records cr
             LEFT JOIN professionals p ON p.id = cr.professional_id
             WHERE cr.patient_id = $1 AND cr.tenant_id = $2
             ORDER BY cr.record_date DESC LIMIT 10
-        """, patient['id'], tenant_id)
+        """,
+            patient["id"],
+            tenant_id,
+        )
         if not rows:
             return "No hay registros clínicos guardados todavía."
         name = f"{patient['first_name']} {patient.get('last_name', '')}".strip()
         lines = [f"Historial de {name} ({len(rows)} registros):"]
         for r in rows:
-            dt = r['record_date'].strftime("%d/%m/%y") if r['record_date'] else "—"
-            diag = r['diagnosis'] or "sin diagnóstico"
-            prof = r.get('prof_name') or "—"
+            dt = r["record_date"].strftime("%d/%m/%y") if r["record_date"] else "—"
+            diag = r["diagnosis"] or "sin diagnóstico"
+            prof = r.get("prof_name") or "—"
             lines.append(f"• {dt} — {diag} (Dr. {prof})")
-            if r['clinical_notes']:
+            if r["clinical_notes"]:
                 lines.append(f"  {r['clinical_notes'][:150]}")
-            if r['treatments']:
+            if r["treatments"]:
                 lines.append(f"  Tratamientos: {r['treatments'][:100]}")
         return "\n".join(lines)
     except Exception as e:
@@ -3522,33 +4724,47 @@ async def get_patient_odontogram():
     tenant_id = current_tenant_id.get()
     phone_digits = normalize_phone_digits(phone)
     try:
-        patient = await db.pool.fetchrow("""
+        patient = await db.pool.fetchrow(
+            """
             SELECT id, first_name, last_name FROM patients
             WHERE tenant_id = $1 AND REGEXP_REPLACE(phone_number, '[^0-9]', '', 'g') = $2
-        """, tenant_id, phone_digits)
+        """,
+            tenant_id,
+            phone_digits,
+        )
         if not patient:
             return "No encontré tu ficha de paciente."
         # Get latest clinical record with odontogram
-        record = await db.pool.fetchrow("""
+        record = await db.pool.fetchrow(
+            """
             SELECT odontogram_data FROM clinical_records
             WHERE patient_id = $1 AND tenant_id = $2 AND odontogram_data IS NOT NULL
             ORDER BY record_date DESC LIMIT 1
-        """, patient['id'], tenant_id)
-        if not record or not record['odontogram_data']:
+        """,
+            patient["id"],
+            tenant_id,
+        )
+        if not record or not record["odontogram_data"]:
             return "No hay odontograma registrado todavía."
-        odata = record['odontogram_data']
+        odata = record["odontogram_data"]
         if isinstance(odata, str):
             odata = json.loads(odata)
         if not isinstance(odata, dict) or len(odata) == 0:
             return "Odontograma vacío — todas las piezas sanas."
         name = f"{patient['first_name']} {patient.get('last_name', '')}".strip()
-        modified = {k: v for k, v in odata.items() if v.get('state', 'healthy') != 'healthy'} if isinstance(odata, dict) else {}
+        modified = (
+            {k: v for k, v in odata.items() if v.get("state", "healthy") != "healthy"}
+            if isinstance(odata, dict)
+            else {}
+        )
         if not modified:
             return f"Odontograma de {name}: todas las piezas sanas."
         lines = [f"Odontograma de {name} ({len(modified)} piezas con hallazgos):"]
-        for tooth_id, data in sorted(modified.items(), key=lambda x: int(x[0]) if x[0].isdigit() else 0):
-            state = data.get('state', 'healthy')
-            notes = data.get('notes', '')
+        for tooth_id, data in sorted(
+            modified.items(), key=lambda x: int(x[0]) if x[0].isdigit() else 0
+        ):
+            state = data.get("state", "healthy")
+            notes = data.get("notes", "")
             line = f"• Pieza {tooth_id}: {state}"
             if notes:
                 line += f" — {notes}"
@@ -3559,7 +4775,28 @@ async def get_patient_odontogram():
         return "Error al consultar odontograma."
 
 
-DENTAL_TOOLS = [list_professionals, list_services, get_service_details, check_availability, confirm_slot, book_appointment, list_my_appointments, cancel_appointment, reschedule_appointment, triage_urgency, save_patient_anamnesis, save_patient_email, get_patient_anamnesis, get_patient_payment_status, get_patient_clinical_history, get_patient_odontogram, reassign_document, derivhumano, verify_payment_receipt]
+DENTAL_TOOLS = [
+    list_professionals,
+    list_services,
+    get_service_details,
+    check_availability,
+    confirm_slot,
+    book_appointment,
+    list_my_appointments,
+    cancel_appointment,
+    reschedule_appointment,
+    triage_urgency,
+    save_patient_anamnesis,
+    save_patient_email,
+    get_patient_anamnesis,
+    get_patient_payment_status,
+    get_patient_clinical_history,
+    get_patient_odontogram,
+    reassign_document,
+    derivhumano,
+    verify_payment_receipt,
+]
+
 
 # --- DETECCIÓN DE IDIOMA (para respuesta del agente) ---
 def detect_message_language(text: str) -> str:
@@ -3573,9 +4810,75 @@ def detect_message_language(text: str) -> str:
     en = 0
     fr = 0
     es = 0
-    en_markers = ["hello", "hi", "please", "thank", "thanks", "appointment", "schedule", "want", "need", "pain", "tooth", "teeth", "doctor", "when", "available", "how", "what", "can you", "would like", "good morning", "good afternoon", "help"]
-    fr_markers = ["bonjour", "merci", "s'il vous plaît", "s'il te plaît", "rendez-vous", "voulez", "j'ai", "mal", "dent", "docteur", "quand", "disponible", "aide", "besoin", "bonsoir", "oui", "non", "je voudrais", "pouvez"]
-    es_markers = ["hola", "gracias", "por favor", "turno", "quiero", "necesito", "dolor", "muela", "diente", "doctor", "cuándo", "disponible", "ayuda", "buenos días", "tarde", "sí", "no", "me gustaría", "puede", "podría", "agendar", "cita"]
+    en_markers = [
+        "hello",
+        "hi",
+        "please",
+        "thank",
+        "thanks",
+        "appointment",
+        "schedule",
+        "want",
+        "need",
+        "pain",
+        "tooth",
+        "teeth",
+        "doctor",
+        "when",
+        "available",
+        "how",
+        "what",
+        "can you",
+        "would like",
+        "good morning",
+        "good afternoon",
+        "help",
+    ]
+    fr_markers = [
+        "bonjour",
+        "merci",
+        "s'il vous plaît",
+        "s'il te plaît",
+        "rendez-vous",
+        "voulez",
+        "j'ai",
+        "mal",
+        "dent",
+        "docteur",
+        "quand",
+        "disponible",
+        "aide",
+        "besoin",
+        "bonsoir",
+        "oui",
+        "non",
+        "je voudrais",
+        "pouvez",
+    ]
+    es_markers = [
+        "hola",
+        "gracias",
+        "por favor",
+        "turno",
+        "quiero",
+        "necesito",
+        "dolor",
+        "muela",
+        "diente",
+        "doctor",
+        "cuándo",
+        "disponible",
+        "ayuda",
+        "buenos días",
+        "tarde",
+        "sí",
+        "no",
+        "me gustaría",
+        "puede",
+        "podría",
+        "agendar",
+        "cita",
+    ]
     for w in en_markers:
         if w in t:
             en += 1
@@ -3597,8 +4900,9 @@ def _sanitize_ad_context(text: str) -> str:
     if not text:
         return ""
     import re
+
     # Remover caracteres de control, secuencias sospechosas
-    text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', text)
+    text = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", text)
     # Limitar longitud
     return text[:500]
 
@@ -3608,11 +4912,24 @@ def _format_working_hours(working_hours: dict) -> str:
     if not working_hours:
         return "Consultar horarios directamente con la clínica."
     day_names = {
-        "monday": "Lunes", "tuesday": "Martes", "wednesday": "Miércoles",
-        "thursday": "Jueves", "friday": "Viernes", "saturday": "Sábado", "sunday": "Domingo"
+        "monday": "Lunes",
+        "tuesday": "Martes",
+        "wednesday": "Miércoles",
+        "thursday": "Jueves",
+        "friday": "Viernes",
+        "saturday": "Sábado",
+        "sunday": "Domingo",
     }
     lines = []
-    for key in ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"):
+    for key in (
+        "monday",
+        "tuesday",
+        "wednesday",
+        "thursday",
+        "friday",
+        "saturday",
+        "sunday",
+    ):
         day = working_hours.get(key, {})
         name = day_names[key]
         if not day.get("enabled", False) or not day.get("slots"):
@@ -3637,11 +4954,13 @@ def _format_faqs(faqs: list) -> str:
     """
     if not faqs:
         return ""
-    lines = ["FAQs OBLIGATORIAS (responder SIEMPRE con estas respuestas cuando aplique):"]
+    lines = [
+        "FAQs OBLIGATORIAS (responder SIEMPRE con estas respuestas cuando aplique):"
+    ]
     for faq in faqs[:20]:  # Limitar a 20 FAQs por prompt
         q = faq.get("question", "")
         a = faq.get("answer", "")
-        lines.append(f"• {q}: \"{a}\"")
+        lines.append(f'• {q}: "{a}"')
     return "\n".join(lines)
 
 
@@ -3688,7 +5007,9 @@ def build_system_prompt(
     if safe_ad_context:
         extra_context += f"\n\nCONTEXTO DE ANUNCIO (Meta Ads):\n{safe_ad_context}\n"
     if patient_context:
-        extra_context += f"\n\nCONTEXTO DEL PACIENTE (Identidad y Turnos):\n{patient_context}\n"
+        extra_context += (
+            f"\n\nCONTEXTO DEL PACIENTE (Identidad y Turnos):\n{patient_context}\n"
+        )
         extra_context += """
 REGLAS DE USO DEL CONTEXTO DEL PACIENTE:
 • Si tiene "Nombre registrado" → usá su nombre en el saludo y durante toda la conversación.
@@ -3726,7 +5047,11 @@ REGLA ANTI-MARKDOWN (WHATSAPP):
 """
 
     # Secciones dinámicas desde DB
-    hours_section = _format_working_hours(clinic_working_hours) if clinic_working_hours else f"Lunes a Viernes de {hours_start} a {hours_end}. Sábados y Domingos: CERRADO."
+    hours_section = (
+        _format_working_hours(clinic_working_hours)
+        if clinic_working_hours
+        else f"Lunes a Viernes de {hours_start} a {hours_end}. Sábados y Domingos: CERRADO."
+    )
     faqs_section = _format_faqs(faqs or [])
 
     # Dirección dinámica (fallback global)
@@ -3742,7 +5067,15 @@ REGLA ANTI-MARKDOWN (WHATSAPP):
     sede_section = ""
     if clinic_working_hours and isinstance(clinic_working_hours, dict):
         sede_lines = []
-        dias_es = {"monday": "Lunes", "tuesday": "Martes", "wednesday": "Miércoles", "thursday": "Jueves", "friday": "Viernes", "saturday": "Sábado", "sunday": "Domingo"}
+        dias_es = {
+            "monday": "Lunes",
+            "tuesday": "Martes",
+            "wednesday": "Miércoles",
+            "thursday": "Jueves",
+            "friday": "Viernes",
+            "saturday": "Sábado",
+            "sunday": "Domingo",
+        }
         for day_en, day_es in dias_es.items():
             day_cfg = clinic_working_hours.get(day_en, {})
             if day_cfg.get("enabled") and day_cfg.get("location"):
@@ -3756,13 +5089,20 @@ REGLA ANTI-MARKDOWN (WHATSAPP):
                     line += f" ({maps})"
                 sede_lines.append(line)
         if sede_lines:
-            sede_section = "\n\n## SEDES POR DÍA (MULTI-SEDE)\nLa clínica opera en diferentes ubicaciones según el día. SIEMPRE usá la sede correcta según el día del turno:\n" + "\n".join(sede_lines)
+            sede_section = (
+                "\n\n## SEDES POR DÍA (MULTI-SEDE)\nLa clínica opera en diferentes ubicaciones según el día. SIEMPRE usá la sede correcta según el día del turno:\n"
+                + "\n".join(sede_lines)
+            )
             sede_section += "\nREGLA CRÍTICA: La sede se determina por el DÍA del turno, NO por elección del paciente. Incluí la sede correcta en la confirmación del turno."
 
     # Precio de consulta
     price_section = ""
     if consultation_price and float(consultation_price) > 0:
-        price_section = f"\n\nVALOR DE CONSULTA (GENERAL): ${int(consultation_price):,}".replace(",", ".")
+        price_section = (
+            f"\n\nVALOR DE CONSULTA (GENERAL): ${int(consultation_price):,}".replace(
+                ",", "."
+            )
+        )
         price_section += "\nNOTA: Cada profesional puede tener un precio diferente. Usá 'list_professionals' para ver el precio de consulta de cada uno. Si el profesional tiene precio propio, usá ese en vez del general."
     else:
         price_section = "\n\nVALOR DE LA CONSULTA: No configurado como valor general. Cada profesional puede tener su propio precio — consultá con 'list_professionals'. Si ninguno tiene precio, decí que se comuniquen directamente con la clínica."
@@ -3771,7 +5111,10 @@ REGLA ANTI-MARKDOWN (WHATSAPP):
     holidays_section = ""
     if upcoming_holidays:
         hol_lines = [f"• {h['date']}: {h['name']}" for h in upcoming_holidays[:7]]
-        holidays_section = "\n\n## FERIADOS PRÓXIMOS (NO AGENDAR EN ESTOS DÍAS)\n" + "\n".join(hol_lines)
+        holidays_section = (
+            "\n\n## FERIADOS PRÓXIMOS (NO AGENDAR EN ESTOS DÍAS)\n"
+            + "\n".join(hol_lines)
+        )
         holidays_section += "\nREGLA: Si el paciente pide turno en un feriado, informale que es feriado y ofrecé el próximo día hábil. La tool check_availability ya auto-avanza pasando feriados."
 
     # Greeting diferenciado
@@ -3815,10 +5158,10 @@ Si YA mencionaste el turno en esta conversación, NO lo repitas.
             f"\n\nLINK DE FICHA MÉDICA: {anamnesis_url}\n"
             "REGLAS DE ENVÍO DEL LINK:\n"
             "• Si el paciente NO tiene anamnesis completada → enviar link AUTOMÁTICAMENTE después de confirmar turno:\n"
-            f"  \"Para ahorrar tiempo en tu consulta podés completar tu ficha médica aquí:\n  {anamnesis_url}\n  Cuando termines avisame para corroborar los datos.\"\n"
+            f'  "Para ahorrar tiempo en tu consulta podés completar tu ficha médica aquí:\n  {anamnesis_url}\n  Cuando termines avisame para corroborar los datos."\n'
             "• Si el paciente YA tiene anamnesis completada (aparece en su contexto) → NO enviar link automáticamente.\n"
             "  PERO si el paciente pide actualizar o corregir su ficha médica → enviá el link diciendo:\n"
-            f"  \"Podés actualizar tu ficha médica desde aquí: {anamnesis_url}\"\n"
+            f'  "Podés actualizar tu ficha médica desde aquí: {anamnesis_url}"\n'
             "• VERIFICACIÓN OBLIGATORIA: Si el paciente dice que ya completó, terminó, llenó o actualizó el formulario (ej: 'listo', 'ya lo llené', 'terminé', 'completé') → SIEMPRE llamá 'get_patient_anamnesis' ANTES de responder. "
             "Si la tool dice que no hay datos o está vacío → decile al paciente: 'Parece que la ficha aún no tiene datos guardados. Asegurate de completar todos los campos y presionar Enviar.' "
             "NUNCA digas que la ficha está completa sin haber llamado a la tool y verificado que devolvió datos reales."
@@ -3847,7 +5190,7 @@ Si YA mencionaste el turno en esta conversación, NO lo repitas.
 
 FLUJO DE PAGO Y SEÑA (CRÍTICO — OBLIGATORIO DESPUÉS DE CADA TURNO CONFIRMADO):
 La seña es el 50% del valor de la consulta del profesional que atenderá al paciente.
-{f'Valor de consulta base: ${int(consultation_price):,}'.replace(',', '.') + f' → Seña: {sena_amount}' if sena_amount else 'Si el profesional tiene consultation_price configurado, la seña es el 50% de ese valor.'}
+{f"Valor de consulta base: ${int(consultation_price):,}".replace(",", ".") + f" → Seña: {sena_amount}" if sena_amount else "Si el profesional tiene consultation_price configurado, la seña es el 50% de ese valor."}
 
 PASO 7 MODIFICADO — SEÑA EN LA RESPUESTA DE BOOK_APPOINTMENT:
 La tool book_appointment ahora incluye [INTERNAL_SEÑA_DATA]...[/INTERNAL_SEÑA_DATA] con los datos bancarios y el monto de la seña.
@@ -3917,7 +5260,11 @@ VERIFICACIÓN DE COMPROBANTE (cuando el paciente envía imagen/PDF):
 
 SI NO HAY PRECIO CONFIGURADO: No pedir seña. Agendar normalmente y pasar directo a MOMENTO 2."""
 
-    price_text = f"${int(consultation_price):,}".replace(",", ".") if consultation_price and float(consultation_price) > 0 else ""
+    price_text = (
+        f"${int(consultation_price):,}".replace(",", ".")
+        if consultation_price and float(consultation_price) > 0
+        else ""
+    )
 
     return f"""REGLA DE IDIOMA (OBLIGATORIA): {lang_rule}{extra_context}
 {greeting_rule}
@@ -4263,23 +5610,32 @@ def _resolve_provider(model: str):
     return OPENAI_API_KEY, None  # None = default OpenAI base URL
 
 
-def get_agent_executable(openai_api_key: Optional[str] = None, model: Optional[str] = None):
+def get_agent_executable(
+    openai_api_key: Optional[str] = None, model: Optional[str] = None
+):
     key = (openai_api_key or "").strip() or OPENAI_API_KEY
     model_str = (model or "").strip() or DEFAULT_OPENAI_MODEL
 
     # Auto-detect provider from model name
     if model_str in DEEPSEEK_MODELS:
         key = DEEPSEEK_API_KEY or key
-        llm = ChatOpenAI(model=model_str, temperature=0, openai_api_key=key, openai_api_base=DEEPSEEK_BASE_URL)
+        llm = ChatOpenAI(
+            model=model_str,
+            temperature=0,
+            openai_api_key=key,
+            openai_api_base=DEEPSEEK_BASE_URL,
+        )
     else:
         llm = ChatOpenAI(model=model_str, temperature=0, openai_api_key=key)
 
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", "{system_prompt}"),
-        MessagesPlaceholder(variable_name="chat_history"),
-        ("human", "{input}"),
-        MessagesPlaceholder(variable_name="agent_scratchpad"),
-    ])
+    prompt = ChatPromptTemplate.from_messages(
+        [
+            ("system", "{system_prompt}"),
+            MessagesPlaceholder(variable_name="chat_history"),
+            ("human", "{input}"),
+            MessagesPlaceholder(variable_name="agent_scratchpad"),
+        ]
+    )
     agent = create_openai_tools_agent(llm, DENTAL_TOOLS, prompt)
     return AgentExecutor(agent=agent, tools=DENTAL_TOOLS, verbose=False)
 
@@ -4287,6 +5643,7 @@ def get_agent_executable(openai_api_key: Optional[str] = None, model: Optional[s
 async def get_agent_executable_for_tenant(tenant_id: int):
     """Devuelve un executor del agente. Auto-detecta provider (OpenAI o DeepSeek) segun el modelo seleccionado."""
     from core.credentials import get_tenant_credential
+
     key = await get_tenant_credential(tenant_id, "OPENAI_API_KEY")
     if not key:
         key = OPENAI_API_KEY
@@ -4298,21 +5655,30 @@ async def get_agent_executable_for_tenant(tenant_id: int):
     try:
         row = await db.pool.fetchrow(
             "SELECT value FROM system_config WHERE key = $1 AND tenant_id = $2",
-            "OPENAI_MODEL", tenant_id
+            "OPENAI_MODEL",
+            tenant_id,
         )
         if row and row.get("value"):
             db_model = str(row["value"]).strip()
             # gpt-3.5-turbo has only 16K context — too small for our prompt. Override to default.
             if db_model == "gpt-3.5-turbo":
-                logger.warning(f"🤖 MODEL: DB has 'gpt-3.5-turbo' (16K limit, too small). Overriding to '{DEFAULT_OPENAI_MODEL}'")
+                logger.warning(
+                    f"🤖 MODEL: DB has 'gpt-3.5-turbo' (16K limit, too small). Overriding to '{DEFAULT_OPENAI_MODEL}'"
+                )
                 model = DEFAULT_OPENAI_MODEL
             else:
                 model = db_model
-                logger.info(f"🤖 MODEL: Loaded from DB system_config: '{model}' for tenant={tenant_id}")
+                logger.info(
+                    f"🤖 MODEL: Loaded from DB system_config: '{model}' for tenant={tenant_id}"
+                )
         else:
-            logger.warning(f"🤖 MODEL: No model in system_config for tenant={tenant_id}, using default: '{DEFAULT_OPENAI_MODEL}'")
+            logger.warning(
+                f"🤖 MODEL: No model in system_config for tenant={tenant_id}, using default: '{DEFAULT_OPENAI_MODEL}'"
+            )
     except Exception as model_err:
-        logger.error(f"🤖 MODEL ERROR: Failed to read model from DB for tenant={tenant_id}: {model_err}")
+        logger.error(
+            f"🤖 MODEL ERROR: Failed to read model from DB for tenant={tenant_id}: {model_err}"
+        )
         logger.warning(f"🤖 MODEL: Falling back to default: '{DEFAULT_OPENAI_MODEL}'")
 
     # If DeepSeek model, override key
@@ -4320,7 +5686,9 @@ async def get_agent_executable_for_tenant(tenant_id: int):
         key = DEEPSEEK_API_KEY
         logger.info(f"🤖 MODEL: DeepSeek detected, using DeepSeek API key")
 
-    logger.info(f"🤖 MODEL FINAL: tenant={tenant_id} model='{model}' provider={'deepseek' if model in DEEPSEEK_MODELS else 'openai'}")
+    logger.info(
+        f"🤖 MODEL FINAL: tenant={tenant_id} model='{model}' provider={'deepseek' if model in DEEPSEEK_MODELS else 'openai'}"
+    )
     return get_agent_executable(openai_api_key=key, model=model)
 
 
@@ -4328,10 +5696,12 @@ agent_executor = get_agent_executable()
 
 # --- API ENDPOINTS ---
 
+
 async def recover_orphaned_buffers():
     """Escanea Redis por buffers huérfanos (sin timer ni task activa) al startup."""
     try:
         from services.relay import get_redis
+
         r = get_redis()
         if not r:
             return
@@ -4347,7 +5717,9 @@ async def recover_orphaned_buffers():
                     msg_count = await r.llen(buf_key)
                     await r.delete(buf_key)
                     if msg_count > 0:
-                        logger.warning(f"♻️ Cleaned orphaned buffer {buf_key} ({msg_count} msgs)")
+                        logger.warning(
+                            f"♻️ Cleaned orphaned buffer {buf_key} ({msg_count} msgs)"
+                        )
                         cleaned += 1
             if cursor == 0:
                 break
@@ -4362,17 +5734,22 @@ async def lifespan(app: FastAPI):
     """Manage app lifecycle: startup and shutdown."""
     # Startup — logging, Sentry, y validaciones de seguridad primero
     from core.logging_config import configure_logging
+
     configure_logging()
 
     from core.sentry_config import init_sentry
+
     init_sentry()
 
     from core.auth import validate_admin_token_entropy
+
     validate_admin_token_entropy()
 
     logger.info("🚀 Iniciando orquestador dental...")
     await db.connect()
-    logger.info(f"✅ Base de datos conectada. Version: {await db.pool.fetchval('SELECT version()')}")
+    logger.info(
+        f"✅ Base de datos conectada. Version: {await db.pool.fetchval('SELECT version()')}"
+    )
 
     # Recovery de buffers huérfanos (mensajes perdidos por restart previo)
     await recover_orphaned_buffers()
@@ -4380,6 +5757,7 @@ async def lifespan(app: FastAPI):
     # Inicializar componentes del dashboard que requieren DB
     try:
         from dashboard import init_dashboard_async
+
         await init_dashboard_async(db.pool)
     except Exception as e:
         logger.warning(f"⚠️ Dashboard async init: {e}")
@@ -4389,6 +5767,7 @@ async def lifespan(app: FastAPI):
     # Iniciar scheduler de jobs programados
     try:
         from jobs.scheduler import start_scheduler
+
         await start_scheduler()
         logger.info("✅ JobScheduler iniciado correctamente")
     except ImportError as e:
@@ -4400,6 +5779,7 @@ async def lifespan(app: FastAPI):
     try:
         from services.nova_daily_analysis import nova_daily_analysis_loop
         from services.relay import get_redis
+
         redis_client = get_redis()
         asyncio.create_task(nova_daily_analysis_loop(db.pool, redis_client))
         logger.info("nova_daily_analysis_started")
@@ -4409,49 +5789,91 @@ async def lifespan(app: FastAPI):
     # RAG: Sync FAQ embeddings for all tenants (background, non-blocking)
     try:
         from services.embedding_service import sync_all_tenants_faq_embeddings
+
         asyncio.create_task(sync_all_tenants_faq_embeddings())
         logger.info("rag_faq_embedding_sync_started")
     except Exception as e:
         logger.warning(f"rag_faq_embedding_sync_skipped: {e}")
 
     yield
-    
+
     # Shutdown
     logger.info("🔴 Cerrando orquestador dental...")
-    
+
     # Detener scheduler de jobs
     try:
         from jobs.scheduler import stop_scheduler
+
         await stop_scheduler()
         logger.info("✅ JobScheduler detenido")
     except Exception as e:
         logger.error(f"❌ Error al detener JobScheduler: {e}")
-    
+
     await db.disconnect()
     logger.info("✅ Desconexión completada")
-    
+
     # ⚠️ DESACTIVADO: Motor de automatización antiguo
     # await stop_automation_service()
     logger.info("✅ Sistema de jobs programados detenido")
 
+
 # OpenAPI / Swagger: documentación de contratos API
 OPENAPI_TAGS = [
-    {"name": "Nexus Auth", "description": "Login, registro, perfil y clínicas. Rutas públicas y protegidas."},
-    {"name": "Dental Admin", "description": "Panel administrativo multi-tenant. Requiere JWT (Authorization) + X-Admin-Token obligatorio."},
+    {
+        "name": "Nexus Auth",
+        "description": "Login, registro, perfil y clínicas. Rutas públicas y protegidas.",
+    },
+    {
+        "name": "Dental Admin",
+        "description": "Panel administrativo multi-tenant. Requiere JWT (Authorization) + X-Admin-Token obligatorio.",
+    },
     {"name": "Usuarios", "description": "Aprobaciones y listado de usuarios (CEO)."},
     {"name": "Sedes", "description": "CRUD de tenants/clínicas. Solo CEO."},
-    {"name": "Pacientes", "description": "Fichas, historial clínico, búsqueda y contexto por tenant."},
-    {"name": "Turnos", "description": "Appointments: listar, crear, actualizar, colisiones. Calendario híbrido (local/Google)."},
-    {"name": "Profesionales", "description": "Personal médico por sede, working hours, analytics."},
-    {"name": "Chat", "description": "Sesiones WhatsApp, mensajes, human-intervention, urgencias. Blindaje multi-tenant."},
-    {"name": "Calendario", "description": "Bloques, sync con Google Calendar, connect-sovereign (Auth0)."},
-    {"name": "Tratamientos", "description": "Tipos de tratamiento (servicios), duración, categorías."},
-    {"name": "Estadísticas", "description": "Resumen de stats, métricas del dashboard."},
-    {"name": "Configuración", "description": "Settings de clínica (idioma UI), config de despliegue."},
-    {"name": "Analítica", "description": "Métricas por profesional, resúmenes para CEO."},
-    {"name": "Internal", "description": "Credenciales internas (X-Internal-Token). Uso entre servicios confiables."},
+    {
+        "name": "Pacientes",
+        "description": "Fichas, historial clínico, búsqueda y contexto por tenant.",
+    },
+    {
+        "name": "Turnos",
+        "description": "Appointments: listar, crear, actualizar, colisiones. Calendario híbrido (local/Google).",
+    },
+    {
+        "name": "Profesionales",
+        "description": "Personal médico por sede, working hours, analytics.",
+    },
+    {
+        "name": "Chat",
+        "description": "Sesiones WhatsApp, mensajes, human-intervention, urgencias. Blindaje multi-tenant.",
+    },
+    {
+        "name": "Calendario",
+        "description": "Bloques, sync con Google Calendar, connect-sovereign (Auth0).",
+    },
+    {
+        "name": "Tratamientos",
+        "description": "Tipos de tratamiento (servicios), duración, categorías.",
+    },
+    {
+        "name": "Estadísticas",
+        "description": "Resumen de stats, métricas del dashboard.",
+    },
+    {
+        "name": "Configuración",
+        "description": "Settings de clínica (idioma UI), config de despliegue.",
+    },
+    {
+        "name": "Analítica",
+        "description": "Métricas por profesional, resúmenes para CEO.",
+    },
+    {
+        "name": "Internal",
+        "description": "Credenciales internas (X-Internal-Token). Uso entre servicios confiables.",
+    },
     {"name": "Health", "description": "Estado del servicio. Público."},
-    {"name": "Chat IA", "description": "Asistente clínico inteligente. Incluye Nexus AI Guardrails (anti-injection)."},
+    {
+        "name": "Chat IA",
+        "description": "Asistente clínico inteligente. Incluye Nexus AI Guardrails (anti-injection).",
+    },
 ]
 
 _CLINIC_NAME = os.getenv("CLINIC_NAME", "ClinicForge")
@@ -4491,6 +5913,7 @@ origins = list(dict.fromkeys(origins))
 
 # --- MIDDLEWARE & EXCEPTION HANDLERS ---
 
+
 def _cors_headers(request: Request) -> dict:
     """Asegura que las respuestas de error incluyan CORS (evita bloqueo en navegador)."""
     origin = request.headers.get("origin") or ""
@@ -4505,17 +5928,19 @@ def _cors_headers(request: Request) -> dict:
         h["Access-Control-Allow-Origin"] = origins[0]
     return h
 
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     logger.error(f"🔥 UNHANDLED ERROR: {str(exc)}", exc_info=True)
     content = {
         "detail": "Error interno del servidor. El equipo técnico ha sido notificado.",
-        "error_type": type(exc).__name__
+        "error_type": type(exc).__name__,
     }
     response = JSONResponse(status_code=500, content=content)
     for k, v in _cors_headers(request).items():
         response.headers[k] = v
     return response
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -4534,6 +5959,7 @@ app.include_router(admin_router)
 # Public routes (no auth — anamnesis form)
 try:
     from public_routes import router as public_router
+
     app.include_router(public_router)
 except ImportError:
     logger.warning("public_routes module not found, skipping public endpoints")
@@ -4547,16 +5973,20 @@ try:
     from routes.meta_direct_webhook import router as meta_direct_router
     from routes.meta_credentials_sync import router as meta_cred_sync_router
     from routes.meta_connect import router as meta_connect_router
+
     app.include_router(meta_direct_router)
     app.include_router(meta_cred_sync_router)
     app.include_router(meta_connect_router)
-    logger.info("Meta Direct routers registered (webhook + credentials sync + connect/disconnect)")
+    logger.info(
+        "Meta Direct routers registered (webhook + credentials sync + connect/disconnect)"
+    )
 except ImportError as e:
     logger.warning(f"Meta Direct routers not available: {e}")
 
 # Incluir rutas de jobs programados
 try:
     from jobs.admin_routes import router as jobs_router
+
     app.include_router(jobs_router)
     logger.info("✅ Rutas de jobs programados incluidas")
 except ImportError as e:
@@ -4565,6 +5995,7 @@ except ImportError as e:
 # Import and include Google OAuth and Ads routers
 try:
     from routes.google_auth import router as google_auth_router
+
     app.include_router(google_auth_router)
     logger.info("✅ Google Auth router registered successfully")
 except ImportError as e:
@@ -4572,6 +6003,7 @@ except ImportError as e:
 
 try:
     from routes.google_ads_routes import router as google_ads_router
+
     app.include_router(google_ads_router)
     logger.info("✅ Google Ads router registered successfully")
 except ImportError as e:
@@ -4580,6 +6012,7 @@ except ImportError as e:
 # Import and include leads router
 try:
     from routes.leads import router as leads_router
+
     app.include_router(leads_router)
     logger.info("✅ Leads router registered successfully")
 except ImportError as e:
@@ -4588,6 +6021,7 @@ except ImportError as e:
 # Import and include metrics router
 try:
     from routes.metrics import router as metrics_router
+
     app.include_router(metrics_router)
     logger.info("✅ Metrics router registered successfully")
 except ImportError as e:
@@ -4595,6 +6029,7 @@ except ImportError as e:
 
 try:
     from routes.nova_routes import router as nova_router
+
     app.include_router(nova_router)
     logger.info("nova_routes_registered")
 except Exception as e:
@@ -4603,8 +6038,11 @@ except Exception as e:
 # Dashboard CEO: router y middleware se registran aquí (antes de startup)
 try:
     from dashboard import init_dashboard
+
     init_dashboard(app)
-    logger.info("✅ Dashboard CEO (Tokens y Métricas) registrado: /dashboard/status, /dashboard/api/metrics")
+    logger.info(
+        "✅ Dashboard CEO (Tokens y Métricas) registrado: /dashboard/status, /dashboard/api/metrics"
+    )
 except ImportError as e:
     logger.warning(f"⚠️ Dashboard CEO no disponible: {e}")
 except Exception as e:
@@ -4613,6 +6051,7 @@ except Exception as e:
 # Static file mounts for media persistence (uploads and media directories)
 try:
     from fastapi.staticfiles import StaticFiles
+
     uploads_dir = os.getenv("UPLOADS_DIR", os.path.join(os.getcwd(), "uploads"))
     media_dir = os.path.join(os.getcwd(), "media")
     if os.path.isdir(uploads_dir):
@@ -4655,12 +6094,13 @@ app.openapi = _custom_openapi
 
 # --- SOCKET.IO CONFIGURATION ---
 # Create Socket.IO instance with async mode
-sio = socketio.AsyncServer(async_mode='asgi', cors_allowed_origins=origins)
+sio = socketio.AsyncServer(async_mode="asgi", cors_allowed_origins=origins)
 socket_app = socketio.ASGIApp(sio, app)
 
 # Expose sio and helpers for other routes
 app.state.sio = sio
 app.state.to_json_safe = to_json_safe
+
 
 # Socket.IO event handlers
 @sio.event
@@ -4670,12 +6110,16 @@ async def connect(sid, environ, auth=None):
     Los eventos solo notifican cambios — el dato real se obtiene vía REST (autenticado).
     No rechazamos en handshake para evitar loops de reconexión en el cliente.
     """
-    has_token = bool((auth or {}).get('token', ''))
-    logger.info(f"🔌 Client connected: {sid} (auth={'present' if has_token else 'none'})")
+    has_token = bool((auth or {}).get("token", ""))
+    logger.info(
+        f"🔌 Client connected: {sid} (auth={'present' if has_token else 'none'})"
+    )
+
 
 @sio.event
 async def disconnect(sid):
     logger.info(f"🔌 Client disconnected: {sid}")
+
 
 # Helper function to emit appointment events (can be imported by admin_routes)
 async def emit_appointment_event(event_type: str, data: Dict[str, Any]):
@@ -4684,15 +6128,19 @@ async def emit_appointment_event(event_type: str, data: Dict[str, Any]):
     await sio.emit(event_type, payload)
     logger.info(f"📡 Socket event emitted: {event_type}")
 
+
 # Make the emit function available to other modules
 app.state.emit_appointment_event = emit_appointment_event
 
+
 @app.post("/chat", tags=["Chat IA"])
 @limiter.limit(os.getenv("CHAT_RATE_LIMIT", "20/minute"))
-async def chat_endpoint(request: Request, req: ChatRequest, background_tasks: BackgroundTasks):
+async def chat_endpoint(
+    request: Request, req: ChatRequest, background_tasks: BackgroundTasks
+):
     """
     Endpoint de chat inteligente con persistencia y triaje.
-    
+
     **Seguridad Nexus v8.0:**
     - **Prompt Injection Filter**: Detecta y bloquea intentos de manipulación de instrucciones (403/Forbidden logic).
     - **Input Sanitization**: Elimina caracteres de control y formatos que comprometan la lógica del agente.
@@ -4700,7 +6148,9 @@ async def chat_endpoint(request: Request, req: ChatRequest, background_tasks: Ba
     """
     correlation_id = str(uuid.uuid4())
     # Log visible en cualquier nivel (WARNING) para diagnosticar si las peticiones llegan al orchestrator
-    logger.warning(f"📩 CHAT received from={getattr(req, 'from_number', None) or getattr(req, 'phone', None)} to={getattr(req, 'to_number', None)} msg_preview={(req.final_message or '')[:60]!r}")
+    logger.warning(
+        f"📩 CHAT received from={getattr(req, 'from_number', None) or getattr(req, 'phone', None)} to={getattr(req, 'to_number', None)} msg_preview={(req.final_message or '')[:60]!r}"
+    )
 
     current_customer_phone.set(req.final_phone)
     # 0. RESOLUCIÓN DINÁMICA DE TENANT (Soberanía Nexus v7.6)
@@ -4710,7 +6160,9 @@ async def chat_endpoint(request: Request, req: ChatRequest, background_tasks: Ba
     # Normalizar: quitar todo lo que no sea dígito para comparar con BD (ej. 5493435256815 vs +5493435256815)
     bot_number_clean = re.sub(r"\D", "", bot_number) if bot_number else ""
 
-    tenant = await db.pool.fetchrow("SELECT id FROM tenants WHERE bot_phone_number = $1", bot_number)
+    tenant = await db.pool.fetchrow(
+        "SELECT id FROM tenants WHERE bot_phone_number = $1", bot_number
+    )
     if not tenant and bot_number_clean:
         # Intentar match solo por dígitos (ej. 5493435256815 vs +5493435256815)
         tenant = await db.pool.fetchrow(
@@ -4719,11 +6171,15 @@ async def chat_endpoint(request: Request, req: ChatRequest, background_tasks: Ba
         )
     if not tenant:
         # Si no existe la clínica por número, usamos la Clínica por defecto (ID 1) para evitar crash
-        logger.warning(f"⚠️ Sede no encontrada para el número {bot_number!r}. Usando tenant_id=1 por defecto.")
+        logger.warning(
+            f"⚠️ Sede no encontrada para el número {bot_number!r}. Usando tenant_id=1 por defecto."
+        )
         tenant_id = 1
     else:
-        tenant_id = tenant['id']
-    logger.info(f"📩 CHAT tenant_id={tenant_id} bot_number={bot_number!r} from={req.final_phone}")
+        tenant_id = tenant["id"]
+    logger.info(
+        f"📩 CHAT tenant_id={tenant_id} bot_number={bot_number!r} from={req.final_phone}"
+    )
 
     current_tenant_id.set(tenant_id)
 
@@ -4733,7 +6189,7 @@ async def chat_endpoint(request: Request, req: ChatRequest, background_tasks: Ba
             "status": "security_blocked",
             "send": True,
             "text": "Lo siento, no puedo procesar ese mensaje por políticas de seguridad.",
-            "correlation_id": correlation_id
+            "correlation_id": correlation_id,
         }
     req.final_message = sanitize_input(req.final_message)
 
@@ -4742,7 +6198,11 @@ async def chat_endpoint(request: Request, req: ChatRequest, background_tasks: Ba
     provider_message_id = (req.provider_message_id or req.event_id or "").strip()
     if provider_message_id:
         try:
-            payload_snapshot = {"from_number": req.final_phone, "to_number": getattr(req, "to_number", None), "text": req.final_message[:500] if req.final_message else None}
+            payload_snapshot = {
+                "from_number": req.final_phone,
+                "to_number": getattr(req, "to_number", None),
+                "text": req.final_message[:500] if req.final_message else None,
+            }
             inserted = await db.try_insert_inbound(
                 provider=provider,
                 provider_message_id=provider_message_id,
@@ -4752,7 +6212,9 @@ async def chat_endpoint(request: Request, req: ChatRequest, background_tasks: Ba
                 correlation_id=correlation_id,
             )
             if not inserted:
-                logger.warning(f"📩 CHAT duplicate ignored provider_message_id={provider_message_id!r} from={req.final_phone}")
+                logger.warning(
+                    f"📩 CHAT duplicate ignored provider_message_id={provider_message_id!r} from={req.final_phone}"
+                )
                 return {
                     "status": "duplicate",
                     "send": False,
@@ -4761,11 +6223,15 @@ async def chat_endpoint(request: Request, req: ChatRequest, background_tasks: Ba
                     "correlation_id": correlation_id,
                 }
         except Exception as dedup_err:
-            logger.warning(f"📩 CHAT dedup check failed (processing anyway): {dedup_err}")
+            logger.warning(
+                f"📩 CHAT dedup check failed (processing anyway): {dedup_err}"
+            )
 
     # 0. A) Ensure patient reference exists
     try:
-        existing_patient = await db.ensure_patient_exists(req.final_phone, tenant_id, req.final_name)
+        existing_patient = await db.ensure_patient_exists(
+            req.final_phone, tenant_id, req.final_name
+        )
 
         # --- Lógica de Atribución Meta Ads (First Touch + Last Touch) ---
         if req.referral and existing_patient:
@@ -4776,10 +6242,11 @@ async def chat_endpoint(request: Request, req: ChatRequest, background_tasks: Ba
                 ref_body = req.referral.get("body")
                 ref_campaign_id = req.referral.get("campaign_id")
                 ref_adset_id = req.referral.get("adset_id")
-                
+
                 if ref_ad_id:
                     # 1. LAST TOUCH: Siempre actualizar (última interacción)
-                    await db.pool.execute("""
+                    await db.pool.execute(
+                        """
                         UPDATE patients 
                         SET last_touch_source = $1, 
                             last_touch_ad_id = $2,
@@ -4787,25 +6254,40 @@ async def chat_endpoint(request: Request, req: ChatRequest, background_tasks: Ba
                             last_touch_timestamp = NOW(),
                             updated_at = NOW()
                         WHERE id = $4 AND tenant_id = $5
-                    """, ref_source, ref_ad_id, ref_campaign_id, existing_patient["id"], tenant_id)
-                    
+                    """,
+                        ref_source,
+                        ref_ad_id,
+                        ref_campaign_id,
+                        existing_patient["id"],
+                        tenant_id,
+                    )
+
                     # Registrar en historial de atribución
-                    await db.pool.execute("""
+                    await db.pool.execute(
+                        """
                         INSERT INTO patient_attribution_history (
                             patient_id, tenant_id, attribution_type, source,
                             ad_id, campaign_id, adset_id, headline, body,
                             event_description
                         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-                    """, 
-                        existing_patient["id"], tenant_id, 'last_touch', ref_source,
-                        ref_ad_id, ref_campaign_id, ref_adset_id, ref_headline, ref_body,
-                        f"WhatsApp referral from Meta Ad"
+                    """,
+                        existing_patient["id"],
+                        tenant_id,
+                        "last_touch",
+                        ref_source,
+                        ref_ad_id,
+                        ref_campaign_id,
+                        ref_adset_id,
+                        ref_headline,
+                        ref_body,
+                        f"WhatsApp referral from Meta Ad",
                     )
-                    
+
                     # 2. FIRST TOUCH: Solo si no tiene fuente previa o es orgánica
                     current_first_source = existing_patient.get("first_touch_source")
                     if not current_first_source or current_first_source == "ORGANIC":
-                        await db.pool.execute("""
+                        await db.pool.execute(
+                            """
                             UPDATE patients 
                             SET first_touch_source = $1, 
                                 first_touch_ad_id = $2, 
@@ -4815,114 +6297,160 @@ async def chat_endpoint(request: Request, req: ChatRequest, background_tasks: Ba
                                 first_touch_adset_id = $6,
                                 updated_at = NOW()
                             WHERE id = $7 AND tenant_id = $8
-                        """, ref_source, ref_ad_id, ref_headline, ref_body, 
-                           ref_campaign_id, ref_adset_id, existing_patient["id"], tenant_id)
-                        
+                        """,
+                            ref_source,
+                            ref_ad_id,
+                            ref_headline,
+                            ref_body,
+                            ref_campaign_id,
+                            ref_adset_id,
+                            existing_patient["id"],
+                            tenant_id,
+                        )
+
                         # Registrar first touch en historial
-                        await db.pool.execute("""
+                        await db.pool.execute(
+                            """
                             INSERT INTO patient_attribution_history (
                                 patient_id, tenant_id, attribution_type, source,
                                 ad_id, campaign_id, adset_id, headline, body,
                                 event_description
                             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-                        """, 
-                            existing_patient["id"], tenant_id, 'first_touch', ref_source,
-                            ref_ad_id, ref_campaign_id, ref_adset_id, ref_headline, ref_body,
-                            f"First WhatsApp referral from Meta Ad"
+                        """,
+                            existing_patient["id"],
+                            tenant_id,
+                            "first_touch",
+                            ref_source,
+                            ref_ad_id,
+                            ref_campaign_id,
+                            ref_adset_id,
+                            ref_headline,
+                            ref_body,
+                            f"First WhatsApp referral from Meta Ad",
                         )
-                        
-                        logger.info(f"🎯 First+Last Touch atribuidos para paciente {existing_patient['id']}: ad_id={ref_ad_id}")
+
+                        logger.info(
+                            f"🎯 First+Last Touch atribuidos para paciente {existing_patient['id']}: ad_id={ref_ad_id}"
+                        )
                     else:
-                        logger.info(f"🎯 Last Touch atribuido para paciente {existing_patient['id']}: ad_id={ref_ad_id}")
-                    
+                        logger.info(
+                            f"🎯 Last Touch atribuido para paciente {existing_patient['id']}: ad_id={ref_ad_id}"
+                        )
+
                     # 3. Disparar enriquecimiento asíncrono para obtener nombres
                     try:
                         from services.tasks import enrich_patient_attribution
+
                         background_tasks.add_task(
                             enrich_patient_attribution,
                             patient_id=existing_patient["id"],
                             ad_id=ref_ad_id,
                             tenant_id=tenant_id,
-                            is_last_touch=True  # Nuevo parámetro
+                            is_last_touch=True,  # Nuevo parámetro
                         )
-                        logger.info(f"📡 Enriquecimiento Meta Ads encolado para paciente {existing_patient['id']}")
+                        logger.info(
+                            f"📡 Enriquecimiento Meta Ads encolado para paciente {existing_patient['id']}"
+                        )
                     except ImportError:
-                        logger.debug("services.tasks no disponible para enriquecimiento")
-                        
+                        logger.debug(
+                            "services.tasks no disponible para enriquecimiento"
+                        )
+
             except Exception as attr_err:
                 logger.error(f"⚠️ Error en atribución Meta Ads: {attr_err}")
         # ---------------------------------------------------
-        
+
         # --- Procesamiento de Medios (Spec 19/22) ---
         attachments = []
         if req.media:
             for item in req.media:
                 media_url = item.get("url")
                 media_type = item.get("type", "document")
-                
+
                 # ✅ FIX Spec 22: Descargar media de TODOS los providers (no solo ycloud)
                 # Esto previene 404s cuando URLs externas expiran
                 if media_url and not media_url.startswith("/media/"):
                     local_url = await download_media(media_url, tenant_id, media_type)
                     item["original_url"] = media_url  # Preservar URL original
                     item["url"] = local_url
-                
+
                 attachments.append(item)
-                
+
                 # --- AUTO-GUARDADO EN FICHA MÉDICA (WhatsApp Media) ---
                 # Solo para imágenes y documentos, no para audio
                 if media_type in ["image", "document"] and existing_patient:
                     try:
                         # Determinar tipo de documento para clasificación
-                        doc_type = "whatsapp_image" if media_type == "image" else "whatsapp_document"
+                        doc_type = (
+                            "whatsapp_image"
+                            if media_type == "image"
+                            else "whatsapp_document"
+                        )
                         raw_name = item.get("file_name") or ""
                         # Always make filename unique to avoid duplicate key constraint
-                        file_name = f"{doc_type}_{uuid.uuid4().hex[:8]}_{raw_name}" if raw_name else f"{doc_type}_{uuid.uuid4().hex[:8]}"
-                        
+                        file_name = (
+                            f"{doc_type}_{uuid.uuid4().hex[:8]}_{raw_name}"
+                            if raw_name
+                            else f"{doc_type}_{uuid.uuid4().hex[:8]}"
+                        )
+
                         # Extraer extensión del archivo si está disponible
                         mime_type = item.get("mime_type", "")
                         if mime_type:
                             import mimetypes
+
                             ext = mimetypes.guess_extension(mime_type) or ""
                             if ext and not file_name.lower().endswith(ext.lower()):
                                 file_name = f"{file_name}{ext}"
-                        
+
                         # Insertar en patient_documents
-                        await db.pool.execute("""
+                        await db.pool.execute(
+                            """
                             INSERT INTO patient_documents (
                                 patient_id, tenant_id, file_path, 
                                 document_type, file_name, mime_type,
                                 source, source_details, uploaded_at
                             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
-                        """, 
-                            existing_patient["id"], tenant_id, local_url,
-                            doc_type, file_name, mime_type,
-                            "whatsapp", json.dumps({
-                                "provider": provider,
-                                "provider_message_id": provider_message_id,
-                                "media_type": media_type,
-                                "caption": item.get("caption")
-                            })
+                        """,
+                            existing_patient["id"],
+                            tenant_id,
+                            local_url,
+                            doc_type,
+                            file_name,
+                            mime_type,
+                            "whatsapp",
+                            json.dumps(
+                                {
+                                    "provider": provider,
+                                    "provider_message_id": provider_message_id,
+                                    "media_type": media_type,
+                                    "caption": item.get("caption"),
+                                }
+                            ),
                         )
-                        
-                        logger.info(f"📁 Archivo guardado en ficha médica: paciente={existing_patient['id']}, tipo={media_type}, archivo={file_name}")
-                        
+
+                        logger.info(
+                            f"📁 Archivo guardado en ficha médica: paciente={existing_patient['id']}, tipo={media_type}, archivo={file_name}"
+                        )
+
                     except Exception as doc_err:
-                        logger.error(f"❌ Error al guardar archivo en ficha médica: {doc_err}")
+                        logger.error(
+                            f"❌ Error al guardar archivo en ficha médica: {doc_err}"
+                        )
                         # No fallar el flujo principal por error en guardado de documento
-        
+
         # 1. Guardar mensaje del usuario PRIMERO (para no perderlo si hay error)
         # Spec 24: Ensure conversation exists for Buffering
         conv_uuid = await db.get_or_create_conversation(
             tenant_id=tenant_id,
             channel="whatsapp",
             external_user_id=req.final_phone,
-            display_name=req.final_name or req.final_phone
+            display_name=req.final_name or req.final_phone,
         )
         conversation_id = str(conv_uuid)
 
         # Ahora incluimos attachments y content_attributes
-        role = req.role or 'user'
+        role = req.role or "user"
         message_id = await db.append_chat_message(
             from_number=req.final_phone,
             role=role,
@@ -4930,134 +6458,166 @@ async def chat_endpoint(request: Request, req: ChatRequest, background_tasks: Ba
             correlation_id=correlation_id,
             tenant_id=tenant_id,
             conversation_id=conversation_id,
-            content_attributes=attachments if attachments else None
+            content_attributes=attachments if attachments else None,
         )
-        
+
         # Sincronizar conversación para el preview (Spec 14 / WhatsApp Fix)
         try:
             await db.sync_conversation(
                 tenant_id=tenant_id,
                 channel="whatsapp",
                 external_user_id=req.final_phone,
-                last_message=req.final_message or (f"[{attachments[0].get('type').upper()}]" if attachments else "[Media]"),
-                is_user=(role == 'user')
+                last_message=req.final_message
+                or (
+                    f"[{attachments[0].get('type').upper()}]"
+                    if attachments
+                    else "[Media]"
+                ),
+                is_user=(role == "user"),
             )
         except Exception as sync_err:
             logger.error(f"⚠️ Error syncing WhatsApp preview: {sync_err}")
-        
+
         # Spec 23: Vision Trigger (YCloud/Others)
         if message_id and attachments:
-             for att in attachments:
-                 if att.get("type") == "image":
-                      try:
-                          background_tasks.add_task(
-                              process_vision_task,
-                              message_id=message_id,
-                              image_url=att["url"],
-                              tenant_id=tenant_id
-                          )
-                          logger.info(f"👁️ Vision task queued for image (YCloud/API): {att['url']}")
-                      except Exception as e:
-                          logger.error(f"❌ Error queuing vision task: {e}")
-        
+            for att in attachments:
+                if att.get("type") == "image":
+                    try:
+                        background_tasks.add_task(
+                            process_vision_task,
+                            message_id=message_id,
+                            image_url=att["url"],
+                            tenant_id=tenant_id,
+                        )
+                        logger.info(
+                            f"👁️ Vision task queued for image (YCloud/API): {att['url']}"
+                        )
+                    except Exception as e:
+                        logger.error(f"❌ Error queuing vision task: {e}")
+
         # --- Notificar al Frontend (Real-time) ---
-        await sio.emit('NEW_MESSAGE', to_json_safe({
-            'phone_number': req.final_phone,
-            'tenant_id': tenant_id,
-            'message': req.final_message,
-            'attachments': attachments,
-            'role': 'user'
-        }))
+        await sio.emit(
+            "NEW_MESSAGE",
+            to_json_safe(
+                {
+                    "phone_number": req.final_phone,
+                    "tenant_id": tenant_id,
+                    "message": req.final_message,
+                    "attachments": attachments,
+                    "role": "user",
+                }
+            ),
+        )
         # -----------------------------------------
 
         # 0. B) Verificar si hay intervención humana activa
-        handoff_check = await db.pool.fetchrow("""
+        handoff_check = await db.pool.fetchrow(
+            """
             SELECT human_handoff_requested, human_override_until
             FROM patients
             WHERE tenant_id = $1 AND phone_number = $2
-        """, tenant_id, req.final_phone)
-        
+        """,
+            tenant_id,
+            req.final_phone,
+        )
+
         if handoff_check:
-            is_handoff_active = handoff_check['human_handoff_requested']
-            override_until = handoff_check['human_override_until']
-            
+            is_handoff_active = handoff_check["human_handoff_requested"]
+            override_until = handoff_check["human_override_until"]
+
             # Si hay override activo y no ha expirado, la IA permanece silenciosa
             if is_handoff_active and override_until:
                 # Fix: Robust comparison (Normalize to UTC)
                 now_utc = datetime.now(timezone.utc)
-                
+
                 # Ensure override_until is aware
                 if override_until.tzinfo is None:
                     # Assume stored as naive UTC (or local, but safe fallback to UTC)
                     override_until = override_until.replace(tzinfo=timezone.utc)
                 else:
                     override_until = override_until.astimezone(timezone.utc)
-                
+
                 if override_until > now_utc:
-                    logger.info(f"🔇 IA silenciada para {req.final_phone} hasta {override_until}")
+                    logger.info(
+                        f"🔇 IA silenciada para {req.final_phone} hasta {override_until}"
+                    )
                     # Ya guardamos el mensaje arriba, solo retornamos silencio
                     return {
                         "output": "",  # Sin respuesta
                         "correlation_id": correlation_id,
                         "status": "silenced",
-                        "reason": "human_intervention_active"
+                        "reason": "human_intervention_active",
                     }
                 else:
                     # Override expirado, limpiar flags
-                    await db.pool.execute("""
+                    await db.pool.execute(
+                        """
                         UPDATE patients
                         SET human_handoff_requested = FALSE,
                             human_override_until = NULL
                         WHERE tenant_id = $1 AND phone_number = $2
-                    """, tenant_id, req.final_phone)
-        
+                    """,
+                        tenant_id,
+                        req.final_phone,
+                    )
+
         # Spec 24: Relay Handling (Async Buffer)
         # Replaces direct agent invocation to allow buffering (16s/20s) and Vision Context injection
         try:
             from services.relay import enqueue_buffer_and_schedule_task
-            background_tasks.add_task(enqueue_buffer_and_schedule_task, tenant_id, conversation_id, req.final_phone)
-            logger.info(f"⏳ Message buffered for {req.final_phone} (Spec 24 Vision Fix) - conv_id={conversation_id}")
+
+            background_tasks.add_task(
+                enqueue_buffer_and_schedule_task,
+                tenant_id,
+                conversation_id,
+                req.final_phone,
+            )
+            logger.info(
+                f"⏳ Message buffered for {req.final_phone} (Spec 24 Vision Fix) - conv_id={conversation_id}"
+            )
         except ImportError:
             logger.error("❌ services.relay not found")
-            return {
-                "status": "error",
-                "message": "relay_service_not_found"
-            }
+            return {"status": "error", "message": "relay_service_not_found"}
         except Exception as e:
             logger.error(f"❌ Error enqueuing buffer task: {e}")
-            return {
-                "status": "error",
-                "message": str(e)
-            }
+            return {"status": "error", "message": str(e)}
 
         return {
             "status": "queued",
             "send": False,
             "text": "[Procesando...]",
-            "correlation_id": correlation_id
+            "correlation_id": correlation_id,
         }
-        
+
     except Exception as e:
         logger.exception(f"❌ Error en chat para {req.final_phone}: {e}")
         await db.append_chat_message(
             from_number=req.final_phone,
-            role='system',
+            role="system",
             content=f"Error interno: {str(e)}",
             correlation_id=correlation_id,
             tenant_id=tenant_id,
         )
         return JSONResponse(
             status_code=500,
-            content={"error": "Error interno del orquestador", "correlation_id": correlation_id}
+            content={
+                "error": "Error interno del orquestador",
+                "correlation_id": correlation_id,
+            },
         )
 
+
 # --- MEDIA SERVING ENDPOINT (Spec 20) ---
-@app.get("/media/{tenant_id}/{filename}", tags=["Media"], summary="Servir archivos multimedia locales")
+@app.get(
+    "/media/{tenant_id}/{filename}",
+    tags=["Media"],
+    summary="Servir archivos multimedia locales",
+)
 async def serve_local_media(
-    tenant_id: int, 
+    tenant_id: int,
     filename: str,
     signature: str = Query(..., description="Firma HMAC de seguridad"),
-    expires: int = Query(..., description="Timestamp de expiración")
+    expires: int = Query(..., description="Timestamp de expiración"),
 ):
     """
     Sirve archivos de media descargados localmente.
@@ -5067,39 +6627,47 @@ async def serve_local_media(
     # 1. Verificar firma HMAC (Spec 19/20 Security)
     url_path = f"/media/{tenant_id}/{filename}"
     if not verify_signed_url(url_path, tenant_id, signature, expires):
-        logger.warning(f"🛡️ Security Block: Attempt to access media without valid signature. Path: {url_path}")
-        raise HTTPException(status_code=403, detail="Acceso denegado: Firma inválida o expirada.")
+        logger.warning(
+            f"🛡️ Security Block: Attempt to access media without valid signature. Path: {url_path}"
+        )
+        raise HTTPException(
+            status_code=403, detail="Acceso denegado: Firma inválida o expirada."
+        )
 
     # 2. Seguridad: validar filename para prevenir path traversal
     if ".." in filename or "/" in filename or "\\" in filename:
         raise HTTPException(status_code=400, detail="Invalid filename")
-    
+
     # Usar MEDIA_ROOT si está configurado, sino usar directorio actual
     media_root = os.getenv("MEDIA_ROOT", os.getcwd())
     media_path = os.path.join(media_root, "media", str(tenant_id), filename)
-    
+
     if not os.path.exists(media_path):
         logger.warning(f"❌ Media file not found: {media_path}")
         raise HTTPException(status_code=404, detail="Not Found")
-    
+
     # Determinar content type
     mime_type, _ = mimetypes.guess_type(filename)
-    
+
     logger.info(f"🖼️ Serving signed media: {media_path}")
     return FileResponse(
         media_path,
         media_type=mime_type or "application/octet-stream",
-        filename=filename
+        filename=filename,
     )
 
 
 # --- UPLOADS SERVING ENDPOINT (Para archivos persistentes) ---
-@app.get("/uploads/{tenant_id}/{filename}", tags=["Media"], summary="Servir archivos subidos persistentes")
+@app.get(
+    "/uploads/{tenant_id}/{filename}",
+    tags=["Media"],
+    summary="Servir archivos subidos persistentes",
+)
 async def serve_uploads(
-    tenant_id: int, 
+    tenant_id: int,
     filename: str,
     signature: str = Query(..., description="Firma HMAC de seguridad"),
-    expires: int = Query(..., description="Timestamp de expiración")
+    expires: int = Query(..., description="Timestamp de expiración"),
 ):
     """
     Sirve archivos subidos persistentes (attachments de mensajes, documentos de pacientes).
@@ -5109,29 +6677,31 @@ async def serve_uploads(
     # 1. Verificar firma HMAC
     url_path = f"/uploads/{tenant_id}/{filename}"
     if not verify_signed_url(url_path, tenant_id, signature, expires):
-        logger.warning(f"🛡️ Security Block: Attempt to access uploads without valid signature. Path: {url_path}")
-        raise HTTPException(status_code=403, detail="Acceso denegado: Firma inválida o expirada.")
+        logger.warning(
+            f"🛡️ Security Block: Attempt to access uploads without valid signature. Path: {url_path}"
+        )
+        raise HTTPException(
+            status_code=403, detail="Acceso denegado: Firma inválida o expirada."
+        )
 
     # 2. Seguridad: validar filename para prevenir path traversal
     if ".." in filename or "/" in filename or "\\" in filename:
         raise HTTPException(status_code=400, detail="Invalid filename")
-    
+
     # Usar UPLOADS_DIR si está configurado, sino usar /app/uploads
     uploads_dir = os.getenv("UPLOADS_DIR", os.path.join(os.getcwd(), "uploads"))
     file_path = os.path.join(uploads_dir, str(tenant_id), filename)
-    
+
     if not os.path.exists(file_path):
         logger.warning(f"❌ Upload file not found: {file_path}")
         raise HTTPException(status_code=404, detail="Not Found")
-    
+
     # Determinar content type
     mime_type, _ = mimetypes.guess_type(filename)
-    
+
     logger.info(f"📎 Serving upload: {file_path}")
     return FileResponse(
-        file_path,
-        media_type=mime_type or "application/octet-stream",
-        filename=filename
+        file_path, media_type=mime_type or "application/octet-stream", filename=filename
     )
 
 
@@ -5139,6 +6709,7 @@ async def serve_uploads(
 async def health_live():
     """Liveness probe. Siempre 200 si el proceso está vivo."""
     return {"status": "alive"}
+
 
 @app.get("/health/ready", tags=["Health"])
 @app.get("/health", tags=["Health"], include_in_schema=False)
@@ -5157,6 +6728,7 @@ async def health_ready():
     # Check Redis
     try:
         from services.relay import get_redis
+
         r = get_redis()
         await asyncio.wait_for(r.ping(), timeout=3.0)
     except Exception as e:
@@ -5166,22 +6738,24 @@ async def health_ready():
     status_code = 200 if is_ready else 503
     return JSONResponse(
         status_code=status_code,
-        content={"status": "ready" if is_ready else "degraded", **checks}
+        content={"status": "ready" if is_ready else "degraded", **checks},
     )
+
 
 # --- ENDPOINTS DEL SISTEMA MEJORADO ---
 @app.get("/api/agent/metrics", tags=["Agent Analytics"])
 async def get_agent_metrics(
     days: int = Query(7, description="Número de días para analizar"),
-    x_admin_token: str = Header(..., description="Token de administración")
+    x_admin_token: str = Header(..., description="Token de administración"),
 ):
     """
     Endpoint de métricas del agente mejorado
     """
     from core.auth import ADMIN_TOKEN
+
     if x_admin_token != ADMIN_TOKEN:
         raise HTTPException(status_code=403, detail="Token de administración inválido")
-    
+
     try:
         metrics = await enhanced_system.get_system_metrics(days)
         return metrics
@@ -5199,7 +6773,7 @@ async def get_agent_status():
         "version": "2.0.0-simplified",
         "timestamp": "2026-03-14T20:00:00Z",
         "features": ["modular_prompts", "metrics_dashboard"],
-        "note": "Sistema mejorado en modo compatible"
+        "note": "Sistema mejorado en modo compatible",
     }
 
 
@@ -5216,11 +6790,15 @@ if os.getenv("DEBUG", "").lower() in ("true", "1"):
         headers = dict(request.headers)
         debug_info = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
-            "request_headers": {k: v[:50] + "..." if len(v) > 50 else v for k, v in headers.items() if k.lower() not in ('x-admin-token', 'authorization', 'cookie')},
-            "admin_token_present": 'x-admin-token' in {k.lower() for k in headers},
+            "request_headers": {
+                k: v[:50] + "..." if len(v) > 50 else v
+                for k, v in headers.items()
+                if k.lower() not in ("x-admin-token", "authorization", "cookie")
+            },
+            "admin_token_present": "x-admin-token" in {k.lower() for k in headers},
             "jwt_valid": user_data is not None,
             "client_ip": request.client.host if request.client else "unknown",
-            "cors_origin": headers.get('Origin', 'none'),
+            "cors_origin": headers.get("Origin", "none"),
         }
         return debug_info
 
@@ -5244,6 +6822,7 @@ if os.getenv("DEBUG", "").lower() in ("true", "1"):
             "version": os.getenv("API_VERSION", "1.0.0"),
         }
 
+
 async def _nova_realtime_handler(websocket: WebSocket, session_id: str):
     """Nova voice assistant WebSocket bridge to OpenAI Realtime API (inner handler)."""
     from services.nova_tools import execute_nova_tool, NOVA_TOOLS_SCHEMA
@@ -5251,65 +6830,84 @@ async def _nova_realtime_handler(websocket: WebSocket, session_id: str):
     # Get session config from Redis
     try:
         from services.relay import get_redis
+
         redis = get_redis()
         session_data = await redis.get(f"nova_session:{session_id}")
         if not session_data:
-            await websocket.send_text(json.dumps({"type": "error", "message": "Session expired"}))
+            await websocket.send_text(
+                json.dumps({"type": "error", "message": "Session expired"})
+            )
             await websocket.close()
             return
 
         import json as json_mod
+
         config = json_mod.loads(session_data)
 
         # Connect to OpenAI Realtime — model configurable from dashboard
         import websockets
+
         api_key = os.getenv("OPENAI_API_KEY")
         nova_voice_model = "gpt-4o-mini-realtime-preview"
         tenant_id_nova = config.get("tenant_id", 1)
         try:
             _voice_model_row = await db.pool.fetchrow(
                 "SELECT value FROM system_config WHERE key = 'MODEL_NOVA_VOICE' AND tenant_id = $1",
-                tenant_id_nova
+                tenant_id_nova,
             )
             if _voice_model_row and _voice_model_row.get("value"):
                 nova_voice_model = str(_voice_model_row["value"]).strip()
-                logger.info(f"🎙️ NOVA: Model from DB: '{nova_voice_model}' for tenant={tenant_id_nova}")
+                logger.info(
+                    f"🎙️ NOVA: Model from DB: '{nova_voice_model}' for tenant={tenant_id_nova}"
+                )
             else:
-                logger.info(f"🎙️ NOVA: No model in DB, using default: '{nova_voice_model}'")
+                logger.info(
+                    f"🎙️ NOVA: No model in DB, using default: '{nova_voice_model}'"
+                )
         except Exception as model_err:
             logger.error(f"🎙️ NOVA MODEL ERROR: {model_err}")
         openai_url = f"wss://api.openai.com/v1/realtime?model={nova_voice_model}"
-        logger.info(f"🎙️ NOVA: Connecting to OpenAI Realtime: model={nova_voice_model} tenant={tenant_id_nova} page={config.get('page', 'unknown')}")
-        logger.info(f"🎙️ NOVA: System prompt length: {len(config.get('system_prompt', ''))} chars, tools: {len(NOVA_TOOLS_SCHEMA)}")
+        logger.info(
+            f"🎙️ NOVA: Connecting to OpenAI Realtime: model={nova_voice_model} tenant={tenant_id_nova} page={config.get('page', 'unknown')}"
+        )
+        logger.info(
+            f"🎙️ NOVA: System prompt length: {len(config.get('system_prompt', ''))} chars, tools: {len(NOVA_TOOLS_SCHEMA)}"
+        )
 
         async with websockets.connect(
             openai_url,
             additional_headers={
                 "Authorization": f"Bearer {api_key}",
-                "OpenAI-Beta": "realtime=v1"
-            }
+                "OpenAI-Beta": "realtime=v1",
+            },
         ) as openai_ws:
             # Send session update
-            await openai_ws.send(json_mod.dumps({
-                "type": "session.update",
-                "session": {
-                    "instructions": config.get("system_prompt", ""),
-                    "voice": os.getenv("NOVA_VOICE", "coral"),
-                    "input_audio_format": "pcm16",
-                    "output_audio_format": "pcm16",
-                    "input_audio_transcription": {"model": "whisper-1"},
-                    "tools": NOVA_TOOLS_SCHEMA,
-                    "tool_choice": "auto",
-                    "turn_detection": {
-                        "type": "server_vad",
-                        "threshold": 0.5,
-                        "prefix_padding_ms": 800,
-                        "silence_duration_ms": 5000
+            await openai_ws.send(
+                json_mod.dumps(
+                    {
+                        "type": "session.update",
+                        "session": {
+                            "instructions": config.get("system_prompt", ""),
+                            "voice": os.getenv("NOVA_VOICE", "coral"),
+                            "input_audio_format": "pcm16",
+                            "output_audio_format": "pcm16",
+                            "input_audio_transcription": {"model": "whisper-1"},
+                            "tools": NOVA_TOOLS_SCHEMA,
+                            "tool_choice": "auto",
+                            "turn_detection": {
+                                "type": "server_vad",
+                                "threshold": 0.5,
+                                "prefix_padding_ms": 800,
+                                "silence_duration_ms": 5000,
+                            },
+                        },
                     }
-                }
-            }))
+                )
+            )
             tool_names = [t.get("name", "?") for t in NOVA_TOOLS_SCHEMA]
-            logger.info(f"🎙️ NOVA: session.update sent with {len(NOVA_TOOLS_SCHEMA)} tools: {tool_names}")
+            logger.info(
+                f"🎙️ NOVA: session.update sent with {len(NOVA_TOOLS_SCHEMA)} tools: {tool_names}"
+            )
             logger.info(f"🎙️ NOVA: prompt={len(config.get('system_prompt', ''))} chars")
 
             async def client_to_openai():
@@ -5319,22 +6917,37 @@ async def _nova_realtime_handler(websocket: WebSocket, session_id: str):
                         data = await websocket.receive()
                         if "bytes" in data and data["bytes"]:
                             audio_b64 = base64.b64encode(data["bytes"]).decode()
-                            await openai_ws.send(json_mod.dumps({
-                                "type": "input_audio_buffer.append",
-                                "audio": audio_b64
-                            }))
+                            await openai_ws.send(
+                                json_mod.dumps(
+                                    {
+                                        "type": "input_audio_buffer.append",
+                                        "audio": audio_b64,
+                                    }
+                                )
+                            )
                         elif "text" in data and data["text"]:
                             msg = json_mod.loads(data["text"])
                             if msg.get("type") == "text_message":
-                                await openai_ws.send(json_mod.dumps({
-                                    "type": "conversation.item.create",
-                                    "item": {
-                                        "type": "message",
-                                        "role": "user",
-                                        "content": [{"type": "input_text", "text": msg["text"]}]
-                                    }
-                                }))
-                                await openai_ws.send(json_mod.dumps({"type": "response.create"}))
+                                await openai_ws.send(
+                                    json_mod.dumps(
+                                        {
+                                            "type": "conversation.item.create",
+                                            "item": {
+                                                "type": "message",
+                                                "role": "user",
+                                                "content": [
+                                                    {
+                                                        "type": "input_text",
+                                                        "text": msg["text"],
+                                                    }
+                                                ],
+                                            },
+                                        }
+                                    )
+                                )
+                                await openai_ws.send(
+                                    json_mod.dumps({"type": "response.create"})
+                                )
                 except Exception:
                     pass
 
@@ -5346,9 +6959,19 @@ async def _nova_realtime_handler(websocket: WebSocket, session_id: str):
                         etype = event.get("type", "")
 
                         # Log ALL event types for debugging
-                        if etype not in ("response.audio.delta", "response.audio_transcript.delta", "input_audio_buffer.committed", "input_audio_buffer.speech_stopped"):
+                        if etype not in (
+                            "response.audio.delta",
+                            "response.audio_transcript.delta",
+                            "input_audio_buffer.committed",
+                            "input_audio_buffer.speech_stopped",
+                        ):
                             extra = ""
-                            if "error" in etype or "function" in etype or "done" in etype or "session" in etype:
+                            if (
+                                "error" in etype
+                                or "function" in etype
+                                or "done" in etype
+                                or "session" in etype
+                            ):
                                 extra = f" {json_mod.dumps(event, ensure_ascii=False)[:300]}"
                             logger.info(f"🎙️ NOVA EVENT: {etype}{extra}")
 
@@ -5358,41 +6981,73 @@ async def _nova_realtime_handler(websocket: WebSocket, session_id: str):
                                 await websocket.send_bytes(base64.b64decode(audio_b64))
 
                         elif etype == "response.audio.done":
-                            await websocket.send_text(json_mod.dumps({"type": "nova_audio_done"}))
+                            await websocket.send_text(
+                                json_mod.dumps({"type": "nova_audio_done"})
+                            )
 
                         elif etype == "response.audio_transcript.delta":
                             text = event.get("delta", "")
                             if text:
-                                await websocket.send_text(json_mod.dumps({
-                                    "type": "transcript", "role": "assistant", "text": text
-                                }))
+                                await websocket.send_text(
+                                    json_mod.dumps(
+                                        {
+                                            "type": "transcript",
+                                            "role": "assistant",
+                                            "text": text,
+                                        }
+                                    )
+                                )
 
-                        elif etype == "conversation.item.input_audio_transcription.completed":
+                        elif (
+                            etype
+                            == "conversation.item.input_audio_transcription.completed"
+                        ):
                             text = event.get("transcript", "")
                             if text:
                                 logger.info(f"🎙️ NOVA USER SAID: '{text[:200]}'")
-                                await websocket.send_text(json_mod.dumps({
-                                    "type": "transcript", "role": "user", "text": text
-                                }))
+                                await websocket.send_text(
+                                    json_mod.dumps(
+                                        {
+                                            "type": "transcript",
+                                            "role": "user",
+                                            "text": text,
+                                        }
+                                    )
+                                )
 
                         elif etype == "input_audio_buffer.speech_started":
-                            await websocket.send_text(json_mod.dumps({"type": "user_speech_started"}))
+                            await websocket.send_text(
+                                json_mod.dumps({"type": "user_speech_started"})
+                            )
 
                         elif etype == "response.done":
-                            await websocket.send_text(json_mod.dumps({"type": "response_done"}))
+                            await websocket.send_text(
+                                json_mod.dumps({"type": "response_done"})
+                            )
                             # Track Realtime API token usage
                             try:
                                 resp_usage = event.get("response", {}).get("usage", {})
                                 if resp_usage:
-                                    in_tokens = resp_usage.get("input_tokens", 0) or resp_usage.get("total_tokens", 0) // 2
-                                    out_tokens = resp_usage.get("output_tokens", 0) or resp_usage.get("total_tokens", 0) // 2
-                                    from dashboard.token_tracker import track_service_usage
+                                    in_tokens = (
+                                        resp_usage.get("input_tokens", 0)
+                                        or resp_usage.get("total_tokens", 0) // 2
+                                    )
+                                    out_tokens = (
+                                        resp_usage.get("output_tokens", 0)
+                                        or resp_usage.get("total_tokens", 0) // 2
+                                    )
+                                    from dashboard.token_tracker import (
+                                        track_service_usage,
+                                    )
+
                                     await track_service_usage(
-                                        db.pool, config.get("tenant_id", 1),
+                                        db.pool,
+                                        config.get("tenant_id", 1),
                                         nova_voice_model,
-                                        in_tokens, out_tokens,
+                                        in_tokens,
+                                        out_tokens,
                                         source="nova_voice",
-                                        phone=config.get("user_id", "system")
+                                        phone=config.get("user_id", "system"),
                                     )
                             except Exception:
                                 pass
@@ -5406,23 +7061,42 @@ async def _nova_realtime_handler(websocket: WebSocket, session_id: str):
                             user_role = config.get("user_role", "secretary")
                             user_id = config.get("user_id", "")
 
-                            logger.info(f"🎙️ NOVA TOOL CALL: {tool_name}({json_mod.dumps(tool_args, ensure_ascii=False)[:200]}) tenant={tenant_id} role={user_role}")
-                            result = await execute_nova_tool(tool_name, tool_args, tenant_id, user_role, user_id)
-                            logger.info(f"🎙️ NOVA TOOL RESULT: {tool_name} → {result[:200] if result else 'empty'}")
+                            logger.info(
+                                f"🎙️ NOVA TOOL CALL: {tool_name}({json_mod.dumps(tool_args, ensure_ascii=False)[:200]}) tenant={tenant_id} role={user_role}"
+                            )
+                            result = await execute_nova_tool(
+                                tool_name, tool_args, tenant_id, user_role, user_id
+                            )
+                            logger.info(
+                                f"🎙️ NOVA TOOL RESULT: {tool_name} → {result[:200] if result else 'empty'}"
+                            )
 
-                            await websocket.send_text(json_mod.dumps({
-                                "type": "tool_call", "name": tool_name, "args": tool_args, "result": result
-                            }))
+                            await websocket.send_text(
+                                json_mod.dumps(
+                                    {
+                                        "type": "tool_call",
+                                        "name": tool_name,
+                                        "args": tool_args,
+                                        "result": result,
+                                    }
+                                )
+                            )
 
-                            await openai_ws.send(json_mod.dumps({
-                                "type": "conversation.item.create",
-                                "item": {
-                                    "type": "function_call_output",
-                                    "call_id": call_id,
-                                    "output": result
-                                }
-                            }))
-                            await openai_ws.send(json_mod.dumps({"type": "response.create"}))
+                            await openai_ws.send(
+                                json_mod.dumps(
+                                    {
+                                        "type": "conversation.item.create",
+                                        "item": {
+                                            "type": "function_call_output",
+                                            "call_id": call_id,
+                                            "output": result,
+                                        },
+                                    }
+                                )
+                            )
+                            await openai_ws.send(
+                                json_mod.dumps({"type": "response.create"})
+                            )
 
                 except Exception:
                     pass
@@ -5432,12 +7106,14 @@ async def _nova_realtime_handler(websocket: WebSocket, session_id: str):
     except Exception as e:
         logger.error(f"🎙️ NOVA WS ERROR: {e}")
         import traceback
+
         logger.error(f"🎙️ NOVA WS TRACEBACK: {traceback.format_exc()}")
     finally:
         try:
             await websocket.close()
         except Exception:
             pass
+
 
 @app.websocket("/public/nova/realtime-ws/{session_id}")
 async def nova_realtime_ws_endpoint(websocket: WebSocket, session_id: str):
@@ -5457,6 +7133,7 @@ async def nova_voice_direct(websocket: WebSocket):
 
         import json as json_mod
         from services.relay import get_redis
+
         redis = await get_redis()
 
         # Strategy 1: Check if token is a Redis session_id (public anamnesis)
@@ -5470,6 +7147,7 @@ async def nova_voice_direct(websocket: WebSocket):
         # Strategy 2: Try JWT auth (admin widget)
         try:
             from auth_service import AuthService
+
             user_data = AuthService.decode_token(token)
             if not user_data:
                 raise ValueError("Invalid token")
@@ -5482,7 +7160,9 @@ async def nova_voice_direct(websocket: WebSocket):
             # Fetch clinic name for context
             clinic_name = "la clinica"
             try:
-                cn = await db.pool.fetchval("SELECT clinic_name FROM tenants WHERE id = $1", tenant_id)
+                cn = await db.pool.fetchval(
+                    "SELECT clinic_name FROM tenants WHERE id = $1", tenant_id
+                )
                 if cn:
                     clinic_name = cn
             except Exception:
@@ -5659,27 +7339,38 @@ PERMISOS: CEO=todo. Professional=pacientes/turnos/clinica. Secretary=pacientes/t
 FORMATO: 2-3 oraciones breves. Fechas dd/mm. Horarios 24h. Montos: $15.000.
 """
 
-            await redis.setex(f"nova_session:{session_id}", 360, json_mod.dumps({
-                "system_prompt": system_prompt,
-                "tenant_id": tenant_id,
-                "user_role": user_role,
-                "user_id": user_id,
-                "page": page,
-            }))
+            await redis.setex(
+                f"nova_session:{session_id}",
+                360,
+                json_mod.dumps(
+                    {
+                        "system_prompt": system_prompt,
+                        "tenant_id": tenant_id,
+                        "user_role": user_role,
+                        "user_id": user_id,
+                        "page": page,
+                    }
+                ),
+            )
 
             await _nova_realtime_handler(websocket, session_id)
         except Exception as auth_err:
             logger.warning(f"nova_voice_auth_failed: {auth_err}")
-            await websocket.send_text(json.dumps({"type": "error", "message": "Session expired or invalid"}))
+            await websocket.send_text(
+                json.dumps({"type": "error", "message": "Session expired or invalid"})
+            )
             await websocket.close()
 
     except Exception as e:
         logger.error(f"nova_voice_direct_error: {e}")
-        try: await websocket.close()
-        except: pass
+        try:
+            await websocket.close()
+        except:
+            pass
 
 
 if __name__ == "__main__":
     import uvicorn
+
     # Use socket_app instead of app to support Socket.IO
     uvicorn.run(socket_app, host="0.0.0.0", port=8000)
