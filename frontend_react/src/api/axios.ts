@@ -3,6 +3,8 @@ import { getEnv } from '../utils/env';
 
 const API_URL = getEnv('VITE_API_URL') || 'http://localhost:3000';
 export const BACKEND_URL = API_URL;
+// Socket.IO connects directly to orchestrator (bypasses BFF HTTP proxy)
+export const WS_URL = getEnv('VITE_WS_URL') || API_URL;
 const MAX_RETRIES = 3;
 const BASE_DELAY = 1000;
 

@@ -13,7 +13,7 @@ import AppointmentCard from '../components/AppointmentCard';
 import api from '../api/axios';
 import { addDays, subDays, startOfDay, endOfDay } from 'date-fns';
 import { io, Socket } from 'socket.io-client';
-import { BACKEND_URL } from '../api/axios';
+import { WS_URL } from '../api/axios';
 import { useAuth } from '../context/AuthContext';
 import { useTranslation } from '../context/LanguageContext';
 
@@ -337,7 +337,7 @@ export default function AgendaView() {
   // === EFECTO 2: Socket.IO — corre UNA SOLA VEZ, sin depender de fetchData ===
   useEffect(() => {
     const jwtToken = localStorage.getItem('access_token');
-    socketRef.current = io(BACKEND_URL, {
+    socketRef.current = io(WS_URL, {
       transports: ['websocket', 'polling'],
       reconnection: true,
       reconnectionAttempts: 3,

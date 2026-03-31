@@ -15,8 +15,7 @@ ENV VITE_FACEBOOK_APP_ID=""
 ENV VITE_META_CONFIG_ID=""
 ENV VITE_META_EMBEDDED_SIGNUP=false
 
-# Skip tsc (strict mode breaks CI). Vite handles TS fine.
-RUN npx vite build
+RUN npx tsc --noEmit && npx vite build
 
 # Stage 2: Serve
 FROM nginx:alpine

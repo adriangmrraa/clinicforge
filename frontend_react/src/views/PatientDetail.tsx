@@ -12,7 +12,7 @@ import Odontogram from '../components/Odontogram';
 import DocumentGallery from '../components/DocumentGallery';
 import AnamnesisPanel from '../components/AnamnesisPanel';
 import { io, Socket } from 'socket.io-client';
-import { BACKEND_URL } from '../api/axios';
+import { WS_URL } from '../api/axios';
 
 interface Patient {
   id: number;
@@ -130,7 +130,7 @@ export default function PatientDetail() {
   useEffect(() => {
     const jwtToken = localStorage.getItem('access_token');
 
-    socketRef.current = io(BACKEND_URL, {
+    socketRef.current = io(WS_URL, {
       transports: ['websocket', 'polling'],
       auth: { token: jwtToken || '' },
     });

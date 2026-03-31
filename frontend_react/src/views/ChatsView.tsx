@@ -6,7 +6,7 @@ import {
   Search, XCircle, Bell, Volume2, VolumeX,
   Instagram, Facebook, Lock, ChevronRight, Paperclip
 } from 'lucide-react';
-import api, { BACKEND_URL } from '../api/axios';
+import api, { WS_URL } from '../api/axios';
 import * as chatsApi from '../api/chats';
 import { useTranslation } from '../context/LanguageContext';
 import { io, Socket } from 'socket.io-client';
@@ -160,7 +160,7 @@ export default function ChatsView() {
 
   useEffect(() => {
     // Conectar al WebSocket (una sola vez — los handlers leen refs para valores frescos)
-    socketRef.current = io(BACKEND_URL);
+    socketRef.current = io(WS_URL);
 
     // Evento: Nueva derivación humana (derivhumano) — solo para la clínica seleccionada
     socketRef.current.on('HUMAN_HANDOFF', (data: { phone_number: string; reason: string; tenant_id?: number }) => {

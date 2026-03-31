@@ -7,7 +7,7 @@ import {
   ChevronRight, ChevronLeft, Download, RefreshCw, BarChart3,
   Eye, MoreVertical, Tag, UserCheck, ArrowUpDown
 } from 'lucide-react';
-import api, { BACKEND_URL } from '../api/axios';
+import api, { WS_URL } from '../api/axios';
 import { useTranslation } from '../context/LanguageContext';
 import PageHeader from '../components/PageHeader';
 import { Modal } from '../components/Modal';
@@ -114,7 +114,7 @@ export default function LeadsManagementView() {
 
   // WebSocket Connection
   useEffect(() => {
-    socketRef.current = io(BACKEND_URL);
+    socketRef.current = io(WS_URL);
 
     socketRef.current.on('NEW_PATIENT', () => {
       loadLeads();

@@ -312,7 +312,8 @@ async def _analyze_with_gpt(prompt: str, api_key: str, tenant_id: int = 0) -> di
                 json={
                     "model": analysis_model,
                     "messages": [
-                        {"role": "system", "content": prompt},
+                        {"role": "system", "content": "You are a clinical data analyst. Always respond in valid JSON."},
+                        {"role": "user", "content": prompt},
                     ],
                     "temperature": 0,
                     "max_tokens": 700,
@@ -329,7 +330,7 @@ async def _analyze_with_gpt(prompt: str, api_key: str, tenant_id: int = 0) -> di
                     from dashboard.token_tracker import track_service_usage
                     from db import db
                     await track_service_usage(
-                        db.pool, tenant_id, "gpt-4o-mini",
+                        db.pool, tenant_id, analysis_model,
                         usage.get("prompt_tokens", 0), usage.get("completion_tokens", 0),
                         source="nova_daily_analysis"
                     )

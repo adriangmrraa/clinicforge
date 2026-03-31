@@ -10,7 +10,7 @@ import {
   AreaChart,
   Area
 } from 'recharts';
-import api, { BACKEND_URL } from '../api/axios';
+import api, { WS_URL } from '../api/axios';
 import { useTranslation } from '../context/LanguageContext';
 import PageHeader from '../components/PageHeader';
 import MarketingPerformanceCard from '../components/MarketingPerformanceCard';
@@ -99,7 +99,7 @@ export default function DashboardView() {
 
   useEffect(() => {
     // 1. Conectar WebSocket
-    socketRef.current = io(BACKEND_URL);
+    socketRef.current = io(WS_URL);
 
     const loadUrgencies = async () => {
       try {

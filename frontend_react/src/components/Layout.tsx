@@ -4,7 +4,7 @@ import { Sidebar } from './Sidebar';
 import { useAuth } from '../context/AuthContext';
 import { useTranslation } from '../context/LanguageContext';
 import { io, Socket } from 'socket.io-client';
-import { BACKEND_URL } from '../api/axios';
+import { WS_URL } from '../api/axios';
 import { X, Wifi, WifiOff, Bell, UserPlus, Calendar, AlertTriangle, HelpCircle } from 'lucide-react';
 import MetaTokenBanner from './MetaTokenBanner';
 import { NovaWidget } from './NovaWidget';
@@ -62,7 +62,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }: LayoutProps) => {
     // Conectar socket si no existe
     if (!socketRef.current) {
       // Connect to root namespace (matching ChatsView.tsx logic)
-      socketRef.current = io(BACKEND_URL, {
+      socketRef.current = io(WS_URL, {
         reconnection: true,
         reconnectionAttempts: Infinity,
         reconnectionDelay: 1000,
