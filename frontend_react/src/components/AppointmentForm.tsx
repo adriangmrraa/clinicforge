@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Calendar, User, Clock, FileText, DollarSign, Activity, AlertTriangle, Trash2, Check } from 'lucide-react';
 import type { Appointment, Patient, Professional } from '../views/AgendaView';
-import api, { BACKEND_URL } from '../api/axios';
+import api, { WS_URL } from '../api/axios';
 import { useTranslation } from '../context/LanguageContext';
 import { useAuth } from '../context/AuthContext';
 import AnamnesisPanel from './AnamnesisPanel';
@@ -210,7 +210,7 @@ export default function AppointmentForm({
 
         const jwtToken = localStorage.getItem('access_token');
 
-        socketRef.current = io(BACKEND_URL, {
+        socketRef.current = io(WS_URL, {
             transports: ['websocket', 'polling'],
             auth: { token: jwtToken || '' },
         });
@@ -608,7 +608,8 @@ export default function AppointmentForm({
                                             if (!raw) return null;
                                             const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
                                             if (!parsed || typeof parsed !== 'object') return null;
-                                            const isVerified = parsed.status === 'verified';
+                                            const isVerified = parsed.status === 'verified' || parsed.status === 'verified_manual';
+                                            const isPendingReview = parsed.status === 'pending_review';
                                             const filePath = parsed.receipt_file_path || '';
                                             const apiBase = import.meta.env.VITE_API_URL || '';
                                             const docId = parsed.receipt_doc_id;
@@ -617,13 +618,13 @@ export default function AppointmentForm({
                                                 ? `${apiBase}/admin/patients/${patientId}/documents/${docId}/proxy`
                                                 : filePath ? (filePath.startsWith('http') ? filePath : `${apiBase}${filePath.startsWith('/') ? '' : '/'}${filePath}`) : '';
                                             return (
-                                                <div className={`rounded-xl border p-4 space-y-3 mt-4 ${isVerified ? 'bg-emerald-500/10 border-emerald-500/20' : 'bg-red-500/10 border-red-500/20'}`}>
+                                                <div className={`rounded-xl border p-4 space-y-3 mt-4 ${isVerified ? 'bg-emerald-500/10 border-emerald-500/20' : isPendingReview ? 'bg-amber-500/10 border-amber-500/20' : 'bg-red-500/10 border-red-500/20'}`}>
                                                     <div className="flex items-center justify-between">
                                                         <h4 className="text-xs font-bold text-white/70 flex items-center gap-1.5">
-                                                            <DollarSign size={14} className={isVerified ? 'text-emerald-400' : 'text-red-400'} /> Comprobante de pago
+                                                            <DollarSign size={14} className={isVerified ? 'text-emerald-400' : isPendingReview ? 'text-amber-400' : 'text-red-400'} /> Comprobante de pago
                                                         </h4>
-                                                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${isVerified ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}>
-                                                            {isVerified ? '✅ Verificado' : '⚠️ No verificado'}
+                                                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${isVerified ? 'bg-emerald-500/20 text-emerald-400' : isPendingReview ? 'bg-amber-500/20 text-amber-400' : 'bg-red-500/20 text-red-400'}`}>
+                                                            {parsed.status === 'verified_manual' ? '✅ Aprobado manual' : isVerified ? '✅ Verificado' : isPendingReview ? '🔍 Pendiente de revisión' : '⚠️ No verificado'}
                                                         </span>
                                                     </div>
                                                     {imgSrc && (
@@ -646,7 +647,7 @@ export default function AppointmentForm({
                                                         )}
                                                         {parsed.amount_expected && (
                                                             <div>
-                                                                <span className="text-white/40">Seña esperada:</span>
+                                                                <span className="text-white/40">Monto esperado:</span>
                                                                 <span className="ml-1 font-semibold text-white">${Math.round(parsed.amount_expected).toLocaleString('es-AR')}</span>
                                                             </div>
                                                         )}
@@ -673,7 +674,48 @@ export default function AppointmentForm({
                                                                 <span className="text-red-400 text-[10px]">⚠ Titular no coincide con datos bancarios de la clínica</span>
                                                             </div>
                                                         )}
+                                                        {parsed.failure_reason && (
+                                                            <div className="col-span-2">
+                                                                <span className="text-amber-400 text-[10px]">Motivo: {parsed.failure_reason === 'holder_mismatch' ? 'Titular no coincide' : parsed.failure_reason === 'amount_underpaid' ? 'Monto insuficiente' : 'Verificación automática fallida'}</span>
+                                                            </div>
+                                                        )}
+                                                        {parsed.submitted_at && !parsed.verified_at && (
+                                                            <div className="col-span-2">
+                                                                <span className="text-white/40">Enviado:</span>
+                                                                <span className="ml-1 font-semibold text-white/70">{new Date(parsed.submitted_at).toLocaleString('es-AR')}</span>
+                                                            </div>
+                                                        )}
+                                                        {parsed.manually_approved_by && (
+                                                            <div className="col-span-2">
+                                                                <span className="text-white/40">Aprobado por:</span>
+                                                                <span className="ml-1 font-semibold text-emerald-400">{parsed.manually_approved_by}</span>
+                                                                {parsed.manually_approved_at && (
+                                                                    <span className="ml-1 text-white/40">({new Date(parsed.manually_approved_at).toLocaleString('es-AR')})</span>
+                                                                )}
+                                                            </div>
+                                                        )}
                                                     </div>
+                                                    {isPendingReview && (
+                                                        <button
+                                                            type="button"
+                                                            className="w-full mt-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold py-2.5 px-4 rounded-lg transition-colors"
+                                                            onClick={async () => {
+                                                                try {
+                                                                    const aptId = (initialData as any)?.id || fullAppointment?.id;
+                                                                    await api.post(`/admin/appointments/${aptId}/approve-payment`);
+                                                                    // Refresh the appointment data
+                                                                    if (aptId) {
+                                                                        const resp = await api.get(`/admin/appointments/${aptId}`);
+                                                                        setFullAppointment(resp.data);
+                                                                    }
+                                                                } catch (err) {
+                                                                    console.error('Error approving payment:', err);
+                                                                }
+                                                            }}
+                                                        >
+                                                            ✅ Aprobar pago manualmente
+                                                        </button>
+                                                    )}
                                                 </div>
                                             );
                                         } catch { return null; }

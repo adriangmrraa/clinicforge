@@ -4593,6 +4593,23 @@ async def verify_payment_receipt(
             return f"✅ Comprobante verificado correctamente! Tu turno de {treatment_display} el {fecha} con {apt['prof_name'] or 'el profesional'} queda CONFIRMADO. Te esperamos! 😊{overpaid_msg}"
 
         elif not holder_match:
+            # Save failed attempt for manual review
+            failed_data = json.dumps({
+                "status": "pending_review",
+                "failure_reason": "holder_mismatch",
+                "amount_detected": amount_value,
+                "amount_expected": expected_amount,
+                "total_paid": total_paid,
+                "holder_match": False,
+                "amount_match": amount_match,
+                "receipt_file_path": receipt_file_path,
+                "receipt_doc_id": last_doc["id"] if last_doc else None,
+                "submitted_at": datetime.now(tz.utc).isoformat(),
+            })
+            await db.pool.execute(
+                "UPDATE appointments SET payment_receipt_data = $1::jsonb WHERE id = $2",
+                failed_data, apt['id']
+            )
             # Notify clinic via email
             try:
                 tenant_info = await db.pool.fetchrow("SELECT derivation_email, clinic_name FROM tenants WHERE id = $1", tenant_id)
@@ -4648,7 +4665,23 @@ async def verify_payment_receipt(
                 f"[INTERNAL_VERIFICATION_FAILED:amount_underpaid]"
             )
 
-        # Generic failure — also notify clinic
+        # Generic failure — save attempt + notify clinic
+        failed_data = json.dumps({
+            "status": "pending_review",
+            "failure_reason": "unknown",
+            "amount_detected": amount_value,
+            "amount_expected": expected_amount,
+            "total_paid": total_paid,
+            "holder_match": holder_match,
+            "amount_match": amount_match,
+            "receipt_file_path": receipt_file_path,
+            "receipt_doc_id": last_doc["id"] if last_doc else None,
+            "submitted_at": datetime.now(tz.utc).isoformat(),
+        })
+        await db.pool.execute(
+            "UPDATE appointments SET payment_receipt_data = $1::jsonb WHERE id = $2",
+            failed_data, apt['id']
+        )
         try:
             tenant_info = await db.pool.fetchrow("SELECT derivation_email, clinic_name FROM tenants WHERE id = $1", tenant_id)
             if tenant_info and tenant_info.get("derivation_email"):
