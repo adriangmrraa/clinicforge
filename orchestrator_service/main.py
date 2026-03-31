@@ -4122,7 +4122,7 @@ async def verify_payment_receipt(
                 """
                 SELECT a.id, a.status, a.billing_amount, a.payment_status, a.appointment_datetime,
                        a.appointment_type, a.professional_id, a.payment_receipt_data,
-                       p.first_name, p.last_name,
+                       p.first_name, p.last_name, p.email,
                        prof.first_name as prof_name, prof.consultation_price as prof_price,
                        COALESCE(tt.name, a.appointment_type, 'consulta') as appointment_name
                 FROM appointments a
@@ -4141,7 +4141,7 @@ async def verify_payment_receipt(
                 """
                 SELECT a.id, a.status, a.billing_amount, a.payment_status, a.appointment_datetime,
                        a.appointment_type, a.professional_id, a.payment_receipt_data,
-                       p.first_name, p.last_name,
+                       p.first_name, p.last_name, p.email,
                        prof.first_name as prof_name, prof.consultation_price as prof_price,
                        COALESCE(tt.name, a.appointment_type, 'consulta') as appointment_name
                 FROM appointments a
@@ -4552,6 +4552,44 @@ async def verify_payment_receipt(
             treatment_display = (
                 apt.get("appointment_name") or apt.get("appointment_type") or "consulta"
             )
+
+            # Send payment confirmation email if patient has email
+            patient_email = apt.get("email")
+            if patient_email and patient_email.strip():
+                try:
+                    appointment_date = apt_dt_arg.strftime("%d/%m/%Y")
+                    appointment_time = apt_dt_arg.strftime("%H:%M")
+                    amount = amount_value or total_paid or expected_amount
+                    amount_str = str(int(amount)) if amount else "0"
+
+                    email_sent = email_service.send_payment_email(
+                        to_email=patient_email.strip(),
+                        country_code=tenant["country_code"],
+                        patient_name=patient_name,
+                        clinic_name=tenant["clinic_name"],
+                        appointment_date=appointment_date,
+                        appointment_time=appointment_time,
+                        treatment=treatment_display,
+                        amount=amount_str,
+                        payment_method="Transferencia bancaria",
+                        clinic_address=tenant.get("address") or "",
+                        clinic_phone=tenant.get("phone") or "",
+                    )
+                    if email_sent:
+                        logger.info(
+                            f"📧 Payment confirmation email sent to {patient_email}"
+                        )
+                    else:
+                        logger.warning(
+                            f"⚠️ Failed to send payment confirmation email to {patient_email}"
+                        )
+                except Exception as e:
+                    logger.error(f"❌ Error sending payment email: {e}")
+            else:
+                logger.warning(
+                    f"⚠️ Patient {patient_name} has no email, skipping payment confirmation email"
+                )
+
             return f"✅ Comprobante verificado correctamente! Tu turno de {treatment_display} el {fecha} con {apt['prof_name'] or 'el profesional'} queda CONFIRMADO. Te esperamos! 😊{overpaid_msg}"
 
         elif not holder_match:
@@ -5213,7 +5251,7 @@ REGLAS:
    → La seña es importante pero NO bloqueante. El turno existe, el paciente puede pagar después.
 
 PAGO DE TURNOS EXISTENTES (cuando el paciente quiere pagar un turno YA agendado):
-list_my_appointments ahora muestra: seña:{status}({monto})|consulta_prof:{valor}|tratamiento:{precio}
+list_my_appointments ahora muestra: seña:ESTADO(MONTO)|consulta_prof:VALOR|tratamiento:PRECIO
 
 CÁLCULO DE LA SEÑA — CADENA DE PRIORIDAD:
   1ro: consulta_prof (consultation_price del profesional asignado al turno) → seña = 50% de ese valor
