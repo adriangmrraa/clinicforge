@@ -2216,10 +2216,12 @@ async def list_my_appointments():
         rows = await db.pool.fetch("""
             SELECT a.appointment_datetime, a.status, a.appointment_type,
                    p_prof.first_name || ' ' || COALESCE(p_prof.last_name, '') as professional_name,
-                   a.payment_status, a.billing_amount
+                   a.payment_status, a.billing_amount,
+                   tt.base_price as treatment_price
             FROM appointments a
             JOIN patients p ON a.patient_id = p.id
             LEFT JOIN professionals p_prof ON a.professional_id = p_prof.id
+            LEFT JOIN treatment_types tt ON a.appointment_type = tt.code AND tt.tenant_id = p.tenant_id
             WHERE p.tenant_id = $1 AND REGEXP_REPLACE(p.phone_number, '[^0-9]', '', 'g') = $2
             ORDER BY a.appointment_datetime DESC
         """, tenant_id, phone_digits)
@@ -2239,7 +2241,9 @@ async def list_my_appointments():
             pay = r.get('payment_status') or 'pending'
             amt = r.get('billing_amount')
             seña = f"${int(amt)}" if amt else "—"
-            line = f"{fecha}|{tipo}|{prof}|{st}|seña:{pay}({seña})"
+            tprice = r.get('treatment_price')
+            precio_trat = f"${int(tprice)}" if tprice and float(tprice) > 0 else "—"
+            line = f"{fecha}|{tipo}|{prof}|{st}|seña:{pay}({seña})|tratamiento:{precio_trat}"
             if dt >= now:
                 upcoming.append(line)
             else:
@@ -3721,12 +3725,27 @@ REGLAS:
    → Pasar IGUAL al MOMENTO 2 (cómo nos conociste + anamnesis). No bloquear el flujo por la seña.
    → La seña es importante pero NO bloqueante. El turno existe, el paciente puede pagar después.
 
-PAGO DE SEÑA PENDIENTE (cuando el paciente quiere pagar un turno YA agendado):
-Si list_my_appointments muestra un turno con seña:pending, y el paciente dice que quiere pagar:
-1. Decile el monto de la seña (billing_amount del turno, o 50% del valor de consulta si no hay monto).
-2. Compartí los datos bancarios de la sección DATOS BANCARIOS de arriba (alias, CBU, titular).
-3. Pedile que envíe el comprobante por el chat una vez que transfiera.
-4. Cuando envíe la imagen, usá verify_payment_receipt para verificar.
+PAGO DE TURNOS EXISTENTES (cuando el paciente quiere pagar un turno YA agendado):
+list_my_appointments ahora muestra: seña:{status}({monto})|tratamiento:{precio}
+Hay 3 escenarios:
+
+ESCENARIO A — PAGAR SEÑA:
+Si el paciente dice "quiero pagar la seña":
+1. Monto = billing_amount del turno (o 50% del valor de consulta si no hay monto).
+2. Compartí datos bancarios (alias, CBU, titular de la sección DATOS BANCARIOS).
+3. Pedile el comprobante → verificar con verify_payment_receipt.
+
+ESCENARIO B — PAGAR TRATAMIENTO COMPLETO:
+Si el paciente dice "quiero pagar el tratamiento completo" o "pagar todo":
+1. Monto = el campo "tratamiento:" del turno (es el base_price del treatment_type).
+2. Compartí datos bancarios.
+3. Decile: "El tratamiento completo es de ${tratamiento}. Con este pago ya no necesitás la seña."
+4. Pedile el comprobante → verificar con verify_payment_receipt.
+IMPORTANTE: Si paga tratamiento completo, la seña queda cubierta. NO pedir seña adicional.
+
+ESCENARIO C — SI NO QUEDA CLARO:
+Preguntale: "¿Querés pagar la seña (${monto_seña}) o el tratamiento completo (${precio_tratamiento})?"
+
 NO necesitás ninguna tool extra — los datos bancarios YA están en tu contexto.
 
 VERIFICACIÓN DE COMPROBANTE (cuando el paciente envía imagen/PDF):
