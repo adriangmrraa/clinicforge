@@ -129,11 +129,10 @@ export default function PatientDetail() {
 
   useEffect(() => {
     const jwtToken = localStorage.getItem('access_token');
-    const adminToken = localStorage.getItem('ADMIN_TOKEN');
-    
+
     socketRef.current = io(BACKEND_URL, {
       transports: ['websocket', 'polling'],
-      auth: { token: jwtToken || '', adminToken: adminToken || '' },
+      auth: { token: jwtToken || '' },
     });
 
     socketRef.current.on('PATIENT_UPDATED', (payload: { patient_id?: number; phone?: string }) => {

@@ -337,14 +337,13 @@ export default function AgendaView() {
   // === EFECTO 2: Socket.IO — corre UNA SOLA VEZ, sin depender de fetchData ===
   useEffect(() => {
     const jwtToken = localStorage.getItem('access_token');
-    const adminToken = localStorage.getItem('ADMIN_TOKEN');
     socketRef.current = io(BACKEND_URL, {
       transports: ['websocket', 'polling'],
       reconnection: true,
       reconnectionAttempts: 3,
       reconnectionDelay: 5000,
       reconnectionDelayMax: 15000,
-      auth: { token: jwtToken || '', adminToken: adminToken || '' },
+      auth: { token: jwtToken || '' },
     });
 
     // fetchDataRef siempre apunta a la versión más reciente de fetchData (sin re-suscribir)
