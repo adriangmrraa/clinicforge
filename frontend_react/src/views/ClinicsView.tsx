@@ -1044,8 +1044,45 @@ export default function ClinicsView() {
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                     <div>
                                         <label className="text-xs font-semibold text-white/60">{t('clinics.faq_category')}</label>
-                                        <input type="text" value={faqForm.category} onChange={e => setFaqForm({ ...faqForm, category: e.target.value })}
-                                            className="w-full px-3 py-1.5 bg-white/[0.04] border border-white/[0.08] rounded-lg text-sm text-white mt-1" placeholder="Ej: Pagos, General, Tratamientos" />
+                                        <select value={faqForm.category} onChange={e => setFaqForm({ ...faqForm, category: e.target.value })}
+                                            className="w-full px-3 py-1.5 bg-[#0d1117] border border-white/[0.08] rounded-lg text-sm text-white mt-1 [&>option]:bg-[#0d1117] [&>optgroup]:bg-[#0d1117] [&>optgroup]:text-white/40 [&>optgroup]:font-bold">
+                                            <optgroup label="Información general">
+                                                <option value="General">General</option>
+                                                <option value="Ubicación y Horarios">Ubicación y Horarios</option>
+                                                <option value="Estacionamiento y Acceso">Estacionamiento y Acceso</option>
+                                            </optgroup>
+                                            <optgroup label="Comercial">
+                                                <option value="Precios y Costos">Precios y Costos</option>
+                                                <option value="Medios de Pago">Medios de Pago</option>
+                                                <option value="Financiación">Financiación</option>
+                                                <option value="Promociones">Promociones</option>
+                                            </optgroup>
+                                            <optgroup label="Obras Sociales">
+                                                <option value="Obras Sociales">Obras Sociales</option>
+                                                <option value="Coseguros">Coseguros</option>
+                                                <option value="Autorizaciones">Autorizaciones</option>
+                                            </optgroup>
+                                            <optgroup label="Tratamientos">
+                                                <option value="Tratamientos Generales">Tratamientos Generales</option>
+                                                <option value="Implantes y Prótesis">Implantes y Prótesis</option>
+                                                <option value="Estética Dental">Estética Dental</option>
+                                                <option value="Ortodoncia">Ortodoncia</option>
+                                                <option value="Cirugía">Cirugía</option>
+                                                <option value="Blanqueamiento">Blanqueamiento</option>
+                                            </optgroup>
+                                            <optgroup label="Experiencia del paciente">
+                                                <option value="Primera Consulta">Primera Consulta</option>
+                                                <option value="Cuidados Post-tratamiento">Cuidados Post-tratamiento</option>
+                                                <option value="Emergencias">Emergencias</option>
+                                                <option value="Garantías">Garantías</option>
+                                            </optgroup>
+                                            <optgroup label="Estrategia de ventas">
+                                                <option value="Diferenciadores">Diferenciadores</option>
+                                                <option value="Tecnología">Tecnología</option>
+                                                <option value="Casos de Éxito">Casos de Éxito</option>
+                                                <option value="Ventajas Competitivas">Ventajas Competitivas</option>
+                                            </optgroup>
+                                        </select>
                                     </div>
                                     <div>
                                         <label className="text-xs font-semibold text-white/60">{t('clinics.faq_order')}</label>
