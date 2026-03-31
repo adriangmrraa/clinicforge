@@ -3721,6 +3721,14 @@ REGLAS:
    → Pasar IGUAL al MOMENTO 2 (cómo nos conociste + anamnesis). No bloquear el flujo por la seña.
    → La seña es importante pero NO bloqueante. El turno existe, el paciente puede pagar después.
 
+PAGO DE SEÑA PENDIENTE (cuando el paciente quiere pagar un turno YA agendado):
+Si list_my_appointments muestra un turno con seña:pending, y el paciente dice que quiere pagar:
+1. Decile el monto de la seña (billing_amount del turno, o 50% del valor de consulta si no hay monto).
+2. Compartí los datos bancarios de la sección DATOS BANCARIOS de arriba (alias, CBU, titular).
+3. Pedile que envíe el comprobante por el chat una vez que transfiera.
+4. Cuando envíe la imagen, usá verify_payment_receipt para verificar.
+NO necesitás ninguna tool extra — los datos bancarios YA están en tu contexto.
+
 VERIFICACIÓN DE COMPROBANTE (cuando el paciente envía imagen/PDF):
 6. Usá 'verify_payment_receipt' pasando:
    - receipt_description: la descripción completa de la imagen
@@ -4951,10 +4959,39 @@ async def serve_uploads(
     )
 
 
-@app.get("/health", tags=["Health"])
-async def health():
-    """Estado del servicio. Público; usado por orquestadores y monitoreo."""
-    return {"status": "ok", "service": "dental-orchestrator"}
+@app.get("/health/live", tags=["Health"])
+async def health_live():
+    """Liveness probe. Siempre 200 si el proceso está vivo."""
+    return {"status": "alive"}
+
+@app.get("/health/ready", tags=["Health"])
+@app.get("/health", tags=["Health"], include_in_schema=False)
+async def health_ready():
+    """Readiness probe. Verifica DB y Redis con timeout de 3s."""
+    checks = {"db": "ok", "redis": "ok"}
+    is_ready = True
+
+    # Check PostgreSQL
+    try:
+        await asyncio.wait_for(db.pool.fetchval("SELECT 1"), timeout=3.0)
+    except Exception as e:
+        checks["db"] = f"error: {str(e)[:100]}"
+        is_ready = False
+
+    # Check Redis
+    try:
+        from services.relay import get_redis
+        r = get_redis()
+        await asyncio.wait_for(r.ping(), timeout=3.0)
+    except Exception as e:
+        checks["redis"] = f"error: {str(e)[:100]}"
+        is_ready = False
+
+    status_code = 200 if is_ready else 503
+    return JSONResponse(
+        status_code=status_code,
+        content={"status": "ready" if is_ready else "degraded", **checks}
+    )
 
 # --- ENDPOINTS DEL SISTEMA MEJORADO ---
 @app.get("/api/agent/metrics", tags=["Agent Analytics"])
