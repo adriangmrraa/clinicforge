@@ -6778,7 +6778,7 @@ async def list_derivation_rules(tenant_id: int = Depends(get_resolved_tenant_id)
                dr.target_type, dr.target_professional_id, dr.priority_order,
                dr.is_active, dr.description, dr.created_at, dr.updated_at,
                p.first_name AS professional_first_name, p.last_name AS professional_last_name
-        FROM derivation_rules dr
+        FROM professional_derivation_rules dr
         LEFT JOIN professionals p ON dr.target_professional_id = p.id
         WHERE dr.tenant_id = $1
         ORDER BY dr.priority_order, dr.id
@@ -6820,7 +6820,7 @@ async def create_derivation_rule(
 
     # Max rules check
     count = await db.pool.fetchval(
-        "SELECT COUNT(*) FROM derivation_rules WHERE tenant_id = $1",
+        "SELECT COUNT(*) FROM professional_derivation_rules WHERE tenant_id = $1",
         tenant_id,
     )
     if count >= MAX_DERIVATION_RULES:
@@ -6831,7 +6831,7 @@ async def create_derivation_rule(
 
     row = await db.pool.fetchrow(
         """
-        INSERT INTO derivation_rules (
+        INSERT INTO professional_derivation_rules (
             tenant_id, rule_name, patient_condition, treatment_categories,
             target_type, target_professional_id, priority_order, is_active,
             description, created_at, updated_at
@@ -6867,7 +6867,7 @@ async def update_derivation_rule(
 
     result = await db.pool.execute(
         """
-        UPDATE derivation_rules SET
+        UPDATE professional_derivation_rules SET
             rule_name = $1, patient_condition = $2, treatment_categories = $3::jsonb,
             target_type = $4, target_professional_id = $5, priority_order = $6,
             is_active = $7, description = $8, updated_at = NOW()
@@ -6901,7 +6901,7 @@ async def delete_derivation_rule(
 ):
     """Eliminar regla de derivación. Aislado por tenant_id (Regla de Oro)."""
     result = await db.pool.execute(
-        "DELETE FROM derivation_rules WHERE id = $1 AND tenant_id = $2",
+        "DELETE FROM professional_derivation_rules WHERE id = $1 AND tenant_id = $2",
         rule_id,
         tenant_id,
     )
@@ -6922,7 +6922,7 @@ async def toggle_derivation_rule_active(
 ):
     """Flip is_active de regla de derivación. Aislado por tenant_id (Regla de Oro)."""
     row = await db.pool.fetchrow(
-        "SELECT id, is_active FROM derivation_rules WHERE id = $1 AND tenant_id = $2",
+        "SELECT id, is_active FROM professional_derivation_rules WHERE id = $1 AND tenant_id = $2",
         rule_id,
         tenant_id,
     )
@@ -6930,7 +6930,7 @@ async def toggle_derivation_rule_active(
         raise HTTPException(status_code=404, detail="Regla de derivación no encontrada")
     new_value = not row["is_active"]
     await db.pool.execute(
-        "UPDATE derivation_rules SET is_active = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3",
+        "UPDATE professional_derivation_rules SET is_active = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3",
         new_value,
         rule_id,
         tenant_id,
@@ -6960,7 +6960,7 @@ async def reorder_derivation_rules(
     """Batch update priority_order de reglas de derivación. Aislado por tenant_id (Regla de Oro)."""
     for item in body.order:
         await db.pool.execute(
-            "UPDATE derivation_rules SET priority_order = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3",
+            "UPDATE professional_derivation_rules SET priority_order = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3",
             item.priority_order,
             item.id,
             tenant_id,

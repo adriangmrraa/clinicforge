@@ -156,6 +156,7 @@ export default function ClinicsView() {
     });
     const [derivationSaving, setDerivationSaving] = useState(false);
     const [derivationProfessionals, setDerivationProfessionals] = useState<{id: number; first_name: string; last_name: string}[]>([]);
+    const [derivationTreatments, setDerivationTreatments] = useState<{code: string; name: string; priority: string}[]>([]);
 
     // FAQ state
     const [faqModalOpen, setFaqModalOpen] = useState(false);
@@ -427,12 +428,15 @@ export default function ClinicsView() {
     const fetchDerivation = async () => {
         setDerivationLoading(true);
         try {
-            const [rulesResp, profResp] = await Promise.all([
+            // Fetch independently so one failure doesn't block the others
+            const [rulesResp, profResp, treatResp] = await Promise.allSettled([
                 api.get('/admin/derivation-rules'),
                 api.get('/admin/professionals'),
+                api.get('/admin/treatment-types'),
             ]);
-            setDerivationRules(rulesResp.data);
-            setDerivationProfessionals(Array.isArray(profResp.data) ? profResp.data : []);
+            if (rulesResp.status === 'fulfilled') setDerivationRules(rulesResp.value.data);
+            if (profResp.status === 'fulfilled') setDerivationProfessionals(Array.isArray(profResp.value.data) ? profResp.value.data : []);
+            if (treatResp.status === 'fulfilled') setDerivationTreatments(Array.isArray(treatResp.value.data) ? treatResp.value.data.map((t: any) => ({ code: t.code, name: t.name, priority: t.priority || 'medium' })) : []);
         } catch (err) { console.error('Error cargando reglas de derivación:', err); }
         finally { setDerivationLoading(false); }
     };
@@ -1152,13 +1156,34 @@ export default function ClinicsView() {
                                     <option value="any">{t('settings.derivation.condition.any')}</option>
                                 </select>
                             </div>
-                            <div className="space-y-1">
+                            <div className="space-y-2">
                                 <label className="text-sm font-semibold text-white/60">{t('settings.derivation.fields.categories')}</label>
-                                <input type="text" value={(derivationForm.treatment_categories || []).join(', ')}
-                                    onChange={e => setDerivationForm(p => ({ ...p, treatment_categories: e.target.value.split(',').map(s => s.trim()).filter(Boolean) }))}
-                                    placeholder={t('settings.derivation.fields.categoriesHelper')}
-                                    className="w-full px-4 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white placeholder-white/20 focus:ring-2 focus:ring-blue-500 outline-none text-sm" />
-                                <p className="text-xs text-white/30">{t('settings.derivation.fields.categoriesHelper')}</p>
+                                <div className="max-h-48 overflow-y-auto border border-white/[0.08] rounded-lg p-3 space-y-1 bg-white/[0.02]">
+                                    <label className="flex items-center gap-2 cursor-pointer p-1.5 rounded hover:bg-white/[0.04]">
+                                        <input type="checkbox" checked={(derivationForm.treatment_categories || []).includes('*')}
+                                            onChange={e => {
+                                                if (e.target.checked) setDerivationForm(p => ({ ...p, treatment_categories: ['*'] }));
+                                                else setDerivationForm(p => ({ ...p, treatment_categories: [] }));
+                                            }}
+                                            className="h-4 w-4 rounded border-white/20 text-blue-500 focus:ring-blue-500" />
+                                        <span className="text-sm font-bold text-white/80">Todos los tratamientos</span>
+                                    </label>
+                                    {!(derivationForm.treatment_categories || []).includes('*') && derivationTreatments.map(treat => (
+                                        <label key={treat.code} className="flex items-center gap-2 cursor-pointer p-1.5 rounded hover:bg-white/[0.04]">
+                                            <input type="checkbox" checked={(derivationForm.treatment_categories || []).includes(treat.code)}
+                                                onChange={e => {
+                                                    const cats = derivationForm.treatment_categories || [];
+                                                    if (e.target.checked) setDerivationForm(p => ({ ...p, treatment_categories: [...cats, treat.code] }));
+                                                    else setDerivationForm(p => ({ ...p, treatment_categories: cats.filter(c => c !== treat.code) }));
+                                                }}
+                                                className="h-4 w-4 rounded border-white/20 text-blue-500 focus:ring-blue-500" />
+                                            <span className="text-sm text-white/70">{treat.name}</span>
+                                            {treat.priority === 'high' && <span className="text-[9px] px-1.5 py-0.5 rounded bg-red-500/10 text-red-400 font-bold">ALTA</span>}
+                                            {treat.priority === 'medium-high' && <span className="text-[9px] px-1.5 py-0.5 rounded bg-orange-500/10 text-orange-400 font-bold">MEDIA-ALTA</span>}
+                                        </label>
+                                    ))}
+                                </div>
+                                {derivationTreatments.length === 0 && <p className="text-xs text-white/30">No hay tratamientos configurados aún.</p>}
                             </div>
                             <div className="space-y-2">
                                 <label className="text-sm font-semibold text-white/60">{t('settings.derivation.fields.targetType')}</label>
