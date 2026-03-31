@@ -9,7 +9,7 @@ import sqlalchemy as sa
 from sqlalchemy import text
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 
-revision = 'a1b2c3d4e5f6'
+revision = 'q2r3s4t5u6v7'
 down_revision = 'p1q2r3s4t5u6'
 branch_labels = None
 depends_on = None
