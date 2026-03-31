@@ -1,7 +1,7 @@
 from sqlalchemy import (
     Column, Integer, String, Boolean, DateTime, ForeignKey, Text,
     BigInteger, DECIMAL, Date, Float, CheckConstraint, UniqueConstraint,
-    ForeignKeyConstraint, Index, Numeric
+    ForeignKeyConstraint, Index, Numeric, text
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID, ARRAY, TIMESTAMP
 from sqlalchemy.orm import relationship, declarative_base
