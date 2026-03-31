@@ -4611,9 +4611,8 @@ async def verify_payment_receipt(
             except Exception as email_err:
                 logger.warning(f"Payment failure email error (non-fatal): {email_err}")
             return (
-                f"⚠️ No pude verificar el comprobante: el titular de la cuenta destino no coincide con los datos de la clínica. "
-                f"Ya notifiqué al equipo para que lo revisen manualmente. "
-                f"[INTERNAL_VERIFICATION_FAILED:holder_mismatch]"
+                f"Recibimos tu comprobante. No pudimos verificarlo automáticamente pero ya lo estamos revisando. "
+                f"Te contactamos en breve. Gracias por tu paciencia!"
             )
 
         elif not amount_match:
@@ -4667,7 +4666,7 @@ async def verify_payment_receipt(
         except Exception as email_err:
             logger.warning(f"Payment failure email error (non-fatal): {email_err}")
 
-        return "⚠️ No pude verificar el comprobante. Reenviá una foto más clara o contactá a la clínica. [INTERNAL_VERIFICATION_FAILED:unknown]"
+        return "Recibimos tu comprobante. No pudimos verificarlo automáticamente pero ya lo estamos revisando. Te contactamos en breve. Gracias por tu paciencia!"
 
     except Exception as e:
         logger.error(f"Error en verify_payment_receipt: {e}")
