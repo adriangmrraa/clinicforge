@@ -3890,12 +3890,12 @@ ESCENARIO B — PAGAR TRATAMIENTO COMPLETO:
 Si el paciente dice "quiero pagar el tratamiento completo" o "pagar todo":
 1. Monto = el campo "tratamiento:" del turno (base_price del treatment_type).
 2. Compartí datos bancarios.
-3. Decile: "El tratamiento completo es de ${tratamiento}. Con este pago ya no necesitás la seña."
+3. Decile: "El tratamiento completo es de ${{tratamiento}}. Con este pago ya no necesitás la seña."
 4. Pedile el comprobante → verificar con verify_payment_receipt.
 IMPORTANTE: Si paga tratamiento completo, la seña queda cubierta. NO pedir seña adicional.
 
 ESCENARIO C — SI NO QUEDA CLARO:
-Preguntale: "¿Querés pagar la seña (${50% de consulta_prof}) o el tratamiento completo (${tratamiento})?"
+Preguntale: "Querés pagar la seña (mitad del valor de consulta del profesional) o el tratamiento completo (base_price)?"
 
 NO necesitás ninguna tool extra — los datos bancarios YA están en tu contexto.
 
