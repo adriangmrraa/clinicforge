@@ -2224,17 +2224,18 @@ async def list_my_appointments():
         """, tenant_id, phone_digits)
         logger.info(f"list_my_appointments phone_digits={phone_digits} tenant={tenant_id} found={len(rows)}")
         if not rows:
-            return "No tenés turnos registrados. ¿Querés que busquemos disponibilidad para agendar?"
+            return "Sin turnos. ¿Agendamos?"
         upcoming = []
         past = []
         for r in rows:
             dt = r['appointment_datetime']
             if hasattr(dt, 'astimezone'):
                 dt = dt.astimezone(ARG_TZ)
-            fecha_hora = dt.strftime("%d/%m/%Y %H:%M") if hasattr(dt, 'strftime') else str(dt)
-            prof = (r['professional_name'] or '').strip() or "Profesional"
-            status_label = r['status'] or 'scheduled'
-            line = f"• {fecha_hora} — {r['appointment_type'] or 'consulta'} con {prof} ({status_label})"
+            fecha = dt.strftime("%d/%m/%y %H:%M")
+            prof = (r['professional_name'] or '').strip().split()[0] if r.get('professional_name') else "—"
+            tipo = r['appointment_type'] or 'consulta'
+            st = r['status'] or 'scheduled'
+            line = f"{fecha}|{tipo}|{prof}|{st}"
             if dt >= now:
                 upcoming.append(line)
             else:
@@ -2242,13 +2243,13 @@ async def list_my_appointments():
         result = ""
         if upcoming:
             upcoming.reverse()
-            result += "📅 Próximos turnos:\n" + "\n".join(upcoming)
+            result += "PRÓXIMOS:" + ";".join(upcoming)
         if past:
             if result:
-                result += "\n\n"
-            result += "📋 Turnos anteriores:\n" + "\n".join(past[:10])
-            if len(past) > 10:
-                result += f"\n(y {len(past) - 10} turnos anteriores más)"
+                result += "\n"
+            result += "ANTERIORES:" + ";".join(past[:5])
+            if len(past) > 5:
+                result += f";+{len(past) - 5}más"
         return result
     except Exception as e:
         logger.error(f"Error en list_my_appointments: {e}")
