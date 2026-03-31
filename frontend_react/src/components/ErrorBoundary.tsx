@@ -1,5 +1,5 @@
 import { Component, type ReactNode, type ErrorInfo } from 'react';
-import { useTranslation } from 'react-i18next';
+import { useTranslation } from '../context/LanguageContext';
 
 interface Props {
   children: ReactNode;
