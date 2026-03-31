@@ -135,6 +135,7 @@ export default function ClinicsView() {
 
     // Tab state
     const [activeTab, setActiveTab] = useState<'clinics' | 'insurance' | 'derivation'>('clinics');
+    const [selectedClinicId, setSelectedClinicId] = useState<number | null>(null);
 
     // Insurance state
     const [insuranceProviders, setInsuranceProviders] = useState<InsuranceProvider[]>([]);
@@ -170,9 +171,16 @@ export default function ClinicsView() {
 
     useEffect(() => { fetchClinicas(); }, []);
     useEffect(() => {
+        // Auto-select first clinic when clinics load and none selected
+        if (clinicas.length > 0 && selectedClinicId === null) {
+            setSelectedClinicId(clinicas[0].id);
+        }
+    }, [clinicas]);
+    useEffect(() => {
+        if (!selectedClinicId) return;
         if (activeTab === 'insurance') fetchInsurance();
         if (activeTab === 'derivation') fetchDerivation();
-    }, [activeTab]);
+    }, [activeTab, selectedClinicId]);
 
     const fetchClinicas = async () => {
         try {
@@ -374,10 +382,13 @@ export default function ClinicsView() {
     };
 
     /* ── Insurance Handlers ── */
+    const tenantHeaders = selectedClinicId ? { headers: { 'X-Tenant-ID': String(selectedClinicId) } } : {};
+
     const fetchInsurance = async () => {
+        if (!selectedClinicId) return;
         setInsuranceLoading(true);
         try {
-            const resp = await api.get('/admin/insurance-providers');
+            const resp = await api.get('/admin/insurance-providers', tenantHeaders);
             setInsuranceProviders(resp.data);
         } catch (err) { console.error('Error cargando obras sociales:', err); }
         finally { setInsuranceLoading(false); }
@@ -396,43 +407,52 @@ export default function ClinicsView() {
 
     const handleInsuranceSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (!selectedClinicId) return;
         setInsuranceSaving(true);
+        const th = { headers: { 'X-Tenant-ID': String(selectedClinicId) } };
         try {
             if (editingInsurance) {
-                await api.put(`/admin/insurance-providers/${editingInsurance.id}`, insuranceForm);
+                await api.put(`/admin/insurance-providers/${editingInsurance.id}`, insuranceForm, th);
             } else {
-                await api.post('/admin/insurance-providers', insuranceForm);
+                await api.post('/admin/insurance-providers', insuranceForm, th);
             }
             setInsuranceModalOpen(false);
             await fetchInsurance();
-        } catch (err) { console.error('Error guardando obra social:', err); }
+        } catch (err: any) {
+            const detail = err?.response?.data?.detail;
+            if (detail) alert(detail);
+            console.error('Error guardando obra social:', err);
+        }
         finally { setInsuranceSaving(false); }
     };
 
     const handleInsuranceDelete = async (id: number, name: string) => {
         if (!window.confirm(t('settings.insurance.deleteConfirm').replace('{name}', name))) return;
+        const th = { headers: { 'X-Tenant-ID': String(selectedClinicId) } };
         try {
-            await api.delete(`/admin/insurance-providers/${id}`);
+            await api.delete(`/admin/insurance-providers/${id}`, th);
             await fetchInsurance();
         } catch (err) { console.error('Error eliminando obra social:', err); }
     };
 
     const handleInsuranceToggle = async (id: number) => {
+        const th = { headers: { 'X-Tenant-ID': String(selectedClinicId) } };
         try {
-            await api.patch(`/admin/insurance-providers/${id}/toggle-active`);
+            await api.patch(`/admin/insurance-providers/${id}/toggle-active`, null, th);
             await fetchInsurance();
         } catch (err) { console.error('Error toggling obra social:', err); }
     };
 
     /* ── Derivation Handlers ── */
     const fetchDerivation = async () => {
+        if (!selectedClinicId) return;
         setDerivationLoading(true);
         try {
-            // Fetch independently so one failure doesn't block the others
+            const th = { headers: { 'X-Tenant-ID': String(selectedClinicId) } };
             const [rulesResp, profResp, treatResp] = await Promise.allSettled([
-                api.get('/admin/derivation-rules'),
-                api.get('/admin/professionals'),
-                api.get('/admin/treatment-types'),
+                api.get('/admin/derivation-rules', th),
+                api.get('/admin/professionals', th),
+                api.get('/admin/treatment-types', th),
             ]);
             if (rulesResp.status === 'fulfilled') setDerivationRules(rulesResp.value.data);
             if (profResp.status === 'fulfilled') setDerivationProfessionals(Array.isArray(profResp.value.data) ? profResp.value.data : []);
@@ -454,30 +474,38 @@ export default function ClinicsView() {
 
     const handleDerivationSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (!selectedClinicId) return;
         setDerivationSaving(true);
+        const th = { headers: { 'X-Tenant-ID': String(selectedClinicId) } };
         try {
             if (editingDerivation) {
-                await api.put(`/admin/derivation-rules/${editingDerivation.id}`, derivationForm);
+                await api.put(`/admin/derivation-rules/${editingDerivation.id}`, derivationForm, th);
             } else {
-                await api.post('/admin/derivation-rules', derivationForm);
+                await api.post('/admin/derivation-rules', derivationForm, th);
             }
             setDerivationModalOpen(false);
             await fetchDerivation();
-        } catch (err) { console.error('Error guardando regla:', err); }
+        } catch (err: any) {
+            const detail = err?.response?.data?.detail;
+            if (detail) alert(detail);
+            console.error('Error guardando regla:', err);
+        }
         finally { setDerivationSaving(false); }
     };
 
     const handleDerivationDelete = async (id: number) => {
         if (!window.confirm(t('alerts.confirm_delete_clinic'))) return;
+        const th = { headers: { 'X-Tenant-ID': String(selectedClinicId) } };
         try {
-            await api.delete(`/admin/derivation-rules/${id}`);
+            await api.delete(`/admin/derivation-rules/${id}`, th);
             await fetchDerivation();
         } catch (err) { console.error('Error eliminando regla:', err); }
     };
 
     const handleDerivationToggle = async (id: number) => {
+        const th = { headers: { 'X-Tenant-ID': String(selectedClinicId) } };
         try {
-            await api.patch(`/admin/derivation-rules/${id}/toggle-active`);
+            await api.patch(`/admin/derivation-rules/${id}/toggle-active`, null, th);
             await fetchDerivation();
         } catch (err) { console.error('Error toggling regla:', err); }
     };
@@ -549,6 +577,23 @@ export default function ClinicsView() {
                     </button>
                 ))}
             </div>
+
+            {/* Clinic selector for insurance/derivation tabs */}
+            {activeTab !== 'clinics' && clinicas.length > 0 && (
+                <div className="flex items-center gap-3 bg-white/[0.03] border border-white/[0.06] rounded-xl px-4 py-3">
+                    <Building2 size={16} className="text-white/40" />
+                    <span className="text-sm text-white/50 font-medium">{t('clinics.title')}:</span>
+                    <select
+                        value={selectedClinicId || ''}
+                        onChange={e => setSelectedClinicId(Number(e.target.value))}
+                        className="px-3 py-1.5 bg-white/[0.06] border border-white/[0.08] rounded-lg text-white text-sm font-semibold focus:ring-2 focus:ring-blue-500 outline-none [&>option]:bg-[#0d1117]"
+                    >
+                        {clinicas.map(c => (
+                            <option key={c.id} value={c.id}>{c.clinic_name}</option>
+                        ))}
+                    </select>
+                </div>
+            )}
 
             {success && (
                 <div className="bg-green-500/10 text-green-400 p-3 rounded-lg flex items-center gap-2 border border-green-500/20 animate-fade-in">
