@@ -648,7 +648,103 @@
     "tip_migration": "Tip: Check the 006_treatment_config.sql migration",
     "assigned_professionals": "Assigned Professionals",
     "all_if_none": "If none selected, all professionals can perform it",
-    "all_professionals": "All professionals"
+    "all_professionals": "All professionals",
+    "instructions": {
+      "configureButton": "Configure Instructions",
+      "editButton": "Edit Instructions",
+      "configured": "Instructions configured",
+      "notConfigured": "No instructions configured",
+      "explanation": "The AI assistant will automatically send these instructions to the patient after scheduling an appointment. It is important to complete them correctly.",
+      "modalTitle": "Treatment Instructions",
+      "pre": {
+        "title": "Pre-treatment Instructions",
+        "helper": "The assistant will send this along with the appointment confirmation.",
+        "placeholder": "E.g.: Do not eat for 8 hours before..."
+      },
+      "post": {
+        "title": "Post-treatment Instructions",
+        "addButton": "Add instruction",
+        "timing": {
+          "immediate": "Immediate",
+          "24h": "After 24 hours",
+          "48h": "After 48 hours",
+          "72h": "After 72 hours",
+          "1w": "After 1 week",
+          "stitch_removal": "Stitch removal",
+          "custom": "Custom"
+        },
+        "days": "days",
+        "bookFollowup": "Suggest scheduling a follow-up appointment",
+        "contentPlaceholder": "Write the instructions for this moment..."
+      },
+      "followup": {
+        "title": "Automatic Follow-up Messages",
+        "inDevelopment": "Follow-up messages will be sent automatically after the appointment. This feature is under development.",
+        "addButton": "Add follow-up message",
+        "hoursAfter": "hours after",
+        "variables": "Available variables: {patient_name}, {treatment_name}, {appointment_date}, {professional_name}",
+        "messagePlaceholder": "Hi {patient_name}, how are you feeling after your {treatment_name}?"
+      },
+      "save": "Save instructions",
+      "cancel": "Cancel"
+    }
+  },
+  "settings": {
+    "insurance": {
+      "title": "Insurance Providers",
+      "addButton": "Add Insurance Provider",
+      "emptyState": "You haven't configured any insurance providers yet. Add the ones you accept so the assistant can respond automatically.",
+      "deleteConfirm": "Remove {name} from the catalog?",
+      "status": {
+        "accepted": "Accepted",
+        "restricted": "With restrictions",
+        "external_derivation": "External referral",
+        "rejected": "Not accepted"
+      },
+      "fields": {
+        "providerName": "Insurance provider name",
+        "status": "Status",
+        "restrictions": "Restrictions",
+        "externalTarget": "Refer to",
+        "requiresCopay": "Requires co-payment",
+        "copayNotes": "Co-payment details",
+        "aiTemplate": "Custom assistant response",
+        "aiTemplatePlaceholder": "Leave empty to use the default response"
+      },
+      "errors": {
+        "nameRequired": "Name is required",
+        "restrictionsRequired": "Restrictions are required for this status",
+        "externalTargetRequired": "Referral destination is required",
+        "duplicateName": "An insurance provider with that name already exists"
+      }
+    },
+    "derivation": {
+      "title": "Derivation",
+      "addButton": "Add Rule",
+      "explainer": "Derivation rules determine which professional is assigned to each patient based on treatment type. They are evaluated in priority order.",
+      "emptyState": "No derivation rules configured. The assistant will assign appointments without a professional filter.",
+      "maxRulesWarning": "Maximum 20 rules per clinic.",
+      "conflictWarning": "This rule may overlap with '{name}'. The one with the lower number will apply first.",
+      "condition": {
+        "new_patient": "New patient",
+        "existing_patient": "Existing patient",
+        "any": "Any patient"
+      },
+      "target": {
+        "specific_professional": "Specific professional",
+        "priority_professional": "Priority professional",
+        "team": "Team (no filter)"
+      },
+      "fields": {
+        "ruleName": "Rule name",
+        "patientCondition": "Patient condition",
+        "categories": "Treatment categories",
+        "categoriesHelper": "E.g.: surgery, implants, cleaning. Use * for all.",
+        "targetType": "Refer to",
+        "professional": "Professional",
+        "description": "Description (optional)"
+      }
+    }
   },
   "profile": {
     "title": "My Profile",
@@ -831,16 +927,7 @@
     "sign_medical_alta": "Sign medical onboarding",
     "general_fallback": "General",
     "view_schedules": "View schedules",
-    "edit_profile": "Edit profile",
-    "priority": {
-      "label": "Priority",
-      "high": "High",
-      "mediumHigh": "Medium-High",
-      "medium": "Medium",
-      "low": "Low"
-    },
-    "priorityProfessional": "Priority professional",
-    "priorityProfessionalDesc": "This professional will be prioritized for high-value appointment scheduling"
+    "edit_profile": "Edit profile"
   },
   "layout": {
     "app_title": "Dentalogic",

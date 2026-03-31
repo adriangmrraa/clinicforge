@@ -734,6 +734,34 @@ IMPORTANTE — REGLAS QUIRÚRGICAS:
             "required": ["query"],
         },
     },
+    # -------------------------------------------------------------------------
+    # L. Obras sociales y derivación (2)
+    # -------------------------------------------------------------------------
+    {
+        "type": "function",
+        "name": "consultar_obra_social",
+        "description": "Consultar si la clínica trabaja con una obra social específica y en qué condiciones.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "nombre": {
+                    "type": "string",
+                    "description": "Nombre de la obra social a consultar",
+                }
+            },
+            "required": ["nombre"],
+        },
+    },
+    {
+        "type": "function",
+        "name": "ver_reglas_derivacion",
+        "description": "Ver todas las reglas de derivación de pacientes configuradas en la clínica (quién atiende qué perfil de paciente).",
+        "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+    },
 ]
 
 
@@ -2253,6 +2281,12 @@ async def execute_nova_tool(
         # K. RAG / Knowledge Base
         elif name == "buscar_en_base_conocimiento":
             return await _buscar_en_base_conocimiento(args, tenant_id)
+
+        # L. Obras sociales y derivación
+        elif name == "consultar_obra_social":
+            return await _consultar_obra_social(args, tenant_id)
+        elif name == "ver_reglas_derivacion":
+            return await _ver_reglas_derivacion(tenant_id)
 
         # J. CRUD genérico
         elif name == "obtener_registros":
@@ -3812,3 +3846,118 @@ async def _table_exists(table_name: str) -> bool:
         return bool(exists)
     except Exception:
         return False
+
+
+# =============================================================================
+# L. OBRAS SOCIALES Y DERIVACIÓN TOOLS
+# =============================================================================
+
+async def _consultar_obra_social(args: Dict, tenant_id: int) -> str:
+    """Consulta si la clínica acepta una obra social y en qué condiciones."""
+    nombre = str(args.get("nombre", "")).strip()
+    if not nombre:
+        return "Necesito el nombre de la obra social a consultar."
+
+    try:
+        # 1. Try exact match (case-insensitive)
+        row = await db.pool.fetchrow(
+            "SELECT * FROM tenant_insurance_providers "
+            "WHERE tenant_id = $1 AND LOWER(provider_name) = LOWER($2) AND is_active = true",
+            tenant_id,
+            nombre,
+        )
+
+        # 2. If no exact match, try partial ILIKE
+        if not row:
+            rows = await db.pool.fetch(
+                "SELECT * FROM tenant_insurance_providers "
+                "WHERE tenant_id = $1 AND provider_name ILIKE $2 AND is_active = true",
+                tenant_id,
+                f"%{nombre}%",
+            )
+            if len(rows) == 1:
+                row = rows[0]
+            elif len(rows) > 1:
+                names = ", ".join(r["provider_name"] for r in rows)
+                return f"Encontré varias obras sociales similares: {names}. ¿Cuál querés consultar?"
+
+        # 3. No match
+        if not row:
+            return (
+                f"No hay información sobre '{nombre}' en el catálogo de obras sociales. "
+                "Consultá directamente con la clínica."
+            )
+
+        # 4. Build response
+        status = row["status"]
+        name = row["provider_name"]
+
+        if row.get("ai_response_template"):
+            return row["ai_response_template"]
+
+        if status == "accepted":
+            copay = " Requiere coseguro." if row.get("requires_copay") else ""
+            return f"Sí, la clínica trabaja con {name}.{copay}"
+        elif status == "restricted":
+            return f"La clínica trabaja con {name} con restricciones: {row.get('restrictions', 'consultar con la clínica')}."
+        elif status == "external_derivation":
+            target = row.get("external_target") or "un centro asociado"
+            return (
+                f"Para {name} trabajamos a través de {target}. "
+                "El paciente debe coordinar directamente con ellos."
+            )
+        else:  # rejected
+            return f"La clínica no trabaja con {name}."
+
+    except Exception as e:
+        logger.warning(f"_consultar_obra_social error (tabla puede no existir aún): {e}")
+        return (
+            f"No se pudo verificar la cobertura de '{nombre}' en este momento. "
+            "Verificá directamente con la clínica."
+        )
+
+
+async def _ver_reglas_derivacion(tenant_id: int) -> str:
+    """Retorna las reglas de derivación de pacientes configuradas."""
+    try:
+        rows = await db.pool.fetch(
+            """
+            SELECT pdr.rule_name, pdr.patient_condition, pdr.categories,
+                   pdr.priority_order, pdr.target_professional_id,
+                   p.first_name as prof_first, p.last_name as prof_last,
+                   p.specialty as prof_specialty
+            FROM professional_derivation_rules pdr
+            LEFT JOIN professionals p ON p.id = pdr.target_professional_id
+            WHERE pdr.tenant_id = $1 AND pdr.is_active = true
+            ORDER BY pdr.priority_order ASC, pdr.id ASC
+            """,
+            tenant_id,
+        )
+
+        if not rows:
+            return "No hay reglas de derivación configuradas para esta clínica."
+
+        lines = [f"Reglas de derivación ({len(rows)} regla(s)):"]
+        for i, r in enumerate(rows, start=1):
+            rule_name = r["rule_name"] or f"Regla {i}"
+            condition = r["patient_condition"] or "cualquier paciente"
+            categories = r.get("categories") or ""
+            cat_suffix = f" / Categorías: {categories}" if categories else ""
+
+            if r["target_professional_id"] and r["prof_first"]:
+                prof_name = f"{r['prof_first']} {r.get('prof_last', '')}".strip()
+                spec = f" ({r['prof_specialty']})" if r.get("prof_specialty") else ""
+                action = f"agendar con {prof_name}{spec} (ID: {r['target_professional_id']})"
+            else:
+                action = "sin filtro de profesional (equipo completo)"
+
+            lines.append(
+                f"  {i}. {rule_name}: {condition}{cat_suffix} → {action}"
+            )
+
+        lines.append("\nSi ninguna regla coincide → equipo disponible sin filtro.")
+        return "\n".join(lines)
+
+    except Exception as e:
+        logger.warning(f"_ver_reglas_derivacion error (tabla puede no existir aún): {e}")
+        return "No se pudieron obtener las reglas de derivación en este momento."

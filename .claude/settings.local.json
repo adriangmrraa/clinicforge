@@ -69,7 +69,24 @@
       "Bash(grep -r \"\\\\.on\\\\|\\\\.emit\" 'C:\\\\Users\\\\Asus\\\\Documents\\\\estabilizacion\\\\Laura Delgado\\\\clinicforge\\\\frontend_react\\\\src' --include=*.tsx --include=*.ts)",
       "Bash(find 'C:/Users/Asus/Documents/estabilizacion/CRM VENTAS/frontend_react/src/components' -type f \\\\\\(-name *.tsx -o -name *.ts -o -name *.jsx \\\\\\))",
       "Bash(while read:*)",
-      "Bash(do echo:*)"
+      "Bash(do echo:*)",
+      "Bash(find C:UsersAsusDocumentsestabilizacion -maxdepth 3 -type d \\\\\\(-iname *crm* -o -iname *ventas* \\\\\\))",
+      "mcp__plugin_engram_engram__mem_save",
+      "mcp__plugin_engram_engram__mem_search",
+      "mcp__plugin_engram_engram__mem_get_observation",
+      "Bash(find /c/Users/Asus/Documents/estabilizacion/Laura Delgado/clinicforge -maxdepth 3 -type f \\\\\\(-name .eslintrc* -o -name .prettierrc* -o -name prettier.config.* -o -name eslint.config.* -o -name pyproject.toml -o -name setup.cfg -o -name .editorconfig -o -name Dockerfile \\\\\\))",
+      "Bash(find /c/Users/Asus/Documents/estabilizacion/Laura Delgado/clinicforge -maxdepth 2 -type f \\\\\\(-name mypy.ini -o -name .mypy.ini -o -name pyproject.toml -o -name setup.py -o -name .editorconfig -o -name *.json -name *prettier* -o -name *eslint* \\\\\\))",
+      "Bash(find /c/Users/Asus/Documents/estabilizacion/Laura Delgado/clinicforge -maxdepth 2 -type f \\\\\\(-name Makefile -o -name .gitignore -o -name .editorconfig -o -name *requirements*.txt \\\\\\))",
+      "Bash(where python:*)",
+      "Bash(where py:*)",
+      "Bash(mkdir -p \"C:/Users/Asus/Documents/estabilizacion/Laura Delgado/clinicforge/.github/workflows\")",
+      "Bash(mkdir -p \"C:/Users/Asus/Documents/estabilizacion/Laura Delgado/clinicforge/scripts\")",
+      "Bash(chmod +x \"C:/Users/Asus/Documents/estabilizacion/Laura Delgado/clinicforge/scripts/backup_postgres.sh\")",
+      "Bash(node -e \":*)",
+      "Bash(grep -E '\"\"@types|\"\"typescript' package.json)",
+      "mcp__plugin_engram_engram__mem_context",
+      "Bash(where python3.exe)",
+      "Bash(where python.exe)"
     ]
   }
 }

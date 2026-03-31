@@ -641,7 +641,103 @@
     "tip_migration": "Astuce : Vérifiez la migration 006_treatment_config.sql",
     "assigned_professionals": "Professionnels Assign\u00e9s",
     "all_if_none": "Si aucun n'est s\u00e9lectionn\u00e9, tous peuvent le r\u00e9aliser",
-    "all_professionals": "Tous les professionnels"
+    "all_professionals": "Tous les professionnels",
+    "instructions": {
+      "configureButton": "Configurer les Instructions",
+      "editButton": "Modifier les Instructions",
+      "configured": "Instructions configurées",
+      "notConfigured": "Aucune instruction configurée",
+      "explanation": "L'assistant IA enverra automatiquement ces instructions au patient après la prise de rendez-vous. Il est important de les compléter correctement.",
+      "modalTitle": "Instructions du Traitement",
+      "pre": {
+        "title": "Instructions Pré-traitement",
+        "helper": "L'assistant enverra ceci avec la confirmation du rendez-vous.",
+        "placeholder": "Ex : Ne pas manger pendant 8 heures avant..."
+      },
+      "post": {
+        "title": "Instructions Post-traitement",
+        "addButton": "Ajouter une instruction",
+        "timing": {
+          "immediate": "Immédiat",
+          "24h": "Après 24 heures",
+          "48h": "Après 48 heures",
+          "72h": "Après 72 heures",
+          "1w": "Après 1 semaine",
+          "stitch_removal": "Retrait des points",
+          "custom": "Personnalisé"
+        },
+        "days": "jours",
+        "bookFollowup": "Suggérer de planifier un rendez-vous de suivi",
+        "contentPlaceholder": "Rédigez les instructions pour ce moment..."
+      },
+      "followup": {
+        "title": "Messages de Suivi Automatique",
+        "inDevelopment": "Les messages de suivi seront envoyés automatiquement après le rendez-vous. Cette fonctionnalité est en cours de développement.",
+        "addButton": "Ajouter un message de suivi",
+        "hoursAfter": "heures après",
+        "variables": "Variables disponibles : {patient_name}, {treatment_name}, {appointment_date}, {professional_name}",
+        "messagePlaceholder": "Bonjour {patient_name}, comment vous sentez-vous après votre {treatment_name} ?"
+      },
+      "save": "Enregistrer les instructions",
+      "cancel": "Annuler"
+    }
+  },
+  "settings": {
+    "insurance": {
+      "title": "Mutuelles et Assurances",
+      "addButton": "Ajouter une Assurance",
+      "emptyState": "Vous n'avez encore configuré aucune assurance. Ajoutez celles que vous acceptez pour que l'assistant puisse répondre automatiquement.",
+      "deleteConfirm": "Supprimer {name} du catalogue ?",
+      "status": {
+        "accepted": "Acceptée",
+        "restricted": "Avec restrictions",
+        "external_derivation": "Orientation externe",
+        "rejected": "Non acceptée"
+      },
+      "fields": {
+        "providerName": "Nom de l'assurance",
+        "status": "Statut",
+        "restrictions": "Restrictions",
+        "externalTarget": "Orienter vers",
+        "requiresCopay": "Nécessite une participation",
+        "copayNotes": "Détails de la participation",
+        "aiTemplate": "Réponse personnalisée de l'assistant",
+        "aiTemplatePlaceholder": "Laisser vide pour utiliser la réponse par défaut"
+      },
+      "errors": {
+        "nameRequired": "Le nom est obligatoire",
+        "restrictionsRequired": "Les restrictions sont obligatoires pour ce statut",
+        "externalTargetRequired": "La destination d'orientation est obligatoire",
+        "duplicateName": "Une assurance avec ce nom existe déjà"
+      }
+    },
+    "derivation": {
+      "title": "Orientation",
+      "addButton": "Ajouter une Règle",
+      "explainer": "Les règles d'orientation déterminent quel professionnel est assigné à chaque patient selon le type de traitement. Elles sont évaluées par ordre de priorité.",
+      "emptyState": "Aucune règle d'orientation configurée. L'assistant assignera les rendez-vous sans filtre de professionnel.",
+      "maxRulesWarning": "Maximum 20 règles par clinique.",
+      "conflictWarning": "Cette règle peut se chevaucher avec '{name}'. Celle avec le numéro le plus bas s'appliquera en premier.",
+      "condition": {
+        "new_patient": "Nouveau patient",
+        "existing_patient": "Patient existant",
+        "any": "N'importe quel patient"
+      },
+      "target": {
+        "specific_professional": "Professionnel spécifique",
+        "priority_professional": "Professionnel prioritaire",
+        "team": "Équipe (sans filtre)"
+      },
+      "fields": {
+        "ruleName": "Nom de la règle",
+        "patientCondition": "Condition du patient",
+        "categories": "Catégories de traitement",
+        "categoriesHelper": "Ex : chirurgie, implants, nettoyage. Utilisez * pour tout.",
+        "targetType": "Orienter vers",
+        "professional": "Professionnel",
+        "description": "Description (optionnel)"
+      }
+    }
   },
   "profile": {
     "title": "Mon profil",
@@ -821,16 +917,7 @@
     "add_time_block": "Ajouter un créneau",
     "close": "Fermer",
     "save_changes": "Enregistrer les modifications",
-    "sign_medical_alta": "Signer l'incorporation médicale",
-    "priority": {
-      "label": "Priorité",
-      "high": "Haute",
-      "mediumHigh": "Moyenne-Haute",
-      "medium": "Moyenne",
-      "low": "Basse"
-    },
-    "priorityProfessional": "Professionnel prioritaire",
-    "priorityProfessionalDesc": "Ce professionnel sera priorisé pour la planification des rendez-vous de haute valeur"
+    "sign_medical_alta": "Signer l'incorporation médicale"
   },
   "layout": {
     "app_title": "Dentalogic",

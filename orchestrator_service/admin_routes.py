@@ -92,6 +92,9 @@ class TreatmentTypeResponse(BaseModel):
     base_price: Optional[float] = 0
     priority: Optional[str] = "medium"
     professional_ids: Optional[List[int]] = []
+    pre_instructions: Optional[str] = None
+    post_instructions: Optional[Any] = None
+    followup_template: Optional[Any] = None
 
 
 router = APIRouter(prefix="/admin", tags=["Dental Admin"])
@@ -657,6 +660,9 @@ class TreatmentTypeCreate(BaseModel):
     base_price: Optional[float] = 0
     priority: Optional[str] = "medium"
     professional_ids: Optional[List[int]] = None
+    pre_instructions: Optional[str] = None
+    post_instructions: Optional[Any] = None
+    followup_template: Optional[Any] = None
 
 
 class TreatmentTypeUpdate(BaseModel):
@@ -674,6 +680,9 @@ class TreatmentTypeUpdate(BaseModel):
     internal_notes: Optional[str] = ""
     base_price: Optional[float] = 0
     priority: Optional[str] = "medium"
+    pre_instructions: Optional[str] = None
+    post_instructions: Optional[Any] = None
+    followup_template: Optional[Any] = None
 
 
 class ChatSendMessage(BaseModel):
@@ -6458,6 +6467,507 @@ async def sync_environment():
         """)
 
 
+# ==================== SEGUROS / OBRAS SOCIALES ====================
+
+VALID_INSURANCE_STATUSES = ("accepted", "restricted", "external_derivation", "rejected")
+
+
+class InsuranceProviderCreate(BaseModel):
+    provider_name: str
+    status: str  # 'accepted','restricted','external_derivation','rejected'
+    restrictions: Optional[str] = None
+    external_target: Optional[str] = None
+    requires_copay: bool = True
+    copay_notes: Optional[str] = None
+    ai_response_template: Optional[str] = None
+    sort_order: int = 0
+    is_active: bool = True
+
+
+class InsuranceProviderUpdate(BaseModel):
+    provider_name: str
+    status: str
+    restrictions: Optional[str] = None
+    external_target: Optional[str] = None
+    requires_copay: bool = True
+    copay_notes: Optional[str] = None
+    ai_response_template: Optional[str] = None
+    sort_order: int = 0
+    is_active: bool = True
+
+
+def _validate_insurance_provider(data) -> None:
+    """Valida campos de obra social / seguro."""
+    name = data.provider_name.strip() if data.provider_name else ""
+    if not name:
+        raise HTTPException(status_code=422, detail="provider_name es obligatorio")
+    if len(name) > 100:
+        raise HTTPException(status_code=422, detail="provider_name no puede superar 100 caracteres")
+    if data.status not in VALID_INSURANCE_STATUSES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"status inválido. Debe ser uno de: {', '.join(VALID_INSURANCE_STATUSES)}",
+        )
+    if data.status == "restricted" and not data.restrictions:
+        raise HTTPException(status_code=422, detail="restrictions es obligatorio cuando status='restricted'")
+    if data.status == "external_derivation" and not data.external_target:
+        raise HTTPException(status_code=422, detail="external_target es obligatorio cuando status='external_derivation'")
+    if data.ai_response_template and len(data.ai_response_template) > 1000:
+        raise HTTPException(status_code=422, detail="ai_response_template no puede superar 1000 caracteres")
+    if data.copay_notes and len(data.copay_notes) > 500:
+        raise HTTPException(status_code=422, detail="copay_notes no puede superar 500 caracteres")
+
+
+@router.get(
+    "/insurance-providers",
+    dependencies=[Depends(verify_admin_token)],
+    tags=["Seguros"],
+    summary="Listar obras sociales / seguros de la clínica",
+)
+async def list_insurance_providers(tenant_id: int = Depends(get_resolved_tenant_id)):
+    """Listar obras sociales configuradas. Aislado por tenant_id (Regla de Oro)."""
+    rows = await db.pool.fetch(
+        """
+        SELECT id, provider_name, status, restrictions, external_target,
+               requires_copay, copay_notes, ai_response_template, sort_order, is_active,
+               created_at, updated_at
+        FROM insurance_providers
+        WHERE tenant_id = $1
+        ORDER BY sort_order, provider_name
+        """,
+        tenant_id,
+    )
+    return [dict(r) for r in rows]
+
+
+@router.post(
+    "/insurance-providers",
+    dependencies=[Depends(verify_admin_token)],
+    tags=["Seguros"],
+    summary="Crear una obra social / seguro",
+)
+async def create_insurance_provider(
+    data: InsuranceProviderCreate,
+    tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    """Crear obra social. Aislado por tenant_id (Regla de Oro)."""
+    _validate_insurance_provider(data)
+    provider_name = data.provider_name.strip()
+
+    # Duplicate check (case-insensitive)
+    existing = await db.pool.fetchval(
+        "SELECT id FROM insurance_providers WHERE tenant_id = $1 AND provider_name ILIKE $2",
+        tenant_id,
+        provider_name,
+    )
+    if existing:
+        raise HTTPException(status_code=409, detail="Ya existe una obra social con ese nombre")
+
+    row = await db.pool.fetchrow(
+        """
+        INSERT INTO insurance_providers (
+            tenant_id, provider_name, status, restrictions, external_target,
+            requires_copay, copay_notes, ai_response_template, sort_order, is_active,
+            created_at, updated_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())
+        RETURNING id
+        """,
+        tenant_id,
+        provider_name,
+        data.status,
+        data.restrictions,
+        data.external_target,
+        data.requires_copay,
+        data.copay_notes,
+        data.ai_response_template,
+        data.sort_order,
+        data.is_active,
+    )
+    return {"status": "created", "id": row["id"]}
+
+
+@router.put(
+    "/insurance-providers/{provider_id}",
+    dependencies=[Depends(verify_admin_token)],
+    tags=["Seguros"],
+    summary="Actualizar una obra social / seguro",
+)
+async def update_insurance_provider(
+    provider_id: int,
+    data: InsuranceProviderUpdate,
+    tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    """Actualizar obra social. Aislado por tenant_id (Regla de Oro)."""
+    _validate_insurance_provider(data)
+    provider_name = data.provider_name.strip()
+
+    result = await db.pool.execute(
+        """
+        UPDATE insurance_providers SET
+            provider_name = $1, status = $2, restrictions = $3, external_target = $4,
+            requires_copay = $5, copay_notes = $6, ai_response_template = $7,
+            sort_order = $8, is_active = $9, updated_at = NOW()
+        WHERE id = $10 AND tenant_id = $11
+        """,
+        provider_name,
+        data.status,
+        data.restrictions,
+        data.external_target,
+        data.requires_copay,
+        data.copay_notes,
+        data.ai_response_template,
+        data.sort_order,
+        data.is_active,
+        provider_id,
+        tenant_id,
+    )
+    if result == "UPDATE 0":
+        raise HTTPException(status_code=404, detail="Obra social no encontrada")
+    return {"status": "updated", "id": provider_id}
+
+
+@router.delete(
+    "/insurance-providers/{provider_id}",
+    dependencies=[Depends(verify_admin_token)],
+    tags=["Seguros"],
+    summary="Eliminar una obra social / seguro",
+)
+async def delete_insurance_provider(
+    provider_id: int,
+    tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    """Eliminar obra social. Aislado por tenant_id (Regla de Oro)."""
+    result = await db.pool.execute(
+        "DELETE FROM insurance_providers WHERE id = $1 AND tenant_id = $2",
+        provider_id,
+        tenant_id,
+    )
+    if result == "DELETE 0":
+        raise HTTPException(status_code=404, detail="Obra social no encontrada")
+    return {"status": "deleted", "id": provider_id}
+
+
+@router.patch(
+    "/insurance-providers/{provider_id}/toggle-active",
+    dependencies=[Depends(verify_admin_token)],
+    tags=["Seguros"],
+    summary="Activar / desactivar una obra social",
+)
+async def toggle_insurance_provider_active(
+    provider_id: int,
+    tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    """Flip is_active de obra social. Aislado por tenant_id (Regla de Oro)."""
+    row = await db.pool.fetchrow(
+        "SELECT id, is_active FROM insurance_providers WHERE id = $1 AND tenant_id = $2",
+        provider_id,
+        tenant_id,
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Obra social no encontrada")
+    new_value = not row["is_active"]
+    await db.pool.execute(
+        "UPDATE insurance_providers SET is_active = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3",
+        new_value,
+        provider_id,
+        tenant_id,
+    )
+    return {"status": "updated", "id": provider_id, "is_active": new_value}
+
+
+class InsuranceReorderItem(BaseModel):
+    id: int
+    sort_order: int
+
+
+class InsuranceReorderBody(BaseModel):
+    order: List[InsuranceReorderItem]
+
+
+@router.put(
+    "/insurance-providers/reorder",
+    dependencies=[Depends(verify_admin_token)],
+    tags=["Seguros"],
+    summary="Reordenar obras sociales",
+)
+async def reorder_insurance_providers(
+    body: InsuranceReorderBody,
+    tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    """Batch update sort_order de obras sociales. Aislado por tenant_id (Regla de Oro)."""
+    for item in body.order:
+        await db.pool.execute(
+            "UPDATE insurance_providers SET sort_order = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3",
+            item.sort_order,
+            item.id,
+            tenant_id,
+        )
+    return {"status": "reordered", "count": len(body.order)}
+
+
+# ==================== REGLAS DE DERIVACIÓN ====================
+
+VALID_PATIENT_CONDITIONS = ("new_patient", "existing_patient", "any")
+VALID_TARGET_TYPES = ("specific_professional", "priority_professional", "team")
+MAX_DERIVATION_RULES = 20
+
+
+class DerivationRuleCreate(BaseModel):
+    rule_name: str
+    patient_condition: str  # 'new_patient','existing_patient','any'
+    treatment_categories: List[str]  # ['cirugia','implantes'] or ['*']
+    target_type: str  # 'specific_professional','priority_professional','team'
+    target_professional_id: Optional[int] = None
+    priority_order: int = 0
+    is_active: bool = True
+    description: Optional[str] = None
+
+
+class DerivationRuleUpdate(BaseModel):
+    rule_name: str
+    patient_condition: str
+    treatment_categories: List[str]
+    target_type: str
+    target_professional_id: Optional[int] = None
+    priority_order: int = 0
+    is_active: bool = True
+    description: Optional[str] = None
+
+
+async def _validate_derivation_rule(data, tenant_id: int) -> None:
+    """Valida campos de regla de derivación."""
+    if data.patient_condition not in VALID_PATIENT_CONDITIONS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"patient_condition inválido. Debe ser uno de: {', '.join(VALID_PATIENT_CONDITIONS)}",
+        )
+    if data.target_type not in VALID_TARGET_TYPES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"target_type inválido. Debe ser uno de: {', '.join(VALID_TARGET_TYPES)}",
+        )
+    if data.target_type == "specific_professional" and data.target_professional_id is None:
+        raise HTTPException(
+            status_code=422,
+            detail="target_professional_id es obligatorio cuando target_type='specific_professional'",
+        )
+    if not data.treatment_categories:
+        raise HTTPException(status_code=422, detail="treatment_categories no puede estar vacío")
+    # Verify professional belongs to tenant
+    if data.target_professional_id is not None:
+        prof_exists = await db.pool.fetchval(
+            "SELECT id FROM professionals WHERE id = $1 AND tenant_id = $2",
+            data.target_professional_id,
+            tenant_id,
+        )
+        if not prof_exists:
+            raise HTTPException(status_code=422, detail="El profesional especificado no pertenece a esta clínica")
+
+
+@router.get(
+    "/derivation-rules",
+    dependencies=[Depends(verify_admin_token)],
+    tags=["Derivación"],
+    summary="Listar reglas de derivación",
+)
+async def list_derivation_rules(tenant_id: int = Depends(get_resolved_tenant_id)):
+    """Listar reglas de derivación. Aislado por tenant_id (Regla de Oro)."""
+    rows = await db.pool.fetch(
+        """
+        SELECT dr.id, dr.rule_name, dr.patient_condition, dr.treatment_categories,
+               dr.target_type, dr.target_professional_id, dr.priority_order,
+               dr.is_active, dr.description, dr.created_at, dr.updated_at,
+               p.first_name AS professional_first_name, p.last_name AS professional_last_name
+        FROM derivation_rules dr
+        LEFT JOIN professionals p ON dr.target_professional_id = p.id
+        WHERE dr.tenant_id = $1
+        ORDER BY dr.priority_order, dr.id
+        """,
+        tenant_id,
+    )
+    result = []
+    for r in rows:
+        item = dict(r)
+        if item.get("professional_first_name") is not None:
+            item["professional_name"] = f"{item.pop('professional_first_name')} {item.pop('professional_last_name')}".strip()
+        else:
+            item.pop("professional_first_name", None)
+            item.pop("professional_last_name", None)
+            item["professional_name"] = None
+        # treatment_categories may be returned as a list or JSON string by asyncpg
+        cats = item.get("treatment_categories")
+        if isinstance(cats, str):
+            try:
+                item["treatment_categories"] = json.loads(cats)
+            except Exception:
+                pass
+        result.append(item)
+    return result
+
+
+@router.post(
+    "/derivation-rules",
+    dependencies=[Depends(verify_admin_token)],
+    tags=["Derivación"],
+    summary="Crear una regla de derivación",
+)
+async def create_derivation_rule(
+    data: DerivationRuleCreate,
+    tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    """Crear regla de derivación. Aislado por tenant_id (Regla de Oro)."""
+    await _validate_derivation_rule(data, tenant_id)
+
+    # Max rules check
+    count = await db.pool.fetchval(
+        "SELECT COUNT(*) FROM derivation_rules WHERE tenant_id = $1",
+        tenant_id,
+    )
+    if count >= MAX_DERIVATION_RULES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Se alcanzó el límite máximo de {MAX_DERIVATION_RULES} reglas de derivación por clínica",
+        )
+
+    row = await db.pool.fetchrow(
+        """
+        INSERT INTO derivation_rules (
+            tenant_id, rule_name, patient_condition, treatment_categories,
+            target_type, target_professional_id, priority_order, is_active,
+            description, created_at, updated_at
+        ) VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8, $9, NOW(), NOW())
+        RETURNING id
+        """,
+        tenant_id,
+        data.rule_name,
+        data.patient_condition,
+        json.dumps(data.treatment_categories),
+        data.target_type,
+        data.target_professional_id,
+        data.priority_order,
+        data.is_active,
+        data.description,
+    )
+    return {"status": "created", "id": row["id"]}
+
+
+@router.put(
+    "/derivation-rules/{rule_id}",
+    dependencies=[Depends(verify_admin_token)],
+    tags=["Derivación"],
+    summary="Actualizar una regla de derivación",
+)
+async def update_derivation_rule(
+    rule_id: int,
+    data: DerivationRuleUpdate,
+    tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    """Actualizar regla de derivación. Aislado por tenant_id (Regla de Oro)."""
+    await _validate_derivation_rule(data, tenant_id)
+
+    result = await db.pool.execute(
+        """
+        UPDATE derivation_rules SET
+            rule_name = $1, patient_condition = $2, treatment_categories = $3::jsonb,
+            target_type = $4, target_professional_id = $5, priority_order = $6,
+            is_active = $7, description = $8, updated_at = NOW()
+        WHERE id = $9 AND tenant_id = $10
+        """,
+        data.rule_name,
+        data.patient_condition,
+        json.dumps(data.treatment_categories),
+        data.target_type,
+        data.target_professional_id,
+        data.priority_order,
+        data.is_active,
+        data.description,
+        rule_id,
+        tenant_id,
+    )
+    if result == "UPDATE 0":
+        raise HTTPException(status_code=404, detail="Regla de derivación no encontrada")
+    return {"status": "updated", "id": rule_id}
+
+
+@router.delete(
+    "/derivation-rules/{rule_id}",
+    dependencies=[Depends(verify_admin_token)],
+    tags=["Derivación"],
+    summary="Eliminar una regla de derivación",
+)
+async def delete_derivation_rule(
+    rule_id: int,
+    tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    """Eliminar regla de derivación. Aislado por tenant_id (Regla de Oro)."""
+    result = await db.pool.execute(
+        "DELETE FROM derivation_rules WHERE id = $1 AND tenant_id = $2",
+        rule_id,
+        tenant_id,
+    )
+    if result == "DELETE 0":
+        raise HTTPException(status_code=404, detail="Regla de derivación no encontrada")
+    return {"status": "deleted", "id": rule_id}
+
+
+@router.patch(
+    "/derivation-rules/{rule_id}/toggle-active",
+    dependencies=[Depends(verify_admin_token)],
+    tags=["Derivación"],
+    summary="Activar / desactivar una regla de derivación",
+)
+async def toggle_derivation_rule_active(
+    rule_id: int,
+    tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    """Flip is_active de regla de derivación. Aislado por tenant_id (Regla de Oro)."""
+    row = await db.pool.fetchrow(
+        "SELECT id, is_active FROM derivation_rules WHERE id = $1 AND tenant_id = $2",
+        rule_id,
+        tenant_id,
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Regla de derivación no encontrada")
+    new_value = not row["is_active"]
+    await db.pool.execute(
+        "UPDATE derivation_rules SET is_active = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3",
+        new_value,
+        rule_id,
+        tenant_id,
+    )
+    return {"status": "updated", "id": rule_id, "is_active": new_value}
+
+
+class DerivationReorderItem(BaseModel):
+    id: int
+    priority_order: int
+
+
+class DerivationReorderBody(BaseModel):
+    order: List[DerivationReorderItem]
+
+
+@router.put(
+    "/derivation-rules/reorder",
+    dependencies=[Depends(verify_admin_token)],
+    tags=["Derivación"],
+    summary="Reordenar reglas de derivación",
+)
+async def reorder_derivation_rules(
+    body: DerivationReorderBody,
+    tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    """Batch update priority_order de reglas de derivación. Aislado por tenant_id (Regla de Oro)."""
+    for item in body.order:
+        await db.pool.execute(
+            "UPDATE derivation_rules SET priority_order = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3",
+            item.priority_order,
+            item.id,
+            tenant_id,
+        )
+    return {"status": "reordered", "count": len(body.order)}
+
+
 # ==================== ENDPOINTS TRATAMIENTOS ====================
 
 
@@ -6476,6 +6986,43 @@ class TreatmentTypeUpdate(BaseModel):
     internal_notes: Optional[str] = None
     base_price: Optional[float] = 0
     priority: Optional[str] = "medium"
+    pre_instructions: Optional[str] = None
+    post_instructions: Optional[Any] = None
+    followup_template: Optional[Any] = None
+
+
+def _validate_treatment_instruction_fields(treatment) -> None:
+    """Valida los campos de instrucciones de un tipo de tratamiento."""
+    if treatment.pre_instructions is not None and len(treatment.pre_instructions) > 2000:
+        raise HTTPException(status_code=422, detail="pre_instructions no puede superar 2000 caracteres")
+    if treatment.post_instructions is not None:
+        if not isinstance(treatment.post_instructions, list):
+            raise HTTPException(status_code=422, detail="post_instructions debe ser una lista de objetos")
+        valid_timings = ("before", "after", "day_of", "same_day")
+        for item in treatment.post_instructions:
+            if not isinstance(item, dict):
+                raise HTTPException(status_code=422, detail="Cada elemento de post_instructions debe ser un objeto")
+            timing = item.get("timing")
+            if timing is not None and timing not in valid_timings:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Valor de timing inválido: '{timing}'. Debe ser uno de: {', '.join(valid_timings)}",
+                )
+    if treatment.followup_template is not None:
+        if not isinstance(treatment.followup_template, list):
+            raise HTTPException(status_code=422, detail="followup_template debe ser una lista de objetos")
+        for item in treatment.followup_template:
+            if not isinstance(item, dict):
+                raise HTTPException(status_code=422, detail="Cada elemento de followup_template debe ser un objeto")
+            delay = item.get("delay_hours")
+            if delay is not None:
+                if not isinstance(delay, (int, float)) or not (1 <= delay <= 720):
+                    raise HTTPException(
+                        status_code=422,
+                        detail=f"delay_hours debe ser un número entre 1 y 720, recibido: {delay}",
+                    )
+            if "message_template" not in item:
+                raise HTTPException(status_code=422, detail="Cada elemento de followup_template debe incluir 'message_template'")
 
 
 @router.get(
@@ -6492,7 +7039,8 @@ async def list_treatment_types(tenant_id: int = Depends(get_resolved_tenant_id))
         SELECT id, code, name, description, default_duration_minutes,
                min_duration_minutes, max_duration_minutes, complexity_level,
                category, requires_multiple_sessions, session_gap_days,
-               is_active, is_available_for_booking, internal_notes, base_price, priority
+               is_active, is_available_for_booking, internal_notes, base_price, priority,
+               pre_instructions, post_instructions, followup_template
         FROM treatment_types
         WHERE tenant_id = $1
         ORDER BY category, name
@@ -6536,7 +7084,8 @@ async def get_treatment_type(
         SELECT id, code, name, description, default_duration_minutes,
                min_duration_minutes, max_duration_minutes, complexity_level,
                category, requires_multiple_sessions, session_gap_days,
-               is_active, is_available_for_booking, internal_notes, priority
+               is_active, is_available_for_booking, internal_notes, priority,
+               pre_instructions, post_instructions, followup_template
         FROM treatment_types
         WHERE tenant_id = $1 AND code = $2
     """,
@@ -6566,14 +7115,18 @@ async def create_treatment_type(
 ):
     """Crear un nuevo tipo de tratamiento. Aislado por tenant_id (Regla de Oro)."""
     try:
+        # Validate new instruction fields
+        _validate_treatment_instruction_fields(treatment)
+
         row = await db.pool.fetchrow(
             """
             INSERT INTO treatment_types (
                 tenant_id, code, name, description, default_duration_minutes,
                 min_duration_minutes, max_duration_minutes, complexity_level,
                 category, requires_multiple_sessions, session_gap_days,
-                is_active, is_available_for_booking, internal_notes, base_price, priority, created_at
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, NOW())
+                is_active, is_available_for_booking, internal_notes, base_price, priority,
+                pre_instructions, post_instructions, followup_template, created_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, NOW())
             RETURNING id
         """,
             tenant_id,
@@ -6592,6 +7145,9 @@ async def create_treatment_type(
             treatment.internal_notes,
             treatment.base_price or 0,
             treatment.priority if treatment.priority in ("high", "medium-high", "medium", "low") else "medium",
+            treatment.pre_instructions,
+            json.dumps(treatment.post_instructions) if treatment.post_instructions is not None else None,
+            json.dumps(treatment.followup_template) if treatment.followup_template is not None else None,
         )
         # Insert professional assignments if provided
         if treatment.professional_ids and row:
@@ -6626,6 +7182,9 @@ async def update_treatment_type(
     tenant_id: int = Depends(get_resolved_tenant_id),
 ):
     """Actualizar tipo de tratamiento. Aislado por tenant_id (Regla de Oro)."""
+    # Validate new instruction fields
+    _validate_treatment_instruction_fields(treatment)
+
     result = await db.pool.execute(
         """
         UPDATE treatment_types SET
@@ -6633,8 +7192,10 @@ async def update_treatment_type(
             min_duration_minutes = $4, max_duration_minutes = $5,
             complexity_level = $6, category = $7, requires_multiple_sessions = $8,
             session_gap_days = $9, is_active = $10, is_available_for_booking = $11,
-            internal_notes = $12, base_price = $13, priority = $14, updated_at = NOW()
-        WHERE tenant_id = $15 AND code = $16
+            internal_notes = $12, base_price = $13, priority = $14,
+            pre_instructions = $15, post_instructions = $16, followup_template = $17,
+            updated_at = NOW()
+        WHERE tenant_id = $18 AND code = $19
     """,
         treatment.name,
         treatment.description,
@@ -6650,6 +7211,9 @@ async def update_treatment_type(
         treatment.internal_notes,
         treatment.base_price or 0,
         treatment.priority if treatment.priority in ("high", "medium-high", "medium", "low") else "medium",
+        treatment.pre_instructions,
+        json.dumps(treatment.post_instructions) if treatment.post_instructions is not None else None,
+        json.dumps(treatment.followup_template) if treatment.followup_template is not None else None,
         tenant_id,
         code,
     )

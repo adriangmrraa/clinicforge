@@ -128,6 +128,34 @@ class Tenant(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
+class TenantInsuranceProvider(Base):
+    __tablename__ = 'tenant_insurance_providers'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    tenant_id = Column(Integer, ForeignKey('tenants.id', ondelete='CASCADE'), nullable=False)
+    provider_name = Column(String(100), nullable=False)
+    status = Column(String(20), nullable=False)
+    restrictions = Column(Text, nullable=True)
+    external_target = Column(Text, nullable=True)
+    requires_copay = Column(Boolean, nullable=False, server_default='true')
+    copay_notes = Column(Text, nullable=True)
+    ai_response_template = Column(Text, nullable=True)
+    sort_order = Column(Integer, nullable=False, server_default='0')
+    is_active = Column(Boolean, nullable=False, server_default='true')
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('accepted', 'restricted', 'external_derivation', 'rejected')",
+            name='ck_tenant_insurance_providers_status'
+        ),
+        UniqueConstraint('tenant_id', 'provider_name', name='uq_tenant_insurance_providers_tenant_name'),
+        Index('idx_tenant_insurance_providers_tenant', 'tenant_id'),
+        Index('idx_tenant_insurance_providers_tenant_active', 'tenant_id', 'is_active'),
+    )
+
+
 class Credential(Base):
     __tablename__ = 'credentials'
 
@@ -212,6 +240,36 @@ class Professional(Base):
         Index('idx_professionals_tenant', 'tenant_id'),
         Index('idx_professionals_active', 'is_active'),
         Index('idx_professionals_user_id', 'user_id'),
+    )
+
+
+class ProfessionalDerivationRule(Base):
+    __tablename__ = 'professional_derivation_rules'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    tenant_id = Column(Integer, ForeignKey('tenants.id', ondelete='CASCADE'), nullable=False)
+    rule_name = Column(String(100), nullable=False)
+    patient_condition = Column(String(30), nullable=False)
+    treatment_categories = Column(ARRAY(String), nullable=False, server_default='{}')
+    target_type = Column(String(30), nullable=False)
+    target_professional_id = Column(Integer, ForeignKey('professionals.id', ondelete='SET NULL'), nullable=True)
+    priority_order = Column(Integer, nullable=False, server_default='0')
+    is_active = Column(Boolean, nullable=False, server_default='true')
+    description = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        CheckConstraint(
+            "patient_condition IN ('new_patient', 'existing_patient', 'any')",
+            name='ck_professional_derivation_rules_patient_condition'
+        ),
+        CheckConstraint(
+            "target_type IN ('specific_professional', 'priority_professional', 'team')",
+            name='ck_professional_derivation_rules_target_type'
+        ),
+        Index('idx_professional_derivation_rules_tenant', 'tenant_id'),
+        Index('idx_professional_derivation_rules_tenant_active', 'tenant_id', 'is_active'),
     )
 
 
@@ -527,6 +585,9 @@ class TreatmentType(Base):
     is_active = Column(Boolean, default=True)
     is_available_for_booking = Column(Boolean, default=True)
     internal_notes = Column(Text)
+    pre_instructions = Column(Text, nullable=True)
+    post_instructions = Column(JSONB, nullable=True)
+    followup_template = Column(JSONB, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 

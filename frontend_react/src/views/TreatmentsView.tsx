@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Clock, AlertCircle, CheckCircle, Save, X, Zap, Shield, Heart, Activity, Stethoscope, Edit2, Upload, Trash2, Image as ImageIcon, Users } from 'lucide-react';
+import { Clock, AlertCircle, CheckCircle, Save, X, Zap, Shield, Heart, Activity, Stethoscope, Edit2, Upload, Trash2, Image as ImageIcon, Users, FileText, CheckCircle2, Plus, Info } from 'lucide-react';
 import api from '../api/axios';
 import { useTranslation } from '../context/LanguageContext';
 import PageHeader from '../components/PageHeader';
@@ -29,7 +29,29 @@ interface TreatmentType {
   internal_notes: string;
   base_price?: number;
   professional_ids?: number[];
-  priority?: 'high' | 'medium-high' | 'medium' | 'low';
+  pre_instructions?: string;
+  post_instructions?: PostInstruction[];
+  followup_template?: FollowupMessage[];
+}
+
+type PostTiming = 'immediate' | '24h' | '48h' | '72h' | '1w' | 'stitch_removal' | 'custom';
+
+interface PostInstruction {
+  timing: PostTiming;
+  custom_days?: number;
+  book_followup?: boolean;
+  content: string;
+}
+
+interface FollowupMessage {
+  hours_after: number;
+  message: string;
+}
+
+interface TreatmentInstructions {
+  pre_instructions: string;
+  post_instructions: PostInstruction[];
+  followup_template: FollowupMessage[];
 }
 
 // Category icons mapping
@@ -149,6 +171,78 @@ export default function TreatmentsView() {
   const [saving, setSaving] = useState(false);
   const [professionals, setProfessionals] = useState<Professional[]>([]);
   const [isCreating, setIsCreating] = useState(false);
+
+  // Instructions modal state
+  const [instructionsModalOpen, setInstructionsModalOpen] = useState(false);
+  const [instructionsTarget, setInstructionsTarget] = useState<'edit' | 'create'>('edit');
+  const [instructionsLocal, setInstructionsLocal] = useState<TreatmentInstructions>({
+    pre_instructions: '',
+    post_instructions: [],
+    followup_template: [],
+  });
+
+  const openInstructionsModal = (target: 'edit' | 'create') => {
+    setInstructionsTarget(target);
+    const form = target === 'edit' ? editForm : newForm;
+    setInstructionsLocal({
+      pre_instructions: form.pre_instructions || '',
+      post_instructions: form.post_instructions || [],
+      followup_template: form.followup_template || [],
+    });
+    setInstructionsModalOpen(true);
+  };
+
+  const saveInstructions = () => {
+    if (instructionsTarget === 'edit') {
+      setEditForm(prev => ({ ...prev, ...instructionsLocal }));
+    } else {
+      setNewForm(prev => ({ ...prev, ...instructionsLocal }));
+    }
+    setInstructionsModalOpen(false);
+  };
+
+  const addPostInstruction = () => {
+    setInstructionsLocal(prev => ({
+      ...prev,
+      post_instructions: [...prev.post_instructions, { timing: 'immediate', content: '' }],
+    }));
+  };
+
+  const removePostInstruction = (idx: number) => {
+    setInstructionsLocal(prev => ({
+      ...prev,
+      post_instructions: prev.post_instructions.filter((_, i) => i !== idx),
+    }));
+  };
+
+  const updatePostInstruction = (idx: number, field: keyof PostInstruction, value: unknown) => {
+    setInstructionsLocal(prev => ({
+      ...prev,
+      post_instructions: prev.post_instructions.map((item, i) => i === idx ? { ...item, [field]: value } : item),
+    }));
+  };
+
+  const addFollowup = () => {
+    setInstructionsLocal(prev => ({
+      ...prev,
+      followup_template: [...prev.followup_template, { hours_after: 24, message: '' }],
+    }));
+  };
+
+  const removeFollowup = (idx: number) => {
+    setInstructionsLocal(prev => ({
+      ...prev,
+      followup_template: prev.followup_template.filter((_, i) => i !== idx),
+    }));
+  };
+
+  const updateFollowup = (idx: number, field: keyof FollowupMessage, value: unknown) => {
+    setInstructionsLocal(prev => ({
+      ...prev,
+      followup_template: prev.followup_template.map((item, i) => i === idx ? { ...item, [field]: value } : item),
+    }));
+  };
+
   const [newForm, setNewForm] = useState<Partial<TreatmentType>>({
     code: '',
     name: '',
@@ -164,8 +258,7 @@ export default function TreatmentsView() {
     is_available_for_booking: true,
     internal_notes: '',
     base_price: 0,
-    professional_ids: [],
-    priority: 'medium' as const
+    professional_ids: []
   });
 
   const fetchTreatments = async () => {
@@ -249,7 +342,6 @@ export default function TreatmentsView() {
         is_active: true,
         is_available_for_booking: true,
         internal_notes: '',
-        priority: 'medium' as const,
         professional_ids: []
       });
     } catch (error: any) {
@@ -460,19 +552,6 @@ export default function TreatmentsView() {
                       <option value="high">{t('treatments.high')}</option>
                     </select>
                   </div>
-                  <div className="space-y-2">
-                    <label className="block text-xs font-bold text-white/40 uppercase tracking-wider">{t('professionals.priority.label')}</label>
-                    <select
-                      value={newForm.priority || 'medium'}
-                      onChange={(e) => setNewForm({ ...newForm, priority: e.target.value as TreatmentType['priority'] })}
-                      className="w-full px-4 py-3 bg-white/[0.04] border border-white/[0.08] rounded-xl text-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none appearance-none cursor-pointer font-bold"
-                    >
-                      <option value="high">{t('professionals.priority.high')}</option>
-                      <option value="medium-high">{t('professionals.priority.mediumHigh')}</option>
-                      <option value="medium">{t('professionals.priority.medium')}</option>
-                      <option value="low">{t('professionals.priority.low')}</option>
-                    </select>
-                  </div>
                 </div>
 
                 <div className="mt-6 flex items-center gap-3">
@@ -525,6 +604,30 @@ export default function TreatmentsView() {
                   </div>
                 )}
               </div>
+              {/* Instructions teaser — create form */}
+              <div className={`mx-4 sm:mx-6 mb-2 flex items-center gap-4 p-4 rounded-2xl border transition-all ${(newForm.pre_instructions || (newForm.post_instructions && newForm.post_instructions.length > 0)) ? 'bg-emerald-500/5 border-emerald-500/20' : 'bg-white/[0.02] border-white/[0.06]'}`}>
+                <div className="flex-1 flex items-center gap-3">
+                  {(newForm.pre_instructions || (newForm.post_instructions && newForm.post_instructions.length > 0)) ? (
+                    <>
+                      <CheckCircle2 size={20} className="text-emerald-400 shrink-0" />
+                      <span className="text-sm font-semibold text-emerald-400">{t('treatments.instructions.configured')}</span>
+                    </>
+                  ) : (
+                    <>
+                      <FileText size={20} className="text-white/30 shrink-0" />
+                      <div>
+                        <p className="text-sm font-semibold text-white/60">{t('treatments.instructions.configureButton')}</p>
+                        <p className="text-xs text-white/30 mt-0.5">{t('treatments.instructions.explanation')}</p>
+                      </div>
+                    </>
+                  )}
+                </div>
+                <button type="button" onClick={() => openInstructionsModal('create')}
+                  className="px-4 py-2 bg-white/[0.06] hover:bg-white/[0.10] border border-white/[0.08] rounded-xl text-sm font-semibold text-white/70 transition-all shrink-0">
+                  {(newForm.pre_instructions || (newForm.post_instructions && newForm.post_instructions.length > 0)) ? t('treatments.instructions.editButton') : t('treatments.instructions.configureButton')}
+                </button>
+              </div>
+
               <div className="flex justify-end gap-3 p-4 sm:p-6 border-t border-white/[0.06] shrink-0 bg-white/[0.02]">
                 <button
                   type="button"
@@ -678,19 +781,6 @@ export default function TreatmentsView() {
                                 <option value="emergency">{t('treatments.emergency')}</option>
                               </select>
                             </div>
-                            <div className="space-y-2">
-                              <label className="block text-xs font-bold text-white/40 ml-1 uppercase">{t('professionals.priority.label')}</label>
-                              <select
-                                value={editForm.priority || 'medium'}
-                                onChange={(e) => setEditForm({ ...editForm, priority: e.target.value as TreatmentType['priority'] })}
-                                className="w-full px-4 py-3 bg-white/[0.04] border border-white/[0.08] rounded-xl text-white focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none appearance-none font-bold"
-                              >
-                                <option value="high">{t('professionals.priority.high')}</option>
-                                <option value="medium-high">{t('professionals.priority.mediumHigh')}</option>
-                                <option value="medium">{t('professionals.priority.medium')}</option>
-                                <option value="low">{t('professionals.priority.low')}</option>
-                              </select>
-                            </div>
 
                             <div className="flex flex-wrap items-center gap-6">
                               <label className="flex items-center gap-3 cursor-pointer group">
@@ -772,6 +862,30 @@ export default function TreatmentsView() {
                             </div>
                           )}
 
+                          {/* Instructions teaser — edit form */}
+                          <div className={`flex items-center gap-4 p-4 rounded-2xl border transition-all ${(editForm.pre_instructions || (editForm.post_instructions && editForm.post_instructions.length > 0)) ? 'bg-emerald-500/5 border-emerald-500/20' : 'bg-white/[0.02] border-white/[0.06]'}`}>
+                            <div className="flex-1 flex items-center gap-3">
+                              {(editForm.pre_instructions || (editForm.post_instructions && editForm.post_instructions.length > 0)) ? (
+                                <>
+                                  <CheckCircle2 size={20} className="text-emerald-400 shrink-0" />
+                                  <span className="text-sm font-semibold text-emerald-400">{t('treatments.instructions.configured')}</span>
+                                </>
+                              ) : (
+                                <>
+                                  <FileText size={20} className="text-white/30 shrink-0" />
+                                  <div>
+                                    <p className="text-sm font-semibold text-white/60">{t('treatments.instructions.configureButton')}</p>
+                                    <p className="text-xs text-white/30 mt-0.5">{t('treatments.instructions.explanation')}</p>
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                            <button type="button" onClick={() => openInstructionsModal('edit')}
+                              className="px-4 py-2 bg-white/[0.06] hover:bg-white/[0.10] border border-white/[0.08] rounded-xl text-sm font-semibold text-white/70 transition-all shrink-0">
+                              {(editForm.pre_instructions || (editForm.post_instructions && editForm.post_instructions.length > 0)) ? t('treatments.instructions.editButton') : t('treatments.instructions.configureButton')}
+                            </button>
+                          </div>
+
                           <div className="flex justify-end gap-3 pt-4 border-t border-white/[0.06]">
                             <button
                               onClick={handleCancel}
@@ -803,21 +917,6 @@ export default function TreatmentsView() {
                                 }`}>
                                 {t('treatments.' + (treatment.complexity_level || 'medium'))}
                               </span>
-                              {treatment.priority && (
-                                <span className={`inline-flex items-center px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border ${
-                                  treatment.priority === 'high' ? 'bg-red-500/10 text-red-400 border-red-500/20' :
-                                  treatment.priority === 'medium-high' ? 'bg-orange-500/10 text-orange-400 border-orange-500/20' :
-                                  treatment.priority === 'medium' ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20' :
-                                  'bg-green-500/10 text-green-400 border-green-500/20'
-                                }`}>
-                                  {({
-                                    high: t('professionals.priority.high'),
-                                    'medium-high': t('professionals.priority.mediumHigh'),
-                                    medium: t('professionals.priority.medium'),
-                                    low: t('professionals.priority.low'),
-                                  } as Record<string, string>)[treatment.priority] ?? t('professionals.priority.medium')}
-                                </span>
-                              )}
                               {treatment.requires_multiple_sessions && (
                                 <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-purple-500/10 text-purple-400 border border-purple-500/20">
                                   <CheckCircle size={10} />
@@ -931,6 +1030,133 @@ export default function TreatmentsView() {
           </GlassCard>
         )}
       </div>
+
+      {/* ── Instructions Modal (higher z-index, overlays treatment modals) ── */}
+      {instructionsModalOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4" onClick={e => e.target === e.currentTarget && setInstructionsModalOpen(false)}>
+          <div className="bg-[#0d1117] border border-white/[0.08] rounded-2xl w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex justify-between items-center gap-3 p-4 sm:p-6 border-b border-white/[0.06] shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-blue-500/10 text-blue-400 rounded-xl">
+                  <FileText size={20} />
+                </div>
+                <h3 className="text-lg sm:text-xl font-bold text-white">{t('treatments.instructions.modalTitle')}</h3>
+              </div>
+              <button type="button" onClick={() => setInstructionsModalOpen(false)} className="p-2 rounded-xl text-white/30 hover:text-white/60 hover:bg-white/[0.04] transition-all shrink-0">
+                <X size={22} />
+              </button>
+            </div>
+
+            <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 space-y-8">
+              {/* Section 1: Pre-treatment */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <Info size={16} className="text-blue-400 shrink-0" />
+                  <h4 className="font-bold text-white">{t('treatments.instructions.pre.title')}</h4>
+                </div>
+                <p className="text-xs text-white/40">{t('treatments.instructions.pre.helper')}</p>
+                <textarea
+                  value={instructionsLocal.pre_instructions}
+                  onChange={e => setInstructionsLocal(prev => ({ ...prev, pre_instructions: e.target.value }))}
+                  placeholder={t('treatments.instructions.pre.placeholder')}
+                  rows={6}
+                  className="w-full px-4 py-3 bg-white/[0.04] border border-white/[0.08] rounded-xl text-white placeholder-white/20 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none resize-none text-sm"
+                />
+              </div>
+
+              {/* Section 2: Post-treatment */}
+              <div className="space-y-3">
+                <h4 className="font-bold text-white">{t('treatments.instructions.post.title')}</h4>
+                <div className="space-y-3">
+                  {instructionsLocal.post_instructions.map((item, idx) => (
+                    <div key={idx} className="bg-white/[0.03] border border-white/[0.06] rounded-xl p-4 space-y-3">
+                      <div className="flex items-center gap-3">
+                        <select
+                          value={item.timing}
+                          onChange={e => updatePostInstruction(idx, 'timing', e.target.value as PostTiming)}
+                          className="flex-1 px-3 py-2 bg-[#0d1117] border border-white/[0.08] rounded-lg text-white text-sm focus:ring-2 focus:ring-blue-500/20 outline-none [&>option]:bg-[#0d1117]"
+                        >
+                          {(['immediate', '24h', '48h', '72h', '1w', 'stitch_removal', 'custom'] as PostTiming[]).map(timing => (
+                            <option key={timing} value={timing}>{t(`treatments.instructions.post.timing.${timing}`)}</option>
+                          ))}
+                        </select>
+                        {(item.timing === 'stitch_removal' || item.timing === 'custom') && (
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="number" min="1" value={item.custom_days || ''} onChange={e => updatePostInstruction(idx, 'custom_days', parseInt(e.target.value) || undefined)}
+                              className="w-20 px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white text-sm outline-none focus:ring-2 focus:ring-blue-500/20"
+                            />
+                            <span className="text-xs text-white/40">{t('treatments.instructions.post.days')}</span>
+                          </div>
+                        )}
+                        <button type="button" onClick={() => removePostInstruction(idx)} className="p-1.5 text-white/30 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors shrink-0">
+                          <X size={16} />
+                        </button>
+                      </div>
+                      {item.timing === 'stitch_removal' && (
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input type="checkbox" checked={item.book_followup || false} onChange={e => updatePostInstruction(idx, 'book_followup', e.target.checked)} className="h-4 w-4 rounded border-white/[0.08] text-blue-400 focus:ring-blue-500" />
+                          <span className="text-xs text-white/60">{t('treatments.instructions.post.bookFollowup')}</span>
+                        </label>
+                      )}
+                      <textarea
+                        value={item.content} onChange={e => updatePostInstruction(idx, 'content', e.target.value)}
+                        placeholder={t('treatments.instructions.post.contentPlaceholder')} rows={3}
+                        className="w-full px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white text-sm placeholder-white/20 outline-none focus:ring-2 focus:ring-blue-500/20 resize-none"
+                      />
+                    </div>
+                  ))}
+                </div>
+                <button type="button" onClick={addPostInstruction} className="flex items-center gap-2 text-sm text-blue-400 hover:text-blue-300 font-semibold transition-colors">
+                  <Plus size={16} /> {t('treatments.instructions.post.addButton')}
+                </button>
+              </div>
+
+              {/* Section 3: Follow-up messages */}
+              <div className="space-y-3">
+                <h4 className="font-bold text-white">{t('treatments.instructions.followup.title')}</h4>
+                <div className="flex items-start gap-2 bg-blue-500/5 border border-blue-500/20 rounded-lg p-3">
+                  <Info size={14} className="text-blue-400 shrink-0 mt-0.5" />
+                  <p className="text-xs text-blue-300/80">{t('treatments.instructions.followup.inDevelopment')}</p>
+                </div>
+                <p className="text-xs text-white/30">{t('treatments.instructions.followup.variables')}</p>
+                <div className="space-y-3">
+                  {instructionsLocal.followup_template.map((item, idx) => (
+                    <div key={idx} className="bg-white/[0.03] border border-white/[0.06] rounded-xl p-4 space-y-3">
+                      <div className="flex items-center gap-3">
+                        <input type="number" min="1" value={item.hours_after} onChange={e => updateFollowup(idx, 'hours_after', parseInt(e.target.value) || 24)}
+                          className="w-20 px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white text-sm outline-none focus:ring-2 focus:ring-blue-500/20" />
+                        <span className="text-xs text-white/40 shrink-0">{t('treatments.instructions.followup.hoursAfter')}</span>
+                        <div className="flex-1" />
+                        <button type="button" onClick={() => removeFollowup(idx)} className="p-1.5 text-white/30 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors">
+                          <X size={16} />
+                        </button>
+                      </div>
+                      <textarea
+                        value={item.message} onChange={e => updateFollowup(idx, 'message', e.target.value)}
+                        placeholder={t('treatments.instructions.followup.messagePlaceholder')} rows={3}
+                        className="w-full px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white text-sm placeholder-white/20 outline-none focus:ring-2 focus:ring-blue-500/20 resize-none"
+                      />
+                    </div>
+                  ))}
+                </div>
+                <button type="button" onClick={addFollowup} className="flex items-center gap-2 text-sm text-blue-400 hover:text-blue-300 font-semibold transition-colors">
+                  <Plus size={16} /> {t('treatments.instructions.followup.addButton')}
+                </button>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 p-4 sm:p-6 border-t border-white/[0.06] shrink-0 bg-white/[0.02]">
+              <button type="button" onClick={() => setInstructionsModalOpen(false)} className="px-5 py-2.5 text-white/70 font-semibold hover:bg-white/[0.06] rounded-xl transition-all">
+                {t('treatments.instructions.cancel')}
+              </button>
+              <button type="button" onClick={saveInstructions} className="px-6 py-2.5 bg-white text-[#0a0e1a] rounded-xl font-bold hover:bg-white/90 transition-all active:scale-[0.98] flex items-center gap-2">
+                <Save size={18} /> {t('treatments.instructions.save')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

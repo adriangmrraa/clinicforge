@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Building2, Plus, Edit, Trash2, Phone, Loader2, AlertCircle, CheckCircle2, Calendar, Clock, MapPin, HelpCircle, ChevronDown, X, DollarSign } from 'lucide-react';
+import { Building2, Plus, Edit, Trash2, Phone, Loader2, AlertCircle, CheckCircle2, Calendar, Clock, MapPin, HelpCircle, ChevronDown, X, DollarSign, Shield, GitMerge, ToggleLeft, ToggleRight, Info } from 'lucide-react';
 import api from '../api/axios';
 import { useTranslation } from '../context/LanguageContext';
 import PageHeader from '../components/PageHeader';
@@ -74,6 +74,34 @@ interface FAQ {
     sort_order: number;
 }
 
+interface InsuranceProvider {
+    id: number;
+    tenant_id: number;
+    provider_name: string;
+    status: 'accepted' | 'restricted' | 'external_derivation' | 'rejected';
+    restrictions?: string;
+    external_target?: string;
+    requires_copay: boolean;
+    copay_notes?: string;
+    ai_response_template?: string;
+    sort_order: number;
+    is_active: boolean;
+}
+
+interface DerivationRule {
+    id: number;
+    tenant_id: number;
+    rule_name: string;
+    patient_condition: 'new_patient' | 'existing_patient' | 'any';
+    treatment_categories: string[];
+    target_type: 'specific_professional' | 'priority_professional' | 'team';
+    target_professional_id?: number;
+    target_professional_name?: string;
+    priority_order: number;
+    is_active: boolean;
+    description?: string;
+}
+
 const CALENDAR_PROVIDER_OPTIONS = (t: (k: string) => string) => [
     { value: 'local' as const, label: t('clinics.calendar_local') },
     { value: 'google' as const, label: t('clinics.calendar_google') },
@@ -105,6 +133,30 @@ export default function ClinicsView() {
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState<string | null>(null);
 
+    // Tab state
+    const [activeTab, setActiveTab] = useState<'clinics' | 'insurance' | 'derivation'>('clinics');
+
+    // Insurance state
+    const [insuranceProviders, setInsuranceProviders] = useState<InsuranceProvider[]>([]);
+    const [insuranceLoading, setInsuranceLoading] = useState(false);
+    const [insuranceModalOpen, setInsuranceModalOpen] = useState(false);
+    const [editingInsurance, setEditingInsurance] = useState<InsuranceProvider | null>(null);
+    const [insuranceForm, setInsuranceForm] = useState<Partial<InsuranceProvider>>({
+        provider_name: '', status: 'accepted', requires_copay: true, sort_order: 0, is_active: true,
+    });
+    const [insuranceSaving, setInsuranceSaving] = useState(false);
+
+    // Derivation state
+    const [derivationRules, setDerivationRules] = useState<DerivationRule[]>([]);
+    const [derivationLoading, setDerivationLoading] = useState(false);
+    const [derivationModalOpen, setDerivationModalOpen] = useState(false);
+    const [editingDerivation, setEditingDerivation] = useState<DerivationRule | null>(null);
+    const [derivationForm, setDerivationForm] = useState<Partial<DerivationRule>>({
+        rule_name: '', patient_condition: 'any', treatment_categories: [], target_type: 'team', is_active: true,
+    });
+    const [derivationSaving, setDerivationSaving] = useState(false);
+    const [derivationProfessionals, setDerivationProfessionals] = useState<{id: number; first_name: string; last_name: string}[]>([]);
+
     // FAQ state
     const [faqModalOpen, setFaqModalOpen] = useState(false);
     const [faqClinicId, setFaqClinicId] = useState<number | null>(null);
@@ -116,6 +168,10 @@ export default function ClinicsView() {
     const [faqSaving, setFaqSaving] = useState(false);
 
     useEffect(() => { fetchClinicas(); }, []);
+    useEffect(() => {
+        if (activeTab === 'insurance') fetchInsurance();
+        if (activeTab === 'derivation') fetchDerivation();
+    }, [activeTab]);
 
     const fetchClinicas = async () => {
         try {
@@ -316,6 +372,122 @@ export default function ClinicsView() {
         }
     };
 
+    /* ── Insurance Handlers ── */
+    const fetchInsurance = async () => {
+        setInsuranceLoading(true);
+        try {
+            const resp = await api.get('/admin/insurance-providers');
+            setInsuranceProviders(resp.data);
+        } catch (err) { console.error('Error cargando obras sociales:', err); }
+        finally { setInsuranceLoading(false); }
+    };
+
+    const openInsuranceModal = (item: InsuranceProvider | null = null) => {
+        if (item) {
+            setEditingInsurance(item);
+            setInsuranceForm({ ...item });
+        } else {
+            setEditingInsurance(null);
+            setInsuranceForm({ provider_name: '', status: 'accepted', requires_copay: true, sort_order: 0, is_active: true });
+        }
+        setInsuranceModalOpen(true);
+    };
+
+    const handleInsuranceSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setInsuranceSaving(true);
+        try {
+            if (editingInsurance) {
+                await api.put(`/admin/insurance-providers/${editingInsurance.id}`, insuranceForm);
+            } else {
+                await api.post('/admin/insurance-providers', insuranceForm);
+            }
+            setInsuranceModalOpen(false);
+            await fetchInsurance();
+        } catch (err) { console.error('Error guardando obra social:', err); }
+        finally { setInsuranceSaving(false); }
+    };
+
+    const handleInsuranceDelete = async (id: number, name: string) => {
+        if (!window.confirm(t('settings.insurance.deleteConfirm').replace('{name}', name))) return;
+        try {
+            await api.delete(`/admin/insurance-providers/${id}`);
+            await fetchInsurance();
+        } catch (err) { console.error('Error eliminando obra social:', err); }
+    };
+
+    const handleInsuranceToggle = async (id: number) => {
+        try {
+            await api.patch(`/admin/insurance-providers/${id}/toggle-active`);
+            await fetchInsurance();
+        } catch (err) { console.error('Error toggling obra social:', err); }
+    };
+
+    /* ── Derivation Handlers ── */
+    const fetchDerivation = async () => {
+        setDerivationLoading(true);
+        try {
+            const [rulesResp, profResp] = await Promise.all([
+                api.get('/admin/derivation-rules'),
+                api.get('/admin/professionals'),
+            ]);
+            setDerivationRules(rulesResp.data);
+            setDerivationProfessionals(Array.isArray(profResp.data) ? profResp.data : []);
+        } catch (err) { console.error('Error cargando reglas de derivación:', err); }
+        finally { setDerivationLoading(false); }
+    };
+
+    const openDerivationModal = (item: DerivationRule | null = null) => {
+        if (item) {
+            setEditingDerivation(item);
+            setDerivationForm({ ...item });
+        } else {
+            setEditingDerivation(null);
+            setDerivationForm({ rule_name: '', patient_condition: 'any', treatment_categories: [], target_type: 'team', is_active: true });
+        }
+        setDerivationModalOpen(true);
+    };
+
+    const handleDerivationSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setDerivationSaving(true);
+        try {
+            if (editingDerivation) {
+                await api.put(`/admin/derivation-rules/${editingDerivation.id}`, derivationForm);
+            } else {
+                await api.post('/admin/derivation-rules', derivationForm);
+            }
+            setDerivationModalOpen(false);
+            await fetchDerivation();
+        } catch (err) { console.error('Error guardando regla:', err); }
+        finally { setDerivationSaving(false); }
+    };
+
+    const handleDerivationDelete = async (id: number) => {
+        if (!window.confirm(t('alerts.confirm_delete_clinic'))) return;
+        try {
+            await api.delete(`/admin/derivation-rules/${id}`);
+            await fetchDerivation();
+        } catch (err) { console.error('Error eliminando regla:', err); }
+    };
+
+    const handleDerivationToggle = async (id: number) => {
+        try {
+            await api.patch(`/admin/derivation-rules/${id}/toggle-active`);
+            await fetchDerivation();
+        } catch (err) { console.error('Error toggling regla:', err); }
+    };
+
+    const insuranceStatusBadge = (status: InsuranceProvider['status']) => {
+        const map: Record<string, string> = {
+            accepted: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
+            restricted: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
+            external_derivation: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
+            rejected: 'bg-red-500/10 text-red-400 border-red-500/20',
+        };
+        return map[status] || 'bg-white/[0.06] text-white/40 border-white/[0.06]';
+    };
+
     const calendarProviderLabel = (cp: string) =>
         CALENDAR_PROVIDER_OPTIONS(t).find(o => o.value === cp)?.label ?? cp;
 
@@ -335,14 +507,44 @@ export default function ClinicsView() {
                 subtitle={t('clinics.subtitle')}
                 icon={<Building2 size={22} />}
                 action={
-                    <button
-                        onClick={() => handleOpenModal()}
-                        className="flex items-center justify-center gap-2 bg-white text-[#0a0e1a] px-4 py-2.5 rounded-xl hover:bg-white/90 transition-all font-medium text-sm sm:text-base active:scale-[0.98]"
-                    >
-                        <Plus size={20} /> {t('clinics.new_clinic')}
-                    </button>
+                    activeTab === 'clinics' ? (
+                        <button
+                            onClick={() => handleOpenModal()}
+                            className="flex items-center justify-center gap-2 bg-white text-[#0a0e1a] px-4 py-2.5 rounded-xl hover:bg-white/90 transition-all font-medium text-sm sm:text-base active:scale-[0.98]"
+                        >
+                            <Plus size={20} /> {t('clinics.new_clinic')}
+                        </button>
+                    ) : activeTab === 'insurance' ? (
+                        <button
+                            onClick={() => openInsuranceModal()}
+                            className="flex items-center justify-center gap-2 bg-white text-[#0a0e1a] px-4 py-2.5 rounded-xl hover:bg-white/90 transition-all font-medium text-sm sm:text-base active:scale-[0.98]"
+                        >
+                            <Plus size={20} /> {t('settings.insurance.addButton')}
+                        </button>
+                    ) : (
+                        <button
+                            onClick={() => openDerivationModal()}
+                            disabled={derivationRules.length >= 20}
+                            className="flex items-center justify-center gap-2 bg-white text-[#0a0e1a] px-4 py-2.5 rounded-xl hover:bg-white/90 transition-all font-medium text-sm sm:text-base active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            <Plus size={20} /> {t('settings.derivation.addButton')}
+                        </button>
+                    )
                 }
             />
+
+            {/* Tab navigation */}
+            <div className="flex gap-1 bg-white/[0.03] p-1 rounded-xl border border-white/[0.06] w-fit">
+                {([['clinics', <Building2 size={16} />, t('clinics.title')], ['insurance', <Shield size={16} />, t('settings.insurance.title')], ['derivation', <GitMerge size={16} />, t('settings.derivation.title')]] as [typeof activeTab, React.ReactNode, string][]).map(([key, icon, label]) => (
+                    <button
+                        key={key}
+                        onClick={() => setActiveTab(key)}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${activeTab === key ? 'bg-white text-[#0a0e1a]' : 'text-white/50 hover:text-white hover:bg-white/[0.04]'}`}
+                    >
+                        {icon} {label}
+                    </button>
+                ))}
+            </div>
 
             {success && (
                 <div className="bg-green-500/10 text-green-400 p-3 rounded-lg flex items-center gap-2 border border-green-500/20 animate-fade-in">
@@ -350,7 +552,7 @@ export default function ClinicsView() {
                 </div>
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {activeTab === 'clinics' && <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {clinicas.map((clinica) => (
                     <GlassCard
                         key={clinica.id}
@@ -409,7 +611,139 @@ export default function ClinicsView() {
                         </div>
                     </GlassCard>
                 ))}
-            </div>
+            </div>}
+
+            {/* ── Insurance Tab ── */}
+            {activeTab === 'insurance' && (
+                <div className="space-y-4">
+                    {insuranceLoading ? (
+                        <div className="flex justify-center py-12"><Loader2 className="animate-spin text-blue-400" size={28} /></div>
+                    ) : insuranceProviders.length === 0 ? (
+                        <div className="text-center py-16 bg-white/[0.02] border border-white/[0.06] rounded-2xl">
+                            <Shield size={40} className="text-white/20 mx-auto mb-4" />
+                            <p className="text-white/40 text-sm max-w-md mx-auto">{t('settings.insurance.emptyState')}</p>
+                        </div>
+                    ) : (
+                        <div className="bg-white/[0.02] border border-white/[0.06] rounded-2xl overflow-hidden">
+                            <div className="overflow-x-auto">
+                                <table className="w-full">
+                                    <thead>
+                                        <tr className="border-b border-white/[0.06] bg-white/[0.02]">
+                                            <th className="text-left px-4 py-3 text-xs font-bold text-white/40 uppercase tracking-wider">{t('settings.insurance.fields.providerName')}</th>
+                                            <th className="text-left px-4 py-3 text-xs font-bold text-white/40 uppercase tracking-wider">{t('settings.insurance.fields.status')}</th>
+                                            <th className="text-left px-4 py-3 text-xs font-bold text-white/40 uppercase tracking-wider">{t('settings.insurance.fields.restrictions')}</th>
+                                            <th className="text-left px-4 py-3 text-xs font-bold text-white/40 uppercase tracking-wider">{t('settings.insurance.fields.requiresCopay')}</th>
+                                            <th className="text-right px-4 py-3 text-xs font-bold text-white/40 uppercase tracking-wider">{t('common.edit')}</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-white/[0.04]">
+                                        {insuranceProviders.map((prov) => (
+                                            <tr key={prov.id} className={`hover:bg-white/[0.02] transition-colors ${!prov.is_active ? 'opacity-50' : ''}`}>
+                                                <td className="px-4 py-3 text-sm font-semibold text-white">{prov.provider_name}</td>
+                                                <td className="px-4 py-3">
+                                                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold border ${insuranceStatusBadge(prov.status)}`}>
+                                                        {t(`settings.insurance.status.${prov.status}`)}
+                                                    </span>
+                                                </td>
+                                                <td className="px-4 py-3 text-xs text-white/50 max-w-xs truncate">
+                                                    {prov.status === 'external_derivation' ? prov.external_target : prov.restrictions || '—'}
+                                                </td>
+                                                <td className="px-4 py-3 text-xs text-white/50">
+                                                    {prov.requires_copay ? <span className="text-amber-400 font-semibold">{t('common.yes')}</span> : <span className="text-white/30">{t('common.no')}</span>}
+                                                </td>
+                                                <td className="px-4 py-3">
+                                                    <div className="flex items-center justify-end gap-1">
+                                                        <button onClick={() => handleInsuranceToggle(prov.id)} className="p-1.5 text-white/30 hover:text-blue-400 hover:bg-blue-500/10 rounded-lg transition-colors" title={prov.is_active ? 'Desactivar' : 'Activar'}>
+                                                            {prov.is_active ? <ToggleRight size={18} /> : <ToggleLeft size={18} />}
+                                                        </button>
+                                                        <button onClick={() => openInsuranceModal(prov)} className="p-1.5 text-white/30 hover:text-blue-400 hover:bg-blue-500/10 rounded-lg transition-colors">
+                                                            <Edit size={15} />
+                                                        </button>
+                                                        <button onClick={() => handleInsuranceDelete(prov.id, prov.provider_name)} className="p-1.5 text-white/30 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors">
+                                                            <Trash2 size={15} />
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* ── Derivation Tab ── */}
+            {activeTab === 'derivation' && (
+                <div className="space-y-4">
+                    <div className="flex items-start gap-3 bg-blue-500/5 border border-blue-500/20 rounded-xl p-4">
+                        <Info size={18} className="text-blue-400 shrink-0 mt-0.5" />
+                        <div className="text-sm text-blue-300/80">
+                            <p>{t('settings.derivation.explainer')}</p>
+                            {derivationRules.length >= 20 && <p className="mt-1 font-bold text-amber-400">{t('settings.derivation.maxRulesWarning')}</p>}
+                        </div>
+                    </div>
+
+                    {derivationLoading ? (
+                        <div className="flex justify-center py-12"><Loader2 className="animate-spin text-blue-400" size={28} /></div>
+                    ) : derivationRules.length === 0 ? (
+                        <div className="text-center py-16 bg-white/[0.02] border border-white/[0.06] rounded-2xl">
+                            <GitMerge size={40} className="text-white/20 mx-auto mb-4" />
+                            <p className="text-white/40 text-sm max-w-md mx-auto">{t('settings.derivation.emptyState')}</p>
+                        </div>
+                    ) : (
+                        <div className="bg-white/[0.02] border border-white/[0.06] rounded-2xl overflow-hidden">
+                            <div className="overflow-x-auto">
+                                <table className="w-full">
+                                    <thead>
+                                        <tr className="border-b border-white/[0.06] bg-white/[0.02]">
+                                            <th className="text-left px-4 py-3 text-xs font-bold text-white/40 uppercase tracking-wider">#</th>
+                                            <th className="text-left px-4 py-3 text-xs font-bold text-white/40 uppercase tracking-wider">{t('settings.derivation.fields.ruleName')}</th>
+                                            <th className="text-left px-4 py-3 text-xs font-bold text-white/40 uppercase tracking-wider">{t('settings.derivation.fields.patientCondition')}</th>
+                                            <th className="text-left px-4 py-3 text-xs font-bold text-white/40 uppercase tracking-wider">{t('settings.derivation.fields.categories')}</th>
+                                            <th className="text-left px-4 py-3 text-xs font-bold text-white/40 uppercase tracking-wider">{t('settings.derivation.fields.targetType')}</th>
+                                            <th className="text-right px-4 py-3 text-xs font-bold text-white/40 uppercase tracking-wider">{t('common.edit')}</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-white/[0.04]">
+                                        {[...derivationRules].sort((a, b) => a.priority_order - b.priority_order).map((rule) => (
+                                            <tr key={rule.id} className={`hover:bg-white/[0.02] transition-colors ${!rule.is_active ? 'opacity-50' : ''}`}>
+                                                <td className="px-4 py-3">
+                                                    <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-blue-500/10 text-blue-400 text-xs font-bold">{rule.priority_order}</span>
+                                                </td>
+                                                <td className="px-4 py-3 text-sm font-semibold text-white">{rule.rule_name}</td>
+                                                <td className="px-4 py-3 text-xs text-white/60">{t(`settings.derivation.condition.${rule.patient_condition}`)}</td>
+                                                <td className="px-4 py-3 text-xs text-white/50 max-w-xs">
+                                                    {rule.treatment_categories.length > 0 ? rule.treatment_categories.join(', ') : '*'}
+                                                </td>
+                                                <td className="px-4 py-3 text-xs text-white/60">
+                                                    {rule.target_type === 'specific_professional' && rule.target_professional_name
+                                                        ? rule.target_professional_name
+                                                        : t(`settings.derivation.target.${rule.target_type}`)}
+                                                </td>
+                                                <td className="px-4 py-3">
+                                                    <div className="flex items-center justify-end gap-1">
+                                                        <button onClick={() => handleDerivationToggle(rule.id)} className="p-1.5 text-white/30 hover:text-blue-400 hover:bg-blue-500/10 rounded-lg transition-colors">
+                                                            {rule.is_active ? <ToggleRight size={18} /> : <ToggleLeft size={18} />}
+                                                        </button>
+                                                        <button onClick={() => openDerivationModal(rule)} className="p-1.5 text-white/30 hover:text-blue-400 hover:bg-blue-500/10 rounded-lg transition-colors">
+                                                            <Edit size={15} />
+                                                        </button>
+                                                        <button onClick={() => handleDerivationDelete(rule.id)} className="p-1.5 text-white/30 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors">
+                                                            <Trash2 size={15} />
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
 
             {/* ── Modal Editar/Crear Clínica ── */}
             {isModalOpen && (
@@ -716,6 +1050,152 @@ export default function ClinicsView() {
                                 </div>
                             )}
                         </div>
+                    </div>
+                </div>
+            )}
+            {/* ── Modal Insurance ── */}
+            {insuranceModalOpen && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div className="bg-[#0d1117] border border-white/[0.08] rounded-xl w-full max-w-lg animate-scale-in max-h-[90vh] flex flex-col">
+                        <div className="p-4 sm:p-6 border-b border-white/[0.06] shrink-0 flex justify-between items-center">
+                            <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                                <Shield className="text-emerald-400" size={20} />
+                                {editingInsurance ? t('common.edit') : t('settings.insurance.addButton')}
+                            </h2>
+                            <button onClick={() => setInsuranceModalOpen(false)} className="p-2 hover:bg-white/[0.04] rounded-lg text-white/40"><X size={20} /></button>
+                        </div>
+                        <form onSubmit={handleInsuranceSubmit} className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 space-y-4">
+                            <div className="space-y-1">
+                                <label className="text-sm font-semibold text-white/60">{t('settings.insurance.fields.providerName')}</label>
+                                <input required type="text" value={insuranceForm.provider_name || ''} onChange={e => setInsuranceForm(p => ({ ...p, provider_name: e.target.value }))}
+                                    className="w-full px-4 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white placeholder-white/20 focus:ring-2 focus:ring-blue-500 outline-none" />
+                            </div>
+                            <div className="space-y-1">
+                                <label className="text-sm font-semibold text-white/60">{t('settings.insurance.fields.status')}</label>
+                                <select value={insuranceForm.status || 'accepted'} onChange={e => setInsuranceForm(p => ({ ...p, status: e.target.value as InsuranceProvider['status'] }))}
+                                    className="w-full px-4 py-2 bg-[#0d1117] border border-white/[0.08] rounded-lg text-white focus:ring-2 focus:ring-blue-500 outline-none [&>option]:bg-[#0d1117]">
+                                    <option value="accepted">{t('settings.insurance.status.accepted')}</option>
+                                    <option value="restricted">{t('settings.insurance.status.restricted')}</option>
+                                    <option value="external_derivation">{t('settings.insurance.status.external_derivation')}</option>
+                                    <option value="rejected">{t('settings.insurance.status.rejected')}</option>
+                                </select>
+                            </div>
+                            {insuranceForm.status === 'restricted' && (
+                                <div className="space-y-1">
+                                    <label className="text-sm font-semibold text-white/60">{t('settings.insurance.fields.restrictions')}</label>
+                                    <textarea value={insuranceForm.restrictions || ''} onChange={e => setInsuranceForm(p => ({ ...p, restrictions: e.target.value }))} rows={3}
+                                        className="w-full px-4 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white placeholder-white/20 focus:ring-2 focus:ring-blue-500 outline-none resize-none" />
+                                </div>
+                            )}
+                            {insuranceForm.status === 'external_derivation' && (
+                                <div className="space-y-1">
+                                    <label className="text-sm font-semibold text-white/60">{t('settings.insurance.fields.externalTarget')}</label>
+                                    <input type="text" value={insuranceForm.external_target || ''} onChange={e => setInsuranceForm(p => ({ ...p, external_target: e.target.value }))}
+                                        className="w-full px-4 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white placeholder-white/20 focus:ring-2 focus:ring-blue-500 outline-none" />
+                                </div>
+                            )}
+                            <div className="flex items-center gap-3">
+                                <label className="flex items-center gap-3 cursor-pointer">
+                                    <input type="checkbox" checked={insuranceForm.requires_copay ?? true} onChange={e => setInsuranceForm(p => ({ ...p, requires_copay: e.target.checked }))}
+                                        className="h-5 w-5 rounded border-white/[0.08] text-blue-400 focus:ring-blue-500" />
+                                    <span className="text-sm font-medium text-white/60">{t('settings.insurance.fields.requiresCopay')}</span>
+                                </label>
+                            </div>
+                            {insuranceForm.requires_copay && (
+                                <div className="space-y-1">
+                                    <label className="text-sm font-semibold text-white/60">{t('settings.insurance.fields.copayNotes')}</label>
+                                    <textarea value={insuranceForm.copay_notes || ''} onChange={e => setInsuranceForm(p => ({ ...p, copay_notes: e.target.value }))} rows={2}
+                                        className="w-full px-4 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white placeholder-white/20 focus:ring-2 focus:ring-blue-500 outline-none resize-none" />
+                                </div>
+                            )}
+                            <div className="space-y-1">
+                                <label className="text-sm font-semibold text-white/60">{t('settings.insurance.fields.aiTemplate')}</label>
+                                <textarea value={insuranceForm.ai_response_template || ''} onChange={e => setInsuranceForm(p => ({ ...p, ai_response_template: e.target.value }))} rows={3}
+                                    placeholder={t('settings.insurance.fields.aiTemplatePlaceholder')}
+                                    className="w-full px-4 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white placeholder-white/20 focus:ring-2 focus:ring-blue-500 outline-none resize-none text-sm" />
+                                <p className="text-xs text-white/30">{t('settings.insurance.fields.aiTemplatePlaceholder')}</p>
+                            </div>
+                            <div className="flex gap-3 pt-2">
+                                <button type="button" onClick={() => setInsuranceModalOpen(false)} className="flex-1 py-2 text-white/70 font-medium hover:bg-white/[0.04] rounded-lg transition-all">{t('common.cancel')}</button>
+                                <button type="submit" disabled={insuranceSaving} className="flex-1 py-2 bg-white text-[#0a0e1a] font-bold rounded-lg hover:bg-white/90 transition-all disabled:opacity-50 flex items-center justify-center gap-2">
+                                    {insuranceSaving ? <Loader2 className="animate-spin" size={18} /> : t('common.save')}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* ── Modal Derivation ── */}
+            {derivationModalOpen && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div className="bg-[#0d1117] border border-white/[0.08] rounded-xl w-full max-w-lg animate-scale-in max-h-[90vh] flex flex-col">
+                        <div className="p-4 sm:p-6 border-b border-white/[0.06] shrink-0 flex justify-between items-center">
+                            <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                                <GitMerge className="text-blue-400" size={20} />
+                                {editingDerivation ? t('common.edit') : t('settings.derivation.addButton')}
+                            </h2>
+                            <button onClick={() => setDerivationModalOpen(false)} className="p-2 hover:bg-white/[0.04] rounded-lg text-white/40"><X size={20} /></button>
+                        </div>
+                        <form onSubmit={handleDerivationSubmit} className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 space-y-4">
+                            <div className="space-y-1">
+                                <label className="text-sm font-semibold text-white/60">{t('settings.derivation.fields.ruleName')}</label>
+                                <input required type="text" value={derivationForm.rule_name || ''} onChange={e => setDerivationForm(p => ({ ...p, rule_name: e.target.value }))}
+                                    className="w-full px-4 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white placeholder-white/20 focus:ring-2 focus:ring-blue-500 outline-none" />
+                            </div>
+                            <div className="space-y-1">
+                                <label className="text-sm font-semibold text-white/60">{t('settings.derivation.fields.patientCondition')}</label>
+                                <select value={derivationForm.patient_condition || 'any'} onChange={e => setDerivationForm(p => ({ ...p, patient_condition: e.target.value as DerivationRule['patient_condition'] }))}
+                                    className="w-full px-4 py-2 bg-[#0d1117] border border-white/[0.08] rounded-lg text-white focus:ring-2 focus:ring-blue-500 outline-none [&>option]:bg-[#0d1117]">
+                                    <option value="new_patient">{t('settings.derivation.condition.new_patient')}</option>
+                                    <option value="existing_patient">{t('settings.derivation.condition.existing_patient')}</option>
+                                    <option value="any">{t('settings.derivation.condition.any')}</option>
+                                </select>
+                            </div>
+                            <div className="space-y-1">
+                                <label className="text-sm font-semibold text-white/60">{t('settings.derivation.fields.categories')}</label>
+                                <input type="text" value={(derivationForm.treatment_categories || []).join(', ')}
+                                    onChange={e => setDerivationForm(p => ({ ...p, treatment_categories: e.target.value.split(',').map(s => s.trim()).filter(Boolean) }))}
+                                    placeholder={t('settings.derivation.fields.categoriesHelper')}
+                                    className="w-full px-4 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white placeholder-white/20 focus:ring-2 focus:ring-blue-500 outline-none text-sm" />
+                                <p className="text-xs text-white/30">{t('settings.derivation.fields.categoriesHelper')}</p>
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-sm font-semibold text-white/60">{t('settings.derivation.fields.targetType')}</label>
+                                <div className="space-y-2">
+                                    {(['specific_professional', 'priority_professional', 'team'] as DerivationRule['target_type'][]).map(tt => (
+                                        <label key={tt} className="flex items-center gap-3 cursor-pointer p-3 rounded-lg hover:bg-white/[0.02] border border-transparent hover:border-white/[0.06] transition-all">
+                                            <input type="radio" name="target_type" value={tt} checked={derivationForm.target_type === tt} onChange={() => setDerivationForm(p => ({ ...p, target_type: tt }))}
+                                                className="h-4 w-4 text-blue-400 border-white/[0.08] focus:ring-blue-500" />
+                                            <span className="text-sm font-medium text-white/70">{t(`settings.derivation.target.${tt}`)}</span>
+                                        </label>
+                                    ))}
+                                </div>
+                            </div>
+                            {derivationForm.target_type === 'specific_professional' && (
+                                <div className="space-y-1">
+                                    <label className="text-sm font-semibold text-white/60">{t('settings.derivation.fields.professional')}</label>
+                                    <select value={derivationForm.target_professional_id || ''} onChange={e => setDerivationForm(p => ({ ...p, target_professional_id: e.target.value ? parseInt(e.target.value) : undefined }))}
+                                        className="w-full px-4 py-2 bg-[#0d1117] border border-white/[0.08] rounded-lg text-white focus:ring-2 focus:ring-blue-500 outline-none [&>option]:bg-[#0d1117]">
+                                        <option value="">—</option>
+                                        {derivationProfessionals.map(p => (
+                                            <option key={p.id} value={p.id}>{p.first_name} {p.last_name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            )}
+                            <div className="space-y-1">
+                                <label className="text-sm font-semibold text-white/60">{t('settings.derivation.fields.description')}</label>
+                                <textarea value={derivationForm.description || ''} onChange={e => setDerivationForm(p => ({ ...p, description: e.target.value }))} rows={2}
+                                    className="w-full px-4 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white placeholder-white/20 focus:ring-2 focus:ring-blue-500 outline-none resize-none text-sm" />
+                            </div>
+                            <div className="flex gap-3 pt-2">
+                                <button type="button" onClick={() => setDerivationModalOpen(false)} className="flex-1 py-2 text-white/70 font-medium hover:bg-white/[0.04] rounded-lg transition-all">{t('common.cancel')}</button>
+                                <button type="submit" disabled={derivationSaving} className="flex-1 py-2 bg-white text-[#0a0e1a] font-bold rounded-lg hover:bg-white/90 transition-all disabled:opacity-50 flex items-center justify-center gap-2">
+                                    {derivationSaving ? <Loader2 className="animate-spin" size={18} /> : t('common.save')}
+                                </button>
+                            </div>
+                        </form>
                     </div>
                 </div>
             )}

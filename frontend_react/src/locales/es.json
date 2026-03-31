@@ -660,7 +660,103 @@
     "tip_migration": "Tip: Revisa la migración 006_treatment_config.sql",
     "assigned_professionals": "Profesionales Asignados",
     "all_if_none": "Si no se selecciona ninguno, todos pueden realizarlo",
-    "all_professionals": "Todos los profesionales"
+    "all_professionals": "Todos los profesionales",
+    "instructions": {
+      "configureButton": "Configurar Instrucciones",
+      "editButton": "Editar Instrucciones",
+      "configured": "Instrucciones configuradas",
+      "notConfigured": "Sin instrucciones configuradas",
+      "explanation": "El asistente de IA enviará estas instrucciones al paciente automáticamente después de agendar un turno. Es importante completarlas correctamente.",
+      "modalTitle": "Instrucciones del Tratamiento",
+      "pre": {
+        "title": "Instrucciones Pre-tratamiento",
+        "helper": "El asistente enviará esto junto con la confirmación del turno.",
+        "placeholder": "Ej: No ingerir alimentos 8 horas antes..."
+      },
+      "post": {
+        "title": "Instrucciones Post-tratamiento",
+        "addButton": "Agregar instrucción",
+        "timing": {
+          "immediate": "Inmediato",
+          "24h": "A las 24 horas",
+          "48h": "A las 48 horas",
+          "72h": "A las 72 horas",
+          "1w": "A la semana",
+          "stitch_removal": "Retiro de puntos",
+          "custom": "Personalizado"
+        },
+        "days": "días",
+        "bookFollowup": "Sugerir agendar turno de control",
+        "contentPlaceholder": "Escribí las instrucciones para este momento..."
+      },
+      "followup": {
+        "title": "Mensajes de Seguimiento Automático",
+        "inDevelopment": "Los mensajes de seguimiento se enviarán automáticamente después del turno. Esta funcionalidad está en desarrollo.",
+        "addButton": "Agregar mensaje de seguimiento",
+        "hoursAfter": "horas después",
+        "variables": "Variables disponibles: {patient_name}, {treatment_name}, {appointment_date}, {professional_name}",
+        "messagePlaceholder": "Hola {patient_name}, ¿cómo te sentís después de tu {treatment_name}?"
+      },
+      "save": "Guardar instrucciones",
+      "cancel": "Cancelar"
+    }
+  },
+  "settings": {
+    "insurance": {
+      "title": "Obras Sociales",
+      "addButton": "Agregar Obra Social",
+      "emptyState": "Todavía no configuraste ninguna obra social. Agregá las que aceptás para que el asistente pueda responder automáticamente.",
+      "deleteConfirm": "¿Eliminar {name} del catálogo?",
+      "status": {
+        "accepted": "Aceptada",
+        "restricted": "Con restricciones",
+        "external_derivation": "Derivación externa",
+        "rejected": "No aceptada"
+      },
+      "fields": {
+        "providerName": "Nombre de la obra social",
+        "status": "Estado",
+        "restrictions": "Restricciones",
+        "externalTarget": "Derivar a",
+        "requiresCopay": "Requiere coseguro",
+        "copayNotes": "Detalle del coseguro",
+        "aiTemplate": "Respuesta personalizada del asistente",
+        "aiTemplatePlaceholder": "Dejá vacío para usar la respuesta por defecto"
+      },
+      "errors": {
+        "nameRequired": "El nombre es obligatorio",
+        "restrictionsRequired": "Las restricciones son obligatorias para este estado",
+        "externalTargetRequired": "El destino de derivación es obligatorio",
+        "duplicateName": "Ya existe una obra social con ese nombre"
+      }
+    },
+    "derivation": {
+      "title": "Derivación",
+      "addButton": "Agregar Regla",
+      "explainer": "Las reglas de derivación determinan a qué profesional se asigna cada paciente según el tipo de tratamiento. Se evalúan en orden de prioridad.",
+      "emptyState": "No hay reglas de derivación configuradas. El asistente asignará turnos sin filtro de profesional.",
+      "maxRulesWarning": "Máximo 20 reglas por clínica.",
+      "conflictWarning": "Esta regla puede solaparse con '{name}'. La de menor número se aplicará primero.",
+      "condition": {
+        "new_patient": "Paciente nuevo",
+        "existing_patient": "Paciente existente",
+        "any": "Cualquier paciente"
+      },
+      "target": {
+        "specific_professional": "Profesional específico",
+        "priority_professional": "Profesional prioritario",
+        "team": "Equipo (sin filtro)"
+      },
+      "fields": {
+        "ruleName": "Nombre de la regla",
+        "patientCondition": "Condición del paciente",
+        "categories": "Categorías de tratamiento",
+        "categoriesHelper": "Ej: cirugia, implantes, limpieza. Usá * para todas.",
+        "targetType": "Derivar a",
+        "professional": "Profesional",
+        "description": "Descripción (opcional)"
+      }
+    }
   },
   "profile": {
     "title": "Mi Perfil",
@@ -843,16 +939,7 @@
     "sign_medical_alta": "Firmar Alta Médica",
     "general_fallback": "General",
     "view_schedules": "Ver Horarios",
-    "edit_profile": "Editar Perfil",
-    "priority": {
-      "label": "Prioridad",
-      "high": "Alta",
-      "mediumHigh": "Media-Alta",
-      "medium": "Media",
-      "low": "Baja"
-    },
-    "priorityProfessional": "Profesional prioritario",
-    "priorityProfessionalDesc": "Este profesional tendrá prioridad en la asignación de turnos de alto valor"
+    "edit_profile": "Editar Perfil"
   },
   "layout": {
     "app_title": "Dentalogic",
