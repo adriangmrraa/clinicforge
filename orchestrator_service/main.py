@@ -4900,6 +4900,129 @@ async def get_patient_odontogram():
         return "Error al consultar odontograma."
 
 
+@tool
+async def check_insurance_coverage(insurance_provider: str) -> str:
+    """Verificar si la clínica acepta una obra social específica.
+
+    Args:
+        insurance_provider: Nombre de la obra social a consultar
+    """
+    tenant_id = current_tenant_id.get()
+    try:
+        # 1. Try exact match (case-insensitive)
+        row = await db.pool.fetchrow(
+            "SELECT * FROM tenant_insurance_providers WHERE tenant_id = $1 AND LOWER(provider_name) = LOWER($2) AND is_active = true",
+            tenant_id,
+            insurance_provider.strip(),
+        )
+        # 2. If no exact match, try partial (ILIKE)
+        if not row:
+            rows = await db.pool.fetch(
+                "SELECT * FROM tenant_insurance_providers WHERE tenant_id = $1 AND provider_name ILIKE $2 AND is_active = true",
+                tenant_id,
+                f"%{insurance_provider.strip()}%",
+            )
+            if len(rows) == 1:
+                row = rows[0]
+            elif len(rows) > 1:
+                names = ", ".join(r["provider_name"] for r in rows)
+                return f"Encontré varias obras sociales similares: {names}. ¿Cuál es la tuya?"
+        # 3. No match at all
+        if not row:
+            return (
+                f"No tengo información sobre '{insurance_provider}' en el catálogo de la clínica. "
+                "Te recomiendo consultar directamente con la clínica."
+            )
+        # 4. Format response based on status
+        status = row["status"]
+        name = row["provider_name"]
+        if row.get("ai_response_template"):
+            return row["ai_response_template"]
+        if status == "accepted":
+            copay = " La consulta tiene coseguro." if row.get("requires_copay") else ""
+            return f"Sí, trabajamos con {name}.{copay} ¿Querés que te pase turnos disponibles?"
+        elif status == "restricted":
+            return f"Trabajamos con {name}, pero con restricciones: {row.get('restrictions', '')}. ¿Querés más información?"
+        elif status == "external_derivation":
+            target = row.get("external_target", "")
+            return (
+                f"Para {name}, trabajamos a través de {target}. "
+                "Te paso el contacto para que coordines directamente."
+            )
+        else:  # rejected
+            return f"Lamentablemente no trabajamos con {name}. ¿Querés consultar de forma particular?"
+    except Exception as e:
+        logger.warning(f"check_insurance_coverage error (tabla puede no existir aún): {e}")
+        return (
+            f"No pude verificar la cobertura de '{insurance_provider}' en este momento. "
+            "Te recomiendo consultar directamente con la clínica."
+        )
+
+
+@tool
+async def get_treatment_instructions(treatment_code: str, timing: str = "all") -> str:
+    """Obtener instrucciones pre/post tratamiento para enviar al paciente.
+
+    Args:
+        treatment_code: Código del tipo de tratamiento
+        timing: 'pre', 'post', 'all', o timing específico como '24h', '72h'
+    """
+    tenant_id = current_tenant_id.get()
+    try:
+        row = await db.pool.fetchrow(
+            "SELECT pre_instructions, post_instructions, followup_template FROM treatment_types WHERE tenant_id = $1 AND code = $2",
+            tenant_id,
+            treatment_code,
+        )
+        if not row:
+            return "No se encontró el tratamiento."
+
+        result_parts = []
+
+        if timing in ("pre", "all") and row.get("pre_instructions"):
+            result_parts.append(f"📋 INSTRUCCIONES PRE-TRATAMIENTO:\n{row['pre_instructions']}")
+
+        if timing in ("post", "all") and row.get("post_instructions"):
+            post = row["post_instructions"]
+            if isinstance(post, str):
+                import json as _json
+                try:
+                    post = _json.loads(post)
+                except Exception:
+                    post = []
+            if isinstance(post, list) and post:
+                result_parts.append("📋 INSTRUCCIONES POST-TRATAMIENTO:")
+                timing_labels = {
+                    "immediate": "Inmediato",
+                    "24h": "A las 24hs",
+                    "48h": "A las 48hs",
+                    "72h": "A las 72hs",
+                    "1w": "A la semana",
+                    "stitch_removal": "Retiro de puntos",
+                }
+                for entry in post:
+                    t = entry.get("timing", "")
+                    content = entry.get("content", "")
+                    # If a specific timing was requested (not 'post' or 'all'), filter
+                    if timing not in ("post", "all") and t != timing:
+                        continue
+                    label = timing_labels.get(t, t)
+                    result_parts.append(f"  ⏰ {label}: {content}")
+                    if entry.get("book_followup"):
+                        days = entry.get("days", 7)
+                        result_parts.append(
+                            f"    → Sugerir agendar turno de control en {days} días"
+                        )
+
+        if not result_parts:
+            return "Este tratamiento no tiene instrucciones configuradas."
+
+        return "\n".join(result_parts)
+    except Exception as e:
+        logger.warning(f"get_treatment_instructions error (columnas pueden no existir aún): {e}")
+        return "No se pudieron obtener las instrucciones del tratamiento en este momento."
+
+
 DENTAL_TOOLS = [
     list_professionals,
     list_services,
@@ -4920,6 +5043,8 @@ DENTAL_TOOLS = [
     reassign_document,
     derivhumano,
     verify_payment_receipt,
+    check_insurance_coverage,
+    get_treatment_instructions,
 ]
 
 
@@ -5090,6 +5215,107 @@ def _format_faqs(faqs: list) -> str:
     return "\n".join(lines)
 
 
+def _format_insurance_providers(providers: list) -> str:
+    """Genera sección de obras sociales para el system prompt.
+
+    Args:
+        providers: Lista de dicts desde tenant_insurance_providers (is_active=true).
+
+    Returns:
+        Bloque de texto listo para inyectar en el prompt, o vacío si no hay datos.
+    """
+    if not providers:
+        return ""
+
+    accepted = [p for p in providers if p.get("status") == "accepted"]
+    restricted = [p for p in providers if p.get("status") == "restricted"]
+    derivation = [p for p in providers if p.get("status") == "external_derivation"]
+    rejected = [p for p in providers if p.get("status") == "rejected"]
+
+    lines = [
+        "OBRAS SOCIALES — REGLAS DE RESPUESTA:",
+        'Respuesta por defecto para OS aceptada: "Sí 😊 trabajamos con tu obra social. La consulta tiene un coseguro. ¿Querés que te pase turnos disponibles?"',
+        "NO informar sobre autorizaciones, estudios o coberturas específicas en esta etapa.",
+        "",
+    ]
+
+    if accepted:
+        names = ", ".join(p["provider_name"] for p in accepted)
+        lines.append(f"Aceptadas: {names}")
+
+    if restricted:
+        lines.append("Con restricciones:")
+        for p in restricted:
+            restr = p.get("restrictions") or "ver con la clínica"
+            lines.append(f"  • {p['provider_name']} → {restr}")
+
+    if derivation:
+        lines.append("Derivación externa:")
+        for p in derivation:
+            target = p.get("external_target") or "otro centro"
+            msg = (
+                p.get("ai_response_template")
+                or f"Para ese tratamiento trabajamos a través de {target} 😊 Te paso el contacto para que coordines directamente."
+            )
+            lines.append(f"  • {p['provider_name']} → Derivar a {target}. Mensaje: \"{msg}\"")
+
+    if rejected:
+        names = ", ".join(p["provider_name"] for p in rejected)
+        lines.append(f"No aceptadas: {names}")
+    else:
+        lines.append("No aceptadas: ninguna configurada")
+
+    lines.append("")
+    lines.append(
+        "Si el paciente menciona una OS que NO está en esta lista → "
+        "\"No tengo información sobre esa obra social. ¿Querés que consulte con la clínica?\""
+    )
+    lines.append(
+        "Podés llamar a check_insurance_coverage para buscar una OS específica en el catálogo configurado."
+    )
+
+    return "\n".join(lines)
+
+
+def _format_derivation_rules(rules: list) -> str:
+    """Genera sección de reglas de derivación de pacientes para el system prompt.
+
+    Args:
+        rules: Lista de dicts desde professional_derivation_rules JOIN professionals
+               (is_active=true, ordenadas por priority_order ASC).
+
+    Returns:
+        Bloque de texto listo para inyectar en el prompt, o vacío si no hay reglas.
+    """
+    if not rules:
+        return ""
+
+    lines = [
+        "DERIVACIÓN DE PACIENTES — REGLAS (evaluar EN ORDEN, primera que coincida gana):",
+    ]
+
+    for i, rule in enumerate(rules, start=1):
+        rule_name = rule.get("rule_name") or f"Regla {i}"
+        condition = rule.get("patient_condition") or "cualquier paciente"
+        categories = rule.get("categories") or ""
+        prof_name = rule.get("target_professional_name")
+        prof_id = rule.get("target_professional_id")
+
+        lines.append(f"REGLA {i} — {rule_name}:")
+        cat_suffix = f" / Categorías: {categories}" if categories else ""
+        lines.append(f"  Aplica a: {condition}{cat_suffix}")
+
+        if prof_name and prof_id:
+            lines.append(f"  Acción: agendar con {prof_name} (ID: {prof_id})")
+        else:
+            lines.append("  Acción: sin filtro de profesional (equipo)")
+
+    lines.append("")
+    lines.append("Si ninguna regla coincide → sin filtro de profesional (equipo disponible).")
+
+    return "\n".join(lines)
+
+
 def build_system_prompt(
     clinic_name: str,
     current_time: str,
@@ -5110,6 +5336,8 @@ def build_system_prompt(
     bank_alias: str = "",
     bank_holder_name: str = "",
     upcoming_holidays: list = None,
+    insurance_providers: list = None,
+    derivation_rules: list = None,
 ) -> str:
     """
     Construye el system prompt del agente de forma dinámica.
@@ -5117,6 +5345,8 @@ def build_system_prompt(
     consultation_price: valor de la consulta desde tenants.consultation_price
     sede_info: {location, address, maps_url} resuelto para el día actual desde working_hours
     anamnesis_url: URL base del formulario público de anamnesis (si el paciente tiene token)
+    insurance_providers: lista de dicts desde tenant_insurance_providers (is_active=true)
+    derivation_rules: lista de dicts desde professional_derivation_rules JOIN professionals
     """
     lang_instructions = {
         "es": "RESPONDE ÚNICAMENTE EN ESPAÑOL. Todo tu mensaje debe estar en español. Mantené el voseo rioplatense cuando sea natural.",
@@ -5179,6 +5409,8 @@ REGLA ANTI-MARKDOWN (WHATSAPP):
         else f"Lunes a Viernes de {hours_start} a {hours_end}. Sábados y Domingos: CERRADO."
     )
     faqs_section = _format_faqs(faqs or [])
+    insurance_section = _format_insurance_providers(insurance_providers or [])
+    derivation_section = _format_derivation_rules(derivation_rules or [])
 
     # Dirección dinámica (fallback global)
     address_info = ""
@@ -5392,6 +5624,20 @@ SI NO HAY PRECIO CONFIGURADO: No pedir seña. Agendar normalmente y pasar direct
         else ""
     )
 
+    # Insurance fallback rule: if catalog is configured, point to check_insurance_coverage tool;
+    # otherwise use the old static response.
+    if insurance_providers:
+        insurance_fallback_rule = (
+            "llamá check_insurance_coverage con el nombre de la OS. "
+            "El catálogo está configurado en el sistema. Si no la encontrás, "
+            "decí: \"No tengo información sobre esa obra social. ¿Querés que consulte con la clínica?\""
+        )
+    else:
+        insurance_fallback_rule = (
+            "respondé: \"Te recomiendo consultar directamente con la clínica sobre convenios y coberturas. "
+            "¿Querés que te derive con un humano para eso?\""
+        )
+
     return f"""REGLA DE IDIOMA (OBLIGATORIA): {lang_rule}{extra_context}
 {greeting_rule}
 IDENTIDAD Y TONO:
@@ -5412,42 +5658,40 @@ INFORMACIÓN DEL CONSULTORIO:
 {price_section}
 {holidays_section}
 
-## TRIAGE COMERCIAL DE IMPLANTES Y PRÓTESIS
-Si el paciente menciona implantes, prótesis, dentadura, diente postizo, o tratamientos relacionados → ACTIVAR este flujo:
+## FLUJO DE IMPLANTES Y PRÓTESIS
+Si el paciente menciona implantes, prótesis, dentadura, diente postizo, o tratamientos relacionados:
 
-PASO A — OPCIONES DE TRIAGE (OBLIGATORIO enviar estas opciones con emojis):
-"Para orientarte mejor, cuál de estas situaciones se parece más a tu caso?
+IMPORTANTE: NO diagnosticar. NO clasificar si tiene hueso o no. NO recomendar tipo de implante ni protocolo. Eso lo evalúa la Dra. en consulta.
 
-🦷 Perdí un diente
-🦷🦷 Perdí varios dientes
-🔄 Uso prótesis removible
-🔧 Necesito cambiar una prótesis
-😣 Tengo una prótesis que se mueve
-🤔 No estoy seguro"
+PASO 1 — INDAGAR ESTUDIOS PREVIOS:
+"Tenés algún estudio previo? Por ejemplo tomografía, radiografía panorámica o alguna evaluación anterior?"
 
-PASO B — PROFUNDIZACIÓN:
-"Hace cuánto tiempo tenés este problema?"
+PASO 2 — SEGÚN RESPUESTA:
+Si TIENE estudios:
+"Genial! Podés enviarlos por acá así la Dra. ya los tiene para tu consulta 📎"
+→ Esperar a que envíe los estudios (imagen/archivo). Una vez que los envíe, agradecer y continuar con PASO 3.
 
-PASO C — POSICIONAMIENTO:
-"Perfecto 😊
-La Dra. Laura Delgado se especializa en rehabilitación oral con implantes y prótesis, incluyendo técnicas avanzadas como cirugía guiada e implantes inmediatos.
+Si NO tiene estudios:
+"No hay problema! Eso lo evalúa la Dra. en la consulta."
+→ Continuar con PASO 3 directamente.
 
-Muchos pacientes que han perdido varios dientes o usan prótesis logran mejorar mucho su calidad de vida con estos tratamientos."
-
-Luego continuá con el flujo de conversión a consulta (PASO D).
-
-PASO D — CONVERSIÓN A CONSULTA:
+PASO 3 — AGENDAR CONSULTA:
 "Vamos a buscar disponibilidad para tu consulta de evaluación."
 → Ejecutá check_availability(treatment_name='Consulta') INMEDIATAMENTE.
 → Presentá las opciones al paciente sin esperar confirmación previa.
+
+## ESTUDIOS PREVIOS (TODOS LOS TRATAMIENTOS)
+Para CUALQUIER tratamiento (no solo implantes), si el contexto lo amerita (tratamientos complejos, cirugías, rehabilitación):
+"Tenés algún estudio o análisis previo que quieras compartir? Si lo tenés, podés enviarlo por acá así la Dra. ya lo tiene para tu consulta."
+Si el paciente envía estudios → agradecer y continuar con el agendamiento.
+Si no tiene → no insistir, continuar normalmente.
 
 ## MANEJO DE OBJECIONES
 
 OBJECIÓN DE PRECIO:
 Si el paciente pregunta cuánto sale, cuánto cuesta, o pide referencia de precio:
 "Entiendo que quieras tener una referencia 😊
-En tratamientos de implantes cada caso es diferente porque depende de la cantidad de hueso y del tipo de prótesis.
-Por eso la Dra. primero realiza una evaluación personalizada.
+Cada caso es diferente y la Dra. necesita evaluarte para darte un presupuesto preciso.
 La consulta tiene un valor de {price_text}."
 Si el valor de consulta no está configurado, omití la línea del precio y decí "consultá directamente con la clínica para conocer el valor de la consulta".
 
@@ -5504,6 +5748,10 @@ POLÍTICAS:
 • Para describir tratamiento: ejecutá get_service_details PRIMERO. Sin tool = no describir.
 
 {faqs_section}
+
+{insurance_section}
+
+{derivation_section}
 
 ADMISIÓN — DATOS MÍNIMOS (INQUEBRANTABLE):
 Para agendar solo se necesitan 2 datos (el teléfono ya lo tenemos por WhatsApp):
@@ -5627,11 +5875,17 @@ PASO 9: INSTRUCCIONES PRE-TURNO — Solo para pacientes NUEVOS (primera visita):
 PASO 10: SEGUIMIENTO — Si el paciente no responde en 2-3 mensajes durante el flujo de agendamiento:
   No enviar más mensajes automáticos. Cuando vuelva a escribir, retomar donde quedó sin repetir pasos ya completados.
 
+INSTRUCCIONES DE TRATAMIENTO (POST-AGENDAMIENTO):
+• Después de confirmar un turno con book_appointment, llamá get_treatment_instructions(treatment_code, 'pre').
+• Si hay instrucciones pre-tratamiento → incluílas en el mensaje de confirmación.
+• Si el paciente pregunta por cuidados post-operatorios → llamá get_treatment_instructions(treatment_code, 'post').
+• NUNCA inventes instrucciones médicas. Solo usá las del catálogo configurado.
+
 INTELIGENCIA DE PRECIOS Y PAGOS:
 • La tool check_availability muestra el precio del tratamiento. NO lo repitas si ya lo mostró.
 • La tool book_appointment muestra el precio en la confirmación. Usá ese valor.
 • Si el paciente pregunta por precio ANTES de agendar → llamá get_service_details que incluye base_price.
-• Si el paciente pregunta "aceptan obra social?" o "tienen convenio?" → respondé: "Te recomiendo consultar directamente con la clínica sobre convenios y coberturas. ¿Querés que te derive con un humano para eso?"
+• Si el paciente pregunta "aceptan obra social?" o "tienen convenio?" → {insurance_fallback_rule}
 • MEDIOS DE PAGO: Si el paciente pregunta cómo pagar → "Aceptamos efectivo, transferencia y tarjeta. Si preferís transferencia, te paso los datos después de confirmar el turno."
 • SEÑA/DEPÓSITO: Si la clínica tiene bank_cbu configurado, después de confirmar el turno podés ofrecer: "Para confirmar definitivamente tu turno podés abonar una seña por transferencia. ¿Querés los datos?"
 
