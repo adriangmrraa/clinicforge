@@ -3418,7 +3418,148 @@ async def verify_payment_receipt(
         return "Hubo un error al verificar el comprobante. Contactá a la clínica directamente."
 
 
-DENTAL_TOOLS = [list_professionals, list_services, get_service_details, check_availability, confirm_slot, book_appointment, list_my_appointments, cancel_appointment, reschedule_appointment, triage_urgency, save_patient_anamnesis, save_patient_email, get_patient_anamnesis, reassign_document, derivhumano, verify_payment_receipt]
+@tool
+async def get_patient_payment_status():
+    """
+    Consulta el estado de pago de TODOS los turnos del paciente (seña pendiente, pagada, monto).
+    Usar cuando el paciente pregunta sobre pagos, señas, deudas, o cuánto debe.
+    """
+    phone = current_customer_phone.get()
+    if not phone:
+        return "No pude identificar tu número."
+    tenant_id = current_tenant_id.get()
+    phone_digits = normalize_phone_digits(phone)
+    try:
+        rows = await db.pool.fetch("""
+            SELECT a.appointment_datetime, a.appointment_type, a.status,
+                   a.payment_status, a.billing_amount,
+                   p_prof.consultation_price as prof_price,
+                   tt.base_price as treatment_price,
+                   p_prof.first_name as prof_name
+            FROM appointments a
+            JOIN patients p ON a.patient_id = p.id
+            LEFT JOIN professionals p_prof ON a.professional_id = p_prof.id
+            LEFT JOIN treatment_types tt ON a.appointment_type = tt.code AND tt.tenant_id = p.tenant_id
+            WHERE p.tenant_id = $1 AND REGEXP_REPLACE(p.phone_number, '[^0-9]', '', 'g') = $2
+            AND a.appointment_datetime >= NOW()
+            AND a.status IN ('scheduled', 'confirmed')
+            ORDER BY a.appointment_datetime ASC
+        """, tenant_id, phone_digits)
+        if not rows:
+            return "No tenés turnos futuros con pagos pendientes."
+        lines = []
+        for r in rows:
+            dt = r['appointment_datetime']
+            if hasattr(dt, 'astimezone'): dt = dt.astimezone(ARG_TZ)
+            fecha = dt.strftime("%d/%m/%y")
+            pay = r.get('payment_status') or 'pending'
+            amt = r.get('billing_amount')
+            prof_cp = r.get('prof_price')
+            tprice = r.get('treatment_price')
+            sena_base = float(prof_cp) / 2 if prof_cp and float(prof_cp) > 0 else (float(amt) if amt else 0)
+            treat = f"${int(tprice)}" if tprice and float(tprice) > 0 else "—"
+            lines.append(f"{fecha}|{r['appointment_type']}|{r.get('prof_name','—')}|pago:{pay}|seña:${int(sena_base)}|tratamiento:{treat}")
+        return "\n".join(lines)
+    except Exception as e:
+        logger.error(f"Error en get_patient_payment_status: {e}")
+        return "Error al consultar pagos."
+
+
+@tool
+async def get_patient_clinical_history():
+    """
+    Obtiene el historial clínico completo del paciente (diagnósticos, notas, tratamientos realizados).
+    Usar cuando el paciente pregunta sobre su historial, tratamientos anteriores, o la clínica necesita contexto clínico.
+    """
+    phone = current_customer_phone.get()
+    if not phone:
+        return "No pude identificar tu número."
+    tenant_id = current_tenant_id.get()
+    phone_digits = normalize_phone_digits(phone)
+    try:
+        patient = await db.pool.fetchrow("""
+            SELECT id, first_name, last_name FROM patients
+            WHERE tenant_id = $1 AND REGEXP_REPLACE(phone_number, '[^0-9]', '', 'g') = $2
+        """, tenant_id, phone_digits)
+        if not patient:
+            return "No encontré tu ficha de paciente."
+        rows = await db.pool.fetch("""
+            SELECT cr.record_date, cr.diagnosis, cr.clinical_notes, cr.treatments, cr.recommendations,
+                   p.first_name as prof_name
+            FROM clinical_records cr
+            LEFT JOIN professionals p ON p.id = cr.professional_id
+            WHERE cr.patient_id = $1 AND cr.tenant_id = $2
+            ORDER BY cr.record_date DESC LIMIT 10
+        """, patient['id'], tenant_id)
+        if not rows:
+            return "No hay registros clínicos guardados todavía."
+        name = f"{patient['first_name']} {patient.get('last_name', '')}".strip()
+        lines = [f"Historial de {name} ({len(rows)} registros):"]
+        for r in rows:
+            dt = r['record_date'].strftime("%d/%m/%y") if r['record_date'] else "—"
+            diag = r['diagnosis'] or "sin diagnóstico"
+            prof = r.get('prof_name') or "—"
+            lines.append(f"• {dt} — {diag} (Dr. {prof})")
+            if r['clinical_notes']:
+                lines.append(f"  {r['clinical_notes'][:150]}")
+            if r['treatments']:
+                lines.append(f"  Tratamientos: {r['treatments'][:100]}")
+        return "\n".join(lines)
+    except Exception as e:
+        logger.error(f"Error en get_patient_clinical_history: {e}")
+        return "Error al consultar historial clínico."
+
+
+@tool
+async def get_patient_odontogram():
+    """
+    Obtiene el odontograma actual del paciente (estado de cada pieza dental).
+    Usar cuando el paciente pregunta sobre el estado de sus dientes, piezas, o la clínica necesita ver el odontograma.
+    """
+    phone = current_customer_phone.get()
+    if not phone:
+        return "No pude identificar tu número."
+    tenant_id = current_tenant_id.get()
+    phone_digits = normalize_phone_digits(phone)
+    try:
+        patient = await db.pool.fetchrow("""
+            SELECT id, first_name, last_name FROM patients
+            WHERE tenant_id = $1 AND REGEXP_REPLACE(phone_number, '[^0-9]', '', 'g') = $2
+        """, tenant_id, phone_digits)
+        if not patient:
+            return "No encontré tu ficha de paciente."
+        # Get latest clinical record with odontogram
+        record = await db.pool.fetchrow("""
+            SELECT odontogram_data FROM clinical_records
+            WHERE patient_id = $1 AND tenant_id = $2 AND odontogram_data IS NOT NULL
+            ORDER BY record_date DESC LIMIT 1
+        """, patient['id'], tenant_id)
+        if not record or not record['odontogram_data']:
+            return "No hay odontograma registrado todavía."
+        odata = record['odontogram_data']
+        if isinstance(odata, str):
+            odata = json.loads(odata)
+        if not isinstance(odata, dict) or len(odata) == 0:
+            return "Odontograma vacío — todas las piezas sanas."
+        name = f"{patient['first_name']} {patient.get('last_name', '')}".strip()
+        modified = {k: v for k, v in odata.items() if v.get('state', 'healthy') != 'healthy'} if isinstance(odata, dict) else {}
+        if not modified:
+            return f"Odontograma de {name}: todas las piezas sanas."
+        lines = [f"Odontograma de {name} ({len(modified)} piezas con hallazgos):"]
+        for tooth_id, data in sorted(modified.items(), key=lambda x: int(x[0]) if x[0].isdigit() else 0):
+            state = data.get('state', 'healthy')
+            notes = data.get('notes', '')
+            line = f"• Pieza {tooth_id}: {state}"
+            if notes:
+                line += f" — {notes}"
+            lines.append(line)
+        return "\n".join(lines)
+    except Exception as e:
+        logger.error(f"Error en get_patient_odontogram: {e}")
+        return "Error al consultar odontograma."
+
+
+DENTAL_TOOLS = [list_professionals, list_services, get_service_details, check_availability, confirm_slot, book_appointment, list_my_appointments, cancel_appointment, reschedule_appointment, triage_urgency, save_patient_anamnesis, save_patient_email, get_patient_anamnesis, get_patient_payment_status, get_patient_clinical_history, get_patient_odontogram, reassign_document, derivhumano, verify_payment_receipt]
 
 # --- DETECCIÓN DE IDIOMA (para respuesta del agente) ---
 def detect_message_language(text: str) -> str:
