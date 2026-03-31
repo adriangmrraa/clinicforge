@@ -67,7 +67,7 @@ app.use('/socket.io', createProxyMiddleware({
     target: ORCHESTRATOR_URL,
     ws: true,
     changeOrigin: true,
-    logLevel: 'warn',
+    logger: console,
 }));
 
 // Root Route
