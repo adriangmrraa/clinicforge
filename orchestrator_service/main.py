@@ -2215,7 +2215,8 @@ async def list_my_appointments():
         now = get_now_arg()
         rows = await db.pool.fetch("""
             SELECT a.appointment_datetime, a.status, a.appointment_type,
-                   p_prof.first_name || ' ' || COALESCE(p_prof.last_name, '') as professional_name
+                   p_prof.first_name || ' ' || COALESCE(p_prof.last_name, '') as professional_name,
+                   a.payment_status, a.billing_amount
             FROM appointments a
             JOIN patients p ON a.patient_id = p.id
             LEFT JOIN professionals p_prof ON a.professional_id = p_prof.id
@@ -2235,7 +2236,10 @@ async def list_my_appointments():
             prof = (r['professional_name'] or '').strip().split()[0] if r.get('professional_name') else "—"
             tipo = r['appointment_type'] or 'consulta'
             st = r['status'] or 'scheduled'
-            line = f"{fecha}|{tipo}|{prof}|{st}"
+            pay = r.get('payment_status') or 'pending'
+            amt = r.get('billing_amount')
+            seña = f"${int(amt)}" if amt else "—"
+            line = f"{fecha}|{tipo}|{prof}|{st}|seña:{pay}({seña})"
             if dt >= now:
                 upcoming.append(line)
             else:
@@ -4178,7 +4182,10 @@ async def recover_orphaned_buffers():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Manage app lifecycle: startup and shutdown."""
-    # Startup
+    # Startup — validaciones de seguridad primero
+    from core.auth import validate_admin_token_entropy
+    validate_admin_token_entropy()
+
     logger.info("🚀 Iniciando orquestador dental...")
     await db.connect()
     logger.info(f"✅ Base de datos conectada. Version: {await db.pool.fetchval('SELECT version()')}")
@@ -4497,7 +4504,8 @@ async def emit_appointment_event(event_type: str, data: Dict[str, Any]):
 app.state.emit_appointment_event = emit_appointment_event
 
 @app.post("/chat", tags=["Chat IA"])
-async def chat_endpoint(req: ChatRequest, background_tasks: BackgroundTasks):
+@limiter.limit(os.getenv("CHAT_RATE_LIMIT", "20/minute"))
+async def chat_endpoint(request: Request, req: ChatRequest, background_tasks: BackgroundTasks):
     """
     Endpoint de chat inteligente con persistencia y triaje.
     
@@ -4983,79 +4991,45 @@ async def get_agent_status():
 
 
 # ============================================
-# DEBUG ENDPOINT - Para diagnosticar problemas de auth
+# DEBUG ENDPOINTS - Solo disponibles con DEBUG=true
 # ============================================
 
-@app.get("/api/debug/auth", tags=["Debug"])
-async def debug_auth(request: Request, x_admin_token: str = None):
-    """
-    Endpoint público para debug de autenticación.
-    Devuelve información sobre headers recibidos y validación de tokens.
-    """
-    from core.auth import ADMIN_TOKEN
-    
-    headers = dict(request.headers)
-    
-    # Obtener X-Admin-Token de headers (case-insensitive)
-    received_admin_token = None
-    for key, value in headers.items():
-        if key.lower() == 'x-admin-token':
-            received_admin_token = value
-            break
-    
-    # También verificar el parámetro (para testing manual)
-    if x_admin_token and not received_admin_token:
-        received_admin_token = x_admin_token
-    
-    # Información de debug
-    debug_info = {
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "request_headers": {k: v[:50] + "..." if len(v) > 50 else v for k, v in headers.items()},
-        "received_admin_token": received_admin_token[:10] + "..." if received_admin_token else None,
-        "expected_admin_token": ADMIN_TOKEN[:10] + "..." if ADMIN_TOKEN else None,
-        "tokens_match": received_admin_token == ADMIN_TOKEN if received_admin_token and ADMIN_TOKEN else False,
-        "admin_token_present": received_admin_token is not None,
-        "admin_token_expected": ADMIN_TOKEN is not None,
-        "client_ip": request.client.host if request.client else "unknown",
-        "user_agent": headers.get('User-Agent', 'unknown')[:100],
-        "cors_origin": headers.get('Origin', 'none'),
-        "cookies_present": 'Cookie' in headers,
-        "authorization_present": 'Authorization' in headers,
-    }
-    
-    logger.info(f"DEBUG_AUTH: {debug_info}")
-    
-    return debug_info
+if os.getenv("DEBUG", "").lower() in ("true", "1"):
+    from core.auth import verify_admin_token as _debug_verify_admin
 
+    @app.get("/api/debug/auth", tags=["Debug"])
+    async def debug_auth(request: Request, user_data=Depends(_debug_verify_admin)):
+        """Debug de autenticación. Requiere auth y DEBUG=true."""
+        headers = dict(request.headers)
+        debug_info = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "request_headers": {k: v[:50] + "..." if len(v) > 50 else v for k, v in headers.items() if k.lower() not in ('x-admin-token', 'authorization', 'cookie')},
+            "admin_token_present": 'x-admin-token' in {k.lower() for k in headers},
+            "jwt_valid": user_data is not None,
+            "client_ip": request.client.host if request.client else "unknown",
+            "cors_origin": headers.get('Origin', 'none'),
+        }
+        return debug_info
 
-@app.get("/api/debug/env", tags=["Debug"])
-async def debug_env():
-    """
-    Endpoint público para debug de variables de entorno (sin info sensible).
-    """
-    env_info = {
-        "ADMIN_TOKEN_defined": bool(os.getenv("ADMIN_TOKEN")),
-        "ADMIN_TOKEN_length": len(os.getenv("ADMIN_TOKEN", "")),
-        "CORS_ALLOWED_ORIGINS": os.getenv("CORS_ALLOWED_ORIGINS", "not_set"),
-        "LOG_LEVEL": os.getenv("LOG_LEVEL", "INFO"),
-        "NODE_ENV": os.getenv("NODE_ENV", "not_set"),
-        "backend_version": os.getenv("API_VERSION", "1.0.0"),
-    }
-    
-    return env_info
+    @app.get("/api/debug/env", tags=["Debug"])
+    async def debug_env(user_data=Depends(_debug_verify_admin)):
+        """Debug de variables de entorno. Requiere auth y DEBUG=true."""
+        return {
+            "ADMIN_TOKEN_defined": bool(os.getenv("ADMIN_TOKEN")),
+            "CORS_ALLOWED_ORIGINS": os.getenv("CORS_ALLOWED_ORIGINS", "not_set"),
+            "LOG_LEVEL": os.getenv("LOG_LEVEL", "INFO"),
+            "backend_version": os.getenv("API_VERSION", "1.0.0"),
+        }
 
-
-@app.get("/api/debug/health", tags=["Debug"])
-async def debug_health():
-    """
-    Endpoint de health check público.
-    """
-    return {
-        "status": "healthy",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "service": "orchestrator",
-        "version": os.getenv("API_VERSION", "1.0.0"),
-    }
+    @app.get("/api/debug/health", tags=["Debug"])
+    async def debug_health():
+        """Health check debug. Solo con DEBUG=true."""
+        return {
+            "status": "healthy",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "service": "orchestrator",
+            "version": os.getenv("API_VERSION", "1.0.0"),
+        }
 
 async def _nova_realtime_handler(websocket: WebSocket, session_id: str):
     """Nova voice assistant WebSocket bridge to OpenAI Realtime API (inner handler)."""
