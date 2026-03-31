@@ -64,6 +64,15 @@ export interface Patient {
   phone_number: string;
 }
 
+export interface Holiday {
+  id?: string;
+  date: string;
+  name: string;
+  holiday_type?: string;
+  is_recurring?: boolean;
+  country_code?: string;
+}
+
 // ==================== SOURCE COLORS ====================
 // Colors for appointment sources: AI/Ventas IA (blue), Manual (green), Nova (purple), GCalendar (gray)
 const SOURCE_COLORS: Record<string, { hex: string; label: string; bgClass: string; textClass: string }> = {
@@ -126,6 +135,7 @@ export default function AgendaView() {
   const location = useLocation();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [googleBlocks, setGoogleBlocks] = useState<GoogleCalendarBlock[]>([]);
+  const [holidays, setHolidays] = useState<Holiday[]>([]);
   const [professionals, setProfessionals] = useState<Professional[]>([]);
   const [patients, setPatients] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(true);
@@ -295,15 +305,17 @@ export default function AgendaView() {
         params.professional_id = profFilter;
       }
 
-      const [appointmentsRes, blocksRes] = await Promise.all([
+      const [appointmentsRes, blocksRes, holidaysRes] = await Promise.all([
         api.get('/admin/appointments', { params }),
         fetchGoogleBlocks(startDateStr, endDateStr, profFilter),
+        api.get('/admin/holidays', { params: { days: 365 } }),
       ]);
 
       const newAppointments = appointmentsRes.data;
       setAppointments(newAppointments);
       eventsRef.current = newAppointments;
       setGoogleBlocks(blocksRes || []);
+      setHolidays(holidaysRes.data?.upcoming || []);
       // Los eventos se pasan via prop `events={calendarEvents}` — no manipular el calendario directamente
       // para evitar el loop datesSet → fetchData → re-render → datesSet
     } catch (error) {
@@ -385,6 +397,9 @@ export default function AgendaView() {
     return googleBlocks.filter((block: GoogleCalendarBlock) => block.professional_id?.toString() === selectedProfessionalId);
   }, [googleBlocks, selectedProfessionalId]);
 
+  // Holidays shown to all users (not filtered by professional)
+  const filteredHolidays = useMemo(() => holidays, [holidays]);
+
   // Professional user: lock filter to their id once we have professionals
   useEffect(() => {
     if (user?.role === 'professional' && user?.email && professionals.length > 0) {
@@ -460,6 +475,16 @@ export default function AgendaView() {
       extendedProps: { ...block, eventType: 'gcalendar_block' },
       resourceId: block.professional_id?.toString() || undefined,
     })),
+    ...filteredHolidays.map((holiday) => ({
+      id: holiday.id || `holiday-${holiday.date}`,
+      title: `🎉 ${holiday.name}`,
+      start: holiday.date,
+      allDay: true,
+      backgroundColor: '#ef4444', // Red for holidays
+      borderColor: '#ef4444',
+      textColor: '#ffffff',
+      extendedProps: { ...holiday, eventType: 'holiday' },
+    })),
   ];
 
   // Map professionals to resources (professional user: only their column)
@@ -499,8 +524,19 @@ export default function AgendaView() {
   };
 
   const handleEventClick = (info: any) => {
+    const eventType = info.event.extendedProps.eventType;
+    
+    // Check if it's a holiday
+    if (eventType === 'holiday') {
+      const holiday = info.event.extendedProps;
+      const isRecurring = holiday.is_recurring ? t('common.yes') : t('common.no');
+      const holidayTypeLabel = holiday.holiday_type === 'override_open' ? t('holidays.override_open') : t('holidays.closure');
+      alert(`${t('holidays.title')}:\n\n${holiday.name}\n📅 ${holiday.date}\n🔄 ${t('holidays.recurring')}: ${isRecurring}\n📋 ${t('holidays.type')}: ${holidayTypeLabel}`);
+      return;
+    }
+    
     // Check if it's a Google Calendar block
-    if (info.event.extendedProps.eventType === 'gcalendar_block') {
+    if (eventType === 'gcalendar_block') {
       alert(`${t('agenda.google_block')}:\n\n${info.event.title}\n${new Date(info.event.start).toLocaleString(language)} - ${new Date(info.event.end).toLocaleString(language)}`);
       return;
     }
