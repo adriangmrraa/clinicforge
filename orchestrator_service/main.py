@@ -4190,7 +4190,13 @@ async def recover_orphaned_buffers():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Manage app lifecycle: startup and shutdown."""
-    # Startup — validaciones de seguridad primero
+    # Startup — logging, Sentry, y validaciones de seguridad primero
+    from core.logging_config import configure_logging
+    configure_logging()
+
+    from core.sentry_config import init_sentry
+    init_sentry()
+
     from core.auth import validate_admin_token_entropy
     validate_admin_token_entropy()
 
@@ -4279,19 +4285,19 @@ OPENAPI_TAGS = [
 ]
 
 _CLINIC_NAME = os.getenv("CLINIC_NAME", "ClinicForge")
+_is_debug = os.getenv("DEBUG", "").lower() in ("true", "1")
 app = FastAPI(
     title=f"{_CLINIC_NAME} API (Nexus v8.0 Hardened)",
     description=(
         f"API del **Orchestrator** de {_CLINIC_NAME}: Gestión multi-tenant con blindaje proactivo. "
         "Seguridad: **JWT (Identidad) + X-Admin-Token (Infraestructura)**. "
-        "Capas: HSTS, CSP Dinámico, Anti-Clickjacking y Nexus AI Guardrails. "
-        "Contratos: **Swagger UI** (`/docs`) | **ReDoc** (`/redoc`) | **OpenAPI JSON** (`/openapi.json`)."
+        "Capas: HSTS, CSP Dinámico, Anti-Clickjacking y Nexus AI Guardrails."
     ),
     version=os.getenv("API_VERSION", "1.0.0"),
     openapi_tags=OPENAPI_TAGS,
-    docs_url="/docs",
-    redoc_url="/redoc",
-    openapi_url="/openapi.json",
+    docs_url="/docs" if _is_debug else None,
+    redoc_url="/redoc" if _is_debug else None,
+    openapi_url="/openapi.json" if _is_debug else None,
     lifespan=lifespan,
 )
 

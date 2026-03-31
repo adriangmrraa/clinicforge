@@ -11,13 +11,21 @@ logger = logging.getLogger(__name__)
 
 # Configuración
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "")
-if not ADMIN_TOKEN:
-    import logging as _logging
-    _logging.getLogger(__name__).critical(
-        "🚨 SECURITY CRITICAL: ADMIN_TOKEN no está definido en las variables de entorno. "
-        "Todas las peticiones admin serán rechazadas con 401. "
-        "Define ADMIN_TOKEN en el entorno del orchestrator."
-    )
+
+def validate_admin_token_entropy():
+    """Valida que ADMIN_TOKEN tenga mínimo 32 caracteres. Llamar al startup."""
+    if not ADMIN_TOKEN:
+        logger.critical(
+            "ADMIN_TOKEN no está definido en las variables de entorno. "
+            "Define ADMIN_TOKEN en el entorno del orchestrator (mínimo 32 caracteres)."
+        )
+        raise SystemExit(1)
+    if len(ADMIN_TOKEN) < 32:
+        logger.critical(
+            f"ADMIN_TOKEN debe tener al menos 32 caracteres (actual: {len(ADMIN_TOKEN)}). "
+            "Genera un token seguro con: python -c \"import secrets; print(secrets.token_hex(32))\""
+        )
+        raise SystemExit(1)
 
 async def verify_admin_token(
     request: Request,

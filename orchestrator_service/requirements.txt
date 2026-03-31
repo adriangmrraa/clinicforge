@@ -12,7 +12,6 @@ langchain==0.1.0
 langchain-openai==0.0.5
 langchain-community==0.0.13
 python-dotenv
-prometheus-client
 requests
 python-dateutil
 python-socketio
@@ -37,3 +36,4 @@ slowapi==0.1.9
 pgvector>=0.3.0
 openai>=1.0.0
 holidays>=0.40
+sentry-sdk[fastapi]>=2.0.0
