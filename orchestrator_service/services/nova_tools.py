@@ -1324,6 +1324,12 @@ async def _verificar_disponibilidad(args: Dict, tenant_id: int) -> str:
     if not day_config or not day_config.get("enabled", False):
         return f"La clinica esta cerrada el {_fmt_date(dt)}."
 
+    # Verificar feriado
+    from services.holiday_service import is_holiday as check_is_holiday
+    _is_hol, _hol_name = await check_is_holiday(db.pool, tenant_id, dt)
+    if _is_hol:
+        return f"El {_fmt_date(dt)} es feriado ({_hol_name}). La clinica no atiende."
+
     start_hour = day_config.get("start", "09:00")
     end_hour = day_config.get("end", "18:00")
 
@@ -1431,6 +1437,12 @@ async def _agendar_turno(args: Dict, tenant_id: int) -> str:
         appt_dt = datetime.strptime(f"{target_date} {time_str}", "%Y-%m-%d %H:%M")
     except ValueError:
         return "Formato de fecha/hora invalido. Usa YYYY-MM-DD y HH:MM."
+
+    # Verificar feriado
+    from services.holiday_service import is_holiday as check_is_holiday
+    _is_hol, _hol_name = await check_is_holiday(db.pool, tenant_id, appt_dt.date())
+    if _is_hol:
+        return f"No se puede agendar el {target_date}: es feriado ({_hol_name}). Elegí otro día."
 
     appt_id = uuid.uuid4()
     await db.pool.execute(

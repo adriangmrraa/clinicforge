@@ -325,6 +325,14 @@ async def process_buffer_task(
         except Exception as rag_err:
             logger.debug(f"RAG FAQ fallback (non-fatal): {rag_err}")
 
+        # Obtener feriados próximos para inyectar en el prompt
+        _upcoming_holidays = []
+        try:
+            from services.holiday_service import get_upcoming_holidays
+            _upcoming_holidays = await get_upcoming_holidays(db.pool, tenant_id, days_ahead=30)
+        except Exception as hol_err:
+            logger.debug(f"Holiday fetch fallback (non-fatal): {hol_err}")
+
         system_prompt = build_system_prompt(
             clinic_name=clinic_name,
             current_time=current_time_str,
@@ -343,6 +351,7 @@ async def process_buffer_task(
             bank_cbu=bank_cbu,
             bank_alias=bank_alias,
             bank_holder_name=bank_holder_name,
+            upcoming_holidays=_upcoming_holidays,
         )
 
         # Inject RAG FAQs section if available (replaces static FAQ section in prompt)

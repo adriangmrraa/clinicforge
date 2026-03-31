@@ -123,6 +123,7 @@ class Tenant(Base):
     bank_holder_name = Column(Text)
     derivation_email = Column(Text)
     max_chairs = Column(Integer, default=2)
+    country_code = Column(String(2), nullable=False, default='US', server_default='US')
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
@@ -922,4 +923,26 @@ class ClinicFaq(Base):
 
     __table_args__ = (
         Index('idx_clinic_faqs_tenant', 'tenant_id'),
+    )
+
+
+# =============================================================================
+# TENANT HOLIDAYS
+# =============================================================================
+
+class TenantHoliday(Base):
+    __tablename__ = 'tenant_holidays'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    tenant_id = Column(Integer, ForeignKey('tenants.id', ondelete='CASCADE'), nullable=False)
+    date = Column(Date, nullable=False)
+    name = Column(Text, nullable=False)
+    holiday_type = Column(String(20), nullable=False)
+    is_recurring = Column(Boolean, nullable=False, default=False, server_default='false')
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint('tenant_id', 'date', 'holiday_type', name='uq_tenant_holidays_tenant_date_type'),
+        CheckConstraint("holiday_type IN ('closure', 'override_open')", name='ck_tenant_holidays_type'),
+        Index('idx_tenant_holidays_tenant_date', 'tenant_id', 'date'),
     )

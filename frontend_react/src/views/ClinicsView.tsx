@@ -59,6 +59,7 @@ export interface Clinica {
     bank_holder_name?: string;
     derivation_email?: string;
     max_chairs?: number;
+    country_code?: string;
     config?: { calendar_provider?: 'local' | 'google' };
     created_at: string;
     updated_at?: string;
@@ -96,6 +97,7 @@ export default function ClinicsView() {
         bank_holder_name: '',
         derivation_email: '',
         max_chairs: '2',
+        country_code: 'US',
         working_hours: createDefaultWorkingHours(),
     });
     const [expandedDays, setExpandedDays] = useState<string[]>([]);
@@ -142,11 +144,12 @@ export default function ClinicsView() {
                 bank_holder_name: clinica.bank_holder_name || '',
                 derivation_email: clinica.derivation_email || '',
                 max_chairs: clinica.max_chairs != null ? String(clinica.max_chairs) : '2',
+                country_code: clinica.country_code || 'US',
                 working_hours: parseWorkingHours(clinica.working_hours),
             });
         } else {
             setEditingClinica(null);
-            setFormData({ clinic_name: '', bot_phone_number: '', calendar_provider: 'local', address: '', google_maps_url: '', consultation_price: '', bank_cbu: '', bank_alias: '', bank_holder_name: '', derivation_email: '', max_chairs: '2', working_hours: createDefaultWorkingHours() });
+            setFormData({ clinic_name: '', bot_phone_number: '', calendar_provider: 'local', address: '', google_maps_url: '', consultation_price: '', bank_cbu: '', bank_alias: '', bank_holder_name: '', derivation_email: '', max_chairs: '2', country_code: 'US', working_hours: createDefaultWorkingHours() });
         }
         setExpandedDays([]);
         setError(null);
@@ -170,6 +173,7 @@ export default function ClinicsView() {
                 bank_holder_name: formData.bank_holder_name || null,
                 derivation_email: formData.derivation_email || null,
                 max_chairs: formData.max_chairs ? parseInt(formData.max_chairs) : 2,
+                country_code: formData.country_code || 'US',
                 working_hours: formData.working_hours,
             };
             if (editingClinica) {
@@ -472,6 +476,46 @@ export default function ClinicsView() {
                                     className="w-full px-4 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white placeholder-white/20 focus:ring-2 focus:ring-blue-500 outline-none"
                                     value={formData.max_chairs} onChange={(e) => { const v = e.target.value; setFormData(prev => ({ ...prev, max_chairs: v })); }} />
                                 <p className="text-xs text-white/30">Cantidad de sillones en la clinica. Limita cuantos turnos pueden ocurrir al mismo tiempo.</p>
+                            </div>
+
+                            {/* País (para feriados) */}
+                            <div className="space-y-1">
+                                <label className="text-sm font-semibold text-white/60">{t('clinics.country_code')}</label>
+                                <select
+                                    className="w-full px-4 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                                    value={formData.country_code}
+                                    onChange={(e) => setFormData(prev => ({ ...prev, country_code: e.target.value }))}
+                                >
+                                    <option value="US">🇺🇸 United States</option>
+                                    <option value="AR">🇦🇷 Argentina</option>
+                                    <option value="MX">🇲🇽 México</option>
+                                    <option value="CO">🇨🇴 Colombia</option>
+                                    <option value="CL">🇨🇱 Chile</option>
+                                    <option value="PE">🇵🇪 Perú</option>
+                                    <option value="EC">🇪🇨 Ecuador</option>
+                                    <option value="UY">🇺🇾 Uruguay</option>
+                                    <option value="PY">🇵🇾 Paraguay</option>
+                                    <option value="BR">🇧🇷 Brasil</option>
+                                    <option value="ES">🇪🇸 España</option>
+                                    <option value="VE">🇻🇪 Venezuela</option>
+                                    <option value="BO">🇧🇴 Bolivia</option>
+                                    <option value="CR">🇨🇷 Costa Rica</option>
+                                    <option value="PA">🇵🇦 Panamá</option>
+                                    <option value="DO">🇩🇴 Rep. Dominicana</option>
+                                    <option value="GT">🇬🇹 Guatemala</option>
+                                    <option value="HN">🇭🇳 Honduras</option>
+                                    <option value="SV">🇸🇻 El Salvador</option>
+                                    <option value="NI">🇳🇮 Nicaragua</option>
+                                    <option value="CU">🇨🇺 Cuba</option>
+                                    <option value="PR">🇵🇷 Puerto Rico</option>
+                                    <option value="CA">🇨🇦 Canadá</option>
+                                    <option value="GB">🇬🇧 United Kingdom</option>
+                                    <option value="DE">🇩🇪 Alemania</option>
+                                    <option value="FR">🇫🇷 Francia</option>
+                                    <option value="IT">🇮🇹 Italia</option>
+                                    <option value="PT">🇵🇹 Portugal</option>
+                                </select>
+                                <p className="text-xs text-white/30">{t('clinics.country_code_help')}</p>
                             </div>
 
                             {/* Datos Bancarios */}

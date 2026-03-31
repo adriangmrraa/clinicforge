@@ -1117,6 +1117,16 @@ async def check_availability(date_query: str, interpreted_date: str, search_mode
                 target_date += timedelta(days=1)
                 continue
 
+            # Verificar si es feriado
+            from services.holiday_service import is_holiday as check_is_holiday
+            _is_hol, _hol_name = await check_is_holiday(db.pool, tid, target_date)
+            if _is_hol:
+                if not auto_advanced:
+                    auto_advance_reason = f"El {target_date.strftime('%d/%m')} es feriado ({_hol_name})"
+                    auto_advanced = True
+                target_date += timedelta(days=1)
+                continue
+
             # Verificar si el profesional atiende este día
             prof_closed = False
             if clean_name and active_professionals:
@@ -1545,6 +1555,11 @@ async def book_appointment(date_time: str, treatment_reason: str,
         # No agendar en el pasado
         if apt_datetime < get_now_arg():
             return "❌ No se pueden agendar turnos para horarios que ya pasaron. Indicá un día y hora futuros. Formato esperado: date_time como 'día 17:00' (ej. miércoles 17:00)."
+        # No agendar en feriados
+        from services.holiday_service import is_holiday as check_is_holiday
+        _is_hol, _hol_name = await check_is_holiday(db.pool, tenant_id, apt_datetime.date())
+        if _is_hol:
+            return f"❌ No se puede agendar el {apt_datetime.strftime('%d/%m/%Y')}: es feriado ({_hol_name}). Por favor elegí otro día."
         first_name = str(first_name).strip() if first_name and str(first_name).strip() else None
         last_name = str(last_name).strip() if last_name and str(last_name).strip() else None
         dni_raw = str(dni).strip() if dni and str(dni).strip() else None
@@ -3484,6 +3499,7 @@ def build_system_prompt(
     bank_cbu: str = "",
     bank_alias: str = "",
     bank_holder_name: str = "",
+    upcoming_holidays: list = None,
 ) -> str:
     """
     Construye el system prompt del agente de forma dinámica.
@@ -3585,6 +3601,13 @@ REGLA ANTI-MARKDOWN (WHATSAPP):
         price_section += "\nNOTA: Cada profesional puede tener un precio diferente. Usá 'list_professionals' para ver el precio de consulta de cada uno. Si el profesional tiene precio propio, usá ese en vez del general."
     else:
         price_section = "\n\nVALOR DE LA CONSULTA: No configurado como valor general. Cada profesional puede tener su propio precio — consultá con 'list_professionals'. Si ninguno tiene precio, decí que se comuniquen directamente con la clínica."
+
+    # Feriados próximos
+    holidays_section = ""
+    if upcoming_holidays:
+        hol_lines = [f"• {h['date']}: {h['name']}" for h in upcoming_holidays[:7]]
+        holidays_section = "\n\n## FERIADOS PRÓXIMOS (NO AGENDAR EN ESTOS DÍAS)\n" + "\n".join(hol_lines)
+        holidays_section += "\nREGLA: Si el paciente pide turno en un feriado, informale que es feriado y ofrecé el próximo día hábil. La tool check_availability ya auto-avanza pasando feriados."
 
     # Greeting diferenciado
     greeting_rule = ""
@@ -3719,6 +3742,7 @@ INFORMACIÓN DEL CONSULTORIO:
 {hours_section}
 {sede_section}
 {price_section}
+{holidays_section}
 
 ## TRIAGE COMERCIAL DE IMPLANTES Y PRÓTESIS
 Si el paciente menciona implantes, prótesis, dentadura, diente postizo, o tratamientos relacionados → ACTIVAR este flujo:

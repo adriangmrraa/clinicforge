@@ -594,7 +594,9 @@
     "bank_alias": "Alias",
     "bank_holder_name": "Titular de la cuenta",
     "derivation_email_label": "Email de derivación humana",
-    "derivation_email_help": "Email donde se enviarán las derivaciones cuando la IA necesite intervención humana."
+    "derivation_email_help": "Email donde se enviarán las derivaciones cuando la IA necesite intervención humana.",
+    "country_code": "País de la clínica",
+    "country_code_help": "Se usa para detectar automáticamente los feriados nacionales. El agente de IA no agendará turnos en días feriados."
   },
   "treatments": {
     "title": "Tratamientos",

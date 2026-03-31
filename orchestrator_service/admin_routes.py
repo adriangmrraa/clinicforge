@@ -1697,7 +1697,7 @@ async def get_tenants(user_data=Depends(verify_admin_token)):
     if user_data.role != 'ceo':
         raise HTTPException(status_code=403, detail="Solo el CEO puede gestionar clínicas.")
     rows = await db.pool.fetch(
-        "SELECT id, clinic_name, bot_phone_number, config, address, google_maps_url, working_hours, consultation_price, bank_cbu, bank_alias, bank_holder_name, derivation_email, logo_url, max_chairs, created_at, updated_at FROM tenants ORDER BY id ASC"
+        "SELECT id, clinic_name, bot_phone_number, config, address, google_maps_url, working_hours, consultation_price, bank_cbu, bank_alias, bank_holder_name, derivation_email, logo_url, max_chairs, country_code, created_at, updated_at FROM tenants ORDER BY id ASC"
     )
     result = []
     for r in rows:
@@ -1797,6 +1797,11 @@ async def update_tenant(tenant_id: int, data: Dict[str, Any], user_data=Depends(
         val = data.get("max_chairs")
         params.append(int(val) if val is not None and str(val).strip() != '' else 2)
         updates.append(f"max_chairs = ${len(params)}")
+    if "country_code" in data and data["country_code"] is not None:
+        cc = str(data["country_code"]).upper().strip()[:2]
+        if len(cc) == 2:
+            params.append(cc)
+            updates.append(f"country_code = ${len(params)}")
     if not updates:
         return {"status": "updated"}
     params.append(tenant_id)
@@ -1804,7 +1809,124 @@ async def update_tenant(tenant_id: int, data: Dict[str, Any], user_data=Depends(
     query = f"UPDATE tenants SET {', '.join(updates)} WHERE id = ${len(params)}"
     await db.pool.execute(query, *params)
     logger.info(f"Tenant {tenant_id} updated: calendar_provider={data.get('calendar_provider')} (persisted)")
+    result = {"status": "updated"}
+    # Warn if country_code is not in supported list
+    if "country_code" in data and data["country_code"] is not None:
+        from services.holiday_service import SUPPORTED_COUNTRIES
+        cc = str(data["country_code"]).upper().strip()[:2]
+        if cc not in SUPPORTED_COUNTRIES:
+            result["warning"] = f"Country code '{cc}' is not in the supported holidays list. Custom holidays will still work, but national holidays won't be auto-detected."
+    return result
+
+# ==================== HOLIDAYS ====================
+
+@router.get("/holidays", tags=["Feriados"], summary="Listar feriados (nacionales + custom)")
+async def list_holidays(user_data=Depends(verify_admin_token), days: int = Query(365, ge=1, le=730)):
+    """Lista feriados nacionales (librería) + custom del tenant para los próximos N días."""
+    from services.holiday_service import get_upcoming_holidays
+    tenant_id = user_data.tenant_id
+    holidays = await get_upcoming_holidays(db.pool, tenant_id, days_ahead=days)
+    # Also fetch custom-only rows for management
+    custom_rows = await db.pool.fetch(
+        "SELECT id, date, name, holiday_type, is_recurring, created_at FROM tenant_holidays WHERE tenant_id = $1 ORDER BY date ASC",
+        tenant_id
+    )
+    return {
+        "upcoming": holidays,
+        "custom": [dict(r) for r in custom_rows]
+    }
+
+
+@router.get("/holidays/upcoming", tags=["Feriados"], summary="Próximos 30 días de feriados")
+async def upcoming_holidays(user_data=Depends(verify_admin_token)):
+    """Feriados en los próximos 30 días, ordenados por fecha."""
+    from services.holiday_service import get_upcoming_holidays
+    tenant_id = user_data.tenant_id
+    return await get_upcoming_holidays(db.pool, tenant_id, days_ahead=30)
+
+
+@router.post("/holidays", tags=["Feriados"], summary="Crear feriado custom")
+async def create_holiday(data: Dict[str, Any], user_data=Depends(verify_admin_token)):
+    """Crea un feriado custom (closure o override_open) para el tenant."""
+    from datetime import date as date_type
+    tenant_id = user_data.tenant_id
+    holiday_date = data.get("date")
+    name = data.get("name")
+    holiday_type = data.get("holiday_type", "closure")
+    is_recurring = data.get("is_recurring", False)
+
+    if not holiday_date or not name:
+        raise HTTPException(status_code=422, detail="date y name son obligatorios")
+    if holiday_type not in ("closure", "override_open"):
+        raise HTTPException(status_code=422, detail="holiday_type debe ser 'closure' o 'override_open'")
+
+    try:
+        if isinstance(holiday_date, str):
+            parsed_date = date_type.fromisoformat(holiday_date)
+        else:
+            parsed_date = holiday_date
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=422, detail="Formato de fecha inválido. Usar YYYY-MM-DD")
+
+    try:
+        new_id = await db.pool.fetchval(
+            """INSERT INTO tenant_holidays (tenant_id, date, name, holiday_type, is_recurring)
+               VALUES ($1, $2, $3, $4, $5) RETURNING id""",
+            tenant_id, parsed_date, name.strip(), holiday_type, bool(is_recurring)
+        )
+        return {"id": new_id, "status": "created"}
+    except Exception as e:
+        if "uq_tenant_holidays_tenant_date_type" in str(e):
+            raise HTTPException(status_code=409, detail="Ya existe un feriado con ese tipo para esa fecha")
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.put("/holidays/{holiday_id}", tags=["Feriados"], summary="Actualizar feriado custom")
+async def update_holiday(holiday_id: int, data: Dict[str, Any], user_data=Depends(verify_admin_token)):
+    """Actualiza un feriado custom del tenant."""
+    tenant_id = user_data.tenant_id
+    existing = await db.pool.fetchrow(
+        "SELECT id FROM tenant_holidays WHERE id = $1 AND tenant_id = $2",
+        holiday_id, tenant_id
+    )
+    if not existing:
+        raise HTTPException(status_code=404, detail="Feriado no encontrado")
+
+    updates = []
+    params = []
+    if "name" in data:
+        params.append(data["name"].strip())
+        updates.append(f"name = ${len(params)}")
+    if "holiday_type" in data:
+        if data["holiday_type"] not in ("closure", "override_open"):
+            raise HTTPException(status_code=422, detail="holiday_type debe ser 'closure' o 'override_open'")
+        params.append(data["holiday_type"])
+        updates.append(f"holiday_type = ${len(params)}")
+    if "is_recurring" in data:
+        params.append(bool(data["is_recurring"]))
+        updates.append(f"is_recurring = ${len(params)}")
+    if not updates:
+        return {"status": "updated"}
+
+    params.append(holiday_id)
+    params.append(tenant_id)
+    query = f"UPDATE tenant_holidays SET {', '.join(updates)} WHERE id = ${len(params) - 1} AND tenant_id = ${len(params)}"
+    await db.pool.execute(query, *params)
     return {"status": "updated"}
+
+
+@router.delete("/holidays/{holiday_id}", tags=["Feriados"], summary="Eliminar feriado custom")
+async def delete_holiday(holiday_id: int, user_data=Depends(verify_admin_token)):
+    """Elimina un feriado custom del tenant."""
+    tenant_id = user_data.tenant_id
+    result = await db.pool.execute(
+        "DELETE FROM tenant_holidays WHERE id = $1 AND tenant_id = $2",
+        holiday_id, tenant_id
+    )
+    if result == "DELETE 0":
+        raise HTTPException(status_code=404, detail="Feriado no encontrado")
+    return {"status": "deleted"}
+
 
 @router.post("/tenants/{tenant_id}/logo", tags=["Sedes"], summary="Subir logo de la clínica")
 async def upload_tenant_logo(tenant_id: int, file: UploadFile = File(...), user_data=Depends(verify_admin_token)):

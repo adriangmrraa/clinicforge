@@ -583,7 +583,9 @@
     "bank_alias": "Alias",
     "bank_holder_name": "Account Holder Name",
     "derivation_email_label": "Human Handoff Email",
-    "derivation_email_help": "Email where handoff notifications will be sent when the AI needs human intervention."
+    "derivation_email_help": "Email where handoff notifications will be sent when the AI needs human intervention.",
+    "country_code": "Clinic Country",
+    "country_code_help": "Used to automatically detect national holidays. The AI agent won't schedule appointments on holidays."
   },
   "treatments": {
     "title": "Treatments",

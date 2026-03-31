@@ -36,3 +36,4 @@ websockets
 slowapi==0.1.9
 pgvector>=0.3.0
 openai>=1.0.0
+holidays>=0.40
