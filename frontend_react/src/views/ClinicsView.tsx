@@ -482,38 +482,38 @@ export default function ClinicsView() {
                             <div className="space-y-1">
                                 <label className="text-sm font-semibold text-white/60">{t('clinics.country_code')}</label>
                                 <select
-                                    className="w-full px-4 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                                    className="w-full px-4 py-2 bg-[#0d1117] border border-white/[0.08] rounded-lg text-white focus:ring-2 focus:ring-blue-500 outline-none [&>option]:bg-[#0d1117] [&>option]:text-white"
                                     value={formData.country_code}
                                     onChange={(e) => setFormData(prev => ({ ...prev, country_code: e.target.value }))}
                                 >
-                                    <option value="US">🇺🇸 United States</option>
-                                    <option value="AR">🇦🇷 Argentina</option>
-                                    <option value="MX">🇲🇽 México</option>
-                                    <option value="CO">🇨🇴 Colombia</option>
-                                    <option value="CL">🇨🇱 Chile</option>
-                                    <option value="PE">🇵🇪 Perú</option>
-                                    <option value="EC">🇪🇨 Ecuador</option>
-                                    <option value="UY">🇺🇾 Uruguay</option>
-                                    <option value="PY">🇵🇾 Paraguay</option>
-                                    <option value="BR">🇧🇷 Brasil</option>
-                                    <option value="ES">🇪🇸 España</option>
-                                    <option value="VE">🇻🇪 Venezuela</option>
-                                    <option value="BO">🇧🇴 Bolivia</option>
-                                    <option value="CR">🇨🇷 Costa Rica</option>
-                                    <option value="PA">🇵🇦 Panamá</option>
-                                    <option value="DO">🇩🇴 Rep. Dominicana</option>
-                                    <option value="GT">🇬🇹 Guatemala</option>
-                                    <option value="HN">🇭🇳 Honduras</option>
-                                    <option value="SV">🇸🇻 El Salvador</option>
-                                    <option value="NI">🇳🇮 Nicaragua</option>
-                                    <option value="CU">🇨🇺 Cuba</option>
-                                    <option value="PR">🇵🇷 Puerto Rico</option>
-                                    <option value="CA">🇨🇦 Canadá</option>
-                                    <option value="GB">🇬🇧 United Kingdom</option>
-                                    <option value="DE">🇩🇪 Alemania</option>
-                                    <option value="FR">🇫🇷 Francia</option>
-                                    <option value="IT">🇮🇹 Italia</option>
-                                    <option value="PT">🇵🇹 Portugal</option>
+                                    <option value="US">United States</option>
+                                    <option value="AR">Argentina</option>
+                                    <option value="MX">México</option>
+                                    <option value="CO">Colombia</option>
+                                    <option value="CL">Chile</option>
+                                    <option value="PE">Perú</option>
+                                    <option value="EC">Ecuador</option>
+                                    <option value="UY">Uruguay</option>
+                                    <option value="PY">Paraguay</option>
+                                    <option value="BR">Brasil</option>
+                                    <option value="ES">España</option>
+                                    <option value="VE">Venezuela</option>
+                                    <option value="BO">Bolivia</option>
+                                    <option value="CR">Costa Rica</option>
+                                    <option value="PA">Panamá</option>
+                                    <option value="DO">Rep. Dominicana</option>
+                                    <option value="GT">Guatemala</option>
+                                    <option value="HN">Honduras</option>
+                                    <option value="SV">El Salvador</option>
+                                    <option value="NI">Nicaragua</option>
+                                    <option value="CU">Cuba</option>
+                                    <option value="PR">Puerto Rico</option>
+                                    <option value="CA">Canadá</option>
+                                    <option value="GB">United Kingdom</option>
+                                    <option value="DE">Alemania</option>
+                                    <option value="FR">Francia</option>
+                                    <option value="IT">Italia</option>
+                                    <option value="PT">Portugal</option>
                                 </select>
                                 <p className="text-xs text-white/30">{t('clinics.country_code_help')}</p>
                             </div>
