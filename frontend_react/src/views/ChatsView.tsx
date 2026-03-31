@@ -6,7 +6,7 @@ import {
   Search, XCircle, Bell, Volume2, VolumeX,
   Instagram, Facebook, Lock, ChevronRight, Paperclip
 } from 'lucide-react';
-import api, { WS_URL } from '../api/axios';
+import api, { WS_URL, setTenantId } from '../api/axios';
 import * as chatsApi from '../api/chats';
 import { useTranslation } from '../context/LanguageContext';
 import { io, Socket } from 'socket.io-client';
@@ -404,7 +404,7 @@ export default function ChatsView() {
     load();
     const interval = setInterval(load, 10000);
     return () => clearInterval(interval);
-  }, [channelFilter]);
+  }, [channelFilter, selectedTenantId]);
 
   useEffect(() => {
     if (selectedSession) {
@@ -976,7 +976,7 @@ export default function ChatsView() {
               <label className="block text-xs font-medium text-white/40 mb-1">{t('chats.clinic_label')}</label>
               <select
                 value={selectedTenantId ?? ''}
-                onChange={(e) => setSelectedTenantId(Number(e.target.value))}
+                onChange={(e) => { const id = Number(e.target.value); setTenantId(String(id)); setSelectedTenantId(id); }}
                 className="w-full px-3 py-2 border border-white/[0.08] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary bg-white/[0.04] text-white"
               >
                 {clinics.map((c) => (
