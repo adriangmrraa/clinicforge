@@ -5,9 +5,13 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm install
 
-COPY . .
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+
+COPY --chown=appuser:appgroup . .
 
 RUN npm run build
+
+USER appuser
 
 EXPOSE 3000
 
