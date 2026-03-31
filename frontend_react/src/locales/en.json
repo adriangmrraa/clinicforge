@@ -831,7 +831,16 @@
     "sign_medical_alta": "Sign medical onboarding",
     "general_fallback": "General",
     "view_schedules": "View schedules",
-    "edit_profile": "Edit profile"
+    "edit_profile": "Edit profile",
+    "priority": {
+      "label": "Priority",
+      "high": "High",
+      "mediumHigh": "Medium-High",
+      "medium": "Medium",
+      "low": "Low"
+    },
+    "priorityProfessional": "Priority professional",
+    "priorityProfessionalDesc": "This professional will be prioritized for high-value appointment scheduling"
   },
   "layout": {
     "app_title": "Dentalogic",

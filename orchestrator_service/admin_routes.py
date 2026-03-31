@@ -90,6 +90,7 @@ class TreatmentTypeResponse(BaseModel):
     is_available_for_booking: bool
     internal_notes: Optional[str] = None
     base_price: Optional[float] = 0
+    priority: Optional[str] = "medium"
     professional_ids: Optional[List[int]] = []
 
 
@@ -616,6 +617,7 @@ class ProfessionalUpdate(BaseModel):
     working_hours: Optional[Dict[str, Any]] = None
     google_calendar_id: Optional[str] = None
     consultation_price: Optional[float] = None
+    is_priority_professional: Optional[bool] = False
 
 
 def generate_default_working_hours():
@@ -653,6 +655,7 @@ class TreatmentTypeCreate(BaseModel):
     is_available_for_booking: bool = True
     internal_notes: Optional[str] = ""
     base_price: Optional[float] = 0
+    priority: Optional[str] = "medium"
     professional_ids: Optional[List[int]] = None
 
 
@@ -670,6 +673,7 @@ class TreatmentTypeUpdate(BaseModel):
     is_available_for_booking: bool
     internal_notes: Optional[str] = ""
     base_price: Optional[float] = 0
+    priority: Optional[str] = "medium"
 
 
 class ChatSendMessage(BaseModel):
@@ -2633,7 +2637,7 @@ async def delete_tenant(tenant_id: int, user_data=Depends(verify_admin_token)):
 async def get_tenant_faqs(tenant_id: int, user_data=Depends(verify_admin_token)):
     """Retorna todas las FAQs de un tenant ordenadas por sort_order."""
     rows = await db.pool.fetch(
-        "SELECT id, tenant_id, category, question, answer, sort_order, created_at, updated_at FROM clinic_faqs WHERE tenant_id = $1 ORDER BY sort_order ASC, id ASC",
+        "SELECT id, tenant_id, category, question, answer, sort_order, created_at, updated_at FROM clinic_faqs WHERE tenant_id = $1 ORDER BY category, sort_order ASC, id ASC",
         tenant_id,
     )
     return [dict(r) for r in rows]
@@ -3927,10 +3931,11 @@ async def update_professional(
         if prof_row["tenant_id"] not in allowed_ids:
             raise HTTPException(status_code=403, detail="No tienes acceso a esta sede")
 
-        # Actualizar datos básicos, working_hours, google_calendar_id y consultation_price
+        # Actualizar datos básicos, working_hours, google_calendar_id, consultation_price e is_priority_professional
         current_wh = payload.working_hours
         gcal_id = (payload.google_calendar_id or "").strip() or None
         cp = payload.consultation_price
+        is_priority = bool(payload.is_priority_professional)
         if current_wh:
             sql_update = """
                 UPDATE professionals SET
@@ -3938,8 +3943,9 @@ async def update_professional(
                     phone_number = $4, email = $5, is_active = $6,
                     working_hours = $7::jsonb,
                     google_calendar_id = $8, consultation_price = $9,
+                    is_priority_professional = $10,
                     updated_at = NOW()
-                WHERE id = $10
+                WHERE id = $11
             """
             params = [
                 payload.name,
@@ -3951,6 +3957,7 @@ async def update_professional(
                 json.dumps(current_wh),
                 gcal_id,
                 cp,
+                is_priority,
                 id,
             ]
         else:
@@ -3959,8 +3966,9 @@ async def update_professional(
                     first_name = $1, specialty = $2, registration_id = $3,
                     phone_number = $4, email = $5, is_active = $6,
                     google_calendar_id = $7, consultation_price = $8,
+                    is_priority_professional = $9,
                     updated_at = NOW()
-                WHERE id = $9
+                WHERE id = $10
             """
             params = [
                 payload.name,
@@ -3971,6 +3979,7 @@ async def update_professional(
                 payload.is_active,
                 gcal_id,
                 cp,
+                is_priority,
                 id,
             ]
 
@@ -5762,24 +5771,24 @@ async def list_professionals(
     if len(allowed_ids) > 1:
         try:
             rows = await db.pool.fetch(
-                f"SELECT p.id, p.first_name, p.last_name, p.specialty, p.is_active, p.tenant_id {base_join} WHERE p.tenant_id = ANY($1::int[])",
+                f"SELECT p.id, p.first_name, p.last_name, p.specialty, p.is_active, p.tenant_id, p.is_priority_professional {base_join} WHERE p.tenant_id = ANY($1::int[])",
                 allowed_ids,
             )
             return [dict(row) for row in rows]
         except Exception as e:
             err_str = str(e).lower()
-            if "last_name" in err_str or "tenant_id" in err_str:
+            if "last_name" in err_str or "tenant_id" in err_str or "is_priority_professional" in err_str:
                 try:
                     rows = await db.pool.fetch(
                         f"SELECT p.id, p.first_name, p.specialty, p.is_active, p.tenant_id {base_join} WHERE p.tenant_id = ANY($1::int[])",
                         allowed_ids,
                     )
-                    return [dict(r) | {"last_name": ""} for r in rows]
+                    return [dict(r) | {"last_name": "", "is_priority_professional": False} for r in rows]
                 except Exception:
                     pass
             try:
                 rows = await db.pool.fetch(
-                    "SELECT p.id, p.first_name, p.last_name, p.specialty, p.is_active FROM professionals p INNER JOIN users u ON p.user_id = u.id AND u.role = 'professional' AND u.status = 'active' WHERE p.tenant_id = ANY($1::int[])",
+                    "SELECT p.id, p.first_name, p.last_name, p.specialty, p.is_active, p.is_priority_professional FROM professionals p INNER JOIN users u ON p.user_id = u.id AND u.role = 'professional' AND u.status = 'active' WHERE p.tenant_id = ANY($1::int[])",
                     allowed_ids,
                 )
                 return [dict(row) for row in rows]
@@ -5790,7 +5799,7 @@ async def list_professionals(
                 "SELECT p.id, p.first_name, p.last_name, p.specialty, p.is_active FROM professionals p INNER JOIN users u ON p.user_id = u.id AND u.role = 'professional' AND u.status = 'active' WHERE p.tenant_id = ANY($1::int[])",
                 allowed_ids,
             )
-            return [dict(row) for row in rows]
+            return [dict(row) | {"is_priority_professional": False} for row in rows]
         except Exception as e2:
             logger.warning(f"list_professionals CEO fallback failed: {e2}")
             return []
@@ -5798,7 +5807,7 @@ async def list_professionals(
     tenant_id = resolved_tenant_id
     try:
         rows = await db.pool.fetch(
-            f"SELECT p.id, p.first_name, p.last_name, p.specialty, p.is_active {base_join} WHERE p.tenant_id = $1",
+            f"SELECT p.id, p.first_name, p.last_name, p.specialty, p.is_active, p.is_priority_professional {base_join} WHERE p.tenant_id = $1",
             tenant_id,
         )
         return [dict(row) for row in rows]
@@ -5810,7 +5819,7 @@ async def list_professionals(
             "SELECT p.id, p.first_name, p.specialty, p.is_active FROM professionals p INNER JOIN users u ON p.user_id = u.id AND u.role = 'professional' AND u.status = 'active' WHERE p.tenant_id = $1",
             tenant_id,
         )
-        return [dict(r) | {"last_name": ""} for r in rows]
+        return [dict(r) | {"last_name": "", "is_priority_professional": False} for r in rows]
     except Exception as e:
         logger.warning(f"list_professionals fallback (no last_name) failed: {e}")
 
@@ -5819,7 +5828,7 @@ async def list_professionals(
             "SELECT p.id, p.first_name, p.last_name, p.specialty, p.is_active FROM professionals p INNER JOIN users u ON p.user_id = u.id AND u.role = 'professional' AND u.status = 'active' WHERE p.tenant_id = $1",
             tenant_id,
         )
-        return [dict(row) for row in rows]
+        return [dict(row) | {"is_priority_professional": False} for row in rows]
     except Exception as e:
         logger.warning(f"list_professionals fallback (no tenant) failed: {e}")
     try:
@@ -5827,7 +5836,7 @@ async def list_professionals(
             "SELECT p.id, p.first_name, p.specialty, p.is_active FROM professionals p INNER JOIN users u ON p.user_id = u.id AND u.role = 'professional' AND u.status = 'active' WHERE p.tenant_id = $1",
             tenant_id,
         )
-        return [dict(r) | {"last_name": ""} for r in rows]
+        return [dict(r) | {"last_name": "", "is_priority_professional": False} for r in rows]
     except Exception as e:
         logger.error(f"list_professionals all fallbacks failed: {e}", exc_info=True)
         return []
@@ -6466,6 +6475,7 @@ class TreatmentTypeUpdate(BaseModel):
     is_available_for_booking: bool = True
     internal_notes: Optional[str] = None
     base_price: Optional[float] = 0
+    priority: Optional[str] = "medium"
 
 
 @router.get(
@@ -6482,7 +6492,7 @@ async def list_treatment_types(tenant_id: int = Depends(get_resolved_tenant_id))
         SELECT id, code, name, description, default_duration_minutes,
                min_duration_minutes, max_duration_minutes, complexity_level,
                category, requires_multiple_sessions, session_gap_days,
-               is_active, is_available_for_booking, internal_notes, base_price
+               is_active, is_available_for_booking, internal_notes, base_price, priority
         FROM treatment_types
         WHERE tenant_id = $1
         ORDER BY category, name
@@ -6526,7 +6536,7 @@ async def get_treatment_type(
         SELECT id, code, name, description, default_duration_minutes,
                min_duration_minutes, max_duration_minutes, complexity_level,
                category, requires_multiple_sessions, session_gap_days,
-               is_active, is_available_for_booking, internal_notes
+               is_active, is_available_for_booking, internal_notes, priority
         FROM treatment_types
         WHERE tenant_id = $1 AND code = $2
     """,
@@ -6562,8 +6572,8 @@ async def create_treatment_type(
                 tenant_id, code, name, description, default_duration_minutes,
                 min_duration_minutes, max_duration_minutes, complexity_level,
                 category, requires_multiple_sessions, session_gap_days,
-                is_active, is_available_for_booking, internal_notes, base_price, created_at
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NOW())
+                is_active, is_available_for_booking, internal_notes, base_price, priority, created_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, NOW())
             RETURNING id
         """,
             tenant_id,
@@ -6581,6 +6591,7 @@ async def create_treatment_type(
             treatment.is_available_for_booking,
             treatment.internal_notes,
             treatment.base_price or 0,
+            treatment.priority if treatment.priority in ("high", "medium-high", "medium", "low") else "medium",
         )
         # Insert professional assignments if provided
         if treatment.professional_ids and row:
@@ -6622,8 +6633,8 @@ async def update_treatment_type(
             min_duration_minutes = $4, max_duration_minutes = $5,
             complexity_level = $6, category = $7, requires_multiple_sessions = $8,
             session_gap_days = $9, is_active = $10, is_available_for_booking = $11,
-            internal_notes = $12, base_price = $13, updated_at = NOW()
-        WHERE tenant_id = $14 AND code = $15
+            internal_notes = $12, base_price = $13, priority = $14, updated_at = NOW()
+        WHERE tenant_id = $15 AND code = $16
     """,
         treatment.name,
         treatment.description,
@@ -6638,6 +6649,7 @@ async def update_treatment_type(
         treatment.is_available_for_booking,
         treatment.internal_notes,
         treatment.base_price or 0,
+        treatment.priority if treatment.priority in ("high", "medium-high", "medium", "low") else "medium",
         tenant_id,
         code,
     )

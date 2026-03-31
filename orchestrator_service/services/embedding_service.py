@@ -248,7 +248,8 @@ async def format_faqs_with_rag(tenant_id: int, user_message: str, static_faqs: l
         if relevant_faqs:
             lines = ["FAQs RELEVANTES (responder SIEMPRE con estas respuestas cuando aplique):"]
             for faq in relevant_faqs:
-                lines.append(f"• {faq['question']}: \"{faq['answer']}\" [relevancia: {faq['similarity']}]")
+                cat = faq.get("category", "General") or "General"
+                lines.append(f"[{cat}] {faq['question']}: \"{faq['answer']}\" [relevancia: {faq['similarity']}]")
             return "\n".join(lines)
 
     # Fallback: static FAQs (original behavior)
@@ -256,7 +257,8 @@ async def format_faqs_with_rag(tenant_id: int, user_message: str, static_faqs: l
         return ""
     lines = ["FAQs OBLIGATORIAS (responder SIEMPRE con estas respuestas cuando aplique):"]
     for faq in static_faqs[:20]:
+        cat = faq.get("category", "General") or "General"
         q = faq.get("question", "")
         a = faq.get("answer", "")
-        lines.append(f"• {q}: \"{a}\"")
+        lines.append(f"[{cat}] {q}: \"{a}\"")
     return "\n".join(lines)

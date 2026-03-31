@@ -74,6 +74,7 @@ interface ProfessionalRow {
     email?: string;
     specialty?: string;
     is_active?: boolean;
+    is_priority_professional?: boolean;
     working_hours?: unknown;
     phone_number?: string;
     registration_id?: string;
@@ -97,8 +98,8 @@ const UserApprovalView: React.FC = () => {
     const [staffForEditModal, setStaffForEditModal] = useState<StaffUser | null>(null);
     const [editFormData, setEditFormData] = useState<{
         name: string; email: string; phone: string; specialty: string; license_number: string;
-        google_calendar_id: string; consultation_price: string; is_active: boolean; working_hours: WorkingHours;
-    }>({ name: '', email: '', phone: '', specialty: '', license_number: '', google_calendar_id: '', consultation_price: '', is_active: true, working_hours: createDefaultWorkingHours() });
+        google_calendar_id: string; consultation_price: string; is_active: boolean; is_priority_professional: boolean; working_hours: WorkingHours;
+    }>({ name: '', email: '', phone: '', specialty: '', license_number: '', google_calendar_id: '', consultation_price: '', is_active: true, is_priority_professional: false, working_hours: createDefaultWorkingHours() });
     const [editFormSubmitting, setEditFormSubmitting] = useState(false);
     const [expandedEditDays, setExpandedEditDays] = useState<string[]>([]);
     const [expandedAccordion, setExpandedAccordion] = useState<'pacientes' | 'uso' | 'mensajes' | null>(null);
@@ -236,6 +237,7 @@ const UserApprovalView: React.FC = () => {
                 google_calendar_id: row.google_calendar_id ?? '',
                 consultation_price: row.consultation_price != null ? String(row.consultation_price) : '',
                 is_active: row.is_active ?? true,
+                is_priority_professional: row.is_priority_professional ?? false,
                 working_hours: parseWorkingHours(row.working_hours),
             });
             setExpandedEditDays([]);
@@ -325,6 +327,7 @@ const UserApprovalView: React.FC = () => {
                 google_calendar_id: editFormData.google_calendar_id?.trim() || undefined,
                 consultation_price: editFormData.consultation_price ? parseFloat(editFormData.consultation_price) : null,
                 is_active: editFormData.is_active,
+                is_priority_professional: editFormData.is_priority_professional,
                 availability: {},
                 working_hours: editFormData.working_hours,
             });
@@ -594,11 +597,19 @@ const UserApprovalView: React.FC = () => {
                                             <Building2 size={16} />
                                             {t('approvals.assigned_locations')}
                                         </h3>
-                                        <ul className="list-disc list-inside text-sm text-white/60">
+                                        <ul className="space-y-1.5">
                                             {professionalRows.map((p) => (
-                                                <li key={p.id}>
-                                                    {clinics.find((c) => c.id === p.tenant_id)?.clinic_name || t('approvals.location_id').replace('{{id}}', String(p.tenant_id))}
-                                                    {p.specialty && ` · ${p.specialty}`}
+                                                <li key={p.id} className="flex items-center gap-2 text-sm text-white/60">
+                                                    <span className="w-1.5 h-1.5 rounded-full bg-white/30 shrink-0" />
+                                                    <span>
+                                                        {clinics.find((c) => c.id === p.tenant_id)?.clinic_name || t('approvals.location_id').replace('{{id}}', String(p.tenant_id))}
+                                                        {p.specialty && ` · ${p.specialty}`}
+                                                    </span>
+                                                    {p.is_priority_professional && (
+                                                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 shrink-0">
+                                                            ★ Prioritario
+                                                        </span>
+                                                    )}
                                                 </li>
                                             ))}
                                         </ul>
@@ -863,6 +874,10 @@ const UserApprovalView: React.FC = () => {
                                     <label className="flex items-center gap-3 cursor-pointer mt-4">
                                         <input type="checkbox" checked={editFormData.is_active} onChange={(e) => setEditFormData((p) => ({ ...p, is_active: e.target.checked }))} className="w-4 h-4 rounded border-white/[0.08] text-blue-400 focus:ring-blue-500" />
                                         <span className="text-sm font-medium text-white/60">{t('approvals.active')}</span>
+                                    </label>
+                                    <label className="flex items-center gap-3 cursor-pointer mt-2">
+                                        <input type="checkbox" checked={editFormData.is_priority_professional} onChange={(e) => setEditFormData((p) => ({ ...p, is_priority_professional: e.target.checked }))} className="w-4 h-4 rounded border-white/[0.08] text-yellow-400 focus:ring-yellow-500" />
+                                        <span className="text-sm font-medium text-white/70">Profesional prioritario</span>
                                     </label>
                                 </div>
                                 <div className="lg:col-span-4 space-y-4">

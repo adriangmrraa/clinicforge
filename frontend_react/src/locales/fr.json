@@ -821,7 +821,16 @@
     "add_time_block": "Ajouter un créneau",
     "close": "Fermer",
     "save_changes": "Enregistrer les modifications",
-    "sign_medical_alta": "Signer l'incorporation médicale"
+    "sign_medical_alta": "Signer l'incorporation médicale",
+    "priority": {
+      "label": "Priorité",
+      "high": "Haute",
+      "mediumHigh": "Moyenne-Haute",
+      "medium": "Moyenne",
+      "low": "Basse"
+    },
+    "priorityProfessional": "Professionnel prioritaire",
+    "priorityProfessionalDesc": "Ce professionnel sera priorisé pour la planification des rendez-vous de haute valeur"
   },
   "layout": {
     "app_title": "Dentalogic",

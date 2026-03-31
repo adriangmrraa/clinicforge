@@ -843,7 +843,16 @@
     "sign_medical_alta": "Firmar Alta Médica",
     "general_fallback": "General",
     "view_schedules": "Ver Horarios",
-    "edit_profile": "Editar Perfil"
+    "edit_profile": "Editar Perfil",
+    "priority": {
+      "label": "Prioridad",
+      "high": "Alta",
+      "mediumHigh": "Media-Alta",
+      "medium": "Media",
+      "low": "Baja"
+    },
+    "priorityProfessional": "Profesional prioritario",
+    "priorityProfessionalDesc": "Este profesional tendrá prioridad en la asignación de turnos de alto valor"
   },
   "layout": {
     "app_title": "Dentalogic",

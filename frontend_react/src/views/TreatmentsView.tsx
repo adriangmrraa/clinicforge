@@ -29,6 +29,7 @@ interface TreatmentType {
   internal_notes: string;
   base_price?: number;
   professional_ids?: number[];
+  priority?: 'high' | 'medium-high' | 'medium' | 'low';
 }
 
 // Category icons mapping
@@ -163,7 +164,8 @@ export default function TreatmentsView() {
     is_available_for_booking: true,
     internal_notes: '',
     base_price: 0,
-    professional_ids: []
+    professional_ids: [],
+    priority: 'medium' as const
   });
 
   const fetchTreatments = async () => {
@@ -247,6 +249,7 @@ export default function TreatmentsView() {
         is_active: true,
         is_available_for_booking: true,
         internal_notes: '',
+        priority: 'medium' as const,
         professional_ids: []
       });
     } catch (error: any) {
@@ -457,6 +460,19 @@ export default function TreatmentsView() {
                       <option value="high">{t('treatments.high')}</option>
                     </select>
                   </div>
+                  <div className="space-y-2">
+                    <label className="block text-xs font-bold text-white/40 uppercase tracking-wider">Prioridad</label>
+                    <select
+                      value={newForm.priority || 'medium'}
+                      onChange={(e) => setNewForm({ ...newForm, priority: e.target.value as TreatmentType['priority'] })}
+                      className="w-full px-4 py-3 bg-white/[0.04] border border-white/[0.08] rounded-xl text-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none appearance-none cursor-pointer font-bold"
+                    >
+                      <option value="high">Alta</option>
+                      <option value="medium-high">Media-Alta</option>
+                      <option value="medium">Media</option>
+                      <option value="low">Baja</option>
+                    </select>
+                  </div>
                 </div>
 
                 <div className="mt-6 flex items-center gap-3">
@@ -662,6 +678,19 @@ export default function TreatmentsView() {
                                 <option value="emergency">{t('treatments.emergency')}</option>
                               </select>
                             </div>
+                            <div className="space-y-2">
+                              <label className="block text-xs font-bold text-white/40 ml-1 uppercase">Prioridad</label>
+                              <select
+                                value={editForm.priority || 'medium'}
+                                onChange={(e) => setEditForm({ ...editForm, priority: e.target.value as TreatmentType['priority'] })}
+                                className="w-full px-4 py-3 bg-white/[0.04] border border-white/[0.08] rounded-xl text-white focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none appearance-none font-bold"
+                              >
+                                <option value="high">Alta</option>
+                                <option value="medium-high">Media-Alta</option>
+                                <option value="medium">Media</option>
+                                <option value="low">Baja</option>
+                              </select>
+                            </div>
 
                             <div className="flex flex-wrap items-center gap-6">
                               <label className="flex items-center gap-3 cursor-pointer group">
@@ -774,6 +803,18 @@ export default function TreatmentsView() {
                                 }`}>
                                 {t('treatments.' + (treatment.complexity_level || 'medium'))}
                               </span>
+                              {treatment.priority && (
+                                <span className={`inline-flex items-center px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border ${
+                                  treatment.priority === 'high' ? 'bg-red-500/10 text-red-400 border-red-500/20' :
+                                  treatment.priority === 'medium-high' ? 'bg-orange-500/10 text-orange-400 border-orange-500/20' :
+                                  treatment.priority === 'medium' ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20' :
+                                  'bg-green-500/10 text-green-400 border-green-500/20'
+                                }`}>
+                                  {treatment.priority === 'high' ? 'Alta' :
+                                   treatment.priority === 'medium-high' ? 'Media-Alta' :
+                                   treatment.priority === 'medium' ? 'Media' : 'Baja'}
+                                </span>
+                              )}
                               {treatment.requires_multiple_sessions && (
                                 <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-purple-500/10 text-purple-400 border border-purple-500/20">
                                   <CheckCircle size={10} />

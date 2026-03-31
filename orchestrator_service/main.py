@@ -1303,7 +1303,7 @@ async def check_availability(
                 tenant_wh_raw = {}
         tenant_wh = tenant_wh_raw if isinstance(tenant_wh_raw, dict) else {}
         # Solo profesionales aprobados (users.status = 'active') y activos en la sede
-        query = """SELECT p.id, p.first_name, p.last_name, p.google_calendar_id, p.working_hours
+        query = """SELECT p.id, p.first_name, p.last_name, p.google_calendar_id, p.working_hours, p.is_priority_professional
                    FROM professionals p
                    INNER JOIN users u ON p.user_id = u.id AND u.role = 'professional' AND u.status = 'active'
                    WHERE p.is_active = true AND p.tenant_id = $1"""
@@ -1521,6 +1521,11 @@ async def check_availability(
                     ]
                     if not active_professionals:
                         return "❌ No hay profesionales asignados a este tratamiento con disponibilidad. Contactá a la clínica."
+
+        # Ordenar: profesionales prioritarios primero
+        active_professionals = sorted(
+            active_professionals, key=lambda p: (0 if p.get("is_priority_professional") else 1)
+        )
 
         # --- CEREBRO HÍBRIDO: google → gcal_service; local → solo tabla appointments ---
         calendar_provider = await get_tenant_calendar_provider(tenant_id)
@@ -2216,7 +2221,7 @@ async def book_appointment(
             (professional_name or ""),
             flags=re.IGNORECASE,
         ).strip()
-        p_query = """SELECT p.id, p.first_name, p.last_name, p.google_calendar_id, p.working_hours
+        p_query = """SELECT p.id, p.first_name, p.last_name, p.google_calendar_id, p.working_hours, p.is_priority_professional
                      FROM professionals p
                      INNER JOIN users u ON p.user_id = u.id AND u.role = 'professional' AND u.status = 'active'
                      WHERE p.tenant_id = $1 AND p.is_active = true"""
@@ -2252,6 +2257,9 @@ async def book_appointment(
                     candidates = [c for c in candidates if c["id"] in assigned_set]
                     if not candidates:
                         return f"❌ No hay profesionales asignados a este tratamiento disponibles en ese horario. ¿Querés probar otro horario o tratamiento?"
+
+        # Ordenar candidatos: profesionales prioritarios primero
+        candidates = sorted(candidates, key=lambda p: (0 if p.get("is_priority_professional") else 1))
 
         calendar_provider = await get_tenant_calendar_provider(tenant_id)
         if calendar_provider == "google":
@@ -3332,7 +3340,7 @@ async def list_services(category: str = None):
     """
     tenant_id = current_tenant_id.get()
     try:
-        query = """SELECT tt.id, tt.code, tt.name, tt.base_price
+        query = """SELECT tt.id, tt.code, tt.name, tt.base_price, tt.priority
                    FROM treatment_types tt
                    WHERE tt.tenant_id = $1 AND tt.is_active = true AND tt.is_available_for_booking = true"""
         params = [tenant_id]
@@ -3369,7 +3377,8 @@ async def list_services(category: str = None):
                 else ""
             )
             prof_str = f" — con: {', '.join(profs)}" if profs else ""
-            res += f"• {r['name']} (código: {r['code']}){price}{prof_str}\n"
+            priority_val = r.get("priority", "medium") or "medium"
+            res += f"• {r['name']} (código: {r['code']}){price}{prof_str} [prioridad: {priority_val}]\n"
         res += "\n💡 Para más detalles o fotos de un tratamiento, pedimelo usando su nombre o código."
         return res
     except Exception as e:
@@ -5063,9 +5072,10 @@ def _format_faqs(faqs: list) -> str:
         "FAQs OBLIGATORIAS (responder SIEMPRE con estas respuestas cuando aplique):"
     ]
     for faq in faqs[:20]:  # Limitar a 20 FAQs por prompt
+        cat = faq.get("category", "General") or "General"
         q = faq.get("question", "")
         a = faq.get("answer", "")
-        lines.append(f'• {q}: "{a}"')
+        lines.append(f'[{cat}] {q}: "{a}"')
     return "\n".join(lines)
 
 
@@ -5497,6 +5507,11 @@ Después de confirmar el turno (PASO 7) y enviar los datos de seña (si aplica),
 "Por cierto, cómo nos conociste? Redes, recomendación, Google...?"
 Si el paciente responde → guardá con book_appointment usando acquisition_source o actualizá el paciente.
 Es una pregunta casual, no un formulario. Si no responde, no insistir.
+
+REGLAS DE PRIORIDAD EN AGENDA:
+- Cuando un tratamiento tiene prioridad 'high' o 'medium-high', ofrecé los turnos MÁS CERCANOS disponibles con el profesional prioritario.
+- Entre las opciones disponibles, priorizá siempre los horarios del profesional marcado como prioritario.
+- NUNCA menciones la palabra "prioridad" ni "urgencia" al paciente. Simplemente presentá el turno como "la mejor opción disponible".
 
 FLUJO DE AGENDAMIENTO (ORDEN ESTRICTO):
 PASO 1: SALUDO E IDENTIDAD - Usá el GREETING correspondiente al tipo de paciente.
