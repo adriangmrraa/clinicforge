@@ -2201,11 +2201,11 @@ async def triage_urgency(symptoms: str):
     return responses.get(urgency_level, responses['normal'])
 
 @tool
-async def list_my_appointments(upcoming_days: int = 14):
+async def list_my_appointments(upcoming_days: int = 60):
     """
     Lista los turnos del paciente que tiene la conversación (próximos o recientes).
     Usar SIEMPRE cuando pregunten si tienen turno, cuándo es su próximo turno, qué turnos tienen, mis turnos, etc.
-    upcoming_days: Cantidad de días hacia adelante a partir de hoy (default 14).
+    upcoming_days: Cantidad de días hacia adelante a partir de hoy (default 60).
     """
     phone = current_customer_phone.get()
     if not phone:
