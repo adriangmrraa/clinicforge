@@ -101,7 +101,34 @@ async def process_buffer_task(
             tenant_id
         )
         faqs = [dict(r) for r in faq_rows] if faq_rows else []
-        
+
+        # Fetch insurance providers for this tenant
+        insurance_providers = []
+        try:
+            ins_rows = await pool.fetch(
+                "SELECT id, provider_name, status, restrictions, external_target, requires_copay, copay_notes, ai_response_template FROM tenant_insurance_providers WHERE tenant_id = $1 AND is_active = true ORDER BY sort_order, provider_name",
+                tenant_id
+            )
+            insurance_providers = [dict(r) for r in ins_rows] if ins_rows else []
+        except Exception as ins_err:
+            logger.debug(f"Insurance providers fetch (non-fatal): {ins_err}")
+
+        # Fetch derivation rules for this tenant
+        derivation_rules = []
+        try:
+            der_rows = await pool.fetch("""
+                SELECT dr.id, dr.rule_name, dr.patient_condition, dr.treatment_categories,
+                       dr.target_type, dr.target_professional_id, dr.priority_order,
+                       p.first_name as target_professional_name
+                FROM professional_derivation_rules dr
+                LEFT JOIN professionals p ON dr.target_professional_id = p.id
+                WHERE dr.tenant_id = $1 AND dr.is_active = true
+                ORDER BY dr.priority_order ASC, dr.id ASC
+            """, tenant_id)
+            derivation_rules = [dict(r) for r in der_rows] if der_rows else []
+        except Exception as der_err:
+            logger.debug(f"Derivation rules fetch (non-fatal): {der_err}")
+
         # --- PATIENT MEMORY SYSTEM: Ensure table exists (first call only) ---
         try:
             from services.patient_memory import ensure_memory_table, format_memories_for_prompt, extract_and_store_memories
@@ -316,14 +343,28 @@ async def process_buffer_task(
         dias = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
         current_time_str = f"{dias[now.weekday()]} {now.strftime('%d/%m/%Y %H:%M')}"
 
-        # RAG: Use semantic FAQ search if available, else static fallback
+        # RAG: Unified semantic search across FAQs, insurance, derivation, instructions
         rag_faqs_section = ""
+        rag_insurance_section = ""
+        rag_derivation_section = ""
+        rag_instructions_section = ""
         try:
-            from services.embedding_service import format_faqs_with_rag
+            from services.embedding_service import format_all_context_with_rag
             user_text_for_rag = " ".join(messages) if messages else ""
-            rag_faqs_section = await format_faqs_with_rag(tenant_id, user_text_for_rag, faqs)
+            rag_context = await format_all_context_with_rag(tenant_id, user_text_for_rag, faqs)
+            rag_faqs_section = rag_context.get("faqs_section", "")
+            rag_insurance_section = rag_context.get("insurance_section", "")
+            rag_derivation_section = rag_context.get("derivation_section", "")
+            rag_instructions_section = rag_context.get("instructions_section", "")
         except Exception as rag_err:
-            logger.debug(f"RAG FAQ fallback (non-fatal): {rag_err}")
+            logger.debug(f"RAG context fallback (non-fatal): {rag_err}")
+            # Fallback to old FAQ-only RAG
+            try:
+                from services.embedding_service import format_faqs_with_rag
+                user_text_for_rag = " ".join(messages) if messages else ""
+                rag_faqs_section = await format_faqs_with_rag(tenant_id, user_text_for_rag, faqs)
+            except Exception:
+                pass
 
         # Obtener feriados próximos para inyectar en el prompt
         _upcoming_holidays = []
@@ -352,11 +393,14 @@ async def process_buffer_task(
             bank_alias=bank_alias,
             bank_holder_name=bank_holder_name,
             upcoming_holidays=_upcoming_holidays,
+            insurance_providers=insurance_providers if not rag_insurance_section else None,
+            derivation_rules=derivation_rules if not rag_derivation_section else None,
         )
 
-        # Inject RAG FAQs section if available (replaces static FAQ section in prompt)
-        if rag_faqs_section:
-            system_prompt += f"\n\n{rag_faqs_section}"
+        # Inject RAG context sections if available
+        rag_sections = [s for s in [rag_faqs_section, rag_insurance_section, rag_derivation_section, rag_instructions_section] if s]
+        if rag_sections:
+            system_prompt += "\n\n" + "\n\n".join(rag_sections)
 
         chat_history = []
         vision_context_str = ""

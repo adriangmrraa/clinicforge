@@ -6531,7 +6531,7 @@ async def list_insurance_providers(tenant_id: int = Depends(get_resolved_tenant_
         SELECT id, provider_name, status, restrictions, external_target,
                requires_copay, copay_notes, ai_response_template, sort_order, is_active,
                created_at, updated_at
-        FROM insurance_providers
+        FROM tenant_insurance_providers
         WHERE tenant_id = $1
         ORDER BY sort_order, provider_name
         """,
@@ -6556,7 +6556,7 @@ async def create_insurance_provider(
 
     # Duplicate check (case-insensitive)
     existing = await db.pool.fetchval(
-        "SELECT id FROM insurance_providers WHERE tenant_id = $1 AND provider_name ILIKE $2",
+        "SELECT id FROM tenant_insurance_providers WHERE tenant_id = $1 AND provider_name ILIKE $2",
         tenant_id,
         provider_name,
     )
@@ -6565,7 +6565,7 @@ async def create_insurance_provider(
 
     row = await db.pool.fetchrow(
         """
-        INSERT INTO insurance_providers (
+        INSERT INTO tenant_insurance_providers (
             tenant_id, provider_name, status, restrictions, external_target,
             requires_copay, copay_notes, ai_response_template, sort_order, is_active,
             created_at, updated_at
@@ -6583,6 +6583,16 @@ async def create_insurance_provider(
         data.sort_order,
         data.is_active,
     )
+    # Sync embedding (background, non-blocking)
+    try:
+        from services.embedding_service import upsert_insurance_embedding
+        import asyncio
+        asyncio.create_task(upsert_insurance_embedding(
+            tenant_id, row["id"], data.provider_name, data.status,
+            data.restrictions or "", data.copay_notes or "", data.ai_response_template or ""
+        ))
+    except Exception:
+        pass
     return {"status": "created", "id": row["id"]}
 
 
@@ -6603,7 +6613,7 @@ async def update_insurance_provider(
 
     result = await db.pool.execute(
         """
-        UPDATE insurance_providers SET
+        UPDATE tenant_insurance_providers SET
             provider_name = $1, status = $2, restrictions = $3, external_target = $4,
             requires_copay = $5, copay_notes = $6, ai_response_template = $7,
             sort_order = $8, is_active = $9, updated_at = NOW()
@@ -6623,6 +6633,16 @@ async def update_insurance_provider(
     )
     if result == "UPDATE 0":
         raise HTTPException(status_code=404, detail="Obra social no encontrada")
+    # Sync embedding (background, non-blocking)
+    try:
+        from services.embedding_service import upsert_insurance_embedding
+        import asyncio
+        asyncio.create_task(upsert_insurance_embedding(
+            tenant_id, provider_id, data.provider_name, data.status,
+            data.restrictions or "", data.copay_notes or "", data.ai_response_template or ""
+        ))
+    except Exception:
+        pass
     return {"status": "updated", "id": provider_id}
 
 
@@ -6638,12 +6658,18 @@ async def delete_insurance_provider(
 ):
     """Eliminar obra social. Aislado por tenant_id (Regla de Oro)."""
     result = await db.pool.execute(
-        "DELETE FROM insurance_providers WHERE id = $1 AND tenant_id = $2",
+        "DELETE FROM tenant_insurance_providers WHERE id = $1 AND tenant_id = $2",
         provider_id,
         tenant_id,
     )
     if result == "DELETE 0":
         raise HTTPException(status_code=404, detail="Obra social no encontrada")
+    try:
+        from services.embedding_service import delete_insurance_embedding
+        import asyncio
+        asyncio.create_task(delete_insurance_embedding(provider_id, tenant_id))
+    except Exception:
+        pass
     return {"status": "deleted", "id": provider_id}
 
 
@@ -6659,7 +6685,7 @@ async def toggle_insurance_provider_active(
 ):
     """Flip is_active de obra social. Aislado por tenant_id (Regla de Oro)."""
     row = await db.pool.fetchrow(
-        "SELECT id, is_active FROM insurance_providers WHERE id = $1 AND tenant_id = $2",
+        "SELECT id, is_active FROM tenant_insurance_providers WHERE id = $1 AND tenant_id = $2",
         provider_id,
         tenant_id,
     )
@@ -6667,7 +6693,7 @@ async def toggle_insurance_provider_active(
         raise HTTPException(status_code=404, detail="Obra social no encontrada")
     new_value = not row["is_active"]
     await db.pool.execute(
-        "UPDATE insurance_providers SET is_active = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3",
+        "UPDATE tenant_insurance_providers SET is_active = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3",
         new_value,
         provider_id,
         tenant_id,
@@ -6697,7 +6723,7 @@ async def reorder_insurance_providers(
     """Batch update sort_order de obras sociales. Aislado por tenant_id (Regla de Oro)."""
     for item in body.order:
         await db.pool.execute(
-            "UPDATE insurance_providers SET sort_order = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3",
+            "UPDATE tenant_insurance_providers SET sort_order = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3",
             item.sort_order,
             item.id,
             tenant_id,
@@ -6848,6 +6874,21 @@ async def create_derivation_rule(
         data.is_active,
         data.description,
     )
+    # Sync embedding (background, non-blocking)
+    try:
+        from services.embedding_service import upsert_derivation_embedding
+        import asyncio
+        # Need to resolve professional name
+        prof_name = ""
+        if data.target_professional_id:
+            prof_row = await db.pool.fetchrow("SELECT first_name FROM professionals WHERE id = $1", data.target_professional_id)
+            prof_name = prof_row["first_name"] if prof_row else ""
+        asyncio.create_task(upsert_derivation_embedding(
+            tenant_id, row["id"], data.rule_name, data.patient_condition,
+            data.treatment_categories, data.target_type, prof_name
+        ))
+    except Exception:
+        pass
     return {"status": "created", "id": row["id"]}
 
 
@@ -6886,6 +6927,21 @@ async def update_derivation_rule(
     )
     if result == "UPDATE 0":
         raise HTTPException(status_code=404, detail="Regla de derivación no encontrada")
+    # Sync embedding (background, non-blocking)
+    try:
+        from services.embedding_service import upsert_derivation_embedding
+        import asyncio
+        # Need to resolve professional name
+        prof_name = ""
+        if data.target_professional_id:
+            prof_row = await db.pool.fetchrow("SELECT first_name FROM professionals WHERE id = $1", data.target_professional_id)
+            prof_name = prof_row["first_name"] if prof_row else ""
+        asyncio.create_task(upsert_derivation_embedding(
+            tenant_id, rule_id, data.rule_name, data.patient_condition,
+            data.treatment_categories, data.target_type, prof_name
+        ))
+    except Exception:
+        pass
     return {"status": "updated", "id": rule_id}
 
 
@@ -6907,6 +6963,12 @@ async def delete_derivation_rule(
     )
     if result == "DELETE 0":
         raise HTTPException(status_code=404, detail="Regla de derivación no encontrada")
+    try:
+        from services.embedding_service import delete_derivation_embedding
+        import asyncio
+        asyncio.create_task(delete_derivation_embedding(rule_id, tenant_id))
+    except Exception:
+        pass
     return {"status": "deleted", "id": rule_id}
 
 
@@ -7219,6 +7281,23 @@ async def update_treatment_type(
     )
     if result == "UPDATE 0":
         raise HTTPException(status_code=404, detail="Tipo de tratamiento no encontrado")
+    # Sync treatment instruction embedding if instructions were provided
+    if treatment.pre_instructions or treatment.post_instructions:
+        try:
+            from services.embedding_service import upsert_treatment_instruction_embedding
+            import asyncio
+            post = treatment.post_instructions
+            if isinstance(post, str):
+                post = json.loads(post)
+            # Need treatment ID from DB
+            tt_row = await db.pool.fetchrow("SELECT id FROM treatment_types WHERE tenant_id = $1 AND code = $2", tenant_id, code)
+            if tt_row:
+                asyncio.create_task(upsert_treatment_instruction_embedding(
+                    tenant_id, tt_row["id"], treatment.name,
+                    treatment.pre_instructions or "", post or []
+                ))
+        except Exception:
+            pass
     return {"status": "updated", "code": code}
 
 
