@@ -169,8 +169,27 @@ class BufferManager:
                     # Nada válido
                     continue
                 
+                # Re-check human override before processing (might have been toggled during debounce)
+                try:
+                    conv_id_str = business_info.get("conversation_id")
+                    if conv_id_str:
+                        from datetime import datetime, timezone as tz
+                        ov = await db_pool.fetchrow(
+                            "SELECT human_override_until FROM chat_conversations WHERE id = $1",
+                            conv_id_str if not isinstance(conv_id_str, str) else __import__('uuid').UUID(conv_id_str),
+                        )
+                        if ov and ov["human_override_until"]:
+                            ov_until = ov["human_override_until"]
+                            if ov_until.tzinfo is None:
+                                ov_until = ov_until.replace(tzinfo=tz.utc)
+                            if ov_until > datetime.now(tz.utc):
+                                logger.info(f"🔇 BufferManager: human override active, skipping AI for {external_user_id}")
+                                break
+                except Exception as ov_err:
+                    logger.warning(f"⚠️ BufferManager override check: {ov_err}")
+
                 # Extender lock fuertemente antes de ir a Inteligencia Artificial para evitar que otro worker
-                # intercepte este hilo si el LLM demora mucho. 
+                # intercepte este hilo si el LLM demora mucho.
                 await redis_client.expire(lock_key, 300)
                 
                 # Lanzar pings defensivos de "typing_on" (Regla C1) si consideramos oportuno

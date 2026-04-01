@@ -639,6 +639,10 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
                 > utc_now
             )
 
+            logger.info(
+                f"🔒 Override check: conv={conv_id} override_until={override_row['human_override_until'] if override_row else 'N/A'} utc_now={utc_now} is_locked={is_locked}"
+            )
+
             if not is_locked:
                 # Auto-cleanup: if override expired but status is still human_handling, reset it
                 if override_row and override_row["human_override_until"] is not None:
