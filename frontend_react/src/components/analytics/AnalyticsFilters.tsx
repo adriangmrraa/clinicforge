@@ -26,8 +26,8 @@ const AnalyticsFilters: React.FC<AnalyticsFiltersProps> = ({ onFilterChange }) =
 
     useEffect(() => {
         const today = new Date();
-        const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
-        const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+        const firstDay = new Date(today.getFullYear(), 0, 1);
+        const lastDay = new Date(today.getFullYear(), 11, 31);
         setStartDate(firstDay.toISOString().split('T')[0]);
         setEndDate(lastDay.toISOString().split('T')[0]);
         fetchProfessionals();

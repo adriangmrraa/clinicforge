@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ChevronDown, ChevronRight, User, Stethoscope } from 'lucide-react';
+import { ChevronDown, Stethoscope } from 'lucide-react';
 import { useTranslation } from '../../context/LanguageContext';
 import type { LiquidationProfessional } from '../../types/liquidation';
 import TreatmentGroupAccordion from './TreatmentGroupAccordion';
@@ -14,24 +14,43 @@ export default function ProfessionalAccordion({ professional, formatCurrency }: 
   const [expanded, setExpanded] = useState(false);
   const { summary } = professional;
 
+  const pct = summary.billed > 0 ? Math.round((summary.paid / summary.billed) * 100) : 0;
+  const hue = (professional.name.charCodeAt(0) * 17) % 360;
+
   return (
     <div className="bg-white/[0.02] border border-white/[0.06] rounded-xl mb-3 overflow-hidden">
       {/* Header */}
       <button
         onClick={() => setExpanded(prev => !prev)}
-        className="w-full flex items-center gap-3 px-5 py-4 hover:bg-white/[0.04] transition-colors text-left"
+        className="w-full flex items-center gap-3 px-5 py-4 hover:bg-white/[0.04] transition-colors duration-200 text-left relative"
       >
-        {/* Chevron */}
-        <span className="text-white/30 shrink-0 transition-transform duration-200">
-          {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-        </span>
+        {/* Blue left accent bar when expanded */}
+        {expanded && (
+          <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[2px] h-6 bg-blue-400/60 rounded-r-full" />
+        )}
 
-        {/* Avatar icon */}
-        <div className="w-8 h-8 rounded-full bg-white/[0.06] flex items-center justify-center shrink-0">
-          <User size={14} className="text-white/40" />
+        {/* Chevron */}
+        <ChevronDown
+          size={16}
+          className="text-white/30 shrink-0 transition-transform duration-250"
+          style={{
+            transform: expanded ? 'rotate(0deg)' : 'rotate(-90deg)',
+            transitionTimingFunction: 'cubic-bezier(0.34, 1.56, 0.64, 1)',
+          }}
+        />
+
+        {/* Gradient avatar */}
+        <div
+          className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 text-xs font-bold text-white/80"
+          style={{
+            background: `linear-gradient(135deg, hsl(${hue},50%,25%), hsl(${hue},40%,18%))`,
+            boxShadow: `0 0 10px hsla(${hue},50%,40%,0.2)`,
+          }}
+        >
+          {professional.name[0].toUpperCase()}
         </div>
 
-        {/* Name + specialty */}
+        {/* Name + specialty + progress bar */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="font-semibold text-white text-sm">{professional.name}</span>
@@ -43,6 +62,13 @@ export default function ProfessionalAccordion({ professional, formatCurrency }: 
           <p className="text-white/30 text-xs mt-0.5">
             {summary.appointments} {t('liquidation.appointments')} · {summary.patients} {t('liquidation.patients')}
           </p>
+          {/* Payment progress mini-bar */}
+          <div className="w-full h-0.5 bg-white/[0.06] rounded-full overflow-hidden mt-1.5">
+            <div
+              className="h-full bg-emerald-500/50 rounded-full"
+              style={{ width: `${pct}%`, transition: 'width 0.6s ease-out' }}
+            />
+          </div>
         </div>
 
         {/* Amount badges */}
@@ -70,8 +96,17 @@ export default function ProfessionalAccordion({ professional, formatCurrency }: 
         </div>
       </button>
 
-      {/* Expanded content */}
-      {expanded && (
+      {/* Expanded content — smooth max-height transition */}
+      <div
+        style={{
+          maxHeight: expanded ? '2000px' : '0',
+          overflow: 'hidden',
+          transition: expanded
+            ? 'max-height 0.4s ease-out, opacity 0.3s ease-out'
+            : 'max-height 0.25s ease-in, opacity 0.15s ease-in',
+          opacity: expanded ? 1 : 0,
+        }}
+      >
         <div className="px-4 pb-4 pt-1">
           {professional.treatment_groups.map(group => (
             <TreatmentGroupAccordion
@@ -81,7 +116,7 @@ export default function ProfessionalAccordion({ professional, formatCurrency }: 
             />
           ))}
         </div>
-      )}
+      </div>
     </div>
   );
 }

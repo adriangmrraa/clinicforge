@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ChevronDown, ChevronRight, Phone } from 'lucide-react';
+import { ChevronDown, Phone } from 'lucide-react';
 import { useTranslation } from '../../context/LanguageContext';
 import type { TreatmentGroup } from '../../types/liquidation';
 import SessionRow from './SessionRow';
@@ -13,17 +13,30 @@ export default function TreatmentGroupAccordion({ group, formatCurrency }: Props
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
 
+  const isPending = group.total_paid < group.total_billed;
+
   return (
-    <div className="ml-4 bg-white/[0.01] border-l-2 border-white/[0.06] mb-2">
+    <div
+      className="ml-4 bg-white/[0.01] mb-2"
+      style={{
+        borderLeft: expanded ? '2px solid rgba(59,130,246,0.35)' : '2px solid rgba(255,255,255,0.06)',
+        transition: 'border-color 0.3s ease',
+      }}
+    >
       {/* Header */}
       <button
         onClick={() => setExpanded(prev => !prev)}
         className="w-full flex items-center gap-2 px-4 py-2.5 hover:bg-white/[0.03] transition-colors text-left"
       >
         {/* Chevron */}
-        <span className="text-white/20 shrink-0">
-          {expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
-        </span>
+        <ChevronDown
+          size={13}
+          className="text-white/20 shrink-0 transition-transform duration-200"
+          style={{
+            transform: expanded ? 'rotate(0deg)' : 'rotate(-90deg)',
+            transitionTimingFunction: 'cubic-bezier(0.34, 1.56, 0.64, 1)',
+          }}
+        />
 
         {/* Patient info */}
         <div className="flex-1 min-w-0">
@@ -37,7 +50,13 @@ export default function TreatmentGroupAccordion({ group, formatCurrency }: Props
             )}
           </div>
           <div className="flex items-center gap-2 mt-0.5">
-            <span className="bg-blue-500/10 text-blue-400 text-xs rounded-full px-2 py-0.5">
+            <span
+              className={`text-xs rounded-full px-2 py-0.5 ${
+                isPending
+                  ? 'bg-amber-500/10 text-amber-400 ring-1 ring-amber-500/20'
+                  : 'bg-blue-500/10 text-blue-400'
+              }`}
+            >
               {group.treatment_name}
             </span>
             <span className="text-white/30 text-xs">
@@ -59,8 +78,17 @@ export default function TreatmentGroupAccordion({ group, formatCurrency }: Props
         </div>
       </button>
 
-      {/* Sessions */}
-      {expanded && (
+      {/* Sessions — smooth max-height transition */}
+      <div
+        style={{
+          maxHeight: expanded ? '2000px' : '0',
+          overflow: 'hidden',
+          transition: expanded
+            ? 'max-height 0.4s ease-out, opacity 0.3s ease-out'
+            : 'max-height 0.25s ease-in, opacity 0.15s ease-in',
+          opacity: expanded ? 1 : 0,
+        }}
+      >
         <div className="ml-4">
           {group.sessions.map(session => (
             <SessionRow
@@ -70,7 +98,7 @@ export default function TreatmentGroupAccordion({ group, formatCurrency }: Props
             />
           ))}
         </div>
-      )}
+      </div>
     </div>
   );
 }

@@ -93,7 +93,7 @@ const LiquidationTab: React.FC<LiquidationTabProps> = ({
       />
 
       {/* Filter row */}
-      <div className="flex items-center justify-between gap-4 flex-wrap">
+      <div className="flex items-center justify-between gap-4 flex-wrap border-b border-white/[0.04] pb-4 mb-4">
         <PaymentStatusFilter
           value={paymentStatus}
           onChange={handlePaymentStatusChange}
@@ -104,21 +104,28 @@ const LiquidationTab: React.FC<LiquidationTabProps> = ({
       {/* Professional list */}
       {!isEmpty ? (
         <div className="space-y-3">
-          {visibleProfessionals.map((professional) => (
-            <ProfessionalAccordion
-              key={professional.id}
-              professional={professional}
-              formatCurrency={formatCurrency}
-            />
+          {visibleProfessionals.map((prof, i) => (
+            <div
+              key={prof.id}
+              style={{ animation: 'slideUp 0.35s ease-out both', animationDelay: `${i * 60}ms` }}
+            >
+              <ProfessionalAccordion
+                professional={prof}
+                formatCurrency={formatCurrency}
+              />
+            </div>
           ))}
         </div>
       ) : (
         !loading && (
-          <div className="flex flex-col items-center justify-center py-16 text-center">
-            <div className="w-12 h-12 rounded-xl bg-white/[0.04] flex items-center justify-center mb-4">
-              <FileText size={24} className="text-white/30" />
+          <div className="flex flex-col items-center justify-center py-16 text-center animate-fade-in">
+            <div
+              className="w-14 h-14 rounded-2xl bg-white/[0.04] flex items-center justify-center mb-4 ring-1 ring-white/[0.06]"
+              style={{ animation: 'slideUp 0.4s ease-out' }}
+            >
+              <FileText size={26} className="text-white/20" />
             </div>
-            <p className="text-white/40 text-sm">{t('liquidation.empty_state')}</p>
+            <p className="text-white/40 text-sm font-medium">{t('liquidation.no_data')}</p>
           </div>
         )
       )}

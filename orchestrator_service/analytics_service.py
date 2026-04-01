@@ -340,9 +340,16 @@ class AnalyticsService:
                 WHERE a.tenant_id = $1
                     AND a.appointment_datetime >= $2
                     AND a.appointment_datetime < ($3::date + INTERVAL '1 day')
-                    AND a.status IN ('completed', 'confirmed', 'in_progress')
+                    AND a.status != 'deleted'
                     {extra_conditions}
-                ORDER BY p.id, pat.id, a.appointment_type, a.appointment_datetime
+                ORDER BY p.id, pat.id, a.appointment_type,
+                  CASE
+                    WHEN a.payment_status = 'paid' THEN 0
+                    WHEN a.payment_status = 'partial' THEN 1
+                    WHEN a.billing_amount > 0 THEN 2
+                    ELSE 3
+                  END,
+                  a.appointment_datetime
             """
 
             rows = await db.pool.fetch(
@@ -407,33 +414,40 @@ class AnalyticsService:
                     notes_parts.append(row["clinical_notes"])
                 merged_notes = " | ".join(notes_parts) if notes_parts else None
 
+                appt_status = row["appointment_status"] or ""
+                # Cancelled/no_show appointments are shown in the row but excluded from revenue totals
+                excluded_from_totals = appt_status in ("cancelled", "no_show")
+                billing_for_totals = 0.0 if excluded_from_totals else billing_amount
+
                 group["sessions"].append({
                     "appointment_id": row["appointment_id"],
                     "date": row["appointment_datetime"].isoformat() if row["appointment_datetime"] else None,
-                    "status": row["appointment_status"],
-                    "billing_amount": billing_amount,
+                    "status": appt_status,
+                    "billing_amount": billing_amount,  # original, always shown
                     "payment_status": pstatus,
                     "billing_notes": row["billing_notes"],
                     "clinical_notes": merged_notes,
                 })
 
-                # Accumulate group totals
-                group["total_billed"] += billing_amount
+                # Accumulate group totals (cancelled/no_show count 0)
+                group["total_billed"] += billing_for_totals
                 group["session_count"] += 1
-                if pstatus == "paid":
-                    group["total_paid"] += billing_amount
-                else:
-                    group["total_pending"] += billing_amount
+                if not excluded_from_totals:
+                    if pstatus == "paid":
+                        group["total_paid"] += billing_for_totals
+                    else:
+                        group["total_pending"] += billing_for_totals
 
                 # Accumulate professional summary
                 summary = prof_entry["summary"]
-                summary["billed"] += billing_amount
+                summary["billed"] += billing_for_totals
                 summary["appointments"] += 1
                 summary["patients"].add(pat_id)
-                if pstatus == "paid":
-                    summary["paid"] += billing_amount
-                else:
-                    summary["pending"] += billing_amount
+                if not excluded_from_totals:
+                    if pstatus == "paid":
+                        summary["paid"] += billing_for_totals
+                    else:
+                        summary["pending"] += billing_for_totals
 
                 all_patient_ids.add(pat_id)
 
