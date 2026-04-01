@@ -3,7 +3,6 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import axios from 'axios';
 import path from 'path';
-import http from 'http';
 import { createProxyMiddleware } from 'http-proxy-middleware';
 
 // Buscar .env en la carpeta actual o en la raíz
@@ -61,14 +60,27 @@ app.use(cors({
     allowedHeaders: ['Content-Type', 'Authorization', 'x-tenant-id', 'x-signature']
 }));
 
-// Skip express.json() for multipart requests (preserve raw stream for file uploads)
+// Body parsers: JSON for normal requests, raw buffer for multipart (file uploads)
 app.use((req: Request, res: Response, next: NextFunction) => {
     const ct = req.headers['content-type'] || '';
-    if (ct.includes('multipart/')) return next();
-    express.json({ limit: '10mb' })(req, res, next);
+    if (ct.includes('multipart/')) {
+        // Buffer the raw multipart body so we can forward it via axios
+        const chunks: Buffer[] = [];
+        req.on('data', (chunk: Buffer) => chunks.push(chunk));
+        req.on('end', () => {
+            (req as any).rawBody = Buffer.concat(chunks);
+            next();
+        });
+        req.on('error', (err) => {
+            console.error('[Body Parser] multipart read error:', err.message);
+            next(err);
+        });
+    } else {
+        express.json({ limit: '10mb' })(req, res, next);
+    }
 });
 
-// --- Socket.IO WebSocket proxy (BEFORE body parsers) ---
+// --- Socket.IO WebSocket proxy (BEFORE catch-all) ---
 app.use('/socket.io', createProxyMiddleware({
     target: ORCHESTRATOR_URL,
     ws: true,
@@ -103,52 +115,28 @@ app.use(async (req: Request, res: Response) => {
     delete headers['x-admin-token'];
     headers['x-admin-token'] = ADMIN_TOKEN;
 
-    // Multipart (file uploads): pipe raw stream via http.request
     const contentType = req.headers['content-type'] || '';
-    if (contentType.includes('multipart/')) {
-        try {
-            const parsedUrl = new URL(url);
-            const proxyReq = http.request({
-                hostname: parsedUrl.hostname,
-                port: parsedUrl.port,
-                path: parsedUrl.pathname + parsedUrl.search,
-                method: req.method,
-                headers: {
-                    ...headers,
-                    'content-type': contentType,
-                    ...(req.headers['content-length'] ? { 'content-length': req.headers['content-length'] } : {}),
-                },
-                timeout: 120000,
-            }, (proxyRes) => {
-                res.status(proxyRes.statusCode || 502);
-                if (proxyRes.headers['content-type']) {
-                    res.setHeader('Content-Type', proxyRes.headers['content-type']);
-                }
-                proxyRes.pipe(res);
-            });
-            proxyReq.on('error', (err) => {
-                console.error(`[Proxy Error] multipart: ${err.message}`);
-                res.status(502).json({ error: 'Orchestrator unavailable', details: err.message });
-            });
-            req.pipe(proxyReq);
-        } catch (err: any) {
-            console.error(`[Proxy Error] multipart setup: ${err.message}`);
-            res.status(502).json({ error: 'Proxy error', details: err.message });
-        }
-        return;
-    }
+    const isMultipart = contentType.includes('multipart/');
 
-    // JSON / standard requests: use axios
     try {
         const response = await axios({
             method: req.method,
             url: url,
-            data: req.body,
-            headers: headers,
+            // For multipart: send raw buffer with original content-type (includes boundary)
+            // For JSON: send parsed body
+            data: isMultipart ? (req as any).rawBody : req.body,
+            headers: isMultipart
+                ? { ...headers, 'content-type': contentType, 'content-length': String((req as any).rawBody?.length || 0) }
+                : headers,
             timeout: 120000,
+            maxContentLength: Infinity,
+            maxBodyLength: Infinity,
+            // Don't let axios transform the multipart buffer
+            ...(isMultipart ? { transformRequest: [(data: any) => data] } : {}),
             validateStatus: () => true
         });
 
+        // Reenviar headers de respuesta importantes
         if (response.headers['content-type']) {
             res.setHeader('Content-Type', response.headers['content-type']);
         }
