@@ -7783,6 +7783,67 @@ async def get_professionals_analytics(
         raise HTTPException(status_code=500, detail="Error interno del servidor")
 
 
+@router.get(
+    "/analytics/professionals/liquidation",
+    dependencies=[Depends(verify_admin_token)],
+    tags=["Analítica"],
+    summary="Liquidación por profesional con trazabilidad completa",
+)
+async def get_liquidation(
+    start_date: str = Query(...),
+    end_date: str = Query(...),
+    professional_id: Optional[int] = Query(None),
+    payment_status: Optional[str] = Query("all"),
+    tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    """
+    Retorna el detalle completo de facturación por profesional para liquidaciones.
+    Agrupa por (paciente, tratamiento) con sesiones individuales y totales.
+    """
+    # --- Validation ---
+    try:
+        start = date.fromisoformat(start_date)
+        end = date.fromisoformat(end_date)
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail="Formato de fecha inválido. Usar YYYY-MM-DD.",
+        )
+
+    if start > end:
+        raise HTTPException(
+            status_code=400,
+            detail="start_date debe ser menor o igual a end_date.",
+        )
+
+    if (end - start).days > 366:
+        raise HTTPException(
+            status_code=400,
+            detail="El rango no puede superar 366 días.",
+        )
+
+    valid_statuses = ("all", "pending", "partial", "paid")
+    if payment_status not in valid_statuses:
+        raise HTTPException(
+            status_code=400,
+            detail=f"payment_status inválido. Valores permitidos: {', '.join(valid_statuses)}.",
+        )
+
+    try:
+        data = await analytics_service.get_professionals_liquidation(
+            pool=db.pool,
+            tenant_id=tenant_id,
+            start_date=start,
+            end_date=end,
+            professional_id=professional_id,
+            payment_status=payment_status,
+        )
+        return data
+    except Exception as e:
+        logger.error(f"Error en liquidación: {e}")
+        raise HTTPException(status_code=500, detail="Error interno del servidor")
+
+
 # ==================== END OF ANALYTICS ====================
 
 

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, PieChart, Pie, Cell } from 'recharts';
 import api from '../api/axios';
 import { useTranslation } from '../context/LanguageContext';
@@ -10,6 +11,7 @@ import {
 import AnalyticsFilters from '../components/analytics/AnalyticsFilters';
 import PageHeader from '../components/PageHeader';
 import GlassCard, { CARD_IMAGES } from '../components/GlassCard';
+import LiquidationTab from '../components/analytics/LiquidationTab';
 
 interface MetricData {
   id: number;
@@ -38,6 +40,11 @@ export default function ProfessionalAnalyticsView() {
   const { t } = useTranslation();
   const [data, setData] = useState<MetricData[]>([]);
   const [filters, setFilters] = useState({ startDate: '', endDate: '', professionalIds: [] as number[] });
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab = searchParams.get('tab') === 'liquidacion' ? 'liquidacion' : 'rendimiento';
+  const switchTab = (tab: string) => {
+    setSearchParams(prev => { prev.set('tab', tab); return prev; }, { replace: true });
+  };
 
   const fetchData = async () => {
     if (!filters.startDate || !filters.endDate) return;
@@ -133,6 +140,39 @@ export default function ProfessionalAnalyticsView() {
         />
 
         <AnalyticsFilters onFilterChange={setFilters} />
+
+        {/* Tab Bar */}
+        <div className="flex gap-1 mb-6 border-b border-white/[0.06]">
+          <button
+            onClick={() => switchTab('rendimiento')}
+            className={`px-4 py-2.5 text-sm font-medium transition-colors relative ${
+              activeTab === 'rendimiento'
+                ? 'text-white'
+                : 'text-white/40 hover:text-white/60'
+            }`}
+          >
+            {t('liquidation.tab_rendimiento')}
+            {activeTab === 'rendimiento' && (
+              <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-white rounded-full" />
+            )}
+          </button>
+          <button
+            onClick={() => switchTab('liquidacion')}
+            className={`px-4 py-2.5 text-sm font-medium transition-colors relative ${
+              activeTab === 'liquidacion'
+                ? 'text-white'
+                : 'text-white/40 hover:text-white/60'
+            }`}
+          >
+            {t('liquidation.tab_liquidacion')}
+            {activeTab === 'liquidacion' && (
+              <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-white rounded-full" />
+            )}
+          </button>
+        </div>
+
+        {activeTab === 'rendimiento' && (
+        <>
 
         {/* KPI Grid — 8 cards */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
@@ -292,6 +332,18 @@ export default function ProfessionalAnalyticsView() {
           ))}
           </div>
         </div>
+
+        </>
+        )}
+
+        {activeTab === 'liquidacion' && (
+          <LiquidationTab
+            startDate={filters.startDate}
+            endDate={filters.endDate}
+            professionalIds={filters.professionalIds}
+          />
+        )}
+
       </div>
     </div>
   );

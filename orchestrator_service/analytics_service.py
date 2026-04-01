@@ -274,4 +274,244 @@ class AnalyticsService:
             return None
 
 
+    async def get_professionals_liquidation(
+        self,
+        pool,
+        tenant_id: int,
+        start_date,
+        end_date,
+        professional_id=None,
+        payment_status=None,
+    ) -> dict:
+        """
+        Liquidación detallada por profesional: appointments con trazabilidad completa.
+        Agrupa por profesional → (paciente, tratamiento) → sesiones individuales.
+        """
+        try:
+            # Build dynamic query with optional filters
+            param_counter = 3  # $1=tenant_id, $2=start_date, $3=end_date
+            extra_conditions = ""
+            extra_params: list = []
+
+            if professional_id is not None:
+                param_counter += 1
+                extra_conditions += f" AND a.professional_id = ${param_counter}"
+                extra_params.append(professional_id)
+
+            if payment_status and payment_status != "all":
+                param_counter += 1
+                extra_conditions += f" AND a.payment_status = ${param_counter}"
+                extra_params.append(payment_status)
+
+            query = f"""
+                SELECT
+                    a.id AS appointment_id,
+                    a.appointment_datetime,
+                    a.status AS appointment_status,
+                    a.appointment_type,
+                    a.payment_status,
+                    COALESCE(a.billing_amount, tt.base_price, 0) AS billing_amount,
+                    a.billing_notes,
+                    a.notes AS appointment_notes,
+                    p.id AS professional_id,
+                    p.first_name || ' ' || COALESCE(p.last_name, '') AS professional_name,
+                    p.specialty,
+                    pat.id AS patient_id,
+                    pat.first_name || ' ' || COALESCE(pat.last_name, '') AS patient_name,
+                    pat.phone_number AS patient_phone,
+                    tt.code AS treatment_code,
+                    tt.name AS treatment_name,
+                    cr.clinical_notes,
+                    cr.diagnosis
+                FROM appointments a
+                JOIN professionals p ON p.id = a.professional_id AND p.tenant_id = $1
+                JOIN patients pat ON pat.id = a.patient_id AND pat.tenant_id = $1
+                LEFT JOIN treatment_types tt ON tt.code = a.appointment_type AND tt.tenant_id = $1
+                LEFT JOIN LATERAL (
+                    SELECT cr2.clinical_notes, cr2.diagnosis
+                    FROM clinical_records cr2
+                    WHERE cr2.patient_id = a.patient_id
+                      AND cr2.professional_id = a.professional_id
+                      AND cr2.record_date = a.appointment_datetime::date
+                      AND cr2.tenant_id = $1
+                    ORDER BY cr2.created_at DESC
+                    LIMIT 1
+                ) cr ON true
+                WHERE a.tenant_id = $1
+                    AND a.appointment_datetime >= $2
+                    AND a.appointment_datetime < ($3::date + INTERVAL '1 day')
+                    AND a.status IN ('completed', 'confirmed', 'in_progress')
+                    {extra_conditions}
+                ORDER BY p.id, pat.id, a.appointment_type, a.appointment_datetime
+            """
+
+            rows = await db.pool.fetch(
+                query, tenant_id, start_date, end_date, *extra_params
+            )
+
+            # --- Aggregation in Python ---
+            # professionals_map: { prof_id: { meta, summary, treatment_groups_map } }
+            # treatment_groups_map: { (patient_id, treatment_code): { meta, sessions, totals } }
+            professionals_map: dict = {}
+            all_patient_ids: set = set()
+
+            for row in rows:
+                prof_id = row["professional_id"]
+                pat_id = row["patient_id"]
+                treatment_code = row["treatment_code"] or ""
+                billing_amount = float(row["billing_amount"] or 0)
+                pstatus = row["payment_status"] or "pending"
+
+                # Initialise professional entry
+                if prof_id not in professionals_map:
+                    professionals_map[prof_id] = {
+                        "id": prof_id,
+                        "name": (row["professional_name"] or "").strip(),
+                        "specialty": row["specialty"] or "General",
+                        "summary": {
+                            "billed": 0.0,
+                            "paid": 0.0,
+                            "pending": 0.0,
+                            "appointments": 0,
+                            "patients": set(),
+                        },
+                        "treatment_groups_map": {},
+                    }
+
+                prof_entry = professionals_map[prof_id]
+                tg_map = prof_entry["treatment_groups_map"]
+                group_key = (pat_id, treatment_code)
+
+                # Initialise treatment group
+                if group_key not in tg_map:
+                    tg_map[group_key] = {
+                        "patient_id": pat_id,
+                        "patient_name": (row["patient_name"] or "").strip(),
+                        "patient_phone": row["patient_phone"] or "",
+                        "treatment_code": treatment_code,
+                        "treatment_name": row["treatment_name"] or treatment_code or "Sin tratamiento",
+                        "sessions": [],
+                        "total_billed": 0.0,
+                        "total_paid": 0.0,
+                        "total_pending": 0.0,
+                        "session_count": 0,
+                    }
+
+                group = tg_map[group_key]
+
+                # Merge clinical notes
+                notes_parts = []
+                if row["appointment_notes"]:
+                    notes_parts.append(row["appointment_notes"])
+                if row["clinical_notes"]:
+                    notes_parts.append(row["clinical_notes"])
+                merged_notes = " | ".join(notes_parts) if notes_parts else None
+
+                group["sessions"].append({
+                    "appointment_id": row["appointment_id"],
+                    "date": row["appointment_datetime"].isoformat() if row["appointment_datetime"] else None,
+                    "status": row["appointment_status"],
+                    "billing_amount": billing_amount,
+                    "payment_status": pstatus,
+                    "billing_notes": row["billing_notes"],
+                    "clinical_notes": merged_notes,
+                })
+
+                # Accumulate group totals
+                group["total_billed"] += billing_amount
+                group["session_count"] += 1
+                if pstatus == "paid":
+                    group["total_paid"] += billing_amount
+                else:
+                    group["total_pending"] += billing_amount
+
+                # Accumulate professional summary
+                summary = prof_entry["summary"]
+                summary["billed"] += billing_amount
+                summary["appointments"] += 1
+                summary["patients"].add(pat_id)
+                if pstatus == "paid":
+                    summary["paid"] += billing_amount
+                else:
+                    summary["pending"] += billing_amount
+
+                all_patient_ids.add(pat_id)
+
+            # --- Build final response structure ---
+            total_billed = 0.0
+            total_paid = 0.0
+            total_pending = 0.0
+            total_appointments = 0
+            total_patients: set = set()
+
+            professionals_list = []
+            for prof_entry in professionals_map.values():
+                summary = prof_entry["summary"]
+                # Convert patients set → count
+                patient_count = len(summary["patients"])
+                summary_out = {
+                    "billed": round(summary["billed"], 2),
+                    "paid": round(summary["paid"], 2),
+                    "pending": round(summary["pending"], 2),
+                    "appointments": summary["appointments"],
+                    "patients": patient_count,
+                }
+
+                # Sort treatment groups by billed DESC, sessions by date ASC
+                groups_sorted = sorted(
+                    prof_entry["treatment_groups_map"].values(),
+                    key=lambda g: g["total_billed"],
+                    reverse=True,
+                )
+                treatment_groups_out = []
+                for g in groups_sorted:
+                    g["sessions"].sort(key=lambda s: s["date"] or "")
+                    treatment_groups_out.append({
+                        "patient_id": g["patient_id"],
+                        "patient_name": g["patient_name"],
+                        "patient_phone": g["patient_phone"],
+                        "treatment_code": g["treatment_code"],
+                        "treatment_name": g["treatment_name"],
+                        "sessions": g["sessions"],
+                        "total_billed": round(g["total_billed"], 2),
+                        "total_paid": round(g["total_paid"], 2),
+                        "total_pending": round(g["total_pending"], 2),
+                        "session_count": g["session_count"],
+                    })
+
+                professionals_list.append({
+                    "id": prof_entry["id"],
+                    "name": prof_entry["name"],
+                    "specialty": prof_entry["specialty"],
+                    "summary": summary_out,
+                    "treatment_groups": treatment_groups_out,
+                })
+
+                # Global totals
+                total_billed += summary["billed"]
+                total_paid += summary["paid"]
+                total_pending += summary["pending"]
+                total_appointments += summary["appointments"]
+                total_patients.update(prof_entry["summary"]["patients"])
+
+            # Sort professionals by billed DESC
+            professionals_list.sort(key=lambda x: x["summary"]["billed"], reverse=True)
+
+            return {
+                "period": {"start": str(start_date), "end": str(end_date)},
+                "totals": {
+                    "billed": round(total_billed, 2),
+                    "paid": round(total_paid, 2),
+                    "pending": round(total_pending, 2),
+                    "appointments": total_appointments,
+                    "patients": len(total_patients),
+                },
+                "professionals": professionals_list,
+            }
+
+        except Exception as e:
+            logger.error(f"Error get_professionals_liquidation: {e}", exc_info=True)
+            raise
+
+
 analytics_service = AnalyticsService()
