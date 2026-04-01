@@ -4165,11 +4165,11 @@ async def get_patient(id: int, tenant_id: int = Depends(get_resolved_tenant_id))
     """Obtener un paciente por ID. Aislado por tenant_id (Regla de Oro)."""
     row = await db.pool.fetchrow(
         """
-        SELECT id, first_name, last_name, phone_number, email, insurance_provider as obra_social, 
-               dni, birth_date, city, first_touch_source as acquisition_source, 
-               meta_ad_id, meta_adset_id, meta_adset_name, meta_ad_name, meta_campaign_name, 
-               medical_history, created_at, status, notes
-        FROM patients 
+        SELECT id, first_name, last_name, phone_number, email, insurance_provider as obra_social,
+               dni, birth_date, city, first_touch_source as acquisition_source,
+               meta_ad_id, meta_adset_id, meta_adset_name, meta_ad_name, meta_campaign_name,
+               medical_history, created_at, status, notes, anamnesis_token
+        FROM patients
         WHERE id = $1 AND tenant_id = $2
     """,
         id,
@@ -4179,6 +4179,16 @@ async def get_patient(id: int, tenant_id: int = Depends(get_resolved_tenant_id))
         raise HTTPException(status_code=404, detail="Paciente no encontrado")
 
     patient_dict = dict(row)
+    # Generar anamnesis_token si no existe (lazy generation)
+    if not patient_dict.get("anamnesis_token"):
+        new_token = str(uuid.uuid4())
+        await db.pool.execute(
+            "UPDATE patients SET anamnesis_token = $1 WHERE id = $2 AND tenant_id = $3",
+            new_token, id, tenant_id,
+        )
+        patient_dict["anamnesis_token"] = new_token
+    else:
+        patient_dict["anamnesis_token"] = str(patient_dict["anamnesis_token"])
     # Asegurar que medical_history se devuelve como dict
     if patient_dict.get("medical_history") and isinstance(
         patient_dict["medical_history"], str

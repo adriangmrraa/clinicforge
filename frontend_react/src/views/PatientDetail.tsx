@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, User, Phone, Mail, AlertTriangle,
   FileText, Plus, Activity, Heart, Pill, Stethoscope, Megaphone,
-  ClipboardList, History, Folder, X, HeartPulse
+  ClipboardList, History, Folder, X, HeartPulse, Link, Check, Copy
 } from 'lucide-react';
 import api from '../api/axios';
 import { useTranslation } from '../context/LanguageContext';
@@ -36,6 +36,7 @@ interface Patient {
   next_appointment_date?: string;
   last_visit?: string;
   pending_balance?: number;
+  anamnesis_token?: string;
 }
 
 interface ClinicalRecord {
@@ -72,6 +73,7 @@ export default function PatientDetail() {
   const [loading, setLoading] = useState(true);
   const [showNoteForm, setShowNoteForm] = useState(false);
   const [criticalConditionsFound, setCriticalConditionsFound] = useState<string[]>([]);
+  const [linkCopied, setLinkCopied] = useState(false);
   const [activeTab, setActiveTab] = useState<TabType>('summary');
   const { user } = useAuth();
   const idRef = useRef<string | undefined>(id);
@@ -244,9 +246,32 @@ export default function PatientDetail() {
       case 'anamnesis':
         return (
           <div className="bg-white/[0.03] border border-white/[0.06] rounded-lg p-6">
-            <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-              <HeartPulse size={20} className="text-primary" /> Anamnesis
-            </h3>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                <HeartPulse size={20} className="text-primary" /> Anamnesis
+              </h3>
+              {patient?.anamnesis_token && (
+                <button
+                  onClick={() => {
+                    const tenantId = (user as any)?.tenant_id || localStorage.getItem('X-Tenant-ID') || '1';
+                    const baseUrl = window.location.origin;
+                    const link = `${baseUrl}/anamnesis/${tenantId}/${patient.anamnesis_token}`;
+                    navigator.clipboard.writeText(link).then(() => {
+                      setLinkCopied(true);
+                      setTimeout(() => setLinkCopied(false), 2000);
+                    });
+                  }}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                    linkCopied
+                      ? 'bg-green-500/20 text-green-400 border border-green-500/30'
+                      : 'bg-white/[0.06] text-white/70 border border-white/[0.08] hover:bg-white/[0.1] hover:text-white'
+                  }`}
+                >
+                  {linkCopied ? <Check size={14} /> : <Copy size={14} />}
+                  {linkCopied ? t('copied') || 'Copiado' : t('copyAnamnesisLink') || 'Copiar link de anamnesis'}
+                </button>
+              )}
+            </div>
             <AnamnesisPanel
               patientId={parseInt(id!)}
               userRole={(user as any)?.role}
