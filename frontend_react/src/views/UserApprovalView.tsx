@@ -24,8 +24,10 @@ function createDefaultWorkingHours(): WorkingHours {
   return wh;
 }
 function parseWorkingHours(raw: unknown): WorkingHours {
-  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
-    const o = raw as Record<string, unknown>;
+  let parsed = raw;
+  if (typeof parsed === 'string') { try { parsed = JSON.parse(parsed); } catch { return createDefaultWorkingHours(); } }
+  if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+    const o = parsed as Record<string, unknown>;
     const base = createDefaultWorkingHours();
     (Object.keys(base) as (keyof WorkingHours)[]).forEach(k => {
       if (o[k] && typeof o[k] === 'object' && !Array.isArray(o[k])) {

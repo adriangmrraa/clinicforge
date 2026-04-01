@@ -940,7 +940,8 @@
     "sign_medical_alta": "Firmar Alta Médica",
     "general_fallback": "General",
     "view_schedules": "Ver Horarios",
-    "edit_profile": "Editar Perfil"
+    "edit_profile": "Editar Perfil",
+    "priorityProfessional": "Profesional Prioritario"
   },
   "layout": {
     "app_title": "Dentalogic",

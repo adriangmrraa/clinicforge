@@ -6224,7 +6224,7 @@ async def get_professionals_by_user(
         rows = await db.pool.fetch(
             """
             SELECT id, tenant_id, user_id, first_name, last_name, email, specialty,
-                   is_active, working_hours, created_at, phone_number, registration_id, google_calendar_id, consultation_price
+                   is_active, working_hours, created_at, phone_number, registration_id, google_calendar_id, consultation_price, is_priority_professional
             FROM professionals
             WHERE user_id = $1 AND tenant_id = ANY($2::int[])
             ORDER BY tenant_id
@@ -6241,6 +6241,7 @@ async def get_professionals_by_user(
             or "phone_number" in err_str
             or "registration_id" in err_str
             or "google_calendar_id" in err_str
+            or "is_priority_professional" in err_str
         ):
             try:
                 rows = await db.pool.fetch(
@@ -6248,7 +6249,7 @@ async def get_professionals_by_user(
                     uid,
                     allowed_ids,
                 )
-                return [dict(r) for r in rows]
+                return [dict(r) | {"is_priority_professional": False} for r in rows]
             except Exception:
                 pass
         try:
@@ -6256,7 +6257,7 @@ async def get_professionals_by_user(
                 "SELECT id, first_name, last_name, email, specialty, is_active FROM professionals WHERE user_id = $1",
                 uid,
             )
-            return [dict(r) for r in rows]
+            return [dict(r) | {"is_priority_professional": False} for r in rows]
         except Exception as e2:
             logger.warning(f"get_professionals_by_user failed: {e2}")
             return []

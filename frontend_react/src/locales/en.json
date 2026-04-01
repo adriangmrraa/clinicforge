@@ -928,7 +928,8 @@
     "sign_medical_alta": "Sign medical onboarding",
     "general_fallback": "General",
     "view_schedules": "View schedules",
-    "edit_profile": "Edit profile"
+    "edit_profile": "Edit profile",
+    "priorityProfessional": "Priority Professional"
   },
   "layout": {
     "app_title": "Dentalogic",
