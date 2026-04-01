@@ -6347,6 +6347,37 @@ app.add_middleware(
 )
 app.add_middleware(SecurityHeadersMiddleware)
 
+
+# --- Rate Limiting Middleware for /admin/* endpoints ---
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import JSONResponse as StarletteJSONResponse
+import time as _time
+
+_admin_rate_limit_store: dict = {}  # {ip: [timestamps]}
+_ADMIN_RATE_LIMIT = int(os.getenv("ADMIN_RATE_LIMIT", "60"))  # requests per minute
+_ADMIN_RATE_WINDOW = 60  # seconds
+
+
+class AdminRateLimitMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        if not request.url.path.startswith("/admin/"):
+            return await call_next(request)
+        client_ip = request.client.host if request.client else "unknown"
+        now = _time.time()
+        timestamps = _admin_rate_limit_store.get(client_ip, [])
+        timestamps = [t for t in timestamps if now - t < _ADMIN_RATE_WINDOW]
+        if len(timestamps) >= _ADMIN_RATE_LIMIT:
+            return StarletteJSONResponse(
+                status_code=429,
+                content={"detail": "Rate limit exceeded. Max {}/min for admin endpoints.".format(_ADMIN_RATE_LIMIT)},
+            )
+        timestamps.append(now)
+        _admin_rate_limit_store[client_ip] = timestamps
+        return await call_next(request)
+
+
+app.add_middleware(AdminRateLimitMiddleware)
+
 # --- RUTAS ---
 app.include_router(auth_router)
 # Chatwoot API: Specific routes must come BEFORE generic admin routes to avoid shadowing

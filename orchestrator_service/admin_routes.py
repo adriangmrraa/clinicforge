@@ -3,6 +3,7 @@ import uuid
 import json
 import csv
 import io
+import html as html_module
 import asyncpg
 import httpx
 import logging
@@ -220,16 +221,32 @@ async def send_to_whatsapp_task(phone: str, message: str, business_number: str):
 # --- Dependencias de Seguridad (Triple Capa Nexus v7.6) ---
 from core.auth import verify_admin_token, verify_ceo_token, get_resolved_tenant_id
 
+_HTML_TAG_RE = re.compile(r'<[^>]+>')
+
+def _strip_html(text: str) -> str:
+    """Elimina tags HTML/JS de un string para prevenir stored XSS."""
+    return _HTML_TAG_RE.sub('', text).strip()
+
 
 async def get_allowed_tenant_ids(user_data=Depends(verify_admin_token)) -> List[int]:
     """
     Lista de tenant_id que el usuario puede ver (chats, sesiones).
-    CEO: todos los tenants. Secretary/Professional: solo su clínica resuelta.
+    CEO: tenants donde tiene professional vinculado + tenant del JWT.
+    Secretary/Professional: solo su clínica resuelta.
     """
     try:
         if user_data.role == "ceo":
-            rows = await db.pool.fetch("SELECT id FROM tenants ORDER BY id ASC")
-            return [int(r["id"]) for r in rows] if rows else [1]
+            # Solo tenants donde el CEO tiene un professional vinculado
+            rows = await db.pool.fetch(
+                "SELECT DISTINCT tenant_id FROM professionals WHERE user_id = $1 ORDER BY tenant_id ASC",
+                uuid.UUID(user_data.user_id),
+            )
+            allowed = [int(r["tenant_id"]) for r in rows] if rows else []
+            # Siempre incluir el tenant del JWT como fallback
+            jwt_tid = getattr(user_data, 'tenant_id', 1)
+            if isinstance(jwt_tid, int) and jwt_tid not in allowed:
+                allowed.append(jwt_tid)
+            return allowed if allowed else [1]
         try:
             tid = await db.pool.fetchval(
                 "SELECT tenant_id FROM professionals WHERE user_id = $1",
@@ -2290,14 +2307,15 @@ async def get_dashboard_stats(
 
 
 @router.get("/tenants", tags=["Sedes"], summary="Listar todas las sedes (clínicas)")
-async def get_tenants(user_data=Depends(verify_admin_token)):
-    """Lista todas las clínicas (tenants). Solo CEO. Incluye config (JSONB) con calendar_provider."""
+async def get_tenants(user_data=Depends(verify_admin_token), allowed_ids: List[int] = Depends(get_allowed_tenant_ids)):
+    """Lista las clínicas (tenants) accesibles por el usuario. Solo CEO."""
     if user_data.role != "ceo":
         raise HTTPException(
             status_code=403, detail="Solo el CEO puede gestionar clínicas."
         )
     rows = await db.pool.fetch(
-        "SELECT id, clinic_name, bot_phone_number, config, address, google_maps_url, working_hours, consultation_price, bank_cbu, bank_alias, bank_holder_name, derivation_email, logo_url, max_chairs, country_code, created_at, updated_at FROM tenants ORDER BY id ASC"
+        "SELECT id, clinic_name, bot_phone_number, config, address, google_maps_url, working_hours, consultation_price, bank_cbu, bank_alias, bank_holder_name, derivation_email, logo_url, max_chairs, country_code, created_at, updated_at FROM tenants WHERE id = ANY($1::int[]) ORDER BY id ASC",
+        allowed_ids
     )
     result = []
     for r in rows:
@@ -2627,13 +2645,15 @@ async def upload_tenant_logo(
 
 
 @router.delete("/tenants/{tenant_id}", tags=["Sedes"], summary="Eliminar una sede")
-async def delete_tenant(tenant_id: int, user_data=Depends(verify_admin_token)):
-    """Elimina una clínica. Solo CEO."""
+async def delete_tenant(tenant_id: int, user_data=Depends(verify_admin_token), allowed_ids: List[int] = Depends(get_allowed_tenant_ids)):
+    """Elimina una clínica. Solo CEO, solo sus propias sedes."""
     if user_data.role != "ceo":
         raise HTTPException(
             status_code=403, detail="Solo el CEO puede gestionar clínicas."
         )
-    await db.pool.execute("DELETE FROM tenants WHERE id = $1", tenant_id)
+    if tenant_id not in allowed_ids:
+        raise HTTPException(status_code=403, detail="No tenés acceso a este tenant.")
+    await db.pool.execute("DELETE FROM tenants WHERE id = $1 AND id = ANY($2::int[])", tenant_id, allowed_ids)
     return {"status": "deleted"}
 
 
@@ -2643,8 +2663,10 @@ async def delete_tenant(tenant_id: int, user_data=Depends(verify_admin_token)):
 @router.get(
     "/tenants/{tenant_id}/faqs", tags=["FAQs"], summary="Listar FAQs de una clínica"
 )
-async def get_tenant_faqs(tenant_id: int, user_data=Depends(verify_admin_token)):
+async def get_tenant_faqs(tenant_id: int, user_data=Depends(verify_admin_token), allowed_ids: List[int] = Depends(get_allowed_tenant_ids)):
     """Retorna todas las FAQs de un tenant ordenadas por sort_order."""
+    if tenant_id not in allowed_ids:
+        raise HTTPException(status_code=403, detail="No tenés acceso a este tenant.")
     rows = await db.pool.fetch(
         "SELECT id, tenant_id, category, question, answer, sort_order, created_at, updated_at FROM clinic_faqs WHERE tenant_id = $1 ORDER BY category, sort_order ASC, id ASC",
         tenant_id,
@@ -2654,18 +2676,20 @@ async def get_tenant_faqs(tenant_id: int, user_data=Depends(verify_admin_token))
 
 @router.post("/tenants/{tenant_id}/faqs", tags=["FAQs"], summary="Crear una FAQ")
 async def create_tenant_faq(
-    tenant_id: int, data: Dict[str, Any], user_data=Depends(verify_admin_token)
+    tenant_id: int, data: Dict[str, Any], user_data=Depends(verify_admin_token), allowed_ids: List[int] = Depends(get_allowed_tenant_ids)
 ):
     """Crea una nueva FAQ para un tenant."""
     if user_data.role != "ceo":
         raise HTTPException(status_code=403, detail="Solo el CEO puede gestionar FAQs.")
-    question = (data.get("question") or "").strip()
-    answer = (data.get("answer") or "").strip()
+    if tenant_id not in allowed_ids:
+        raise HTTPException(status_code=403, detail="No tenés acceso a este tenant.")
+    question = _strip_html((data.get("question") or "").strip())
+    answer = _strip_html((data.get("answer") or "").strip())
     if not question or not answer:
         raise HTTPException(
             status_code=400, detail="question y answer son obligatorios."
         )
-    category = (data.get("category") or "General").strip()
+    category = _strip_html((data.get("category") or "General").strip())
     sort_order = int(data.get("sort_order", 0))
     new_id = await db.pool.fetchval(
         "INSERT INTO clinic_faqs (tenant_id, category, question, answer, sort_order) VALUES ($1, $2, $3, $4, $5) RETURNING id",
@@ -2688,7 +2712,7 @@ async def create_tenant_faq(
 
 @router.put("/faqs/{faq_id}", tags=["FAQs"], summary="Actualizar una FAQ")
 async def update_faq(
-    faq_id: int, data: Dict[str, Any], user_data=Depends(verify_admin_token)
+    faq_id: int, data: Dict[str, Any], user_data=Depends(verify_admin_token), allowed_ids: List[int] = Depends(get_allowed_tenant_ids)
 ):
     """Actualiza una FAQ existente."""
     if user_data.role != "ceo":
@@ -2698,11 +2722,13 @@ async def update_faq(
     )
     if not row:
         raise HTTPException(status_code=404, detail="FAQ no encontrada.")
+    if row["tenant_id"] not in allowed_ids:
+        raise HTTPException(status_code=403, detail="No tenés acceso a esta FAQ.")
     updates = []
     params = []
     for field in ("category", "question", "answer"):
         if field in data and data[field] is not None:
-            params.append(str(data[field]).strip())
+            params.append(_strip_html(str(data[field]).strip()))
             updates.append(f"{field} = ${len(params)}")
     if "sort_order" in data:
         params.append(int(data["sort_order"]))
@@ -2737,10 +2763,15 @@ async def update_faq(
 
 
 @router.delete("/faqs/{faq_id}", tags=["FAQs"], summary="Eliminar una FAQ")
-async def delete_faq(faq_id: int, user_data=Depends(verify_admin_token)):
+async def delete_faq(faq_id: int, user_data=Depends(verify_admin_token), allowed_ids: List[int] = Depends(get_allowed_tenant_ids)):
     """Elimina una FAQ."""
     if user_data.role != "ceo":
         raise HTTPException(status_code=403, detail="Solo el CEO puede gestionar FAQs.")
+    row = await db.pool.fetchrow("SELECT tenant_id FROM clinic_faqs WHERE id = $1", faq_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="FAQ no encontrada.")
+    if row["tenant_id"] not in allowed_ids:
+        raise HTTPException(status_code=403, detail="No tenés acceso a esta FAQ.")
     # Delete embedding first (cascade should handle it, but be explicit)
     try:
         from services.embedding_service import delete_faq_embedding
@@ -2748,7 +2779,7 @@ async def delete_faq(faq_id: int, user_data=Depends(verify_admin_token)):
         await delete_faq_embedding(faq_id)
     except Exception:
         pass
-    await db.pool.execute("DELETE FROM clinic_faqs WHERE id = $1", faq_id)
+    await db.pool.execute("DELETE FROM clinic_faqs WHERE id = $1 AND tenant_id = ANY($2::int[])", faq_id, allowed_ids)
     return {"status": "deleted"}
 
 
@@ -3579,15 +3610,15 @@ async def import_patients_execute(
     "/patients",
     dependencies=[Depends(verify_admin_token)],
     tags=["Pacientes"],
-    summary="Listar pacientes con turnos asociados",
+    summary="Listar pacientes",
 )
 async def list_patients(
     search: str = None,
-    limit: int = 50,
+    limit: int = 200,
     tenant_id: int = Depends(get_resolved_tenant_id),
 ):
     """
-    Listar pacientes del tenant. Solo aparecen quienes tienen al menos un turno (Lead vs Paciente).
+    Listar todos los pacientes del tenant (incluye importados sin turnos).
     Aislado por tenant_id (Regla de Oro).
     """
     query = """
@@ -3595,10 +3626,6 @@ async def list_patients(
                p.insurance_provider as obra_social, p.dni, p.city, p.birth_date, p.created_at, p.status
         FROM patients p
         WHERE p.tenant_id = $1 AND p.status != 'deleted'
-          AND EXISTS (
-              SELECT 1 FROM appointments a
-              WHERE a.patient_id = p.id AND a.tenant_id = p.tenant_id
-          )
     """
     params: List[Any] = [tenant_id]
     if search:
