@@ -3,6 +3,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import axios from 'axios';
 import path from 'path';
+import http from 'http';
 import { createProxyMiddleware } from 'http-proxy-middleware';
 
 // Buscar .env en la carpeta actual o en la raíz
@@ -60,21 +61,12 @@ app.use(cors({
     allowedHeaders: ['Content-Type', 'Authorization', 'x-tenant-id', 'x-signature']
 }));
 
-// --- File upload proxy (BEFORE body parsers — raw stream passthrough) ---
-app.use('/admin/patients/import', createProxyMiddleware({
-    target: ORCHESTRATOR_URL,
-    changeOrigin: true,
-    timeout: 120000,
-    proxyTimeout: 120000,
-    on: {
-        proxyReq: (proxyReq) => {
-            // Inject admin token server-side
-            proxyReq.setHeader('x-admin-token', ADMIN_TOKEN);
-        }
-    }
-}));
-
-app.use(express.json({ limit: '10mb' }));
+// Skip express.json() for multipart requests (preserve raw stream for file uploads)
+app.use((req: Request, res: Response, next: NextFunction) => {
+    const ct = req.headers['content-type'] || '';
+    if (ct.includes('multipart/')) return next();
+    express.json({ limit: '10mb' })(req, res, next);
+});
 
 // --- Socket.IO WebSocket proxy (BEFORE body parsers) ---
 app.use('/socket.io', createProxyMiddleware({
@@ -111,6 +103,42 @@ app.use(async (req: Request, res: Response) => {
     delete headers['x-admin-token'];
     headers['x-admin-token'] = ADMIN_TOKEN;
 
+    // Multipart (file uploads): pipe raw stream via http.request
+    const contentType = req.headers['content-type'] || '';
+    if (contentType.includes('multipart/')) {
+        try {
+            const parsedUrl = new URL(url);
+            const proxyReq = http.request({
+                hostname: parsedUrl.hostname,
+                port: parsedUrl.port,
+                path: parsedUrl.pathname + parsedUrl.search,
+                method: req.method,
+                headers: {
+                    ...headers,
+                    'content-type': contentType,
+                    ...(req.headers['content-length'] ? { 'content-length': req.headers['content-length'] } : {}),
+                },
+                timeout: 120000,
+            }, (proxyRes) => {
+                res.status(proxyRes.statusCode || 502);
+                if (proxyRes.headers['content-type']) {
+                    res.setHeader('Content-Type', proxyRes.headers['content-type']);
+                }
+                proxyRes.pipe(res);
+            });
+            proxyReq.on('error', (err) => {
+                console.error(`[Proxy Error] multipart: ${err.message}`);
+                res.status(502).json({ error: 'Orchestrator unavailable', details: err.message });
+            });
+            req.pipe(proxyReq);
+        } catch (err: any) {
+            console.error(`[Proxy Error] multipart setup: ${err.message}`);
+            res.status(502).json({ error: 'Proxy error', details: err.message });
+        }
+        return;
+    }
+
+    // JSON / standard requests: use axios
     try {
         const response = await axios({
             method: req.method,
@@ -121,7 +149,6 @@ app.use(async (req: Request, res: Response) => {
             validateStatus: () => true
         });
 
-        // Reenviar headers de respuesta importantes
         if (response.headers['content-type']) {
             res.setHeader('Content-Type', response.headers['content-type']);
         }
