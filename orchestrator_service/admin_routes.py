@@ -3630,7 +3630,7 @@ async def list_patients(
         LEFT JOIN LATERAL (
             SELECT tt.name as treatment_name
             FROM appointments a
-            JOIN treatment_types tt ON tt.code = a.treatment_reason AND tt.tenant_id = a.tenant_id
+            JOIN treatment_types tt ON tt.code = a.appointment_type AND tt.tenant_id = a.tenant_id
             WHERE a.patient_id = p.id AND a.tenant_id = p.tenant_id
             ORDER BY a.appointment_datetime DESC
             LIMIT 1
