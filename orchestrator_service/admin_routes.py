@@ -3623,18 +3623,34 @@ async def list_patients(
     """
     query = """
         SELECT p.id, p.first_name, p.last_name, p.phone_number, p.email,
-               p.insurance_provider as obra_social, p.dni, p.city, p.birth_date, p.created_at, p.status
+               p.insurance_provider as obra_social, p.dni, p.city, p.birth_date, p.created_at, p.status,
+               EXISTS (SELECT 1 FROM appointments a WHERE a.patient_id = p.id AND a.tenant_id = p.tenant_id) as has_appointments,
+               lt.treatment_name as last_treatment
         FROM patients p
+        LEFT JOIN LATERAL (
+            SELECT tt.name as treatment_name
+            FROM appointments a
+            JOIN treatment_types tt ON tt.code = a.treatment_reason AND tt.tenant_id = a.tenant_id
+            WHERE a.patient_id = p.id AND a.tenant_id = p.tenant_id
+            ORDER BY a.appointment_datetime DESC
+            LIMIT 1
+        ) lt ON true
         WHERE p.tenant_id = $1 AND p.status != 'deleted'
     """
     params: List[Any] = [tenant_id]
     if search:
         query += " AND (p.first_name ILIKE $2 OR p.last_name ILIKE $2 OR p.phone_number ILIKE $2 OR p.dni ILIKE $2)"
         params.append(f"%{search}%")
-        query += " ORDER BY p.created_at DESC LIMIT $3"
+        query += """ ORDER BY
+            CASE WHEN EXISTS (SELECT 1 FROM appointments a WHERE a.patient_id = p.id AND a.tenant_id = p.tenant_id)
+                 THEN 0 ELSE 1 END,
+            p.created_at DESC LIMIT $3"""
         params.append(limit)
     else:
-        query += " ORDER BY p.created_at DESC LIMIT $2"
+        query += """ ORDER BY
+            CASE WHEN EXISTS (SELECT 1 FROM appointments a WHERE a.patient_id = p.id AND a.tenant_id = p.tenant_id)
+                 THEN 0 ELSE 1 END,
+            p.created_at DESC LIMIT $2"""
         params.append(limit)
     rows = await db.pool.fetch(query, *params)
     patients = [dict(row) for row in rows]

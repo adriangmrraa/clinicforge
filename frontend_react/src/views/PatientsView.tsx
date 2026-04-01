@@ -21,6 +21,8 @@ interface Patient {
   health_conditions?: string[];
   next_appointment_date?: string;
   pending_balance?: number;
+  has_appointments?: boolean;
+  last_treatment?: string;
 }
 
 interface TreatmentType {
@@ -91,6 +93,8 @@ export default function PatientsView() {
   const [dragOver, setDragOver] = useState(false);
   const [clinics, setClinics] = useState<ClinicOption[]>([]);
   const [selectedTenantId, setSelectedTenantId] = useState<number | null>(null);
+  const [appointmentFilter, setAppointmentFilter] = useState<'all' | 'with' | 'without'>('all');
+  const [treatmentFilter, setTreatmentFilter] = useState<string>('all');
 
   // Fetch clinics + patients on mount
   useEffect(() => {
@@ -106,9 +110,9 @@ export default function PatientsView() {
     if (selectedTenantId != null) fetchPatients();
   }, [selectedTenantId]);
 
-  // Filter patients when search term changes
+  // Filter patients when search term or filter controls change
   useEffect(() => {
-    const filtered = patients.filter((patient) => {
+    let filtered = patients.filter((patient) => {
       const searchLower = searchTerm.toLowerCase();
       // Safe check for nulls
       const fname = patient.first_name || '';
@@ -125,8 +129,19 @@ export default function PatientsView() {
         email.toLowerCase().includes(searchLower)
       );
     });
+
+    if (appointmentFilter === 'with') {
+      filtered = filtered.filter(p => p.has_appointments);
+    } else if (appointmentFilter === 'without') {
+      filtered = filtered.filter(p => !p.has_appointments);
+    }
+
+    if (treatmentFilter !== 'all') {
+      filtered = filtered.filter(p => p.last_treatment === treatmentFilter);
+    }
+
     setFilteredPatients(filtered);
-  }, [searchTerm, patients]);
+  }, [searchTerm, patients, appointmentFilter, treatmentFilter]);
 
   const fetchPatients = async () => {
     try {
@@ -390,6 +405,48 @@ export default function PatientsView() {
         </div>
       )}
 
+      {/* Filters */}
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        {/* Appointment filter chips */}
+        <div className="flex rounded-lg overflow-hidden border border-white/[0.08]">
+          <button
+            onClick={() => setAppointmentFilter('all')}
+            className={`px-3 py-1.5 text-xs font-medium transition-colors ${appointmentFilter === 'all' ? 'bg-white/[0.12] text-white' : 'bg-white/[0.02] text-white/40 hover:text-white/60'}`}
+          >
+            Todos
+          </button>
+          <button
+            onClick={() => setAppointmentFilter('with')}
+            className={`px-3 py-1.5 text-xs font-medium transition-colors ${appointmentFilter === 'with' ? 'bg-green-500/20 text-green-400' : 'bg-white/[0.02] text-white/40 hover:text-white/60'}`}
+          >
+            Con turno
+          </button>
+          <button
+            onClick={() => setAppointmentFilter('without')}
+            className={`px-3 py-1.5 text-xs font-medium transition-colors ${appointmentFilter === 'without' ? 'bg-orange-500/20 text-orange-400' : 'bg-white/[0.02] text-white/40 hover:text-white/60'}`}
+          >
+            Sin turno
+          </button>
+        </div>
+
+        {/* Treatment filter */}
+        <select
+          value={treatmentFilter}
+          onChange={(e) => setTreatmentFilter(e.target.value)}
+          className="px-3 py-1.5 text-xs border border-white/[0.08] rounded-lg bg-white/[0.04] text-white"
+        >
+          <option value="all">Todos los tratamientos</option>
+          {Array.from(new Set(patients.filter(p => p.last_treatment).map(p => p.last_treatment!))).sort().map(t => (
+            <option key={t} value={t}>{t}</option>
+          ))}
+        </select>
+
+        {/* Patient count */}
+        <span className="text-xs text-white/30 ml-auto">
+          {filteredPatients.length} pacientes
+        </span>
+      </div>
+
       {/* Search */}
       <div className="mb-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="relative">
@@ -479,6 +536,11 @@ export default function PatientsView() {
                                 <Brain size={16} className="text-purple-500" />
                               )}
                             </div>
+                            {patient.last_treatment && (
+                              <span className="mt-1 inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-blue-500/10 text-blue-400">
+                                {patient.last_treatment}
+                              </span>
+                            )}
                           </div>
                         </div>
                       </td>
@@ -561,6 +623,11 @@ export default function PatientsView() {
                           )}
                         </div>
                         <p className="text-xs text-white/50 truncate">DNI: {patient.dni || '-'}</p>
+                        {patient.last_treatment && (
+                          <span className="mt-1 inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-blue-500/10 text-blue-400 truncate max-w-full">
+                            {patient.last_treatment}
+                          </span>
+                        )}
                       </div>
                     </div>
                     <div className="flex items-center gap-1">
