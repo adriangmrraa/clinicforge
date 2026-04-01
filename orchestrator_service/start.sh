@@ -33,5 +33,9 @@ else
     echo "Baseline marcado correctamente."
 fi
 
+# Asegurar permisos de escritura en directorios de uploads/media
+mkdir -p /app/uploads /app/media
+chmod -R 777 /app/uploads /app/media
+
 echo "Iniciando servidor..."
 exec uvicorn main:socket_app --host 0.0.0.0 --port 8000

@@ -221,8 +221,9 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
             
             ext_id_candidate = None
             if provider == "ycloud":
-                # YCloud: message ID is nested in 'message.id', NOT 'id' (which is event ID)
-                ext_id_candidate = msg.raw_payload.get("message", {}).get("id")
+                # YCloud: wamid is the unique WhatsApp message ID (best dedup key)
+                inbound = msg.raw_payload.get("whatsappInboundMessage", {})
+                ext_id_candidate = inbound.get("wamid") or inbound.get("id") or msg.raw_payload.get("id")
             else:
                 # Chatwoot/Default: ID is top-level 'id'
                 ext_id_candidate = msg.raw_payload.get("id")
@@ -232,11 +233,11 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
             dup = await pool.fetchval(
                 """
                 SELECT id FROM chat_messages
-                WHERE conversation_id = $1 
+                WHERE conversation_id = $1
                   AND (
-                    (content = $2 AND created_at > NOW() - INTERVAL '5 seconds')
-                    OR 
-                    (platform_metadata->>'provider_message_id' = $3)
+                    (content = $2 AND content IS NOT NULL AND content != '' AND created_at > NOW() - INTERVAL '5 seconds')
+                    OR
+                    (platform_metadata->>'provider_message_id' = $3 AND $3 != 'NO_MATCH')
                   )
                 LIMIT 1
                 """,
