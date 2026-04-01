@@ -1097,6 +1097,21 @@ export default function ClinicsView() {
                                                 <option value="Casos de Éxito">Casos de Éxito</option>
                                                 <option value="Ventajas Competitivas">Ventajas Competitivas</option>
                                             </optgroup>
+                                            <optgroup label="Scripts de respuesta">
+                                                <option value="Script - Implantes">Script - Implantes</option>
+                                                <option value="Script - Prótesis">Script - Prótesis</option>
+                                                <option value="Script - Cirugía">Script - Cirugía</option>
+                                                <option value="Script - ATM">Script - ATM</option>
+                                                <option value="Script - Armonización">Script - Armonización</option>
+                                                <option value="Script - Endolifting">Script - Endolifting</option>
+                                                <option value="Script - General">Script - General</option>
+                                                <option value="Script - Ortodoncia">Script - Ortodoncia</option>
+                                                <option value="Script - Endodoncia">Script - Endodoncia</option>
+                                                <option value="Script - Precio">Script - Precio</option>
+                                                <option value="Script - Miedo">Script - Miedo</option>
+                                                <option value="Script - Obra Social">Script - Obra Social</option>
+                                                <option value="Script - Paciente Lejano">Script - Paciente Lejano</option>
+                                            </optgroup>
                                         </select>
                                     </div>
                                     <div>
@@ -1206,6 +1221,21 @@ export default function ClinicsView() {
                                             <option value="Tecnología">Tecnología</option>
                                             <option value="Casos de Éxito">Casos de Éxito</option>
                                             <option value="Ventajas Competitivas">Ventajas Competitivas</option>
+                                        </optgroup>
+                                        <optgroup label="Scripts de respuesta">
+                                            <option value="Script - Implantes">Script - Implantes</option>
+                                            <option value="Script - Prótesis">Script - Prótesis</option>
+                                            <option value="Script - Cirugía">Script - Cirugía</option>
+                                            <option value="Script - ATM">Script - ATM</option>
+                                            <option value="Script - Armonización">Script - Armonización</option>
+                                            <option value="Script - Endolifting">Script - Endolifting</option>
+                                            <option value="Script - General">Script - General</option>
+                                            <option value="Script - Ortodoncia">Script - Ortodoncia</option>
+                                            <option value="Script - Endodoncia">Script - Endodoncia</option>
+                                            <option value="Script - Precio">Script - Precio</option>
+                                            <option value="Script - Miedo">Script - Miedo</option>
+                                            <option value="Script - Obra Social">Script - Obra Social</option>
+                                            <option value="Script - Paciente Lejano">Script - Paciente Lejano</option>
                                         </optgroup>
                                     </select>
                                 </div>

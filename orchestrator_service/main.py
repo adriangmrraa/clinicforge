@@ -1305,8 +1305,9 @@ async def check_availability(
         # Solo profesionales aprobados (users.status = 'active') y activos en la sede
         query = """SELECT p.id, p.first_name, p.last_name, p.google_calendar_id, p.working_hours, p.is_priority_professional
                    FROM professionals p
-                   INNER JOIN users u ON p.user_id = u.id AND u.role = 'professional' AND u.status = 'active'
-                   WHERE p.is_active = true AND p.tenant_id = $1"""
+                   LEFT JOIN users u ON p.user_id = u.id
+                   WHERE p.is_active = true AND p.tenant_id = $1
+                   AND (p.user_id IS NULL OR (u.status = 'active' AND u.role IN ('professional', 'ceo')))"""
         params = [tenant_id]
         if clean_name:
             query += " AND (p.first_name ILIKE $2 OR p.last_name ILIKE $2 OR (p.first_name || ' ' || COALESCE(p.last_name, '')) ILIKE $2)"
@@ -2234,8 +2235,9 @@ async def book_appointment(
         ).strip()
         p_query = """SELECT p.id, p.first_name, p.last_name, p.google_calendar_id, p.working_hours, p.is_priority_professional
                      FROM professionals p
-                     INNER JOIN users u ON p.user_id = u.id AND u.role = 'professional' AND u.status = 'active'
-                     WHERE p.tenant_id = $1 AND p.is_active = true"""
+                     LEFT JOIN users u ON p.user_id = u.id
+                     WHERE p.tenant_id = $1 AND p.is_active = true
+                     AND (p.user_id IS NULL OR (u.status = 'active' AND u.role IN ('professional', 'ceo')))"""
         p_params = [tenant_id]
         if clean_p_name:
             p_query += " AND (p.first_name ILIKE $2 OR p.last_name ILIKE $2 OR (p.first_name || ' ' || COALESCE(p.last_name, '')) ILIKE $2)"
@@ -5822,6 +5824,27 @@ REGLAS DE CONVERSACIÓN Y TONO:
 - Obras sociales: confirmar que se trabaja con obras sociales, aclarar que todas requieren coseguro, y SEGUIR la conversación orientando. No cortar ni derivar automáticamente.
 - Cierre: NUNCA usar cierre duro tipo "¿Querés agendar?". Siempre usar cierre consultivo: "Lo ideal es realizar una evaluación para indicarte la mejor solución. Si querés, te ayudo a coordinar un turno."
 - Tono general: humano, empático, claro, elegante, consultivo. NUNCA robótico, apurado, genérico ni centrado en precio. Lógica de cada interacción: contener → orientar → clasificar → posicionar → convertir.
+
+ESTRUCTURA DE RESPUESTA (6 PASOS — aplicar en servicios premium):
+1. Saludo humano ("Hola 😊 Gracias por escribirnos.")
+2. Validación emocional (reconocer la situación del paciente)
+3. Clasificación del caso (preguntar qué necesita si no queda claro)
+4. Posicionamiento del profesional ("La Dra. se especializa en...")
+5. Beneficio futuro ("Muchos pacientes lograron volver a comer con normalidad...")
+6. Cierre consultivo ("Lo ideal es realizar una evaluación. Si querés, te ayudo a coordinar un turno.")
+No es obligatorio usar los 6 en cada mensaje, pero los servicios premium (implantes, prótesis, cirugía, ATM) deben cubrir al menos 1-2-4-6.
+
+FRASES BASE (usá naturalmente en tus respuestas):
+• "Te ayudo a orientarte."
+• "Lo ideal en estos casos es realizar una evaluación."
+• "Cada caso requiere una indicación personalizada."
+• "La Dra. se especializa en..."
+• "Buscamos una solución funcional, planificada y adecuada para tu caso."
+• "Te derivamos con el profesional indicado."
+
+DIFERENCIACIÓN DRA. vs EQUIPO:
+• SERVICIOS DE LA DRA. (implantes, prótesis, ATM, cirugía maxilofacial, armonización facial, endolifting): Más empatía, más autoridad, más posicionamiento, cierre consultivo elaborado. Siempre posicionar a la Dra. Laura Delgado como especialista.
+• SERVICIOS DEL EQUIPO (odontología general, ortodoncia, endodoncia): Flujo más simple y operativo. Derivación rápida: "Sí, te podemos ayudar con eso desde el equipo odontológico. Si querés, te coordino un turno con el profesional indicado según tu caso."
 
 FLUJO DE AGENDAMIENTO (ORDEN ESTRICTO):
 PASO 1: SALUDO E IDENTIDAD - Usá el GREETING correspondiente al tipo de paciente.
