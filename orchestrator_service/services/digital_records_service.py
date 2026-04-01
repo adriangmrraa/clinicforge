@@ -193,96 +193,96 @@ async def gather_patient_data(
         template_type,
     )
 
-    async with pool.acquire() as conn:
-        # ------------------------------------------------------------------
-        # Parallel queries — all run concurrently inside the same connection
-        # ------------------------------------------------------------------
-        (
-            patient_row,
-            clinical_rows,
-            odontogram_row,
-            appointment_rows,
-            tenant_row,
-            next_appt_row,
-        ) = await asyncio.gather(
-            conn.fetchrow(
-                "SELECT * FROM patients WHERE id=$1 AND tenant_id=$2",
-                patient_id,
-                tenant_id,
-            ),
-            conn.fetch(
-                """
-                SELECT id, record_date, diagnosis, clinical_notes, treatments,
-                       recommendations, odontogram_data, professional_id
-                FROM clinical_records
-                WHERE patient_id=$1 AND tenant_id=$2
-                ORDER BY record_date DESC
-                LIMIT 20
-                """,
-                patient_id,
-                tenant_id,
-            ),
-            conn.fetchrow(
-                """
-                SELECT odontogram_data
-                FROM clinical_records
-                WHERE patient_id=$1 AND tenant_id=$2 AND odontogram_data IS NOT NULL
-                ORDER BY created_at DESC
-                LIMIT 1
-                """,
-                patient_id,
-                tenant_id,
-            ),
-            conn.fetch(
-                """
-                SELECT a.id, a.appointment_datetime, a.status, a.billing_amount,
-                       a.payment_status, tt.name AS treatment_name
-                FROM appointments a
-                LEFT JOIN treatment_types tt
-                    ON a.appointment_type = tt.code AND a.tenant_id = tt.tenant_id
-                WHERE a.patient_id=$1 AND a.tenant_id=$2
-                ORDER BY a.appointment_datetime DESC
-                LIMIT 10
-                """,
-                patient_id,
-                tenant_id,
-            ),
-            conn.fetchrow(
-                """
-                SELECT clinic_name, address, phone, logo_url, country_code
-                FROM tenants WHERE id=$1
-                """,
-                tenant_id,
-            ),
-            conn.fetchrow(
-                """
-                SELECT a.appointment_datetime, tt.name AS treatment_name
-                FROM appointments a
-                LEFT JOIN treatment_types tt
-                    ON a.appointment_type = tt.code AND a.tenant_id = tt.tenant_id
-                WHERE a.patient_id=$1 AND a.tenant_id=$2
-                  AND a.status IN ('scheduled', 'confirmed')
-                  AND a.appointment_datetime > NOW()
-                ORDER BY a.appointment_datetime ASC
-                LIMIT 1
-                """,
-                patient_id,
-                tenant_id,
-            ),
-        )
+    # ------------------------------------------------------------------
+    # Parallel queries — each uses its own connection from the pool
+    # (asyncpg does NOT allow concurrent queries on a single connection)
+    # ------------------------------------------------------------------
+    (
+        patient_row,
+        clinical_rows,
+        odontogram_row,
+        appointment_rows,
+        tenant_row,
+        next_appt_row,
+    ) = await asyncio.gather(
+        pool.fetchrow(
+            "SELECT * FROM patients WHERE id=$1 AND tenant_id=$2",
+            patient_id,
+            tenant_id,
+        ),
+        pool.fetch(
+            """
+            SELECT id, record_date, diagnosis, clinical_notes, treatments,
+                   recommendations, odontogram_data, professional_id
+            FROM clinical_records
+            WHERE patient_id=$1 AND tenant_id=$2
+            ORDER BY record_date DESC
+            LIMIT 20
+            """,
+            patient_id,
+            tenant_id,
+        ),
+        pool.fetchrow(
+            """
+            SELECT odontogram_data
+            FROM clinical_records
+            WHERE patient_id=$1 AND tenant_id=$2 AND odontogram_data IS NOT NULL
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            patient_id,
+            tenant_id,
+        ),
+        pool.fetch(
+            """
+            SELECT a.id, a.appointment_datetime, a.status, a.billing_amount,
+                   a.payment_status, tt.name AS treatment_name
+            FROM appointments a
+            LEFT JOIN treatment_types tt
+                ON a.appointment_type = tt.code AND a.tenant_id = tt.tenant_id
+            WHERE a.patient_id=$1 AND a.tenant_id=$2
+            ORDER BY a.appointment_datetime DESC
+            LIMIT 10
+            """,
+            patient_id,
+            tenant_id,
+        ),
+        pool.fetchrow(
+            """
+            SELECT clinic_name, address, phone, logo_url, country_code
+            FROM tenants WHERE id=$1
+            """,
+            tenant_id,
+        ),
+        pool.fetchrow(
+            """
+            SELECT a.appointment_datetime, tt.name AS treatment_name
+            FROM appointments a
+            LEFT JOIN treatment_types tt
+                ON a.appointment_type = tt.code AND a.tenant_id = tt.tenant_id
+            WHERE a.patient_id=$1 AND a.tenant_id=$2
+              AND a.status IN ('scheduled', 'confirmed')
+              AND a.appointment_datetime > NOW()
+            ORDER BY a.appointment_datetime ASC
+            LIMIT 1
+            """,
+            patient_id,
+            tenant_id,
+        ),
+    )
 
-        # ------------------------------------------------------------------
-        # Professional — resolve after the parallel block (depends on clinical_rows)
-        # ------------------------------------------------------------------
-        prof_row = None
-        effective_prof_id = professional_id
+    # ------------------------------------------------------------------
+    # Professional — resolve after the parallel block (depends on clinical_rows)
+    # ------------------------------------------------------------------
+    prof_row = None
+    effective_prof_id = professional_id
 
-        if effective_prof_id is None and clinical_rows:
-            # Fall back to the professional on the most recent clinical record
-            effective_prof_id = clinical_rows[0].get("professional_id")
+    if effective_prof_id is None and clinical_rows:
+        # Fall back to the professional on the most recent clinical record
+        effective_prof_id = clinical_rows[0].get("professional_id")
 
         if effective_prof_id is not None:
-            prof_row = await conn.fetchrow(
+            prof_row = await pool.fetchrow(
                 """
                 SELECT p.id,
                        p.first_name || ' ' || p.last_name AS full_name
