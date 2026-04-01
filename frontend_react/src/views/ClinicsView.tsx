@@ -351,12 +351,7 @@ export default function ClinicsView() {
         if (!faqClinicId) return;
         setFaqSaving(true);
         try {
-            if (faqEditing?.id) {
-                await api.put(`/admin/faqs/${faqEditing.id}`, faqForm);
-            } else {
-                await api.post(`/admin/tenants/${faqClinicId}/faqs`, faqForm);
-            }
-            setFaqEditing(null);
+            await api.post(`/admin/tenants/${faqClinicId}/faqs`, faqForm);
             setFaqForm({ category: 'General', question: '', answer: '', sort_order: 0 });
             await fetchFaqs(faqClinicId);
         } catch (err: any) {
@@ -366,9 +361,29 @@ export default function ClinicsView() {
         }
     };
 
+    const [faqEditModalOpen, setFaqEditModalOpen] = useState(false);
+
     const handleFaqEdit = (faq: FAQ) => {
         setFaqEditing(faq);
         setFaqForm({ category: faq.category, question: faq.question, answer: faq.answer, sort_order: faq.sort_order });
+        setFaqEditModalOpen(true);
+    };
+
+    const handleFaqEditSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!faqClinicId || !faqEditing?.id) return;
+        setFaqSaving(true);
+        try {
+            await api.put(`/admin/faqs/${faqEditing.id}`, faqForm);
+            setFaqEditModalOpen(false);
+            setFaqEditing(null);
+            setFaqForm({ category: 'General', question: '', answer: '', sort_order: 0 });
+            await fetchFaqs(faqClinicId);
+        } catch (err: any) {
+            console.error('Error guardando FAQ:', err);
+        } finally {
+            setFaqSaving(false);
+        }
     };
 
     const handleFaqDelete = async (faqId: number) => {
@@ -1036,10 +1051,10 @@ export default function ClinicsView() {
                         </div>
 
                         <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 space-y-6">
-                            {/* Formulario agregar/editar FAQ */}
+                            {/* Formulario agregar FAQ */}
                             <form onSubmit={handleFaqSubmit} className="space-y-3 bg-white/[0.02] p-4 rounded-xl border border-white/[0.06]">
                                 <h3 className="text-sm font-bold text-white/60">
-                                    {faqEditing ? t('clinics.faq_edit') : t('clinics.faq_add')}
+                                    {t('clinics.faq_add')}
                                 </h3>
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                     <div>
@@ -1101,14 +1116,10 @@ export default function ClinicsView() {
                                         className="w-full px-3 py-1.5 bg-white/[0.04] border border-white/[0.08] rounded-lg text-sm text-white mt-1 min-h-[60px]" placeholder={t('clinics.faq_answer_placeholder')} />
                                 </div>
                                 <div className="flex gap-2">
-                                    {faqEditing && (
-                                        <button type="button" onClick={() => { setFaqEditing(null); setFaqForm({ category: 'General', question: '', answer: '', sort_order: 0 }); }}
-                                            className="px-4 py-1.5 text-sm text-white/70 hover:bg-white/[0.06] rounded-lg">{t('common.cancel')}</button>
-                                    )}
                                     <button type="submit" disabled={faqSaving}
                                         className="px-4 py-1.5 text-sm bg-white text-[#0a0e1a] rounded-lg hover:bg-white/90 disabled:opacity-50 flex items-center gap-2">
                                         {faqSaving && <Loader2 className="animate-spin" size={14} />}
-                                        {faqEditing ? t('common.save') : t('clinics.faq_add_btn')}
+                                        {t('clinics.faq_add_btn')}
                                     </button>
                                 </div>
                             </form>
@@ -1124,18 +1135,106 @@ export default function ClinicsView() {
                                         <div key={faq.id} className="bg-white/[0.03] border border-white/[0.06] rounded-xl p-4 space-y-2 hover:border-white/[0.12] transition-all">
                                             <div className="flex justify-between items-start">
                                                 <span className="text-xs font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full">{faq.category}</span>
-                                                <div className="flex gap-1">
-                                                    <button onClick={() => handleFaqEdit(faq)} className="p-1 text-blue-400 hover:bg-blue-500/10 rounded"><Edit size={14} /></button>
-                                                    <button onClick={() => faq.id && handleFaqDelete(faq.id)} className="p-1 text-red-400 hover:bg-red-500/10 rounded"><Trash2 size={14} /></button>
+                                                <div className="flex gap-2">
+                                                    <button onClick={() => handleFaqEdit(faq)} className="px-2.5 py-1.5 text-blue-400 hover:bg-blue-500/10 rounded-lg flex items-center gap-1.5 text-xs font-medium" title={t('clinics.faq_edit')}>
+                                                        <Edit size={15} /> {t('common.edit')}
+                                                    </button>
+                                                    <button onClick={() => faq.id && handleFaqDelete(faq.id)} className="px-2.5 py-1.5 text-red-400 hover:bg-red-500/10 rounded-lg flex items-center gap-1.5 text-xs font-medium" title={t('common.delete')}>
+                                                        <Trash2 size={15} /> {t('common.delete')}
+                                                    </button>
                                                 </div>
                                             </div>
                                             <p className="text-sm font-medium text-white">{faq.question}</p>
-                                            <p className="text-sm text-white/60">{faq.answer}</p>
+                                            <p className="text-sm text-white/60 whitespace-pre-line">{faq.answer}</p>
                                         </div>
                                     ))}
                                 </div>
                             )}
                         </div>
+                    </div>
+                </div>
+            )}
+            {/* ── Modal Editar FAQ ── */}
+            {faqEditModalOpen && faqEditing && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
+                    <div className="bg-[#0d1117] border border-white/[0.08] rounded-xl w-full max-w-lg animate-scale-in">
+                        <div className="p-4 sm:p-6 border-b border-white/[0.06] flex justify-between items-center">
+                            <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                                <Edit size={18} className="text-blue-400" />
+                                {t('clinics.faq_edit')}
+                            </h2>
+                            <button onClick={() => { setFaqEditModalOpen(false); setFaqEditing(null); }} className="p-2 hover:bg-white/[0.04] rounded-lg text-white/40"><X size={20} /></button>
+                        </div>
+                        <form onSubmit={handleFaqEditSubmit} className="p-4 sm:p-6 space-y-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div>
+                                    <label className="text-xs font-semibold text-white/60">{t('clinics.faq_category')}</label>
+                                    <select value={faqForm.category} onChange={e => setFaqForm({ ...faqForm, category: e.target.value })}
+                                        className="w-full px-3 py-1.5 bg-[#0d1117] border border-white/[0.08] rounded-lg text-sm text-white mt-1 [&>option]:bg-[#0d1117] [&>optgroup]:bg-[#0d1117] [&>optgroup]:text-white/40 [&>optgroup]:font-bold">
+                                        <optgroup label="Información general">
+                                            <option value="General">General</option>
+                                            <option value="Ubicación y Horarios">Ubicación y Horarios</option>
+                                            <option value="Estacionamiento y Acceso">Estacionamiento y Acceso</option>
+                                        </optgroup>
+                                        <optgroup label="Comercial">
+                                            <option value="Precios y Costos">Precios y Costos</option>
+                                            <option value="Medios de Pago">Medios de Pago</option>
+                                            <option value="Financiación">Financiación</option>
+                                            <option value="Promociones">Promociones</option>
+                                        </optgroup>
+                                        <optgroup label="Obras Sociales">
+                                            <option value="Obras Sociales">Obras Sociales</option>
+                                            <option value="Coseguros">Coseguros</option>
+                                            <option value="Autorizaciones">Autorizaciones</option>
+                                        </optgroup>
+                                        <optgroup label="Tratamientos">
+                                            <option value="Tratamientos Generales">Tratamientos Generales</option>
+                                            <option value="Implantes y Prótesis">Implantes y Prótesis</option>
+                                            <option value="Estética Dental">Estética Dental</option>
+                                            <option value="Ortodoncia">Ortodoncia</option>
+                                            <option value="Cirugía">Cirugía</option>
+                                            <option value="Blanqueamiento">Blanqueamiento</option>
+                                        </optgroup>
+                                        <optgroup label="Experiencia del paciente">
+                                            <option value="Primera Consulta">Primera Consulta</option>
+                                            <option value="Cuidados Post-tratamiento">Cuidados Post-tratamiento</option>
+                                            <option value="Emergencias">Emergencias</option>
+                                            <option value="Garantías">Garantías</option>
+                                        </optgroup>
+                                        <optgroup label="Estrategia de ventas">
+                                            <option value="Diferenciadores">Diferenciadores</option>
+                                            <option value="Tecnología">Tecnología</option>
+                                            <option value="Casos de Éxito">Casos de Éxito</option>
+                                            <option value="Ventajas Competitivas">Ventajas Competitivas</option>
+                                        </optgroup>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="text-xs font-semibold text-white/60">{t('clinics.faq_order')}</label>
+                                    <input type="number" value={faqForm.sort_order} onChange={e => setFaqForm({ ...faqForm, sort_order: parseInt(e.target.value) || 0 })}
+                                        className="w-full px-3 py-1.5 bg-white/[0.04] border border-white/[0.08] rounded-lg text-sm text-white mt-1" />
+                                </div>
+                            </div>
+                            <div>
+                                <label className="text-xs font-semibold text-white/60">{t('clinics.faq_question')}</label>
+                                <input required type="text" value={faqForm.question} onChange={e => setFaqForm({ ...faqForm, question: e.target.value })}
+                                    className="w-full px-3 py-1.5 bg-white/[0.04] border border-white/[0.08] rounded-lg text-sm text-white mt-1" />
+                            </div>
+                            <div>
+                                <label className="text-xs font-semibold text-white/60">{t('clinics.faq_answer')}</label>
+                                <textarea required value={faqForm.answer} onChange={e => setFaqForm({ ...faqForm, answer: e.target.value })}
+                                    className="w-full px-3 py-1.5 bg-white/[0.04] border border-white/[0.08] rounded-lg text-sm text-white mt-1 min-h-[120px]" />
+                            </div>
+                            <div className="flex justify-end gap-2 pt-2">
+                                <button type="button" onClick={() => { setFaqEditModalOpen(false); setFaqEditing(null); }}
+                                    className="px-4 py-1.5 text-sm text-white/70 hover:bg-white/[0.06] rounded-lg">{t('common.cancel')}</button>
+                                <button type="submit" disabled={faqSaving}
+                                    className="px-4 py-1.5 text-sm bg-white text-[#0a0e1a] rounded-lg hover:bg-white/90 disabled:opacity-50 flex items-center gap-2">
+                                    {faqSaving && <Loader2 className="animate-spin" size={14} />}
+                                    {t('common.save')}
+                                </button>
+                            </div>
+                        </form>
                     </div>
                 </div>
             )}
