@@ -350,6 +350,10 @@ async def _analyze_with_gpt(
         f"(JSON mode {'enabled' if supports_json else 'disabled'})"
     )
 
+    # Models like gpt-5, gpt-5-mini, o3, o4-mini use max_completion_tokens instead of max_tokens
+    uses_new_api = any(validated_model.startswith(p) for p in ("gpt-5", "o3", "o4", "o1"))
+    token_param = "max_completion_tokens" if uses_new_api else "max_tokens"
+
     request_json = {
         "model": validated_model,
         "messages": [
@@ -360,24 +364,13 @@ async def _analyze_with_gpt(
             {"role": "user", "content": prompt},
         ],
         "temperature": 0,
-        "max_tokens": 700,
+        token_param: 700,
     }
     if supports_json:
         request_json["response_format"] = {"type": "json_object"}
 
-    max_attempts = 2
+    max_attempts = 3
     for attempt in range(max_attempts):
-        # On second attempt, disable JSON mode
-        if attempt == 1:
-            if "response_format" in request_json:
-                del request_json["response_format"]
-                logger.warning(
-                    f"nova_analysis: tenant {tenant_id} retrying without JSON mode due to previous error"
-                )
-            else:
-                # Already without JSON mode, no point retrying
-                break
-
         try:
             async with httpx.AsyncClient(timeout=30) as client:
                 response = await client.post(
@@ -410,37 +403,30 @@ async def _analyze_with_gpt(
                         pass
                 return json.loads(content)
         except httpx.HTTPStatusError as e:
-            # Log full HTTP response details for debugging
             error_detail = f"HTTP {e.response.status_code}: {e.response.text}"
             logger.error(
                 f"nova_analysis_gpt_http_error tenant {tenant_id} attempt {attempt + 1}: {error_detail}"
             )
-            # Check if this is a JSON mode incompatibility error
             if e.response.status_code == 400:
-                try:
-                    error_body = e.response.json()
-                    error_msg = str(error_body).lower()
-                    if any(
-                        keyword in error_msg
-                        for keyword in [
-                            "json",
-                            "response_format",
-                            "unsupported",
-                            "invalid parameter",
-                        ]
-                    ):
-                        # Likely JSON mode issue, will retry without JSON mode on next attempt
+                error_msg = e.response.text.lower()
+                # Fix max_tokens → max_completion_tokens
+                if "max_tokens" in error_msg and "max_completion_tokens" in error_msg:
+                    if "max_tokens" in request_json:
+                        val = request_json.pop("max_tokens")
+                        request_json["max_completion_tokens"] = val
+                        logger.warning(f"nova_analysis: tenant {tenant_id} switching to max_completion_tokens")
                         continue
-                except Exception:
-                    pass
-            # For other errors, break loop and fail
+                # Fix response_format / JSON mode
+                if "response_format" in request_json and any(
+                    kw in error_msg for kw in ["json", "response_format", "unsupported"]
+                ):
+                    del request_json["response_format"]
+                    logger.warning(f"nova_analysis: tenant {tenant_id} retrying without JSON mode")
+                    continue
             break
         except Exception as e:
             logger.error(f"nova_analysis_gpt_error tenant {tenant_id}: {e}")
             break
 
-    # If we exit loop without returning, analysis failed
-    logger.error(
-        f"nova_analysis_gpt_failed tenant {tenant_id} after {max_attempts} attempts"
-    )
+    logger.error(f"nova_analysis_gpt_failed tenant {tenant_id} after {max_attempts} attempts")
     return None

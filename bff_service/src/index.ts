@@ -88,6 +88,14 @@ app.use('/socket.io', createProxyMiddleware({
     logger: console,
 }));
 
+// --- Nova WebSocket proxy (voice + realtime text) ---
+app.use('/public/nova', createProxyMiddleware({
+    target: ORCHESTRATOR_URL,
+    ws: true,
+    changeOrigin: true,
+    logger: console,
+}));
+
 // Root Route
 app.get('/', (req: Request, res: Response) => {
     res.send('BFF Service is Running');
