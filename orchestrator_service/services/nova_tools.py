@@ -4072,6 +4072,15 @@ async def _generar_ficha_digital(args: Dict, tenant_id: int) -> str:
             json.dumps({"model_used": model_used, "validation_warnings": warnings}),
         )
 
+        # Emit WebSocket event so UI updates in real-time
+        await _nova_emit("DIGITAL_RECORD_CREATED", {
+            "patient_id": patient_id,
+            "record_id": record_id,
+            "template_type": tipo,
+            "title": title,
+            "tenant_id": tenant_id,
+        })
+
         warning_text = ""
         if warnings:
             warning_text = f"\nAdvertencias: {', '.join(warnings)}"
@@ -4153,6 +4162,12 @@ async def _enviar_ficha_digital(args: Dict, tenant_id: int) -> str:
                 "UPDATE patient_digital_records SET sent_to_email = $1, sent_at = NOW(), status = 'sent' WHERE id = $2",
                 email, record_id,
             )
+            await _nova_emit("DIGITAL_RECORD_SENT", {
+                "patient_id": patient_id,
+                "record_id": record_id,
+                "sent_to": email,
+                "tenant_id": tenant_id,
+            })
             return f"Ficha enviada a {email}"
         else:
             return "Error al enviar el email. Verificá la configuración SMTP."

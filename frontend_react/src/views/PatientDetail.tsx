@@ -80,6 +80,7 @@ export default function PatientDetail() {
   const idRef = useRef<string | undefined>(id);
   const socketRef = useRef<Socket | null>(null);
   const [anamnesisRefreshKey, setAnamnesisRefreshKey] = useState(0);
+  const [digitalRecordsRefreshKey, setDigitalRecordsRefreshKey] = useState(0);
 
   const [formData, setFormData] = useState({
     record_type: 'evolution',
@@ -153,6 +154,20 @@ export default function PatientDetail() {
       const currentPatientId = id ? parseInt(id) : null;
       if (payload.patient_id && payload.patient_id === currentPatientId) {
         fetchPatientData();
+      }
+    });
+
+    socketRef.current.on('DIGITAL_RECORD_CREATED', (payload: { patient_id?: number }) => {
+      const currentPatientId = id ? parseInt(id) : null;
+      if (payload.patient_id && payload.patient_id === currentPatientId) {
+        setDigitalRecordsRefreshKey(prev => prev + 1);
+      }
+    });
+
+    socketRef.current.on('DIGITAL_RECORD_SENT', (payload: { patient_id?: number }) => {
+      const currentPatientId = id ? parseInt(id) : null;
+      if (payload.patient_id && payload.patient_id === currentPatientId) {
+        setDigitalRecordsRefreshKey(prev => prev + 1);
       }
     });
 
@@ -502,6 +517,7 @@ export default function PatientDetail() {
           <DigitalRecordsTab
             patientId={parseInt(id!)}
             patientEmail={patient?.email || ''}
+            refreshKey={digitalRecordsRefreshKey}
           />
         );
 

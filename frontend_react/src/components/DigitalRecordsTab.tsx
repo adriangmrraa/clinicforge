@@ -70,6 +70,7 @@ const SECTION_LABELS: Record<string, string> = {
 interface Props {
   patientId: number;
   patientEmail?: string;
+  refreshKey?: number;
 }
 
 /** Parse HTML into sections using data-section attributes */
@@ -121,7 +122,7 @@ function textToHtml(text: string, originalHtml: string): string {
   return headingHtml ? `${headingHtml}\n<div class="narrative">${paragraphs}</div>` : `<div class="narrative">${paragraphs}</div>`;
 }
 
-export default function DigitalRecordsTab({ patientId, patientEmail }: Props) {
+export default function DigitalRecordsTab({ patientId, patientEmail, refreshKey }: Props) {
   const { t } = useTranslation();
 
   const [records, setRecords] = useState<DigitalRecord[]>([]);
@@ -138,7 +139,7 @@ export default function DigitalRecordsTab({ patientId, patientEmail }: Props) {
   // Section-based editing
   const [editSections, setEditSections] = useState<Section[]>([]);
 
-  useEffect(() => { fetchRecords(); }, [patientId]);
+  useEffect(() => { fetchRecords(); }, [patientId, refreshKey]);
 
   const fetchRecords = async () => {
     try {
