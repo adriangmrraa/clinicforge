@@ -1843,7 +1843,10 @@ async def delete_credential(
             )
 
         await db.pool.execute("DELETE FROM credentials WHERE id = $1", id)
-    return {"status": "deleted"}
+        return {"status": "deleted"}
+    except Exception as e:
+        logger.error(f"Error deleting credential: {e}")
+        raise HTTPException(status_code=500, detail="Error interno del servidor")
 
 
 @router.post("/faqs/sync-embeddings", tags=["FAQs"], summary="Sincronizar embeddings de FAQs")
