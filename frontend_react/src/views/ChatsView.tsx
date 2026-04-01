@@ -1271,8 +1271,8 @@ export default function ChatsView() {
                 </div>
               )}
 
-              {/* Banner: Manual Mode Active */}
-              {((selectedSession && (selectedSession.status === 'silenced' || selectedSession.status === 'human_handling')) ||
+              {/* Banner: Manual Mode Active (only if override hasn't expired) */}
+              {((selectedSession && (selectedSession.status === 'silenced' || selectedSession.status === 'human_handling') && selectedSession.human_override_until && new Date(selectedSession.human_override_until) > new Date()) ||
                 (selectedChatwoot && selectedChatwoot.is_locked)) && (
                   <div className="bg-blue-500/10 border-b border-blue-500/20 px-4 py-2 flex items-center justify-between">
                     <div className="flex items-center gap-2">
@@ -1510,10 +1510,11 @@ export default function ChatsView() {
               <div className="flex-1 overflow-y-auto">
                 {/* AI Status / Bot Status */}
                 {(() => {
-                  const isHuman = selectedSession
-                    ? (selectedSession.status === 'human_handling' || selectedSession.status === 'silenced')
-                    : selectedChatwoot?.is_locked;
                   const overrideUntil = selectedSession?.human_override_until;
+                  const overrideExpired = overrideUntil ? new Date(overrideUntil) < new Date() : true;
+                  const isHuman = selectedSession
+                    ? ((selectedSession.status === 'human_handling' || selectedSession.status === 'silenced') && !overrideExpired)
+                    : selectedChatwoot?.is_locked;
 
                   return (
                     <div className={`p-3 mx-3 mt-4 rounded-lg ${isHuman

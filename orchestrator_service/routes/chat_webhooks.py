@@ -640,6 +640,16 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
             )
 
             if not is_locked:
+                # Auto-cleanup: if override expired but status is still human_handling, reset it
+                if override_row and override_row["human_override_until"] is not None:
+                    try:
+                        await pool.execute(
+                            "UPDATE chat_conversations SET human_override_until = NULL, status = 'active' WHERE id = $1 AND status IN ('human_handling', 'silenced')",
+                            conv_id,
+                        )
+                        logger.info(f"🔄 Auto-cleared expired human override for conv {conv_id}")
+                    except Exception as cleanup_err:
+                        logger.warning(f"⚠️ Override cleanup failed: {cleanup_err}")
                 try:
                     import os
                     import redis.asyncio as redis
