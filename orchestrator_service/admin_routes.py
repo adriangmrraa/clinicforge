@@ -221,11 +221,12 @@ async def send_to_whatsapp_task(phone: str, message: str, business_number: str):
 # --- Dependencias de Seguridad (Triple Capa Nexus v7.6) ---
 from core.auth import verify_admin_token, verify_ceo_token, get_resolved_tenant_id
 
-_HTML_TAG_RE = re.compile(r'<[^>]+>')
+_HTML_TAG_RE = re.compile(r"<[^>]+>")
+
 
 def _strip_html(text: str) -> str:
     """Elimina tags HTML/JS de un string para prevenir stored XSS."""
-    return _HTML_TAG_RE.sub('', text).strip()
+    return _HTML_TAG_RE.sub("", text).strip()
 
 
 async def get_allowed_tenant_ids(user_data=Depends(verify_admin_token)) -> List[int]:
@@ -243,7 +244,7 @@ async def get_allowed_tenant_ids(user_data=Depends(verify_admin_token)) -> List[
             )
             allowed = [int(r["tenant_id"]) for r in rows] if rows else []
             # Siempre incluir el tenant del JWT como fallback
-            jwt_tid = getattr(user_data, 'tenant_id', 1)
+            jwt_tid = getattr(user_data, "tenant_id", 1)
             if isinstance(jwt_tid, int) and jwt_tid not in allowed:
                 allowed.append(jwt_tid)
             return allowed if allowed else [1]
@@ -1524,6 +1525,8 @@ async def media_proxy(url: str, user_data=Depends(verify_admin_token)):
     Proxy seguro para servir archivos multimedia (YCloud, Local, Chatwoot).
     Permite visualizar contenido sin exponer URLs directas o lidiar con CORS/Expiración.
     """
+    logger.info(f"📥 Proxy media request: url={url[:100]}...")
+
     # SSRF protection: validate URL before proxying
     from urllib.parse import urlparse
 
@@ -1546,11 +1549,15 @@ async def media_proxy(url: str, user_data=Depends(verify_admin_token)):
     if ycloud_key and "ycloud" in url.lower():
         headers["X-API-Key"] = ycloud_key
 
+    # Timeout aumentado a 60 segundos para archivos grandes (imágenes HD, videos, audios)
     async with httpx.AsyncClient(
-        timeout=10.0, follow_redirects=True, headers=headers
+        timeout=60.0, follow_redirects=True, headers=headers
     ) as client:
         try:
             resp = await client.get(url)
+            logger.info(
+                f"📥 Proxy response status: {resp.status_code}, content-type: {resp.headers.get('Content-Type')}"
+            )
             if resp.status_code != 200:
                 raise HTTPException(
                     status_code=resp.status_code, detail="Remote media unreachable"
@@ -1559,6 +1566,12 @@ async def media_proxy(url: str, user_data=Depends(verify_admin_token)):
             return StreamingResponse(
                 resp.iter_bytes(),
                 media_type=resp.headers.get("Content-Type", "application/octet-stream"),
+            )
+        except httpx.TimeoutException:
+            logger.error(f"⏱️ Proxy timeout para URL: {url[:100]}")
+            raise HTTPException(
+                status_code=504,
+                detail="Timeout descargando media (archivo muy grande o conexión lenta)",
             )
         except HTTPException:
             raise
@@ -2307,7 +2320,10 @@ async def get_dashboard_stats(
 
 
 @router.get("/tenants", tags=["Sedes"], summary="Listar todas las sedes (clínicas)")
-async def get_tenants(user_data=Depends(verify_admin_token), allowed_ids: List[int] = Depends(get_allowed_tenant_ids)):
+async def get_tenants(
+    user_data=Depends(verify_admin_token),
+    allowed_ids: List[int] = Depends(get_allowed_tenant_ids),
+):
     """Lista las clínicas (tenants) accesibles por el usuario. Solo CEO."""
     if user_data.role != "ceo":
         raise HTTPException(
@@ -2315,7 +2331,7 @@ async def get_tenants(user_data=Depends(verify_admin_token), allowed_ids: List[i
         )
     rows = await db.pool.fetch(
         "SELECT id, clinic_name, bot_phone_number, config, address, google_maps_url, working_hours, consultation_price, bank_cbu, bank_alias, bank_holder_name, derivation_email, logo_url, max_chairs, country_code, created_at, updated_at FROM tenants WHERE id = ANY($1::int[]) ORDER BY id ASC",
-        allowed_ids
+        allowed_ids,
     )
     result = []
     for r in rows:
@@ -2645,7 +2661,11 @@ async def upload_tenant_logo(
 
 
 @router.delete("/tenants/{tenant_id}", tags=["Sedes"], summary="Eliminar una sede")
-async def delete_tenant(tenant_id: int, user_data=Depends(verify_admin_token), allowed_ids: List[int] = Depends(get_allowed_tenant_ids)):
+async def delete_tenant(
+    tenant_id: int,
+    user_data=Depends(verify_admin_token),
+    allowed_ids: List[int] = Depends(get_allowed_tenant_ids),
+):
     """Elimina una clínica. Solo CEO, solo sus propias sedes."""
     if user_data.role != "ceo":
         raise HTTPException(
@@ -2653,7 +2673,11 @@ async def delete_tenant(tenant_id: int, user_data=Depends(verify_admin_token), a
         )
     if tenant_id not in allowed_ids:
         raise HTTPException(status_code=403, detail="No tenés acceso a este tenant.")
-    await db.pool.execute("DELETE FROM tenants WHERE id = $1 AND id = ANY($2::int[])", tenant_id, allowed_ids)
+    await db.pool.execute(
+        "DELETE FROM tenants WHERE id = $1 AND id = ANY($2::int[])",
+        tenant_id,
+        allowed_ids,
+    )
     return {"status": "deleted"}
 
 
@@ -2663,7 +2687,11 @@ async def delete_tenant(tenant_id: int, user_data=Depends(verify_admin_token), a
 @router.get(
     "/tenants/{tenant_id}/faqs", tags=["FAQs"], summary="Listar FAQs de una clínica"
 )
-async def get_tenant_faqs(tenant_id: int, user_data=Depends(verify_admin_token), allowed_ids: List[int] = Depends(get_allowed_tenant_ids)):
+async def get_tenant_faqs(
+    tenant_id: int,
+    user_data=Depends(verify_admin_token),
+    allowed_ids: List[int] = Depends(get_allowed_tenant_ids),
+):
     """Retorna todas las FAQs de un tenant ordenadas por sort_order."""
     if tenant_id not in allowed_ids:
         raise HTTPException(status_code=403, detail="No tenés acceso a este tenant.")
@@ -2676,7 +2704,10 @@ async def get_tenant_faqs(tenant_id: int, user_data=Depends(verify_admin_token),
 
 @router.post("/tenants/{tenant_id}/faqs", tags=["FAQs"], summary="Crear una FAQ")
 async def create_tenant_faq(
-    tenant_id: int, data: Dict[str, Any], user_data=Depends(verify_admin_token), allowed_ids: List[int] = Depends(get_allowed_tenant_ids)
+    tenant_id: int,
+    data: Dict[str, Any],
+    user_data=Depends(verify_admin_token),
+    allowed_ids: List[int] = Depends(get_allowed_tenant_ids),
 ):
     """Crea una nueva FAQ para un tenant."""
     if user_data.role != "ceo":
@@ -2712,7 +2743,10 @@ async def create_tenant_faq(
 
 @router.put("/faqs/{faq_id}", tags=["FAQs"], summary="Actualizar una FAQ")
 async def update_faq(
-    faq_id: int, data: Dict[str, Any], user_data=Depends(verify_admin_token), allowed_ids: List[int] = Depends(get_allowed_tenant_ids)
+    faq_id: int,
+    data: Dict[str, Any],
+    user_data=Depends(verify_admin_token),
+    allowed_ids: List[int] = Depends(get_allowed_tenant_ids),
 ):
     """Actualiza una FAQ existente."""
     if user_data.role != "ceo":
@@ -2763,11 +2797,17 @@ async def update_faq(
 
 
 @router.delete("/faqs/{faq_id}", tags=["FAQs"], summary="Eliminar una FAQ")
-async def delete_faq(faq_id: int, user_data=Depends(verify_admin_token), allowed_ids: List[int] = Depends(get_allowed_tenant_ids)):
+async def delete_faq(
+    faq_id: int,
+    user_data=Depends(verify_admin_token),
+    allowed_ids: List[int] = Depends(get_allowed_tenant_ids),
+):
     """Elimina una FAQ."""
     if user_data.role != "ceo":
         raise HTTPException(status_code=403, detail="Solo el CEO puede gestionar FAQs.")
-    row = await db.pool.fetchrow("SELECT tenant_id FROM clinic_faqs WHERE id = $1", faq_id)
+    row = await db.pool.fetchrow(
+        "SELECT tenant_id FROM clinic_faqs WHERE id = $1", faq_id
+    )
     if not row:
         raise HTTPException(status_code=404, detail="FAQ no encontrada.")
     if row["tenant_id"] not in allowed_ids:
@@ -2779,7 +2819,11 @@ async def delete_faq(faq_id: int, user_data=Depends(verify_admin_token), allowed
         await delete_faq_embedding(faq_id)
     except Exception:
         pass
-    await db.pool.execute("DELETE FROM clinic_faqs WHERE id = $1 AND tenant_id = ANY($2::int[])", faq_id, allowed_ids)
+    await db.pool.execute(
+        "DELETE FROM clinic_faqs WHERE id = $1 AND tenant_id = ANY($2::int[])",
+        faq_id,
+        allowed_ids,
+    )
     return {"status": "deleted"}
 
 
@@ -3228,7 +3272,17 @@ for _field, _aliases in {
         "móvil",
         "movil",
     ],
-    "dni": ["dni", "documento", "document", "id_number", "cedula", "cédula", "nro_doc", "numero_documento", "nro_documento"],
+    "dni": [
+        "dni",
+        "documento",
+        "document",
+        "id_number",
+        "cedula",
+        "cédula",
+        "nro_doc",
+        "numero_documento",
+        "nro_documento",
+    ],
     "email": ["email", "correo", "mail", "e-mail"],
     "birth_date": [
         "fecha_nacimiento",
@@ -4184,7 +4238,9 @@ async def get_patient(id: int, tenant_id: int = Depends(get_resolved_tenant_id))
         new_token = str(uuid.uuid4())
         await db.pool.execute(
             "UPDATE patients SET anamnesis_token = $1 WHERE id = $2 AND tenant_id = $3",
-            new_token, id, tenant_id,
+            new_token,
+            id,
+            tenant_id,
         )
         patient_dict["anamnesis_token"] = new_token
     else:
@@ -4635,46 +4691,63 @@ async def download_patient_document_proxy(
     if file_path.startswith("http://") or file_path.startswith("https://"):
         import httpx
         import uuid as _uuid
+
         try:
             headers_dl = {}
             ycloud_key = os.getenv("YCLOUD_API_KEY")
             if ycloud_key and "ycloud" in file_path.lower():
                 headers_dl["X-API-Key"] = ycloud_key
-            async with httpx.AsyncClient(timeout=30.0, follow_redirects=True, headers=headers_dl) as client:
+            async with httpx.AsyncClient(
+                timeout=30.0, follow_redirects=True, headers=headers_dl
+            ) as client:
                 resp = await client.get(file_path)
                 if resp.status_code != 200:
-                    raise HTTPException(status_code=502, detail=f"Error descargando archivo externo: {resp.status_code}")
+                    raise HTTPException(
+                        status_code=502,
+                        detail=f"Error descargando archivo externo: {resp.status_code}",
+                    )
                 if len(resp.content) == 0:
                     raise HTTPException(status_code=502, detail="Archivo externo vacío")
-                content_type = document["mime_type"] or resp.headers.get("content-type", "application/octet-stream")
+                content_type = document["mime_type"] or resp.headers.get(
+                    "content-type", "application/octet-stream"
+                )
                 file_name = document["file_name"] or "document"
 
                 # Persistir a disco para que no se pierda
                 ext = os.path.splitext(file_name)[1] or ".jpg"
                 new_filename = f"{_uuid.uuid4()}{ext}"
-                uploads_dir = os.getenv("UPLOADS_DIR", os.path.join(os.getcwd(), "uploads"))
+                uploads_dir = os.getenv(
+                    "UPLOADS_DIR", os.path.join(os.getcwd(), "uploads")
+                )
                 media_dir = os.path.join(uploads_dir, str(tenant_id))
                 os.makedirs(media_dir, exist_ok=True)
                 local_path = os.path.join(media_dir, new_filename)
                 with open(local_path, "wb") as f:
                     f.write(resp.content)
                 new_file_path = f"/uploads/{tenant_id}/{new_filename}"
-                logger.info(f"✅ External media persisted: {new_file_path} ({len(resp.content)} bytes)")
+                logger.info(
+                    f"✅ External media persisted: {new_file_path} ({len(resp.content)} bytes)"
+                )
 
                 # Actualizar DB para que la próxima vez se sirva desde disco
                 await db.pool.execute(
                     "UPDATE patient_documents SET file_path = $1 WHERE id = $2 AND tenant_id = $3",
-                    new_file_path, doc_id, tenant_id,
+                    new_file_path,
+                    doc_id,
+                    tenant_id,
                 )
 
                 return Response(
                     content=resp.content,
                     media_type=content_type,
-                    headers={"Content-Disposition": f'inline; filename="{file_name}"'}
+                    headers={"Content-Disposition": f'inline; filename="{file_name}"'},
                 )
         except httpx.HTTPError as e:
             logger.error(f"Error downloading external media: {e}")
-            raise HTTPException(status_code=502, detail="No se pudo descargar el archivo desde el proveedor externo.")
+            raise HTTPException(
+                status_code=502,
+                detail="No se pudo descargar el archivo desde el proveedor externo.",
+            )
 
     # Limpiar path de posibles parámetros (HMAC legacy)
     clean_path = file_path.split("?")[0]
@@ -5530,22 +5603,23 @@ async def approve_payment_manually(
     """Aprueba manualmente un pago que la IA no pudo verificar. Actualiza status y payment_receipt_data."""
     apt = await db.pool.fetchrow(
         "SELECT id, payment_receipt_data, status, payment_status FROM appointments WHERE id = $1 AND tenant_id = $2",
-        id, tenant_id
+        id,
+        tenant_id,
     )
     if not apt:
         raise HTTPException(status_code=404, detail="Turno no encontrado")
 
     # Update receipt data to mark as manually verified
-    receipt = apt.get('payment_receipt_data')
+    receipt = apt.get("payment_receipt_data")
     if isinstance(receipt, str):
         receipt = json.loads(receipt) if receipt else {}
     if not isinstance(receipt, dict):
         receipt = {}
 
-    receipt['status'] = 'verified_manual'
-    receipt['manually_approved_by'] = user_data.email or user_data.role or 'admin'
-    receipt['manually_approved_at'] = datetime.now(timezone.utc).isoformat()
-    receipt.pop('failure_reason', None)
+    receipt["status"] = "verified_manual"
+    receipt["manually_approved_by"] = user_data.email or user_data.role or "admin"
+    receipt["manually_approved_at"] = datetime.now(timezone.utc).isoformat()
+    receipt.pop("failure_reason", None)
 
     await db.pool.execute(
         """UPDATE appointments SET
@@ -5554,9 +5628,13 @@ async def approve_payment_manually(
             payment_receipt_data = $1::jsonb,
             updated_at = NOW()
         WHERE id = $2 AND tenant_id = $3""",
-        json.dumps(receipt), id, tenant_id
+        json.dumps(receipt),
+        id,
+        tenant_id,
     )
-    logger.info(f"Payment manually approved: apt={id} by={receipt.get('manually_approved_by')}")
+    logger.info(
+        f"Payment manually approved: apt={id} by={receipt.get('manually_approved_by')}"
+    )
     return {"status": "approved", "appointment_id": id}
 
 
@@ -5910,13 +5988,20 @@ async def list_professionals(
             return [dict(row) for row in rows]
         except Exception as e:
             err_str = str(e).lower()
-            if "last_name" in err_str or "tenant_id" in err_str or "is_priority_professional" in err_str:
+            if (
+                "last_name" in err_str
+                or "tenant_id" in err_str
+                or "is_priority_professional" in err_str
+            ):
                 try:
                     rows = await db.pool.fetch(
                         f"SELECT p.id, p.first_name, p.specialty, p.is_active, p.tenant_id {base_join} WHERE p.tenant_id = ANY($1::int[])",
                         allowed_ids,
                     )
-                    return [dict(r) | {"last_name": "", "is_priority_professional": False} for r in rows]
+                    return [
+                        dict(r) | {"last_name": "", "is_priority_professional": False}
+                        for r in rows
+                    ]
                 except Exception:
                     pass
             try:
@@ -5952,7 +6037,9 @@ async def list_professionals(
             "SELECT p.id, p.first_name, p.specialty, p.is_active FROM professionals p INNER JOIN users u ON p.user_id = u.id AND u.role = 'professional' AND u.status = 'active' WHERE p.tenant_id = $1",
             tenant_id,
         )
-        return [dict(r) | {"last_name": "", "is_priority_professional": False} for r in rows]
+        return [
+            dict(r) | {"last_name": "", "is_priority_professional": False} for r in rows
+        ]
     except Exception as e:
         logger.warning(f"list_professionals fallback (no last_name) failed: {e}")
 
@@ -5969,7 +6056,9 @@ async def list_professionals(
             "SELECT p.id, p.first_name, p.specialty, p.is_active FROM professionals p INNER JOIN users u ON p.user_id = u.id AND u.role = 'professional' AND u.status = 'active' WHERE p.tenant_id = $1",
             tenant_id,
         )
-        return [dict(r) | {"last_name": "", "is_priority_professional": False} for r in rows]
+        return [
+            dict(r) | {"last_name": "", "is_priority_professional": False} for r in rows
+        ]
     except Exception as e:
         logger.error(f"list_professionals all fallbacks failed: {e}", exc_info=True)
         return []
@@ -6626,20 +6715,33 @@ def _validate_insurance_provider(data) -> None:
     if not name:
         raise HTTPException(status_code=422, detail="provider_name es obligatorio")
     if len(name) > 100:
-        raise HTTPException(status_code=422, detail="provider_name no puede superar 100 caracteres")
+        raise HTTPException(
+            status_code=422, detail="provider_name no puede superar 100 caracteres"
+        )
     if data.status not in VALID_INSURANCE_STATUSES:
         raise HTTPException(
             status_code=422,
             detail=f"status inválido. Debe ser uno de: {', '.join(VALID_INSURANCE_STATUSES)}",
         )
     if data.status == "restricted" and not data.restrictions:
-        raise HTTPException(status_code=422, detail="restrictions es obligatorio cuando status='restricted'")
+        raise HTTPException(
+            status_code=422,
+            detail="restrictions es obligatorio cuando status='restricted'",
+        )
     if data.status == "external_derivation" and not data.external_target:
-        raise HTTPException(status_code=422, detail="external_target es obligatorio cuando status='external_derivation'")
+        raise HTTPException(
+            status_code=422,
+            detail="external_target es obligatorio cuando status='external_derivation'",
+        )
     if data.ai_response_template and len(data.ai_response_template) > 1000:
-        raise HTTPException(status_code=422, detail="ai_response_template no puede superar 1000 caracteres")
+        raise HTTPException(
+            status_code=422,
+            detail="ai_response_template no puede superar 1000 caracteres",
+        )
     if data.copay_notes and len(data.copay_notes) > 500:
-        raise HTTPException(status_code=422, detail="copay_notes no puede superar 500 caracteres")
+        raise HTTPException(
+            status_code=422, detail="copay_notes no puede superar 500 caracteres"
+        )
 
 
 @router.get(
@@ -6685,7 +6787,9 @@ async def create_insurance_provider(
         provider_name,
     )
     if existing:
-        raise HTTPException(status_code=409, detail="Ya existe una obra social con ese nombre")
+        raise HTTPException(
+            status_code=409, detail="Ya existe una obra social con ese nombre"
+        )
 
     row = await db.pool.fetchrow(
         """
@@ -6711,10 +6815,18 @@ async def create_insurance_provider(
     try:
         from services.embedding_service import upsert_insurance_embedding
         import asyncio
-        asyncio.create_task(upsert_insurance_embedding(
-            tenant_id, row["id"], data.provider_name, data.status,
-            data.restrictions or "", data.copay_notes or "", data.ai_response_template or ""
-        ))
+
+        asyncio.create_task(
+            upsert_insurance_embedding(
+                tenant_id,
+                row["id"],
+                data.provider_name,
+                data.status,
+                data.restrictions or "",
+                data.copay_notes or "",
+                data.ai_response_template or "",
+            )
+        )
     except Exception:
         pass
     return {"status": "created", "id": row["id"]}
@@ -6761,10 +6873,18 @@ async def update_insurance_provider(
     try:
         from services.embedding_service import upsert_insurance_embedding
         import asyncio
-        asyncio.create_task(upsert_insurance_embedding(
-            tenant_id, provider_id, data.provider_name, data.status,
-            data.restrictions or "", data.copay_notes or "", data.ai_response_template or ""
-        ))
+
+        asyncio.create_task(
+            upsert_insurance_embedding(
+                tenant_id,
+                provider_id,
+                data.provider_name,
+                data.status,
+                data.restrictions or "",
+                data.copay_notes or "",
+                data.ai_response_template or "",
+            )
+        )
     except Exception:
         pass
     return {"status": "updated", "id": provider_id}
@@ -6791,6 +6911,7 @@ async def delete_insurance_provider(
     try:
         from services.embedding_service import delete_insurance_embedding
         import asyncio
+
         asyncio.create_task(delete_insurance_embedding(provider_id, tenant_id))
     except Exception:
         pass
@@ -6896,13 +7017,18 @@ async def _validate_derivation_rule(data, tenant_id: int) -> None:
             status_code=422,
             detail=f"target_type inválido. Debe ser uno de: {', '.join(VALID_TARGET_TYPES)}",
         )
-    if data.target_type == "specific_professional" and data.target_professional_id is None:
+    if (
+        data.target_type == "specific_professional"
+        and data.target_professional_id is None
+    ):
         raise HTTPException(
             status_code=422,
             detail="target_professional_id es obligatorio cuando target_type='specific_professional'",
         )
     if not data.treatment_categories:
-        raise HTTPException(status_code=422, detail="treatment_categories no puede estar vacío")
+        raise HTTPException(
+            status_code=422, detail="treatment_categories no puede estar vacío"
+        )
     # Verify professional belongs to tenant
     if data.target_professional_id is not None:
         prof_exists = await db.pool.fetchval(
@@ -6911,7 +7037,10 @@ async def _validate_derivation_rule(data, tenant_id: int) -> None:
             tenant_id,
         )
         if not prof_exists:
-            raise HTTPException(status_code=422, detail="El profesional especificado no pertenece a esta clínica")
+            raise HTTPException(
+                status_code=422,
+                detail="El profesional especificado no pertenece a esta clínica",
+            )
 
 
 @router.get(
@@ -6939,7 +7068,9 @@ async def list_derivation_rules(tenant_id: int = Depends(get_resolved_tenant_id)
     for r in rows:
         item = dict(r)
         if item.get("professional_first_name") is not None:
-            item["professional_name"] = f"{item.pop('professional_first_name')} {item.pop('professional_last_name')}".strip()
+            item["professional_name"] = (
+                f"{item.pop('professional_first_name')} {item.pop('professional_last_name')}".strip()
+            )
         else:
             item.pop("professional_first_name", None)
             item.pop("professional_last_name", None)
@@ -7002,15 +7133,27 @@ async def create_derivation_rule(
     try:
         from services.embedding_service import upsert_derivation_embedding
         import asyncio
+
         # Need to resolve professional name
         prof_name = ""
         if data.target_professional_id:
-            prof_row = await db.pool.fetchrow("SELECT first_name FROM professionals WHERE id = $1 AND tenant_id = $2", data.target_professional_id, tenant_id)
+            prof_row = await db.pool.fetchrow(
+                "SELECT first_name FROM professionals WHERE id = $1 AND tenant_id = $2",
+                data.target_professional_id,
+                tenant_id,
+            )
             prof_name = prof_row["first_name"] if prof_row else ""
-        asyncio.create_task(upsert_derivation_embedding(
-            tenant_id, row["id"], data.rule_name, data.patient_condition,
-            data.treatment_categories, data.target_type, prof_name
-        ))
+        asyncio.create_task(
+            upsert_derivation_embedding(
+                tenant_id,
+                row["id"],
+                data.rule_name,
+                data.patient_condition,
+                data.treatment_categories,
+                data.target_type,
+                prof_name,
+            )
+        )
     except Exception:
         pass
     return {"status": "created", "id": row["id"]}
@@ -7055,15 +7198,27 @@ async def update_derivation_rule(
     try:
         from services.embedding_service import upsert_derivation_embedding
         import asyncio
+
         # Need to resolve professional name
         prof_name = ""
         if data.target_professional_id:
-            prof_row = await db.pool.fetchrow("SELECT first_name FROM professionals WHERE id = $1 AND tenant_id = $2", data.target_professional_id, tenant_id)
+            prof_row = await db.pool.fetchrow(
+                "SELECT first_name FROM professionals WHERE id = $1 AND tenant_id = $2",
+                data.target_professional_id,
+                tenant_id,
+            )
             prof_name = prof_row["first_name"] if prof_row else ""
-        asyncio.create_task(upsert_derivation_embedding(
-            tenant_id, rule_id, data.rule_name, data.patient_condition,
-            data.treatment_categories, data.target_type, prof_name
-        ))
+        asyncio.create_task(
+            upsert_derivation_embedding(
+                tenant_id,
+                rule_id,
+                data.rule_name,
+                data.patient_condition,
+                data.treatment_categories,
+                data.target_type,
+                prof_name,
+            )
+        )
     except Exception:
         pass
     return {"status": "updated", "id": rule_id}
@@ -7090,6 +7245,7 @@ async def delete_derivation_rule(
     try:
         from services.embedding_service import delete_derivation_embedding
         import asyncio
+
         asyncio.create_task(delete_derivation_embedding(rule_id, tenant_id))
     except Exception:
         pass
@@ -7179,15 +7335,26 @@ class TreatmentTypeUpdate(BaseModel):
 
 def _validate_treatment_instruction_fields(treatment) -> None:
     """Valida los campos de instrucciones de un tipo de tratamiento."""
-    if treatment.pre_instructions is not None and len(treatment.pre_instructions) > 2000:
-        raise HTTPException(status_code=422, detail="pre_instructions no puede superar 2000 caracteres")
+    if (
+        treatment.pre_instructions is not None
+        and len(treatment.pre_instructions) > 2000
+    ):
+        raise HTTPException(
+            status_code=422, detail="pre_instructions no puede superar 2000 caracteres"
+        )
     if treatment.post_instructions is not None:
         if not isinstance(treatment.post_instructions, list):
-            raise HTTPException(status_code=422, detail="post_instructions debe ser una lista de objetos")
+            raise HTTPException(
+                status_code=422,
+                detail="post_instructions debe ser una lista de objetos",
+            )
         valid_timings = ("before", "after", "day_of", "same_day")
         for item in treatment.post_instructions:
             if not isinstance(item, dict):
-                raise HTTPException(status_code=422, detail="Cada elemento de post_instructions debe ser un objeto")
+                raise HTTPException(
+                    status_code=422,
+                    detail="Cada elemento de post_instructions debe ser un objeto",
+                )
             timing = item.get("timing")
             if timing is not None and timing not in valid_timings:
                 raise HTTPException(
@@ -7196,10 +7363,16 @@ def _validate_treatment_instruction_fields(treatment) -> None:
                 )
     if treatment.followup_template is not None:
         if not isinstance(treatment.followup_template, list):
-            raise HTTPException(status_code=422, detail="followup_template debe ser una lista de objetos")
+            raise HTTPException(
+                status_code=422,
+                detail="followup_template debe ser una lista de objetos",
+            )
         for item in treatment.followup_template:
             if not isinstance(item, dict):
-                raise HTTPException(status_code=422, detail="Cada elemento de followup_template debe ser un objeto")
+                raise HTTPException(
+                    status_code=422,
+                    detail="Cada elemento de followup_template debe ser un objeto",
+                )
             delay = item.get("delay_hours")
             if delay is not None:
                 if not isinstance(delay, (int, float)) or not (1 <= delay <= 720):
@@ -7208,7 +7381,10 @@ def _validate_treatment_instruction_fields(treatment) -> None:
                         detail=f"delay_hours debe ser un número entre 1 y 720, recibido: {delay}",
                     )
             if "message_template" not in item:
-                raise HTTPException(status_code=422, detail="Cada elemento de followup_template debe incluir 'message_template'")
+                raise HTTPException(
+                    status_code=422,
+                    detail="Cada elemento de followup_template debe incluir 'message_template'",
+                )
 
 
 @router.get(
@@ -7330,10 +7506,16 @@ async def create_treatment_type(
             treatment.is_available_for_booking,
             treatment.internal_notes,
             treatment.base_price or 0,
-            treatment.priority if treatment.priority in ("high", "medium-high", "medium", "low") else "medium",
+            treatment.priority
+            if treatment.priority in ("high", "medium-high", "medium", "low")
+            else "medium",
             treatment.pre_instructions,
-            json.dumps(treatment.post_instructions) if treatment.post_instructions is not None else None,
-            json.dumps(treatment.followup_template) if treatment.followup_template is not None else None,
+            json.dumps(treatment.post_instructions)
+            if treatment.post_instructions is not None
+            else None,
+            json.dumps(treatment.followup_template)
+            if treatment.followup_template is not None
+            else None,
         )
         # Insert professional assignments if provided
         if treatment.professional_ids and row:
@@ -7396,10 +7578,16 @@ async def update_treatment_type(
         treatment.is_available_for_booking,
         treatment.internal_notes,
         treatment.base_price or 0,
-        treatment.priority if treatment.priority in ("high", "medium-high", "medium", "low") else "medium",
+        treatment.priority
+        if treatment.priority in ("high", "medium-high", "medium", "low")
+        else "medium",
         treatment.pre_instructions,
-        json.dumps(treatment.post_instructions) if treatment.post_instructions is not None else None,
-        json.dumps(treatment.followup_template) if treatment.followup_template is not None else None,
+        json.dumps(treatment.post_instructions)
+        if treatment.post_instructions is not None
+        else None,
+        json.dumps(treatment.followup_template)
+        if treatment.followup_template is not None
+        else None,
         tenant_id,
         code,
     )
@@ -7408,18 +7596,30 @@ async def update_treatment_type(
     # Sync treatment instruction embedding if instructions were provided
     if treatment.pre_instructions or treatment.post_instructions:
         try:
-            from services.embedding_service import upsert_treatment_instruction_embedding
+            from services.embedding_service import (
+                upsert_treatment_instruction_embedding,
+            )
             import asyncio
+
             post = treatment.post_instructions
             if isinstance(post, str):
                 post = json.loads(post)
             # Need treatment ID from DB
-            tt_row = await db.pool.fetchrow("SELECT id FROM treatment_types WHERE tenant_id = $1 AND code = $2", tenant_id, code)
+            tt_row = await db.pool.fetchrow(
+                "SELECT id FROM treatment_types WHERE tenant_id = $1 AND code = $2",
+                tenant_id,
+                code,
+            )
             if tt_row:
-                asyncio.create_task(upsert_treatment_instruction_embedding(
-                    tenant_id, tt_row["id"], treatment.name,
-                    treatment.pre_instructions or "", post or []
-                ))
+                asyncio.create_task(
+                    upsert_treatment_instruction_embedding(
+                        tenant_id,
+                        tt_row["id"],
+                        treatment.name,
+                        treatment.pre_instructions or "",
+                        post or [],
+                    )
+                )
         except Exception:
             pass
     return {"status": "updated", "code": code}
@@ -7737,7 +7937,11 @@ async def delete_treatment_image(
         except Exception as e:
             logger.error(f"Error borrando archivo físico {file_path}: {e}")
 
-    await db.pool.execute("DELETE FROM treatment_images WHERE id = $1 AND tenant_id = $2", image_id, tenant_id)
+    await db.pool.execute(
+        "DELETE FROM treatment_images WHERE id = $1 AND tenant_id = $2",
+        image_id,
+        tenant_id,
+    )
     return {"status": "deleted"}
 
 

@@ -12,45 +12,68 @@ logger = logging.getLogger(__name__)
 _raw_secret = os.getenv("MEDIA_PROXY_SECRET", "")
 if not _raw_secret:
     import uuid as _uuid
+
     _raw_secret = _uuid.uuid4().hex
     logger.warning(
         "⚠️ MEDIA_PROXY_SECRET no definida. Se usará un secreto temporal aleatorio. "
         "Las URLs de medios firmadas se invalidarán al reiniciar el servidor. "
         "Define MEDIA_PROXY_SECRET en las variables de entorno del orchestrator."
     )
+else:
+    logger.info(f"✅ MEDIA_PROXY_SECRET configurada (longitud: {len(_raw_secret)})")
+
 MEDIA_PROXY_SECRET = _raw_secret
 MEDIA_URL_TTL = 3600 * 24  # 24 horas de validez por defecto para medios locales
+
 
 def generate_signed_url(url_path: str, tenant_id: int) -> Tuple[str, int]:
     """
     Genera una firma HMAC y un timestamp de expiración para una URL/Path.
     """
     expires = int(time.time()) + MEDIA_URL_TTL
-    
+
     # Crear firma HMAC
     message = f"{url_path}|{tenant_id}|{expires}"
     signature = hmac.new(
-        MEDIA_PROXY_SECRET.encode(),
-        message.encode(),
-        hashlib.sha256
+        MEDIA_PROXY_SECRET.encode(), message.encode(), hashlib.sha256
     ).hexdigest()
-    
+
+    logger.debug(
+        f"🔐 Generated signed URL: path={url_path[:50]}..., tenant={tenant_id}, expires={expires}, sig={signature[:16]}..."
+    )
+
     return signature, expires
 
-def verify_signed_url(url_path: str, tenant_id: int, signature: str, expires: int) -> bool:
+
+def verify_signed_url(
+    url_path: str, tenant_id: int, signature: str, expires: int
+) -> bool:
     """
     Verifica que la firma HMAC sea válida y no haya expirado.
     """
     # Verificar expiración
-    if int(time.time()) > expires:
+    now = int(time.time())
+    if now > expires:
+        logger.warning(
+            f"❌ URL expirada: now={now}, expires={expires}, path={url_path[:50]}..."
+        )
         return False
-    
+
     # Verificar firma
     message = f"{url_path}|{tenant_id}|{expires}"
     expected_signature = hmac.new(
-        MEDIA_PROXY_SECRET.encode(),
-        message.encode(),
-        hashlib.sha256
+        MEDIA_PROXY_SECRET.encode(), message.encode(), hashlib.sha256
     ).hexdigest()
-    
-    return hmac.compare_digest(signature, expected_signature)
+
+    is_valid = hmac.compare_digest(signature, expected_signature)
+
+    if is_valid:
+        logger.info(
+            f"✅ Signed URL verificada: path={url_path[:50]}..., tenant={tenant_id}"
+        )
+    else:
+        logger.warning(
+            f"❌ Signed URL inválida: path={url_path[:50]}..., tenant={tenant_id}, firma recibida={signature[:16]}..."
+        )
+
+    return is_valid
