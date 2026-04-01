@@ -3173,8 +3173,16 @@ async def create_patient(
 # Mapeo de aliases de columnas (case-insensitive, sin tildes)
 _COLUMN_ALIASES: Dict[str, str] = {}
 for _field, _aliases in {
-    "first_name": ["nombre", "first_name", "name", "primer_nombre"],
-    "last_name": ["apellido", "last_name", "surname", "segundo_nombre"],
+    "first_name": ["nombre", "nombres", "first_name", "name", "primer_nombre"],
+    "last_name": ["apellido", "apellidos", "last_name", "surname", "segundo_nombre"],
+    "_full_name": [
+        "apellido y nombre",
+        "nombre y apellido",
+        "nombre completo",
+        "full_name",
+        "nombre_completo",
+        "paciente",
+    ],
     "phone_number": [
         "telefono",
         "teléfono",
@@ -3183,8 +3191,13 @@ for _field, _aliases in {
         "celular",
         "tel",
         "whatsapp",
+        "tel_celular",
+        "numero_celular",
+        "nro_telefono",
+        "móvil",
+        "movil",
     ],
-    "dni": ["dni", "documento", "document", "id_number", "cedula", "cédula"],
+    "dni": ["dni", "documento", "document", "id_number", "cedula", "cédula", "nro_doc", "numero_documento", "nro_documento"],
     "email": ["email", "correo", "mail", "e-mail"],
     "birth_date": [
         "fecha_nacimiento",
@@ -3274,6 +3287,18 @@ def _parse_import_file(file_bytes: bytes, filename: str) -> List[Dict[str, Any]]
             field = _normalize_header(raw_key)
             if field and val:
                 mapped[field] = val
+        # Split _full_name into first_name + last_name
+        if "_full_name" in mapped and not mapped.get("first_name"):
+            full = mapped.pop("_full_name").strip()
+            parts = full.split(None, 1)  # split on first whitespace
+            if len(parts) == 2:
+                # "Apellido Nombre(s)" format (most common in Argentine CSVs)
+                mapped["last_name"] = parts[0]
+                mapped["first_name"] = parts[1]
+            else:
+                mapped["first_name"] = full
+        elif "_full_name" in mapped:
+            mapped.pop("_full_name")  # already have first_name, discard
         normalized.append(mapped)
     return normalized
 
