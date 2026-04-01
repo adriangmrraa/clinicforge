@@ -1400,12 +1400,16 @@ async def _verificar_disponibilidad(args: Dict, tenant_id: int) -> str:
 
     # Verificar feriado
     from services.holiday_service import is_holiday as check_is_holiday
-    _is_hol, _hol_name = await check_is_holiday(db.pool, tenant_id, dt)
-    if _is_hol:
+    _is_hol, _hol_name, _custom_hours = await check_is_holiday(db.pool, tenant_id, dt)
+    if _is_hol and _custom_hours:
+        # Feriado con atención — usar horario especial
+        start_hour = _custom_hours["start"]
+        end_hour = _custom_hours["end"]
+    elif _is_hol:
         return f"El {_fmt_date(dt)} es feriado ({_hol_name}). La clinica no atiende."
-
-    start_hour = day_config.get("start", "09:00")
-    end_hour = day_config.get("end", "18:00")
+    else:
+        start_hour = day_config.get("start", "09:00")
+        end_hour = day_config.get("end", "18:00")
 
     # Get duration for treatment
     duration = 30  # default
@@ -1514,8 +1518,21 @@ async def _agendar_turno(args: Dict, tenant_id: int) -> str:
 
     # Verificar feriado
     from services.holiday_service import is_holiday as check_is_holiday
-    _is_hol, _hol_name = await check_is_holiday(db.pool, tenant_id, appt_dt.date())
-    if _is_hol:
+    _is_hol, _hol_name, _custom_hours = await check_is_holiday(db.pool, tenant_id, appt_dt.date())
+    if _is_hol and _custom_hours:
+        # Feriado con atención — validar que el horario esté dentro del rango especial
+        from datetime import time as time_type
+        custom_start = time_type.fromisoformat(_custom_hours["start"])
+        custom_end = time_type.fromisoformat(_custom_hours["end"])
+        apt_time = appt_dt.time()
+        if apt_time < custom_start or apt_time >= custom_end:
+            return (
+                f"No se puede agendar el {target_date}: es {_hol_name} con horario especial de "
+                f"{_custom_hours['start']} a {_custom_hours['end']}. "
+                f"Elegí un horario dentro de ese rango."
+            )
+        # Horario válido dentro del rango especial — continuar con el flujo normal
+    elif _is_hol:
         return f"No se puede agendar el {target_date}: es feriado ({_hol_name}). Elegí otro día."
 
     appt_id = uuid.uuid4()

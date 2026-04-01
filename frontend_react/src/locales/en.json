@@ -1687,5 +1687,24 @@
     "generated": "Record generated successfully",
     "emailSent": "Record sent successfully",
     "error": "Error generating record"
+  },
+  "holidays": {
+    "title": "Holiday",
+    "workingDay": "Working day",
+    "closure": "Clinic closed",
+    "specialHours": "Special hours",
+    "startTime": "From",
+    "endTime": "To",
+    "save": "Save",
+    "cancel": "Cancel",
+    "invalidTimeRange": "Start time must be before end time",
+    "toggleSuccess": "Configuration updated",
+    "customHours": "Custom hours",
+    "nationalHoliday": "National holiday",
+    "customHoliday": "Custom holiday",
+    "recurring": "Recurring",
+    "workingDayDescription": "The clinic operates on this day with special hours",
+    "override_open": "Special hours",
+    "type": "Type"
   }
 }

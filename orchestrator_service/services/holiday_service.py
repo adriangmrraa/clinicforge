@@ -8,6 +8,12 @@ Priority chain:
   2. closure in tenant_holidays     → IS a holiday (custom closure)
   3. holidays library               → IS a holiday (national holiday)
   4. default                        → NOT a holiday
+
+Return type of is_holiday():
+  Tuple[bool, Optional[str], Optional[Dict[str, str]]]
+  - (False, None, None)                           → not a holiday
+  - (True, name, None)                            → closed all day (closure or library)
+  - (True, name, {"start": "HH:MM", "end": "HH:MM"})  → override_open WITH custom hours
 """
 
 import logging
@@ -23,8 +29,9 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-# Module-level cache: {country_code: {year: holidays_instance}}
-_holidays_cache: Dict[str, Dict[int, Any]] = {}
+# Module-level cache: {cache_key: holidays_instance}
+# cache_key format: "{country_code}:{language or 'default'}:{year}"
+_holidays_cache: Dict[str, Any] = {}
 
 # Supported countries (subset of holidays library, most common for ClinicForge)
 SUPPORTED_COUNTRIES = {
@@ -58,50 +65,104 @@ SUPPORTED_COUNTRIES = {
     'PT': 'Portugal',
 }
 
+# Language code mapping: app language → holidays library locale
+_LANGUAGE_MAP: Dict[str, str] = {
+    'es': 'es',
+    'en': 'en_US',
+    'fr': 'fr',
+}
 
-def _get_country_holidays(country_code: str, year: int):
-    """Get holidays instance for a country/year, with module-level caching."""
+
+def _get_country_holidays(country_code: str, year: int, language: Optional[str] = None):
+    """
+    Get holidays instance for a country/year, with module-level caching.
+
+    Args:
+        country_code: ISO 3166-1 alpha-2 country code (e.g. 'AR')
+        year: The year to load holidays for
+        language: Optional app language code ('es', 'en', 'fr'). Maps to holidays lib locale.
+
+    Returns:
+        holidays instance or None if unavailable
+    """
     if not HOLIDAYS_AVAILABLE:
         return None
 
-    if country_code not in _holidays_cache:
-        _holidays_cache[country_code] = {}
+    locale = _LANGUAGE_MAP.get(language or '', None)
+    cache_key = f"{country_code}:{language or 'default'}:{year}"
 
-    if year not in _holidays_cache[country_code]:
-        try:
-            _holidays_cache[country_code][year] = holidays_lib.country_holidays(country_code, years=year)
-        except NotImplementedError:
+    if cache_key in _holidays_cache:
+        return _holidays_cache[cache_key]
+
+    instance = None
+    try:
+        kwargs = {'years': year}
+        if locale:
+            kwargs['language'] = locale
+        instance = holidays_lib.country_holidays(country_code, **kwargs)
+    except (NotImplementedError, AttributeError, KeyError, ValueError):
+        # Language not supported for this country — retry without it
+        if locale:
+            logger.warning(
+                f"Language '{locale}' not supported for country '{country_code}' "
+                f"in holidays library. Retrying without language param."
+            )
+            try:
+                instance = holidays_lib.country_holidays(country_code, years=year)
+            except NotImplementedError:
+                logger.warning(f"Country {country_code} not supported by holidays library")
+                instance = None
+        else:
             logger.warning(f"Country {country_code} not supported by holidays library")
-            _holidays_cache[country_code][year] = None
+            instance = None
 
-    return _holidays_cache[country_code][year]
+    _holidays_cache[cache_key] = instance
+    return instance
 
 
-async def is_holiday(pool, tenant_id: int, check_date: date) -> Tuple[bool, Optional[str]]:
+async def is_holiday(
+    pool,
+    tenant_id: int,
+    check_date: date,
+) -> Tuple[bool, Optional[str], Optional[Dict[str, str]]]:
     """
     Check if a date is a holiday for the given tenant.
 
-    Returns: (is_holiday: bool, holiday_name: str | None)
+    Returns: Tuple[bool, Optional[str], Optional[Dict[str, str]]]
+
+    Return matrix:
+      - Not a holiday          → (False, None, None)
+      - Closure (custom)       → (True, name, None)
+      - override_open, no hrs  → (False, None, None)   ← normal working day
+      - override_open, w/ hrs  → (True, name, {"start": "HH:MM", "end": "HH:MM"})
+      - Library holiday        → (True, name, None)
 
     Priority chain:
-      1. override_open → (False, None)
-      2. closure       → (True, name)
-      3. library       → (True, name)
-      4. default       → (False, None)
+      1. override_open → (False, None, None) or (True, name, custom_hours)
+      2. closure       → (True, name, None)
+      3. library       → (True, name, None)
+      4. default       → (False, None, None)
     """
-    # Fetch tenant country_code + custom holidays for this date in one query
+    # Fetch tenant country_code + language in one query
     tenant_row = await pool.fetchrow(
-        "SELECT country_code FROM tenants WHERE id = $1", tenant_id
+        """
+        SELECT country_code,
+               COALESCE(config->>'language', config->>'ui_language', 'es') AS language
+        FROM tenants WHERE id = $1
+        """,
+        tenant_id
     )
     if not tenant_row:
-        return (False, None)
+        return (False, None, None)
 
     country_code = (tenant_row['country_code'] or 'US').upper()
+    language = tenant_row['language'] or 'es'
 
     # Check custom holidays (both exact date AND recurring by month/day)
     custom_rows = await pool.fetch(
         """
-        SELECT name, holiday_type FROM tenant_holidays
+        SELECT name, holiday_type, custom_hours_start, custom_hours_end
+        FROM tenant_holidays
         WHERE tenant_id = $1
           AND (
             date = $2
@@ -114,41 +175,65 @@ async def is_holiday(pool, tenant_id: int, check_date: date) -> Tuple[bool, Opti
     # Priority 1: override_open takes precedence
     for row in custom_rows:
         if row['holiday_type'] == 'override_open':
-            return (False, None)
+            hs = row['custom_hours_start']
+            he = row['custom_hours_end']
+            if hs and he:
+                # Reduced hours on a normally-holiday day
+                custom_hours = {
+                    'start': hs.strftime('%H:%M'),
+                    'end': he.strftime('%H:%M'),
+                }
+                return (True, row['name'], custom_hours)
+            # No custom hours → treat as normal working day
+            return (False, None, None)
 
     # Priority 2: custom closure
     for row in custom_rows:
         if row['holiday_type'] == 'closure':
-            return (True, row['name'])
+            return (True, row['name'], None)
 
     # Priority 3: library holiday
-    country_hols = _get_country_holidays(country_code, check_date.year)
+    country_hols = _get_country_holidays(country_code, check_date.year, language)
     if country_hols and check_date in country_hols:
-        return (True, country_hols.get(check_date))
+        return (True, country_hols.get(check_date), None)
 
     # Priority 4: not a holiday
-    return (False, None)
+    return (False, None, None)
 
 
 async def get_upcoming_holidays(pool, tenant_id: int, days_ahead: int = 30) -> List[Dict[str, Any]]:
     """
     Get upcoming holidays for the next N days (merged: library + custom closures).
-    Excludes dates with override_open.
+    Excludes dates with override_open (unless they have custom hours).
+
+    Each item includes:
+      - date: ISO date string
+      - name: localized holiday name
+      - source: 'library' | 'custom'
+      - holiday_type: 'closure' | 'override_open' (for custom) | 'library'
+      - custom_hours: None | {"start": "HH:MM", "end": "HH:MM"}
     """
     tenant_row = await pool.fetchrow(
-        "SELECT country_code FROM tenants WHERE id = $1", tenant_id
+        """
+        SELECT country_code,
+               COALESCE(config->>'language', config->>'ui_language', 'es') AS language
+        FROM tenants WHERE id = $1
+        """,
+        tenant_id
     )
     if not tenant_row:
         return []
 
     country_code = (tenant_row['country_code'] or 'US').upper()
+    language = tenant_row['language'] or 'es'
     today = date.today()
     end_date = today + timedelta(days=days_ahead)
 
     # Get all custom holidays in range
     custom_rows = await pool.fetch(
         """
-        SELECT date, name, holiday_type, is_recurring FROM tenant_holidays
+        SELECT date, name, holiday_type, is_recurring, custom_hours_start, custom_hours_end
+        FROM tenant_holidays
         WHERE tenant_id = $1
           AND (
             (date >= $2 AND date <= $3)
@@ -159,54 +244,91 @@ async def get_upcoming_holidays(pool, tenant_id: int, days_ahead: int = 30) -> L
     )
 
     # Build sets for overrides and closures
-    override_dates = set()
-    closures = {}
+    override_dates: set = set()
+    override_hours: Dict[date, Optional[Dict[str, str]]] = {}
+    override_names: Dict[date, str] = {}
+    closures: Dict[date, Dict[str, Any]] = {}
+
     for row in custom_rows:
+        hs = row['custom_hours_start']
+        he = row['custom_hours_end']
+        custom_hours = (
+            {'start': hs.strftime('%H:%M'), 'end': he.strftime('%H:%M')}
+            if hs and he else None
+        )
+
+        projected_dates = []
         if row['is_recurring']:
-            # Project recurring to current year window
             for year in range(today.year, end_date.year + 1):
                 try:
                     projected = date(year, row['date'].month, row['date'].day)
                 except ValueError:
                     continue  # Feb 29 in non-leap year
                 if today <= projected <= end_date:
-                    if row['holiday_type'] == 'override_open':
-                        override_dates.add(projected)
-                    elif row['holiday_type'] == 'closure':
-                        closures[projected] = row['name']
+                    projected_dates.append(projected)
         else:
+            if today <= row['date'] <= end_date:
+                projected_dates.append(row['date'])
+
+        for d in projected_dates:
             if row['holiday_type'] == 'override_open':
-                override_dates.add(row['date'])
+                override_dates.add(d)
+                override_hours[d] = custom_hours
+                override_names[d] = row['name']
             elif row['holiday_type'] == 'closure':
-                closures[row['date']] = row['name']
+                closures[d] = {
+                    'name': row['name'],
+                    'custom_hours': custom_hours,
+                }
 
     # Get library holidays
-    result = []
-    country_hols = _get_country_holidays(country_code, today.year)
+    country_hols = _get_country_holidays(country_code, today.year, language)
+    country_hols_next = None
     if today.year != end_date.year:
-        country_hols_next = _get_country_holidays(country_code, end_date.year)
-    else:
-        country_hols_next = None
+        country_hols_next = _get_country_holidays(country_code, end_date.year, language)
 
-    # Add library holidays (excluding overrides)
-    if country_hols:
-        for d, name in sorted(country_hols.items()):
-            if today <= d <= end_date and d not in override_dates:
-                result.append({'date': d.isoformat(), 'name': name, 'source': 'library'})
+    result = []
 
-    if country_hols_next:
-        for d, name in sorted(country_hols_next.items()):
-            if today <= d <= end_date and d not in override_dates:
-                result.append({'date': d.isoformat(), 'name': name, 'source': 'library'})
+    # Add library holidays (excluding plain overrides — but include override_open WITH hours)
+    for hols in [h for h in [country_hols, country_hols_next] if h]:
+        for d, name in sorted(hols.items()):
+            if not (today <= d <= end_date):
+                continue
+            if d in override_dates:
+                hours = override_hours.get(d)
+                if hours:
+                    # override_open with custom hours → report as reduced schedule
+                    result.append({
+                        'date': d.isoformat(),
+                        'name': override_names.get(d, name),
+                        'source': 'custom',
+                        'holiday_type': 'override_open',
+                        'custom_hours': hours,
+                    })
+                # else: plain override_open → clinic works normally, skip
+            else:
+                result.append({
+                    'date': d.isoformat(),
+                    'name': name,
+                    'source': 'library',
+                    'holiday_type': 'library',
+                    'custom_hours': None,
+                })
 
-    # Add custom closures (excluding overrides)
-    for d, name in closures.items():
+    # Add custom closures
+    for d, info in closures.items():
         if d not in override_dates:
-            result.append({'date': d.isoformat(), 'name': name, 'source': 'custom'})
+            result.append({
+                'date': d.isoformat(),
+                'name': info['name'],
+                'source': 'custom',
+                'holiday_type': 'closure',
+                'custom_hours': info['custom_hours'],
+            })
 
-    # Sort by date, deduplicate
-    result.sort(key=lambda x: x['date'])
-    seen = set()
+    # Sort by date, deduplicate (prefer custom over library for same date)
+    result.sort(key=lambda x: (x['date'], 0 if x['source'] == 'custom' else 1))
+    seen: set = set()
     deduped = []
     for item in result:
         if item['date'] not in seen:

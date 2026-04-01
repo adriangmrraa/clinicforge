@@ -1,7 +1,7 @@
 from sqlalchemy import (
     Column, Integer, String, Boolean, DateTime, ForeignKey, Text,
     BigInteger, DECIMAL, Date, Float, CheckConstraint, UniqueConstraint,
-    ForeignKeyConstraint, Index, Numeric, text
+    ForeignKeyConstraint, Index, Numeric, text, Time
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID, ARRAY, TIMESTAMP
 from sqlalchemy.orm import relationship, declarative_base
@@ -1002,6 +1002,8 @@ class TenantHoliday(Base):
     name = Column(Text, nullable=False)
     holiday_type = Column(String(20), nullable=False)
     is_recurring = Column(Boolean, nullable=False, default=False, server_default='false')
+    custom_hours_start = Column(Time, nullable=True)
+    custom_hours_end = Column(Time, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (

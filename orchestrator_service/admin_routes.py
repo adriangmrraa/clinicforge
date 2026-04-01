@@ -9,7 +9,7 @@ import httpx
 import logging
 import re
 from pathlib import Path
-from datetime import datetime, timedelta, date, timezone
+from datetime import datetime, timedelta, date, time, timezone
 from typing import List, Optional, Dict, Any, Union
 from fastapi import (
     APIRouter,
@@ -2514,12 +2514,29 @@ async def list_holidays(
 
     tenant_id = user_data.tenant_id
     holidays = await get_upcoming_holidays(db.pool, tenant_id, days_ahead=days)
+    # Enrich upcoming entries with custom_hours if present
+    for h in holidays:
+        if "custom_hours_start" in h and h["custom_hours_start"] is not None:
+            h["custom_hours"] = {
+                "start": h["custom_hours_start"].strftime("%H:%M") if hasattr(h["custom_hours_start"], "strftime") else str(h["custom_hours_start"])[:5],
+                "end": h["custom_hours_end"].strftime("%H:%M") if hasattr(h.get("custom_hours_end"), "strftime") else str(h.get("custom_hours_end", ""))[:5],
+            }
+        else:
+            h["custom_hours"] = None
     # Also fetch custom-only rows for management
     custom_rows = await db.pool.fetch(
-        "SELECT id, date, name, holiday_type, is_recurring, created_at FROM tenant_holidays WHERE tenant_id = $1 ORDER BY date ASC",
+        "SELECT id, date, name, holiday_type, is_recurring, created_at, custom_hours_start, custom_hours_end FROM tenant_holidays WHERE tenant_id = $1 ORDER BY date ASC",
         tenant_id,
     )
-    return {"upcoming": holidays, "custom": [dict(r) for r in custom_rows]}
+    custom_list = []
+    for r in custom_rows:
+        row = dict(r)
+        start = row.pop("custom_hours_start", None)
+        end = row.pop("custom_hours_end", None)
+        row["custom_hours_start"] = start.strftime("%H:%M") if start else None
+        row["custom_hours_end"] = end.strftime("%H:%M") if end else None
+        custom_list.append(row)
+    return {"upcoming": holidays, "custom": custom_list}
 
 
 @router.get(
@@ -2581,6 +2598,54 @@ async def create_holiday(data: Dict[str, Any], user_data=Depends(verify_admin_to
         raise HTTPException(status_code=400, detail=str(e))
 
 
+@router.post("/holidays/toggle", tags=["Feriados"], summary="Toggle feriado override_open")
+async def toggle_holiday(
+    data: Dict[str, Any],
+    tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    """Alterna un feriado override_open para una fecha: si existe lo elimina, si no lo crea."""
+    from datetime import date as date_type
+
+    holiday_date = data.get("date")
+    name = data.get("name", "Feriado con atención")
+
+    if not holiday_date:
+        raise HTTPException(status_code=422, detail="date es obligatorio")
+
+    try:
+        if isinstance(holiday_date, str):
+            parsed_date = date_type.fromisoformat(holiday_date)
+        else:
+            parsed_date = holiday_date
+    except (ValueError, TypeError):
+        raise HTTPException(
+            status_code=422, detail="Formato de fecha inválido. Usar YYYY-MM-DD"
+        )
+
+    existing = await db.pool.fetchrow(
+        "SELECT id FROM tenant_holidays WHERE tenant_id = $1 AND date = $2 AND holiday_type = 'override_open'",
+        tenant_id,
+        parsed_date,
+    )
+
+    if existing:
+        await db.pool.execute(
+            "DELETE FROM tenant_holidays WHERE id = $1 AND tenant_id = $2",
+            existing["id"],
+            tenant_id,
+        )
+        return {"status": "toggled_closed", "holiday_id": None}
+    else:
+        new_id = await db.pool.fetchval(
+            """INSERT INTO tenant_holidays (tenant_id, date, name, holiday_type, is_recurring)
+               VALUES ($1, $2, $3, 'override_open', false) RETURNING id""",
+            tenant_id,
+            parsed_date,
+            name.strip() if isinstance(name, str) else str(name),
+        )
+        return {"status": "toggled_open", "holiday_id": new_id}
+
+
 @router.put(
     "/holidays/{holiday_id}", tags=["Feriados"], summary="Actualizar feriado custom"
 )
@@ -2602,17 +2667,66 @@ async def update_holiday(
     if "name" in data:
         params.append(data["name"].strip())
         updates.append(f"name = ${len(params)}")
-    if "holiday_type" in data:
-        if data["holiday_type"] not in ("closure", "override_open"):
+
+    new_holiday_type = data.get("holiday_type")
+    if new_holiday_type is not None:
+        if new_holiday_type not in ("closure", "override_open"):
             raise HTTPException(
                 status_code=422,
                 detail="holiday_type debe ser 'closure' o 'override_open'",
             )
-        params.append(data["holiday_type"])
+        params.append(new_holiday_type)
         updates.append(f"holiday_type = ${len(params)}")
+
     if "is_recurring" in data:
         params.append(bool(data["is_recurring"]))
         updates.append(f"is_recurring = ${len(params)}")
+
+    # Custom hours handling
+    has_start = "custom_hours_start" in data
+    has_end = "custom_hours_end" in data
+
+    # If holiday_type is being changed to 'closure', NULL out custom hours
+    if new_holiday_type == "closure":
+        params.append(None)
+        updates.append(f"custom_hours_start = ${len(params)}")
+        params.append(None)
+        updates.append(f"custom_hours_end = ${len(params)}")
+    elif has_start or has_end:
+        # If only one is provided, raise 422
+        if has_start != has_end:
+            raise HTTPException(
+                status_code=422,
+                detail="Ambos horarios (inicio y fin) son necesarios",
+            )
+        # Both provided — parse and validate
+        raw_start = data["custom_hours_start"]
+        raw_end = data["custom_hours_end"]
+        if raw_start is None and raw_end is None:
+            # Explicit NULL — clear both
+            params.append(None)
+            updates.append(f"custom_hours_start = ${len(params)}")
+            params.append(None)
+            updates.append(f"custom_hours_end = ${len(params)}")
+        else:
+            try:
+                parsed_start = datetime.strptime(str(raw_start), "%H:%M").time()
+                parsed_end = datetime.strptime(str(raw_end), "%H:%M").time()
+            except (ValueError, TypeError):
+                raise HTTPException(
+                    status_code=422,
+                    detail="Formato de horario inválido. Usar HH:MM",
+                )
+            if parsed_start >= parsed_end:
+                raise HTTPException(
+                    status_code=422,
+                    detail="El horario de inicio debe ser anterior al de fin",
+                )
+            params.append(parsed_start)
+            updates.append(f"custom_hours_start = ${len(params)}")
+            params.append(parsed_end)
+            updates.append(f"custom_hours_end = ${len(params)}")
+
     if not updates:
         return {"status": "updated"}
 

@@ -8,6 +8,7 @@ import listPlugin from '@fullcalendar/list';
 import resourceTimeGridPlugin from '@fullcalendar/resource-timegrid';
 import AppointmentForm from '../components/AppointmentForm';
 import MobileAgenda from '../components/MobileAgenda';
+import HolidayDetailModal from '../components/HolidayDetailModal';
 import { RefreshCw, Stethoscope } from 'lucide-react';
 import AppointmentCard from '../components/AppointmentCard';
 import api from '../api/axios';
@@ -71,6 +72,9 @@ export interface Holiday {
   holiday_type?: string;
   is_recurring?: boolean;
   country_code?: string;
+  custom_hours_start?: string | null;
+  custom_hours_end?: string | null;
+  custom_hours?: { start: string; end: string } | null;
 }
 
 // ==================== SOURCE COLORS ====================
@@ -142,6 +146,7 @@ export default function AgendaView() {
   const [showModal, setShowModal] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<Appointment | null>(null);
+  const [selectedHoliday, setSelectedHoliday] = useState<Holiday | null>(null);
   // Keep selectedEvent in sync when appointments reload (e.g., after PAYMENT_CONFIRMED socket event)
   useEffect(() => {
     if (selectedEvent && appointments.length > 0) {
@@ -528,10 +533,8 @@ export default function AgendaView() {
     
     // Check if it's a holiday
     if (eventType === 'holiday') {
-      const holiday = info.event.extendedProps;
-      const isRecurring = holiday.is_recurring ? t('common.yes') : t('common.no');
-      const holidayTypeLabel = holiday.holiday_type === 'override_open' ? t('holidays.override_open') : t('holidays.closure');
-      alert(`${t('holidays.title')}:\n\n${holiday.name}\n📅 ${holiday.date}\n🔄 ${t('holidays.recurring')}: ${isRecurring}\n📋 ${t('holidays.type')}: ${holidayTypeLabel}`);
+      const holiday = info.event.extendedProps as Holiday;
+      setSelectedHoliday(holiday);
       return;
     }
     
@@ -678,6 +681,7 @@ export default function AgendaView() {
               onNewAppointment={(date) => handleDateClick({ date })}
               professionals={professionals}
               holidays={holidays}
+              onHolidaySave={() => fetchData()}
             />
         </div>
       ) : (
@@ -1046,6 +1050,14 @@ export default function AgendaView() {
           onDelete={handleDelete}
           isEditing={!!selectedEvent}
         />
+
+      {/* Holiday Detail Modal */}
+      <HolidayDetailModal
+        holiday={selectedHoliday}
+        isOpen={!!selectedHoliday}
+        onClose={() => setSelectedHoliday(null)}
+        onSaved={() => { setSelectedHoliday(null); fetchData(); }}
+      />
     </div>
   );
 }

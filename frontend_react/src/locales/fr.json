@@ -1475,5 +1475,24 @@
     "generated": "Fiche générée avec succès",
     "emailSent": "Fiche envoyée avec succès",
     "error": "Erreur lors de la génération de la fiche"
+  },
+  "holidays": {
+    "title": "Jour férié",
+    "workingDay": "Jour ouvrable",
+    "closure": "Clinique fermée",
+    "specialHours": "Horaires spéciaux",
+    "startTime": "De",
+    "endTime": "À",
+    "save": "Enregistrer",
+    "cancel": "Annuler",
+    "invalidTimeRange": "L'heure de début doit être antérieure à l'heure de fin",
+    "toggleSuccess": "Configuration mise à jour",
+    "customHours": "Horaires personnalisés",
+    "nationalHoliday": "Jour férié national",
+    "customHoliday": "Jour férié personnalisé",
+    "recurring": "Récurrent",
+    "workingDayDescription": "La clinique fonctionne ce jour avec des horaires spéciaux",
+    "override_open": "Horaires spéciaux",
+    "type": "Type"
   }
 }

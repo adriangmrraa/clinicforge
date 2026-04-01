@@ -5,6 +5,7 @@ import { Clock, User, Phone, Lock, CalendarDays, CalendarRange, List, ListOrdere
 import { format, parseISO, startOfWeek, endOfWeek, startOfMonth, endOfMonth, eachDayOfInterval, isWithinInterval, isSameDay, isAfter, addYears } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { useTranslation } from '../context/LanguageContext';
+import HolidayDetailModal from './HolidayDetailModal';
 
 type ViewMode = 'day' | 'week' | 'month' | 'list';
 
@@ -17,6 +18,7 @@ interface MobileAgendaProps {
     onNewAppointment: (date: Date) => void;
     professionals: Professional[];
     holidays?: Holiday[];
+    onHolidaySave?: () => void;
 }
 
 export default function MobileAgenda({
@@ -27,7 +29,8 @@ export default function MobileAgenda({
     onEventClick,
     onNewAppointment,
     professionals,
-    holidays = []
+    holidays = [],
+    onHolidaySave,
 }: MobileAgendaProps) {
     const { t } = useTranslation();
     const [viewMode, setViewMode] = useState<ViewMode>('day');
@@ -506,46 +509,13 @@ export default function MobileAgenda({
                 <div className="h-12" />
             </div>
 
-            {/* Holiday Modal */}
-            {holidayModal && (
-                <div className="fixed inset-0 z-[60] flex items-center justify-center p-6" onClick={() => setHolidayModal(null)}>
-                    <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
-                    <div
-                        className="relative bg-[#0d1117] border border-white/[0.08] rounded-2xl p-6 w-full max-w-sm shadow-2xl"
-                        onClick={e => e.stopPropagation()}
-                    >
-                        <div className="flex flex-col items-center text-center">
-                            <div className="w-16 h-16 rounded-full bg-red-500/15 flex items-center justify-center mb-4">
-                                <PartyPopper size={32} className="text-red-400" />
-                            </div>
-                            <h3 className="text-lg font-bold text-white mb-1">{holidayModal.name}</h3>
-                            <p className="text-sm text-white/50 mb-3">
-                                {format(parseISO(holidayModal.date), "EEEE d 'de' MMMM", { locale: es })}
-                            </p>
-                            <div className="flex gap-2 mb-4">
-                                <span className={`text-xs px-2.5 py-1 rounded-full font-semibold ${
-                                    holidayModal.holiday_type === 'closure'
-                                        ? 'bg-red-500/15 text-red-400'
-                                        : 'bg-amber-500/15 text-amber-400'
-                                }`}>
-                                    {holidayModal.holiday_type === 'closure' ? 'Clínica cerrada' : 'Horario especial'}
-                                </span>
-                                {holidayModal.is_recurring && (
-                                    <span className="text-xs px-2.5 py-1 rounded-full bg-blue-500/15 text-blue-400 font-semibold">
-                                        Recurrente
-                                    </span>
-                                )}
-                            </div>
-                            <button
-                                onClick={() => setHolidayModal(null)}
-                                className="w-full py-2.5 rounded-xl bg-white/[0.06] hover:bg-white/[0.1] text-white/70 text-sm font-semibold transition-colors"
-                            >
-                                Cerrar
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
+            {/* Holiday Detail Modal */}
+            <HolidayDetailModal
+                holiday={holidayModal}
+                isOpen={!!holidayModal}
+                onClose={() => setHolidayModal(null)}
+                onSaved={() => { setHolidayModal(null); onHolidaySave?.(); }}
+            />
 
             {/* FAB — New Appointment */}
             <button

@@ -1421,6 +1421,7 @@ async def check_availability(
         original_date = target_date
         auto_advanced = False
         auto_advance_reason = ""
+        _working_holiday_hours: dict | None = None  # Custom hours if working holiday
 
         for _advance in range(21):  # Buscar hasta 3 semanas adelante
             day_idx = target_date.weekday()
@@ -1445,8 +1446,18 @@ async def check_availability(
             # Verificar si es feriado
             from services.holiday_service import is_holiday as check_is_holiday
 
-            _is_hol, _hol_name = await check_is_holiday(db.pool, tid, target_date)
-            if _is_hol:
+            _is_hol, _hol_name, _custom_hours = await check_is_holiday(db.pool, tid, target_date)
+            if _is_hol and _custom_hours:
+                # Feriado con atención — guardar horario especial y continuar al slot generation
+                _working_holiday_hours = _custom_hours
+                if not auto_advanced:
+                    auto_advance_reason = (
+                        f"⚠️ El {target_date.strftime('%d/%m')} es {_hol_name} — horario especial de {_custom_hours['start']} a {_custom_hours['end']}"
+                    )
+                    auto_advanced = True
+                # No hace continue — cae al break como día válido
+            elif _is_hol:
+                # Feriado sin atención — saltar día como antes
                 if not auto_advanced:
                     auto_advance_reason = (
                         f"El {target_date.strftime('%d/%m')} es feriado ({_hol_name})"
@@ -1716,13 +1727,18 @@ async def check_availability(
         # 3. Determinar rango horario del día desde tenant working_hours
         day_start = CLINIC_HOURS_START
         day_end = CLINIC_HOURS_END
-        tenant_day_slots = (
-            tenant_day_cfg.get("slots", []) if tenant_day_cfg.get("enabled") else []
-        )
-        if tenant_day_slots:
-            # Usar el rango más amplio de los slots del tenant para este día
-            day_start = min(s["start"] for s in tenant_day_slots)
-            day_end = max(s["end"] for s in tenant_day_slots)
+        if _working_holiday_hours:
+            # Feriado con horario especial — usar custom hours en lugar del horario regular
+            day_start = _working_holiday_hours["start"]
+            day_end = _working_holiday_hours["end"]
+        else:
+            tenant_day_slots = (
+                tenant_day_cfg.get("slots", []) if tenant_day_cfg.get("enabled") else []
+            )
+            if tenant_day_slots:
+                # Usar el rango más amplio de los slots del tenant para este día
+                day_start = min(s["start"] for s in tenant_day_slots)
+                day_end = max(s["end"] for s in tenant_day_slots)
             # Marcar huecos entre slots del tenant como ocupados para todos los profesionales
             if len(tenant_day_slots) > 1:
                 sorted_slots = sorted(tenant_day_slots, key=lambda s: s["start"])
@@ -2020,10 +2036,23 @@ async def book_appointment(
         # No agendar en feriados
         from services.holiday_service import is_holiday as check_is_holiday
 
-        _is_hol, _hol_name = await check_is_holiday(
+        _is_hol, _hol_name, _custom_hours = await check_is_holiday(
             db.pool, tenant_id, apt_datetime.date()
         )
-        if _is_hol:
+        if _is_hol and _custom_hours:
+            # Feriado con atención — validar que el horario esté dentro del rango especial
+            from datetime import time as time_type
+            custom_start = time_type.fromisoformat(_custom_hours["start"])
+            custom_end = time_type.fromisoformat(_custom_hours["end"])
+            apt_time = apt_datetime.time()
+            if apt_time < custom_start or apt_time >= custom_end:
+                return (
+                    f"⚠️ El {apt_datetime.strftime('%d/%m/%Y')} es {_hol_name} con horario especial de "
+                    f"{_custom_hours['start']} a {_custom_hours['end']}. "
+                    f"Elegí un horario dentro de ese rango."
+                )
+            # Horario válido dentro del rango especial — continuar con el flujo normal
+        elif _is_hol:
             return f"❌ No se puede agendar el {apt_datetime.strftime('%d/%m/%Y')}: es feriado ({_hol_name}). Por favor elegí otro día."
         first_name = (
             str(first_name).strip() if first_name and str(first_name).strip() else None
@@ -5528,12 +5557,18 @@ REGLA ANTI-MARKDOWN (WHATSAPP):
     # Feriados próximos
     holidays_section = ""
     if upcoming_holidays:
-        hol_lines = [f"• {h['date']}: {h['name']}" for h in upcoming_holidays[:7]]
+        hol_lines = []
+        for h in upcoming_holidays[:7]:
+            ch = h.get("custom_hours")
+            if ch:
+                hol_lines.append(f"• {h['date']}: {h['name']} — HORARIO ESPECIAL {ch['start']}–{ch['end']}")
+            else:
+                hol_lines.append(f"• {h['date']}: {h['name']} — CERRADO")
         holidays_section = (
-            "\n\n## FERIADOS PRÓXIMOS (NO AGENDAR EN ESTOS DÍAS)\n"
+            "\n\n## FERIADOS PRÓXIMOS\n"
             + "\n".join(hol_lines)
         )
-        holidays_section += "\nREGLA: Si el paciente pide turno en un feriado, informale que es feriado y ofrecé el próximo día hábil. La tool check_availability ya auto-avanza pasando feriados."
+        holidays_section += "\nREGLA: Si feriado CERRADO → informale al paciente y ofrecé el próximo día hábil. Si HORARIO ESPECIAL → ofrecer turnos en ese rango. La tool check_availability ya auto-avanza pasando feriados cerrados y usa el horario especial en feriados con atención."
 
     # Greeting diferenciado
     greeting_rule = ""

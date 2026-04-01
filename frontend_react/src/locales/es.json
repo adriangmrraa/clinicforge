@@ -1741,6 +1741,25 @@
     "generated": "Ficha generada exitosamente",
     "emailSent": "Ficha enviada exitosamente",
     "error": "Error al generar la ficha"
+  },
+  "holidays": {
+    "title": "Feriado",
+    "workingDay": "Día laboral",
+    "closure": "Clínica cerrada",
+    "specialHours": "Horario especial",
+    "startTime": "Desde",
+    "endTime": "Hasta",
+    "save": "Guardar",
+    "cancel": "Cancelar",
+    "invalidTimeRange": "El horario de inicio debe ser anterior al de fin",
+    "toggleSuccess": "Configuración actualizada",
+    "customHours": "Horario personalizado",
+    "nationalHoliday": "Feriado nacional",
+    "customHoliday": "Feriado personalizado",
+    "recurring": "Recurrente",
+    "workingDayDescription": "La clínica atiende este día con horario especial",
+    "override_open": "Horario especial",
+    "type": "Tipo"
   }
 }
 
