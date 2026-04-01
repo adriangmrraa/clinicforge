@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from '../context/LanguageContext';
 import {
-  FileText, Plus, Download, Mail, Trash2,
+  FileText, Plus, Download, Mail, Trash2, Edit,
   RefreshCw, Loader2, X, ChevronLeft, AlertTriangle,
-  Send
+  Send, Save, Eye
 } from 'lucide-react';
 import DOMPurify from 'dompurify';
 import api from '../api/axios';
@@ -21,7 +21,7 @@ interface DigitalRecord {
   generation_warnings?: string[];
 }
 
-type ViewState = 'list' | 'generating' | 'preview';
+type ViewState = 'list' | 'generating' | 'preview' | 'editing';
 
 const TEMPLATE_TYPES = [
   { id: 'clinical_report', icon: '📋', color: 'blue' },
@@ -32,9 +32,10 @@ const TEMPLATE_TYPES = [
 
 interface Props {
   patientId: number;
+  patientEmail?: string;
 }
 
-export default function DigitalRecordsTab({ patientId }: Props) {
+export default function DigitalRecordsTab({ patientId, patientEmail }: Props) {
   const { t } = useTranslation();
 
   const [records, setRecords] = useState<DigitalRecord[]>([]);
@@ -46,6 +47,9 @@ export default function DigitalRecordsTab({ patientId }: Props) {
   const [emailTo, setEmailTo] = useState('');
   const [sending, setSending] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [editContent, setEditContent] = useState('');
+  const [saving, setSaving] = useState(false);
+  const editRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     fetchRecords();
@@ -62,6 +66,30 @@ export default function DigitalRecordsTab({ patientId }: Props) {
     } finally {
       setLoading(false);
     }
+  };
+
+  const fetchFullRecord = async (recordId: string): Promise<DigitalRecord | null> => {
+    try {
+      const resp = await api.get(`/admin/patients/${patientId}/digital-records/${recordId}`);
+      return resp.data;
+    } catch (err) {
+      console.error('Error fetching record:', err);
+      return null;
+    }
+  };
+
+  const handleViewRecord = async (record: DigitalRecord) => {
+    // If we don't have html_content, fetch the full record
+    if (!record.html_content) {
+      const full = await fetchFullRecord(record.id);
+      if (full) {
+        setSelectedRecord(full);
+        setRecords(prev => prev.map(r => r.id === record.id ? { ...r, html_content: full.html_content, generation_warnings: full.generation_warnings } : r));
+      }
+    } else {
+      setSelectedRecord(record);
+    }
+    setViewState('preview');
   };
 
   const handleGenerate = async (templateType: string) => {
@@ -90,7 +118,8 @@ export default function DigitalRecordsTab({ patientId }: Props) {
         `/admin/patients/${patientId}/digital-records/${record.id}/pdf`,
         { responseType: 'blob' }
       );
-      const url = window.URL.createObjectURL(new Blob([resp.data]));
+      const blob = new Blob([resp.data], { type: 'application/pdf' });
+      const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
       link.setAttribute('download', `${record.title || 'documento'}.pdf`);
@@ -108,9 +137,8 @@ export default function DigitalRecordsTab({ patientId }: Props) {
     setSending(true);
     try {
       await api.post(`/admin/patients/${patientId}/digital-records/${record.id}/email`, {
-        email,
+        to_email: email,
       });
-      // Update the local record with sent info
       const updated = { ...record, sent_to_email: email, sent_at: new Date().toISOString(), status: 'sent' };
       setRecords(prev => prev.map(r => r.id === record.id ? updated : r));
       if (selectedRecord?.id === record.id) setSelectedRecord(updated);
@@ -137,30 +165,27 @@ export default function DigitalRecordsTab({ patientId }: Props) {
     }
   };
 
-  const handleSaveEdit = async (record: DigitalRecord, htmlContent: string) => {
-    try {
-      const resp = await api.patch(`/admin/patients/${patientId}/digital-records/${record.id}`, {
-        html_content: htmlContent,
-      });
-      const updated = resp.data as DigitalRecord;
-      setRecords(prev => prev.map(r => r.id === record.id ? updated : r));
-      setSelectedRecord(updated);
-    } catch (err) {
-      console.error('Error saving edit:', err);
-    }
+  const handleStartEdit = () => {
+    if (!selectedRecord?.html_content) return;
+    setEditContent(selectedRecord.html_content);
+    setViewState('editing');
   };
 
-  const handleRegenerateSection = async (record: DigitalRecord, sectionId: string) => {
+  const handleSaveEdit = async () => {
+    if (!selectedRecord) return;
+    setSaving(true);
     try {
-      const resp = await api.post(
-        `/admin/patients/${patientId}/digital-records/${record.id}/regenerate-section`,
-        { section_id: sectionId }
-      );
-      const updated = resp.data as DigitalRecord;
-      setRecords(prev => prev.map(r => r.id === record.id ? updated : r));
+      await api.patch(`/admin/patients/${patientId}/digital-records/${selectedRecord.id}`, {
+        html_content: editContent,
+      });
+      const updated = { ...selectedRecord, html_content: editContent, updated_at: new Date().toISOString() };
+      setRecords(prev => prev.map(r => r.id === selectedRecord.id ? updated : r));
       setSelectedRecord(updated);
+      setViewState('preview');
     } catch (err) {
-      console.error('Error regenerating section:', err);
+      console.error('Error saving edit:', err);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -187,9 +212,9 @@ export default function DigitalRecordsTab({ patientId }: Props) {
     );
   };
 
-  const getTemplateColor = (templateType: string) => {
+  const getTemplateLabel = (templateType: string) => {
     const tpl = TEMPLATE_TYPES.find(t => t.id === templateType);
-    return tpl?.color || 'blue';
+    return tpl ? `${tpl.icon} ${t(`digitalRecords.${tpl.id}`)}` : templateType;
   };
 
   // ─── Generating state ───────────────────────────────────────────────────────
@@ -198,6 +223,56 @@ export default function DigitalRecordsTab({ patientId }: Props) {
       <div className="flex flex-col items-center justify-center py-20 gap-4">
         <Loader2 size={40} className="text-white/40 animate-spin" />
         <p className="text-white/60 text-sm">{t('digitalRecords.generating')}</p>
+      </div>
+    );
+  }
+
+  // ─── Editing state ──────────────────────────────────────────────────────────
+  if (viewState === 'editing' && selectedRecord) {
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <button
+            onClick={() => setViewState('preview')}
+            className="flex items-center gap-2 text-white/60 hover:text-white transition-colors text-sm"
+          >
+            <ChevronLeft size={16} />
+            {t('digitalRecords.back')}
+          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setViewState('preview')}
+              className="flex items-center gap-2 px-3 py-1.5 bg-white/[0.06] border border-white/[0.08] text-white/70 rounded-lg hover:bg-white/[0.1] text-xs"
+            >
+              <Eye size={14} />
+              Vista previa
+            </button>
+            <button
+              onClick={handleSaveEdit}
+              disabled={saving}
+              className="flex items-center gap-2 px-4 py-1.5 bg-white text-[#0a0e1a] rounded-lg hover:bg-white/90 text-xs font-medium disabled:opacity-50"
+            >
+              {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+              {saving ? 'Guardando...' : 'Guardar cambios'}
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+            <Edit size={18} className="text-blue-400" />
+            Editando: {selectedRecord.title}
+          </h3>
+          <p className="text-xs text-white/40 mt-1">Editá el HTML del documento. Los cambios se guardan y el PDF se regenera al descargar.</p>
+        </div>
+
+        <textarea
+          ref={editRef}
+          value={editContent}
+          onChange={e => setEditContent(e.target.value)}
+          className="w-full h-[60vh] bg-[#0d1117] border border-white/[0.08] text-white/90 rounded-lg p-4 text-sm font-mono resize-y focus:outline-none focus:border-white/20"
+          spellCheck={false}
+        />
       </div>
     );
   }
@@ -219,6 +294,13 @@ export default function DigitalRecordsTab({ patientId }: Props) {
           <div className="flex items-center gap-2 flex-wrap">
             {getStatusBadge(record)}
             <button
+              onClick={handleStartEdit}
+              className="flex items-center gap-2 px-3 py-1.5 bg-blue-500/10 border border-blue-500/20 text-blue-400 rounded-lg hover:bg-blue-500/20 transition-colors text-xs"
+            >
+              <Edit size={14} />
+              Editar
+            </button>
+            <button
               onClick={() => handleDownloadPdf(record)}
               className="flex items-center gap-2 px-3 py-1.5 bg-white/[0.06] border border-white/[0.08] text-white/70 rounded-lg hover:bg-white/[0.1] hover:text-white transition-colors text-xs"
             >
@@ -226,7 +308,7 @@ export default function DigitalRecordsTab({ patientId }: Props) {
               {t('digitalRecords.downloadPdf')}
             </button>
             <button
-              onClick={() => { setEmailTo(''); setEmailModalOpen(true); }}
+              onClick={() => { setEmailTo(patientEmail || ''); setEmailModalOpen(true); }}
               className="flex items-center gap-2 px-3 py-1.5 bg-white/[0.06] border border-white/[0.08] text-white/70 rounded-lg hover:bg-white/[0.1] hover:text-white transition-colors text-xs"
             >
               <Mail size={14} />
@@ -237,19 +319,23 @@ export default function DigitalRecordsTab({ patientId }: Props) {
               className="flex items-center gap-2 px-3 py-1.5 bg-red-500/10 border border-red-500/20 text-red-400 rounded-lg hover:bg-red-500/20 transition-colors text-xs"
             >
               <Trash2 size={14} />
-              {t('digitalRecords.delete')}
             </button>
           </div>
         </div>
 
-        {/* Title */}
+        {/* Title + meta */}
         <div>
           <h3 className="text-lg font-semibold text-white">{record.title}</h3>
-          {record.created_at && (
-            <p className="text-xs text-white/40 mt-0.5">
-              {new Date(record.created_at).toLocaleString('es-AR')}
-            </p>
-          )}
+          <div className="flex items-center gap-3 mt-1">
+            <span className="text-xs text-white/40">
+              {getTemplateLabel(record.template_type)}
+            </span>
+            {record.created_at && (
+              <span className="text-xs text-white/40">
+                {new Date(record.created_at).toLocaleString('es-AR')}
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Warnings */}
@@ -270,10 +356,10 @@ export default function DigitalRecordsTab({ patientId }: Props) {
         )}
 
         {/* HTML Preview */}
-        <div className="bg-white rounded-lg p-6 text-black overflow-auto max-h-[70vh] shadow-lg">
+        <div className="bg-white rounded-lg p-8 text-black overflow-auto max-h-[70vh] shadow-lg print:shadow-none">
           <div
             dangerouslySetInnerHTML={{
-              __html: DOMPurify.sanitize(record.html_content || ''),
+              __html: DOMPurify.sanitize(record.html_content || '', { ADD_TAGS: ['style'], ADD_ATTR: ['data-section', 'data-editable'] }),
             }}
           />
         </div>
@@ -283,6 +369,7 @@ export default function DigitalRecordsTab({ patientId }: Props) {
           <p className="text-xs text-white/40 flex items-center gap-1">
             <Send size={12} />
             {t('digitalRecords.sentTo')}: {record.sent_to_email}
+            {record.sent_at && ` — ${new Date(record.sent_at).toLocaleString('es-AR')}`}
           </p>
         )}
       </div>
@@ -302,7 +389,6 @@ export default function DigitalRecordsTab({ patientId }: Props) {
           <button
             onClick={fetchRecords}
             className="p-2 text-white/40 hover:text-white/70 hover:bg-white/[0.04] rounded-lg transition-colors"
-            title="Refrescar"
           >
             <RefreshCw size={16} />
           </button>
@@ -334,23 +420,20 @@ export default function DigitalRecordsTab({ patientId }: Props) {
         </div>
       ) : (
         <div className="space-y-3">
-          {records.map(record => {
-            const color = getTemplateColor(record.template_type);
-            return (
-              <div
-                key={record.id}
-                className="bg-white/[0.03] border border-white/[0.06] rounded-lg p-4 flex flex-col sm:flex-row sm:items-center gap-3"
-              >
+          {records.map(record => (
+            <div
+              key={record.id}
+              className="bg-white/[0.03] border border-white/[0.06] rounded-lg p-4 hover:border-white/[0.12] transition-all"
+            >
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3">
                 {/* Left: info */}
                 <div className="flex-1 min-w-0">
                   <div className="flex flex-wrap items-center gap-2 mb-1">
                     <span className="text-sm font-semibold text-white truncate">{record.title}</span>
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-${color}-500/10 text-${color}-400`}>
-                      {t(`digitalRecords.${record.template_type}`) || record.template_type}
-                    </span>
                     {getStatusBadge(record)}
                   </div>
                   <div className="flex flex-wrap items-center gap-3 text-xs text-white/40">
+                    <span>{getTemplateLabel(record.template_type)}</span>
                     {record.created_at && (
                       <span>{new Date(record.created_at).toLocaleString('es-AR')}</span>
                     )}
@@ -366,49 +449,49 @@ export default function DigitalRecordsTab({ patientId }: Props) {
                 {/* Right: actions */}
                 <div className="flex items-center gap-2 shrink-0">
                   <button
-                    onClick={() => { setSelectedRecord(record); setViewState('preview'); }}
+                    onClick={() => handleViewRecord(record)}
                     className="flex items-center gap-1.5 px-3 py-1.5 bg-white/[0.06] border border-white/[0.08] text-white/70 rounded-lg hover:bg-white/[0.1] hover:text-white transition-colors text-xs"
                   >
-                    <FileText size={13} />
+                    <Eye size={13} />
                     {t('digitalRecords.view')}
                   </button>
                   <button
                     onClick={() => handleDownloadPdf(record)}
-                    className="p-1.5 bg-white/[0.06] border border-white/[0.08] text-white/50 rounded-lg hover:bg-white/[0.1] hover:text-white transition-colors"
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white/[0.06] border border-white/[0.08] text-white/50 rounded-lg hover:bg-white/[0.1] hover:text-white transition-colors text-xs"
                     title={t('digitalRecords.downloadPdf')}
                   >
-                    <Download size={14} />
+                    <Download size={13} />
                   </button>
                   <button
-                    onClick={() => { setSelectedRecord(record); setEmailTo(''); setEmailModalOpen(true); }}
-                    className="p-1.5 bg-white/[0.06] border border-white/[0.08] text-white/50 rounded-lg hover:bg-white/[0.1] hover:text-white transition-colors"
+                    onClick={() => { setSelectedRecord(record); setEmailTo(patientEmail || ''); setEmailModalOpen(true); }}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white/[0.06] border border-white/[0.08] text-white/50 rounded-lg hover:bg-white/[0.1] hover:text-white transition-colors text-xs"
                     title={t('digitalRecords.sendEmail')}
                   >
-                    <Mail size={14} />
+                    <Mail size={13} />
                   </button>
                   <button
                     onClick={() => handleDelete(record.id)}
-                    className="p-1.5 bg-red-500/10 border border-red-500/20 text-red-400 rounded-lg hover:bg-red-500/20 transition-colors"
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 bg-red-500/10 border border-red-500/20 text-red-400 rounded-lg hover:bg-red-500/20 transition-colors text-xs"
                     title={t('digitalRecords.delete')}
                   >
-                    <Trash2 size={14} />
+                    <Trash2 size={13} />
                   </button>
                 </div>
               </div>
-            );
-          })}
+            </div>
+          ))}
         </div>
       )}
 
       {/* Template Selection Modal */}
       {generateModalOpen && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-[#0d1117] border border-white/[0.08] rounded-xl w-full max-w-md shadow-2xl">
             <div className="flex items-center justify-between p-5 border-b border-white/[0.06]">
               <h2 className="text-base font-semibold text-white">{t('digitalRecords.selectTemplate')}</h2>
               <button
                 onClick={() => setGenerateModalOpen(false)}
-                className="text-white/40 hover:text-white/70 bg-white/[0.06] p-1.5 rounded-full transition-colors"
+                className="text-white/40 hover:text-white/70 p-1.5 rounded-full transition-colors"
               >
                 <X size={16} />
               </button>
@@ -419,11 +502,11 @@ export default function DigitalRecordsTab({ patientId }: Props) {
                   key={tpl.id}
                   onClick={() => handleGenerate(tpl.id)}
                   disabled={generating}
-                  className="flex flex-col items-start gap-2 p-4 bg-white/[0.03] border border-white/[0.06] rounded-lg hover:bg-white/[0.06] hover:border-white/[0.12] transition-all text-left group disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex flex-col items-start gap-2 p-4 bg-white/[0.03] border border-white/[0.06] rounded-lg hover:bg-white/[0.06] hover:border-white/[0.12] transition-all text-left group disabled:opacity-50"
                 >
                   <span className="text-2xl">{tpl.icon}</span>
                   <div>
-                    <p className="text-sm font-semibold text-white group-hover:text-white/90">
+                    <p className="text-sm font-semibold text-white">
                       {t(`digitalRecords.${tpl.id}`)}
                     </p>
                     <p className="text-xs text-white/40 mt-0.5 leading-snug">
@@ -439,36 +522,62 @@ export default function DigitalRecordsTab({ patientId }: Props) {
 
       {/* Email Send Modal */}
       {emailModalOpen && selectedRecord && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-[#0d1117] border border-white/[0.08] rounded-xl w-full max-w-sm shadow-2xl">
             <div className="flex items-center justify-between p-5 border-b border-white/[0.06]">
-              <h2 className="text-base font-semibold text-white">{t('digitalRecords.sendEmailTitle')}</h2>
+              <h2 className="text-base font-semibold text-white flex items-center gap-2">
+                <Mail size={18} className="text-blue-400" />
+                {t('digitalRecords.sendEmailTitle')}
+              </h2>
               <button
-                onClick={() => { setEmailModalOpen(false); setSelectedRecord(null); }}
-                className="text-white/40 hover:text-white/70 bg-white/[0.06] p-1.5 rounded-full transition-colors"
+                onClick={() => { setEmailModalOpen(false); }}
+                className="text-white/40 hover:text-white/70 p-1.5 rounded-full transition-colors"
               >
                 <X size={16} />
               </button>
             </div>
             <div className="p-5 space-y-4">
-              <input
-                type="email"
-                value={emailTo}
-                onChange={e => setEmailTo(e.target.value)}
-                placeholder={t('digitalRecords.emailPlaceholder')}
-                className="w-full bg-white/[0.04] border border-white/[0.08] text-white placeholder-white/30 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-white/20 focus:bg-white/[0.06] transition-colors"
-              />
+              <p className="text-xs text-white/50">
+                Enviando: <span className="text-white/80 font-medium">{selectedRecord.title}</span>
+              </p>
+
+              {/* Patient email quick button */}
+              {patientEmail && (
+                <button
+                  onClick={() => setEmailTo(patientEmail)}
+                  className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg border text-sm transition-colors ${
+                    emailTo === patientEmail
+                      ? 'bg-blue-500/10 border-blue-500/30 text-blue-400'
+                      : 'bg-white/[0.03] border-white/[0.06] text-white/60 hover:bg-white/[0.06]'
+                  }`}
+                >
+                  <Mail size={14} />
+                  Email del paciente: {patientEmail}
+                </button>
+              )}
+
+              <div>
+                <label className="text-xs text-white/50 mb-1 block">O ingresá otro email:</label>
+                <input
+                  type="email"
+                  value={emailTo}
+                  onChange={e => setEmailTo(e.target.value)}
+                  placeholder={t('digitalRecords.emailPlaceholder')}
+                  className="w-full bg-white/[0.04] border border-white/[0.08] text-white placeholder-white/30 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-white/20 focus:bg-white/[0.06] transition-colors"
+                />
+              </div>
+
               <div className="flex gap-3">
                 <button
-                  onClick={() => { setEmailModalOpen(false); setSelectedRecord(null); }}
-                  className="flex-1 px-4 py-2 bg-white/[0.06] border border-white/[0.08] text-white/70 rounded-lg hover:bg-white/[0.1] hover:text-white transition-colors text-sm"
+                  onClick={() => setEmailModalOpen(false)}
+                  className="flex-1 px-4 py-2 bg-white/[0.06] border border-white/[0.08] text-white/70 rounded-lg hover:bg-white/[0.1] text-sm"
                 >
                   {t('common.cancel')}
                 </button>
                 <button
                   onClick={() => handleSendEmail(selectedRecord, emailTo)}
                   disabled={sending || !emailTo.trim()}
-                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-white text-[#0a0e1a] rounded-lg hover:bg-white/90 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-white text-[#0a0e1a] rounded-lg hover:bg-white/90 text-sm font-medium disabled:opacity-50"
                 >
                   {sending ? (
                     <>
@@ -478,7 +587,7 @@ export default function DigitalRecordsTab({ patientId }: Props) {
                   ) : (
                     <>
                       <Send size={14} />
-                      {t('digitalRecords.sendEmail')}
+                      Enviar
                     </>
                   )}
                 </button>

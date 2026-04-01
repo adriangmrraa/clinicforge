@@ -501,6 +501,7 @@ export default function PatientDetail() {
         return (
           <DigitalRecordsTab
             patientId={parseInt(id!)}
+            patientEmail={patient?.email || ''}
           />
         );
 
