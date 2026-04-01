@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { ChevronDown, ChevronRight, Phone } from 'lucide-react';
-import { useTranslation } from 'react-i18next';
+import { useTranslation } from '../../context/LanguageContext';
 import type { TreatmentGroup } from '../../types/liquidation';
 import SessionRow from './SessionRow';
 

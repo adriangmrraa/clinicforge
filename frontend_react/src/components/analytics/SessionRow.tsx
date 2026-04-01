@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { FileText, Calendar } from 'lucide-react';
-import { useTranslation } from 'react-i18next';
+import { useTranslation } from '../../context/LanguageContext';
 import type { LiquidationSession } from '../../types/liquidation';
 
 interface Props {

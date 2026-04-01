@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { ChevronDown, ChevronRight, User, Stethoscope } from 'lucide-react';
-import { useTranslation } from 'react-i18next';
+import { useTranslation } from '../../context/LanguageContext';
 import type { LiquidationProfessional } from '../../types/liquidation';
 import TreatmentGroupAccordion from './TreatmentGroupAccordion';
 
