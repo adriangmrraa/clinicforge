@@ -470,10 +470,14 @@ async def unified_send_message(
 
             from ycloud_client import YCloudClient
 
-            # Intentar obtener el 'from' (número de la clínica) si está en meta o credentials
-            from_number = await get_tenant_credential(
-                tenant_id, "YCLOUD_WHATSAPP_NUMBER"
+            # Use bot_phone_number from tenants (same as response_sender)
+            from_number = await pool.fetchval(
+                "SELECT bot_phone_number FROM tenants WHERE id = $1", tenant_id
             )
+            if not from_number:
+                from_number = await get_tenant_credential(
+                    tenant_id, "YCLOUD_WHATSAPP_NUMBER"
+                )
 
             client = YCloudClient(api_key)
             # En YCloud, external_user_id es el teléfono (phone_number)
