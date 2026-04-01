@@ -22,77 +22,79 @@ export default function ProfessionalAccordion({ professional, formatCurrency }: 
       {/* Header */}
       <button
         onClick={() => setExpanded(prev => !prev)}
-        className="w-full flex items-center gap-3 px-5 py-4 hover:bg-white/[0.04] transition-colors duration-200 text-left relative"
+        className="w-full px-4 py-3 hover:bg-white/[0.04] transition-colors duration-200 text-left relative"
       >
         {/* Blue left accent bar when expanded */}
         {expanded && (
-          <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[2px] h-6 bg-blue-400/60 rounded-r-full" />
+          <div className="absolute left-0 top-0 bottom-0 w-[2px] bg-blue-400/60 rounded-r-full" />
         )}
 
-        {/* Chevron */}
-        <ChevronDown
-          size={16}
-          className="text-white/30 shrink-0 transition-transform duration-250"
-          style={{
-            transform: expanded ? 'rotate(0deg)' : 'rotate(-90deg)',
-            transitionTimingFunction: 'cubic-bezier(0.34, 1.56, 0.64, 1)',
-          }}
-        />
+        {/* Top row: chevron + avatar + name + specialty */}
+        <div className="flex items-center gap-2.5">
+          <ChevronDown
+            size={16}
+            className="text-white/30 shrink-0 transition-transform duration-250"
+            style={{
+              transform: expanded ? 'rotate(0deg)' : 'rotate(-90deg)',
+              transitionTimingFunction: 'cubic-bezier(0.34, 1.56, 0.64, 1)',
+            }}
+          />
 
-        {/* Gradient avatar */}
-        <div
-          className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 text-xs font-bold text-white/80"
-          style={{
-            background: `linear-gradient(135deg, hsl(${hue},50%,25%), hsl(${hue},40%,18%))`,
-            boxShadow: `0 0 10px hsla(${hue},50%,40%,0.2)`,
-          }}
-        >
-          {professional.name[0].toUpperCase()}
-        </div>
-
-        {/* Name + specialty + progress bar */}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-semibold text-white text-sm">{professional.name}</span>
-            <span className="flex items-center gap-1 text-white/40 text-xs">
-              <Stethoscope size={11} />
-              {professional.specialty}
-            </span>
+          {/* Gradient avatar */}
+          <div
+            className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 text-xs font-bold text-white/80"
+            style={{
+              background: `linear-gradient(135deg, hsl(${hue},50%,25%), hsl(${hue},40%,18%))`,
+              boxShadow: `0 0 10px hsla(${hue},50%,40%,0.2)`,
+            }}
+          >
+            {professional.name[0].toUpperCase()}
           </div>
-          <p className="text-white/30 text-xs mt-0.5">
-            {summary.appointments} {t('liquidation.appointments')} · {summary.patients} {t('liquidation.patients')}
-          </p>
-          {/* Payment progress mini-bar */}
-          <div className="w-full h-0.5 bg-white/[0.06] rounded-full overflow-hidden mt-1.5">
-            <div
-              className="h-full bg-emerald-500/50 rounded-full"
-              style={{ width: `${pct}%`, transition: 'width 0.6s ease-out' }}
-            />
+
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-semibold text-white text-sm truncate">{professional.name}</span>
+              <span className="text-white/40 text-xs flex items-center gap-1">
+                <Stethoscope size={11} />
+                {professional.specialty}
+              </span>
+            </div>
+            <p className="text-white/30 text-xs mt-0.5">
+              {summary.appointments} {t('liquidation.appointments')} · {summary.patients} {t('liquidation.patients')}
+            </p>
           </div>
         </div>
 
-        {/* Amount badges */}
-        <div className="flex items-center gap-2 shrink-0">
-          <div className="flex flex-col items-end gap-0.5">
-            <span className="text-[10px] text-white/30 uppercase tracking-wide">{t('liquidation.billed')}</span>
+        {/* Bottom row: amount badges — indented past chevron + avatar */}
+        <div className="flex items-center gap-2 mt-2 ml-12 flex-wrap">
+          <div className="flex flex-col items-center">
+            <span className="text-[9px] text-white/30 uppercase">{t('liquidation.billed')}</span>
             <span className="text-xs bg-white/[0.06] text-white px-2 py-0.5 rounded-md font-medium">
               {formatCurrency(summary.billed)}
             </span>
           </div>
-          <div className="flex flex-col items-end gap-0.5">
-            <span className="text-[10px] text-white/30 uppercase tracking-wide">{t('liquidation.paid')}</span>
+          <div className="flex flex-col items-center">
+            <span className="text-[9px] text-emerald-400/60 uppercase">{t('liquidation.paid')}</span>
             <span className="text-xs bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-md font-medium">
               {formatCurrency(summary.paid)}
             </span>
           </div>
           {summary.pending > 0 && (
-            <div className="flex flex-col items-end gap-0.5">
-              <span className="text-[10px] text-white/30 uppercase tracking-wide">{t('liquidation.pending')}</span>
+            <div className="flex flex-col items-center">
+              <span className="text-[9px] text-amber-400/60 uppercase">{t('liquidation.pending')}</span>
               <span className="text-xs bg-amber-500/10 text-amber-400 px-2 py-0.5 rounded-md font-medium">
                 {formatCurrency(summary.pending)}
               </span>
             </div>
           )}
+        </div>
+
+        {/* Progress bar — aligned with the amount badges row */}
+        <div className="w-full h-0.5 bg-white/[0.06] rounded-full overflow-hidden mt-2 ml-12" style={{ width: 'calc(100% - 3rem)' }}>
+          <div
+            className="h-full bg-emerald-500/50 rounded-full"
+            style={{ width: `${pct}%`, transition: 'width 0.6s ease-out' }}
+          />
         </div>
       </button>
 

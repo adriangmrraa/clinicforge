@@ -33,7 +33,7 @@ const LiquidationSummary: React.FC<LiquidationSummaryProps> = ({ totals, loading
 
   if (loading) {
     return (
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[0, 1, 2, 3].map((i) => (
           <SkeletonCard key={i} />
         ))}
@@ -96,7 +96,7 @@ const LiquidationSummary: React.FC<LiquidationSummaryProps> = ({ totals, loading
   ];
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
       {cards.map((card, index) => (
         <div
           key={card.label}

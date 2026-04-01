@@ -38,57 +38,53 @@ export default function SessionRow({ session, formatCurrency }: Props) {
   return (
     <div className="border-b border-white/[0.04] last:border-b-0">
       {/* Main row */}
-      <div className="px-4 py-2 grid grid-cols-[1fr_auto_auto_auto_auto] items-center gap-3">
-        {/* Date + time */}
-        <div className="flex items-center gap-1.5 min-w-0">
-          <Calendar size={12} className="text-white/20 shrink-0" />
-          <span className="text-xs text-white/60 truncate">
+      <div className="px-3 py-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Date + time */}
+          <span className="text-white/50 text-xs flex items-center gap-1">
+            <Calendar size={12} className="text-white/20 shrink-0" />
             {formattedDate}
-            <span className="text-white/30 ml-1">{formattedTime}</span>
+            <span className="text-white/30">{formattedTime}</span>
           </span>
+
+          {/* Amount */}
+          <span className="text-white text-sm font-medium tabular-nums">
+            {formatCurrency(session.billing_amount)}
+          </span>
+
+          {/* Payment status badge */}
+          <span className={`text-xs px-2 py-0.5 rounded-full whitespace-nowrap ${PAYMENT_STATUS_STYLES[session.payment_status]}`}>
+            {paymentLabel[session.payment_status]}
+          </span>
+
+          {/* Clinical notes toggle */}
+          {session.clinical_notes && (
+            <button
+              onClick={() => setShowNotes(prev => !prev)}
+              title={t('liquidation.toggle_notes')}
+              className={`ml-auto p-1 rounded transition-colors ${
+                showNotes
+                  ? 'text-blue-400 bg-blue-500/10'
+                  : 'text-white/20 hover:text-white/50 hover:bg-white/[0.04]'
+              }`}
+            >
+              <FileText size={14} />
+            </button>
+          )}
         </div>
 
-        {/* Amount */}
-        <span className="text-xs text-white font-medium tabular-nums whitespace-nowrap">
-          {formatCurrency(session.billing_amount)}
-        </span>
-
-        {/* Payment status badge */}
-        <span className={`text-xs px-2 py-0.5 rounded-full whitespace-nowrap ${PAYMENT_STATUS_STYLES[session.payment_status]}`}>
-          {paymentLabel[session.payment_status]}
-        </span>
-
-        {/* Billing notes (truncated) */}
-        {session.billing_notes ? (
-          <span className="text-xs text-white/30 truncate max-w-[120px]" title={session.billing_notes}>
+        {/* Billing notes on second line if present */}
+        {session.billing_notes && (
+          <p className="text-white/20 text-xs mt-1 ml-5 truncate" title={session.billing_notes}>
             {session.billing_notes}
-          </span>
-        ) : (
-          <span />
-        )}
-
-        {/* Clinical notes toggle */}
-        {session.clinical_notes ? (
-          <button
-            onClick={() => setShowNotes(prev => !prev)}
-            title={t('liquidation.toggle_notes')}
-            className={`p-1 rounded transition-colors ${
-              showNotes
-                ? 'text-blue-400 bg-blue-500/10'
-                : 'text-white/20 hover:text-white/50 hover:bg-white/[0.04]'
-            }`}
-          >
-            <FileText size={12} />
-          </button>
-        ) : (
-          <span />
+          </p>
         )}
       </div>
 
       {/* Clinical notes panel */}
       {showNotes && (
-        <div className="px-4 pb-2">
-          <div className="bg-white/[0.02] rounded-lg p-3 mt-1 mb-2 ml-8">
+        <div className="px-3 pb-2">
+          <div className="bg-white/[0.02] rounded-lg p-3 mt-1 mb-2 ml-5">
             <p className="text-white/40 text-xs mb-1">{t('liquidation.clinical_notes')}:</p>
             {session.clinical_notes ? (
               <p className="text-white/60 text-sm leading-relaxed">{session.clinical_notes}</p>
