@@ -672,11 +672,12 @@ export default function AgendaView() {
               selectedDate={selectedDate || new Date()}
               onDateChange={(date) => {
                 setSelectedDate(date);
-                // Sync calendar ref if it ever gets remounted or for consistency
                 if (calendarRef.current) calendarRef.current.getApi().gotoDate(date);
               }}
               onEventClick={handleEventClick}
+              onNewAppointment={(date) => handleDateClick({ date })}
               professionals={professionals}
+              holidays={holidays}
             />
         </div>
       ) : (
