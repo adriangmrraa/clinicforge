@@ -26,7 +26,7 @@ from fastapi import (
 )
 from slowapi import Limiter
 from slowapi.util import get_remote_address
-from fastapi.responses import JSONResponse, StreamingResponse, FileResponse
+from fastapi.responses import JSONResponse, StreamingResponse, FileResponse, Response
 from pydantic import BaseModel
 from db import db
 from gcal_service import gcal_service
@@ -4630,6 +4630,25 @@ async def download_patient_document_proxy(
         )
 
     file_path = document["file_path"]
+
+    # Si es una URL externa (ej: YCloud media), descargar y devolver como proxy
+    if file_path.startswith("http://") or file_path.startswith("https://"):
+        import httpx
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                resp = await client.get(file_path)
+                if resp.status_code != 200:
+                    raise HTTPException(status_code=502, detail=f"Error descargando archivo externo: {resp.status_code}")
+                content_type = document["mime_type"] or resp.headers.get("content-type", "application/octet-stream")
+                file_name = document["file_name"] or "document"
+                return Response(
+                    content=resp.content,
+                    media_type=content_type,
+                    headers={"Content-Disposition": f'inline; filename="{file_name}"'}
+                )
+        except httpx.HTTPError as e:
+            logger.error(f"Error downloading external media: {e}")
+            raise HTTPException(status_code=502, detail="No se pudo descargar el archivo desde el proveedor externo.")
 
     # Limpiar path de posibles parámetros (HMAC legacy)
     clean_path = file_path.split("?")[0]
