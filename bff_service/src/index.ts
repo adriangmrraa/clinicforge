@@ -102,7 +102,8 @@ app.get('/health', (req: Request, res: Response) => {
 // Proxy Middleware (Catch-all)
 app.use(async (req: Request, res: Response) => {
     const url = `${ORCHESTRATOR_URL}${req.originalUrl}`;
-    console.log(`[Proxy] Forwarding ${req.method} ${req.originalUrl} -> ${url}`);
+    const isMediaRoute = req.originalUrl.includes('/media/proxy') || /\/documents\/\d+\/proxy/.test(req.originalUrl);
+    console.log(`[Proxy] Forwarding ${req.method} ${req.originalUrl} -> ${url}${isMediaRoute ? ' [BINARY]' : ''}`);
 
     // Filtrar headers problemáticos
     const headers = { ...req.headers };
@@ -123,10 +124,14 @@ app.use(async (req: Request, res: Response) => {
         console.log(`[Proxy] Multipart upload: ${rawBody ? rawBody.length : 0} bytes`);
     }
 
-    // Detect if this request expects a binary response (PDF, images, etc.)
+    // Detect if this request expects a binary response (PDF, images, media proxy, etc.)
     const acceptHeader = (req.headers['accept'] || '').toLowerCase();
     const isPdfRequest = req.originalUrl.endsWith('/pdf') || acceptHeader.includes('application/pdf');
-    const isBinaryRequest = isPdfRequest || acceptHeader.includes('application/octet-stream');
+    const isMediaProxy = /\/documents\/\d+\/proxy/.test(req.originalUrl)
+        || req.originalUrl.includes('/chat/media/proxy')
+        || req.originalUrl.includes('/uploads/')
+        || req.originalUrl.includes('/media/');
+    const isBinaryRequest = isPdfRequest || isMediaProxy || acceptHeader.includes('application/octet-stream');
 
     try {
         const response = await axios({
@@ -154,6 +159,11 @@ app.use(async (req: Request, res: Response) => {
         }
         if (response.headers['content-disposition']) {
             res.setHeader('Content-Disposition', response.headers['content-disposition']);
+        }
+
+        if (isBinaryRequest) {
+            const size = response.data?.byteLength || response.data?.length || 0;
+            console.log(`[Proxy] Binary response: status=${response.status} type=${response.headers['content-type']} size=${size} bytes`);
         }
 
         res.status(response.status).send(response.data);

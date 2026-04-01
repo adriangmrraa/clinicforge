@@ -2400,7 +2400,7 @@ async def _reprogramar_turno(args: Dict, tenant_id: int) -> str:
 
 async def _ver_configuracion(tenant_id: int) -> str:
     row = await db.pool.fetchrow(
-        """SELECT clinic_name, address, clinic_phone, website, working_hours,
+        """SELECT clinic_name, address, bot_phone_number, website, working_hours,
                   bank_cbu, bank_alias, bank_holder_name, consultation_price, owner_email,
                   calendar_provider, max_chairs
            FROM tenants WHERE id = $1""",
@@ -2410,7 +2410,7 @@ async def _ver_configuracion(tenant_id: int) -> str:
         return "Clinica no encontrada."
     lines = [f"Configuracion de {row['clinic_name'] or 'Clinica'}:"]
     field_labels = {
-        "clinic_name": "Nombre", "address": "Direccion", "clinic_phone": "Telefono",
+        "clinic_name": "Nombre", "address": "Direccion", "bot_phone_number": "Telefono",
         "website": "Web", "bank_cbu": "CBU", "bank_alias": "Alias",
         "bank_holder_name": "Titular", "consultation_price": "Precio consulta",
         "owner_email": "Email", "calendar_provider": "Calendario", "max_chairs": "Sillones",
@@ -2446,13 +2446,15 @@ async def _actualizar_configuracion(args: Dict, tenant_id: int, user_role: str) 
     allowed = ["clinic_name", "address", "clinic_phone", "bank_cbu", "bank_alias", "bank_holder_name", "consultation_price", "website", "owner_email"]
     if field not in allowed:
         return f"Campo '{field}' no permitido. Opciones: {', '.join(allowed)}"
+    # Map clinic_phone to actual DB column
+    db_field = "bot_phone_number" if field == "clinic_phone" else field
     # consultation_price needs numeric conversion
     if field == "consultation_price":
         try:
             value = Decimal(str(value))
         except Exception:
             return "El precio debe ser un numero valido."
-    await db.pool.execute(f"UPDATE tenants SET {field} = $1, updated_at = NOW() WHERE id = $2", value, tenant_id)
+    await db.pool.execute(f"UPDATE tenants SET {db_field} = $1, updated_at = NOW() WHERE id = $2", value, tenant_id)
     await _nova_emit("CONFIGURATION_UPDATED", {"tenant_id": tenant_id})
     return f"Configuracion actualizada: {field} = {value}"
 

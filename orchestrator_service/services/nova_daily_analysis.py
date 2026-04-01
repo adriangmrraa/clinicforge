@@ -13,6 +13,7 @@ import asyncio
 from datetime import datetime, timedelta
 
 import httpx
+from httpx import HTTPStatusError
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +68,7 @@ REDIS_TTL = 172800  # 48 hours
 # Main loop & orchestrator
 # ---------------------------------------------------------------------------
 
+
 async def nova_daily_analysis_loop(pool, redis):
     """Background loop - runs every 12 hours."""
     while True:
@@ -95,6 +97,7 @@ async def _run_analysis(pool, redis):
 # ---------------------------------------------------------------------------
 # Per-tenant analysis
 # ---------------------------------------------------------------------------
+
 
 async def _analyze_tenant(pool, redis, tenant_id: int, clinic_name: str):
     """Analyze a single tenant: conversations + operational stats -> GPT -> Redis."""
@@ -144,17 +147,20 @@ async def _analyze_tenant(pool, redis, tenant_id: int, clinic_name: str):
 # Cross-sede consolidated analysis (CEO)
 # ---------------------------------------------------------------------------
 
+
 async def _analyze_consolidated(pool, redis, tenants):
     """Generate cross-sede comparison for CEO view."""
     per_sede_stats = []
     for t in tenants:
         tid = t["id"]
         stats = await _get_operational_stats(pool, tid)
-        per_sede_stats.append({
-            "sede": t["clinic_name"],
-            "tenant_id": tid,
-            **stats,
-        })
+        per_sede_stats.append(
+            {
+                "sede": t["clinic_name"],
+                "tenant_id": tid,
+                **stats,
+            }
+        )
 
     prompt = CONSOLIDATED_PROMPT_TEMPLATE.format(
         sede_count=len(tenants),
@@ -162,7 +168,9 @@ async def _analyze_consolidated(pool, redis, tenants):
     )
 
     first_tenant_id = tenants[0]["id"] if tenants else 0
-    analysis = await _analyze_with_gpt(prompt, OPENAI_API_KEY, tenant_id=first_tenant_id)
+    analysis = await _analyze_with_gpt(
+        prompt, OPENAI_API_KEY, tenant_id=first_tenant_id
+    )
     if analysis:
         payload = {
             **analysis,
@@ -180,6 +188,7 @@ async def _analyze_consolidated(pool, redis, tenants):
 # ---------------------------------------------------------------------------
 # Data helpers
 # ---------------------------------------------------------------------------
+
 
 async def _get_operational_stats(pool, tenant_id: int) -> dict:
     """Fetch operational stats for the last 24 hours."""
@@ -282,7 +291,33 @@ async def _get_conversation_summary(pool, tenant_id: int) -> str:
 # GPT call
 # ---------------------------------------------------------------------------
 
-async def _analyze_with_gpt(prompt: str, api_key: str, tenant_id: int = 0) -> dict | None:
+
+def _validate_model(model: str) -> tuple[str, bool]:
+    """Validate model name and check JSON mode support.
+    Returns (validated_model, supports_json_mode).
+    """
+    try:
+        from dashboard.token_tracker import MODEL_PRICING
+
+        if model not in MODEL_PRICING:
+            logger.warning(
+                f"nova_analysis: model '{model}' not in MODEL_PRICING, falling back to gpt-4o-mini"
+            )
+            return "gpt-4o-mini", True
+        info = MODEL_PRICING[model]
+        # Assume OpenAI text models support JSON mode
+        supports_json = info.get("provider") == "openai" and info.get("type") == "text"
+        return model, supports_json
+    except Exception as e:
+        logger.warning(
+            f"nova_analysis: model validation error: {e}, falling back to gpt-4o-mini"
+        )
+        return "gpt-4o-mini", True
+
+
+async def _analyze_with_gpt(
+    prompt: str, api_key: str, tenant_id: int = 0
+) -> dict | None:
     """Call GPT for analysis — model configurable from dashboard."""
     if not api_key:
         logger.warning("nova_analysis: OPENAI_API_KEY not set, skipping")
@@ -293,50 +328,119 @@ async def _analyze_with_gpt(prompt: str, api_key: str, tenant_id: int = 0) -> di
     if tenant_id:
         try:
             from db import db
+
             row = await db.pool.fetchrow(
-                "SELECT value FROM system_config WHERE key = 'MODEL_INSIGHTS' AND tenant_id = $1", tenant_id
+                "SELECT value FROM system_config WHERE key = 'MODEL_INSIGHTS' AND tenant_id = $1",
+                tenant_id,
             )
             if row and row.get("value"):
                 analysis_model = str(row["value"]).strip()
         except Exception:
             pass
 
-    try:
-        async with httpx.AsyncClient(timeout=30) as client:
-            response = await client.post(
-                "https://api.openai.com/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": analysis_model,
-                    "messages": [
-                        {"role": "system", "content": "You are a clinical data analyst. Always respond in valid JSON."},
-                        {"role": "user", "content": prompt},
-                    ],
-                    "temperature": 0,
-                    "max_tokens": 700,
-                    "response_format": {"type": "json_object"},
-                },
+    # Validate model and JSON mode compatibility
+    validated_model, supports_json = _validate_model(analysis_model)
+    if validated_model != analysis_model:
+        logger.warning(
+            f"nova_analysis: tenant {tenant_id} configured model '{analysis_model}' invalid or unsupported, "
+            f"falling back to '{validated_model}'"
+        )
+    logger.info(
+        f"nova_analysis: tenant {tenant_id} using model '{validated_model}' "
+        f"(JSON mode {'enabled' if supports_json else 'disabled'})"
+    )
+
+    request_json = {
+        "model": validated_model,
+        "messages": [
+            {
+                "role": "system",
+                "content": "You are a clinical data analyst. Always respond in valid JSON.",
+            },
+            {"role": "user", "content": prompt},
+        ],
+        "temperature": 0,
+        "max_tokens": 700,
+    }
+    if supports_json:
+        request_json["response_format"] = {"type": "json_object"}
+
+    max_attempts = 2
+    for attempt in range(max_attempts):
+        # On second attempt, disable JSON mode
+        if attempt == 1:
+            if "response_format" in request_json:
+                del request_json["response_format"]
+                logger.warning(
+                    f"nova_analysis: tenant {tenant_id} retrying without JSON mode due to previous error"
+                )
+            else:
+                # Already without JSON mode, no point retrying
+                break
+
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                response = await client.post(
+                    "https://api.openai.com/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {api_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json=request_json,
+                )
+                response.raise_for_status()
+                data = response.json()
+                content = data["choices"][0]["message"]["content"]
+                # Track token usage
+                usage = data.get("usage", {})
+                if usage:
+                    try:
+                        from dashboard.token_tracker import track_service_usage
+                        from db import db
+
+                        await track_service_usage(
+                            db.pool,
+                            tenant_id,
+                            validated_model,
+                            usage.get("prompt_tokens", 0),
+                            usage.get("completion_tokens", 0),
+                            source="nova_daily_analysis",
+                        )
+                    except Exception:
+                        pass
+                return json.loads(content)
+        except httpx.HTTPStatusError as e:
+            # Log full HTTP response details for debugging
+            error_detail = f"HTTP {e.response.status_code}: {e.response.text}"
+            logger.error(
+                f"nova_analysis_gpt_http_error tenant {tenant_id} attempt {attempt + 1}: {error_detail}"
             )
-            response.raise_for_status()
-            data = response.json()
-            content = data["choices"][0]["message"]["content"]
-            # Track token usage
-            usage = data.get("usage", {})
-            if usage:
+            # Check if this is a JSON mode incompatibility error
+            if e.response.status_code == 400:
                 try:
-                    from dashboard.token_tracker import track_service_usage
-                    from db import db
-                    await track_service_usage(
-                        db.pool, tenant_id, analysis_model,
-                        usage.get("prompt_tokens", 0), usage.get("completion_tokens", 0),
-                        source="nova_daily_analysis"
-                    )
+                    error_body = e.response.json()
+                    error_msg = str(error_body).lower()
+                    if any(
+                        keyword in error_msg
+                        for keyword in [
+                            "json",
+                            "response_format",
+                            "unsupported",
+                            "invalid parameter",
+                        ]
+                    ):
+                        # Likely JSON mode issue, will retry without JSON mode on next attempt
+                        continue
                 except Exception:
                     pass
-            return json.loads(content)
-    except Exception as e:
-        logger.error(f"nova_analysis_gpt_error: {e}")
-        return None
+            # For other errors, break loop and fail
+            break
+        except Exception as e:
+            logger.error(f"nova_analysis_gpt_error tenant {tenant_id}: {e}")
+            break
+
+    # If we exit loop without returning, analysis failed
+    logger.error(
+        f"nova_analysis_gpt_failed tenant {tenant_id} after {max_attempts} attempts"
+    )
+    return None
