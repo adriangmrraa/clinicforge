@@ -87,6 +87,11 @@ api.interceptors.request.use(
           config.headers['X-Tenant-ID'] = tenantId;
         }
       }
+
+      // Let axios auto-detect Content-Type for FormData (multipart/form-data)
+      if (config.data instanceof FormData) {
+        delete config.headers['Content-Type'];
+      }
     }
 
     if (import.meta.env.DEV) {

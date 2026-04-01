@@ -118,6 +118,11 @@ app.use(async (req: Request, res: Response) => {
     const contentType = req.headers['content-type'] || '';
     const isMultipart = contentType.includes('multipart/');
 
+    if (isMultipart) {
+        const rawBody = (req as any).rawBody;
+        console.log(`[Proxy] Multipart upload: ${rawBody ? rawBody.length : 0} bytes`);
+    }
+
     try {
         const response = await axios({
             method: req.method,
