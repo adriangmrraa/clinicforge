@@ -32,7 +32,9 @@ async def download_media(url: str, tenant_id: int, media_type: str = "document")
     
     async with httpx.AsyncClient(follow_redirects=True, timeout=30.0, headers=headers) as client:
         try:
+            logger.info(f"📡 Requesting: {url[:100]} (headers: {list(headers.keys())})")
             res = await client.get(url)
+            logger.info(f"📡 Response: status={res.status_code}, content-type={res.headers.get('content-type', 'N/A')}, size={len(res.content)} bytes")
             res.raise_for_status()
             
             # Validar contenido no vacío
@@ -90,10 +92,46 @@ async def download_media(url: str, tenant_id: int, media_type: str = "document")
             return f"/uploads/{tenant_id}/{filename}"
         except httpx.HTTPStatusError as e:
             logger.error(f"❌ Media download HTTP error {e.response.status_code}: {url[:80]}")
-            return url  # Fallback a la URL original si falla  
+            logger.error(f"   Response body: {e.response.text[:200] if e.response.text else 'empty'}")
         except httpx.TimeoutException:
             logger.error(f"❌ Media download timeout (>30s): {url[:80]}")
-            return url
         except Exception as e:
             logger.error(f"❌ Error downloading media from {url[:80]}: {str(e)}")
-            return url  # Fallback a la URL original si falla
+
+    # Retry once after 2 seconds (YCloud URLs can be slow to become available)
+    import asyncio
+    logger.info(f"🔄 Retrying media download in 2s: {url[:80]}")
+    await asyncio.sleep(2)
+
+    async with httpx.AsyncClient(follow_redirects=True, timeout=30.0, headers=headers) as client:
+        try:
+            res = await client.get(url)
+            res.raise_for_status()
+            if len(res.content) == 0:
+                logger.warning(f"⚠️ Retry: Media still empty: {url[:80]}")
+                return url
+
+            content_type = res.headers.get("content-type", "")
+            parsed_url = urlparse(url)
+            ext = None
+            for e in [".png", ".jpg", ".jpeg", ".mp4", ".ogg", ".opus", ".pdf", ".mp3", ".webp", ".gif", ".wav"]:
+                if parsed_url.path.lower().endswith(e):
+                    ext = e
+                    break
+            if not ext:
+                ct_clean = content_type.split(";")[0].strip().lower()
+                ct_map = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp", "application/pdf": ".pdf", "video/mp4": ".mp4"}
+                ext = ct_map.get(ct_clean) or mimetypes.guess_extension(ct_clean) or ".bin"
+
+            filename = f"{uuid.uuid4()}{ext}"
+            uploads_dir = os.getenv("UPLOADS_DIR", os.path.join(os.getcwd(), "uploads"))
+            media_dir = os.path.join(uploads_dir, str(tenant_id))
+            os.makedirs(media_dir, exist_ok=True)
+            local_path = os.path.join(media_dir, filename)
+            with open(local_path, "wb") as f:
+                f.write(res.content)
+            logger.info(f"✅ Retry succeeded: {local_path} ({len(res.content)} bytes)")
+            return f"/uploads/{tenant_id}/{filename}"
+        except Exception as retry_err:
+            logger.error(f"❌ Retry also failed: {retry_err}")
+            return url  # Final fallback
