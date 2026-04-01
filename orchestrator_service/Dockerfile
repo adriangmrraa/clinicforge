@@ -13,12 +13,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 RUN pip install --no-cache-dir -r requirements.txt
 
-RUN addgroup --system appgroup && adduser --system --ingroup appgroup --no-create-home appuser
-
-COPY --chown=appuser:appgroup . .
+COPY . .
 
 RUN chmod +x start.sh
-
-USER appuser
 
 CMD ["./start.sh"]
