@@ -11,6 +11,7 @@ import { useAuth } from '../context/AuthContext';
 import Odontogram from '../components/Odontogram';
 import DocumentGallery from '../components/DocumentGallery';
 import AnamnesisPanel from '../components/AnamnesisPanel';
+import DigitalRecordsTab from '../components/DigitalRecordsTab';
 import { io, Socket } from 'socket.io-client';
 import { WS_URL } from '../api/axios';
 
@@ -61,7 +62,7 @@ const criticalConditions = [
   'vih', 'hepatitis', 'asma severa'
 ];
 
-type TabType = 'summary' | 'history' | 'documents' | 'anamnesis';
+type TabType = 'summary' | 'history' | 'documents' | 'anamnesis' | 'digital_records';
 
 export default function PatientDetail() {
   const { id } = useParams<{ id: string }>();
@@ -496,6 +497,13 @@ export default function PatientDetail() {
           />
         );
 
+      case 'digital_records':
+        return (
+          <DigitalRecordsTab
+            patientId={parseInt(id!)}
+          />
+        );
+
       default:
         return null;
     }
@@ -669,6 +677,19 @@ export default function PatientDetail() {
               <div className="flex items-center justify-center gap-1.5">
                 <HeartPulse size={16} />
                 Anamnesis
+              </div>
+            </button>
+            <button
+              onClick={() => setActiveTab('digital_records')}
+              className={`flex-shrink-0 py-3 px-3 lg:px-4 text-xs lg:text-sm font-medium transition-colors whitespace-nowrap ${activeTab === 'digital_records'
+                ? 'text-primary border-b-2 border-primary'
+                : 'text-white/40 hover:text-white/70 hover:bg-white/[0.04]'
+                }`}
+            >
+              <div className="flex items-center justify-center gap-1.5">
+                <FileText size={16} />
+                <span className="hidden sm:inline">{t('digitalRecords.tab')}</span>
+                <span className="sm:hidden">Fichas</span>
               </div>
             </button>
           </div>

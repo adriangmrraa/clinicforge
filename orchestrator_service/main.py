@@ -6535,6 +6535,14 @@ try:
 except Exception as e:
     logger.error(f"nova_routes_registration_failed: {e}")
 
+try:
+    from routes.digital_records import router as digital_records_router
+
+    app.include_router(digital_records_router, prefix="/admin")
+    logger.info("✅ Digital Records router registered")
+except Exception as e:
+    logger.error(f"digital_records_router_registration_failed: {e}")
+
 # Dashboard CEO: router y middleware se registran aquí (antes de startup)
 try:
     from dashboard import init_dashboard

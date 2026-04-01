@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<style>
+@page {
+    size: A4;
+    margin: 2cm 2.5cm;
+    @top-center {
+        content: "{{ clinic_name }}";
+        font-size: 8pt;
+        color: #888;
+    }
+    @bottom-center {
+        content: "Página " counter(page) " de " counter(pages);
+        font-size: 8pt;
+        color: #888;
+    }
+}
+
+body {
+    font-family: 'Liberation Sans', 'DejaVu Sans', Arial, sans-serif;
+    font-size: 11pt;
+    line-height: 1.6;
+    color: #1a1a1a;
+    margin: 0;
+    padding: 0;
+}
+
+.header {
+    text-align: center;
+    border-bottom: 2px solid #333;
+    padding-bottom: 12px;
+    margin-bottom: 20px;
+}
+
+.header h1 {
+    font-size: 16pt;
+    margin: 0 0 4px 0;
+    color: #111;
+}
+
+.header .subtitle {
+    font-size: 9pt;
+    color: #666;
+    margin: 0;
+}
+
+.patient-data {
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+    padding: 12px 16px;
+    margin-bottom: 20px;
+}
+
+.patient-data table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.patient-data td {
+    padding: 3px 8px;
+    font-size: 10pt;
+    vertical-align: top;
+}
+
+.patient-data .label {
+    font-weight: bold;
+    color: #333;
+    width: 140px;
+}
+
+.section-title {
+    font-size: 12pt;
+    font-weight: bold;
+    color: #111;
+    border-bottom: 1px solid #ccc;
+    padding-bottom: 4px;
+    margin-top: 20px;
+    margin-bottom: 10px;
+}
+
+.narrative {
+    text-align: justify;
+    margin-bottom: 16px;
+}
+
+.placeholder {
+    background: #fff3cd;
+    border: 1px dashed #ffc107;
+    padding: 4px 8px;
+    border-radius: 3px;
+    color: #856404;
+    font-style: italic;
+}
+
+.signature-block {
+    margin-top: 60px;
+    text-align: center;
+}
+
+.signature-block .line {
+    border-top: 1px solid #333;
+    width: 250px;
+    margin: 0 auto 8px auto;
+}
+
+.signature-block p {
+    margin: 2px 0;
+    font-size: 10pt;
+}
+
+.signature-block .name {
+    font-weight: bold;
+    font-size: 11pt;
+}
+
+.odontogram-container {
+    margin: 20px 0;
+    text-align: center;
+}
+
+.odontogram-container svg {
+    max-width: 100%;
+}
+
+/* Tables for clinical data */
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 10px 0;
+    font-size: 10pt;
+}
+
+.data-table th {
+    background: #f0f0f0;
+    border: 1px solid #ccc;
+    padding: 6px 10px;
+    text-align: left;
+    font-weight: bold;
+}
+
+.data-table td {
+    border: 1px solid #ddd;
+    padding: 6px 10px;
+}
+
+.constancia {
+    margin-top: 30px;
+    font-size: 9pt;
+    color: #666;
+    font-style: italic;
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+    {% if data.tenant.logo_url %}
+    <img src="{{ data.tenant.logo_url }}" alt="Logo" style="max-height: 60px; margin-bottom: 8px;">
+    {% endif %}
+    <h1>{{ data.tenant.clinic_name or 'Clínica' }}</h1>
+    <p class="subtitle">{{ data.tenant.address or '' }}{% if data.tenant.phone %} | Tel: {{ data.tenant.phone }}{% endif %}</p>
+</div>
+
+{% block content %}{% endblock %}
+
+<div class="signature-block">
+    <div class="line"></div>
+    <p class="name">{{ data.professional.full_name or '[Profesional]' }}</p>
+    {% if data.professional.mp %}
+    <p>M.P. {{ data.professional.mp }}</p>
+    {% else %}
+    <p class="placeholder">[M.P. Completar]</p>
+    {% endif %}
+    {% if data.professional.specialty %}
+    <p>{{ data.professional.specialty }}</p>
+    {% endif %}
+</div>
+
+</body>
+</html>

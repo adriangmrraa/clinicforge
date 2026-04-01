@@ -2,6 +2,7 @@ import os
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.mime.application import MIMEApplication
 import logging
 
 # Payment email templates
@@ -421,6 +422,81 @@ class EmailService:
 
         except Exception as e:
             logger.error(f"Error sending payment verification failed email: {e}")
+            return False
+
+
+    def send_digital_record_email(
+        self,
+        to_email: str,
+        pdf_path: str,
+        patient_name: str,
+        document_title: str,
+    ) -> bool:
+        """Send a digital record as PDF attachment via email.
+
+        Uses MIMEMultipart("mixed") to support both HTML body and PDF attachment.
+        """
+        if not self.smtp_host or not self.smtp_user:
+            logger.warning("⚠️ SMTP not configured. Skipping digital record email.")
+            return False
+
+        if not to_email or not to_email.strip():
+            logger.warning("⚠️ No destination email for digital record.")
+            return False
+
+        to_emails = [to_email.strip()]
+
+        html_content = f"""
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+            <h2 style="color: #333; border-bottom: 2px solid #333; padding-bottom: 10px;">
+                {self.clinic_name}
+            </h2>
+            <p style="color: #555; font-size: 14px; line-height: 1.6;">
+                Se adjunta el documento: <strong>{document_title}</strong>
+            </p>
+            <p style="color: #555; font-size: 14px; line-height: 1.6;">
+                Paciente: <strong>{patient_name}</strong>
+            </p>
+            <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
+            <p style="color: #999; font-size: 11px;">
+                Este documento fue generado por {self.clinic_name}.
+                Si recibió este email por error, por favor ignórelo.
+            </p>
+        </div>
+        """
+
+        try:
+            msg = MIMEMultipart("mixed")
+            msg["Subject"] = f"Ficha Digital — {patient_name}"
+            msg["From"] = self.smtp_sender
+            msg["To"] = ", ".join(to_emails)
+
+            msg.attach(MIMEText(html_content, "html"))
+
+            with open(pdf_path, "rb") as f:
+                pdf_part = MIMEApplication(f.read(), _subtype="pdf")
+            pdf_part.add_header(
+                "Content-Disposition",
+                "attachment",
+                filename=f"{document_title}.pdf",
+            )
+            msg.attach(pdf_part)
+
+            if self.smtp_port == 465:
+                server = smtplib.SMTP_SSL(self.smtp_host, self.smtp_port)
+            else:
+                server = smtplib.SMTP(self.smtp_host, self.smtp_port)
+                server.starttls()
+
+            server.login(self.smtp_user, self.smtp_pass)
+            server.sendmail(self.smtp_sender, to_emails, msg.as_string())
+            server.quit()
+
+            logger.info(f"📧 Ficha digital enviada a {to_email} para {patient_name}")
+            return True
+
+        except Exception as e:
+            logger.error(f"❌ Error sending digital record email: {e}")
             return False
 
 

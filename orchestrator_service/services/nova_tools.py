@@ -762,6 +762,52 @@ IMPORTANTE — REGLAS QUIRÚRGICAS:
             "required": [],
         },
     },
+    # -------------------------------------------------------------------------
+    # M. Fichas Digitales (2)
+    # -------------------------------------------------------------------------
+    {
+        "type": "function",
+        "name": "generar_ficha_digital",
+        "description": "Generar una ficha digital (informe clínico, post-quirúrgico, evaluación odontológica o solicitud de autorización) para un paciente. Usa IA para redactar el contenido basándose en los datos clínicos del paciente.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "patient_id": {
+                    "type": "integer",
+                    "description": "ID del paciente",
+                },
+                "tipo_documento": {
+                    "type": "string",
+                    "enum": ["clinical_report", "post_surgery", "odontogram_art", "authorization_request"],
+                    "description": "Tipo de documento: clinical_report (informe clínico), post_surgery (post-quirúrgico), odontogram_art (evaluación odontológica), authorization_request (solicitud de autorización)",
+                },
+            },
+            "required": ["patient_id", "tipo_documento"],
+        },
+    },
+    {
+        "type": "function",
+        "name": "enviar_ficha_digital",
+        "description": "Enviar una ficha digital por email con el PDF adjunto. Si no se especifica record_id, envía la más reciente del paciente. Si no se especifica email, usa el email del paciente.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "patient_id": {
+                    "type": "integer",
+                    "description": "ID del paciente",
+                },
+                "record_id": {
+                    "type": "string",
+                    "description": "ID de la ficha digital (opcional, usa la más reciente si no se especifica)",
+                },
+                "email": {
+                    "type": "string",
+                    "description": "Email de destino (opcional, usa el del paciente si no se especifica)",
+                },
+            },
+            "required": ["patient_id"],
+        },
+    },
 ]
 
 
@@ -2287,6 +2333,12 @@ async def execute_nova_tool(
             return await _consultar_obra_social(args, tenant_id)
         elif name == "ver_reglas_derivacion":
             return await _ver_reglas_derivacion(tenant_id)
+
+        # M. Fichas digitales
+        elif name == "generar_ficha_digital":
+            return await _generar_ficha_digital(args, tenant_id)
+        elif name == "enviar_ficha_digital":
+            return await _enviar_ficha_digital(args, tenant_id)
 
         # J. CRUD genérico
         elif name == "obtener_registros":
@@ -3961,3 +4013,148 @@ async def _ver_reglas_derivacion(tenant_id: int) -> str:
     except Exception as e:
         logger.warning(f"_ver_reglas_derivacion error (tabla puede no existir aún): {e}")
         return "No se pudieron obtener las reglas de derivación en este momento."
+
+
+# =============================================================================
+# M. FICHAS DIGITALES
+# =============================================================================
+
+async def _generar_ficha_digital(args: Dict, tenant_id: int) -> str:
+    """Generate a digital record for a patient."""
+    patient_id = args.get("patient_id")
+    tipo = args.get("tipo_documento", "clinical_report")
+
+    if not patient_id:
+        return "Necesito el ID del paciente para generar la ficha."
+
+    try:
+        from services.digital_records_service import gather_patient_data, generate_narrative, assemble_html
+        from services.odontogram_svg import render_odontogram_svg
+        import db as _db
+        import uuid as _uuid
+
+        # Layer 1: Gather
+        source_data = await gather_patient_data(_db.pool, patient_id, tenant_id, tipo)
+
+        # Layer 2: AI Narrative
+        narrative_result = await generate_narrative(_db.pool, tenant_id, tipo, source_data)
+        ai_sections = narrative_result.get("sections", {})
+        warnings = narrative_result.get("warnings", [])
+        model_used = narrative_result.get("model_used", "unknown")
+
+        # Odontogram SVG
+        odontogram_svg = render_odontogram_svg(source_data.get("odontogram", {}))
+
+        # Layer 3: Assemble
+        html_content = assemble_html(tipo, source_data, ai_sections, odontogram_svg)
+
+        # Build title
+        template_titles = {
+            "clinical_report": "Informe Clínico",
+            "post_surgery": "Informe Post-Quirúrgico",
+            "odontogram_art": "Evaluación Odontológica",
+            "authorization_request": "Solicitud de Autorización",
+        }
+        patient_name = source_data.get("patient", {}).get("full_name", "Paciente")
+        title = f"{template_titles.get(tipo, 'Documento')} — {patient_name}"
+
+        # Save to DB
+        record_id = str(_uuid.uuid4())
+        await db.pool.execute(
+            """INSERT INTO patient_digital_records
+               (id, tenant_id, patient_id, template_type, title, html_content,
+                source_data, generation_metadata, status, created_at, updated_at)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'draft', NOW(), NOW())""",
+            record_id, tenant_id, patient_id, tipo, title, html_content,
+            json.dumps(source_data, default=str),
+            json.dumps({"model_used": model_used, "validation_warnings": warnings}),
+        )
+
+        warning_text = ""
+        if warnings:
+            warning_text = f"\nAdvertencias: {', '.join(warnings)}"
+
+        return f"Ficha generada: {title}\nID: {record_id}\nEstado: borrador{warning_text}\n\nQuerés que la envíe por email?"
+
+    except ValueError as e:
+        return f"Error de validación: {str(e)}"
+    except Exception as e:
+        logger.error(f"_generar_ficha_digital error: {e}", exc_info=True)
+        return f"Error al generar la ficha: {str(e)}"
+
+
+async def _enviar_ficha_digital(args: Dict, tenant_id: int) -> str:
+    """Send a digital record via email."""
+    patient_id = args.get("patient_id")
+    record_id = args.get("record_id")
+    email = args.get("email")
+
+    if not patient_id:
+        return "Necesito el ID del paciente."
+
+    try:
+        # Get record (specific or most recent)
+        if record_id:
+            row = await db.pool.fetchrow(
+                """SELECT id, html_content, pdf_path, title FROM patient_digital_records
+                   WHERE id = $1 AND patient_id = $2 AND tenant_id = $3""",
+                record_id, patient_id, tenant_id,
+            )
+        else:
+            row = await db.pool.fetchrow(
+                """SELECT id, html_content, pdf_path, title FROM patient_digital_records
+                   WHERE patient_id = $1 AND tenant_id = $2
+                   ORDER BY created_at DESC LIMIT 1""",
+                patient_id, tenant_id,
+            )
+
+        if not row:
+            return "No se encontró ninguna ficha digital para este paciente."
+
+        record_id = str(row["id"])
+
+        # Get patient email if not provided
+        if not email:
+            patient = await db.pool.fetchrow(
+                "SELECT email FROM patients WHERE id = $1 AND tenant_id = $2",
+                patient_id, tenant_id,
+            )
+            email = patient["email"] if patient and patient["email"] else None
+
+        if not email:
+            return "El paciente no tiene email registrado. Proporcioná un email de destino."
+
+        # Ensure PDF exists
+        pdf_path = row["pdf_path"]
+        if not pdf_path or not os.path.exists(pdf_path):
+            from services.digital_records_service import generate_pdf
+            output_dir = f"/app/uploads/digital_records/{tenant_id}"
+            os.makedirs(output_dir, exist_ok=True)
+            pdf_path = f"{output_dir}/{record_id}.pdf"
+            await generate_pdf(row["html_content"], pdf_path)
+            await db.pool.execute(
+                "UPDATE patient_digital_records SET pdf_path = $1, pdf_generated_at = NOW() WHERE id = $2",
+                pdf_path, record_id,
+            )
+
+        # Send email
+        from email_service import email_service
+        success = email_service.send_digital_record_email(
+            to_email=email,
+            pdf_path=pdf_path,
+            patient_name=row["title"],
+            document_title=row["title"],
+        )
+
+        if success:
+            await db.pool.execute(
+                "UPDATE patient_digital_records SET sent_to_email = $1, sent_at = NOW(), status = 'sent' WHERE id = $2",
+                email, record_id,
+            )
+            return f"Ficha enviada a {email}"
+        else:
+            return "Error al enviar el email. Verificá la configuración SMTP."
+
+    except Exception as e:
+        logger.error(f"_enviar_ficha_digital error: {e}", exc_info=True)
+        return f"Error: {str(e)}"

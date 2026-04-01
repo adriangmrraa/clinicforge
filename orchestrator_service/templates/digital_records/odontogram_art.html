@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div data-section="patient_info" data-editable="false">
+    <h2 class="section-title">EVALUACIÓN ODONTOLÓGICA</h2>
+    <div class="patient-data">
+        <table>
+            <tr>
+                <td class="label">Paciente:</td>
+                <td>{{ data.patient.full_name or '[Sin nombre]' }}</td>
+                <td class="label">DNI:</td>
+                <td>{{ data.patient.dni or 'No registrado' }}</td>
+            </tr>
+            <tr>
+                <td class="label">Obra Social / ART:</td>
+                <td>{{ data.patient.insurance or 'Particular' }}{% if data.patient.insurance_id %} ({{ data.patient.insurance_id }}){% endif %}</td>
+                <td class="label">Fecha:</td>
+                <td>{{ data.generated_at[:10] | default('') }}</td>
+            </tr>
+        </table>
+    </div>
+</div>
+
+<div data-section="tipo_evaluacion" data-editable="true">
+    <div class="narrative">{{ ai.tipo_evaluacion | default('Se realiza evaluación clínica odontológica y confección de odontograma.') }}</div>
+</div>
+
+<div data-section="hallazgos" data-editable="true">
+    <h3 class="section-title">Hallazgos Clínicos</h3>
+    <div class="narrative">{{ ai.hallazgos | default('Sin hallazgos registrados.') }}</div>
+</div>
+
+<div data-section="odontograma" data-editable="false">
+    <h3 class="section-title">Odontograma</h3>
+    <div class="odontogram-container">
+        {{ odontogram_svg | safe }}
+    </div>
+    {% if data.odontogram and data.odontogram.affected_count is defined %}
+    <p style="text-align: center; font-size: 9pt; color: #666; margin-top: 8px;">
+        Piezas afectadas: {{ data.odontogram.affected_count }} / 32
+    </p>
+    {% endif %}
+</div>
+
+{% if data.odontogram and data.odontogram.teeth | length > 0 %}
+<div data-section="detalle_piezas" data-editable="false">
+    <h3 class="section-title">Detalle por Pieza</h3>
+    <table class="data-table">
+        <thead>
+            <tr><th>Pieza (FDI)</th><th>Estado</th><th>Notas</th></tr>
+        </thead>
+        <tbody>
+            {% for tooth in data.odontogram.teeth %}
+            {% if tooth.state != 'healthy' %}
+            <tr>
+                <td>{{ (tooth.id // 10) }}.{{ (tooth.id % 10) }}</td>
+                <td>{{ tooth.state }}</td>
+                <td>{{ tooth.notes or '—' }}</td>
+            </tr>
+            {% endif %}
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
+<div data-section="observacion" data-editable="true">
+    <h3 class="section-title">Observación</h3>
+    <div class="narrative">{{ ai.observacion | default('<span class="placeholder">[Motivo de emisión — dato pendiente de completar]</span>') }}</div>
+</div>
+
+{% endblock %}

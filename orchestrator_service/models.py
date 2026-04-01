@@ -1009,3 +1009,42 @@ class TenantHoliday(Base):
         CheckConstraint("holiday_type IN ('closure', 'override_open')", name='ck_tenant_holidays_type'),
         Index('idx_tenant_holidays_tenant_date', 'tenant_id', 'date'),
     )
+
+
+# =============================================================================
+# PATIENT DIGITAL RECORDS
+# =============================================================================
+
+class PatientDigitalRecord(Base):
+    __tablename__ = 'patient_digital_records'
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, server_default=func.gen_random_uuid())
+    tenant_id = Column(Integer, ForeignKey('tenants.id', ondelete='CASCADE'), nullable=False)
+    patient_id = Column(Integer, ForeignKey('patients.id', ondelete='CASCADE'), nullable=False)
+    professional_id = Column(Integer, ForeignKey('professionals.id', ondelete='SET NULL'), nullable=True)
+    template_type = Column(String(50), nullable=False)
+    title = Column(String(255), nullable=False)
+    html_content = Column(Text, nullable=False, server_default='')
+    pdf_path = Column(String(500), nullable=True)
+    pdf_generated_at = Column(DateTime(timezone=True), nullable=True)
+    source_data = Column(JSONB, nullable=False, server_default='{}')
+    generation_metadata = Column(JSONB, nullable=True, server_default='{}')
+    status = Column(String(20), nullable=False, server_default='draft')
+    sent_to_email = Column(String(255), nullable=True)
+    sent_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('draft', 'final', 'sent')",
+            name='ck_patient_digital_records_status'
+        ),
+        CheckConstraint(
+            "template_type IN ('clinical_report', 'post_surgery', 'odontogram_art', 'authorization_request')",
+            name='ck_patient_digital_records_template_type'
+        ),
+        Index('idx_pdr_tenant_patient', 'tenant_id', 'patient_id'),
+        Index('idx_pdr_tenant', 'tenant_id'),
+        Index('idx_pdr_status', 'tenant_id', 'status'),
+    )

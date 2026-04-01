@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div data-section="patient_info" data-editable="false">
+    <h2 class="section-title">INFORME POST-QUIRÚRGICO</h2>
+    <div class="patient-data">
+        <table>
+            <tr>
+                <td class="label">Paciente:</td>
+                <td>{{ data.patient.full_name or '[Sin nombre]' }}</td>
+                <td class="label">DNI:</td>
+                <td>{{ data.patient.dni or 'No registrado' }}</td>
+            </tr>
+            <tr>
+                <td class="label">Obra Social:</td>
+                <td>{{ data.patient.insurance or 'Particular' }}</td>
+                <td class="label">Fecha:</td>
+                <td>{{ data.generated_at[:10] | default('') }}</td>
+            </tr>
+        </table>
+    </div>
+</div>
+
+<div data-section="contexto" data-editable="true">
+    <div class="narrative">{{ ai.contexto | default('') }}</div>
+</div>
+
+{% if ai.antecedente_quirurgico %}
+<div data-section="antecedente_quirurgico" data-editable="true">
+    <div class="narrative">{{ ai.antecedente_quirurgico }}</div>
+</div>
+{% endif %}
+
+<div data-section="procedimiento_actual" data-editable="true">
+    <div class="narrative">{{ ai.procedimiento_actual | default('') }}</div>
+</div>
+
+<div data-section="evolucion" data-editable="true">
+    <div class="narrative">{{ ai.evolucion | default('El/la paciente evoluciona dentro de parámetros esperables para el tipo de intervención realizada.') }}</div>
+</div>
+
+<div data-section="conducta" data-editable="true">
+    <h3 class="section-title">Conducta y seguimiento</h3>
+    <div class="narrative">{{ ai.conducta | default('Se indica control postoperatorio.') }}</div>
+</div>
+
+{% if data.next_appointment %}
+<div data-section="proximo_turno" data-editable="false">
+    <h3 class="section-title">Próximo turno programado</h3>
+    <p><strong>Fecha:</strong> {{ data.next_appointment.date }}</p>
+    <p><strong>Hora:</strong> {{ data.next_appointment.time }} hs</p>
+    <p><strong>Motivo:</strong> {{ data.next_appointment.reason or 'Control' }}</p>
+</div>
+{% endif %}
+
+<div data-section="constancia" data-editable="false">
+    <p class="constancia">{{ ai.constancia | default('Se deja constancia que los tiempos de evolución y controles indicados corresponden a la complejidad del procedimiento realizado.') }}</p>
+</div>
+
+{% endblock %}

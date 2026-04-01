@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div data-section="patient_info" data-editable="false">
+    <h2 class="section-title">INFORME CLÍNICO</h2>
+    <div class="patient-data">
+        <table>
+            <tr>
+                <td class="label">Paciente:</td>
+                <td>{{ data.patient.full_name or '[Sin nombre]' }}</td>
+                <td class="label">DNI:</td>
+                <td>{{ data.patient.dni or 'No registrado' }}</td>
+            </tr>
+            <tr>
+                <td class="label">Obra Social:</td>
+                <td>{{ data.patient.insurance or 'Particular' }}{% if data.patient.insurance_id %} ({{ data.patient.insurance_id }}){% endif %}</td>
+                <td class="label">Fecha:</td>
+                <td>{{ data.generated_at[:10] | default('') }}</td>
+            </tr>
+            {% if data.patient.birth_date %}
+            <tr>
+                <td class="label">Fecha Nac.:</td>
+                <td>{{ data.patient.birth_date }}</td>
+                <td class="label">Teléfono:</td>
+                <td>{{ data.patient.phone or 'No registrado' }}</td>
+            </tr>
+            {% endif %}
+        </table>
+    </div>
+</div>
+
+<div data-section="resumen_clinico" data-editable="true">
+    <h3 class="section-title">Resumen Clínico</h3>
+    <div class="narrative">{{ ai.resumen_clinico | default('Sin datos suficientes para generar resumen.') }}</div>
+</div>
+
+<div data-section="antecedentes" data-editable="true">
+    <h3 class="section-title">Antecedentes Médicos</h3>
+    <div class="narrative">{{ ai.antecedentes | default('No se registran antecedentes médicos relevantes.') }}</div>
+</div>
+
+{% if data.odontogram and data.odontogram.teeth | length > 0 %}
+<div data-section="odontograma" data-editable="false">
+    <h3 class="section-title">Odontograma</h3>
+    <div class="odontogram-container">
+        {{ odontogram_svg | safe }}
+    </div>
+</div>
+{% endif %}
+
+<div data-section="estado_dental" data-editable="true">
+    <h3 class="section-title">Estado Dental</h3>
+    <div class="narrative">{{ ai.estado_dental | default('Sin datos de odontograma registrados.') }}</div>
+</div>
+
+<div data-section="tratamientos_realizados" data-editable="true">
+    <h3 class="section-title">Tratamientos Realizados</h3>
+    <div class="narrative">{{ ai.tratamientos_realizados | default('Sin registros de tratamientos.') }}</div>
+</div>
+
+{% if data.clinical_records | length > 0 %}
+<div data-section="historial_tabla" data-editable="false">
+    <h3 class="section-title">Historial de Registros Clínicos</h3>
+    <table class="data-table">
+        <thead>
+            <tr><th>Fecha</th><th>Diagnóstico</th><th>Notas</th><th>Profesional</th></tr>
+        </thead>
+        <tbody>
+            {% for rec in data.clinical_records %}
+            <tr>
+                <td>{{ rec.date or '—' }}</td>
+                <td>{{ rec.diagnosis or '—' }}</td>
+                <td>{{ rec.clinical_notes or '—' }}</td>
+                <td>{{ rec.professional_name or '—' }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
+<div data-section="plan_tratamiento" data-editable="true">
+    <h3 class="section-title">Plan de Tratamiento</h3>
+    <div class="narrative">{{ ai.plan_tratamiento | default('A definir en consulta.') }}</div>
+</div>
+
+<div data-section="recomendaciones" data-editable="true">
+    <h3 class="section-title">Recomendaciones</h3>
+    <div class="narrative">{{ ai.recomendaciones | default('') }}</div>
+</div>
+
+{% endblock %}

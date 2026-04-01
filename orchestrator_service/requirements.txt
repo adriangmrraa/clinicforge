@@ -37,3 +37,4 @@ pgvector>=0.3.0
 openai>=1.0.0
 holidays>=0.40
 sentry-sdk[fastapi]>=2.0.0
+weasyprint>=60.0

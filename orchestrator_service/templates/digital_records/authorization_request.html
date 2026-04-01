@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div data-section="patient_info" data-editable="false">
+    <h2 class="section-title">SOLICITUD DE AUTORIZACIÓN</h2>
+    <div class="patient-data">
+        <table>
+            <tr>
+                <td class="label">Paciente:</td>
+                <td>{{ data.patient.full_name or '[Sin nombre]' }}</td>
+                <td class="label">DNI:</td>
+                <td>{{ data.patient.dni or 'No registrado' }}</td>
+            </tr>
+            <tr>
+                <td class="label">Obra Social / ART:</td>
+                <td>{{ data.patient.insurance or 'Particular' }}{% if data.patient.insurance_id %} ({{ data.patient.insurance_id }}){% endif %}</td>
+                <td class="label">Fecha:</td>
+                <td>{{ data.generated_at[:10] | default('') }}</td>
+            </tr>
+        </table>
+    </div>
+</div>
+
+<div data-section="diagnostico" data-editable="true">
+    <h3 class="section-title">Diagnóstico</h3>
+    <div class="narrative">{{ ai.diagnostico | default('Sin diagnóstico registrado.') }}</div>
+</div>
+
+<div data-section="tratamiento_realizado" data-editable="true">
+    <h3 class="section-title">Tratamiento Realizado</h3>
+    <div class="narrative">{{ ai.tratamiento_realizado | default('Sin tratamientos previos registrados.') }}</div>
+</div>
+
+<div data-section="tratamiento_solicitado" data-editable="true">
+    <h3 class="section-title">Tratamiento Solicitado</h3>
+    <div class="narrative">{{ ai.tratamiento_solicitado | default('<span class="placeholder">[Tratamiento solicitado — dato pendiente de completar]</span>') }}</div>
+</div>
+
+<div data-section="material_objetivo" data-editable="true">
+    <h3 class="section-title">Material y Objetivo</h3>
+    <div class="narrative">{{ ai.material_objetivo | default('<span class="placeholder">[Material y objetivo — dato pendiente de completar]</span>') }}</div>
+</div>
+
+<div data-section="justificacion" data-editable="true">
+    <h3 class="section-title">Justificación Clínica</h3>
+    <div class="narrative">{{ ai.justificacion | default('') }}</div>
+</div>
+
+<div data-section="valor" data-editable="true">
+    <h3 class="section-title">Valor del Tratamiento</h3>
+    {% if data.appointments and data.appointments | length > 0 and data.appointments[0].amount %}
+    <p><strong>$ {{ "{:,.0f}".format(data.appointments[0].amount).replace(",", ".") }}</strong></p>
+    {% else %}
+    <p class="placeholder">[Valor pendiente de completar]</p>
+    {% endif %}
+</div>
+
+<div data-section="observaciones" data-editable="true">
+    <h3 class="section-title">Observaciones</h3>
+    <div class="narrative">{{ ai.observaciones | default('') }}</div>
+</div>
+
+{% endblock %}
