@@ -123,6 +123,11 @@ app.use(async (req: Request, res: Response) => {
         console.log(`[Proxy] Multipart upload: ${rawBody ? rawBody.length : 0} bytes`);
     }
 
+    // Detect if this request expects a binary response (PDF, images, etc.)
+    const acceptHeader = (req.headers['accept'] || '').toLowerCase();
+    const isPdfRequest = req.originalUrl.endsWith('/pdf') || acceptHeader.includes('application/pdf');
+    const isBinaryRequest = isPdfRequest || acceptHeader.includes('application/octet-stream');
+
     try {
         const response = await axios({
             method: req.method,
@@ -136,14 +141,19 @@ app.use(async (req: Request, res: Response) => {
             timeout: 120000,
             maxContentLength: Infinity,
             maxBodyLength: Infinity,
+            // Binary responses need arraybuffer to avoid corruption
+            responseType: isBinaryRequest ? 'arraybuffer' : undefined,
             // Don't let axios transform the multipart buffer
             ...(isMultipart ? { transformRequest: [(data: any) => data] } : {}),
             validateStatus: () => true
         });
 
-        // Reenviar headers de respuesta importantes
+        // Forward all response headers
         if (response.headers['content-type']) {
             res.setHeader('Content-Type', response.headers['content-type']);
+        }
+        if (response.headers['content-disposition']) {
+            res.setHeader('Content-Disposition', response.headers['content-disposition']);
         }
 
         res.status(response.status).send(response.data);
