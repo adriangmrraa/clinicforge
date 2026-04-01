@@ -5396,8 +5396,11 @@ REGLA ANTI-CONFIRMACIÓN-FALSA (CRÍTICO):
 • Si decís "confirmado" sin haber recibido ✅ de book_appointment, estás MINTIENDO al paciente.
 
 REGLA ANTI-MARKDOWN (WHATSAPP):
-• PROHIBIDO usar ** para negritas. WhatsApp no las renderiza como esperas.
-• PROHIBIDO usar [texto](url). Solo URL limpia.
+• PROHIBIDO usar ** para negritas.
+• PROHIBIDO usar _ o __ para itálicas.
+• PROHIBIDO usar ~ para tachado.
+• PROHIBIDO usar ``` para bloques de código.
+• PROHIBIDO usar [texto](url) o ![img](url). Solo URL limpia.
 • PROHIBIDO usar # para títulos. Usá emojis + texto plano.
 • Formato correcto: emojis + saltos de línea + texto plano.
 """
@@ -5612,7 +5615,7 @@ VERIFICACIÓN DE COMPROBANTE (cuando el paciente envía imagen/PDF):
 8. Si la verificación retorna ⚠️ (FALLIDA):
    → Informar al paciente QUÉ falló (monto incorrecto, titular no coincide, imagen ilegible).
    → Pedirle que reenvíe un comprobante correcto.
-   → Si el paciente insiste en que es correcto → derivar a humano con 'derivhumano'.
+   → Si el paciente insiste en que es correcto después de 2 intentos fallidos → derivar a humano con 'derivhumano' (esto SÍ justifica derivación porque involucra dinero real).
    → Si el monto es menor al 50% → decirle cuánto falta y que complete la diferencia.
 9. NUNCA inventes datos bancarios. Solo compartí los configurados arriba.
 
@@ -5707,10 +5710,16 @@ La consulta tiene un valor de {price_text}."
 Si el valor de consulta no está configurado, omití la línea del precio y decí "consultá directamente con la clínica para conocer el valor de la consulta".
 
 OBJECIÓN DE MIEDO / ANSIEDAD:
-Si el paciente expresa miedo, ansiedad o nervios:
-"Es totalmente normal sentir un poco de miedo al tratamiento odontológico.
-En la clínica trabajamos con tecnología moderna para que la experiencia sea más cómoda, incluyendo sistemas anestésicos sin agujas que ayudan a reducir la ansiedad y el dolor durante el procedimiento.
-Muchos pacientes que tenían miedo al dentista nos cuentan que la experiencia fue mucho más cómoda de lo que esperaban."
+Si el paciente expresa miedo, ansiedad o nervios, respondé en MENSAJES SEPARADOS:
+
+MENSAJE 1:
+"Es totalmente normal sentir miedo o ansiedad frente a un tratamiento odontológico 😊"
+
+MENSAJE 2:
+"Trabajamos buscando que la experiencia sea lo más cómoda y cuidada posible, con planificación previa y un enfoque muy personalizado. Muchos pacientes llegan con ese mismo temor y se sienten mucho más tranquilos después de la evaluación."
+
+MENSAJE 3:
+"Si querés, te ayudamos a coordinar una consulta para que puedas sacarte todas las dudas con calma."
 
 MALA EXPERIENCIA PREVIA (CRÍTICO — NO DERIVAR A HUMANO):
 Si el paciente dice "fui a otro dentista y no me fue bien", "tuve una mala experiencia", "me hicieron mal un trabajo", "me lastimaron", "no confío en dentistas", o cualquier variante:
@@ -6377,16 +6386,24 @@ from starlette.responses import JSONResponse as StarletteJSONResponse
 import time as _time
 
 _admin_rate_limit_store: dict = {}  # {ip: [timestamps]}
+_admin_rate_limit_last_cleanup = _time.time()
 _ADMIN_RATE_LIMIT = int(os.getenv("ADMIN_RATE_LIMIT", "60"))  # requests per minute
 _ADMIN_RATE_WINDOW = 60  # seconds
 
 
 class AdminRateLimitMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
+        global _admin_rate_limit_last_cleanup
         if not request.url.path.startswith("/admin/"):
             return await call_next(request)
         client_ip = request.client.host if request.client else "unknown"
         now = _time.time()
+        # Periodic cleanup: purge stale IPs every 5 minutes
+        if now - _admin_rate_limit_last_cleanup > 300:
+            stale = [ip for ip, ts in _admin_rate_limit_store.items() if not ts or now - ts[-1] > _ADMIN_RATE_WINDOW]
+            for ip in stale:
+                del _admin_rate_limit_store[ip]
+            _admin_rate_limit_last_cleanup = now
         timestamps = _admin_rate_limit_store.get(client_ip, [])
         timestamps = [t for t in timestamps if now - t < _ADMIN_RATE_WINDOW]
         if len(timestamps) >= _ADMIN_RATE_LIMIT:
