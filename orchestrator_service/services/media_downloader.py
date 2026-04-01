@@ -19,7 +19,7 @@ async def download_media(url: str, tenant_id: int, media_type: str = "document")
     Returns:
         Path local (/media/{tenant_id}/{filename}) o URL original si falla
     """
-    if not url or url.startswith("/media/"):
+    if not url or url.startswith("/media/") or url.startswith("/uploads/"):
         return url  # Ya es local, no descargar
     
     logger.info(f"📥 Descargando media: {url[:80]}... (tenant={tenant_id}, type={media_type})")

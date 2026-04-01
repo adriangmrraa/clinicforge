@@ -4631,16 +4631,42 @@ async def download_patient_document_proxy(
 
     file_path = document["file_path"]
 
-    # Si es una URL externa (ej: YCloud media), descargar y devolver como proxy
+    # Si es una URL externa (ej: YCloud media), descargar a disco + actualizar DB + devolver
     if file_path.startswith("http://") or file_path.startswith("https://"):
         import httpx
+        import uuid as _uuid
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
+            headers_dl = {}
+            ycloud_key = os.getenv("YCLOUD_API_KEY")
+            if ycloud_key and "ycloud" in file_path.lower():
+                headers_dl["X-API-Key"] = ycloud_key
+            async with httpx.AsyncClient(timeout=30.0, follow_redirects=True, headers=headers_dl) as client:
                 resp = await client.get(file_path)
                 if resp.status_code != 200:
                     raise HTTPException(status_code=502, detail=f"Error descargando archivo externo: {resp.status_code}")
+                if len(resp.content) == 0:
+                    raise HTTPException(status_code=502, detail="Archivo externo vacío")
                 content_type = document["mime_type"] or resp.headers.get("content-type", "application/octet-stream")
                 file_name = document["file_name"] or "document"
+
+                # Persistir a disco para que no se pierda
+                ext = os.path.splitext(file_name)[1] or ".jpg"
+                new_filename = f"{_uuid.uuid4()}{ext}"
+                uploads_dir = os.getenv("UPLOADS_DIR", os.path.join(os.getcwd(), "uploads"))
+                media_dir = os.path.join(uploads_dir, str(tenant_id))
+                os.makedirs(media_dir, exist_ok=True)
+                local_path = os.path.join(media_dir, new_filename)
+                with open(local_path, "wb") as f:
+                    f.write(resp.content)
+                new_file_path = f"/uploads/{tenant_id}/{new_filename}"
+                logger.info(f"✅ External media persisted: {new_file_path} ({len(resp.content)} bytes)")
+
+                # Actualizar DB para que la próxima vez se sirva desde disco
+                await db.pool.execute(
+                    "UPDATE patient_documents SET file_path = $1 WHERE id = $2 AND tenant_id = $3",
+                    new_file_path, doc_id, tenant_id,
+                )
+
                 return Response(
                     content=resp.content,
                     media_type=content_type,
