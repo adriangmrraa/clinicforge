@@ -1843,7 +1843,26 @@ async def delete_credential(
             )
 
         await db.pool.execute("DELETE FROM credentials WHERE id = $1", id)
-        return {"status": "deleted"}
+    return {"status": "deleted"}
+
+
+@router.post("/faqs/sync-embeddings", tags=["FAQs"], summary="Sincronizar embeddings de FAQs")
+async def sync_faq_embeddings(
+    user_data=Depends(verify_admin_token),
+    allowed_ids: List[int] = Depends(get_allowed_tenant_ids),
+):
+    """Sincroniza manualmente los embeddings de FAQs (útil después de inserts masivos por SQL)."""
+    if user_data.role != "ceo":
+        raise HTTPException(status_code=403, detail="Solo el CEO puede sync embeddings.")
+    
+    try:
+        from services.embedding_service import sync_all_tenants_faq_embeddings
+        import asyncio
+        count = await sync_all_tenants_faq_embeddings()
+        return {"status": "completed", "embeddings_synced": count}
+    except Exception as e:
+        logger.error(f"FAQ embedding sync failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Sync failed: {str(e)}")
     except HTTPException:
         raise
     except Exception as e:
@@ -4665,6 +4684,7 @@ async def download_patient_document_proxy(
     Proxy seguro para descargar documentos de pacientes.
     Aislado por tenant_id (Regla de Oro).
     """
+    logger.info(f"📥 Document proxy request: patient={patient_id} doc={doc_id} tenant={tenant_id}")
     # Verificar que el documento existe y pertenece al paciente/tenant
     document = await db.pool.fetchrow(
         """
@@ -5657,7 +5677,7 @@ async def update_appointment_billing(
         """
         SELECT a.payment_status as current_payment_status,
                p.email as patient_email,
-               t.country_code, t.clinic_name, t.address, t.phone,
+               t.country_code, t.clinic_name, t.address, t.bot_phone_number,
                a.billing_amount, a.appointment_datetime, a.appointment_type,
                p.first_name, p.last_name, prof.first_name as professional_name
         FROM appointments a
@@ -5737,7 +5757,7 @@ async def update_appointment_billing(
             country_code = current.get("country_code") or "AR"
             clinic_name = current.get("clinic_name") or ""
             clinic_address = current.get("address") or ""
-            clinic_phone = current.get("phone") or ""
+            clinic_phone = current.get("bot_phone_number") or ""
             patient_name = f"{current.get('first_name', '')} {current.get('last_name', '')}".strip()
             amount = str(current.get("billing_amount", ""))
             appointment_datetime = current.get("appointment_datetime")
@@ -5976,8 +5996,8 @@ async def list_professionals(
     Lista profesionales aprobados y activos. CEO ve todos los de sus sedes; secretary/professional solo los de su clínica.
     Solo se incluyen profesionales cuyo usuario tiene status = 'active' (aprobados por el CEO).
     """
-    # Solo listar profesionales dentales aprobados (u.role = 'professional' y u.status = 'active').
-    base_join = "FROM professionals p INNER JOIN users u ON p.user_id = u.id AND u.role = 'professional' AND u.status = 'active'"
+    # Solo listar profesionales dentales aprobados (u.role IN ('professional', 'ceo') y u.status = 'active').
+    base_join = "FROM professionals p INNER JOIN users u ON p.user_id = u.id AND u.role IN ('professional', 'ceo') AND u.status = 'active'"
     # CEO (varias sedes): listar profesionales de todas las sedes permitidas
     if len(allowed_ids) > 1:
         try:
@@ -6006,7 +6026,7 @@ async def list_professionals(
                     pass
             try:
                 rows = await db.pool.fetch(
-                    "SELECT p.id, p.first_name, p.last_name, p.specialty, p.is_active, p.is_priority_professional FROM professionals p INNER JOIN users u ON p.user_id = u.id AND u.role = 'professional' AND u.status = 'active' WHERE p.tenant_id = ANY($1::int[])",
+                    "SELECT p.id, p.first_name, p.last_name, p.specialty, p.is_active, p.is_priority_professional FROM professionals p INNER JOIN users u ON p.user_id = u.id AND u.role IN ('professional', 'ceo') AND u.status = 'active' WHERE p.tenant_id = ANY($1::int[])",
                     allowed_ids,
                 )
                 return [dict(row) for row in rows]
@@ -6014,7 +6034,7 @@ async def list_professionals(
                 pass
         try:
             rows = await db.pool.fetch(
-                "SELECT p.id, p.first_name, p.last_name, p.specialty, p.is_active FROM professionals p INNER JOIN users u ON p.user_id = u.id AND u.role = 'professional' AND u.status = 'active' WHERE p.tenant_id = ANY($1::int[])",
+                "SELECT p.id, p.first_name, p.last_name, p.specialty, p.is_active FROM professionals p INNER JOIN users u ON p.user_id = u.id AND u.role IN ('professional', 'ceo') AND u.status = 'active' WHERE p.tenant_id = ANY($1::int[])",
                 allowed_ids,
             )
             return [dict(row) | {"is_priority_professional": False} for row in rows]
@@ -6034,7 +6054,7 @@ async def list_professionals(
 
     try:
         rows = await db.pool.fetch(
-            "SELECT p.id, p.first_name, p.specialty, p.is_active FROM professionals p INNER JOIN users u ON p.user_id = u.id AND u.role = 'professional' AND u.status = 'active' WHERE p.tenant_id = $1",
+            "SELECT p.id, p.first_name, p.specialty, p.is_active FROM professionals p INNER JOIN users u ON p.user_id = u.id AND u.role IN ('professional', 'ceo') AND u.status = 'active' WHERE p.tenant_id = $1",
             tenant_id,
         )
         return [
@@ -6045,7 +6065,7 @@ async def list_professionals(
 
     try:
         rows = await db.pool.fetch(
-            "SELECT p.id, p.first_name, p.last_name, p.specialty, p.is_active FROM professionals p INNER JOIN users u ON p.user_id = u.id AND u.role = 'professional' AND u.status = 'active' WHERE p.tenant_id = $1",
+            "SELECT p.id, p.first_name, p.last_name, p.specialty, p.is_active FROM professionals p INNER JOIN users u ON p.user_id = u.id AND u.role IN ('professional', 'ceo') AND u.status = 'active' WHERE p.tenant_id = $1",
             tenant_id,
         )
         return [dict(row) | {"is_priority_professional": False} for row in rows]
@@ -6053,7 +6073,7 @@ async def list_professionals(
         logger.warning(f"list_professionals fallback (no tenant) failed: {e}")
     try:
         rows = await db.pool.fetch(
-            "SELECT p.id, p.first_name, p.specialty, p.is_active FROM professionals p INNER JOIN users u ON p.user_id = u.id AND u.role = 'professional' AND u.status = 'active' WHERE p.tenant_id = $1",
+            "SELECT p.id, p.first_name, p.specialty, p.is_active FROM professionals p INNER JOIN users u ON p.user_id = u.id AND u.role IN ('professional', 'ceo') AND u.status = 'active' WHERE p.tenant_id = $1",
             tenant_id,
         )
         return [

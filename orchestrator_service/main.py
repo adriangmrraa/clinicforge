@@ -873,9 +873,9 @@ async def _get_slots_for_extra_day(
         ).strip()
 
     query = """SELECT p.id, p.first_name, p.last_name, p.google_calendar_id, p.working_hours
-               FROM professionals p
-               INNER JOIN users u ON p.user_id = u.id AND u.role = 'professional' AND u.status = 'active'
-               WHERE p.is_active = true AND p.tenant_id = $1"""
+                FROM professionals p
+                INNER JOIN users u ON p.user_id = u.id AND u.role IN ('professional', 'ceo') AND u.status = 'active'
+                WHERE p.is_active = true AND p.tenant_id = $1"""
     params = [tenant_id]
     if clean_name:
         query += " AND (p.first_name ILIKE $2 OR p.last_name ILIKE $2 OR (p.first_name || ' ' || COALESCE(p.last_name, '')) ILIKE $2)"
@@ -1527,7 +1527,8 @@ async def check_availability(
 
         # Ordenar: profesionales prioritarios primero
         active_professionals = sorted(
-            active_professionals, key=lambda p: (0 if p.get("is_priority_professional") else 1)
+            active_professionals,
+            key=lambda p: 0 if p.get("is_priority_professional") else 1,
         )
 
         # --- CEREBRO HÍBRIDO: google → gcal_service; local → solo tabla appointments ---
@@ -2272,7 +2273,9 @@ async def book_appointment(
                         return f"❌ No hay profesionales asignados a este tratamiento disponibles en ese horario. ¿Querés probar otro horario o tratamiento?"
 
         # Ordenar candidatos: profesionales prioritarios primero
-        candidates = sorted(candidates, key=lambda p: (0 if p.get("is_priority_professional") else 1))
+        candidates = sorted(
+            candidates, key=lambda p: 0 if p.get("is_priority_professional") else 1
+        )
 
         calendar_provider = await get_tenant_calendar_provider(tenant_id)
         if calendar_provider == "google":
@@ -3314,7 +3317,7 @@ async def list_professionals():
             """
             SELECT p.first_name, p.last_name, p.specialty, p.consultation_price
             FROM professionals p
-            INNER JOIN users u ON p.user_id = u.id AND u.role = 'professional' AND u.status = 'active'
+            INNER JOIN users u ON p.user_id = u.id AND u.role IN ('professional', 'ceo') AND u.status = 'active'
             WHERE p.tenant_id = $1 AND p.is_active = true
             ORDER BY p.first_name, p.last_name
         """,
@@ -4066,7 +4069,7 @@ async def confirm_slot(
             prof_row = await db.pool.fetchrow(
                 """
                 SELECT p.id FROM professionals p
-                INNER JOIN users u ON p.user_id = u.id AND u.role = 'professional' AND u.status = 'active'
+                LEFT JOIN users u ON p.user_id = u.id AND u.role IN ('professional', 'ceo') AND u.status = 'active'
                 WHERE p.is_active = true AND p.tenant_id = $1
                 AND (p.first_name ILIKE $2 OR p.last_name ILIKE $2 OR (p.first_name || ' ' || COALESCE(p.last_name, '')) ILIKE $2)
                 LIMIT 1
@@ -4127,7 +4130,7 @@ async def verify_payment_receipt(
         tenant = await db.pool.fetchrow(
             """
             SELECT bank_cbu, bank_alias, bank_holder_name, consultation_price,
-                   country_code, clinic_name, address, phone
+                   country_code, clinic_name, address, bot_phone_number
             FROM tenants WHERE id = $1
         """,
             tenant_id,
@@ -4595,7 +4598,7 @@ async def verify_payment_receipt(
                         amount=amount_str,
                         payment_method="Transferencia bancaria",
                         clinic_address=tenant.get("address") or "",
-                        clinic_phone=tenant.get("phone") or "",
+                        clinic_phone=tenant.get("bot_phone_number") or "",
                     )
                     if email_sent:
                         logger.info(
@@ -4616,25 +4619,31 @@ async def verify_payment_receipt(
 
         elif not holder_match:
             # Save failed attempt for manual review
-            failed_data = json.dumps({
-                "status": "pending_review",
-                "failure_reason": "holder_mismatch",
-                "amount_detected": amount_value,
-                "amount_expected": expected_amount,
-                "total_paid": total_paid,
-                "holder_match": False,
-                "amount_match": amount_match,
-                "receipt_file_path": receipt_file_path,
-                "receipt_doc_id": last_doc["id"] if last_doc else None,
-                "submitted_at": datetime.now(tz.utc).isoformat(),
-            })
+            failed_data = json.dumps(
+                {
+                    "status": "pending_review",
+                    "failure_reason": "holder_mismatch",
+                    "amount_detected": amount_value,
+                    "amount_expected": expected_amount,
+                    "total_paid": total_paid,
+                    "holder_match": False,
+                    "amount_match": amount_match,
+                    "receipt_file_path": receipt_file_path,
+                    "receipt_doc_id": last_doc["id"] if last_doc else None,
+                    "submitted_at": datetime.now(tz.utc).isoformat(),
+                }
+            )
             await db.pool.execute(
                 "UPDATE appointments SET payment_receipt_data = $1::jsonb WHERE id = $2",
-                failed_data, apt['id']
+                failed_data,
+                apt["id"],
             )
             # Notify clinic via email
             try:
-                tenant_info = await db.pool.fetchrow("SELECT derivation_email, clinic_name FROM tenants WHERE id = $1", tenant_id)
+                tenant_info = await db.pool.fetchrow(
+                    "SELECT derivation_email, clinic_name FROM tenants WHERE id = $1",
+                    tenant_id,
+                )
                 if tenant_info and tenant_info.get("derivation_email"):
                     email_service.send_payment_verification_failed_email(
                         to_email=tenant_info["derivation_email"],
@@ -4644,11 +4653,24 @@ async def verify_payment_receipt(
                         appointment_date=fecha,
                         treatment=treatment_display,
                         failure_reason="El titular de la cuenta destino no coincide con los datos configurados de la clínica.",
-                        amount_detected=f"${int(amount_value):,}".replace(",", ".") if amount_value else "",
-                        amount_expected=f"${int(expected_amount):,}".replace(",", ".") if expected_amount else "",
+                        amount_detected=f"${int(amount_value):,}".replace(",", ".")
+                        if amount_value
+                        else "",
+                        amount_expected=f"${int(expected_amount):,}".replace(",", ".")
+                        if expected_amount
+                        else "",
                     )
             except Exception as email_err:
                 logger.warning(f"Payment failure email error (non-fatal): {email_err}")
+
+            # Set cooldown to prevent re-triggering payment verification loop
+            try:
+                from services.payment_cooldown import set_payment_cooldown
+
+                await set_payment_cooldown(tenant_id, phone)
+            except Exception as cooldown_err:
+                logger.warning(f"Error setting payment cooldown: {cooldown_err}")
+
             return (
                 f"Recibimos tu comprobante. No pudimos verificarlo automáticamente pero ya lo estamos revisando. "
                 f"Te contactamos en breve. Gracias por tu paciencia!"
@@ -4688,24 +4710,40 @@ async def verify_payment_receipt(
             )
 
         # Generic failure — save attempt + notify clinic
-        failed_data = json.dumps({
-            "status": "pending_review",
-            "failure_reason": "unknown",
-            "amount_detected": amount_value,
-            "amount_expected": expected_amount,
-            "total_paid": total_paid,
-            "holder_match": holder_match,
-            "amount_match": amount_match,
-            "receipt_file_path": receipt_file_path,
-            "receipt_doc_id": last_doc["id"] if last_doc else None,
-            "submitted_at": datetime.now(tz.utc).isoformat(),
-        })
+        # (The amount mismatch case above also falls through to here, so we set cooldown for both)
+
+        # Set cooldown to prevent re-triggering payment verification loop
+        try:
+            from services.payment_cooldown import set_payment_cooldown
+
+            await set_payment_cooldown(tenant_id, phone)
+        except Exception as cooldown_err:
+            logger.warning(f"Error setting payment cooldown: {cooldown_err}")
+
+        failed_data = json.dumps(
+            {
+                "status": "pending_review",
+                "failure_reason": "unknown",
+                "amount_detected": amount_value,
+                "amount_expected": expected_amount,
+                "total_paid": total_paid,
+                "holder_match": holder_match,
+                "amount_match": amount_match,
+                "receipt_file_path": receipt_file_path,
+                "receipt_doc_id": last_doc["id"] if last_doc else None,
+                "submitted_at": datetime.now(tz.utc).isoformat(),
+            }
+        )
         await db.pool.execute(
             "UPDATE appointments SET payment_receipt_data = $1::jsonb WHERE id = $2",
-            failed_data, apt['id']
+            failed_data,
+            apt["id"],
         )
         try:
-            tenant_info = await db.pool.fetchrow("SELECT derivation_email, clinic_name FROM tenants WHERE id = $1", tenant_id)
+            tenant_info = await db.pool.fetchrow(
+                "SELECT derivation_email, clinic_name FROM tenants WHERE id = $1",
+                tenant_id,
+            )
             if tenant_info and tenant_info.get("derivation_email"):
                 email_service.send_payment_verification_failed_email(
                     to_email=tenant_info["derivation_email"],
@@ -4715,8 +4753,12 @@ async def verify_payment_receipt(
                     appointment_date=fecha,
                     treatment=treatment_display,
                     failure_reason="No se pudo verificar el comprobante automáticamente (imagen ilegible o datos no reconocibles).",
-                    amount_detected=f"${int(amount_value):,}".replace(",", ".") if amount_value else "",
-                    amount_expected=f"${int(expected_amount):,}".replace(",", ".") if expected_amount else "",
+                    amount_detected=f"${int(amount_value):,}".replace(",", ".")
+                    if amount_value
+                    else "",
+                    amount_expected=f"${int(expected_amount):,}".replace(",", ".")
+                    if expected_amount
+                    else "",
                 )
         except Exception as email_err:
             logger.warning(f"Payment failure email error (non-fatal): {email_err}")
@@ -4954,7 +4996,9 @@ async def check_insurance_coverage(insurance_provider: str) -> str:
         else:  # rejected
             return f"Lamentablemente no trabajamos con {name}. ¿Querés consultar de forma particular?"
     except Exception as e:
-        logger.warning(f"check_insurance_coverage error (tabla puede no existir aún): {e}")
+        logger.warning(
+            f"check_insurance_coverage error (tabla puede no existir aún): {e}"
+        )
         return (
             f"No pude verificar la cobertura de '{insurance_provider}' en este momento. "
             "Te recomiendo consultar directamente con la clínica."
@@ -4982,12 +5026,15 @@ async def get_treatment_instructions(treatment_code: str, timing: str = "all") -
         result_parts = []
 
         if timing in ("pre", "all") and row.get("pre_instructions"):
-            result_parts.append(f"📋 INSTRUCCIONES PRE-TRATAMIENTO:\n{row['pre_instructions']}")
+            result_parts.append(
+                f"📋 INSTRUCCIONES PRE-TRATAMIENTO:\n{row['pre_instructions']}"
+            )
 
         if timing in ("post", "all") and row.get("post_instructions"):
             post = row["post_instructions"]
             if isinstance(post, str):
                 import json as _json
+
                 try:
                     post = _json.loads(post)
                 except Exception:
@@ -5021,8 +5068,12 @@ async def get_treatment_instructions(treatment_code: str, timing: str = "all") -
 
         return "\n".join(result_parts)
     except Exception as e:
-        logger.warning(f"get_treatment_instructions error (columnas pueden no existir aún): {e}")
-        return "No se pudieron obtener las instrucciones del tratamiento en este momento."
+        logger.warning(
+            f"get_treatment_instructions error (columnas pueden no existir aún): {e}"
+        )
+        return (
+            "No se pudieron obtener las instrucciones del tratamiento en este momento."
+        )
 
 
 DENTAL_TOOLS = [
@@ -5259,7 +5310,9 @@ def _format_insurance_providers(providers: list) -> str:
                 p.get("ai_response_template")
                 or f"Para ese tratamiento trabajamos a través de {target} 😊 Te paso el contacto para que coordines directamente."
             )
-            lines.append(f"  • {p['provider_name']} → Derivar a {target}. Mensaje: \"{msg}\"")
+            lines.append(
+                f'  • {p["provider_name"]} → Derivar a {target}. Mensaje: "{msg}"'
+            )
 
     if rejected:
         names = ", ".join(p["provider_name"] for p in rejected)
@@ -5270,7 +5323,7 @@ def _format_insurance_providers(providers: list) -> str:
     lines.append("")
     lines.append(
         "Si el paciente menciona una OS que NO está en esta lista → "
-        "\"No tengo información sobre esa obra social. ¿Querés que consulte con la clínica?\""
+        '"No tengo información sobre esa obra social. ¿Querés que consulte con la clínica?"'
     )
     lines.append(
         "Podés llamar a check_insurance_coverage para buscar una OS específica en el catálogo configurado."
@@ -5313,7 +5366,9 @@ def _format_derivation_rules(rules: list) -> str:
             lines.append("  Acción: sin filtro de profesional (equipo)")
 
     lines.append("")
-    lines.append("Si ninguna regla coincide → sin filtro de profesional (equipo disponible).")
+    lines.append(
+        "Si ninguna regla coincide → sin filtro de profesional (equipo disponible)."
+    )
 
     return "\n".join(lines)
 
@@ -5635,12 +5690,12 @@ SI NO HAY PRECIO CONFIGURADO: No pedir seña. Agendar normalmente y pasar direct
         insurance_fallback_rule = (
             "llamá check_insurance_coverage con el nombre de la OS. "
             "El catálogo está configurado en el sistema. Si no la encontrás, "
-            "decí: \"No tengo información sobre esa obra social. ¿Querés que consulte con la clínica?\""
+            'decí: "No tengo información sobre esa obra social. ¿Querés que consulte con la clínica?"'
         )
     else:
         insurance_fallback_rule = (
-            "respondé: \"Te recomiendo consultar directamente con la clínica sobre convenios y coberturas. "
-            "¿Querés que te derive con un humano para eso?\""
+            'respondé: "Te recomiendo consultar directamente con la clínica sobre convenios y coberturas. '
+            '¿Querés que te derive con un humano para eso?"'
         )
 
     return f"""REGLA DE IDIOMA (OBLIGATORIA): {lang_rule}{extra_context}
@@ -6249,9 +6304,9 @@ async def lifespan(app: FastAPI):
 
     # RAG: Sync ALL embeddings for all tenants (FAQs, insurance, derivation, instructions)
     try:
-        from services.embedding_service import sync_all_tenants_embeddings
+        from services.embedding_service import sync_all_tenants_faq_embeddings
 
-        asyncio.create_task(sync_all_tenants_embeddings())
+        asyncio.create_task(sync_all_tenants_faq_embeddings())
         logger.info("rag_all_embedding_sync_started")
     except Exception as e:
         logger.warning(f"rag_embedding_sync_skipped: {e}")
@@ -6433,7 +6488,11 @@ class AdminRateLimitMiddleware(BaseHTTPMiddleware):
         now = _time.time()
         # Periodic cleanup: purge stale IPs every 5 minutes
         if now - _admin_rate_limit_last_cleanup > 300:
-            stale = [ip for ip, ts in _admin_rate_limit_store.items() if not ts or now - ts[-1] > _ADMIN_RATE_WINDOW]
+            stale = [
+                ip
+                for ip, ts in _admin_rate_limit_store.items()
+                if not ts or now - ts[-1] > _ADMIN_RATE_WINDOW
+            ]
             for ip in stale:
                 del _admin_rate_limit_store[ip]
             _admin_rate_limit_last_cleanup = now
@@ -6442,7 +6501,11 @@ class AdminRateLimitMiddleware(BaseHTTPMiddleware):
         if len(timestamps) >= _ADMIN_RATE_LIMIT:
             return StarletteJSONResponse(
                 status_code=429,
-                content={"detail": "Rate limit exceeded. Max {}/min for admin endpoints.".format(_ADMIN_RATE_LIMIT)},
+                content={
+                    "detail": "Rate limit exceeded. Max {}/min for admin endpoints.".format(
+                        _ADMIN_RATE_LIMIT
+                    )
+                },
             )
         timestamps.append(now)
         _admin_rate_limit_store[client_ip] = timestamps
