@@ -273,55 +273,53 @@ export default function DigitalRecordsTab({ patientId, patientEmail }: Props) {
     // ── Editing: section cards ─────────────────────────────────────────────
     if (viewState === 'editing' && selectedRecord) {
       return (
-        <div className="space-y-4 pb-24">
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <button onClick={() => setViewState('preview')} className="flex items-center gap-2 text-white/60 hover:text-white transition-colors text-sm">
-              <ChevronLeft size={16} /> Volver a vista previa
+        <div className="space-y-3 sm:space-y-4 pb-28">
+          <div className="flex items-center justify-between gap-2">
+            <button onClick={() => setViewState('preview')} className="flex items-center gap-1.5 text-white/60 hover:text-white transition-colors text-xs sm:text-sm">
+              <ChevronLeft size={16} /> Volver
             </button>
-            <button onClick={() => setViewState('preview')} className="flex items-center gap-2 px-3 py-1.5 bg-white/[0.06] border border-white/[0.08] text-white/70 rounded-lg hover:bg-white/[0.1] text-xs">
-              <Eye size={14} /> Vista previa
+            <button onClick={() => setViewState('preview')} className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white/[0.06] border border-white/[0.08] text-white/70 rounded-lg hover:bg-white/[0.1] text-xs">
+              <Eye size={14} /> Preview
             </button>
           </div>
           <div>
-            <h3 className="text-lg font-semibold text-white flex items-center gap-2">
-              <Edit size={18} className="text-blue-400" /> Editando: {selectedRecord.title}
+            <h3 className="text-base sm:text-lg font-semibold text-white flex items-center gap-2">
+              <Edit size={16} className="text-blue-400 shrink-0" />
+              <span className="truncate">{selectedRecord.title}</span>
             </h3>
-            <p className="text-xs text-white/40 mt-1">Las secciones editables tienen borde azul. Las secciones fijas contienen datos del paciente y no se modifican.</p>
+            <p className="text-[11px] text-white/40 mt-1">Secciones con borde azul son editables. Las fijas contienen datos del paciente.</p>
           </div>
 
-          <div className="space-y-3">
+          <div className="space-y-2.5">
             {editSections.map(section => (
               <div
                 key={section.id}
-                className={`rounded-xl p-4 space-y-2 transition-all ${
+                className={`rounded-xl p-3 sm:p-4 space-y-2 transition-all ${
                   section.editable
-                    ? 'bg-white/[0.03] border-2 border-blue-500/20 hover:border-blue-500/40'
+                    ? 'bg-white/[0.03] border-2 border-blue-500/20'
                     : 'bg-white/[0.02] border border-white/[0.06] opacity-70'
                 }`}
               >
-                {/* Section header */}
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    {!section.editable && <Lock size={12} className="text-white/30" />}
-                    <span className={`text-xs font-bold uppercase tracking-wider ${section.editable ? 'text-blue-400' : 'text-white/30'}`}>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    {!section.editable && <Lock size={11} className="text-white/30 shrink-0" />}
+                    <span className={`text-[11px] font-bold uppercase tracking-wider truncate ${section.editable ? 'text-blue-400' : 'text-white/30'}`}>
                       {section.title}
                     </span>
                   </div>
                   {section.editable && (
-                    <span className="text-[10px] text-blue-400/60 bg-blue-500/10 px-2 py-0.5 rounded-full">Editable</span>
+                    <span className="text-[9px] text-blue-400/60 bg-blue-500/10 px-1.5 py-0.5 rounded-full shrink-0">Editable</span>
                   )}
                 </div>
-
-                {/* Section content */}
                 {section.editable ? (
                   <textarea
                     value={htmlToText(section.content)}
                     onChange={e => handleSectionTextChange(section.id, e.target.value)}
-                    className="w-full bg-white/[0.04] border border-white/[0.08] text-white/90 rounded-lg p-3 text-sm leading-relaxed resize-y min-h-[80px] focus:outline-none focus:border-blue-500/30 focus:bg-white/[0.06] transition-colors"
+                    className="w-full bg-white/[0.04] border border-white/[0.08] text-white/90 rounded-lg p-2.5 sm:p-3 text-[13px] sm:text-sm leading-relaxed resize-y min-h-[70px] focus:outline-none focus:border-blue-500/30 focus:bg-white/[0.06] transition-colors"
                     rows={Math.max(3, htmlToText(section.content).split('\n').length + 1)}
                   />
                 ) : (
-                  <div className="text-sm text-white/50 leading-relaxed">
+                  <div className="text-[13px] sm:text-sm text-white/50 leading-relaxed overflow-x-auto">
                     <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(section.content, { ADD_TAGS: ['style', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'svg', 'path', 'circle', 'line', 'g', 'text', 'rect'] }) }} />
                   </div>
                 )}
@@ -329,15 +327,15 @@ export default function DigitalRecordsTab({ patientId, patientEmail }: Props) {
             ))}
           </div>
 
-          {/* Floating save button */}
-          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-30">
+          {/* Floating save button — safe area for iPhone notch */}
+          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-30 pb-safe">
             <button
               onClick={handleSaveEdit}
               disabled={saving}
-              className="flex items-center gap-2 px-6 py-3 bg-white text-[#0a0e1a] rounded-full text-sm font-semibold shadow-lg shadow-black/30 hover:bg-white/90 active:scale-95 transition-all disabled:opacity-50"
+              className="flex items-center gap-2 px-5 sm:px-6 py-2.5 sm:py-3 bg-white text-[#0a0e1a] rounded-full text-sm font-semibold shadow-lg shadow-black/40 hover:bg-white/90 active:scale-95 transition-all disabled:opacity-50"
             >
               {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-              {saving ? 'Guardando...' : 'Guardar cambios'}
+              {saving ? 'Guardando...' : 'Guardar'}
             </button>
           </div>
         </div>
@@ -348,51 +346,60 @@ export default function DigitalRecordsTab({ patientId, patientEmail }: Props) {
     if (viewState === 'preview' && selectedRecord) {
       const record = selectedRecord;
       return (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <button onClick={() => { setViewState('list'); setSelectedRecord(null); }} className="flex items-center gap-2 text-white/60 hover:text-white transition-colors text-sm">
-              <ChevronLeft size={16} /> {t('digitalRecords.back')}
-            </button>
-            <div className="flex items-center gap-2 flex-wrap">
-              {getStatusBadge(record)}
-              <button onClick={handleStartEdit} className="flex items-center gap-2 px-3 py-1.5 bg-blue-500/10 border border-blue-500/20 text-blue-400 rounded-lg hover:bg-blue-500/20 text-xs">
-                <Edit size={14} /> Editar
-              </button>
-              <button onClick={() => handleDownloadPdf(record)} className="flex items-center gap-2 px-3 py-1.5 bg-white/[0.06] border border-white/[0.08] text-white/70 rounded-lg hover:bg-white/[0.1] text-xs">
-                <Download size={14} /> {t('digitalRecords.downloadPdf')}
-              </button>
-              <button onClick={() => openEmailModal(record)} className="flex items-center gap-2 px-3 py-1.5 bg-white/[0.06] border border-white/[0.08] text-white/70 rounded-lg hover:bg-white/[0.1] text-xs">
-                <Mail size={14} /> {t('digitalRecords.sendEmail')}
-              </button>
-              <button onClick={() => handleDelete(record.id)} className="px-2.5 py-1.5 bg-red-500/10 border border-red-500/20 text-red-400 rounded-lg hover:bg-red-500/20 text-xs">
-                <Trash2 size={14} />
-              </button>
-            </div>
-          </div>
+        <div className="space-y-3 sm:space-y-4">
+          {/* Back button */}
+          <button onClick={() => { setViewState('list'); setSelectedRecord(null); }} className="flex items-center gap-1.5 text-white/60 hover:text-white transition-colors text-xs sm:text-sm">
+            <ChevronLeft size={16} /> {t('digitalRecords.back')}
+          </button>
+
+          {/* Title + meta */}
           <div>
-            <h3 className="text-lg font-semibold text-white">{record.title}</h3>
-            <div className="flex items-center gap-3 mt-1">
-              <span className="text-xs text-white/40">{getTemplateLabel(record.template_type)}</span>
-              {record.created_at && <span className="text-xs text-white/40">{new Date(record.created_at).toLocaleString('es-AR')}</span>}
+            <h3 className="text-base sm:text-lg font-semibold text-white leading-tight">{record.title}</h3>
+            <div className="flex flex-wrap items-center gap-2 mt-1.5">
+              {getStatusBadge(record)}
+              <span className="text-[11px] text-white/40">{getTemplateLabel(record.template_type)}</span>
+              {record.created_at && <span className="text-[11px] text-white/40">{new Date(record.created_at).toLocaleString('es-AR')}</span>}
             </div>
           </div>
+
+          {/* Action buttons — horizontal scroll on mobile */}
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-hide">
+            <button onClick={handleStartEdit} className="flex items-center gap-1.5 px-3 py-2 bg-blue-500/10 border border-blue-500/20 text-blue-400 rounded-lg hover:bg-blue-500/20 text-xs whitespace-nowrap shrink-0">
+              <Edit size={14} /> Editar
+            </button>
+            <button onClick={() => handleDownloadPdf(record)} className="flex items-center gap-1.5 px-3 py-2 bg-white/[0.06] border border-white/[0.08] text-white/70 rounded-lg hover:bg-white/[0.1] text-xs whitespace-nowrap shrink-0">
+              <Download size={14} /> PDF
+            </button>
+            <button onClick={() => openEmailModal(record)} className="flex items-center gap-1.5 px-3 py-2 bg-white/[0.06] border border-white/[0.08] text-white/70 rounded-lg hover:bg-white/[0.1] text-xs whitespace-nowrap shrink-0">
+              <Mail size={14} /> Email
+            </button>
+            <button onClick={() => handleDelete(record.id)} className="flex items-center gap-1.5 px-2.5 py-2 bg-red-500/10 border border-red-500/20 text-red-400 rounded-lg hover:bg-red-500/20 text-xs whitespace-nowrap shrink-0">
+              <Trash2 size={14} />
+            </button>
+          </div>
+
+          {/* Warnings */}
           {record.generation_warnings && record.generation_warnings.length > 0 && (
-            <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-4">
+            <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3 sm:p-4">
               <div className="flex items-start gap-2">
-                <AlertTriangle size={16} className="text-amber-400 shrink-0 mt-0.5" />
+                <AlertTriangle size={14} className="text-amber-400 shrink-0 mt-0.5" />
                 <div>
-                  <p className="text-xs font-semibold text-amber-400 mb-1">{t('digitalRecords.warnings')}</p>
-                  <ul className="space-y-1">{record.generation_warnings.map((w, i) => <li key={i} className="text-xs text-amber-300/80">{w}</li>)}</ul>
+                  <p className="text-[11px] font-semibold text-amber-400 mb-1">{t('digitalRecords.warnings')}</p>
+                  <ul className="space-y-0.5">{record.generation_warnings.map((w, i) => <li key={i} className="text-[11px] text-amber-300/80">{w}</li>)}</ul>
                 </div>
               </div>
             </div>
           )}
-          <div className="bg-white rounded-lg p-8 text-black overflow-auto max-h-[70vh] shadow-lg">
+
+          {/* HTML Preview — responsive padding */}
+          <div className="bg-white rounded-lg p-4 sm:p-8 text-black overflow-auto max-h-[60vh] sm:max-h-[70vh] shadow-lg text-[13px] sm:text-base">
             <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(record.html_content || '', { ADD_TAGS: ['style', 'svg', 'path', 'circle', 'line', 'g', 'text', 'rect'], ADD_ATTR: ['data-section', 'data-editable', 'viewBox', 'fill', 'stroke', 'stroke-width', 'cx', 'cy', 'r', 'd', 'x1', 'y1', 'x2', 'y2', 'opacity', 'transform', 'font-size', 'font-weight', 'text-anchor', 'stroke-linecap', 'stroke-dasharray'] }) }} />
           </div>
+
+          {/* Sent info */}
           {record.sent_to_email && (
-            <p className="text-xs text-white/40 flex items-center gap-1">
-              <Send size={12} /> {t('digitalRecords.sentTo')}: {record.sent_to_email}
+            <p className="text-[11px] text-white/40 flex items-center gap-1">
+              <Send size={11} /> {t('digitalRecords.sentTo')}: {record.sent_to_email}
               {record.sent_at && ` — ${new Date(record.sent_at).toLocaleString('es-AR')}`}
             </p>
           )}
@@ -402,48 +409,59 @@ export default function DigitalRecordsTab({ patientId, patientEmail }: Props) {
 
     // ── List ───────────────────────────────────────────────────────────────
     return (
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h3 className="text-lg font-semibold text-white flex items-center gap-2">
-            <FileText size={20} className="text-white/50" /> {t('digitalRecords.title')}
+      <div className="space-y-3 sm:space-y-4">
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="text-base sm:text-lg font-semibold text-white flex items-center gap-2">
+            <FileText size={18} className="text-white/50 shrink-0" />
+            <span className="truncate">{t('digitalRecords.title')}</span>
           </h3>
-          <div className="flex items-center gap-2">
-            <button onClick={fetchRecords} className="p-2 text-white/40 hover:text-white/70 hover:bg-white/[0.04] rounded-lg"><RefreshCw size={16} /></button>
-            <button onClick={() => setGenerateModalOpen(true)} className="flex items-center gap-2 bg-white text-[#0a0e1a] px-4 py-2 rounded-lg hover:bg-white/90 text-sm font-medium">
-              <Plus size={16} /> {t('digitalRecords.generate')}
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+            <button onClick={fetchRecords} className="p-2 text-white/40 hover:text-white/70 hover:bg-white/[0.04] rounded-lg"><RefreshCw size={15} /></button>
+            <button onClick={() => setGenerateModalOpen(true)} className="flex items-center gap-1.5 bg-white text-[#0a0e1a] px-3 sm:px-4 py-2 rounded-lg hover:bg-white/90 text-xs sm:text-sm font-medium">
+              <Plus size={15} />
+              <span className="hidden sm:inline">{t('digitalRecords.generate')}</span>
+              <span className="sm:hidden">Generar</span>
             </button>
           </div>
         </div>
         {loading ? (
           <div className="flex items-center justify-center py-12"><Loader2 size={28} className="text-white/30 animate-spin" /></div>
         ) : records.length === 0 ? (
-          <div className="bg-white/[0.03] border border-white/[0.06] rounded-lg p-10 text-center">
-            <FileText size={44} className="mx-auto mb-4 text-white/20" />
+          <div className="bg-white/[0.03] border border-white/[0.06] rounded-lg p-8 sm:p-10 text-center">
+            <FileText size={40} className="mx-auto mb-3 text-white/20" />
             <p className="text-white/40 text-sm">{t('digitalRecords.empty')}</p>
             <button onClick={() => setGenerateModalOpen(true)} className="mt-4 bg-white text-[#0a0e1a] px-4 py-2 rounded-lg hover:bg-white/90 text-sm font-medium">{t('digitalRecords.generate')}</button>
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-2.5">
             {records.map(record => (
-              <div key={record.id} className="bg-white/[0.03] border border-white/[0.06] rounded-xl p-4 hover:border-white/[0.12] transition-all">
-                <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex flex-wrap items-center gap-2 mb-1">
-                      <span className="text-sm font-semibold text-white truncate">{record.title}</span>
-                      {getStatusBadge(record)}
-                    </div>
-                    <div className="flex flex-wrap items-center gap-3 text-xs text-white/40">
-                      <span>{getTemplateLabel(record.template_type)}</span>
-                      {record.created_at && <span>{new Date(record.created_at).toLocaleString('es-AR')}</span>}
-                      {record.sent_to_email && <span className="flex items-center gap-1"><Send size={10} />{record.sent_to_email}</span>}
-                    </div>
+              <div key={record.id} className="bg-white/[0.03] border border-white/[0.06] rounded-xl p-3 sm:p-4 hover:border-white/[0.12] transition-all">
+                {/* Info */}
+                <div className="mb-2.5">
+                  <div className="flex flex-wrap items-center gap-1.5 mb-1">
+                    <span className="text-[13px] sm:text-sm font-semibold text-white">{record.title}</span>
+                    {getStatusBadge(record)}
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <button onClick={() => handleViewRecord(record)} className="flex items-center gap-1.5 px-3 py-1.5 bg-white/[0.06] border border-white/[0.08] text-white/70 rounded-lg hover:bg-white/[0.1] text-xs"><Eye size={13} /> {t('digitalRecords.view')}</button>
-                    <button onClick={() => handleDownloadPdf(record)} className="px-2.5 py-1.5 bg-white/[0.06] border border-white/[0.08] text-white/50 rounded-lg hover:bg-white/[0.1] text-xs"><Download size={13} /></button>
-                    <button onClick={() => openEmailModal(record)} className="px-2.5 py-1.5 bg-white/[0.06] border border-white/[0.08] text-white/50 rounded-lg hover:bg-white/[0.1] text-xs"><Mail size={13} /></button>
-                    <button onClick={() => handleDelete(record.id)} className="px-2.5 py-1.5 bg-red-500/10 border border-red-500/20 text-red-400 rounded-lg hover:bg-red-500/20 text-xs"><Trash2 size={13} /></button>
+                  <div className="flex flex-wrap items-center gap-2 text-[11px] text-white/40">
+                    <span>{getTemplateLabel(record.template_type)}</span>
+                    {record.created_at && <span>{new Date(record.created_at).toLocaleDateString('es-AR')}</span>}
+                    {record.sent_to_email && <span className="flex items-center gap-1"><Send size={9} />{record.sent_to_email}</span>}
                   </div>
+                </div>
+                {/* Actions — always row, scroll on mobile */}
+                <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-hide">
+                  <button onClick={() => handleViewRecord(record)} className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white/[0.06] border border-white/[0.08] text-white/70 rounded-lg hover:bg-white/[0.1] text-xs whitespace-nowrap shrink-0">
+                    <Eye size={13} /> Ver
+                  </button>
+                  <button onClick={() => handleDownloadPdf(record)} className="flex items-center gap-1 px-2 py-1.5 bg-white/[0.06] border border-white/[0.08] text-white/50 rounded-lg hover:bg-white/[0.1] text-xs whitespace-nowrap shrink-0">
+                    <Download size={13} /> PDF
+                  </button>
+                  <button onClick={() => openEmailModal(record)} className="flex items-center gap-1 px-2 py-1.5 bg-white/[0.06] border border-white/[0.08] text-white/50 rounded-lg hover:bg-white/[0.1] text-xs whitespace-nowrap shrink-0">
+                    <Mail size={13} /> Email
+                  </button>
+                  <button onClick={() => handleDelete(record.id)} className="flex items-center gap-1 px-2 py-1.5 bg-red-500/10 border border-red-500/20 text-red-400 rounded-lg hover:bg-red-500/20 text-xs whitespace-nowrap shrink-0">
+                    <Trash2 size={13} />
+                  </button>
                 </div>
               </div>
             ))}
@@ -459,20 +477,20 @@ export default function DigitalRecordsTab({ patientId, patientEmail }: Props) {
 
       {/* Template Selection Modal */}
       {generateModalOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-[#0d1117] border border-white/[0.08] rounded-xl w-full max-w-md shadow-2xl">
-            <div className="flex items-center justify-between p-5 border-b border-white/[0.06]">
-              <h2 className="text-base font-semibold text-white">{t('digitalRecords.selectTemplate')}</h2>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
+          <div className="bg-[#0d1117] border border-white/[0.08] rounded-t-2xl sm:rounded-xl w-full sm:max-w-md shadow-2xl max-h-[85vh] overflow-y-auto">
+            <div className="flex items-center justify-between p-4 sm:p-5 border-b border-white/[0.06] sticky top-0 bg-[#0d1117] z-10">
+              <h2 className="text-sm sm:text-base font-semibold text-white">{t('digitalRecords.selectTemplate')}</h2>
               <button onClick={() => setGenerateModalOpen(false)} className="text-white/40 hover:text-white/70 p-1.5 rounded-full"><X size={16} /></button>
             </div>
-            <div className="p-5 grid grid-cols-2 gap-3">
+            <div className="p-4 sm:p-5 grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3 pb-6 sm:pb-5">
               {TEMPLATE_TYPES.map(tpl => (
                 <button key={tpl.id} onClick={() => handleGenerate(tpl.id)} disabled={generating}
-                  className="flex flex-col items-start gap-2 p-4 bg-white/[0.03] border border-white/[0.06] rounded-lg hover:bg-white/[0.06] hover:border-white/[0.12] transition-all text-left disabled:opacity-50">
-                  <span className="text-2xl">{tpl.icon}</span>
-                  <div>
-                    <p className="text-sm font-semibold text-white">{t(`digitalRecords.${tpl.id}`)}</p>
-                    <p className="text-xs text-white/40 mt-0.5 leading-snug">{t(`digitalRecords.${tpl.id}_desc`)}</p>
+                  className="flex items-center sm:flex-col sm:items-start gap-3 sm:gap-2 p-3.5 sm:p-4 bg-white/[0.03] border border-white/[0.06] rounded-xl hover:bg-white/[0.06] hover:border-white/[0.12] transition-all text-left disabled:opacity-50 active:scale-[0.98]">
+                  <span className="text-2xl shrink-0">{tpl.icon}</span>
+                  <div className="min-w-0">
+                    <p className="text-[13px] sm:text-sm font-semibold text-white">{t(`digitalRecords.${tpl.id}`)}</p>
+                    <p className="text-[11px] sm:text-xs text-white/40 mt-0.5 leading-snug">{t(`digitalRecords.${tpl.id}_desc`)}</p>
                   </div>
                 </button>
               ))}
@@ -483,8 +501,8 @@ export default function DigitalRecordsTab({ patientId, patientEmail }: Props) {
 
       {/* Email Modal */}
       {emailModalOpen && selectedRecord && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-[#0d1117] border border-white/[0.08] rounded-xl w-full max-w-sm shadow-2xl">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
+          <div className="bg-[#0d1117] border border-white/[0.08] rounded-t-2xl sm:rounded-xl w-full sm:max-w-sm shadow-2xl">
             <div className="flex items-center justify-between p-5 border-b border-white/[0.06]">
               <h2 className="text-base font-semibold text-white flex items-center gap-2"><Mail size={18} className="text-blue-400" />{t('digitalRecords.sendEmailTitle')}</h2>
               <button onClick={() => setEmailModalOpen(false)} className="text-white/40 hover:text-white/70 p-1.5 rounded-full"><X size={16} /></button>
