@@ -2711,7 +2711,8 @@ async def update_faq(
         return {"status": "no_changes"}
     updates.append("updated_at = NOW()")
     params.append(faq_id)
-    query = f"UPDATE clinic_faqs SET {', '.join(updates)} WHERE id = ${len(params)}"
+    params.append(row["tenant_id"])
+    query = f"UPDATE clinic_faqs SET {', '.join(updates)} WHERE id = ${len(params) - 1} AND tenant_id = ${len(params)}"
     await db.pool.execute(query, *params)
     # Sync FAQ embedding in background
     try:
@@ -6881,7 +6882,7 @@ async def create_derivation_rule(
         # Need to resolve professional name
         prof_name = ""
         if data.target_professional_id:
-            prof_row = await db.pool.fetchrow("SELECT first_name FROM professionals WHERE id = $1", data.target_professional_id)
+            prof_row = await db.pool.fetchrow("SELECT first_name FROM professionals WHERE id = $1 AND tenant_id = $2", data.target_professional_id, tenant_id)
             prof_name = prof_row["first_name"] if prof_row else ""
         asyncio.create_task(upsert_derivation_embedding(
             tenant_id, row["id"], data.rule_name, data.patient_condition,
@@ -6934,7 +6935,7 @@ async def update_derivation_rule(
         # Need to resolve professional name
         prof_name = ""
         if data.target_professional_id:
-            prof_row = await db.pool.fetchrow("SELECT first_name FROM professionals WHERE id = $1", data.target_professional_id)
+            prof_row = await db.pool.fetchrow("SELECT first_name FROM professionals WHERE id = $1 AND tenant_id = $2", data.target_professional_id, tenant_id)
             prof_name = prof_row["first_name"] if prof_row else ""
         asyncio.create_task(upsert_derivation_embedding(
             tenant_id, rule_id, data.rule_name, data.patient_condition,
@@ -7613,7 +7614,7 @@ async def delete_treatment_image(
         except Exception as e:
             logger.error(f"Error borrando archivo físico {file_path}: {e}")
 
-    await db.pool.execute("DELETE FROM treatment_images WHERE id = $1", image_id)
+    await db.pool.execute("DELETE FROM treatment_images WHERE id = $1 AND tenant_id = $2", image_id, tenant_id)
     return {"status": "deleted"}
 
 
