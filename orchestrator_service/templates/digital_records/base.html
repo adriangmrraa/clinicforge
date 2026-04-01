@@ -157,11 +157,11 @@ body {
 <body>
 
 <div class="header">
-    {% if data.tenant.logo_url %}
-    <img src="{{ data.tenant.logo_url }}" alt="Logo" style="max-height: 60px; margin-bottom: 8px;">
+    {% if data.clinic.logo_url %}
+    <img src="{{ data.clinic.logo_url }}" alt="Logo" style="max-height: 60px; margin-bottom: 8px;">
     {% endif %}
-    <h1>{{ data.tenant.clinic_name or 'Clínica' }}</h1>
-    <p class="subtitle">{{ data.tenant.address or '' }}{% if data.tenant.phone %} | Tel: {{ data.tenant.phone }}{% endif %}</p>
+    <h1>{{ data.clinic.name or 'Clínica' }}</h1>
+    <p class="subtitle">{{ data.clinic.address or '' }}{% if data.clinic.phone %} | Tel: {{ data.clinic.phone }}{% endif %}</p>
 </div>
 
 {% block content %}{% endblock %}
