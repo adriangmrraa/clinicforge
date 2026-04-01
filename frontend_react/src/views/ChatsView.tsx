@@ -484,7 +484,13 @@ export default function ChatsView() {
     try {
       setLoading(true);
       const response = await api.get<ChatSession[]>('/admin/chat/sessions', { params: { tenant_id: tenantId } });
-      setSessions(response.data);
+      // Preserve unread_count=0 for the currently open conversation (already marked as read)
+      const currentPhone = selectedSessionRef.current?.phone_number;
+      const currentTenant = selectedSessionRef.current?.tenant_id;
+      const data = currentPhone ? response.data.map((s: ChatSession) =>
+        s.phone_number === currentPhone && s.tenant_id === currentTenant ? { ...s, unread_count: 0 } : s
+      ) : response.data;
+      setSessions(data);
       // Al abrir desde notificación de derivación, seleccionar ese chat (state viene de Layout al hacer clic en el toast)
       if (selectPhone) {
         const targetSession = response.data.find((s: ChatSession) => s.phone_number === selectPhone);
