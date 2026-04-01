@@ -60,9 +60,23 @@ app.use(cors({
     allowedHeaders: ['Content-Type', 'Authorization', 'x-tenant-id', 'x-signature']
 }));
 
+// --- File upload proxy (BEFORE body parsers — raw stream passthrough) ---
+app.use('/admin/patients/import', createProxyMiddleware({
+    target: ORCHESTRATOR_URL,
+    changeOrigin: true,
+    timeout: 120000,
+    proxyTimeout: 120000,
+    on: {
+        proxyReq: (proxyReq) => {
+            // Inject admin token server-side
+            proxyReq.setHeader('x-admin-token', ADMIN_TOKEN);
+        }
+    }
+}));
+
 app.use(express.json({ limit: '10mb' }));
 
-// --- Socket.IO WebSocket proxy (BEFORE catch-all) ---
+// --- Socket.IO WebSocket proxy (BEFORE body parsers) ---
 app.use('/socket.io', createProxyMiddleware({
     target: ORCHESTRATOR_URL,
     ws: true,
@@ -97,21 +111,13 @@ app.use(async (req: Request, res: Response) => {
     delete headers['x-admin-token'];
     headers['x-admin-token'] = ADMIN_TOKEN;
 
-    // Detect multipart/form-data (file uploads) — forward raw stream
-    const contentType = req.headers['content-type'] || '';
-    const isMultipart = contentType.includes('multipart/');
-
     try {
         const response = await axios({
             method: req.method,
             url: url,
-            data: isMultipart ? req : req.body,
-            headers: isMultipart
-                ? { ...headers, 'content-type': contentType }
-                : headers,
+            data: req.body,
+            headers: headers,
             timeout: 120000,
-            maxContentLength: Infinity,
-            maxBodyLength: Infinity,
             validateStatus: () => true
         });
 
