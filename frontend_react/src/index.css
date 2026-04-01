@@ -140,6 +140,13 @@ body {
   @apply border-danger focus:ring-danger;
 }
 
+/* Dark-mode contrast fix for native <select> dropdowns */
+select option,
+select optgroup {
+  background-color: #0d1117;
+  color: #fff;
+}
+
 /* ============================================
    TABLE STYLES
    ============================================ */
