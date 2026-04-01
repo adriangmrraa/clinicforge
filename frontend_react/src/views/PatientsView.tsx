@@ -304,7 +304,7 @@ export default function PatientsView() {
       const formData = new FormData();
       formData.append('file', importFile);
       const res = await api.post('/admin/patients/import/preview', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
+        timeout: 120000,
       });
       setImportPreview(res.data);
       setImportStep('preview');
