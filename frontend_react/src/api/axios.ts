@@ -80,10 +80,12 @@ api.interceptors.request.use(
         config.headers['Authorization'] = `Bearer ${jwtToken}`;
       }
 
-      // Multi-tenancy: X-Tenant-ID
-      const tenantId = getCurrentTenantId();
-      if (tenantId) {
-        config.headers['X-Tenant-ID'] = tenantId;
+      // Multi-tenancy: X-Tenant-ID (don't overwrite if already set explicitly)
+      if (!config.headers['X-Tenant-ID']) {
+        const tenantId = getCurrentTenantId();
+        if (tenantId) {
+          config.headers['X-Tenant-ID'] = tenantId;
+        }
       }
     }
 
