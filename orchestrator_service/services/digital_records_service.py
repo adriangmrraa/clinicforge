@@ -249,7 +249,7 @@ async def gather_patient_data(
         ),
         pool.fetchrow(
             """
-            SELECT clinic_name, address, phone, logo_url, country_code
+            SELECT clinic_name, address, bot_phone_number AS phone, country_code
             FROM tenants WHERE id=$1
             """,
             tenant_id,
