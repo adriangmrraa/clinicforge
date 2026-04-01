@@ -565,7 +565,7 @@ async def _call_openai(system_prompt: str, user_content: str, model: str = "gpt-
         ],
         response_format={"type": "json_object"},
         temperature=0.3,
-        max_tokens=2000,
+        max_completion_tokens=2000,
     )
     return json.loads(response.choices[0].message.content)
 
