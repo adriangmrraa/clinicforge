@@ -17,7 +17,7 @@ export default function TreatmentGroupAccordion({ group, formatCurrency }: Props
 
   return (
     <div
-      className="ml-4 bg-white/[0.01] mb-2"
+      className="ml-4 bg-white/[0.01] mb-2 rounded-r-xl"
       style={{
         borderLeft: expanded ? '2px solid rgba(59,130,246,0.35)' : '2px solid rgba(255,255,255,0.06)',
         transition: 'border-color 0.3s ease',

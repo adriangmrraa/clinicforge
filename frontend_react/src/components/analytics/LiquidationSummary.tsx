@@ -9,6 +9,12 @@ interface LiquidationSummaryProps {
 }
 
 function formatCurrency(amount: number): string {
+  if (amount >= 1_000_000) {
+    return `$ ${(amount / 1_000_000).toFixed(1)}M`;
+  }
+  if (amount >= 100_000) {
+    return `$ ${Math.round(amount / 1000)}K`;
+  }
   return new Intl.NumberFormat('es-AR', {
     style: 'currency',
     currency: 'ARS',
@@ -17,7 +23,7 @@ function formatCurrency(amount: number): string {
 }
 
 const SkeletonCard: React.FC = () => (
-  <div className="bg-white/[0.03] border border-white/[0.06] rounded-xl p-4 animate-pulse">
+  <div className="bg-white/[0.03] border border-white/[0.04] rounded-2xl p-4 animate-pulse">
     <div className="flex items-start gap-3">
       <div className="w-10 h-10 rounded-lg bg-white/[0.06] shrink-0" />
       <div className="flex-1 space-y-2 pt-1">
@@ -100,7 +106,7 @@ const LiquidationSummary: React.FC<LiquidationSummaryProps> = ({ totals, loading
       {cards.map((card, index) => (
         <div
           key={card.label}
-          className={`bg-white/[0.03] border border-white/[0.06] rounded-xl p-4 hover:scale-[1.02] transition-transform duration-300 ${card.borderClass}`}
+          className={`bg-white/[0.03] border border-white/[0.04] rounded-2xl p-4 hover:scale-[1.02] transition-transform duration-300 ${card.borderClass}`}
           style={{
             animation: 'slideUp 0.35s ease-out both',
             animationDelay: `${index * 80}ms`,
@@ -108,12 +114,12 @@ const LiquidationSummary: React.FC<LiquidationSummaryProps> = ({ totals, loading
           }}
         >
           <div className="flex items-start gap-3">
-            <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${card.iconClass} ${card.iconRingClass}`}>
+            <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${card.iconClass} ${card.iconRingClass}`}>
               {card.icon}
             </div>
             <div className="min-w-0 flex-1">
               <p className="text-xs text-white/50 mb-1 truncate">{card.label}</p>
-              <p className="text-xl font-bold text-white leading-tight">{card.value}</p>
+              <p className="text-lg sm:text-xl font-bold text-white leading-tight truncate">{card.value}</p>
               {card.extra}
             </div>
           </div>

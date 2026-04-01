@@ -18,7 +18,7 @@ export default function ProfessionalAccordion({ professional, formatCurrency }: 
   const hue = (professional.name.charCodeAt(0) * 17) % 360;
 
   return (
-    <div className="bg-white/[0.02] border border-white/[0.06] rounded-xl mb-3 overflow-hidden">
+    <div className="bg-white/[0.02] border border-white/[0.04] rounded-2xl mb-3 overflow-hidden">
       {/* Header */}
       <button
         onClick={() => setExpanded(prev => !prev)}
@@ -69,20 +69,20 @@ export default function ProfessionalAccordion({ professional, formatCurrency }: 
         <div className="flex items-center gap-2 mt-2 ml-12 flex-wrap">
           <div className="flex flex-col items-center">
             <span className="text-[9px] text-white/30 uppercase">{t('liquidation.billed')}</span>
-            <span className="text-xs bg-white/[0.06] text-white px-2 py-0.5 rounded-md font-medium">
+            <span className="text-xs bg-white/[0.06] text-white px-2 py-0.5 rounded-full font-medium">
               {formatCurrency(summary.billed)}
             </span>
           </div>
           <div className="flex flex-col items-center">
             <span className="text-[9px] text-emerald-400/60 uppercase">{t('liquidation.paid')}</span>
-            <span className="text-xs bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-md font-medium">
+            <span className="text-xs bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-full font-medium">
               {formatCurrency(summary.paid)}
             </span>
           </div>
           {summary.pending > 0 && (
             <div className="flex flex-col items-center">
               <span className="text-[9px] text-amber-400/60 uppercase">{t('liquidation.pending')}</span>
-              <span className="text-xs bg-amber-500/10 text-amber-400 px-2 py-0.5 rounded-md font-medium">
+              <span className="text-xs bg-amber-500/10 text-amber-400 px-2 py-0.5 rounded-full font-medium">
                 {formatCurrency(summary.pending)}
               </span>
             </div>

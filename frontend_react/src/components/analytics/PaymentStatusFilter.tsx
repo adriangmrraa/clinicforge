@@ -39,17 +39,17 @@ const PaymentStatusFilter: React.FC<PaymentStatusFilterProps> = ({ value, onChan
   ];
 
   return (
-    <div className="flex items-center overflow-hidden border border-white/[0.08] rounded-full">
+    <div className="flex items-center overflow-hidden border border-white/[0.04] rounded-full bg-white/[0.02]">
       {options.map((option) => {
         const isActive = value === option.key;
         return (
           <button
             key={option.key}
             onClick={() => onChange(option.key)}
-            className={`px-4 py-1.5 text-sm font-medium transition-colors whitespace-nowrap ${
+            className={`px-4 py-1.5 text-xs font-medium transition-all duration-200 whitespace-nowrap ${
               isActive
                 ? option.activeClass
-                : 'bg-white/[0.02] text-white/40 hover:bg-white/[0.06] hover:text-white/60'
+                : 'text-white/40 hover:bg-white/[0.04] hover:text-white/60'
             }`}
           >
             {option.label}

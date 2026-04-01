@@ -84,7 +84,7 @@ export default function SessionRow({ session, formatCurrency }: Props) {
       {/* Clinical notes panel */}
       {showNotes && (
         <div className="px-3 pb-2">
-          <div className="bg-white/[0.02] rounded-lg p-3 mt-1 mb-2 ml-5">
+          <div className="bg-white/[0.02] rounded-2xl p-3 mt-1 mb-2 ml-5">
             <p className="text-white/40 text-xs mb-1">{t('liquidation.clinical_notes')}:</p>
             {session.clinical_notes ? (
               <p className="text-white/60 text-sm leading-relaxed">{session.clinical_notes}</p>
