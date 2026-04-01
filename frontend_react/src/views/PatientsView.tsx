@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, Plus, Edit, Trash2, X, FileText, Brain, Calendar, User, Clock, Stethoscope, Mail, Phone, Upload, CheckCircle, AlertTriangle, XCircle } from 'lucide-react';
-import api from '../api/axios';
+import api, { setTenantId } from '../api/axios';
 import { useTranslation } from '../context/LanguageContext';
 import PageHeader from '../components/PageHeader';
 import GlassCard, { CARD_IMAGES } from '../components/GlassCard';
@@ -37,6 +37,11 @@ interface Professional {
   last_name?: string;
   specialty?: string;
   is_active: boolean;
+}
+
+interface ClinicOption {
+  id: number;
+  clinic_name: string;
 }
 
 export default function PatientsView() {
@@ -84,12 +89,22 @@ export default function PatientsView() {
   const [importResult, setImportResult] = useState<any>(null);
   const [duplicateAction, setDuplicateAction] = useState<'skip' | 'update'>('skip');
   const [dragOver, setDragOver] = useState(false);
+  const [clinics, setClinics] = useState<ClinicOption[]>([]);
+  const [selectedTenantId, setSelectedTenantId] = useState<number | null>(null);
 
-  // Fetch patients on mount
+  // Fetch clinics + patients on mount
   useEffect(() => {
-    fetchPatients();
+    api.get<ClinicOption[]>('/admin/chat/tenants').then((res) => {
+      setClinics(res.data);
+      if (res.data.length >= 1) setSelectedTenantId(res.data[0].id);
+    });
     fetchResources();
   }, []);
+
+  // Refetch patients when tenant changes
+  useEffect(() => {
+    if (selectedTenantId != null) fetchPatients();
+  }, [selectedTenantId]);
 
   // Filter patients when search term changes
   useEffect(() => {
@@ -358,6 +373,22 @@ export default function PatientsView() {
           </div>
         }
       />
+
+      {/* Clinic filter (CEO multi-tenant) */}
+      {clinics.length > 1 && (
+        <div className="mb-4">
+          <label className="block text-xs font-medium text-white/40 mb-1">{t('chats.clinic_label')}</label>
+          <select
+            value={selectedTenantId ?? ''}
+            onChange={(e) => { const id = Number(e.target.value); setTenantId(String(id)); setSelectedTenantId(id); }}
+            className="w-full sm:w-64 px-3 py-2 border border-white/[0.08] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary bg-white/[0.04] text-white"
+          >
+            {clinics.map((c) => (
+              <option key={c.id} value={c.id}>{c.clinic_name}</option>
+            ))}
+          </select>
+        </div>
+      )}
 
       {/* Search */}
       <div className="mb-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
