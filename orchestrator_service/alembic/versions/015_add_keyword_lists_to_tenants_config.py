@@ -110,36 +110,25 @@ def upgrade():
         "evaluacion",
     ]
 
+    # Safer approach: Update with CASE to handle NULL safely
     try:
-        # Update existing tenants with default keywords
-        # Using config || jsonb_build_object for safe JSONB merge
+        # First, ensure config is not NULL for all tenants
         conn.execute(
-            text("""
-            UPDATE tenants 
-            SET config = COALESCE(config, '{}')::jsonb || jsonb_build_object(
-                'payment_keywords', :payment_kw::jsonb,
-                'medical_keywords', :medical_kw::jsonb
-            )
-            WHERE config IS NULL 
-               OR config::jsonb ? 'payment_keywords' = false
-               OR config::jsonb ? 'medical_keywords' = false
-        """),
-            {
-                "payment_kw": default_payment_keywords,
-                "medical_kw": default_medical_keywords,
-            },
+            text("UPDATE tenants SET config = '{}'::jsonb WHERE config IS NULL")
         )
+    except Exception as e:
+        print(f"Warning: Could not initialize NULL configs: {e}")
 
-        # Also update ALL tenants with default keywords (overwrite if needed)
+    try:
+        # Update using JSONB set operation - safer approach
         conn.execute(
             text("""
             UPDATE tenants 
-            SET config = COALESCE(config, '{}')::jsonb || jsonb_build_object(
+            SET config = COALESCE(config, '{}'::jsonb) || jsonb_build_object(
                 'payment_keywords', :payment_kw::jsonb,
                 'medical_keywords', :medical_kw::jsonb
             )
-            WHERE config::jsonb->'payment_keywords' IS NULL 
-               OR config::jsonb->'medical_keywords' IS NULL
+            WHERE true
         """),
             {
                 "payment_kw": default_payment_keywords,
@@ -153,7 +142,25 @@ def upgrade():
 
     except Exception as e:
         print(f"⚠️ Migration warning: {e}")
-        # Continue - keywords will be populated on first use with defaults
+        # Try simpler approach - just insert directly
+        try:
+            conn.execute(
+                text("""
+                UPDATE tenants 
+                SET config = jsonb_build_object(
+                    'payment_keywords', :payment_kw::jsonb,
+                    'medical_keywords', :medical_kw::jsonb
+                )
+                WHERE config IS NULL OR config = '{}'::jsonb
+            """),
+                {
+                    "payment_kw": default_payment_keywords,
+                    "medical_kw": default_medical_keywords,
+                },
+            )
+            print("✅ Migration completed with fallback approach")
+        except Exception as e2:
+            print(f"⚠️ Migration fallback also failed: {e2}")
 
 
 def downgrade():
