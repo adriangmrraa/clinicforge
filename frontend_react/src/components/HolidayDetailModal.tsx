@@ -57,18 +57,28 @@ export default function HolidayDetailModal({ holiday, isOpen, onClose, onSaved }
     setSaving(true);
     try {
       const currentlyWorking = isWorkingDay;
+      let activeHolidayId = holiday.id;
 
-      if (workingToggle !== currentlyWorking) {
-        // Toggle changed — call toggle endpoint
+      if (workingToggle && !currentlyWorking) {
+        // Switching to working day — toggle creates override_open record
+        const toggleRes = await api.post('/admin/holidays/toggle', {
+          date: holiday.date,
+          name: holiday.name,
+        });
+        activeHolidayId = toggleRes.data?.holiday_id;
+      } else if (!workingToggle && currentlyWorking) {
+        // Switching to closure — toggle removes override_open
         await api.post('/admin/holidays/toggle', {
           date: holiday.date,
           name: holiday.name,
         });
+        onSaved();
+        return;
       }
 
-      if (workingToggle && holiday.id) {
-        // Save custom hours
-        await api.put(`/admin/holidays/${holiday.id}`, {
+      if (workingToggle && activeHolidayId) {
+        // Save custom hours on the override_open record
+        await api.put(`/admin/holidays/${activeHolidayId}`, {
           holiday_type: 'override_open',
           custom_hours_start: startTime,
           custom_hours_end: endTime,

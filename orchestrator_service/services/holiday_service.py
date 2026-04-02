@@ -232,7 +232,7 @@ async def get_upcoming_holidays(pool, tenant_id: int, days_ahead: int = 30) -> L
     # Get all custom holidays in range
     custom_rows = await pool.fetch(
         """
-        SELECT date, name, holiday_type, is_recurring, custom_hours_start, custom_hours_end
+        SELECT id, date, name, holiday_type, is_recurring, custom_hours_start, custom_hours_end
         FROM tenant_holidays
         WHERE tenant_id = $1
           AND (
@@ -247,6 +247,7 @@ async def get_upcoming_holidays(pool, tenant_id: int, days_ahead: int = 30) -> L
     override_dates: set = set()
     override_hours: Dict[date, Optional[Dict[str, str]]] = {}
     override_names: Dict[date, str] = {}
+    override_ids: Dict[date, int] = {}
     closures: Dict[date, Dict[str, Any]] = {}
 
     for row in custom_rows:
@@ -275,8 +276,10 @@ async def get_upcoming_holidays(pool, tenant_id: int, days_ahead: int = 30) -> L
                 override_dates.add(d)
                 override_hours[d] = custom_hours
                 override_names[d] = row['name']
+                override_ids[d] = row['id']
             elif row['holiday_type'] == 'closure':
                 closures[d] = {
+                    'id': row['id'],
                     'name': row['name'],
                     'custom_hours': custom_hours,
                 }
@@ -299,6 +302,7 @@ async def get_upcoming_holidays(pool, tenant_id: int, days_ahead: int = 30) -> L
                 if hours:
                     # override_open with custom hours → report as reduced schedule
                     result.append({
+                        'id': override_ids.get(d),
                         'date': d.isoformat(),
                         'name': override_names.get(d, name),
                         'source': 'custom',
@@ -308,6 +312,7 @@ async def get_upcoming_holidays(pool, tenant_id: int, days_ahead: int = 30) -> L
                 # else: plain override_open → clinic works normally, skip
             else:
                 result.append({
+                    'id': None,
                     'date': d.isoformat(),
                     'name': name,
                     'source': 'library',
@@ -319,6 +324,7 @@ async def get_upcoming_holidays(pool, tenant_id: int, days_ahead: int = 30) -> L
     for d, info in closures.items():
         if d not in override_dates:
             result.append({
+                'id': info.get('id'),
                 'date': d.isoformat(),
                 'name': info['name'],
                 'source': 'custom',
