@@ -120,13 +120,14 @@ def upgrade():
         print(f"Warning: Could not initialize NULL configs: {e}")
 
     try:
-        # Update using JSONB set operation - safer approach
+        # Update using JSONB set operation - pass lists directly, SQLAlchemy handles conversion
+        # NO ::jsonb cast in SQL when using parameters - that's the error
         conn.execute(
             text("""
             UPDATE tenants 
             SET config = COALESCE(config, '{}'::jsonb) || jsonb_build_object(
-                'payment_keywords', :payment_kw::jsonb,
-                'medical_keywords', :medical_kw::jsonb
+                'payment_keywords', :payment_kw,
+                'medical_keywords', :medical_kw
             )
             WHERE true
         """),
@@ -148,8 +149,8 @@ def upgrade():
                 text("""
                 UPDATE tenants 
                 SET config = jsonb_build_object(
-                    'payment_keywords', :payment_kw::jsonb,
-                    'medical_keywords', :medical_kw::jsonb
+                    'payment_keywords', :payment_kw,
+                    'medical_keywords', :medical_kw
                 )
                 WHERE config IS NULL OR config = '{}'::jsonb
             """),
