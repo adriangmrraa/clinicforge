@@ -95,3 +95,28 @@ Maneja la integración con YCloud y la IA de audio (Whisper).
 
 ---
 *Actualizado: 2026-03-17 - v8.1: Alembic migrations (reemplaza Maintenance Robot), BFF Service activo, modelos ORM SQLAlchemy en models.py. Cerebro Híbrido, Chats por clínica, connect-sovereign; i18n es/en/fr, agente agnóstico con detección idioma del mensaje.*
+
+---
+
+## 🤖 Reglas del Agente IA: Múltiples Adjuntos de WhatsApp
+
+### Análisis Automático de Adjuntos
+Cuando un paciente envía múltiples imágenes o PDFs sin texto:
+1. El sistema automáticamente analiza cada attachment con Vision API (GPT-4o)
+2. Cada attachment se clasifica como:
+   - **payment_receipt**: comprobante de pago (transferencia, depósito)
+   - **clinical**: documento clínico (receta, estudio, análisis, rx)
+3. Todos los adjuntos se guardan en "Archivos" del paciente (`patient_documents`)
+4. Se genera un resumen LLM que se muestra en Pestaña "Resumen" (bajo odontograma)
+5. El resumen está disponible para documentos IA generados
+
+### Cómo el Agente puede usar esta información
+- **Ver archivos del paciente**: Usar tool `list_patient_documents` para ver todos los adjuntos
+- **El resumen**: Está en `patient_documents.source_details.llm_summary` del primer attachment
+- **Referenciar en conversación**: "Veo que me enviaste X documentos, los tengo registrados"
+- **Para nuevos documentos IA**: Mentionar "Se adjuntan los documentos que enviaste" si corresponde
+
+### Cuándo mentionar los documentos
+- Si el paciente pregunta "¿recibiste mis documentos?" → "Sí, ya los tengo todos registrados en tu ficha"
+- Si el paciente pregunta "¿qué documentos tengo?" → usar `list_patient_documents` para mostrar
+- Al generar documentos IA → incluir sección "Documentación Adicional" si existe summary
