@@ -1446,14 +1446,14 @@ async def check_availability(
             # Verificar si es feriado
             from services.holiday_service import is_holiday as check_is_holiday
 
-            _is_hol, _hol_name, _custom_hours = await check_is_holiday(db.pool, tid, target_date)
+            _is_hol, _hol_name, _custom_hours = await check_is_holiday(
+                db.pool, tid, target_date
+            )
             if _is_hol and _custom_hours:
                 # Feriado con atención — guardar horario especial y continuar al slot generation
                 _working_holiday_hours = _custom_hours
                 if not auto_advanced:
-                    auto_advance_reason = (
-                        f"⚠️ El {target_date.strftime('%d/%m')} es {_hol_name} — horario especial de {_custom_hours['start']} a {_custom_hours['end']}"
-                    )
+                    auto_advance_reason = f"⚠️ El {target_date.strftime('%d/%m')} es {_hol_name} — horario especial de {_custom_hours['start']} a {_custom_hours['end']}"
                     auto_advanced = True
                 # No hace continue — cae al break como día válido
             elif _is_hol:
@@ -2042,6 +2042,7 @@ async def book_appointment(
         if _is_hol and _custom_hours:
             # Feriado con atención — validar que el horario esté dentro del rango especial
             from datetime import time as time_type
+
             custom_start = time_type.fromisoformat(_custom_hours["start"])
             custom_end = time_type.fromisoformat(_custom_hours["end"])
             apt_time = apt_datetime.time()
@@ -4581,6 +4582,15 @@ async def verify_payment_receipt(
             except Exception:
                 pass
 
+            # Fase 1 - Task 1.3: Set cooldown after successful payment verification
+            # This prevents the infinite loop when patient sends another image
+            try:
+                from services.payment_cooldown import set_payment_cooldown
+
+                await set_payment_cooldown(tenant_id, phone)
+            except Exception as cooldown_err:
+                logger.warning(f"Error setting payment cooldown: {cooldown_err}")
+
             patient_name = f"{apt['first_name']} {apt['last_name'] or ''}".strip()
             apt_dt = apt["appointment_datetime"]
             # Convert UTC to Argentina timezone for display
@@ -5561,13 +5571,12 @@ REGLA ANTI-MARKDOWN (WHATSAPP):
         for h in upcoming_holidays[:7]:
             ch = h.get("custom_hours")
             if ch:
-                hol_lines.append(f"• {h['date']}: {h['name']} — HORARIO ESPECIAL {ch['start']}–{ch['end']}")
+                hol_lines.append(
+                    f"• {h['date']}: {h['name']} — HORARIO ESPECIAL {ch['start']}–{ch['end']}"
+                )
             else:
                 hol_lines.append(f"• {h['date']}: {h['name']} — CERRADO")
-        holidays_section = (
-            "\n\n## FERIADOS PRÓXIMOS\n"
-            + "\n".join(hol_lines)
-        )
+        holidays_section = "\n\n## FERIADOS PRÓXIMOS\n" + "\n".join(hol_lines)
         holidays_section += "\nREGLA: Si feriado CERRADO → informale al paciente y ofrecé el próximo día hábil. Si HORARIO ESPECIAL → ofrecer turnos en ese rango. La tool check_availability ya auto-avanza pasando feriados cerrados y usa el horario especial en feriados con atención."
 
     # Greeting diferenciado
@@ -7169,6 +7178,25 @@ async def chat_endpoint(
 
         # Spec 24: Relay Handling (Async Buffer)
         # Replaces direct agent invocation to allow buffering (16s/20s) and Vision Context injection
+
+        # Fase 1 - Task 1.1: Payment cooldown check to prevent infinite loop
+        # Check if payment verification cooldown is active for this patient
+        from services.payment_cooldown import check_payment_cooldown
+
+        cooldown_active = await check_payment_cooldown(tenant_id, req.final_phone)
+        if cooldown_active:
+            logger.info(
+                f"⏭️ Payment verification cooldown ACTIVE for {req.final_phone} - skipping buffer enqueue"
+            )
+            return {
+                "output": "Gracias por tu mensaje. Ya estamos verificando tu comprobante de pago. Te contactaremos pronto.",
+                "send": True,
+                "text": "Gracias por tu mensaje. Ya estamos verificando tu comprobante de pago. Te contactaremos pronto.",
+                "correlation_id": correlation_id,
+                "status": "cooldown",
+                "reason": "payment_verify_cooldown_active",
+            }
+
         try:
             from services.relay import enqueue_buffer_and_schedule_task
 

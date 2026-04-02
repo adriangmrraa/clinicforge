@@ -879,10 +879,45 @@ async def process_buffer_task(
                 except Exception as cooldown_err:
                     logger.warning(f"Error checking payment cooldown: {cooldown_err}")
 
+                # Fase 2 - Task 2.3: Integrate image classifier
                 # If cooldown is active, skip payment verification context
                 if payment_on_cooldown:
                     media_context += "Confirmo que recibí tu archivo. Lo guardamos en tu ficha médica."
                 else:
+                    # Classify the image using Vision context and message text
+                    classification_result = {
+                        "classification": "neutral",
+                        "is_payment": False,
+                        "is_medical": False,
+                    }
+                    try:
+                        from services.image_classifier import classify_message
+
+                        # Combine text messages and vision context for classification
+                        text_for_classification = messages[-1] if messages else ""
+                        classification_result = await classify_message(
+                            text=text_for_classification,
+                            tenant_id=tenant_id,
+                            vision_description=vision_context_str
+                            if vision_context_str
+                            else None,
+                        )
+                        logger.info(
+                            f"🖼️ Image classification: {classification_result.get('classification')} "
+                            f"(payment={classification_result.get('is_payment')}, "
+                            f"medical={classification_result.get('is_medical')})"
+                        )
+                    except Exception as clf_err:
+                        logger.warning(f"Error in image classification: {clf_err}")
+                        # Continue with default behavior (treat as potentially payment if pending)
+
+                    # If classified as MEDICAL, override payment detection
+                    is_classified_medical = classification_result.get(
+                        "is_medical", False
+                    )
+                    is_classified_payment = classification_result.get(
+                        "is_payment", False
+                    )
                     try:
                         clean_ext_pay = (
                             external_user_id.replace("+", "")
@@ -911,15 +946,35 @@ async def process_buffer_task(
                         )
 
                     if has_pending_payment:
-                        media_context += (
-                            "PROBABLE COMPROBANTE DE PAGO: El paciente tiene un turno con seña pendiente y acaba de enviar una imagen/documento. "
-                            "Es MUY probable que sea un comprobante de transferencia bancaria. "
-                            "ACCIÓN OBLIGATORIA: Usá 'verify_payment_receipt' para verificar el comprobante. "
-                            "Pasá la descripción de la imagen del CONTEXTO VISUAL como 'receipt_description' y el monto que detectes como 'amount_detected'. "
-                            "NO digas 'ya lo guardé en tu ficha'. Decí 'Recibí tu comprobante, voy a verificarlo' y ejecutá la tool. "
-                            "Si la verificación es exitosa → confirmá el pago. Si falla → explicá qué falló."
-                        )
+                        # Fase 2 - Task 2.3: Override payment context if classified as medical
+                        # Medical documents take priority over payment verification
+                        if is_classified_medical:
+                            logger.info(
+                                f"🖼️ Image classified as MEDICAL, overriding payment context"
+                            )
+                            media_context += "Responde confirmando que recibiste el archivo y que ya lo guardaste en su ficha médica para que la Dra. lo vea. Usa un tono amable y profesional."
+                        elif is_classified_payment:
+                            # Explicitly classified as payment - inject payment verification context
+                            media_context += (
+                                "PROBABLE COMPROBANTE DE PAGO: El paciente tiene un turno con seña pendiente y acaba de enviar una imagen/documento. "
+                                "Es MUY probable que sea un comprobante de transferencia bancaria. "
+                                "ACCIÓN OBLIGATORIA: Usá 'verify_payment_receipt' para verificar el comprobante. "
+                                "Pasá la descripción de la imagen del CONTEXTO VISUAL como 'receipt_description' y el monto que detectes como 'amount_detected'. "
+                                "NO digas 'ya lo guardé en tu ficha'. Decí 'Recibí tu comprobante, voy a verificarlo' y ejecutá la tool. "
+                                "Si la verificación es exitosa → confirmá el pago. Si falla → explicá qué falló."
+                            )
+                        else:
+                            # Not classified - use legacy behavior with pending payment check
+                            media_context += (
+                                "PROBABLE COMPROBANTE DE PAGO: El paciente tiene un turno con seña pendiente y acaba de enviar una imagen/documento. "
+                                "Es MUY probable que sea un comprobante de transferencia bancaria. "
+                                "ACCIÓN OBLIGATORIA: Usá 'verify_payment_receipt' para verificar el comprobante. "
+                                "Pasá la descripción de la imagen del CONTEXTO VISUAL como 'receipt_description' y el monto que detectes como 'amount_detected'. "
+                                "NO digas 'ya lo guardé en tu ficha'. Decí 'Recibí tu comprobante, voy a verificarlo' y ejecutá la tool. "
+                                "Si la verificación es exitosa → confirmá el pago. Si falla → explicá qué falló."
+                            )
                     else:
+                        # No pending payment - treat as medical document
                         media_context += "Responde confirmando que recibiste el archivo y que ya lo guardaste en su ficha médica para que la Dra. lo vea. Usa un tono amable y profesional."
             else:
                 media_context += (
