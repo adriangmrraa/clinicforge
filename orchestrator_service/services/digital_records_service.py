@@ -204,6 +204,7 @@ async def gather_patient_data(
         appointment_rows,
         tenant_row,
         next_appt_row,
+        summary_row,
     ) = await asyncio.gather(
         pool.fetchrow(
             "SELECT * FROM patients WHERE id=$1 AND tenant_id=$2",
@@ -269,6 +270,17 @@ async def gather_patient_data(
             patient_id,
             tenant_id,
         ),
+        pool.fetchrow(
+            """
+            SELECT summary_text, attachments_count, attachments_types, created_at
+            FROM clinical_record_summaries
+            WHERE patient_id = $1 AND tenant_id = $2
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            patient_id,
+            tenant_id,
+        ),
     )
 
     # ------------------------------------------------------------------
@@ -298,9 +310,7 @@ async def gather_patient_data(
     # Validate patient exists
     # ------------------------------------------------------------------
     if patient_row is None:
-        raise ValueError(
-            f"Patient {patient_id} not found for tenant {tenant_id}"
-        )
+        raise ValueError(f"Patient {patient_id} not found for tenant {tenant_id}")
 
     # ------------------------------------------------------------------
     # Build professional lookup map (id → name) for clinical records
@@ -356,8 +366,8 @@ async def gather_patient_data(
     # ---- Professional ----
     professional_section = {
         "full_name": (prof_row.get("full_name") if prof_row else None) or None,
-        "mp": None,        # Not in DB yet — always placeholder
-        "specialty": None, # Not in DB yet — always placeholder
+        "mp": None,  # Not in DB yet — always placeholder
+        "specialty": None,  # Not in DB yet — always placeholder
     }
 
     # ---- Clinic ----
@@ -366,7 +376,8 @@ async def gather_patient_data(
         "address": (tenant_row.get("address") if tenant_row else None) or None,
         "phone": (tenant_row.get("phone") if tenant_row else None) or None,
         "logo_url": (tenant_row.get("logo_url") if tenant_row else None) or None,
-        "country_code": (tenant_row.get("country_code") if tenant_row else None) or "AR",
+        "country_code": (tenant_row.get("country_code") if tenant_row else None)
+        or "AR",
     }
 
     # ---- Clinical Records ----
@@ -382,7 +393,9 @@ async def gather_patient_data(
         treatments_list = treatments_raw if isinstance(treatments_raw, list) else []
 
         rec_prof_id = rec.get("professional_id")
-        rec_prof_name = prof_name_map.get(rec_prof_id) if rec_prof_id is not None else None
+        rec_prof_name = (
+            prof_name_map.get(rec_prof_id) if rec_prof_id is not None else None
+        )
 
         clinical_section.append(
             {
@@ -436,6 +449,18 @@ async def gather_patient_data(
     raw_medical_history = _safe_json(patient_row.get("medical_history"))
     anamnesis_section = extract_anamnesis(raw_medical_history)
 
+    # ---- Attachment Summary ----
+    attachment_summary = {}
+    if summary_row and summary_row.get("summary_text"):
+        attachment_summary = {
+            "summary_text": summary_row["summary_text"],
+            "attachments_count": summary_row["attachments_count"],
+            "attachments_types": summary_row["attachments_types"],
+            "created_at": summary_row["created_at"].isoformat()
+            if summary_row["created_at"]
+            else None,
+        }
+
     # ------------------------------------------------------------------
     # _meta — completeness + source IDs
     # ------------------------------------------------------------------
@@ -463,6 +488,7 @@ async def gather_patient_data(
         "appointments": appointments_section,
         "next_appointment": next_appointment_section,
         "anamnesis": anamnesis_section,
+        "attachment_summary": attachment_summary,
         "_meta": meta,
     }
 
@@ -514,7 +540,8 @@ SECCIONES A GENERAR (JSON keys):
 - "estado_dental": Descripción del estado dental basada en el odontograma. Mencionar piezas afectadas con FDI.
 - "tratamientos_realizados": Resumen de tratamientos según clinical_records. Fechas y procedimientos.
 - "plan_tratamiento": Plan de tratamiento si hay registros con treatment_plan. Si no → "A definir en consulta."
-- "recomendaciones": Recomendaciones basadas en recommendations de los registros. Si no hay → sección vacía.\
+- "recomendaciones": Recomendaciones basadas en recommendations de los registros. Si no hay → sección vacía.
+- "documentacion_adicional": Si attachment_summary.summary_text existe, incluir: "Documentación adicional: {attachment_summary.summary_text}". Si no, omitir esta sección.\
 """,
     "post_surgery": """\
 
@@ -554,7 +581,9 @@ def _build_system_prompt(template_type: str) -> str:
     return _BASE_SYSTEM_PROMPT + extra
 
 
-async def _call_openai(system_prompt: str, user_content: str, model: str = "gpt-4o-mini") -> dict:
+async def _call_openai(
+    system_prompt: str, user_content: str, model: str = "gpt-4o-mini"
+) -> dict:
     """Low-level async OpenAI call with JSON response format."""
     client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
     response = await client.chat.completions.create(
@@ -596,7 +625,9 @@ async def generate_narrative(
         if row and row.get("value"):
             model = str(row["value"]).strip() or model
     except Exception as model_err:
-        logger.warning("generate_narrative: could not read model from system_config: %s", model_err)
+        logger.warning(
+            "generate_narrative: could not read model from system_config: %s", model_err
+        )
 
     logger.info(
         "generate_narrative start | tenant_id=%s template=%s model=%s",
@@ -660,7 +691,7 @@ def validate_narrative(narrative_sections: dict, source_data: dict) -> list:
     source_json_str = json.dumps(source_data, default=str)
 
     # 1. Detect FDI numbers in text not present in source
-    fdi_in_text = set(re.findall(r'\b(\d\.\d)\b', full_text))
+    fdi_in_text = set(re.findall(r"\b(\d\.\d)\b", full_text))
     fdi_in_source: set = set()
     for tooth in source_data.get("odontogram", {}).get("teeth", []):
         tid = tooth.get("id", 0)
@@ -671,23 +702,30 @@ def validate_narrative(narrative_sections: dict, source_data: dict) -> list:
         warnings.append(f"Piezas FDI no presentes en datos del paciente: {unknown_fdi}")
 
     # 2. Detect dates in text not in source
-    dates_in_text = set(re.findall(r'\b(\d{1,2}/\d{1,2}/\d{2,4})\b', full_text))
-    dates_in_source = set(re.findall(r'\b(\d{1,2}/\d{1,2}/\d{2,4})\b', source_json_str))
+    dates_in_text = set(re.findall(r"\b(\d{1,2}/\d{1,2}/\d{2,4})\b", full_text))
+    dates_in_source = set(re.findall(r"\b(\d{1,2}/\d{1,2}/\d{2,4})\b", source_json_str))
     unknown_dates = dates_in_text - dates_in_source
     if unknown_dates:
         warnings.append(f"Fechas no presentes en datos del paciente: {unknown_dates}")
 
     # 3. Detect speculative language
     speculative = [
-        "probablemente", "posiblemente", "podría", "debería mejorar",
-        "se espera que", "es probable", "likely", "probably", "should improve",
+        "probablemente",
+        "posiblemente",
+        "podría",
+        "debería mejorar",
+        "se espera que",
+        "es probable",
+        "likely",
+        "probably",
+        "should improve",
     ]
     for word in speculative:
         if word.lower() in full_text.lower():
             warnings.append(f"Lenguaje especulativo detectado: '{word}'")
 
     # 4. Detect medication dosages not in source
-    dosages = re.findall(r'\b\d+\s*mg\b', full_text, re.IGNORECASE)
+    dosages = re.findall(r"\b\d+\s*mg\b", full_text, re.IGNORECASE)
     for dosage in dosages:
         if dosage not in source_json_str:
             warnings.append(f"Dosificación no presente en datos: '{dosage}'")
@@ -742,7 +780,9 @@ def assemble_html(
             odontogram_svg=odontogram_svg,
         )
     except Exception as err:
-        logger.error("assemble_html: failed for template_type=%s: %s", template_type, err)
+        logger.error(
+            "assemble_html: failed for template_type=%s: %s", template_type, err
+        )
         raise
 
 
@@ -761,6 +801,7 @@ def generate_pdf_sync(html_content: str, output_path: str) -> str:
     try:
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
         from weasyprint import HTML as _WP_HTML  # lazy import — optional dependency
+
         _WP_HTML(string=html_content, base_url=_TEMPLATE_DIR).write_pdf(output_path)
         logger.info("generate_pdf_sync: wrote %s", output_path)
         return output_path
@@ -776,6 +817,7 @@ async def generate_pdf(html_content: str, output_path: str) -> str:
     Returns the output_path on success.
     """
     import asyncio
+
     return await asyncio.to_thread(generate_pdf_sync, html_content, output_path)
 
 
@@ -794,8 +836,10 @@ def replace_section(html: str, section_id: str, new_content: str) -> str:
     Returns the modified HTML string (original unchanged if no match found).
     """
     try:
-        pattern = rf'(<div[^>]*data-section="{re.escape(section_id)}"[^>]*>)(.*?)(</div>)'
-        result = re.sub(pattern, rf'\1{new_content}\3', html, flags=re.DOTALL, count=1)
+        pattern = (
+            rf'(<div[^>]*data-section="{re.escape(section_id)}"[^>]*>)(.*?)(</div>)'
+        )
+        result = re.sub(pattern, rf"\1{new_content}\3", html, flags=re.DOTALL, count=1)
         return result
     except Exception as err:
         logger.error("replace_section: failed for section_id=%s: %s", section_id, err)

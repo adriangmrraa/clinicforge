@@ -10,7 +10,7 @@ Spec: WhatsApp Agent Loop Bug Fix (v8.1)
 
 import logging
 import re
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 
 logger = logging.getLogger(__name__)
 
@@ -103,6 +103,28 @@ DEFAULT_MEDICAL_KEYWORDS = [
     r"labio",
     r"mandíbula",
     r"mandibula",
+    # PDF-specific medical terms
+    r"informe",
+    r"resultado",
+    r"resultados",
+    r"laboratorio",
+    r"analisis de sangre",
+    r"análisis de sangre",
+    r"rx",
+    r"radiografía",
+    r"radiografia",
+    r"tomografía computada",
+    r"tomografia computada",
+    r"resonancia magnética",
+    r"resonancia magnetica",
+    r"eco",
+    r"ecografía",
+    r"ecografia",
+    r"prescripcion",
+    r"prescripción",
+    r"indicación",
+    r"indicacion",
+    r"tratamiento",
 ]
 
 # Strong payment keywords (single match triggers payment classification)
@@ -196,7 +218,7 @@ async def classify_message(
     text: str,
     tenant_id: int,
     vision_description: Optional[str] = None,
-) -> Dict[str, any]:
+) -> Dict[str, Any]:
     """
     Classify a WhatsApp message as payment-related, medical, or neutral.
 
@@ -222,12 +244,10 @@ async def classify_message(
             "classification": "neutral",
         }
 
-    # Combine text and vision description for classification
-    full_text = text or ""
-    if vision_description:
-        full_text += " " + vision_description
-
-    full_text = full_text.lower()
+    # Prepare text inputs
+    text_lower = text.lower() if text else ""
+    vision_lower = vision_description.lower() if vision_description else ""
+    full_text = (text_lower + " " + vision_lower).strip()
 
     # Get tenant-specific keywords
     keywords_config = await get_tenant_keywords(tenant_id)
@@ -236,16 +256,35 @@ async def classify_message(
     strong_payment_patterns = _compile_keywords(STRONG_PAYMENT_KEYWORDS)
     strong_medical_patterns = _compile_keywords(STRONG_MEDICAL_KEYWORDS)
 
-    # Match keywords
-    payment_matches = _match_keywords(full_text, payment_patterns)
-    medical_matches = _match_keywords(full_text, medical_patterns)
+    # Match keywords separately for text and vision description
+    text_payment_matches = (
+        _match_keywords(text_lower, payment_patterns) if text_lower else []
+    )
+    text_medical_matches = (
+        _match_keywords(text_lower, medical_patterns) if text_lower else []
+    )
+    vision_payment_matches = (
+        _match_keywords(vision_lower, payment_patterns) if vision_lower else []
+    )
+    vision_medical_matches = (
+        _match_keywords(vision_lower, medical_patterns) if vision_lower else []
+    )
+
+    # Combined matches (for strong keyword detection and keyword list)
+    payment_matches = text_payment_matches + vision_payment_matches
+    medical_matches = text_medical_matches + vision_medical_matches
     strong_payment_matches = _match_keywords(full_text, strong_payment_patterns)
     strong_medical_matches = _match_keywords(full_text, strong_medical_patterns)
+
+    # Weighted counts: vision matches count double (primary input)
+    payment_weight = len(text_payment_matches) + 2 * len(vision_payment_matches)
+    medical_weight = len(text_medical_matches) + 2 * len(vision_medical_matches)
 
     # Determine classification
     is_payment = False
     is_medical = False
     confidence = 0.0
+    keywords_found = []
 
     # Strong medical keywords override everything
     if strong_medical_matches:
@@ -259,23 +298,28 @@ async def classify_message(
         is_medical = False
         confidence = 1.0
         keywords_found = strong_payment_matches + payment_matches
-    # Check threshold: 2+ payment keywords OR 1+ medical keywords
-    elif len(payment_matches) >= 2:
-        is_payment = True
-        is_medical = len(medical_matches) >= 1
-        confidence = min(0.8, len(payment_matches) / 5.0)
-        keywords_found = payment_matches + medical_matches
-    elif len(medical_matches) >= 1:
+    # Medical keywords override payment when both present
+    elif medical_weight >= 1:
         is_medical = True
         is_payment = False
-        confidence = min(0.8, len(medical_matches) / 3.0)
+        confidence = min(0.9, 0.5 + (medical_weight / 10.0))
         keywords_found = medical_matches
-    elif payment_matches:
+    # Payment keywords with sufficient weight
+    elif payment_weight >= 2:
+        is_payment = True
+        confidence = min(0.8, 0.3 + (payment_weight / 10.0))
+        keywords_found = payment_matches
+    # Weak payment indication
+    elif payment_weight >= 1:
         is_payment = True
         confidence = 0.3
         keywords_found = payment_matches
     else:
         keywords_found = []
+
+    # Boost confidence if there are vision matches (primary input)
+    if (vision_payment_matches or vision_medical_matches) and confidence < 0.9:
+        confidence = min(confidence + 0.1, 0.9)
 
     # Determine final classification
     if is_medical:
@@ -299,6 +343,15 @@ async def classify_message(
     )
 
     return result
+
+
+async def classify_from_vision(
+    vision_description: str, tenant_id: int
+) -> Dict[str, any]:
+    """Classify based solely on Vision API description."""
+    return await classify_message(
+        text="", tenant_id=tenant_id, vision_description=vision_description
+    )
 
 
 # Synchronous version for simpler use cases

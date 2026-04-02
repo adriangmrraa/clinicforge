@@ -9,6 +9,7 @@ import api from '../api/axios';
 import { useTranslation } from '../context/LanguageContext';
 import { useAuth } from '../context/AuthContext';
 import Odontogram from '../components/Odontogram';
+import AttachmentSummaryCard from '../components/AttachmentSummaryCard';
 import DocumentGallery from '../components/DocumentGallery';
 import AnamnesisPanel from '../components/AnamnesisPanel';
 import DigitalRecordsTab from '../components/DigitalRecordsTab';
@@ -55,6 +56,13 @@ interface ClinicalRecord {
   created_at: string;
   odontogram_data?: any;
 }
+interface AttachmentSummary {
+  summary_text: string;
+  attachments_count: number;
+  attachments_types: string[];
+  created_at: string;
+}
+
 
 const criticalConditions = [
   'diabetes', 'hipertension', 'cardiopatia', 'hemofilia',
@@ -81,6 +89,7 @@ export default function PatientDetail() {
   const socketRef = useRef<Socket | null>(null);
   const [anamnesisRefreshKey, setAnamnesisRefreshKey] = useState(0);
   const [digitalRecordsRefreshKey, setDigitalRecordsRefreshKey] = useState(0);
+  const [attachmentSummary, setAttachmentSummary] = useState<AttachmentSummary | null>(null);
 
   const [formData, setFormData] = useState({
     record_type: 'evolution',

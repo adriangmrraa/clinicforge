@@ -11,6 +11,21 @@ from typing import List
 from db import get_pool
 from langchain_core.messages import HumanMessage, AIMessage
 
+try:
+    from services.vision_service import analyze_attachments_batch, MAX_IMAGES, MAX_PDFS
+except ImportError:
+    analyze_attachments_batch = None
+    MAX_IMAGES = 10
+    MAX_PDFS = 5
+try:
+    from services.image_classifier import classify_message
+except ImportError:
+    classify_message = None
+try:
+    from services.attachment_summary import generate_attachment_summary
+except ImportError:
+    generate_attachment_summary = None
+
 logger = logging.getLogger(__name__)
 
 
@@ -811,6 +826,185 @@ async def process_buffer_task(
                 channel_name = "Facebook"
             elif channel_type == "chatwoot":
                 channel_name = "el chat"
+
+            # =======================================================
+            # MULTI-ATTACHMENT PROCESSING (Fase 2)
+            # =======================================================
+            all_attachments = []  # each item: {url, mime_type, type, description, index}
+            try:
+                # Fetch all media attachments from this conversation (last 20 messages)
+                rows = await pool.fetch(
+                    """
+                    SELECT id, content_attributes
+                    FROM chat_messages
+                    WHERE conversation_id = $1 AND tenant_id = $2
+                      AND content_attributes IS NOT NULL
+                      AND (content_attributes::text LIKE '%"type":"image"%' OR content_attributes::text LIKE '%"type":"document"%')
+                    ORDER BY created_at DESC
+                    LIMIT 20
+                    """,
+                    conversation_id,
+                    tenant_id,
+                )
+                index = 0
+                for row in rows:
+                    attrs = row["content_attributes"]
+                    if isinstance(attrs, str):
+                        attrs = json.loads(attrs)
+                    if isinstance(attrs, list):
+                        for att in attrs:
+                            media_type = att.get("type")
+                            if media_type not in ("image", "document"):
+                                continue
+                            url = att.get("url")
+                            if not url:
+                                continue
+                            mime_type = att.get("mime_type", "")
+                            description = att.get("description")
+                            all_attachments.append(
+                                {
+                                    "url": url,
+                                    "mime_type": mime_type,
+                                    "type": media_type,
+                                    "description": description,
+                                    "index": index,
+                                }
+                            )
+                            index += 1
+                # Deduplicate by URL (keep first occurrence)
+                seen_urls = set()
+                unique_attachments = []
+                for att in all_attachments:
+                    if att["url"] not in seen_urls:
+                        seen_urls.add(att["url"])
+                        unique_attachments.append(att)
+                all_attachments = unique_attachments
+                # Apply limits
+                images = [
+                    a for a in all_attachments if a["mime_type"].startswith("image/")
+                ]
+                pdfs = [
+                    a for a in all_attachments if a["mime_type"] == "application/pdf"
+                ]
+                if len(images) > MAX_IMAGES or len(pdfs) > MAX_PDFS:
+                    logger.warning(
+                        f"超越MAX_ATTACHMENTS, truncating (images={len(images)} pdfs={len(pdfs)})"
+                    )
+                    # Truncate: keep first MAX_IMAGES images and first MAX_PDFS PDFs
+                    images = images[:MAX_IMAGES]
+                    pdfs = pdfs[:MAX_PDFS]
+                    # Recombine preserving order? Simpler: keep all attachments but skip extra ones.
+                    # We'll just keep the first MAX_IMAGES images and MAX_PDFS PDFs.
+                    # Since order may be mixed, we'll just truncate all_attachments to first MAX_IMAGES+MAX_PDFS.
+                    # For simplicity, we'll just keep first MAX_IMAGES+MAX_PDFS attachments.
+                    all_attachments = all_attachments[: MAX_IMAGES + MAX_PDFS]
+                # Batch analyze attachments missing descriptions
+                attachments_to_analyze = [
+                    a for a in all_attachments if not a.get("description")
+                ]
+                if attachments_to_analyze and analyze_attachments_batch:
+                    logger.info(
+                        f"🔄 Batch analyzing {len(attachments_to_analyze)} attachments"
+                    )
+                    analyses = await analyze_attachments_batch(
+                        attachments=[
+                            {
+                                "url": a["url"],
+                                "mime_type": a["mime_type"],
+                                "index": a["index"],
+                            }
+                            for a in attachments_to_analyze
+                        ],
+                        tenant_id=tenant_id,
+                    )
+                    # Update descriptions in all_attachments based on analyses
+                    for analysis in analyses:
+                        idx = analysis.get("index")
+                        if idx is not None and idx < len(all_attachments):
+                            all_attachments[idx]["description"] = analysis.get(
+                                "vision_description"
+                            )
+                # Classify each attachment and save to patient_documents if patient exists
+                if patient_row and classify_message:
+                    patient_id = patient_row["id"]
+                    for att in all_attachments:
+                        classification = await classify_message(
+                            text="",
+                            tenant_id=tenant_id,
+                            vision_description=att.get("description"),
+                        )
+                        is_payment = classification.get("is_payment", False)
+                        document_type = "payment_receipt" if is_payment else "clinical"
+                        # Prepare source_details JSONB
+                        source_details = {
+                            "vision_description": att.get("description"),
+                            "attachment_index": att["index"],
+                            "mime_type": att["mime_type"],
+                        }
+                        # Determine file_name from URL
+                        file_name = (
+                            att["url"].split("/")[-1] or f"attachment_{att['index']}"
+                        )
+                        # Insert into patient_documents (ignore duplicate on unique constraint)
+                        try:
+                            await pool.execute(
+                                """
+                                INSERT INTO patient_documents
+                                (tenant_id, patient_id, file_name, file_path, mime_type, document_type, source, source_details)
+                                VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
+                                ON CONFLICT (tenant_id, patient_id, file_name) DO NOTHING
+                                """,
+                                tenant_id,
+                                patient_id,
+                                file_name,
+                                att["url"],  # file_path = URL for now
+                                att["mime_type"],
+                                document_type,
+                                "whatsapp",
+                                json.dumps(source_details),
+                            )
+                        except Exception as e:
+                            logger.warning(
+                                f"Failed to save attachment to patient_documents: {e}"
+                            )
+                # Generate LLM summary if we have attachments and patient
+                if patient_row and generate_attachment_summary and all_attachments:
+                    summary = await generate_attachment_summary(
+                        tenant_id=tenant_id,
+                        patient_id=patient_row["id"],
+                        attachments=all_attachments,
+                    )
+                    if summary:
+                        # Save to clinical_record_summaries
+                        try:
+                            await pool.execute(
+                                """
+                                INSERT INTO clinical_record_summaries
+                                (tenant_id, patient_id, conversation_id, summary_text, attachments_count, attachments_types)
+                                VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+                                ON CONFLICT (tenant_id, patient_id, conversation_id) DO UPDATE
+                                SET summary_text = EXCLUDED.summary_text,
+                                    attachments_count = EXCLUDED.attachments_count,
+                                    attachments_types = EXCLUDED.attachments_types
+                                """,
+                                tenant_id,
+                                patient_row["id"],
+                                conversation_id,
+                                summary,
+                                len(all_attachments),
+                                json.dumps([a["type"] for a in all_attachments]),
+                            )
+                        except Exception as e:
+                            logger.warning(
+                                f"Failed to save clinical_record_summaries: {e}"
+                            )
+            except Exception as e:
+                logger.warning(f"Multi-attachment processing error (non-fatal): {e}")
+                # Continue with single-attachment context
+
+            # =======================================================
+            # END MULTI-ATTACHMENT PROCESSING
+            # =======================================================
 
             media_context = "IMPORTANTE: El paciente acaba de enviar "
             if "image" in media_types and "document" in media_types:
