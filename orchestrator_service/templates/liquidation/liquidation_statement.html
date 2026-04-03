@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}">
+<head>
+<meta charset="UTF-8">
+<style>
+/* ── Page setup (A4) ── */
+@page {
+    size: A4;
+    margin: 2cm 1.5cm;
+    @bottom-center {
+        content: "{{ generated_at_label }}  —  Pg. " counter(page) " / " counter(pages);
+        font-family: Arial, Helvetica, sans-serif;
+        font-size: 7.5pt;
+        color: #718096;
+    }
+}
+
+/* ── Base ── */
+* { box-sizing: border-box; }
+
+body {
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 11pt;
+    line-height: 1.5;
+    color: #1a1a1a;
+    margin: 0;
+    padding: 0;
+}
+
+/* ── Header ── */
+.header {
+    border-bottom: 3px solid #1a365d;
+    padding-bottom: 14px;
+    margin-bottom: 18px;
+    overflow: hidden;
+}
+
+.header-logo-block {
+    float: left;
+    margin-right: 16px;
+}
+
+.header-logo {
+    max-height: 60px;
+    max-width: 140px;
+    display: block;
+}
+
+.header-clinic-name {
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: 19pt;
+    font-weight: bold;
+    color: #1a365d;
+    margin: 0 0 2px 0;
+    line-height: 1.2;
+}
+
+.header-contact {
+    font-size: 9pt;
+    color: #718096;
+    line-height: 1.5;
+    margin: 0;
+}
+
+/* ── Document title ── */
+.doc-title-block {
+    text-align: center;
+    margin: 0 0 18px 0;
+    padding: 10px 0;
+    border-top: 1px solid #e2e8f0;
+    border-bottom: 1px solid #e2e8f0;
+    background: #f7fafc;
+    clear: both;
+}
+
+.doc-title {
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: 15pt;
+    font-weight: bold;
+    color: #1a365d;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    margin: 0;
+}
+
+.doc-subtitle {
+    font-size: 10pt;
+    color: #718096;
+    margin: 3px 0 0 0;
+}
+
+/* ── Professional info ── */
+.prof-info {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 18px;
+}
+
+.prof-info td {
+    vertical-align: top;
+    padding: 0;
+    width: 50%;
+}
+
+.info-box {
+    background: #f7fafc;
+    border: 1px solid #e2e8f0;
+    padding: 8px 12px;
+    height: 100%;
+}
+
+.info-box h3 {
+    font-size: 8pt;
+    font-weight: bold;
+    color: #3182ce;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin: 0 0 6px 0;
+    padding-bottom: 3px;
+    border-bottom: 1px solid #bee3f8;
+}
+
+.info-row {
+    font-size: 10pt;
+    color: #2d3748;
+    margin: 2px 0;
+    line-height: 1.4;
+}
+
+.info-label {
+    font-weight: bold;
+    color: #4a5568;
+}
+
+.info-spacer { width: 12px; }
+
+/* ── Status badge ── */
+.status-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 3px;
+    font-size: 9pt;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.status-draft     { background: #e0e0e0; color: #555; }
+.status-generated { background: #e3f2fd; color: #1565c0; }
+.status-approved  { background: #e8f5e9; color: #2e7d32; }
+.status-paid      { background: #1b5e20; color: white; }
+
+/* ── Section title ── */
+.section-title {
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: 12pt;
+    font-weight: bold;
+    color: #1a365d;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    border-left: 4px solid #3182ce;
+    padding-left: 10px;
+    margin: 18px 0 8px 0;
+    line-height: 1.3;
+}
+
+/* ── Summary table ── */
+.summary-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 4px;
+    font-size: 11pt;
+}
+
+.summary-table td {
+    padding: 5px 10px;
+}
+
+.summary-table .label {
+    text-align: right;
+    color: #555;
+    font-weight: 500;
+    width: 55%;
+}
+
+.summary-table .value {
+    text-align: right;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+.summary-table .divider td {
+    border-top: 1px solid #ccc;
+    padding-top: 8px;
+}
+
+.summary-table .net-row td {
+    background: #1a365d;
+    color: white;
+    border: none;
+    padding: 10px;
+    font-size: 13pt;
+    font-weight: bold;
+}
+
+/* ── Detail tables (per patient) ── */
+.patient-group {
+    margin: 12px 0;
+    page-break-inside: avoid;
+}
+
+.patient-name {
+    font-size: 11pt;
+    font-weight: 600;
+    color: #1a365d;
+    margin-bottom: 4px;
+}
+
+.detail-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 4px;
+    font-size: 9.5pt;
+}
+
+.detail-table th {
+    background: #1a365d;
+    color: #ffffff;
+    font-weight: bold;
+    font-size: 9pt;
+    text-align: left;
+    padding: 6px 8px;
+    border: 1px solid #1a365d;
+}
+
+.detail-table th.col-right {
+    text-align: right;
+}
+
+.detail-table td {
+    padding: 5px 8px;
+    border: 1px solid #e2e8f0;
+    color: #2d3748;
+}
+
+.detail-table td.col-right {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+.detail-table tr:nth-child(even) td {
+    background: #f7fafc;
+}
+
+.detail-table .subtotal-row td {
+    background: #edf2f7;
+    font-weight: bold;
+    border-top: 2px solid #1a365d;
+    color: #1a365d;
+}
+
+/* Payment status in detail */
+.pay-status {
+    display: inline-block;
+    font-size: 8pt;
+    font-weight: bold;
+    padding: 1px 6px;
+    border-radius: 3px;
+}
+.pay-paid    { background: #c6f6d5; color: #22543d; }
+.pay-partial { background: #fefcbf; color: #744210; }
+.pay-pending { background: #fed7d7; color: #742a2a; }
+
+/* ── Payout history ── */
+.payout-list {
+    margin: 8px 0;
+}
+
+.payout-item {
+    display: flex;
+    gap: 15px;
+    padding: 5px 0;
+    border-bottom: 1px solid #eee;
+    font-size: 10pt;
+}
+
+.payout-date { color: #718096; min-width: 90px; }
+.payout-method { color: #4a5568; min-width: 100px; }
+.payout-ref { color: #a0aec0; font-family: monospace; }
+.payout-amount { margin-left: auto; font-weight: bold; color: #22543d; }
+
+/* ── Notes ── */
+.notes-section {
+    background: #f7fafc;
+    border: 1px solid #e2e8f0;
+    border-left: 4px solid #3182ce;
+    padding: 10px 14px;
+    margin: 14px 0;
+    font-size: 9.5pt;
+    color: #4a5568;
+}
+
+/* ── Signatures ── */
+.signatures {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 36px;
+    margin-bottom: 20px;
+    page-break-inside: avoid;
+}
+
+.signatures td {
+    width: 46%;
+    vertical-align: bottom;
+    padding: 0 8px;
+    text-align: center;
+}
+
+.signatures .spacer-col { width: 8%; }
+
+.sig-line {
+    border-top: 1px solid #2d3748;
+    margin-bottom: 6px;
+    margin-top: 40px;
+}
+
+.sig-label {
+    font-size: 9.5pt;
+    color: #4a5568;
+    font-weight: bold;
+}
+
+.sig-sublabel {
+    font-size: 8.5pt;
+    color: #718096;
+    margin-top: 2px;
+}
+
+/* ── Footer ── */
+.footer {
+    border-top: 1px solid #e2e8f0;
+    padding-top: 8px;
+    font-size: 8.5pt;
+    color: #a0aec0;
+    text-align: center;
+    margin-top: 8px;
+}
+
+/* ── Utilities ── */
+.no-break { page-break-inside: avoid; }
+.clearfix::after { content: ""; display: block; clear: both; }
+</style>
+</head>
+<body>
+
+<!-- ════════════════ HEADER ════════════════ -->
+<div class="header clearfix">
+    {% if clinic.logo_url %}
+    <div class="header-logo-block">
+        <img class="header-logo" src="{{ clinic.logo_url }}" alt="Logo {{ clinic.name }}">
+    </div>
+    {% endif %}
+    <div>
+        <p class="header-clinic-name">{{ clinic.name }}</p>
+        <p class="header-contact">
+            {% if clinic.address %}{{ clinic.address }}{% endif %}
+            {% if clinic.address and clinic.phone %} &nbsp;·&nbsp; {% endif %}
+            {% if clinic.phone %}Tel: {{ clinic.phone }}{% endif %}
+        </p>
+    </div>
+</div>
+
+<!-- ════════════════ DOCUMENT TITLE ════════════════ -->
+<div class="doc-title-block">
+    <p class="doc-title">{{ t_title }}</p>
+    <p class="doc-subtitle">
+        {{ period.label }}
+        {% if status %}
+        &nbsp;·&nbsp; <span class="status-badge status-{{ status }}">{{ t_status[status] }}</span>
+        {% endif %}
+    </p>
+</div>
+
+<!-- ════════════════ PROFESSIONAL + PERIOD INFO ════════════════ -->
+<table class="prof-info">
+    <tr>
+        <td>
+            <div class="info-box">
+                <h3>{{ t_professional }}</h3>
+                {% if professional.full_name %}
+                <div class="info-row">
+                    <span class="info-label">{{ t_name }}:</span> {{ professional.full_name }}
+                </div>
+                {% endif %}
+                {% if professional.specialty %}
+                <div class="info-row">
+                    <span class="info-label">{{ t_specialty }}:</span> {{ professional.specialty }}
+                </div>
+                {% endif %}
+                {% if professional.license_number %}
+                <div class="info-row">
+                    <span class="info-label">{{ t_license }}:</span> {{ professional.license_number }}
+                </div>
+                {% endif %}
+            </div>
+        </td>
+        <td class="info-spacer"></td>
+        <td>
+            <div class="info-box">
+                <h3>{{ t_period }}</h3>
+                <div class="info-row">
+                    <span class="info-label">{{ t_period_range }}:</span> {{ period.label }}
+                </div>
+                <div class="info-row">
+                    <span class="info-label">{{ t_generated }}:</span> {{ generated_at }}
+                </div>
+                {% if notes_text %}
+                <div class="info-row">
+                    <span class="info-label">{{ t_notes }}:</span> {{ notes_text }}
+                </div>
+                {% endif %}
+            </div>
+        </td>
+    </tr>
+</table>
+
+<!-- ════════════════ SUMMARY ════════════════ -->
+<div class="section-title">{{ t_summary }}</div>
+
+<div class="no-break">
+<table class="summary-table">
+    <tr>
+        <td class="label">{{ t_total_sessions }}:</td>
+        <td class="value">{{ summary.total_sessions }}</td>
+    </tr>
+    <tr>
+        <td class="label">{{ t_total_billed }}:</td>
+        <td class="value">${{ summary.total_billed | ars }}</td>
+    </tr>
+    <tr>
+        <td class="label">{{ t_total_paid }}:</td>
+        <td class="value" style="color: #22543d;">${{ summary.total_paid | ars }}</td>
+    </tr>
+    <tr>
+        <td class="label">{{ t_total_pending }}:</td>
+        <td class="value" style="color: #c05621;">${{ summary.total_pending | ars }}</td>
+    </tr>
+    <tr class="divider">
+        <td class="label">{{ t_commission_pct }}:</td>
+        <td class="value">{{ summary.commission_pct }}%</td>
+    </tr>
+    <tr>
+        <td class="label">{{ t_commission_amount }}:</td>
+        <td class="value">${{ summary.commission_amount | ars }}</td>
+    </tr>
+    <tr class="net-row">
+        <td class="label">{{ t_net_payout }}:</td>
+        <td class="value">${{ summary.payout_amount | ars }}</td>
+    </tr>
+</table>
+</div>
+
+<!-- ════════════════ DETAIL BY PATIENT ════════════════ -->
+{% if treatment_groups %}
+<div class="section-title">{{ t_detail }}</div>
+
+{% for group in treatment_groups %}
+<div class="patient-group no-break">
+    <div class="patient-name">{{ group.patient_name }}</div>
+    <table class="detail-table">
+        <thead>
+            <tr>
+                <th>{{ t_date }}</th>
+                <th>{{ t_treatment }}</th>
+                <th class="col-right">{{ t_amount }}</th>
+                <th style="width: 90px; text-align: center;">{{ t_pay_status }}</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for session in group.sessions %}
+            <tr>
+                <td>{{ session.date }}</td>
+                <td>{{ session.description }}</td>
+                <td class="col-right">${{ session.amount | ars }}</td>
+                <td style="text-align: center;">
+                    {% set ps = session.payment_status %}
+                    {% if ps == 'paid' %}
+                        <span class="pay-status pay-paid">{{ t_paid }}</span>
+                    {% elif ps == 'partial' %}
+                        <span class="pay-status pay-partial">{{ t_partial }}</span>
+                    {% else %}
+                        <span class="pay-status pay-pending">{{ t_pending }}</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+            <!-- Subtotal row -->
+            <tr class="subtotal-row">
+                <td colspan="2"><strong>{{ t_subtotal }}</strong></td>
+                <td class="col-right"><strong>${{ group.total | ars }}</strong></td>
+                <td></td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+{% endfor %}
+{% endif %}
+
+<!-- ════════════════ PAYOUT HISTORY ════════════════ -->
+{% if payouts %}
+<div class="section-title">{{ t_payout_history }}</div>
+
+<div class="payout-list">
+    {% for payout in payouts %}
+    <div class="payout-item">
+        <span class="payout-date">{{ payout.date }}</span>
+        <span class="payout-method">{{ payout.method_label }}</span>
+        {% if payout.reference_number %}
+        <span class="payout-ref">Ref: {{ payout.reference_number }}</span>
+        {% endif %}
+        <span class="payout-amount">${{ payout.amount | ars }}</span>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<!-- ════════════════ NOTES ════════════════ -->
+{% if notes_text %}
+<div class="notes-section no-break">
+    <strong>{{ t_notes }}:</strong> {{ notes_text }}
+</div>
+{% endif %}
+
+<!-- ════════════════ SIGNATURES ════════════════ -->
+<table class="signatures no-break">
+    <tr>
+        <td>
+            <div class="sig-line"></div>
+            <div class="sig-label">{{ clinic.name }}</div>
+            <div class="sig-sublabel">{{ t_clinic_signature }}</div>
+        </td>
+        <td class="spacer-col"></td>
+        <td>
+            <div class="sig-line"></div>
+            <div class="sig-label">
+                {% if professional.full_name %}{{ professional.full_name }}{% else %}{{ t_professional }}{% endif %}
+            </div>
+            {% if professional.specialty %}
+            <div class="sig-sublabel">{{ professional.specialty }}</div>
+            {% endif %}
+            <div class="sig-sublabel">{{ t_prof_signature }}</div>
+        </td>
+    </tr>
+</table>
+
+<!-- ════════════════ FOOTER ════════════════ -->
+<div class="footer">
+    {{ t_footer_auto }} {{ clinic.name }} &nbsp;·&nbsp; {{ generated_at }}
+</div>
+
+</body>
+</html>

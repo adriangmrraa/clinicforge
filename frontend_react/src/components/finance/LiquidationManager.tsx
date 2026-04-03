@@ -49,6 +49,14 @@ export default function LiquidationManager({ periodStart, periodEnd, formatCurre
     name: string;
   } | null>(null);
   const [updating, setUpdating] = useState<string | null>(null);
+  const [pdfLoading, setPdfLoading] = useState<string | null>(null);
+  const [emailModal, setEmailModal] = useState<{
+    id: string;
+    name: string;
+    email: string;
+  } | null>(null);
+  const [emailSending, setEmailSending] = useState(false);
+  const [customEmail, setCustomEmail] = useState('');
 
   const fetchLiquidations = useCallback(async () => {
     setLoading(true);
@@ -131,6 +139,58 @@ export default function LiquidationManager({ periodStart, periodEnd, formatCurre
     } finally {
       setUpdating(null);
     }
+  };
+
+  const handleDownloadPDF = async (id: string) => {
+    setPdfLoading(id);
+    try {
+      const response = await api.get(`/admin/liquidations/${id}/pdf`, {
+        responseType: 'blob',
+      });
+      const blob = new Blob([response.data], { type: 'application/pdf' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `liquidacion_${id}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (err: any) {
+      console.error('Error downloading PDF:', err);
+      alert(err.response?.data?.detail || 'Error al descargar PDF');
+    } finally {
+      setPdfLoading(null);
+    }
+  };
+
+  const handleSendEmail = async () => {
+    if (!emailModal) return;
+    setEmailSending(true);
+    try {
+      const payload: { to_email?: string } = {};
+      if (customEmail.trim()) {
+        payload.to_email = customEmail.trim();
+      }
+      await api.post(`/admin/liquidations/${emailModal.id}/send-email`, payload);
+      setEmailModal(null);
+      setCustomEmail('');
+      alert(t('liquidation.email_sent_success') || 'Liquidación enviada por email correctamente');
+    } catch (err: any) {
+      console.error('Error sending email:', err);
+      alert(err.response?.data?.detail || 'Error al enviar email');
+    } finally {
+      setEmailSending(false);
+    }
+  };
+
+  const openEmailModal = (liq: LiquidationRecord) => {
+    setEmailModal({
+      id: liq.id,
+      name: liq.professional_name,
+      email: '',
+    });
+    setCustomEmail('');
   };
 
   const handleExportCSV = () => {
@@ -347,13 +407,27 @@ export default function LiquidationManager({ periodStart, periodEnd, formatCurre
                               </button>
                             )}
                             {(liq.status === 'generated' || liq.status === 'approved' || liq.status === 'paid') && (
-                              <button
-                                className="p-1.5 hover:bg-blue-500/10 rounded-lg text-white/40 hover:text-blue-400 transition-colors"
-                                title={t('professional_liquidations.download_pdf')}
-                                disabled
-                              >
-                                <FileText size={14} />
-                              </button>
+                              <>
+                                <button
+                                  onClick={() => handleDownloadPDF(liq.id)}
+                                  disabled={pdfLoading === liq.id}
+                                  className="p-1.5 hover:bg-blue-500/10 rounded-lg text-white/40 hover:text-blue-400 transition-colors disabled:opacity-50"
+                                  title={t('professional_liquidations.download_pdf')}
+                                >
+                                  {pdfLoading === liq.id ? (
+                                    <Loader2 size={14} className="animate-spin" />
+                                  ) : (
+                                    <Download size={14} />
+                                  )}
+                                </button>
+                                <button
+                                  onClick={() => openEmailModal(liq)}
+                                  className="p-1.5 hover:bg-purple-500/10 rounded-lg text-white/40 hover:text-purple-400 transition-colors"
+                                  title={t('liquidation.send_email')}
+                                >
+                                  <FileText size={14} />
+                                </button>
+                              </>
                             )}
                           </div>
                         </td>
@@ -500,6 +574,56 @@ export default function LiquidationManager({ periodStart, periodEnd, formatCurre
               >
                 {updating === confirmAction.id && <Loader2 size={14} className="animate-spin" />}
                 {confirmAction.action === 'approve' ? t('finance.approve') : t('finance.mark_paid')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Email Modal */}
+      {emailModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-[#12121a] border border-white/[0.08] rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-white">
+                {t('liquidation.send_email_title') || 'Enviar por Email'}
+              </h3>
+              <button
+                onClick={() => { setEmailModal(null); setCustomEmail(''); }}
+                className="p-1 hover:bg-white/[0.06] rounded-lg text-white/40 hover:text-white/70 transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <p className="text-sm text-white/50 mb-4">
+              {t('liquidation.send_email_desc') || 'Enviar liquidación a'} <strong className="text-white">{emailModal.name}</strong>
+            </p>
+            <div className="mb-4">
+              <label className="text-xs text-white/40 uppercase tracking-wider mb-1 block">
+                {t('liquidation.email_recipient') || 'Email destinatario'}
+              </label>
+              <input
+                type="email"
+                value={customEmail}
+                onChange={(e) => setCustomEmail(e.target.value)}
+                placeholder={t('liquidation.email_placeholder') || 'Dejar vacío para usar email del profesional'}
+                className="w-full bg-white/[0.04] border border-white/[0.08] text-white text-sm rounded-xl px-4 py-2.5 focus:outline-none focus:border-blue-500/40 placeholder:text-white/20"
+              />
+            </div>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => { setEmailModal(null); setCustomEmail(''); }}
+                className="px-4 py-2 bg-white/[0.04] text-white/60 rounded-xl hover:bg-white/[0.06] transition-colors text-sm"
+              >
+                {t('common.cancel')}
+              </button>
+              <button
+                onClick={handleSendEmail}
+                disabled={emailSending}
+                className="px-4 py-2 bg-primary text-white rounded-xl hover:bg-primary/80 transition-colors text-sm font-medium disabled:opacity-50 flex items-center gap-2"
+              >
+                {emailSending && <Loader2 size={14} className="animate-spin" />}
+                {t('liquidation.send_email_btn') || 'Enviar'}
               </button>
             </div>
           </div>

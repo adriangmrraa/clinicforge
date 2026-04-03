@@ -1,0 +1,614 @@
+"""
+liquidation_pdf_service.py — Generates liquidation statement PDFs.
+
+Pattern follows budget_service.py (gather → render → WeasyPrint → disk cache).
+
+Layers:
+  1. gather_liquidation_pdf_data()   — DB queries, data normalization
+  2. render_liquidation_html()        — Jinja2 render
+  3. generate_liquidation_pdf()       — WeasyPrint async (via to_thread), disk cache
+"""
+
+import asyncio
+import logging
+import os
+from datetime import datetime
+from pathlib import Path
+from typing import Optional
+
+from jinja2 import Environment, FileSystemLoader
+
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Jinja2 setup — templates/liquidation/ relative to orchestrator_service root
+# ---------------------------------------------------------------------------
+_TEMPLATES_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "templates",
+    "liquidation",
+)
+
+_jinja_env = Environment(
+    loader=FileSystemLoader(_TEMPLATES_DIR),
+    autoescape=True,
+)
+
+
+# ---------------------------------------------------------------------------
+# Currency filter — formats as Argentine pesos: 325000 → "325.000"
+# ---------------------------------------------------------------------------
+def _ars_format(value) -> str:
+    """Format a numeric value as ARS with dot thousands separator."""
+    try:
+        n = float(value or 0)
+        formatted = f"{n:,.0f}".replace(",", ".")
+        return formatted
+    except (TypeError, ValueError):
+        return "0"
+
+
+_jinja_env.filters["ars"] = _ars_format
+
+
+# ---------------------------------------------------------------------------
+# Translation dictionaries for PDF (es/en/fr)
+# ---------------------------------------------------------------------------
+_TRANSLATIONS = {
+    "es": {
+        "title": "LIQUIDACIÓN DE HONORARIOS PROFESIONALES",
+        "professional": "Profesional",
+        "name": "Nombre",
+        "specialty": "Especialidad",
+        "license": "Matrícula",
+        "period": "Período",
+        "period_range": "Período",
+        "generated": "Generado",
+        "notes": "Notas",
+        "summary": "Resumen",
+        "total_sessions": "Total de sesiones",
+        "total_billed": "Total facturado",
+        "total_paid": "Total cobrado",
+        "total_pending": "Total pendiente",
+        "commission_pct": "Comisión aplicada",
+        "commission_amount": "Monto de comisión",
+        "net_payout": "NETO A LIQUIDAR",
+        "detail": "Detalle de Sesiones",
+        "date": "Fecha",
+        "treatment": "Tratamiento",
+        "amount": "Monto",
+        "pay_status": "Estado",
+        "paid": "Pagado",
+        "partial": "Parcial",
+        "pending": "Pendiente",
+        "subtotal": "Subtotal",
+        "payout_history": "Historial de Pagos",
+        "clinic_signature": "Firma clínica",
+        "prof_signature": "Firma profesional",
+        "footer_auto": "Documento generado automáticamente por",
+        "status_draft": "Borrador",
+        "status_generated": "Generada",
+        "status_approved": "Aprobada",
+        "status_paid": "Pagada",
+        "method_transfer": "Transferencia",
+        "method_cash": "Efectivo",
+        "method_check": "Cheque",
+        # Email template
+        "email_greeting": "Hola",
+        "email_body_intro": "Te adjuntamos tu liquidación correspondiente al período",
+        "email_payout_label": "Monto a liquidar",
+        "email_attachment_note": "Encontrarás el detalle completo en el documento PDF adjunto.",
+        "email_contact_note": "Si tenés alguna consulta, no dudes en comunicarte con la administración de",
+        "email_closing": "Saludos,",
+        "email_team": "Equipo de",
+        "email_footer_auto": "Este email fue enviado automáticamente por",
+    },
+    "en": {
+        "title": "PROFESSIONAL FEE STATEMENT",
+        "professional": "Professional",
+        "name": "Name",
+        "specialty": "Specialty",
+        "license": "License Number",
+        "period": "Period",
+        "period_range": "Period",
+        "generated": "Generated",
+        "notes": "Notes",
+        "summary": "Summary",
+        "total_sessions": "Total sessions",
+        "total_billed": "Total billed",
+        "total_paid": "Total paid",
+        "total_pending": "Total pending",
+        "commission_pct": "Commission applied",
+        "commission_amount": "Commission amount",
+        "net_payout": "NET PAYOUT",
+        "detail": "Session Detail",
+        "date": "Date",
+        "treatment": "Treatment",
+        "amount": "Amount",
+        "pay_status": "Status",
+        "paid": "Paid",
+        "partial": "Partial",
+        "pending": "Pending",
+        "subtotal": "Subtotal",
+        "payout_history": "Payment History",
+        "clinic_signature": "Clinic signature",
+        "prof_signature": "Professional signature",
+        "footer_auto": "Document automatically generated by",
+        "status_draft": "Draft",
+        "status_generated": "Generated",
+        "status_approved": "Approved",
+        "status_paid": "Paid",
+        "method_transfer": "Transfer",
+        "method_cash": "Cash",
+        "method_check": "Check",
+        # Email template
+        "email_greeting": "Hello",
+        "email_body_intro": "Please find attached your fee statement for the period",
+        "email_payout_label": "Payout amount",
+        "email_attachment_note": "You will find the complete detail in the attached PDF document.",
+        "email_contact_note": "If you have any questions, please don't hesitate to contact the administration of",
+        "email_closing": "Best regards,",
+        "email_team": "Team",
+        "email_footer_auto": "This email was sent automatically by",
+    },
+    "fr": {
+        "title": "RELEVÉ D'HONORAIRES PROFESSIONNELS",
+        "professional": "Professionnel",
+        "name": "Nom",
+        "specialty": "Spécialité",
+        "license": "Numéro de licence",
+        "period": "Période",
+        "period_range": "Période",
+        "generated": "Généré",
+        "notes": "Notes",
+        "summary": "Résumé",
+        "total_sessions": "Total des séances",
+        "total_billed": "Total facturé",
+        "total_paid": "Total encaissé",
+        "total_pending": "Total en attente",
+        "commission_pct": "Commission appliquée",
+        "commission_amount": "Montant de la commission",
+        "net_payout": "NET À PAYER",
+        "detail": "Détail des Séances",
+        "date": "Date",
+        "treatment": "Traitement",
+        "amount": "Montant",
+        "pay_status": "Statut",
+        "paid": "Payé",
+        "partial": "Partiel",
+        "pending": "En attente",
+        "subtotal": "Sous-total",
+        "payout_history": "Historique des Paiements",
+        "clinic_signature": "Signature clinique",
+        "prof_signature": "Signature professionnelle",
+        "footer_auto": "Document généré automatiquement par",
+        "status_draft": "Brouillon",
+        "status_generated": "Généré",
+        "status_approved": "Approuvé",
+        "status_paid": "Payé",
+        "method_transfer": "Virement",
+        "method_cash": "Espèces",
+        "method_check": "Chèque",
+        # Email template
+        "email_greeting": "Bonjour",
+        "email_body_intro": "Veuillez trouver ci-joint votre relevé d'honoraires pour la période",
+        "email_payout_label": "Montant à payer",
+        "email_attachment_note": "Vous trouverez le détail complet dans le document PDF ci-joint.",
+        "email_contact_note": "Si vous avez des questions, n'hésitez pas à contacter l'administration de",
+        "email_closing": "Cordialement,",
+        "email_team": "Équipe de",
+        "email_footer_auto": "Cet email a été envoyé automatiquement par",
+    },
+}
+
+
+def _get_translations(lang: str) -> dict:
+    """Return translation dict for the given language, defaulting to Spanish."""
+    return _TRANSLATIONS.get(lang, _TRANSLATIONS["es"])
+
+
+# =============================================================================
+# LAYER 1: DATA GATHERING
+# =============================================================================
+
+
+async def gather_liquidation_pdf_data(
+    pool, liquidation_id: int, tenant_id: int
+) -> Optional[dict]:
+    """
+    Gather all data needed for a liquidation PDF.
+
+    All queries are scoped to tenant_id (multi-tenant isolation rule).
+    Returns None if the liquidation record is not found.
+    """
+    # ── Liquidation record + professional + clinic ──────────────────────────
+    record = await pool.fetchrow(
+        """
+        SELECT
+            lr.*,
+            p.first_name || ' ' || COALESCE(p.last_name, '') AS professional_full_name,
+            p.specialty,
+            p.license_number,
+            p.email AS professional_email,
+            t.clinic_name,
+            t.address AS clinic_address,
+            t.phone AS clinic_phone,
+            t.logo_url,
+            COALESCE(t.config->>'ui_language', 'es') AS ui_language
+        FROM liquidation_records lr
+        JOIN professionals p ON p.id = lr.professional_id AND p.tenant_id = lr.tenant_id
+        JOIN tenants t ON t.id = lr.tenant_id
+        WHERE lr.id = $1 AND lr.tenant_id = $2
+        """,
+        liquidation_id,
+        tenant_id,
+    )
+
+    if not record:
+        logger.warning(
+            "gather_liquidation_pdf_data: liquidation %s not found for tenant %s",
+            liquidation_id,
+            tenant_id,
+        )
+        return None
+
+    lang = record["ui_language"] or "es"
+    t = _get_translations(lang)
+
+    # ── Treatment groups (same query as get_liquidation_detail) ──────────────
+    prof_id = record["professional_id"]
+    period_start = record["period_start"]
+    period_end = record["period_end"]
+
+    appt_rows = await pool.fetch(
+        """
+        SELECT
+            a.id AS appointment_id,
+            a.appointment_datetime,
+            a.status AS appointment_status,
+            a.appointment_type,
+            a.payment_status,
+            COALESCE(a.billing_amount, tt.base_price, 0) AS billing_amount,
+            a.billing_notes,
+            pat.id AS patient_id,
+            pat.first_name || ' ' || COALESCE(pat.last_name, '') AS patient_name,
+            tt.code AS treatment_code,
+            tt.name AS treatment_name
+        FROM appointments a
+        JOIN patients pat ON pat.id = a.patient_id AND pat.tenant_id = $1
+        LEFT JOIN treatment_types tt ON tt.code = a.appointment_type AND tt.tenant_id = $1
+        WHERE a.tenant_id = $1
+          AND a.professional_id = $2
+          AND a.appointment_datetime >= $3
+          AND a.appointment_datetime < ($4::date + INTERVAL '1 day')
+          AND a.status NOT IN ('deleted', 'cancelled', 'no_show')
+        ORDER BY pat.id, a.appointment_datetime
+        """,
+        tenant_id,
+        prof_id,
+        period_start,
+        period_end,
+    )
+
+    # Group by patient → treatment
+    treatment_groups_map = {}
+    for row in appt_rows:
+        pat_id = row["patient_id"]
+        treatment_code = row["treatment_code"] or ""
+        group_key = (pat_id, treatment_code)
+
+        if group_key not in treatment_groups_map:
+            treatment_groups_map[group_key] = {
+                "patient_id": pat_id,
+                "patient_name": (row["patient_name"] or "").strip() or "Paciente",
+                "treatment_code": treatment_code,
+                "treatment_name": row["treatment_name"]
+                or treatment_code
+                or "Sin tratamiento",
+                "sessions": [],
+                "total": 0.0,
+            }
+
+        group = treatment_groups_map[group_key]
+        billing = float(row["billing_amount"] or 0)
+        pstatus = row["payment_status"] or "pending"
+
+        appt_dt = row["appointment_datetime"]
+        date_str = appt_dt.strftime("%d/%m/%Y") if appt_dt else ""
+
+        treatment_label = row["treatment_name"] or treatment_code or "Sin tratamiento"
+        if row["billing_notes"]:
+            treatment_label = f"{treatment_label} — {row['billing_notes']}"
+
+        group["sessions"].append(
+            {
+                "date": date_str,
+                "description": treatment_label,
+                "amount": billing,
+                "payment_status": pstatus,
+            }
+        )
+        group["total"] += billing
+
+    # Sort groups by total DESC
+    groups_sorted = sorted(
+        treatment_groups_map.values(), key=lambda g: g["total"], reverse=True
+    )
+    treatment_groups_out = [
+        {
+            "patient_name": g["patient_name"],
+            "treatment_name": g["treatment_name"],
+            "sessions": g["sessions"],
+            "total": round(g["total"], 2),
+        }
+        for g in groups_sorted
+    ]
+
+    # ── Payouts ──────────────────────────────────────────────────────────────
+    payouts = await pool.fetch(
+        """
+        SELECT amount, payment_method, payment_date, reference_number
+        FROM professional_payouts
+        WHERE liquidation_id = $1 AND tenant_id = $2
+        ORDER BY payment_date DESC
+        """,
+        liquidation_id,
+        tenant_id,
+    )
+
+    payouts_out = []
+    for p in payouts:
+        pay_date = p["payment_date"]
+        date_str = pay_date.strftime("%d/%m/%Y") if pay_date else ""
+        method_label = t.get(f"method_{p['payment_method']}", p["payment_method"])
+        payouts_out.append(
+            {
+                "date": date_str,
+                "amount": float(p["amount"]),
+                "payment_method": p["payment_method"],
+                "method_label": method_label,
+                "reference_number": p["reference_number"],
+            }
+        )
+
+    # ── Period label ─────────────────────────────────────────────────────────
+    # Build a human-readable period label
+    if isinstance(period_start, str):
+        ps = datetime.strptime(period_start, "%Y-%m-%d")
+    else:
+        ps = period_start
+    if isinstance(period_end, str):
+        pe = datetime.strptime(period_end, "%Y-%m-%d")
+    else:
+        pe = period_end
+
+    month_names = {
+        "es": [
+            "",
+            "enero",
+            "febrero",
+            "marzo",
+            "abril",
+            "mayo",
+            "junio",
+            "julio",
+            "agosto",
+            "septiembre",
+            "octubre",
+            "noviembre",
+            "diciembre",
+        ],
+        "en": [
+            "",
+            "January",
+            "February",
+            "March",
+            "April",
+            "May",
+            "June",
+            "July",
+            "August",
+            "September",
+            "October",
+            "November",
+            "December",
+        ],
+        "fr": [
+            "",
+            "janvier",
+            "février",
+            "mars",
+            "avril",
+            "mai",
+            "juin",
+            "juillet",
+            "août",
+            "septembre",
+            "octobre",
+            "novembre",
+            "décembre",
+        ],
+    }
+
+    months = month_names.get(lang, month_names["es"])
+    if ps.month == pe.month and ps.year == pe.year:
+        period_label = f"{months[ps.month].capitalize()} {ps.year}"
+    else:
+        period_label = f"{ps.strftime('%d/%m/%Y')} — {pe.strftime('%d/%m/%Y')}"
+
+    # ── Status label ─────────────────────────────────────────────────────────
+    status = record["status"] or "draft"
+
+    # ── Notes text ───────────────────────────────────────────────────────────
+    notes_data = record["notes"] or {}
+    notes_text = notes_data.get("text", "") or ""
+
+    # ── Generated at ─────────────────────────────────────────────────────────
+    generated_at = datetime.now().strftime("%d/%m/%Y a las %H:%M")
+
+    # Count total sessions
+    total_sessions = sum(len(g["sessions"]) for g in treatment_groups_out)
+
+    # ── Assemble ─────────────────────────────────────────────────────────────
+    return {
+        "lang": lang,
+        "t": t,
+        # Template keys (flat for direct access in Jinja2)
+        "t_title": t["title"],
+        "t_professional": t["professional"],
+        "t_name": t["name"],
+        "t_specialty": t["specialty"],
+        "t_license": t["license"],
+        "t_period": t["period"],
+        "t_period_range": t["period_range"],
+        "t_generated": t["generated"],
+        "t_notes": t["notes"],
+        "t_summary": t["summary"],
+        "t_total_sessions": t["total_sessions"],
+        "t_total_billed": t["total_billed"],
+        "t_total_paid": t["total_paid"],
+        "t_total_pending": t["total_pending"],
+        "t_commission_pct": t["commission_pct"],
+        "t_commission_amount": t["commission_amount"],
+        "t_net_payout": t["net_payout"],
+        "t_detail": t["detail"],
+        "t_date": t["date"],
+        "t_treatment": t["treatment"],
+        "t_amount": t["amount"],
+        "t_pay_status": t["pay_status"],
+        "t_paid": t["paid"],
+        "t_partial": t["partial"],
+        "t_pending": t["pending"],
+        "t_subtotal": t["subtotal"],
+        "t_payout_history": t["payout_history"],
+        "t_clinic_signature": t["clinic_signature"],
+        "t_prof_signature": t["prof_signature"],
+        "t_footer_auto": t["footer_auto"],
+        "t_status": {
+            "draft": t["status_draft"],
+            "generated": t["status_generated"],
+            "approved": t["status_approved"],
+            "paid": t["status_paid"],
+        },
+        # Data
+        "clinic": {
+            "name": record["clinic_name"] or "Clínica",
+            "address": record["clinic_address"] or "",
+            "phone": record["clinic_phone"] or "",
+            "logo_url": record["logo_url"] or "",
+        },
+        "professional": {
+            "full_name": (record["professional_full_name"] or "").strip()
+            or "Profesional",
+            "specialty": record["specialty"] or "",
+            "license_number": record["license_number"] or "",
+            "email": record["professional_email"] or "",
+        },
+        "period": {
+            "start": str(period_start),
+            "end": str(period_end),
+            "label": period_label,
+        },
+        "summary": {
+            "total_sessions": total_sessions,
+            "total_billed": round(float(record["total_billed"] or 0), 2),
+            "total_paid": round(float(record["total_paid"] or 0), 2),
+            "total_pending": round(float(record["total_pending"] or 0), 2),
+            "commission_pct": round(float(record["commission_pct"] or 0), 2),
+            "commission_amount": round(float(record["commission_amount"] or 0), 2),
+            "payout_amount": round(float(record["payout_amount"] or 0), 2),
+        },
+        "treatment_groups": treatment_groups_out,
+        "payouts": payouts_out,
+        "generated_at": generated_at,
+        "status": status,
+        "notes_text": notes_text,
+        # For email use
+        "professional_email": record["professional_email"] or "",
+    }
+
+
+# =============================================================================
+# LAYER 2: HTML RENDERING (Jinja2)
+# =============================================================================
+
+
+def render_liquidation_html(data: dict) -> str:
+    """Render the liquidation_statement.html template with gathered data."""
+    template = _jinja_env.get_template("liquidation_statement.html")
+    return template.render(**data)
+
+
+def render_liquidation_email_html(data: dict) -> str:
+    """Render the liquidation_email.html template."""
+    template = _jinja_env.get_template("liquidation_email.html")
+    t = data["t"]
+    lang = data.get("lang", "es")
+    return template.render(
+        lang=lang,
+        clinic_name=data["clinic"]["name"],
+        professional_name=data["professional"]["full_name"],
+        period_label=data["period"]["label"],
+        payout_amount=f"{data['summary']['payout_amount']:,.0f}".replace(",", "."),
+        t_greeting=t["email_greeting"],
+        t_body_intro=t["email_body_intro"],
+        t_payout_label=t["email_payout_label"],
+        t_attachment_note=t["email_attachment_note"],
+        t_contact_note=t["email_contact_note"],
+        t_closing=t["email_closing"],
+        t_team=t["email_team"],
+        t_footer_auto=t["email_footer_auto"],
+    )
+
+
+# =============================================================================
+# LAYER 3: PDF GENERATION (WeasyPrint, sync in thread)
+# =============================================================================
+
+
+def _generate_pdf_sync(html: str, pdf_path: str) -> str:
+    """
+    Blocking WeasyPrint call — MUST be called via asyncio.to_thread.
+
+    Falls back to writing an HTML file if WeasyPrint is not installed,
+    so development environments don't break.
+    """
+    os.makedirs(os.path.dirname(pdf_path), exist_ok=True)
+    try:
+        from weasyprint import HTML as _WP_HTML  # lazy import — optional dep
+
+        _WP_HTML(string=html, base_url=_TEMPLATES_DIR).write_pdf(pdf_path)
+        logger.info("_generate_pdf_sync: wrote PDF → %s", pdf_path)
+        return pdf_path
+    except ImportError:
+        logger.warning("WeasyPrint not available — writing HTML fallback")
+        html_path = pdf_path.replace(".pdf", ".html")
+        Path(html_path).write_text(html, encoding="utf-8")
+        return html_path
+    except Exception as exc:
+        logger.error("_generate_pdf_sync: WeasyPrint failed: %s", exc)
+        raise
+
+
+async def generate_liquidation_pdf(
+    pool, liquidation_id: int, tenant_id: int
+) -> Optional[str]:
+    """
+    Generate a liquidation PDF and cache it to disk.
+
+    Output path: /app/uploads/liquidations/{tenant_id}/{liquidation_id}.pdf
+
+    Always regenerates (caller controls cache invalidation).
+    Returns the file path on success, None if the record is not found.
+    """
+    upload_dir = Path(f"/app/uploads/liquidations/{tenant_id}")
+    pdf_path = str(upload_dir / f"{liquidation_id}.pdf")
+
+    data = await gather_liquidation_pdf_data(pool, liquidation_id, tenant_id)
+    if not data:
+        return None
+
+    html = render_liquidation_html(data)
+
+    result = await asyncio.to_thread(_generate_pdf_sync, html, pdf_path)
+    return result

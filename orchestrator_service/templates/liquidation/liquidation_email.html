@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}">
+<head><meta charset="UTF-8"/></head>
+<body style="margin:0;padding:0;background-color:#f7fafc;font-family:'Segoe UI',Arial,sans-serif;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f7fafc;">
+<tr><td align="center" style="padding:32px 16px;">
+
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;">
+
+  <!-- HEADER -->
+  <tr>
+    <td style="background-color:#1a365d;border-radius:12px 12px 0 0;padding:28px 24px;text-align:center;">
+      <h1 style="margin:0;font-size:20px;color:#ffffff;">{{ clinic_name }}</h1>
+    </td>
+  </tr>
+
+  <!-- BODY -->
+  <tr>
+    <td style="background-color:#ffffff;padding:28px 24px;">
+      <p style="margin:0 0 12px;font-size:15px;color:#2d3748;">{{ t_greeting }} <strong>{{ professional_name }}</strong>,</p>
+
+      <p style="margin:0 0 12px;font-size:14px;color:#4a5568;line-height:1.6;">
+        {{ t_body_intro }} <strong>{{ period_label }}</strong>.
+      </p>
+
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f7fafc;border-radius:8px;margin:16px 0;">
+        <tr>
+          <td style="padding:16px 20px;text-align:center;">
+            <span style="font-size:12px;color:#718096;text-transform:uppercase;">{{ t_payout_label }}</span><br/>
+            <strong style="font-size:22px;color:#1a365d;">${{ payout_amount }}</strong>
+          </td>
+        </tr>
+      </table>
+
+      <p style="margin:0 0 12px;font-size:14px;color:#4a5568;line-height:1.6;">
+        {{ t_attachment_note }}
+      </p>
+
+      <p style="margin:0;font-size:14px;color:#4a5568;line-height:1.6;">
+        {{ t_contact_note }} <strong>{{ clinic_name }}</strong>.
+      </p>
+
+      <p style="margin:16px 0 0;font-size:14px;color:#4a5568;">
+        {{ t_closing }}<br/>
+        <strong>{{ t_team }} {{ clinic_name }}</strong>
+      </p>
+    </td>
+  </tr>
+
+  <!-- FOOTER -->
+  <tr>
+    <td style="background-color:#f7fafc;border-radius:0 0 12px 12px;padding:20px 24px;text-align:center;">
+      <p style="margin:0;font-size:11px;color:#a0aec0;">
+        {{ t_footer_auto }} {{ clinic_name }}.
+      </p>
+    </td>
+  </tr>
+
+</table>
+
+</td></tr>
+</table>
+</body>
+</html>

@@ -12507,3 +12507,209 @@ async def get_reconciliation(
     except Exception as e:
         logger.error(f"Error in reconciliation: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Error interno del servidor")
+
+
+# =============================================================================
+# EP-FC-12: Generar PDF de liquidación profesional
+# =============================================================================
+
+
+@router.get(
+    "/liquidations/{liquidation_id}/pdf",
+    tags=["Liquidaciones"],
+    summary="EP-FC-12: Generar PDF de liquidación profesional",
+)
+async def generate_liquidation_pdf_endpoint(
+    liquidation_id: int,
+    user_data=Depends(verify_admin_token),
+    resolved_tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    """Genera y sirve el PDF de una liquidación profesional con caché en disco."""
+    from services.liquidation_pdf_service import (
+        generate_liquidation_pdf,
+        gather_liquidation_pdf_data,
+    )
+
+    # Verify the liquidation exists and belongs to tenant
+    record = await db.pool.fetchrow(
+        "SELECT id, status, professional_id FROM liquidation_records WHERE id = $1 AND tenant_id = $2",
+        liquidation_id,
+        resolved_tenant_id,
+    )
+    if not record:
+        raise HTTPException(
+            status_code=404,
+            detail="Liquidación no encontrada",
+        )
+
+    # Check if cached PDF exists and is still valid
+    pdf_path = f"/app/uploads/liquidations/{resolved_tenant_id}/{liquidation_id}.pdf"
+    use_cache = False
+    if os.path.exists(pdf_path):
+        # Check if the PDF was generated after the last status change
+        pdf_mtime = os.path.getmtime(pdf_path)
+        # Compare with the record's created_at (or updated_at if available)
+        record_ts = record.get("created_at")
+        if record_ts:
+            if hasattr(record_ts, "timestamp"):
+                record_epoch = record_ts.timestamp()
+            else:
+                record_epoch = 0
+            if pdf_mtime >= record_epoch:
+                use_cache = True
+
+    if not use_cache:
+        # Generate fresh PDF
+        pdf_path = await generate_liquidation_pdf(
+            db.pool, liquidation_id, resolved_tenant_id
+        )
+        if not pdf_path:
+            raise HTTPException(
+                status_code=404,
+                detail="Error generando PDF de liquidación",
+            )
+
+    # Build filename
+    data = await gather_liquidation_pdf_data(
+        db.pool, liquidation_id, resolved_tenant_id
+    )
+    if data:
+        prof_name = data["professional"]["full_name"].replace(" ", "_")
+        period_label = data["period"]["label"].replace(" ", "_")
+        filename = f"Liquidacion_{prof_name}_{period_label}.pdf"
+    else:
+        filename = f"Liquidacion_{liquidation_id}.pdf"
+
+    return FileResponse(
+        pdf_path,
+        media_type="application/pdf",
+        filename=filename,
+    )
+
+
+# =============================================================================
+# EP-FC-13: Enviar liquidación por email
+# =============================================================================
+
+
+class SendLiquidationEmailBody(BaseModel):
+    to_email: Optional[str] = None
+    message: Optional[str] = None
+
+
+@router.post(
+    "/liquidations/{liquidation_id}/send-email",
+    tags=["Liquidaciones"],
+    summary="EP-FC-13: Enviar liquidación por email al profesional",
+)
+async def send_liquidation_email_endpoint(
+    liquidation_id: int,
+    body: SendLiquidationEmailBody,
+    user_data=Depends(verify_admin_token),
+    resolved_tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    """Envía el PDF de liquidación por email al profesional."""
+    from services.liquidation_pdf_service import (
+        generate_liquidation_pdf,
+        gather_liquidation_pdf_data,
+        render_liquidation_email_html,
+    )
+
+    # 1. Verify liquidation exists and belongs to tenant
+    record = await db.pool.fetchrow(
+        """
+        SELECT lr.*, p.email AS professional_email
+        FROM liquidation_records lr
+        JOIN professionals p ON p.id = lr.professional_id AND p.tenant_id = lr.tenant_id
+        WHERE lr.id = $1 AND lr.tenant_id = $2
+        """,
+        liquidation_id,
+        resolved_tenant_id,
+    )
+    if not record:
+        raise HTTPException(
+            status_code=404,
+            detail="Liquidación no encontrada",
+        )
+
+    # 2. Determine recipient email
+    to_email = body.to_email
+    if not to_email:
+        to_email = record.get("professional_email")
+        if not to_email:
+            raise HTTPException(
+                status_code=422,
+                detail="No se encontró email del profesional. Proporcione to_email.",
+            )
+
+    # 3. Generate PDF (reuse cache if available)
+    pdf_path = await generate_liquidation_pdf(
+        db.pool, liquidation_id, resolved_tenant_id
+    )
+    if not pdf_path:
+        raise HTTPException(
+            status_code=500,
+            detail="Error generando PDF para envío",
+        )
+
+    # 4. Gather data for email body
+    data = await gather_liquidation_pdf_data(
+        db.pool, liquidation_id, resolved_tenant_id
+    )
+    if not data:
+        raise HTTPException(
+            status_code=404,
+            detail="Datos de liquidación no encontrados",
+        )
+
+    # Render email HTML body
+    email_html = render_liquidation_email_html(data)
+
+    # 5. Send email
+    email_svc = EmailService()
+    try:
+        await asyncio.to_thread(
+            lambda: email_svc.send_liquidation_email(
+                to_email=to_email,
+                pdf_path=pdf_path,
+                professional_name=data["professional"]["full_name"],
+                clinic_name=data["clinic"]["name"],
+                period_label=data["period"]["label"],
+                payout_amount=data["summary"]["payout_amount"],
+                html_body=email_html,
+            )
+        )
+    except Exception as e:
+        logger.error(f"Error sending liquidation email: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error enviando email: {str(e)}",
+        )
+
+    # 6. Log email send in audit trail
+    existing_notes = record.get("notes") or {}
+    audit_trail = existing_notes.get("audit_trail", [])
+    audit_trail.append(
+        {
+            "action": "email_sent",
+            "to": to_email,
+            "by": user_data.email if hasattr(user_data, "email") else "admin",
+            "at": datetime.now(timezone.utc).isoformat(),
+        }
+    )
+    existing_notes["audit_trail"] = audit_trail
+    await db.pool.execute(
+        """
+        UPDATE liquidation_records
+        SET notes = $1
+        WHERE id = $2 AND tenant_id = $3
+        """,
+        existing_notes,
+        liquidation_id,
+        resolved_tenant_id,
+    )
+
+    return {
+        "success": True,
+        "message": f"Liquidación enviada a {to_email}",
+    }

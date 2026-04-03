@@ -579,6 +579,93 @@ class EmailService:
             logger.error(f"❌ Error sending budget email: {e}")
             raise RuntimeError(f"Error SMTP al enviar presupuesto: {e}") from e
 
+    def send_liquidation_email(
+        self,
+        to_email: str,
+        pdf_path: str,
+        professional_name: str,
+        clinic_name: str,
+        period_label: str,
+        payout_amount: float,
+        html_body: str = None,
+    ) -> bool:
+        """Envía liquidación por email con PDF adjunto."""
+        if not self.smtp_host or not self.smtp_user:
+            logger.warning("⚠️ SMTP not configured. Skipping liquidation email.")
+            return False
+
+        if not to_email or not to_email.strip():
+            logger.warning("⚠️ No destination email for liquidation.")
+            return False
+
+        to_emails = [to_email.strip()]
+
+        if html_body is None:
+            html_body = f"""
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+                <h2 style="color: #1a365d; border-bottom: 2px solid #1a365d; padding-bottom: 10px;">
+                    {clinic_name}
+                </h2>
+                <p style="color: #555; font-size: 14px; line-height: 1.6;">
+                    Hola <strong>{professional_name}</strong>,
+                </p>
+                <p style="color: #555; font-size: 14px; line-height: 1.6;">
+                    Te adjuntamos tu liquidación correspondiente al período <strong>{period_label}</strong>.
+                </p>
+                <p style="color: #555; font-size: 14px; line-height: 1.6;">
+                    <strong>Monto a liquidar: ${payout_amount:,.0f}</strong>
+                </p>
+                <p style="color: #555; font-size: 14px; line-height: 1.6;">
+                    Si tenés alguna consulta, no dudes en comunicarte con la administración de {clinic_name}.
+                </p>
+                <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
+                <p style="color: #999; font-size: 11px;">
+                    Saludos,<br>Equipo de {clinic_name}
+                </p>
+            </div>
+            """
+
+        safe_name = professional_name.replace(" ", "_")
+        attachment_filename = (
+            f"Liquidacion_{safe_name}_{period_label.replace(' ', '_')}.pdf"
+        )
+
+        try:
+            msg = MIMEMultipart("mixed")
+            msg["Subject"] = f"Liquidación {period_label} — {clinic_name}"
+            msg["From"] = self.smtp_sender
+            msg["To"] = ", ".join(to_emails)
+
+            msg.attach(MIMEText(html_body, "html"))
+
+            with open(pdf_path, "rb") as f:
+                pdf_part = MIMEApplication(f.read(), _subtype="pdf")
+            pdf_part.add_header(
+                "Content-Disposition",
+                "attachment",
+                filename=attachment_filename,
+            )
+            msg.attach(pdf_part)
+
+            if self.smtp_port == 465:
+                server = smtplib.SMTP_SSL(self.smtp_host, self.smtp_port, timeout=15)
+            else:
+                server = smtplib.SMTP(self.smtp_host, self.smtp_port, timeout=15)
+                server.starttls()
+
+            server.login(self.smtp_user, self.smtp_pass)
+            server.sendmail(self.smtp_sender, to_emails, msg.as_string())
+            server.quit()
+
+            logger.info(
+                f"📧 Liquidación enviada a {to_email} para {professional_name} ({period_label})"
+            )
+            return True
+
+        except Exception as e:
+            logger.error(f"❌ Error sending liquidation email: {e}")
+            raise RuntimeError(f"Error SMTP al enviar liquidación: {e}") from e
+
     def send_welcome_email(
         self,
         to_email: str,
@@ -627,15 +714,24 @@ class EmailService:
                 ("Tu agenda personal", "Consulta y administra tus turnos del dia"),
                 ("Gestion de pacientes", "Accede a fichas clinicas e historial"),
                 ("Registros clinicos y odontograma", "Documentacion digital completa"),
-                ("Nova — asistente de voz IA", "Tu copiloto inteligente dentro de la plataforma"),
+                (
+                    "Nova — asistente de voz IA",
+                    "Tu copiloto inteligente dentro de la plataforma",
+                ),
             ]
         else:
             role_label = "Secretaria"
             guide_items = [
-                ("Agenda completa", "Vista global de turnos de todos los profesionales"),
+                (
+                    "Agenda completa",
+                    "Vista global de turnos de todos los profesionales",
+                ),
                 ("Registro de pacientes", "Alta, edicion y busqueda de pacientes"),
                 ("Conversaciones y mensajeria", "Historial de chats con pacientes"),
-                ("Gestion de turnos", "Crear, confirmar, cancelar y reprogramar turnos"),
+                (
+                    "Gestion de turnos",
+                    "Crear, confirmar, cancelar y reprogramar turnos",
+                ),
             ]
 
         subject = f"Bienvenido/a a {clinic_name} — {role_label}"
@@ -662,12 +758,12 @@ class EmailService:
         guide_html = ""
         for title, desc in guide_items:
             guide_html += (
-                f'<tr>'
+                f"<tr>"
                 f'<td style="padding:10px 14px;border-bottom:1px solid #21262d;">'
                 f'<strong style="color:#e6edf3;font-size:14px;">{title}</strong><br/>'
                 f'<span style="color:#8b949e;font-size:12px;">{desc}</span>'
-                f'</td>'
-                f'</tr>'
+                f"</td>"
+                f"</tr>"
             )
 
         html_content = f"""<!DOCTYPE html>
