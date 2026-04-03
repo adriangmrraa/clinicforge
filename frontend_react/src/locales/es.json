@@ -1209,7 +1209,9 @@
     "installments_amount": "Monto por cuota",
     "verified": "Verificado",
     "rejected": "Rechazado",
-    "save_config": "Guardar configuración"
+    "save_config": "Guardar configuración",
+    "config_saved": "Configuración guardada correctamente",
+    "email_sent_success": "Presupuesto enviado por email correctamente"
   },
   "marketing_google": {
     "title": "Google Ads",

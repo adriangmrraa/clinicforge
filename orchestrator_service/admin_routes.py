@@ -10467,7 +10467,7 @@ async def update_treatment_plan(
             budget_meta["installments"] = payload.installments
         if payload.installments_amount is not None:
             budget_meta["installments_amount"] = payload.installments_amount
-        # Merge with existing notes if any
+        # Merge with existing config if notes is already JSON
         existing_notes = plan["notes"] or ""
         try:
             existing_meta = (
@@ -10477,14 +10477,8 @@ async def update_treatment_plan(
             )
         except Exception:
             existing_meta = {}
-        if existing_meta:
-            existing_meta.update(budget_meta)
-            merged_notes = _json.dumps(existing_meta, ensure_ascii=False)
-        else:
-            # Preserve plain-text notes; append JSON budget block as a separator
-            plain = existing_notes.strip()
-            budget_str = _json.dumps(budget_meta, ensure_ascii=False)
-            merged_notes = f"{plain}\n{budget_str}".strip() if plain else budget_str
+        existing_meta.update(budget_meta)
+        merged_notes = _json.dumps(existing_meta, ensure_ascii=False)
         update_fields.append(f"notes = ${idx}")
         params.append(merged_notes)
         idx += 1

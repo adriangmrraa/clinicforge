@@ -1698,7 +1698,9 @@
     "installments_amount": "Montant par versement",
     "verified": "Vérifié",
     "rejected": "Rejeté",
-    "save_config": "Enregistrer la configuration"
+    "save_config": "Enregistrer la configuration",
+    "config_saved": "Configuration enregistrée avec succès",
+    "email_sent_success": "Devis envoyé par email avec succès"
   },
   "finance": {
     "title": "Centre Financier",

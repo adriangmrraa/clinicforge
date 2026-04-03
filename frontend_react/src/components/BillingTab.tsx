@@ -281,6 +281,7 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
 
   // ── UI
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
 
   // ── Modal visibility
   const [showCreatePlan, setShowCreatePlan] = useState(false);
@@ -401,6 +402,13 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
       return () => clearTimeout(timer);
     }
   }, [error]);
+
+  useEffect(() => {
+    if (success) {
+      const timer = setTimeout(() => setSuccess(null), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [success]);
 
   const loadPlanDetail = async (planId: string) => {
     try {
@@ -670,9 +678,11 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
       setSendingEmail(true);
       await api.post(`/admin/treatment-plans/${planDetail.id}/send-email`, { email: emailTo });
       setShowEmailModal(false);
-    } catch (err) {
+      setSuccess(t('billing.email_sent_success'));
+    } catch (err: any) {
       console.error('Error sending email:', err);
-      setError(t('billing.error_save'));
+      const detail = err?.response?.data?.detail || t('billing.error_save');
+      setError(detail);
     } finally {
       setSendingEmail(false);
     }
@@ -689,15 +699,17 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
       setSavingBudgetConfig(true);
       await api.patch(`/admin/treatment-plans/${planDetail.id}`, {
         payment_conditions: budgetConfig.payment_conditions || null,
-        discount_pct: budgetConfig.discount_pct ? parseFloat(budgetConfig.discount_pct) : null,
-        discount_amount: budgetConfig.discount_amount ? parseFloat(budgetConfig.discount_amount) : null,
+        discount_pct: budgetConfig.discount_pct ? parseFloat(budgetConfig.discount_pct) : 0,
+        discount_amount: budgetConfig.discount_amount ? parseFloat(budgetConfig.discount_amount) : 0,
         installments: budgetConfig.installments ? parseInt(budgetConfig.installments) : null,
         installments_amount: budgetConfig.installments_amount ? parseFloat(budgetConfig.installments_amount) : null,
       });
       await loadPlanDetail(planDetail.id);
-    } catch (err) {
+      setSuccess(t('billing.config_saved'));
+    } catch (err: any) {
       console.error('Error saving budget config:', err);
-      setError(t('billing.error_save'));
+      const detail = err?.response?.data?.detail || t('billing.error_save');
+      setError(detail);
     } finally {
       setSavingBudgetConfig(false);
     }
@@ -895,6 +907,15 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
           <AlertCircle size={16} />
           {error}
           <button onClick={() => setError(null)} className="ml-auto text-red-400 hover:text-red-300">
+            <X size={16} />
+          </button>
+        </div>
+      )}
+      {success && (
+        <div className="bg-green-500/10 border border-green-500/20 text-green-400 rounded-lg p-3 text-sm flex items-center gap-2">
+          <CheckCircle2 size={16} />
+          {success}
+          <button onClick={() => setSuccess(null)} className="ml-auto text-green-400 hover:text-green-300">
             <X size={16} />
           </button>
         </div>

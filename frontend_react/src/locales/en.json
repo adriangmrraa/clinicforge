@@ -1910,7 +1910,9 @@
     "installments_amount": "Amount per installment",
     "verified": "Verified",
     "rejected": "Rejected",
-    "save_config": "Save configuration"
+    "save_config": "Save configuration",
+    "config_saved": "Configuration saved successfully",
+    "email_sent_success": "Budget sent by email successfully"
   },
   "finance": {
     "title": "Financial Center",
