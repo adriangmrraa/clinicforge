@@ -156,7 +156,12 @@ export default function AgendaView() {
       }
     }
   }, [appointments]);
-  const [selectedProfessionalId, setSelectedProfessionalId] = useState<string>('all');
+  const [selectedProfessionalId, setSelectedProfessionalId] = useState<string>(() => {
+    if (user?.role === 'professional' && user?.professional_id) {
+      return user.professional_id.toString();
+    }
+    return 'all';
+  });
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [currentView, setCurrentView] = useState(() => {
     // Intentar recuperar vista guardada, sino usar responsive default
@@ -302,11 +307,18 @@ export default function AgendaView() {
       setPatients(patientsRes.data);
 
       const profFilter = user?.role === 'professional'
-        ? fetchedProfessionals.find((p: Professional) => p.email === user.email)?.id?.toString() || 'all'
+        ? user?.professional_id?.toString() ?? null
         : selectedProfessionalId;
 
+      // Guard: if professional user has no professional_id, abort to prevent leaking all appointments
+      if (user?.role === 'professional' && !profFilter) {
+        console.warn('Professional user without professional_id — aborting fetch');
+        setLoading(false);
+        return;
+      }
+
       const params: any = { start_date: startDateStr, end_date: endDateStr };
-      if (profFilter !== 'all') {
+      if (profFilter && profFilter !== 'all') {
         params.professional_id = profFilter;
       }
 
@@ -329,7 +341,7 @@ export default function AgendaView() {
       if (!isBackground) setLoading(false);
       else setIsBackgroundSyncing(false);
     }
-  }, [fetchGoogleBlocks, selectedProfessionalId, user?.role, user?.email]);
+  }, [fetchGoogleBlocks, selectedProfessionalId, user?.role, user?.professional_id]);
 
   // Mantener ref estable para que los handlers de socket siempre llamen la versión más reciente
   useEffect(() => {
@@ -405,15 +417,15 @@ export default function AgendaView() {
   // Holidays shown to all users (not filtered by professional)
   const filteredHolidays = useMemo(() => holidays, [holidays]);
 
-  // Professional user: lock filter to their id once we have professionals
+  // Professional user: lock filter to their id (fallback for old sessions without professional_id in JWT)
   useEffect(() => {
-    if (user?.role === 'professional' && user?.email && professionals.length > 0) {
-      const myId = professionals.find((p: Professional) => p.email === user.email)?.id?.toString();
-      if (myId && selectedProfessionalId !== myId) {
+    if (user?.role === 'professional' && user?.professional_id && professionals.length > 0) {
+      const myId = user.professional_id.toString();
+      if (selectedProfessionalId !== myId) {
         setSelectedProfessionalId(myId);
       }
     }
-  }, [user?.role, user?.email, professionals]);
+  }, [user?.role, user?.professional_id, professionals]);
 
   // === EFECTO 3: Cambio de filtro de profesional — invalida el guardián de rango y re-fetchea ===
   useEffect(() => {
@@ -494,15 +506,15 @@ export default function AgendaView() {
 
   // Map professionals to resources (professional user: only their column)
   const resources = useMemo(() => {
-    const list = user?.role === 'professional' && user?.email
-      ? professionals.filter((p: Professional) => p.email === user.email)
+    const list = user?.role === 'professional' && user?.professional_id
+      ? professionals.filter((p: Professional) => p.id === user.professional_id)
       : professionals;
     return list.map((p: Professional) => ({
       id: p.id.toString(),
       title: `Dr. ${p.first_name} ${p.last_name || ''}`,
       eventColor: '#3b82f6',
     }));
-  }, [professionals, user?.role, user?.email]);
+  }, [professionals, user?.role, user?.professional_id]);
 
   const handleDateClick = (info: { date: Date }) => {
     // Prevenir agendamiento en fechas/horas pasadas

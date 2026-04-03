@@ -5,6 +5,7 @@ interface User {
     email: string;
     role: 'ceo' | 'professional' | 'secretary';
     tenant_id?: number;
+    professional_id?: number;
 }
 
 interface AuthContextType {

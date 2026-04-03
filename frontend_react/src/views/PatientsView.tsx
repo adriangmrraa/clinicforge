@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Search, Plus, Edit, Trash2, X, FileText, Brain, Calendar, User, Clock, Stethoscope, Mail, Phone, Upload, CheckCircle, AlertTriangle, XCircle } from 'lucide-react';
 import api, { setTenantId } from '../api/axios';
 import { useTranslation } from '../context/LanguageContext';
+import { useAuth } from '../context/AuthContext';
 import PageHeader from '../components/PageHeader';
 import GlassCard, { CARD_IMAGES } from '../components/GlassCard';
 
@@ -48,6 +49,7 @@ interface ClinicOption {
 
 export default function PatientsView() {
   const { t, language } = useTranslation();
+  const { user } = useAuth();
   const navigate = useNavigate();
   const [patients, setPatients] = useState<Patient[]>([]);
   const [filteredPatients, setFilteredPatients] = useState<Patient[]>([]);
@@ -146,7 +148,12 @@ export default function PatientsView() {
   const fetchPatients = async () => {
     try {
       setLoading(true);
-      const response = await api.get('/admin/patients');
+      const params: Record<string, string> = {};
+      // RBAC: professionals only see their own patients
+      if (user?.role === 'professional' && user?.professional_id) {
+        params.professional_id = String(user.professional_id);
+      }
+      const response = await api.get('/admin/patients', { params });
       setPatients(response.data);
       setFilteredPatients(response.data);
     } catch (error) {

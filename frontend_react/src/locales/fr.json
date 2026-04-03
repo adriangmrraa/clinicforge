@@ -353,6 +353,8 @@
     "import_invalid_format": "Format non valide. Utilisez des fichiers .csv ou .xlsx"
   },
   "chats": {
+    "badge_patient": "Patient",
+    "badge_lead": "Prospect",
     "title": "Conversations",
     "select_clinic": "Choisir la clinique",
     "no_sessions": "Aucune conversation",

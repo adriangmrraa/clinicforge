@@ -28,8 +28,8 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, allowedRoles 
     }
 
     if (allowedRoles && user && !allowedRoles.includes(user.role)) {
-        // If user doesn't have the required role, redirect to dashboard or home
-        return <Navigate to="/" replace />;
+        // Redirect unauthorized roles to /agenda (not "/" to avoid loops with RoleLandingRedirect)
+        return <Navigate to="/agenda" replace />;
     }
 
     return <>{children}</>;

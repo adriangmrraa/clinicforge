@@ -21,9 +21,15 @@ import LeadDetailView from './views/LeadDetailView';
 import DashboardStatusView from './views/DashboardStatusView';
 import PrivacyTermsView from './views/PrivacyTermsView';
 import AnamnesisPublicView from './views/AnamnesisPublicView';
-import { AuthProvider } from './context/AuthContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import { LanguageProvider } from './context/LanguageContext';
 import ProtectedRoute from './components/ProtectedRoute';
+
+function RoleLandingRedirect() {
+  const { user } = useAuth();
+  if (user?.role === 'ceo') return <DashboardView />;
+  return <Navigate to="/agenda" replace />;
+}
 
 function App() {
   return (
@@ -41,7 +47,7 @@ function App() {
               <ProtectedRoute>
                 <Layout>
                   <Routes>
-                    <Route index element={<DashboardView />} />
+                    <Route index element={<RoleLandingRedirect />} />
                     <Route path="dashboard/status" element={
                       <ProtectedRoute allowedRoles={['ceo']}>
                         <DashboardStatusView />
@@ -57,7 +63,11 @@ function App() {
                         <ProfessionalAnalyticsView />
                       </ProtectedRoute>
                     } />
-                    <Route path="tratamientos" element={<TreatmentsView />} />
+                    <Route path="tratamientos" element={
+                      <ProtectedRoute allowedRoles={['ceo', 'secretary']}>
+                        <TreatmentsView />
+                      </ProtectedRoute>
+                    } />
                     <Route path="perfil" element={<ProfileView />} />
                     <Route path="aprobaciones" element={
                       <ProtectedRoute allowedRoles={['ceo']}>

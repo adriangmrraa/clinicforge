@@ -360,6 +360,8 @@
     "import_invalid_format": "Invalid format. Use .csv or .xlsx files"
   },
   "chats": {
+    "badge_patient": "Patient",
+    "badge_lead": "Lead",
     "title": "Conversations",
     "select_clinic": "Select clinic",
     "no_sessions": "No conversations",

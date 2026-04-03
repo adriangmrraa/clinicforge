@@ -4013,11 +4013,13 @@ async def import_patients_execute(
 async def list_patients(
     search: str = None,
     limit: int = 200,
+    professional_id: Optional[int] = None,
     tenant_id: int = Depends(get_resolved_tenant_id),
 ):
     """
     Listar todos los pacientes del tenant (incluye importados sin turnos).
     Aislado por tenant_id (Regla de Oro).
+    Cuando professional_id se proporciona, filtra solo pacientes con al menos un turno con ese profesional (RBAC).
     """
     query = """
         SELECT p.id, p.first_name, p.last_name, p.phone_number, p.email,
@@ -4036,19 +4038,25 @@ async def list_patients(
         WHERE p.tenant_id = $1 AND p.status != 'deleted'
     """
     params: List[Any] = [tenant_id]
+
+    # RBAC: filter patients by professional when professional_id is provided
+    if professional_id is not None:
+        params.append(professional_id)
+        query += f" AND EXISTS (SELECT 1 FROM appointments a WHERE a.patient_id = p.id AND a.professional_id = ${len(params)})"
+
     if search:
-        query += " AND (p.first_name ILIKE $2 OR p.last_name ILIKE $2 OR p.phone_number ILIKE $2 OR p.dni ILIKE $2)"
         params.append(f"%{search}%")
-        query += """ ORDER BY
+        query += f" AND (p.first_name ILIKE ${len(params)} OR p.last_name ILIKE ${len(params)} OR p.phone_number ILIKE ${len(params)} OR p.dni ILIKE ${len(params)})"
+        query += f""" ORDER BY
             CASE WHEN EXISTS (SELECT 1 FROM appointments a WHERE a.patient_id = p.id AND a.tenant_id = p.tenant_id)
                  THEN 0 ELSE 1 END,
-            p.created_at DESC LIMIT $3"""
+            p.created_at DESC LIMIT ${len(params) + 1}"""
         params.append(limit)
     else:
-        query += """ ORDER BY
+        query += f""" ORDER BY
             CASE WHEN EXISTS (SELECT 1 FROM appointments a WHERE a.patient_id = p.id AND a.tenant_id = p.tenant_id)
                  THEN 0 ELSE 1 END,
-            p.created_at DESC LIMIT $2"""
+            p.created_at DESC LIMIT ${len(params) + 1}"""
         params.append(limit)
     rows = await db.pool.fetch(query, *params)
     patients = [dict(row) for row in rows]

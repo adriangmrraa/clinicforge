@@ -1050,8 +1050,19 @@ export default function ChatsView() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex justify-between items-baseline mb-0.5">
-                          <span className={`font-semibold truncate text-white`}>
-                            {session.patient_name || session.phone_number}
+                          <span className="flex items-center gap-1.5 min-w-0">
+                            <span className={`font-semibold truncate text-white`}>
+                              {session.patient_name || session.phone_number}
+                            </span>
+                            {session.patient_id ? (
+                              <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 shrink-0">
+                                {t('chats.badge_patient')}
+                              </span>
+                            ) : (
+                              <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/20 shrink-0">
+                                {t('chats.badge_lead')}
+                              </span>
+                            )}
                           </span>
                           <span className={`text-[10px] font-bold ${platform.color} shrink-0 ml-1`}>
                             {platform.label}
@@ -1104,8 +1115,19 @@ export default function ChatsView() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex justify-between items-baseline mb-0.5">
-                        <span className={`font-semibold truncate text-white`}>
-                          {item.name || item.external_user_id || 'Chatwoot'}
+                        <span className="flex items-center gap-1.5 min-w-0">
+                          <span className={`font-semibold truncate text-white`}>
+                            {item.name || item.external_user_id || 'Chatwoot'}
+                          </span>
+                          {(item as any).patient_id ? (
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 shrink-0">
+                              {t('chats.badge_patient')}
+                            </span>
+                          ) : (
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/20 shrink-0">
+                              {t('chats.badge_lead')}
+                            </span>
+                          )}
                         </span>
                         <span className={`text-[10px] font-bold ${platform.color} shrink-0 ml-1`}>
                           {platform.label}

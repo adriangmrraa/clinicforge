@@ -365,22 +365,26 @@ async def login(request: Request, payload: UserLogin, response: Response):
             detail=f"Tu cuenta está en estado '{user['status']}'. Contactá al administrador.",
         )
 
-    # Regla de Oro: resolver tenant_id desde professionals por user_id (aislamiento total)
-    tenant_id = await db.fetchval(
-        "SELECT tenant_id FROM professionals WHERE user_id = $1", user["id"]
+    # Regla de Oro: resolver tenant_id y professional_id desde professionals por user_id (aislamiento total)
+    prof_row = await db.fetchrow(
+        "SELECT id, tenant_id FROM professionals WHERE user_id = $1", user["id"]
     )
-    if tenant_id is None:
+    if prof_row is not None:
+        tenant_id = int(prof_row["tenant_id"])
+        professional_id = int(prof_row["id"])
+    else:
         # CEO/secretary: no tienen fila en professionals, usar primera clínica
-        tenant_id = (
+        tenant_id = int(
             await db.fetchval("SELECT id FROM tenants ORDER BY id ASC LIMIT 1") or 1
         )
-    tenant_id = int(tenant_id)
+        professional_id = None
 
     token_data = {
         "user_id": str(user["id"]),
         "email": user["email"],
         "role": user["role"],
         "tenant_id": tenant_id,
+        "professional_id": professional_id,
     }
     token = auth_service.create_access_token(token_data)
 
@@ -402,6 +406,7 @@ async def login(request: Request, payload: UserLogin, response: Response):
             "email": user["email"],
             "role": user["role"],
             "tenant_id": tenant_id,
+            "professional_id": professional_id,
         },
     }
 
@@ -430,7 +435,27 @@ async def get_me(request: Request):
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token"
         )
 
-    return token_data
+    # Convert TokenData (Pydantic) to dict for enrichment
+    result = token_data.model_dump() if hasattr(token_data, 'model_dump') else token_data.dict() if hasattr(token_data, 'dict') else dict(token_data)
+
+    # Enrich with professional_id (always query DB — TokenData doesn't carry it yet)
+    user_id = result.get("user_id")
+    t_id = result.get("tenant_id")
+    if user_id and t_id:
+        try:
+            prof_id = await db.fetchval(
+                "SELECT id FROM professionals WHERE user_id = $1 AND tenant_id = $2",
+                uuid.UUID(user_id) if isinstance(user_id, str) else user_id,
+                int(t_id),
+            )
+            result["professional_id"] = int(prof_id) if prof_id is not None else None
+        except Exception as e:
+            logger.warning(f"Could not resolve professional_id in /auth/me: {e}")
+            result["professional_id"] = None
+    else:
+        result["professional_id"] = None
+
+    return result
 
 
 class ProfileUpdate(BaseModel):
