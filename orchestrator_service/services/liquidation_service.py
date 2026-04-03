@@ -92,7 +92,8 @@ class LiquidationService:
                 a.payment_status,
                 COALESCE(a.billing_amount, tt.base_price, 0) AS billing_amount,
                 tt.code AS treatment_code,
-                tt.name AS treatment_name
+                tt.name AS treatment_name,
+                a.plan_item_id
             FROM appointments a
             LEFT JOIN treatment_types tt
                 ON tt.code = a.appointment_type AND tt.tenant_id = $1
@@ -938,10 +939,10 @@ class LiquidationService:
 
         # 4. Auto-update status to 'paid' if fully covered
         auto_paid = False
+        current_notes = record["notes"] or {}
         if total_payouts >= payout_amount and record["status"] != "paid":
             now = datetime.utcnow()
-            existing_notes = record["notes"] or {}
-            audit_trail = existing_notes.get("audit_trail", [])
+            audit_trail = current_notes.get("audit_trail", [])
             audit_trail.append(
                 {
                     "action": "status_change",
@@ -952,7 +953,7 @@ class LiquidationService:
                     "detail": "Auto-completed: total payouts >= payout_amount",
                 }
             )
-            existing_notes["audit_trail"] = audit_trail
+            current_notes["audit_trail"] = audit_trail
 
             await pool.execute(
                 """
@@ -961,15 +962,14 @@ class LiquidationService:
                 WHERE id = $3 AND tenant_id = $4
                 """,
                 now,
-                existing_notes,
+                current_notes,
                 liquidation_id,
                 tenant_id,
             )
             auto_paid = True
 
-        # 5. Append audit trail for payout creation
-        existing_notes = record["notes"] or {}
-        audit_trail = existing_notes.get("audit_trail", [])
+        # 5. Append audit trail for payout creation (reuse current_notes to preserve auto-paid entry)
+        audit_trail = current_notes.get("audit_trail", [])
         audit_trail.append(
             {
                 "action": "payout_created",
@@ -980,14 +980,14 @@ class LiquidationService:
                 "reference": reference_number,
             }
         )
-        existing_notes["audit_trail"] = audit_trail
+        current_notes["audit_trail"] = audit_trail
         await pool.execute(
             """
             UPDATE liquidation_records
             SET notes = $1
             WHERE id = $2 AND tenant_id = $3
             """,
-            existing_notes,
+            current_notes,
             liquidation_id,
             tenant_id,
         )

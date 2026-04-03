@@ -340,7 +340,7 @@ def upgrade():
             ),
             sa.Column(
                 "payment_method",
-                sa.String(50),
+                sa.String(20),
                 nullable=False,
             ),
             sa.Column("payment_date", sa.Date(), nullable=False),

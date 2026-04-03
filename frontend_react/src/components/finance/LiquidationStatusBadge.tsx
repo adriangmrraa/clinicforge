@@ -24,9 +24,9 @@ const statusConfig: Record<LiquidationStatusBadgeProps['status'], { bg: string; 
     labelKey: 'finance.status_approved',
   },
   paid: {
-    bg: 'bg-purple-500/10',
-    text: 'text-purple-400',
-    dot: 'bg-purple-400',
+    bg: 'bg-green-700/20',
+    text: 'text-green-400',
+    dot: 'bg-green-500',
     labelKey: 'finance.status_paid',
   },
 };

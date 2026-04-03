@@ -10,8 +10,8 @@
 // --- Liquidation Records ---
 
 export interface LiquidationRecord {
-  id: string;
-  tenant_id: string;
+  id: number;
+  tenant_id: number;
   professional_id: number;
   professional_name: string;
   period_start: string;
@@ -23,18 +23,18 @@ export interface LiquidationRecord {
   commission_amount: number;
   payout_amount: number;
   status: 'draft' | 'generated' | 'approved' | 'paid';
-  generated_at: string;
-  approved_at?: string;
-  paid_at?: string;
-  generated_by: string;
-  notes: Record<string, unknown>;
+  generated_at: string | null;
+  approved_at?: string | null;
+  paid_at?: string | null;
+  generated_by: string | null;
+  notes: Record<string, unknown> | null;
   treatment_groups?: TreatmentGroup[];
   payouts?: ProfessionalPayout[];
 }
 
 export interface ProfessionalPayout {
-  id: string;
-  liquidation_record_id: string;
+  id: number;
+  liquidation_id: number;
   professional_id: number;
   amount: number;
   payment_method: 'transfer' | 'cash' | 'check';
@@ -89,6 +89,7 @@ export interface RevenueByTreatment {
   total_billed: number;
   total_paid: number;
   appointment_count: number;
+  percentage?: number;
 }
 
 export interface DailyCashFlow {
@@ -102,17 +103,17 @@ export interface DailyCashFlow {
 export interface MoMGrowth {
   current_revenue: number;
   previous_revenue: number;
-  growth_pct: number;
+  growth_pct: number | null;
   current_payouts: number;
   previous_payouts: number;
-  payout_growth_pct: number;
+  payout_growth_pct: number | null;
 }
 
 export interface PendingCollection {
-  patient_id: string;
+  patient_id: number;
   patient_name: string;
   patient_phone: string;
-  appointment_id: string;
+  appointment_id: number;
   treatment_name: string;
   amount_pending: number;
   days_overdue: number;
@@ -125,6 +126,7 @@ export interface DashboardData {
   revenue_by_treatment: RevenueByTreatment[];
   daily_cash_flow: DailyCashFlow[];
   mom_growth: MoMGrowth;
+  top_treatments: RevenueByTreatment[];
   pending_collections: PendingCollection[];
 }
 
@@ -132,7 +134,7 @@ export interface DashboardData {
 
 export interface Discrepancy {
   type: string;
-  appointment_id: string;
+  appointment_id: number;
   patient_name: string;
   treatment_name?: string;
   amount: number;
@@ -153,7 +155,7 @@ export interface ReconciliationData {
 // --- Liquidation Detail ---
 
 export interface TreatmentSession {
-  appointment_id: string;
+  appointment_id: number;
   date: string;
   description: string;
   amount: number;
@@ -161,7 +163,7 @@ export interface TreatmentSession {
 }
 
 export interface TreatmentGroup {
-  patient_id: string;
+  patient_id: number;
   patient_name: string;
   treatment_code: string;
   treatment_name: string;

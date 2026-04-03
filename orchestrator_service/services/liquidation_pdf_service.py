@@ -521,6 +521,7 @@ async def gather_liquidation_pdf_data(
         "treatment_groups": treatment_groups_out,
         "payouts": payouts_out,
         "generated_at": generated_at,
+        "generated_at_label": generated_at,  # alias for @page footer
         "status": status,
         "notes_text": notes_text,
         # For email use

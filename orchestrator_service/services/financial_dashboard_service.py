@@ -40,11 +40,12 @@ def _shift_period(
     """
     Calculate the previous period of the same duration.
     E.g. if current is Mar 1 – Mar 31 (31 days), previous is Feb 1 – Feb 28 (28 days).
-    We shift both dates back by the same delta.
+    prev_end = period_start - 1 day (non-overlapping)
+    prev_start = prev_end - duration + 1 day
     """
     duration = period_end - period_start
-    prev_end = period_start
-    prev_start = period_start - duration
+    prev_end = period_start - timedelta(days=1)
+    prev_start = prev_end - duration + timedelta(days=1)
     return prev_start, prev_end
 
 
