@@ -22,7 +22,8 @@
     "credentials": "Credenciales",
     "status_connected": "Conectado",
     "status_reconnecting": "Reconectando...",
-    "roi": "ROI Dashboard"
+    "roi": "ROI Dashboard",
+    "my_liquidations": "Mis Liquidaciones"
   },
   "common": {
     "save": "Guardar",
@@ -2044,11 +2045,16 @@
   },
   "professional_liquidations": {
     "title": "Mis Liquidaciones",
+    "subtitle": "Consultá el estado de tus liquidaciones y comisiones",
     "no_liquidations": "No tenés liquidaciones aún",
     "no_liquidations_desc": "Las liquidaciones se generan mensualmente",
     "your_commission": "Tu comisión",
     "paid_on": "Pagado el",
-    "download_pdf": "Descargar PDF"
+    "download_pdf": "Descargar PDF",
+    "total_billed": "Total Facturado",
+    "total_collected": "Total Cobrado",
+    "commission_retained": "Comisión Retenida",
+    "to_collect": "A Cobrar"
   }
 }
 

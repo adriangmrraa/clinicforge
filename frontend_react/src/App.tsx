@@ -22,6 +22,7 @@ import DashboardStatusView from './views/DashboardStatusView';
 import PrivacyTermsView from './views/PrivacyTermsView';
 import AnamnesisPublicView from './views/AnamnesisPublicView';
 import FinancialCommandCenterView from './views/FinancialCommandCenterView';
+import ProfessionalLiquidationsView from './views/ProfessionalLiquidationsView';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { LanguageProvider } from './context/LanguageContext';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -118,9 +119,7 @@ function App() {
                     } />
                     <Route path="mis-liquidaciones" element={
                       <ProtectedRoute allowedRoles={['professional']}>
-                        <div className="h-screen flex items-center justify-center text-white/40">
-                          Próximamente: Mis Liquidaciones
-                        </div>
+                        <ProfessionalLiquidationsView />
                       </ProtectedRoute>
                     } />
 

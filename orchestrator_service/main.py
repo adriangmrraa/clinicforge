@@ -56,6 +56,7 @@ from core.security_utils import verify_signed_url
 from db import db
 from admin_routes import router as admin_router
 from auth_routes import router as auth_router
+from my_routes import router as my_router
 from routes import chat_webhooks, chat_api, meta_auth, marketing
 from email_service import email_service
 
@@ -4250,7 +4251,9 @@ async def verify_payment_receipt(
                     patient_id,
                 )
                 if plan_row:
-                    plan_pending = float(plan_row["approved_total"]) - float(plan_row["total_paid"])
+                    plan_pending = float(plan_row["approved_total"]) - float(
+                        plan_row["total_paid"]
+                    )
                     expected_amount = plan_pending
                     payment_context = "plan"
                     plan_id = plan_row["plan_id"]
@@ -4259,7 +4262,9 @@ async def verify_payment_receipt(
                         f"plan_id={plan_id} plan_name='{plan_row['plan_name']}' pending=${plan_pending}"
                     )
             except Exception as plan_lookup_err:
-                logger.warning(f"💰 verify_receipt: plan lookup failed (non-fatal): {plan_lookup_err}")
+                logger.warning(
+                    f"💰 verify_receipt: plan lookup failed (non-fatal): {plan_lookup_err}"
+                )
 
         # 3. Fallback to price-based seña (50%) when no billing_amount and no active plan
         if not expected_amount or expected_amount <= 0:
@@ -4571,6 +4576,7 @@ async def verify_payment_receipt(
             if payment_context == "plan" and plan_id and plan_row:
                 # Plan payment: insert into treatment_plan_payments + accounting_transactions
                 import uuid as _uuid_mod
+
                 await db.pool.execute(
                     """
                     INSERT INTO treatment_plan_payments
@@ -4598,7 +4604,9 @@ async def verify_payment_receipt(
                         f"Pago verificado por IA - Plan: {plan_row['plan_name']}",
                     )
                 except Exception as acct_err:
-                    logger.warning(f"💰 verify_receipt: accounting_transactions insert failed (non-fatal): {acct_err}")
+                    logger.warning(
+                        f"💰 verify_receipt: accounting_transactions insert failed (non-fatal): {acct_err}"
+                    )
                 # Check if plan is now fully paid
                 new_total_paid = float(plan_row["total_paid"]) + (amount_value or 0)
                 if new_total_paid >= float(plan_row["approved_total"]):
@@ -4606,7 +4614,9 @@ async def verify_payment_receipt(
                         "UPDATE treatment_plans SET status = 'completed', updated_at = NOW() WHERE id = $1",
                         plan_id,
                     )
-                    logger.info(f"💰 verify_receipt: plan {plan_id} marked as completed (fully paid)")
+                    logger.info(
+                        f"💰 verify_receipt: plan {plan_id} marked as completed (fully paid)"
+                    )
                 logger.info(
                     f"💰 verify_receipt: plan payment recorded plan_id={plan_id} amount=${amount_value or expected_amount}"
                 )
@@ -4680,7 +4690,9 @@ async def verify_payment_receipt(
             # --- Plan payment: return plan-specific confirmation and exit early ---
             if payment_context == "plan" and plan_row:
                 amount_str_plan = str(int(amount_value)) if amount_value else "0"
-                new_total_paid_plan = float(plan_row["total_paid"]) + (amount_value or 0)
+                new_total_paid_plan = float(plan_row["total_paid"]) + (
+                    amount_value or 0
+                )
                 remaining = float(plan_row["approved_total"]) - new_total_paid_plan
                 if remaining <= 0:
                     balance_msg = "¡El plan está completamente saldado! 🎉"
@@ -6684,6 +6696,8 @@ app.include_router(auth_router)
 # Chatwoot API: Specific routes must come BEFORE generic admin routes to avoid shadowing
 app.include_router(chat_api.router)
 app.include_router(admin_router)
+# Professional self-service routes (/my/ prefix — JWT auth, not admin token)
+app.include_router(my_router)
 # Public routes (no auth — anamnesis form)
 try:
     from public_routes import router as public_router

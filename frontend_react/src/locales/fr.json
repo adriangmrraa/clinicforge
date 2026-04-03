@@ -18,7 +18,8 @@
     "expand": "Développer",
     "collapse": "Réduire",
     "app_name": "Dentalogic",
-    "roi": "Tableau de bord ROI"
+    "roi": "Tableau de bord ROI",
+    "my_liquidations": "Mes Liquidations"
   },
   "common": {
     "save": "Enregistrer",
@@ -1778,10 +1779,15 @@
   },
   "professional_liquidations": {
     "title": "Mes Liquidations",
+    "subtitle": "Consultez l'état de vos liquidations et commissions",
     "no_liquidations": "Vous n'avez pas encore de liquidations",
     "no_liquidations_desc": "Les liquidations sont générées mensuellement",
     "your_commission": "Votre commission",
     "paid_on": "Payé le",
-    "download_pdf": "Télécharger PDF"
+    "download_pdf": "Télécharger PDF",
+    "total_billed": "Total Facturé",
+    "total_collected": "Total Encaissé",
+    "commission_retained": "Commission Retenue",
+    "to_collect": "À Percevoir"
   }
 }

@@ -18,7 +18,8 @@ import {
   Megaphone,
   Layout,
   Zap,
-  TrendingUp
+  TrendingUp,
+  Wallet,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTranslation } from '../context/LanguageContext';
@@ -41,6 +42,7 @@ const CARD_IMAGES: Record<string, string> = {
   analytics: 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=400&q=60',
   tokens: 'https://images.unsplash.com/photo-1620712943543-bcc4688e7485?w=400&q=60',
   treatments: 'https://images.unsplash.com/photo-1606811971618-4486d14f3f99?w=400&q=60',
+  'my-liquidations': 'https://images.unsplash.com/photo-1554224155-6726b3ff858f?w=400&q=60',
   profile: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=400&q=60',
   marketing: 'https://images.unsplash.com/photo-1533750349088-cd871a92f312?w=400&q=60',
   leads: 'https://images.unsplash.com/photo-1552664730-d307ca884978?w=400&q=60',
@@ -129,6 +131,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle, onCloseMo
     { id: 'analytics', labelKey: 'nav.strategy' as const, icon: <BarChart3 size={17} />, path: '/analytics/professionals', roles: ['ceo'], hint: 'Rendimiento de cada profesional: turnos, retención, facturación' },
     { id: 'tokens', labelKey: 'nav.tokens' as const, icon: <Zap size={17} />, path: '/dashboard/status', roles: ['ceo'], hint: 'Consumo de IA por servicio, costos y seleccion de modelos' },
     { id: 'treatments', labelKey: 'nav.treatments' as const, icon: <Clock size={17} />, path: '/tratamientos', roles: ['ceo', 'secretary'], hint: 'Tipos de tratamiento con precios, duracion e imagenes' },
+    { id: 'my-liquidations', labelKey: 'nav.my_liquidations' as const, icon: <Wallet size={17} />, path: '/mis-liquidaciones', roles: ['professional'], hint: 'Tus liquidaciones, comisiones y estado de pagos' },
     { id: 'profile', labelKey: 'nav.profile' as const, icon: <User size={17} />, path: '/perfil', roles: ['ceo', 'professional', 'secretary'], hint: 'Tu perfil y datos de cuenta' },
     { id: 'marketing', labelKey: 'nav.marketing' as const, icon: <Megaphone size={17} />, path: '/marketing', roles: ['ceo'], hint: 'ROI real de Meta Ads y Google Ads con atribución de pacientes' },
     { id: 'roi', labelKey: 'nav.roi' as const, icon: <TrendingUp size={17} />, path: '/roi', roles: ['ceo'], hint: 'Dashboard de ROI con atribución, tendencias y campañas top' },

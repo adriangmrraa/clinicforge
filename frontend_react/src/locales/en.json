@@ -20,7 +20,8 @@
     "collapse": "Collapse",
     "app_name": "Dentalogic",
     "credentials": "Credentials",
-    "roi": "ROI Dashboard"
+    "roi": "ROI Dashboard",
+    "my_liquidations": "My Liquidations"
   },
   "common": {
     "save": "Save",
@@ -1990,10 +1991,15 @@
   },
   "professional_liquidations": {
     "title": "My Liquidations",
+    "subtitle": "Check the status of your liquidations and commissions",
     "no_liquidations": "You don't have any liquidations yet",
     "no_liquidations_desc": "Liquidations are generated monthly",
     "your_commission": "Your commission",
     "paid_on": "Paid on",
-    "download_pdf": "Download PDF"
+    "download_pdf": "Download PDF",
+    "total_billed": "Total Billed",
+    "total_collected": "Total Collected",
+    "commission_retained": "Commission Retained",
+    "to_collect": "To Collect"
   }
 }
