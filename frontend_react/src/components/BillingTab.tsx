@@ -554,7 +554,7 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
   const handleUpdateItemPrice = async (itemId: string) => {
     if (!editingItemPrice || !planDetail) return;
     try {
-      await api.patch(`/admin/treatment-plan-items/${itemId}`, {
+      await api.put(`/admin/treatment-plan-items/${itemId}`, {
         approved_price: parseFloat(editingItemPrice),
       });
       setEditingItemId(null);
@@ -1098,22 +1098,28 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
                           </td>
                           <td className="py-3 px-2 text-right">
                             {editingItemId === item.id ? (
-                              <div className="flex items-center gap-1">
+                              <div className="flex items-center gap-1.5">
                                 <input
                                   type="number"
                                   value={editingItemPrice}
                                   onChange={(e) => setEditingItemPrice(e.target.value)}
-                                  onKeyDown={(e) => e.key === 'Enter' && handleUpdateItemPrice(item.id)}
-                                  className="w-24 px-2 py-1 bg-white/[0.04] border border-white/[0.08] rounded text-white text-sm"
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') handleUpdateItemPrice(item.id);
+                                    if (e.key === 'Escape') { setEditingItemId(null); setEditingItemPrice(''); }
+                                  }}
+                                  className="w-24 px-2 py-1 bg-white/[0.06] border border-blue-500/50 rounded text-white text-sm focus:border-blue-400 focus:ring-1 focus:ring-blue-400/30 outline-none"
                                   autoFocus
                                 />
-                                <button onClick={() => handleUpdateItemPrice(item.id)} className="text-green-400">
+                                <button onClick={() => handleUpdateItemPrice(item.id)} className="p-1 rounded bg-green-500/20 text-green-400 hover:bg-green-500/30 transition-colors" title={t('billing.confirm')}>
                                   <Check size={14} />
+                                </button>
+                                <button onClick={() => { setEditingItemId(null); setEditingItemPrice(''); }} className="p-1 rounded bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors" title={t('billing.cancel')}>
+                                  <X size={14} />
                                 </button>
                               </div>
                             ) : (
                               <span
-                                className="text-sm text-white cursor-pointer hover:text-primary"
+                                className="text-sm text-white cursor-pointer hover:text-blue-400 transition-colors border-b border-dashed border-white/20 hover:border-blue-400/50 pb-0.5"
                                 onClick={() => { setEditingItemId(item.id); setEditingItemPrice(String(item.approved_price || item.estimated_price)); }}
                               >
                                 {formatCurrency(item.approved_price || item.estimated_price)}
@@ -1205,17 +1211,23 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
                                 type="number"
                                 value={editingItemPrice}
                                 onChange={(e) => setEditingItemPrice(e.target.value)}
-                                onKeyDown={(e) => e.key === 'Enter' && handleUpdateItemPrice(item.id)}
-                                className="w-20 px-2 py-0.5 bg-white/[0.04] border border-white/[0.08] rounded text-white text-xs"
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') handleUpdateItemPrice(item.id);
+                                  if (e.key === 'Escape') { setEditingItemId(null); setEditingItemPrice(''); }
+                                }}
+                                className="w-20 px-2 py-0.5 bg-white/[0.06] border border-blue-500/50 rounded text-white text-xs focus:border-blue-400 focus:ring-1 focus:ring-blue-400/30 outline-none"
                                 autoFocus
                               />
-                              <button onClick={() => handleUpdateItemPrice(item.id)} className="text-green-400">
+                              <button onClick={() => handleUpdateItemPrice(item.id)} className="p-0.5 rounded bg-green-500/20 text-green-400 hover:bg-green-500/30 transition-colors">
                                 <Check size={12} />
+                              </button>
+                              <button onClick={() => { setEditingItemId(null); setEditingItemPrice(''); }} className="p-0.5 rounded bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors">
+                                <X size={12} />
                               </button>
                             </div>
                           ) : (
                             <p
-                              className="text-white cursor-pointer hover:text-primary"
+                              className="text-white cursor-pointer hover:text-blue-400 transition-colors border-b border-dashed border-white/20 hover:border-blue-400/50 pb-0.5 inline-block"
                               onClick={() => { setEditingItemId(item.id); setEditingItemPrice(String(item.approved_price || item.estimated_price)); }}
                             >
                               {item.approved_price ? formatCurrency(item.approved_price) : '-'}

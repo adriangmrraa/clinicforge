@@ -10636,11 +10636,12 @@ async def recalculate_plan_estimated_total(
     pool, plan_id: uuid.UUID, tenant_id: int
 ) -> Decimal:
     """
-    Recalcula el estimated_total del plan sumando los precios estimados de todos los ítems no cancelados.
+    Recalcula el estimated_total del plan sumando COALESCE(approved_price, estimated_price)
+    de todos los ítems no cancelados. Si existe precio aprobado, ese tiene prioridad.
     """
     total = await pool.fetchval(
         """
-        SELECT COALESCE(SUM(estimated_price), 0)
+        SELECT COALESCE(SUM(COALESCE(approved_price, estimated_price)), 0)
         FROM treatment_plan_items
         WHERE plan_id = $1 AND tenant_id = $2 AND status != 'cancelled'
         """,
@@ -10930,8 +10931,8 @@ async def update_plan_item(
         *update_values,
     )
 
-    # Recalcular estimated_total si cambió el precio
-    if payload.estimated_price is not None:
+    # Recalcular estimated_total si cambió algún precio
+    if payload.estimated_price is not None or payload.approved_price is not None:
         plan_uuid = item["plan_id"]
         new_total = await recalculate_plan_estimated_total(
             db.pool, plan_uuid, resolved_tenant_id
