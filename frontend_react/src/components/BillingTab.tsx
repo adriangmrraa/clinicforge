@@ -1,13 +1,17 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useTranslation } from '../context/LanguageContext';
 import {
-  Plus, Trash2, Edit2, Loader2, Receipt, X,
+  Plus, Trash2, Loader2, Receipt, X,
   Banknote, ArrowRightLeft, CreditCard, Check, AlertCircle,
-  FileText, Calendar, User, ChevronDown
+  User, Mail, Download, Sparkles,
+  CheckCircle2, Clock, Search
 } from 'lucide-react';
 import api from '../api/axios';
 
-// Types
+// ─── Types ──────────────────────────────────────────────────────────────────
+
+type ViewState = 'loading' | 'empty' | 'appointments_only' | 'plan_view';
+
 interface TreatmentPlan {
   id: string;
   name: string;
@@ -66,10 +70,46 @@ interface TreatmentType {
   base_price: number;
 }
 
+interface AppointmentBilling {
+  id: number;
+  scheduled_at: string;
+  professional_name: string | null;
+  status: string;
+  billing_amount: number | null;
+  payment_status: string | null;
+  payment_receipt_data: {
+    status?: 'verified' | 'pending' | 'review' | 'rejected';
+    amount?: number;
+  } | null;
+  plan_item_id?: string | null;
+}
+
+interface TreatmentGroup {
+  treatment_code: string;
+  treatment_name: string;
+  base_price: number;
+  appointments: AppointmentBilling[];
+  total_billed: number;
+  total_paid: number;
+  total_pending: number;
+}
+
+interface BillingSummary {
+  has_active_plan: boolean;
+  patient_email: string | null;
+  appointments: AppointmentBilling[];
+  treatment_groups: TreatmentGroup[];
+  global_total_estimated: number;
+  global_total_paid: number;
+  global_total_pending: number;
+}
+
 interface BillingTabProps {
   patientId: number;
   refreshKey: number;
 }
+
+// ─── Lookup maps ────────────────────────────────────────────────────────────
 
 const statusColors: Record<string, { bg: string; text: string }> = {
   draft: { bg: 'bg-white/10', text: 'text-white/60' },
@@ -86,60 +126,241 @@ const itemStatusColors: Record<string, { bg: string; text: string }> = {
   cancelled: { bg: 'bg-red-500/10', text: 'text-red-400' },
 };
 
-const formatCurrency = (amount: number) => {
-  return new Intl.NumberFormat('es-AR', {
+const apptStatusColors: Record<string, { bg: string; text: string }> = {
+  scheduled: { bg: 'bg-blue-500/10', text: 'text-blue-400' },
+  confirmed: { bg: 'bg-green-500/10', text: 'text-green-400' },
+  completed: { bg: 'bg-green-500/10', text: 'text-green-400' },
+  cancelled: { bg: 'bg-red-500/10', text: 'text-red-400' },
+  pending: { bg: 'bg-yellow-500/10', text: 'text-yellow-400' },
+};
+
+// ─── Utils ───────────────────────────────────────────────────────────────────
+
+const formatCurrency = (amount: number) =>
+  new Intl.NumberFormat('es-AR', {
     style: 'currency',
     currency: 'ARS',
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   }).format(amount);
-};
+
+// ─── Sub-components ──────────────────────────────────────────────────────────
+
+function PaymentReceiptBadge({ receipt }: { receipt: AppointmentBilling['payment_receipt_data'] }) {
+  const { t } = useTranslation();
+  if (!receipt) return null;
+
+  const status = receipt.status || 'pending';
+
+  if (status === 'verified') {
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-green-500/10 text-green-400">
+        <CheckCircle2 size={10} />
+        {t('billing.receipt_verified')}{receipt.amount ? ` (${formatCurrency(receipt.amount)})` : ''}
+      </span>
+    );
+  }
+  if (status === 'review') {
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-orange-500/10 text-orange-400">
+        <Search size={10} />
+        {t('billing.receipt_review')}
+      </span>
+    );
+  }
+  if (status === 'rejected') {
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-red-500/10 text-red-400">
+        <X size={10} />
+        Rechazado
+      </span>
+    );
+  }
+  // pending (default)
+  return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-yellow-500/10 text-yellow-400">
+      <Clock size={10} />
+      {t('billing.receipt_pending')}
+    </span>
+  );
+}
+
+function TreatmentGroupCard({ group }: { group: TreatmentGroup }) {
+  const { t } = useTranslation();
+
+  return (
+    <div className="bg-white/[0.02] border border-white/[0.06] rounded-xl p-4">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-3">
+        <h4 className="text-sm font-semibold text-white">{group.treatment_name}</h4>
+        <span className="text-xs text-white/40">{group.appointments.length} turno{group.appointments.length !== 1 ? 's' : ''}</span>
+      </div>
+
+      {/* Appointment rows */}
+      <div className="space-y-2 mb-4">
+        {group.appointments.map((appt) => {
+          const apptDate = new Date(appt.scheduled_at);
+          const statusStyle = apptStatusColors[appt.status] || { bg: 'bg-white/10', text: 'text-white/50' };
+          return (
+            <div key={appt.id} className="flex flex-wrap items-center gap-2 py-2 border-b border-white/[0.04] last:border-0">
+              <div className="flex-1 min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs text-white/70">
+                    {apptDate.toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric' })}
+                  </span>
+                  {appt.professional_name && (
+                    <span className="text-xs text-white/40">{appt.professional_name}</span>
+                  )}
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] ${statusStyle.bg} ${statusStyle.text}`}>
+                    {appt.status}
+                  </span>
+                </div>
+                {appt.payment_receipt_data && (
+                  <div className="mt-1">
+                    <PaymentReceiptBadge receipt={appt.payment_receipt_data} />
+                  </div>
+                )}
+              </div>
+              {appt.billing_amount != null && (
+                <span className="text-sm font-medium text-white/80 flex-shrink-0">
+                  {formatCurrency(appt.billing_amount)}
+                </span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Group totals */}
+      <div className="grid grid-cols-3 gap-2 pt-2 border-t border-white/[0.06]">
+        <div>
+          <p className="text-[10px] text-white/30 uppercase font-bold mb-0.5">{t('billing.estimated_total')}</p>
+          <p className="text-xs text-white font-medium">{formatCurrency(group.total_billed)}</p>
+        </div>
+        <div>
+          <p className="text-[10px] text-white/30 uppercase font-bold mb-0.5">{t('billing.paid')}</p>
+          <p className="text-xs text-green-400 font-medium">{formatCurrency(group.total_paid)}</p>
+        </div>
+        <div>
+          <p className="text-[10px] text-white/30 uppercase font-bold mb-0.5">{t('billing.pending')}</p>
+          <p className={`text-xs font-medium ${group.total_pending > 0 ? 'text-amber-400' : 'text-green-400'}`}>
+            {formatCurrency(group.total_pending)}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Main component ──────────────────────────────────────────────────────────
 
 export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
   const { t } = useTranslation();
-  
-  // State
+
+  // ── View state
+  const [viewState, setViewState] = useState<ViewState>('loading');
+  const [billingData, setBillingData] = useState<BillingSummary | null>(null);
+
+  // ── Plan state (plan_view)
   const [plans, setPlans] = useState<TreatmentPlan[]>([]);
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
   const [planDetail, setPlanDetail] = useState<TreatmentPlanDetail | null>(null);
-  const [loadingPlans, setLoadingPlans] = useState(true);
   const [loadingDetail, setLoadingDetail] = useState(false);
+
+  // ── UI
   const [error, setError] = useState<string | null>(null);
 
-  // Modal visibility
+  // ── Modal visibility
   const [showCreatePlan, setShowCreatePlan] = useState(false);
   const [showAddItem, setShowAddItem] = useState(false);
   const [showRegisterPayment, setShowRegisterPayment] = useState(false);
   const [showApprovePlan, setShowApprovePlan] = useState(false);
+  const [showEmailModal, setShowEmailModal] = useState(false);
 
-  // Inline edit state (items)
+  // ── Inline edit state (items)
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [editingItemPrice, setEditingItemPrice] = useState<string>('');
 
-  // Inline edit state (plan name)
+  // ── Inline edit state (plan name)
   const [editingPlanName, setEditingPlanName] = useState(false);
   const [planNameDraft, setPlanNameDraft] = useState('');
 
-  // Inline delete confirmations
+  // ── Inline delete confirmations
   const [deletingItemId, setDeletingItemId] = useState<string | null>(null);
   const [deletingPaymentId, setDeletingPaymentId] = useState<string | null>(null);
 
-  // Form data
+  // ── Form data
   const [newPlanData, setNewPlanData] = useState({ name: '', professional_id: '', notes: '' });
   const [newItemData, setNewItemData] = useState({ treatment_type_code: '', custom_description: '', estimated_price: '' });
   const [newPaymentData, setNewPaymentData] = useState({ amount: '', payment_method: 'cash', payment_date: new Date().toISOString().split('T')[0], notes: '' });
   const [approveData, setApproveData] = useState({ approved_total: '' });
 
-  // Data for modals
+  // ── Modal support data
   const [professionals, setProfessionals] = useState<Professional[]>([]);
   const [treatmentTypes, setTreatmentTypes] = useState<TreatmentType[]>([]);
 
-  // Load plans on mount and refresh
+  // ── PDF/Email
+  const [generatingPdf, setGeneratingPdf] = useState(false);
+  const [sendingEmail, setSendingEmail] = useState(false);
+  const [emailTo, setEmailTo] = useState('');
+
+  // ── Generate plan loading
+  const [generatingPlan, setGeneratingPlan] = useState(false);
+
+  // ─── Mount: fetch billing-summary FIRST, then decide state ───────────────
+
   useEffect(() => {
-    loadPlans();
+    loadBillingSummary();
   }, [patientId, refreshKey]);
 
-  // Load plan detail when selected
+  const loadBillingSummary = async () => {
+    try {
+      setViewState('loading');
+      setError(null);
+      const res = await api.get(`/admin/patients/${patientId}/billing-summary`);
+      const data: BillingSummary = res.data;
+      setBillingData(data);
+
+      if (data.has_active_plan) {
+        // Load plans then show plan_view
+        await loadPlans();
+        // viewState will be set inside loadPlans after data arrives
+      } else if (data.appointments && data.appointments.length > 0) {
+        setViewState('appointments_only');
+      } else {
+        setViewState('empty');
+      }
+    } catch (err) {
+      console.error('Error loading billing summary:', err);
+      // Fallback: try loading plans directly (backward compat)
+      await loadPlans();
+    }
+  };
+
+  // ─── Load plan list ───────────────────────────────────────────────────────
+
+  const loadPlans = async () => {
+    try {
+      const res = await api.get(`/admin/patients/${patientId}/treatment-plans`);
+      setPlans(res.data);
+
+      if (res.data.length > 0) {
+        setViewState('plan_view');
+        if (res.data.length === 1 && !selectedPlanId) {
+          setSelectedPlanId(res.data[0].id);
+        }
+      } else {
+        setViewState('empty');
+      }
+    } catch (err) {
+      console.error('Error loading plans:', err);
+      setError(t('billing.error_load'));
+      setViewState('empty');
+    }
+  };
+
+  // ─── Load plan detail on selection ───────────────────────────────────────
+
   useEffect(() => {
     if (selectedPlanId) {
       loadPlanDetail(selectedPlanId);
@@ -147,25 +368,6 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
       setPlanDetail(null);
     }
   }, [selectedPlanId]);
-
-  const loadPlans = async () => {
-    try {
-      setLoadingPlans(true);
-      setError(null);
-      const res = await api.get(`/admin/patients/${patientId}/treatment-plans`);
-      setPlans(res.data);
-      
-      // Auto-select if only 1 plan
-      if (res.data.length === 1 && !selectedPlanId) {
-        setSelectedPlanId(res.data[0].id);
-      }
-    } catch (err) {
-      console.error('Error loading plans:', err);
-      setError(t('billing.error_load'));
-    } finally {
-      setLoadingPlans(false);
-    }
-  };
 
   const loadPlanDetail = async (planId: string) => {
     try {
@@ -179,18 +381,20 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
     }
   };
 
-  // Calculate totals
+  // ─── Computed totals (plan_view) ─────────────────────────────────────────
+
   const estimatedTotal = planDetail?.estimated_total || 0;
   const approvedTotal = planDetail?.approved_total || estimatedTotal;
   const paidTotal = planDetail?.payments?.reduce((sum, p) => sum + p.amount, 0) || 0;
   const pendingTotal = Math.max(approvedTotal - paidTotal, 0);
   const progressPercent = approvedTotal > 0 ? Math.min((paidTotal / approvedTotal) * 100, 100) : 0;
 
-  // Handlers
+  // ─── Handlers ─────────────────────────────────────────────────────────────
+
   const handleCreatePlan = async () => {
     if (!newPlanData.name.trim()) return;
     try {
-      const payload: any = {
+      const payload: Record<string, unknown> = {
         name: newPlanData.name,
         notes: newPlanData.notes || null,
       };
@@ -202,6 +406,7 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
       setNewPlanData({ name: '', professional_id: '', notes: '' });
       await loadPlans();
       setSelectedPlanId(res.data.id);
+      setViewState('plan_view');
     } catch (err) {
       console.error('Error creating plan:', err);
       setError(t('billing.error_save'));
@@ -211,7 +416,7 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
   const handleAddItem = async () => {
     if (!newItemData.treatment_type_code || !planDetail) return;
     try {
-      const payload: any = {
+      const payload: Record<string, unknown> = {
         treatment_type_code: newItemData.treatment_type_code,
         custom_description: newItemData.custom_description || null,
       };
@@ -337,8 +542,70 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
     setShowCreatePlan(true);
   };
 
-  // Loading skeleton
-  if (loadingPlans) {
+  const handleGeneratePlanFromAppointments = async () => {
+    if (!window.confirm(t('billing.confirm_generate'))) return;
+    try {
+      setGeneratingPlan(true);
+      setError(null);
+      await api.post(`/admin/patients/${patientId}/generate-plan-from-appointments`);
+      // Reload — billing summary will detect new plan
+      await loadBillingSummary();
+    } catch (err: unknown) {
+      console.error('Error generating plan:', err);
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      setError(msg || t('billing.error_save'));
+    } finally {
+      setGeneratingPlan(false);
+    }
+  };
+
+  const handleGeneratePdf = async () => {
+    if (!planDetail) return;
+    try {
+      setGeneratingPdf(true);
+      const res = await api.post(
+        `/admin/treatment-plans/${planDetail.id}/generate-pdf`,
+        {},
+        { responseType: 'blob' }
+      );
+      const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `presupuesto-${planDetail.name.replace(/\s+/g, '-')}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Error generating PDF:', err);
+      setError(t('billing.error_save'));
+    } finally {
+      setGeneratingPdf(false);
+    }
+  };
+
+  const handleSendEmail = async () => {
+    if (!planDetail || !emailTo.trim()) return;
+    try {
+      setSendingEmail(true);
+      await api.post(`/admin/treatment-plans/${planDetail.id}/send-email`, { email: emailTo });
+      setShowEmailModal(false);
+    } catch (err) {
+      console.error('Error sending email:', err);
+      setError(t('billing.error_save'));
+    } finally {
+      setSendingEmail(false);
+    }
+  };
+
+  const openEmailModal = () => {
+    setEmailTo(billingData?.patient_email || '');
+    setShowEmailModal(true);
+  };
+
+  // ─── Render: loading ──────────────────────────────────────────────────────
+
+  if (viewState === 'loading') {
     return (
       <div className="space-y-4">
         <div className="h-12 bg-white/[0.04] rounded animate-pulse" />
@@ -348,69 +615,173 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
     );
   }
 
-  // Empty state - no plans
-  if (plans.length === 0) {
+  // ─── Render: empty (no appointments, no plan) ─────────────────────────────
+
+  if (viewState === 'empty') {
     return (
       <div className="flex flex-col items-center justify-center py-12 text-center">
         <Receipt size={48} className="text-white/20 mb-4" />
-        <h3 className="text-lg font-medium text-white mb-2">{t('billing.no_plans')}</h3>
+        <h3 className="text-lg font-medium text-white mb-2">{t('billing.no_activity')}</h3>
+        <p className="text-sm text-white/40 mb-6 max-w-xs">{t('billing.no_activity_desc')}</p>
         <button
           onClick={openCreatePlanModal}
-          className="flex items-center gap-2 bg-primary text-white px-4 py-2 rounded-lg hover:bg-primary-dark transition-colors"
+          className="flex items-center gap-2 bg-white text-[#0a0e1a] px-4 py-2 rounded-lg hover:opacity-90 transition-opacity font-medium"
         >
           <Plus size={18} />
           {t('billing.create_first')}
         </button>
-        
-        {showCreatePlan && (
-          <Modal onClose={() => setShowCreatePlan(false)}>
-            <h3 className="text-lg font-semibold text-white mb-4">{t('billing.new_plan')}</h3>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm text-white/60 mb-1">{t('billing.plan_name')}</label>
-                <input
-                  type="text"
-                  value={newPlanData.name}
-                  onChange={(e) => setNewPlanData({ ...newPlanData, name: e.target.value })}
-                  placeholder={t('billing.plan_name_placeholder')}
-                  className="w-full px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-primary"
-                />
-              </div>
-              <div>
-                <label className="block text-sm text-white/60 mb-1">{t('billing.professional')}</label>
-                <select
-                  value={newPlanData.professional_id}
-                  onChange={(e) => setNewPlanData({ ...newPlanData, professional_id: e.target.value })}
-                  className="w-full px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-primary"
-                >
-                  <option value="">{t('billing.no_professional')}</option>
-                  {professionals.map((p) => (
-                    <option key={p.id} value={p.id}>{p.first_name} {p.last_name}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm text-white/60 mb-1">{t('billing.notes')}</label>
-                <textarea
-                  value={newPlanData.notes}
-                  onChange={(e) => setNewPlanData({ ...newPlanData, notes: e.target.value })}
-                  rows={3}
-                  className="w-full px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-primary"
-                />
-              </div>
-              <button
-                onClick={handleCreatePlan}
-                disabled={!newPlanData.name.trim()}
-                className="w-full bg-primary text-white py-2 rounded-lg hover:bg-primary-dark disabled:opacity-50"
-              >
-                {t('billing.create_first')}
-              </button>
-            </div>
-          </Modal>
+
+        {error && (
+          <div className="mt-4 bg-red-500/10 border border-red-500/20 text-red-400 rounded-lg p-3 text-sm flex items-center gap-2 w-full max-w-sm">
+            <AlertCircle size={16} />
+            {error}
+            <button onClick={() => setError(null)} className="ml-auto text-red-400 hover:text-red-300">
+              <X size={16} />
+            </button>
+          </div>
         )}
+
+        {showCreatePlan && <CreatePlanModal
+          newPlanData={newPlanData}
+          setNewPlanData={setNewPlanData}
+          professionals={professionals}
+          onCreate={handleCreatePlan}
+          onClose={() => setShowCreatePlan(false)}
+          t={t}
+        />}
       </div>
     );
   }
+
+  // ─── Render: appointments_only ────────────────────────────────────────────
+
+  if (viewState === 'appointments_only' && billingData) {
+    const groups = billingData.treatment_groups || [];
+
+    return (
+      <div className="space-y-6">
+        {/* Error banner */}
+        {error && (
+          <div className="bg-red-500/10 border border-red-500/20 text-red-400 rounded-lg p-3 text-sm flex items-center gap-2">
+            <AlertCircle size={16} />
+            {error}
+            <button onClick={() => setError(null)} className="ml-auto text-red-400 hover:text-red-300">
+              <X size={16} />
+            </button>
+          </div>
+        )}
+
+        {/* Section title */}
+        <h3 className="text-sm font-semibold text-white/60 uppercase tracking-wider">
+          {t('billing.appointments_summary')}
+        </h3>
+
+        {/* Treatment group cards */}
+        {groups.length > 0 ? (
+          <div className="space-y-4">
+            {groups.map((group) => (
+              <TreatmentGroupCard key={group.treatment_code} group={group} />
+            ))}
+          </div>
+        ) : (
+          /* Flat list fallback when no treatment groups */
+          <div className="bg-white/[0.02] border border-white/[0.06] rounded-xl p-4 space-y-2">
+            {billingData.appointments.map((appt) => {
+              const apptDate = new Date(appt.scheduled_at);
+              const statusStyle = apptStatusColors[appt.status] || { bg: 'bg-white/10', text: 'text-white/50' };
+              return (
+                <div key={appt.id} className="flex flex-wrap items-center gap-2 py-2 border-b border-white/[0.04] last:border-0">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-xs text-white/70">
+                        {apptDate.toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric' })}
+                      </span>
+                      {appt.professional_name && (
+                        <span className="text-xs text-white/40">{appt.professional_name}</span>
+                      )}
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] ${statusStyle.bg} ${statusStyle.text}`}>
+                        {appt.status}
+                      </span>
+                    </div>
+                    {appt.payment_receipt_data && (
+                      <div className="mt-1">
+                        <PaymentReceiptBadge receipt={appt.payment_receipt_data} />
+                      </div>
+                    )}
+                  </div>
+                  {appt.billing_amount != null && (
+                    <span className="text-sm font-medium text-white/80">
+                      {formatCurrency(appt.billing_amount)}
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Global totals */}
+        <div className="bg-white/[0.02] border border-white/[0.06] rounded-xl p-4">
+          <div className="grid grid-cols-3 gap-4">
+            <div>
+              <p className="text-[10px] text-white/40 uppercase font-bold mb-1">{t('billing.total_estimated')}</p>
+              <p className="text-base font-bold text-white">{formatCurrency(billingData.global_total_estimated)}</p>
+            </div>
+            <div>
+              <p className="text-[10px] text-white/40 uppercase font-bold mb-1">{t('billing.paid')}</p>
+              <p className="text-base font-bold text-green-400">{formatCurrency(billingData.global_total_paid)}</p>
+              {billingData.global_total_estimated > 0 && (
+                <p className="text-[10px] text-white/30">
+                  ({Math.round((billingData.global_total_paid / billingData.global_total_estimated) * 100)}%)
+                </p>
+              )}
+            </div>
+            <div>
+              <p className="text-[10px] text-white/40 uppercase font-bold mb-1">{t('billing.pending')}</p>
+              <p className={`text-base font-bold ${billingData.global_total_pending > 0 ? 'text-amber-400' : 'text-green-400'}`}>
+                {formatCurrency(billingData.global_total_pending)}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Action buttons */}
+        <div className="flex flex-col sm:flex-row gap-3">
+          <button
+            onClick={handleGeneratePlanFromAppointments}
+            disabled={generatingPlan}
+            className="flex-1 flex items-center justify-center gap-2 bg-white text-[#0a0e1a] px-5 py-3 rounded-xl hover:opacity-90 transition-opacity font-semibold text-sm disabled:opacity-50"
+          >
+            {generatingPlan ? (
+              <Loader2 size={18} className="animate-spin" />
+            ) : (
+              <Sparkles size={18} />
+            )}
+            {t('billing.generate_from_appointments')}
+          </button>
+
+          <button
+            onClick={openCreatePlanModal}
+            className="sm:flex-none flex items-center justify-center gap-2 bg-white/[0.06] text-white/70 border border-white/[0.08] px-4 py-3 rounded-xl hover:bg-white/[0.1] transition-colors text-sm"
+          >
+            <Plus size={16} />
+            {t('billing.create_empty')}
+          </button>
+        </div>
+
+        {showCreatePlan && <CreatePlanModal
+          newPlanData={newPlanData}
+          setNewPlanData={setNewPlanData}
+          professionals={professionals}
+          onCreate={handleCreatePlan}
+          onClose={() => setShowCreatePlan(false)}
+          t={t}
+        />}
+      </div>
+    );
+  }
+
+  // ─── Render: plan_view ────────────────────────────────────────────────────
 
   return (
     <div className="space-y-6">
@@ -426,7 +797,7 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
       )}
 
       {/* Plan Selector Bar */}
-      <div className="flex items-center gap-4">
+      <div className="flex flex-wrap items-center gap-3">
         {plans.length > 1 && (
           <select
             value={selectedPlanId || ''}
@@ -442,7 +813,7 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
         )}
         <button
           onClick={openCreatePlanModal}
-          className="flex items-center gap-2 bg-white/[0.06] text-white border border-white/[0.08] px-4 py-2 rounded-lg hover:bg-white/[0.1]"
+          className="flex items-center gap-2 bg-white/[0.06] text-white border border-white/[0.08] px-4 py-2 rounded-lg hover:bg-white/[0.1] transition-colors"
         >
           <Plus size={18} />
           {t('billing.new_plan')}
@@ -492,11 +863,35 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
               </div>
             )}
 
+            {/* PDF + Email buttons */}
+            <div className="flex flex-wrap gap-2 mb-4">
+              <button
+                onClick={handleGeneratePdf}
+                disabled={generatingPdf}
+                className="flex items-center gap-2 bg-white/[0.06] text-white/70 border border-white/[0.08] px-3 py-1.5 rounded-lg text-sm hover:bg-white/[0.1] transition-colors disabled:opacity-50"
+              >
+                {generatingPdf ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : (
+                  <Download size={14} />
+                )}
+                {generatingPdf ? t('billing.generating_pdf') : t('billing.generate_pdf')}
+              </button>
+
+              <button
+                onClick={openEmailModal}
+                className="flex items-center gap-2 bg-white/[0.06] text-white/70 border border-white/[0.08] px-3 py-1.5 rounded-lg text-sm hover:bg-white/[0.1] transition-colors"
+              >
+                <Mail size={14} />
+                {t('billing.send_email')}
+              </button>
+            </div>
+
             {/* Approve Button */}
             {planDetail.status === 'draft' && (
               <button
                 onClick={() => { setApproveData({ approved_total: String(planDetail.estimated_total) }); setShowApprovePlan(true); }}
-                className="mb-4 bg-blue-500/10 text-blue-400 border border-blue-500/20 px-4 py-2 rounded-lg text-sm hover:bg-blue-500/20"
+                className="mb-4 bg-blue-500/10 text-blue-400 border border-blue-500/20 px-4 py-2 rounded-lg text-sm hover:bg-blue-500/20 transition-colors"
               >
                 {t('billing.approve_plan')}
               </button>
@@ -840,52 +1235,17 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
         </>
       )}
 
-      {/* Modals */}
+      {/* ── Modals ─────────────────────────────────────────────────────────── */}
+
       {showCreatePlan && (
-        <Modal onClose={() => setShowCreatePlan(false)}>
-          <h3 className="text-lg font-semibold text-white mb-4">{t('billing.new_plan')}</h3>
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm text-white/60 mb-1">{t('billing.plan_name')}</label>
-              <input
-                type="text"
-                value={newPlanData.name}
-                onChange={(e) => setNewPlanData({ ...newPlanData, name: e.target.value })}
-                placeholder={t('billing.plan_name_placeholder')}
-                className="w-full px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-primary"
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-white/60 mb-1">{t('billing.professional')}</label>
-              <select
-                value={newPlanData.professional_id}
-                onChange={(e) => setNewPlanData({ ...newPlanData, professional_id: e.target.value })}
-                className="w-full px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-primary"
-              >
-                <option value="">{t('billing.no_professional')}</option>
-                {professionals.map((p) => (
-                  <option key={p.id} value={p.id}>{p.first_name} {p.last_name}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm text-white/60 mb-1">{t('billing.notes')}</label>
-              <textarea
-                value={newPlanData.notes}
-                onChange={(e) => setNewPlanData({ ...newPlanData, notes: e.target.value })}
-                rows={3}
-                className="w-full px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-primary"
-              />
-            </div>
-            <button
-              onClick={handleCreatePlan}
-              disabled={!newPlanData.name.trim()}
-              className="w-full bg-primary text-white py-2 rounded-lg hover:bg-primary-dark disabled:opacity-50"
-            >
-              {t('billing.create_first')}
-            </button>
-          </div>
-        </Modal>
+        <CreatePlanModal
+          newPlanData={newPlanData}
+          setNewPlanData={setNewPlanData}
+          professionals={professionals}
+          onCreate={handleCreatePlan}
+          onClose={() => setShowCreatePlan(false)}
+          t={t}
+        />
       )}
 
       {showAddItem && (
@@ -897,7 +1257,7 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
               <select
                 value={newItemData.treatment_type_code}
                 onChange={(e) => {
-                  const selected = treatmentTypes.find(t => t.code === e.target.value);
+                  const selected = treatmentTypes.find((tt) => tt.code === e.target.value);
                   setNewItemData({
                     ...newItemData,
                     treatment_type_code: e.target.value,
@@ -907,8 +1267,8 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
                 className="w-full px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-primary"
               >
                 <option value="">{t('billing.select_treatment')}</option>
-                {treatmentTypes.map((t) => (
-                  <option key={t.code} value={t.code}>{t.name} — ${t.base_price}</option>
+                {treatmentTypes.map((tt) => (
+                  <option key={tt.code} value={tt.code}>{tt.name} — ${tt.base_price}</option>
                 ))}
               </select>
             </div>
@@ -934,7 +1294,7 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
             <button
               onClick={handleAddItem}
               disabled={!newItemData.treatment_type_code}
-              className="w-full bg-primary text-white py-2 rounded-lg hover:bg-primary-dark disabled:opacity-50"
+              className="w-full bg-white text-[#0a0e1a] py-2 rounded-lg hover:opacity-90 disabled:opacity-50 font-medium"
             >
               {t('billing.add_treatment')}
             </button>
@@ -964,9 +1324,9 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
                   <button
                     key={method}
                     onClick={() => setNewPaymentData({ ...newPaymentData, payment_method: method })}
-                    className={`flex-1 flex items-center justify-center gap-1 py-2 rounded-lg text-sm ${
+                    className={`flex-1 flex items-center justify-center gap-1 py-2 rounded-lg text-sm transition-colors ${
                       newPaymentData.payment_method === method
-                        ? 'bg-primary text-white'
+                        ? 'bg-white text-[#0a0e1a] font-medium'
                         : 'bg-white/[0.06] text-white/60 border border-white/[0.08]'
                     }`}
                   >
@@ -1000,7 +1360,7 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
             <button
               onClick={handleRegisterPayment}
               disabled={!newPaymentData.amount}
-              className="w-full bg-primary text-white py-2 rounded-lg hover:bg-primary-dark disabled:opacity-50"
+              className="w-full bg-white text-[#0a0e1a] py-2 rounded-lg hover:opacity-90 disabled:opacity-50 font-medium"
             >
               {t('billing.register_payment')}
             </button>
@@ -1025,9 +1385,39 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
             <button
               onClick={handleApprovePlan}
               disabled={!approveData.approved_total}
-              className="w-full bg-primary text-white py-2 rounded-lg hover:bg-primary-dark disabled:opacity-50"
+              className="w-full bg-white text-[#0a0e1a] py-2 rounded-lg hover:opacity-90 disabled:opacity-50 font-medium"
             >
               {t('billing.approve_plan')}
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {showEmailModal && (
+        <Modal onClose={() => setShowEmailModal(false)}>
+          <h3 className="text-lg font-semibold text-white mb-4">{t('billing.send_email_title')}</h3>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm text-white/60 mb-1">{t('billing.send_email_to')}</label>
+              <input
+                type="email"
+                value={emailTo}
+                onChange={(e) => setEmailTo(e.target.value)}
+                placeholder="email@paciente.com"
+                className="w-full px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+            </div>
+            <button
+              onClick={handleSendEmail}
+              disabled={sendingEmail || !emailTo.trim()}
+              className="w-full flex items-center justify-center gap-2 bg-white text-[#0a0e1a] py-2 rounded-lg hover:opacity-90 disabled:opacity-50 font-medium"
+            >
+              {sendingEmail ? (
+                <Loader2 size={16} className="animate-spin" />
+              ) : (
+                <Mail size={16} />
+              )}
+              {t('billing.send_email')}
             </button>
           </div>
         </Modal>
@@ -1036,7 +1426,68 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
   );
 }
 
-// Simple Modal component
+// ─── CreatePlanModal (extracted — used in all 3 states) ───────────────────────
+
+interface CreatePlanModalProps {
+  newPlanData: { name: string; professional_id: string; notes: string };
+  setNewPlanData: (d: { name: string; professional_id: string; notes: string }) => void;
+  professionals: Professional[];
+  onCreate: () => void;
+  onClose: () => void;
+  t: (key: string) => string;
+}
+
+function CreatePlanModal({ newPlanData, setNewPlanData, professionals, onCreate, onClose, t }: CreatePlanModalProps) {
+  return (
+    <Modal onClose={onClose}>
+      <h3 className="text-lg font-semibold text-white mb-4">{t('billing.new_plan')}</h3>
+      <div className="space-y-4">
+        <div>
+          <label className="block text-sm text-white/60 mb-1">{t('billing.plan_name')}</label>
+          <input
+            type="text"
+            value={newPlanData.name}
+            onChange={(e) => setNewPlanData({ ...newPlanData, name: e.target.value })}
+            placeholder={t('billing.plan_name_placeholder')}
+            className="w-full px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-primary"
+          />
+        </div>
+        <div>
+          <label className="block text-sm text-white/60 mb-1">{t('billing.professional')}</label>
+          <select
+            value={newPlanData.professional_id}
+            onChange={(e) => setNewPlanData({ ...newPlanData, professional_id: e.target.value })}
+            className="w-full px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-primary"
+          >
+            <option value="">{t('billing.no_professional')}</option>
+            {professionals.map((p) => (
+              <option key={p.id} value={p.id}>{p.first_name} {p.last_name}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="block text-sm text-white/60 mb-1">{t('billing.notes')}</label>
+          <textarea
+            value={newPlanData.notes}
+            onChange={(e) => setNewPlanData({ ...newPlanData, notes: e.target.value })}
+            rows={3}
+            className="w-full px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-primary"
+          />
+        </div>
+        <button
+          onClick={onCreate}
+          disabled={!newPlanData.name.trim()}
+          className="w-full bg-white text-[#0a0e1a] py-2 rounded-lg hover:opacity-90 disabled:opacity-50 font-medium"
+        >
+          {t('billing.create_first')}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+// ─── Modal base component ─────────────────────────────────────────────────────
+
 function Modal({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end md:items-center justify-center p-0 md:p-4">

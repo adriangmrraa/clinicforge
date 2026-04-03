@@ -9476,6 +9476,402 @@ def validate_plan_status_transition(current: str, new: str) -> bool:
     return new in valid_transitions.get(current, [])
 
 
+# BILLING-SUMMARY: GET /admin/patients/{patient_id}/billing-summary
+@router.get(
+    "/patients/{patient_id}/billing-summary",
+    tags=["Planes de Tratamiento"],
+    summary="Resumen completo de facturación del paciente: turnos + billing agrupados por tratamiento",
+)
+async def get_patient_billing_summary(
+    patient_id: int,
+    user_data=Depends(verify_admin_token),
+    resolved_tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    """Retorna resumen completo de facturación del paciente: turnos + billing agrupados por tratamiento."""
+    tenant_id = resolved_tenant_id
+
+    # 1. Fetch all appointments with billing data
+    rows = await db.pool.fetch(
+        """
+        SELECT
+            a.id as appointment_id,
+            a.appointment_datetime,
+            a.status as appointment_status,
+            a.appointment_type,
+            COALESCE(tt.name, a.appointment_type, 'Consulta') as treatment_name,
+            tt.base_price,
+            tt.code as treatment_code,
+            COALESCE(a.billing_amount, tt.base_price, 0) as billing_amount,
+            a.billing_installments,
+            a.billing_notes,
+            a.payment_status,
+            a.payment_receipt_data,
+            a.plan_item_id,
+            prof.first_name || ' ' || COALESCE(prof.last_name, '') as professional_name,
+            a.duration_minutes
+        FROM appointments a
+        LEFT JOIN treatment_types tt ON tt.code = a.appointment_type AND tt.tenant_id = $1
+        LEFT JOIN professionals prof ON prof.id = a.professional_id AND prof.tenant_id = $1
+        WHERE a.tenant_id = $1
+          AND a.patient_id = $2
+          AND a.status NOT IN ('cancelled', 'deleted')
+        ORDER BY a.appointment_datetime DESC
+        """,
+        tenant_id,
+        patient_id,
+    )
+
+    # 2. Build appointments list
+    appointments = []
+    for row in rows:
+        receipt = row["payment_receipt_data"]
+        if isinstance(receipt, str):
+            try:
+                receipt = json.loads(receipt)
+            except Exception:
+                receipt = None
+
+        appointments.append({
+            "id": str(row["appointment_id"]),
+            "datetime": row["appointment_datetime"].isoformat() if row["appointment_datetime"] else None,
+            "status": row["appointment_status"],
+            "treatment_code": row["treatment_code"] or row["appointment_type"],
+            "treatment_name": row["treatment_name"],
+            "base_price": float(row["base_price"]) if row["base_price"] else 0,
+            "billing_amount": float(row["billing_amount"] or 0),
+            "billing_installments": row["billing_installments"],
+            "billing_notes": row["billing_notes"],
+            "payment_status": row["payment_status"] or "pending",
+            "payment_receipt": receipt,
+            "professional_name": (row["professional_name"] or "").strip(),
+            "plan_item_id": str(row["plan_item_id"]) if row["plan_item_id"] else None,
+            "duration_minutes": row["duration_minutes"] or 30,
+        })
+
+    # 3. Group by treatment
+    groups_map = {}
+    for apt in appointments:
+        code = apt["treatment_code"] or "sin_tipo"
+        if code not in groups_map:
+            groups_map[code] = {
+                "treatment_code": code,
+                "treatment_name": apt["treatment_name"],
+                "base_price": apt["base_price"],
+                "appointments": [],
+                "appointment_count": 0,
+                "total_billed": 0.0,
+                "total_paid": 0.0,
+                "total_pending": 0.0,
+            }
+        g = groups_map[code]
+        g["appointments"].append(apt["id"])
+        g["appointment_count"] += 1
+        g["total_billed"] += apt["billing_amount"]
+        if apt["payment_status"] == "paid":
+            g["total_paid"] += apt["billing_amount"]
+
+    for g in groups_map.values():
+        g["total_pending"] = g["total_billed"] - g["total_paid"]
+        g["total_billed"] = round(g["total_billed"], 2)
+        g["total_paid"] = round(g["total_paid"], 2)
+        g["total_pending"] = round(g["total_pending"], 2)
+
+    treatment_groups = sorted(groups_map.values(), key=lambda x: x["total_billed"], reverse=True)
+
+    # 4. Totals
+    total_estimated = sum(a["billing_amount"] for a in appointments)
+    total_paid = sum(a["billing_amount"] for a in appointments if a["payment_status"] == "paid")
+
+    # 5. Check active plan
+    active_plan = await db.pool.fetchrow(
+        "SELECT id FROM treatment_plans WHERE tenant_id=$1 AND patient_id=$2 AND status IN ('draft','approved','in_progress') ORDER BY created_at DESC LIMIT 1",
+        tenant_id,
+        patient_id,
+    )
+
+    return {
+        "appointments": appointments,
+        "treatment_groups": treatment_groups,
+        "totals": {
+            "estimated": round(total_estimated, 2),
+            "paid": round(total_paid, 2),
+            "pending": round(total_estimated - total_paid, 2),
+            "appointment_count": len(appointments),
+        },
+        "has_active_plan": active_plan is not None,
+        "active_plan_id": str(active_plan["id"]) if active_plan else None,
+    }
+
+
+# EP-NEW-02: POST /admin/patients/{patient_id}/generate-plan-from-appointments
+class GeneratePlanFromAppointmentsBody(BaseModel):
+    name: Optional[str] = None
+    professional_id: Optional[int] = None
+
+
+@router.post(
+    "/patients/{patient_id}/generate-plan-from-appointments",
+    tags=["Planes de Tratamiento"],
+    summary="EP-NEW-02: Genera un plan de tratamiento automáticamente desde los turnos del paciente",
+    status_code=status.HTTP_201_CREATED,
+)
+async def generate_plan_from_appointments(
+    patient_id: int,
+    payload: GeneratePlanFromAppointmentsBody,
+    request: Request,
+    user_data=Depends(verify_admin_token),
+    resolved_tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    """
+    Genera un plan de tratamiento atómicamente a partir de los turnos existentes:
+    - Crea treatment_plan (status='draft')
+    - Agrupa por treatment_type → un treatment_plan_item por grupo
+    - Vincula cada appointment a su item (SET plan_item_id)
+    - Migra solo pagos verificados a treatment_plan_payments + accounting_transactions
+    """
+    tenant_id = resolved_tenant_id
+
+    # 1. Verificar que no exista plan activo
+    existing_plan = await db.pool.fetchrow(
+        "SELECT id FROM treatment_plans WHERE tenant_id=$1 AND patient_id=$2 AND status IN ('draft','approved','in_progress') LIMIT 1",
+        tenant_id,
+        patient_id,
+    )
+    if existing_plan:
+        raise HTTPException(
+            status_code=409,
+            detail="El paciente ya tiene un presupuesto activo",
+        )
+
+    # 2. Fetch appointments del paciente (misma query que billing-summary)
+    rows = await db.pool.fetch(
+        """
+        SELECT
+            a.id as appointment_id,
+            a.appointment_datetime,
+            a.appointment_type,
+            COALESCE(tt.name, a.appointment_type, 'Consulta') as treatment_name,
+            tt.base_price,
+            tt.code as treatment_code,
+            COALESCE(a.billing_amount, tt.base_price, 0) as billing_amount,
+            a.payment_status,
+            a.payment_receipt_data
+        FROM appointments a
+        LEFT JOIN treatment_types tt ON tt.code = a.appointment_type AND tt.tenant_id = $1
+        WHERE a.tenant_id = $1
+          AND a.patient_id = $2
+          AND a.status NOT IN ('cancelled', 'deleted')
+        ORDER BY a.appointment_datetime ASC
+        """,
+        tenant_id,
+        patient_id,
+    )
+
+    if not rows:
+        raise HTTPException(
+            status_code=422,
+            detail="No hay turnos para generar presupuesto",
+        )
+
+    # 3. Preparar appointments parseando JSONB defensivamente
+    appointments = []
+    for row in rows:
+        receipt = row["payment_receipt_data"]
+        if isinstance(receipt, str):
+            try:
+                receipt = json.loads(receipt)
+            except Exception:
+                receipt = None
+
+        appointments.append({
+            "id": str(row["appointment_id"]),
+            "treatment_code": row["treatment_code"] or row["appointment_type"] or "sin_tipo",
+            "treatment_name": row["treatment_name"],
+            "base_price": float(row["base_price"]) if row["base_price"] else 0.0,
+            "billing_amount": float(row["billing_amount"] or 0),
+            "payment_status": row["payment_status"] or "pending",
+            "payment_receipt": receipt,
+        })
+
+    # 4. Agrupar por treatment_code
+    groups_map: Dict[str, Dict] = {}
+    for apt in appointments:
+        code = apt["treatment_code"]
+        if code not in groups_map:
+            groups_map[code] = {
+                "treatment_code": code,
+                "treatment_name": apt["treatment_name"],
+                "base_price": apt["base_price"],
+                "appointments": [],
+                "total_billed": 0.0,
+            }
+        groups_map[code]["appointments"].append(apt)
+        groups_map[code]["total_billed"] += apt["billing_amount"]
+
+    # 5. Auto-nombre si no se provee
+    plan_name = payload.name
+    if not plan_name:
+        patient_row = await db.pool.fetchrow(
+            "SELECT first_name, last_name FROM patients WHERE id=$1 AND tenant_id=$2",
+            patient_id,
+            tenant_id,
+        )
+        if patient_row:
+            full_name = f"{patient_row['first_name']} {patient_row['last_name'] or ''}".strip()
+            plan_name = f"Tratamiento de {full_name}"
+        else:
+            plan_name = f"Tratamiento generado"
+
+    estimated_total = sum(a["billing_amount"] for a in appointments)
+    plan_id = uuid.uuid4()
+    items_created = 0
+    payments_migrated = 0
+
+    # 6. Transacción atómica: crear plan + items + vincular appointments + migrar pagos
+    async with db.pool.acquire() as conn:
+        async with conn.transaction():
+            # 6a. Crear treatment_plan
+            await conn.execute(
+                """
+                INSERT INTO treatment_plans
+                (id, tenant_id, patient_id, professional_id, name, status, estimated_total, created_at, updated_at)
+                VALUES ($1, $2, $3, $4, $5, 'draft', $6, NOW(), NOW())
+                """,
+                plan_id,
+                tenant_id,
+                patient_id,
+                payload.professional_id,
+                plan_name,
+                estimated_total,
+            )
+
+            # 6b. Por cada grupo crear un treatment_plan_item y vincular sus appointments
+            for sort_order, (code, group) in enumerate(groups_map.items()):
+                item_id = uuid.uuid4()
+                estimated_price = group["total_billed"] if group["total_billed"] > 0 else group["base_price"]
+
+                await conn.execute(
+                    """
+                    INSERT INTO treatment_plan_items
+                    (id, plan_id, tenant_id, treatment_type_code, custom_description,
+                     estimated_price, approved_price, status, sort_order, created_at, updated_at)
+                    VALUES ($1, $2, $3, $4, $5, $6, 0, 'pending', $7, NOW(), NOW())
+                    """,
+                    item_id,
+                    plan_id,
+                    tenant_id,
+                    code if code != "sin_tipo" else None,
+                    group["treatment_name"],
+                    estimated_price,
+                    sort_order,
+                )
+                items_created += 1
+
+                # 6c. Vincular cada appointment al item
+                for apt in group["appointments"]:
+                    await conn.execute(
+                        "UPDATE appointments SET plan_item_id = $1 WHERE id = $2 AND tenant_id = $3",
+                        item_id,
+                        uuid.UUID(apt["id"]),
+                        tenant_id,
+                    )
+
+                # 6d. Migrar pagos verificados (sin duplicar)
+                for apt in group["appointments"]:
+                    receipt = apt["payment_receipt"]
+                    if not receipt:
+                        continue
+
+                    receipt_status = receipt.get("status", "")
+                    if receipt_status not in ("verified", "verified_manual"):
+                        continue
+
+                    apt_id = apt["id"]
+
+                    # Check duplicado por traceability note
+                    existing_payment = await conn.fetchval(
+                        "SELECT id FROM treatment_plan_payments WHERE plan_id=$1 AND notes LIKE $2",
+                        plan_id,
+                        f"%migrated:apt:{apt_id}%",
+                    )
+                    if existing_payment:
+                        continue
+
+                    # Monto: preferir amount_detected del comprobante, fallback a billing_amount
+                    amount_detected = receipt.get("amount_detected") or receipt.get("amount")
+                    payment_amount = float(amount_detected) if amount_detected else apt["billing_amount"]
+
+                    if payment_amount <= 0:
+                        continue
+
+                    payment_id = uuid.uuid4()
+                    await conn.execute(
+                        """
+                        INSERT INTO treatment_plan_payments
+                        (id, plan_id, plan_item_id, tenant_id, amount, payment_method,
+                         notes, created_at, updated_at)
+                        VALUES ($1, $2, $3, $4, $5, 'transfer', $6, NOW(), NOW())
+                        """,
+                        payment_id,
+                        plan_id,
+                        item_id,
+                        tenant_id,
+                        payment_amount,
+                        f"migrated:apt:{apt_id}",
+                    )
+
+                    # 6e. Sync a accounting_transactions (si no existe)
+                    existing_tx = await conn.fetchval(
+                        "SELECT id FROM accounting_transactions WHERE reference_id=$1 AND tenant_id=$2",
+                        str(payment_id),
+                        tenant_id,
+                    )
+                    if not existing_tx:
+                        tx_id = uuid.uuid4()
+                        await conn.execute(
+                            """
+                            INSERT INTO accounting_transactions
+                            (id, tenant_id, patient_id, amount, type, category,
+                             description, reference_id, transaction_date, created_at)
+                            VALUES ($1, $2, $3, $4, 'income', 'treatment_payment',
+                                    $5, $6, NOW(), NOW())
+                            """,
+                            tx_id,
+                            tenant_id,
+                            patient_id,
+                            payment_amount,
+                            f"Pago migrado desde turno {apt_id}",
+                            str(payment_id),
+                        )
+
+                    payments_migrated += 1
+
+    # 7. Emitir socket event (non-fatal)
+    try:
+        await emit_treatment_plan_event(
+            "TREATMENT_PLAN_CREATED",
+            {
+                "plan_id": str(plan_id),
+                "patient_id": patient_id,
+                "tenant_id": tenant_id,
+                "name": plan_name,
+                "status": "draft",
+                "source": "generate_from_appointments",
+            },
+            request,
+        )
+    except Exception as e:
+        logger.warning(f"⚠️ Socket emit TREATMENT_PLAN_CREATED falló (non-fatal): {e}")
+
+    return {
+        "status": "created",
+        "plan_id": str(plan_id),
+        "items_created": items_created,
+        "payments_migrated": payments_migrated,
+        "estimated_total": round(estimated_total, 2),
+    }
+
+
 # EP-01: GET /admin/patients/{patient_id}/treatment-plans
 @router.get(
     "/patients/{patient_id}/treatment-plans",
@@ -10586,6 +10982,94 @@ async def delete_plan_item(
         "item_id": str(item_uuid),
         "plan_estimated_total": float(new_total),
     }
+
+
+# =============================================================================
+# EP-NEW-03: Generar PDF de presupuesto
+# =============================================================================
+
+
+@router.post(
+    "/treatment-plans/{plan_id}/generate-pdf",
+    tags=["Planes de Tratamiento"],
+    summary="EP-NEW-03: Generar PDF de presupuesto",
+)
+async def generate_treatment_plan_pdf(
+    plan_id: str,
+    user_data=Depends(verify_admin_token),
+    resolved_tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    """Genera PDF de presupuesto y lo retorna para descarga."""
+    from services.budget_service import generate_budget_pdf, gather_budget_data
+
+    pdf_path = await generate_budget_pdf(db.pool, plan_id, resolved_tenant_id)
+    if not pdf_path:
+        raise HTTPException(
+            status_code=404,
+            detail="Plan no encontrado o error generando PDF",
+        )
+
+    data = await gather_budget_data(db.pool, plan_id, resolved_tenant_id)
+    if data and data.get("patient", {}).get("name"):
+        safe_name = data["patient"]["name"].replace(" ", "_")
+        filename = f"Presupuesto_{safe_name}.pdf"
+    else:
+        filename = "Presupuesto.pdf"
+
+    return FileResponse(pdf_path, media_type="application/pdf", filename=filename)
+
+
+# =============================================================================
+# EP-NEW-04: Enviar presupuesto por email
+# =============================================================================
+
+
+@router.post(
+    "/treatment-plans/{plan_id}/send-email",
+    tags=["Planes de Tratamiento"],
+    summary="EP-NEW-04: Enviar presupuesto por email al paciente",
+)
+async def send_treatment_plan_email(
+    plan_id: str,
+    request: Request,
+    user_data=Depends(verify_admin_token),
+    resolved_tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    """Envía presupuesto por email al paciente con PDF adjunto."""
+    body = await request.json()
+    to_email = body.get("to_email")
+    if not to_email:
+        raise HTTPException(status_code=422, detail="Email requerido")
+
+    from services.budget_service import generate_budget_pdf, gather_budget_data
+
+    pdf_path = await generate_budget_pdf(db.pool, plan_id, resolved_tenant_id)
+    if not pdf_path:
+        raise HTTPException(status_code=404, detail="Plan no encontrado")
+
+    data = await gather_budget_data(db.pool, plan_id, resolved_tenant_id)
+    if not data:
+        raise HTTPException(status_code=404, detail="Datos del plan no encontrados")
+
+    import asyncio
+    from email_service import EmailService
+
+    email_svc = EmailService()
+    loop = asyncio.get_event_loop()
+    try:
+        await loop.run_in_executor(
+            None,
+            lambda: email_svc.send_budget_email(
+                to_email=to_email,
+                pdf_path=pdf_path,
+                patient_name=data["patient"]["name"],
+                clinic_name=data["clinic"]["name"],
+            ),
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error enviando email: {str(e)}")
+
+    return {"success": True, "message": f"Presupuesto enviado a {to_email}"}
 
 
 # =============================================================================

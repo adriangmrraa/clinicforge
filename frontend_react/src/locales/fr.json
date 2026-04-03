@@ -1664,6 +1664,26 @@
     "error_load": "Erreur de chargement",
     "error_save": "Erreur de sauvegarde",
     "notes_placeholder": "Notes optionnelles...",
-    "saving": "Enregistrement..."
+    "saving": "Enregistrement...",
+    "create_empty": "Créer un budget vide",
+    "no_activity": "Aucune activité",
+    "no_activity_desc": "Ce patient n'a pas de rendez-vous ni de budgets.",
+    "appointments_summary": "Résumé des rendez-vous",
+    "generate_from_appointments": "Générer un budget à partir des rendez-vous",
+    "total_estimated": "Total estimé",
+    "receipt_verified": "Vérifié",
+    "receipt_pending": "En attente",
+    "receipt_review": "En cours de vérification",
+    "generate_pdf": "Générer PDF",
+    "send_email": "Envoyer par email",
+    "send_email_title": "Envoyer le budget par email",
+    "send_email_to": "Email du patient",
+    "send_email_success": "Budget envoyé",
+    "generating_pdf": "Génération du PDF...",
+    "plan_belongs": "Ce rendez-vous appartient au plan",
+    "go_to_plan": "Voir le budget",
+    "confirm_generate": "Un budget sera créé à partir des rendez-vous existants. Continuer?",
+    "plan_already_exists": "Ce patient a déjà un budget actif",
+    "no_appointments_to_generate": "Aucun rendez-vous pour générer un budget"
   }
 }

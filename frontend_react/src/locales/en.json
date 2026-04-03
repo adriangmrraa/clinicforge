@@ -1876,6 +1876,26 @@
     "error_load": "Error loading budgets",
     "error_save": "Error saving",
     "notes_placeholder": "Optional notes...",
-    "saving": "Saving..."
+    "saving": "Saving...",
+    "create_empty": "Create empty budget",
+    "no_activity": "No activity yet",
+    "no_activity_desc": "This patient has no scheduled appointments or budgets.",
+    "appointments_summary": "Appointment summary",
+    "generate_from_appointments": "Generate budget from appointments",
+    "total_estimated": "Total estimated",
+    "receipt_verified": "Verified",
+    "receipt_pending": "Pending",
+    "receipt_review": "Under review",
+    "generate_pdf": "Generate PDF",
+    "send_email": "Send by email",
+    "send_email_title": "Send budget by email",
+    "send_email_to": "Patient email",
+    "send_email_success": "Budget sent",
+    "generating_pdf": "Generating PDF...",
+    "plan_belongs": "This appointment belongs to plan",
+    "go_to_plan": "View budget",
+    "confirm_generate": "A budget will be created from existing appointments. Continue?",
+    "plan_already_exists": "This patient already has an active budget",
+    "no_appointments_to_generate": "No appointments to generate budget from"
   }
 }

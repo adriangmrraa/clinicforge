@@ -1,0 +1,643 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<style>
+/* ── Page setup ── */
+@page {
+    size: A4;
+    margin: 2cm 2.5cm;
+    @bottom-center {
+        content: "Generado el {{ generated_at }}  —  Pg. " counter(page) " / " counter(pages);
+        font-family: Arial, Helvetica, sans-serif;
+        font-size: 7.5pt;
+        color: #718096;
+    }
+}
+
+/* ── Base ── */
+* {
+    box-sizing: border-box;
+}
+
+body {
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 11pt;
+    line-height: 1.6;
+    color: #2d3748;
+    margin: 0;
+    padding: 0;
+}
+
+/* ── Header ── */
+.header {
+    border-bottom: 3px solid #1a365d;
+    padding-bottom: 14px;
+    margin-bottom: 22px;
+    overflow: hidden;
+}
+
+.header-logo-block {
+    float: left;
+    margin-right: 16px;
+}
+
+.header-logo {
+    max-height: 60px;
+    max-width: 140px;
+    display: block;
+}
+
+.header-clinic-name {
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: 19pt;
+    font-weight: bold;
+    color: #1a365d;
+    margin: 0 0 2px 0;
+    line-height: 1.2;
+}
+
+.header-contact {
+    font-size: 9pt;
+    color: #718096;
+    line-height: 1.5;
+    margin: 0;
+}
+
+/* ── Document title ── */
+.doc-title-block {
+    text-align: center;
+    margin: 0 0 22px 0;
+    padding: 12px 0;
+    border-top: 1px solid #e2e8f0;
+    border-bottom: 1px solid #e2e8f0;
+    background: #f7fafc;
+    clear: both;
+}
+
+.doc-title {
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: 16pt;
+    font-weight: bold;
+    color: #1a365d;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin: 0;
+}
+
+.doc-subtitle {
+    font-size: 10pt;
+    color: #718096;
+    margin: 2px 0 0 0;
+}
+
+/* ── Info grid (patient + professional) ── */
+.info-grid {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 22px;
+}
+
+.info-grid td {
+    vertical-align: top;
+    padding: 0;
+    width: 50%;
+}
+
+.info-box {
+    background: #f7fafc;
+    border: 1px solid #e2e8f0;
+    padding: 10px 14px;
+    height: 100%;
+}
+
+.info-box h3 {
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 8pt;
+    font-weight: bold;
+    color: #3182ce;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin: 0 0 8px 0;
+    padding-bottom: 4px;
+    border-bottom: 1px solid #bee3f8;
+}
+
+.info-row {
+    font-size: 10pt;
+    color: #2d3748;
+    margin: 3px 0;
+    line-height: 1.4;
+}
+
+.info-label {
+    font-weight: bold;
+    color: #4a5568;
+    display: inline;
+}
+
+/* spacer between info boxes */
+.info-spacer {
+    width: 12px;
+}
+
+/* ── Section title ── */
+.section-title {
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: 12pt;
+    font-weight: bold;
+    color: #1a365d;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    border-left: 4px solid #3182ce;
+    padding-left: 10px;
+    margin: 22px 0 10px 0;
+    line-height: 1.3;
+}
+
+/* ── Treatments table ── */
+.treatments-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 4px;
+    font-size: 10pt;
+}
+
+.treatments-table th {
+    background: #1a365d;
+    color: #ffffff;
+    font-weight: bold;
+    font-size: 9.5pt;
+    text-align: left;
+    padding: 8px 10px;
+    border: 1px solid #1a365d;
+}
+
+.treatments-table th.col-price {
+    text-align: right;
+    width: 120px;
+}
+
+.treatments-table td {
+    padding: 7px 10px;
+    border: 1px solid #e2e8f0;
+    vertical-align: middle;
+    color: #2d3748;
+}
+
+.treatments-table td.col-price {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+.treatments-table tr:nth-child(even) td {
+    background: #f7fafc;
+}
+
+.treatments-table tr.total-row td {
+    background: #edf2f7;
+    font-weight: bold;
+    font-size: 10.5pt;
+    border-top: 2px solid #1a365d;
+    color: #1a365d;
+}
+
+.treatments-table tr.total-row td.col-price {
+    font-size: 11pt;
+}
+
+/* approved price: show in blue when different from estimated */
+.price-final {
+    color: #2b6cb0;
+    font-weight: bold;
+}
+
+/* status badge inside table */
+.status-badge {
+    display: inline-block;
+    font-size: 8pt;
+    font-weight: bold;
+    padding: 1px 7px;
+    border-radius: 3px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.status-pending   { background: #fefcbf; color: #744210; }
+.status-approved  { background: #c6f6d5; color: #22543d; }
+.status-completed { background: #bee3f8; color: #2c5282; }
+.status-cancelled { background: #fed7d7; color: #742a2a; }
+
+/* ── Payment status section ── */
+.payment-summary {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 8px;
+    font-size: 11pt;
+}
+
+.payment-summary td {
+    padding: 6px 10px;
+    vertical-align: middle;
+}
+
+.payment-summary .ps-label {
+    font-weight: bold;
+    color: #4a5568;
+    width: 220px;
+}
+
+.payment-summary .ps-value {
+    color: #2d3748;
+    font-variant-numeric: tabular-nums;
+}
+
+.payment-summary .ps-value.total-approved {
+    font-weight: bold;
+    color: #1a365d;
+    font-size: 12pt;
+}
+
+.payment-summary .ps-value.paid {
+    color: #22543d;
+    font-weight: bold;
+}
+
+.payment-summary .ps-value.pending {
+    color: #c05621;
+    font-weight: bold;
+}
+
+/* Progress bar */
+.progress-bar-outer {
+    width: 100%;
+    background: #e2e8f0;
+    border-radius: 4px;
+    height: 10px;
+    margin: 8px 0 4px 0;
+    overflow: hidden;
+}
+
+.progress-bar-inner {
+    background: #3182ce;
+    height: 10px;
+    border-radius: 4px;
+}
+
+.progress-label {
+    font-size: 9pt;
+    color: #718096;
+    margin: 0 0 14px 0;
+    text-align: right;
+}
+
+/* ── Payment history table (if payments exist) ── */
+.payments-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 8px 0 18px 0;
+    font-size: 9.5pt;
+}
+
+.payments-table th {
+    background: #2d3748;
+    color: #ffffff;
+    font-size: 9pt;
+    font-weight: bold;
+    padding: 6px 10px;
+    text-align: left;
+    border: 1px solid #2d3748;
+}
+
+.payments-table th.col-right {
+    text-align: right;
+}
+
+.payments-table td {
+    padding: 5px 10px;
+    border: 1px solid #e2e8f0;
+    color: #2d3748;
+}
+
+.payments-table td.col-right {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+.payments-table tr:nth-child(even) td {
+    background: #f7fafc;
+}
+
+/* ── Conditions ── */
+.conditions {
+    background: #f7fafc;
+    border: 1px solid #e2e8f0;
+    border-left: 4px solid #3182ce;
+    padding: 12px 16px;
+    margin-bottom: 22px;
+    font-size: 10pt;
+    color: #4a5568;
+}
+
+.conditions h3 {
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: 11pt;
+    font-weight: bold;
+    color: #1a365d;
+    margin: 0 0 8px 0;
+}
+
+.conditions ul {
+    margin: 0;
+    padding-left: 18px;
+    line-height: 1.7;
+}
+
+/* ── Signature area ── */
+.signatures {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 32px;
+    margin-bottom: 28px;
+    page-break-inside: avoid;
+}
+
+.signatures td {
+    width: 46%;
+    vertical-align: bottom;
+    padding: 0 8px;
+    text-align: center;
+}
+
+.signatures .spacer-col {
+    width: 8%;
+}
+
+.sig-line {
+    border-top: 1px solid #2d3748;
+    margin-bottom: 6px;
+    margin-top: 40px;
+}
+
+.sig-label {
+    font-size: 9.5pt;
+    color: #4a5568;
+    font-weight: bold;
+}
+
+.sig-sublabel {
+    font-size: 8.5pt;
+    color: #718096;
+    margin-top: 2px;
+}
+
+/* ── Footer ── */
+.footer {
+    border-top: 1px solid #e2e8f0;
+    padding-top: 8px;
+    font-size: 8.5pt;
+    color: #a0aec0;
+    text-align: center;
+    margin-top: 8px;
+}
+
+/* ── Utilities ── */
+.no-break { page-break-inside: avoid; }
+.clearfix::after { content: ""; display: block; clear: both; }
+</style>
+</head>
+<body>
+
+<!-- ════════════════ HEADER ════════════════ -->
+<div class="header clearfix">
+    {% if clinic.logo_url %}
+    <div class="header-logo-block">
+        <img class="header-logo" src="{{ clinic.logo_url }}" alt="Logo {{ clinic.name }}">
+    </div>
+    {% endif %}
+    <div>
+        <p class="header-clinic-name">{{ clinic.name }}</p>
+        <p class="header-contact">
+            {% if clinic.address %}{{ clinic.address }}{% endif %}
+            {% if clinic.address and clinic.phone %} &nbsp;·&nbsp; {% endif %}
+            {% if clinic.phone %}Tel: {{ clinic.phone }}{% endif %}
+        </p>
+    </div>
+</div>
+
+<!-- ════════════════ DOCUMENT TITLE ════════════════ -->
+<div class="doc-title-block">
+    <p class="doc-title">Presupuesto de Tratamiento</p>
+    <p class="doc-subtitle">
+        {{ plan.name }}
+        {% if plan.approved_at %}
+        &nbsp;·&nbsp; Aprobado el {{ plan.approved_at }}
+        {% elif plan.created_at %}
+        &nbsp;·&nbsp; Fecha: {{ plan.created_at }}
+        {% endif %}
+    </p>
+</div>
+
+<!-- ════════════════ PATIENT + PROFESSIONAL ════════════════ -->
+<table class="info-grid">
+    <tr>
+        <!-- Patient -->
+        <td>
+            <div class="info-box">
+                <h3>Paciente</h3>
+                <div class="info-row">
+                    <span class="info-label">Nombre:</span> {{ patient.name }}
+                </div>
+                {% if patient.dni %}
+                <div class="info-row">
+                    <span class="info-label">DNI:</span> {{ patient.dni }}
+                </div>
+                {% endif %}
+                {% if patient.phone %}
+                <div class="info-row">
+                    <span class="info-label">Teléfono:</span> {{ patient.phone }}
+                </div>
+                {% endif %}
+                {% if patient.email %}
+                <div class="info-row">
+                    <span class="info-label">Email:</span> {{ patient.email }}
+                </div>
+                {% endif %}
+            </div>
+        </td>
+        <td class="info-spacer"></td>
+        <!-- Professional -->
+        <td>
+            <div class="info-box">
+                <h3>Profesional</h3>
+                {% if professional.name %}
+                <div class="info-row">
+                    <span class="info-label">Nombre:</span> {{ professional.name }}
+                </div>
+                {% endif %}
+                {% if professional.specialty %}
+                <div class="info-row">
+                    <span class="info-label">Especialidad:</span> {{ professional.specialty }}
+                </div>
+                {% endif %}
+                <div class="info-row">
+                    <span class="info-label">Clínica:</span> {{ clinic.name }}
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Fecha:</span> {{ plan.created_at }}
+                </div>
+            </div>
+        </td>
+    </tr>
+</table>
+
+<!-- ════════════════ TREATMENTS TABLE ════════════════ -->
+<div class="section-title">Detalle de Tratamientos</div>
+
+<div class="no-break">
+<table class="treatments-table">
+    <thead>
+        <tr>
+            <th>Tratamiento</th>
+            <th class="col-price">Precio estimado</th>
+            <th class="col-price">Precio final</th>
+            <th style="width: 100px; text-align: center;">Estado</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for item in items %}
+        <tr>
+            <td>{{ item.treatment_name }}</td>
+            <td class="col-price">${{ item.estimated_price | ars }}</td>
+            <td class="col-price">
+                {% if item.approved_price is not none %}
+                    <span class="price-final">${{ item.approved_price | ars }}</span>
+                {% else %}
+                    <span style="color: #a0aec0; font-style: italic;">A confirmar</span>
+                {% endif %}
+            </td>
+            <td style="text-align: center;">
+                {% set s = item.status %}
+                {% if s == 'approved' %}
+                    <span class="status-badge status-approved">Aprobado</span>
+                {% elif s == 'completed' %}
+                    <span class="status-badge status-completed">Realizado</span>
+                {% elif s == 'cancelled' %}
+                    <span class="status-badge status-cancelled">Cancelado</span>
+                {% else %}
+                    <span class="status-badge status-pending">Pendiente</span>
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+
+        <!-- Total row -->
+        <tr class="total-row">
+            <td><strong>TOTAL</strong></td>
+            <td class="col-price">${{ totals.estimated | ars }}</td>
+            <td class="col-price">${{ totals.approved | ars }}</td>
+            <td></td>
+        </tr>
+    </tbody>
+</table>
+</div>
+
+<!-- ════════════════ PAYMENT STATUS ════════════════ -->
+<div class="section-title">Estado de Pagos</div>
+
+<div class="no-break">
+<table class="payment-summary">
+    <tr>
+        <td class="ps-label">Total aprobado:</td>
+        <td class="ps-value total-approved">${{ totals.approved | ars }}</td>
+    </tr>
+    <tr>
+        <td class="ps-label">Abonado hasta la fecha:</td>
+        <td class="ps-value paid">${{ totals.paid | ars }}</td>
+    </tr>
+    <tr>
+        <td class="ps-label">Saldo pendiente:</td>
+        <td class="ps-value pending">${{ totals.pending | ars }}</td>
+    </tr>
+</table>
+
+{% if totals.approved > 0 %}
+<div class="progress-bar-outer">
+    <div class="progress-bar-inner" style="width: {{ [totals.progress_pct, 100] | min }}%;"></div>
+</div>
+<p class="progress-label">{{ totals.progress_pct }}% abonado</p>
+{% endif %}
+</div>
+
+<!-- Payment history (only shown if there are payments) -->
+{% if payments %}
+<div class="no-break">
+<table class="payments-table">
+    <thead>
+        <tr>
+            <th>Fecha</th>
+            <th>Método</th>
+            <th class="col-right">Monto</th>
+            <th>Notas</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for p in payments %}
+        <tr>
+            <td>{{ p.date }}</td>
+            <td>
+                {% if p.method == 'cash' %}Efectivo
+                {% elif p.method == 'transfer' %}Transferencia
+                {% elif p.method == 'card' %}Tarjeta
+                {% else %}{{ p.method | title }}{% endif %}
+            </td>
+            <td class="col-right">${{ p.amount | ars }}</td>
+            <td>{{ p.notes }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>
+{% endif %}
+
+<!-- ════════════════ CONDITIONS ════════════════ -->
+<div class="conditions no-break">
+    <h3>Condiciones</h3>
+    <ul>
+        <li>Presupuesto válido por <strong>30 días</strong> a partir de la fecha de emisión.</li>
+        <li>Los precios son referenciales y pueden ajustarse según la evaluación clínica al momento del tratamiento.</li>
+        <li>Métodos de pago aceptados: <strong>Efectivo · Transferencia bancaria · Tarjeta de débito/crédito</strong>.</li>
+        <li>El inicio del tratamiento queda sujeto a la aprobación formal del presente presupuesto.</li>
+    </ul>
+</div>
+
+<!-- ════════════════ SIGNATURES ════════════════ -->
+<table class="signatures no-break">
+    <tr>
+        <td>
+            <div class="sig-line"></div>
+            <div class="sig-label">
+                {% if professional.name %}{{ professional.name }}{% else %}Profesional{% endif %}
+            </div>
+            {% if professional.specialty %}
+            <div class="sig-sublabel">{{ professional.specialty }}</div>
+            {% endif %}
+            <div class="sig-sublabel">Firma y aclaración</div>
+        </td>
+        <td class="spacer-col"></td>
+        <td>
+            <div class="sig-line"></div>
+            <div class="sig-label">{{ patient.name }}</div>
+            {% if patient.dni %}<div class="sig-sublabel">DNI: {{ patient.dni }}</div>{% endif %}
+            <div class="sig-sublabel">Firma y aclaración del paciente</div>
+        </td>
+    </tr>
+</table>
+
+<!-- ════════════════ FOOTER ════════════════ -->
+<div class="footer">
+    Documento generado el {{ generated_at }} por {{ clinic.name }}
+    {% if clinic.address %} &nbsp;·&nbsp; {{ clinic.address }}{% endif %}
+</div>
+
+</body>
+</html>

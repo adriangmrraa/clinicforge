@@ -502,6 +502,83 @@ class EmailService:
             logger.error(f"❌ Error sending digital record email: {e}")
             raise RuntimeError(f"Error SMTP al enviar email: {e}") from e
 
+    def send_budget_email(
+        self,
+        to_email: str,
+        pdf_path: str,
+        patient_name: str,
+        clinic_name: str,
+    ) -> bool:
+        """Envía presupuesto de tratamiento por email con PDF adjunto."""
+        if not self.smtp_host or not self.smtp_user:
+            logger.warning("⚠️ SMTP not configured. Skipping budget email.")
+            return False
+
+        if not to_email or not to_email.strip():
+            logger.warning("⚠️ No destination email for budget.")
+            return False
+
+        to_emails = [to_email.strip()]
+
+        html_content = f"""
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+            <h2 style="color: #333; border-bottom: 2px solid #333; padding-bottom: 10px;">
+                {clinic_name}
+            </h2>
+            <p style="color: #555; font-size: 14px; line-height: 1.6;">
+                Estimado/a <strong>{patient_name}</strong>,
+            </p>
+            <p style="color: #555; font-size: 14px; line-height: 1.6;">
+                Adjuntamos el presupuesto detallado de su plan de tratamiento en <strong>{clinic_name}</strong>.
+            </p>
+            <p style="color: #555; font-size: 14px; line-height: 1.6;">
+                Por favor revise el documento adjunto. Si tiene alguna consulta, no dude en contactarnos.
+            </p>
+            <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
+            <p style="color: #999; font-size: 11px;">
+                Este email fue enviado automáticamente desde {clinic_name}.
+                Si recibió este email por error, por favor ignórelo.
+            </p>
+        </div>
+        """
+
+        safe_name = patient_name.replace(" ", "_")
+        attachment_filename = f"Presupuesto_{safe_name}.pdf"
+
+        try:
+            msg = MIMEMultipart("mixed")
+            msg["Subject"] = f"Presupuesto de tratamiento — {clinic_name}"
+            msg["From"] = self.smtp_sender
+            msg["To"] = ", ".join(to_emails)
+
+            msg.attach(MIMEText(html_content, "html"))
+
+            with open(pdf_path, "rb") as f:
+                pdf_part = MIMEApplication(f.read(), _subtype="pdf")
+            pdf_part.add_header(
+                "Content-Disposition",
+                "attachment",
+                filename=attachment_filename,
+            )
+            msg.attach(pdf_part)
+
+            if self.smtp_port == 465:
+                server = smtplib.SMTP_SSL(self.smtp_host, self.smtp_port, timeout=15)
+            else:
+                server = smtplib.SMTP(self.smtp_host, self.smtp_port, timeout=15)
+                server.starttls()
+
+            server.login(self.smtp_user, self.smtp_pass)
+            server.sendmail(self.smtp_sender, to_emails, msg.as_string())
+            server.quit()
+
+            logger.info(f"📧 Presupuesto enviado a {to_email} para {patient_name}")
+            return True
+
+        except Exception as e:
+            logger.error(f"❌ Error sending budget email: {e}")
+            raise RuntimeError(f"Error SMTP al enviar presupuesto: {e}") from e
+
     def send_welcome_email(
         self,
         to_email: str,
