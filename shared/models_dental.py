@@ -208,6 +208,22 @@ class ToothData(BaseModel):
     treatment_date: Optional[date] = None
 
 
+# ── Odontograma v3.0 — Re-exports desde odontogram_utils ──
+# Los modelos v3 coexisten con los v2 anteriores.
+# Importar directamente desde shared.odontogram_utils es preferido.
+try:
+    from shared.odontogram_utils import (
+        SurfaceState,
+        ToothSurfacesV3,
+        ToothDataV3,
+        DentitionData,
+        OdontogramV3,
+        normalize_to_v3,
+    )
+except ImportError:
+    pass  # Graceful fallback si odontogram_utils no está disponible aún
+
+
 # ==================== HISTORIAS CLÍNICAS ====================
 
 class ClinicalTreatment(BaseModel):

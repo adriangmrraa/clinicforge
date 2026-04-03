@@ -54,6 +54,7 @@ WHATSAPP_SERVICE_URL = os.getenv("WHATSAPP_SERVICE_URL", "http://whatsapp:8002")
 ARG_TZ = timezone(timedelta(hours=-3))
 
 from services.whisper_service import transcribe_audio_url
+from shared.odontogram_utils import normalize_to_v3
 import glob
 
 
@@ -4590,7 +4591,7 @@ async def update_odontogram(
         AND cr.patient_id = p.id 
         AND p.tenant_id = $3
     """,
-        json.dumps(odontogram_data.odontogram_data),
+        json.dumps(normalize_to_v3(odontogram_data.odontogram_data)),
         record_id,
         tenant_id,
     )
@@ -4625,7 +4626,7 @@ async def get_odontogram(
     if not record:
         raise HTTPException(status_code=404, detail="Registro clínico no encontrado")
 
-    return {"odontogram_data": record["odontogram_data"] or {}}
+    return {"odontogram_data": normalize_to_v3(record["odontogram_data"] or {})}
 
 
 @router.post(

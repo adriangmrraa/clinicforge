@@ -270,45 +270,11 @@ def _render_legend(x: float, y: float, available_width: float) -> tuple[str, flo
 # ---------------------------------------------------------------------------
 def normalize_odontogram_data(raw) -> dict:
     """
-    Accepts None, JSON string, legacy dict {tooth_id: state_str},
-    or v2 dict {teeth: [...], ...}.
-    Always returns {"teeth": [...], "affected_count": int, "format_version": "2.0"}.
+    Normaliza cualquier formato de odontograma a v3.0.
+    Delegado al parser unificado en shared/odontogram_utils.py
     """
-    if raw is None:
-        return {"teeth": [], "affected_count": 0, "format_version": "2.0"}
-
-    if isinstance(raw, str):
-        try:
-            raw = json.loads(raw)
-        except Exception:
-            return {"teeth": [], "affected_count": 0, "format_version": "2.0"}
-
-    if not isinstance(raw, dict):
-        return {"teeth": [], "affected_count": 0, "format_version": "2.0"}
-
-    # v2 format: {"teeth": [...]}
-    if "teeth" in raw and isinstance(raw["teeth"], list):
-        teeth = raw["teeth"]
-        affected = sum(
-            1 for t in teeth if t.get("state", "healthy") != "healthy"
-        )
-        return {"teeth": teeth, "affected_count": affected, "format_version": "2.0"}
-
-    # Legacy format: {"18": "caries", "21": {"status": "crown"}, ...}
-    if raw and all(str(k).isdigit() for k in raw.keys()):
-        teeth = []
-        for k, v in raw.items():
-            if isinstance(v, str):
-                state = v
-            elif isinstance(v, dict):
-                state = v.get("status", v.get("state", "healthy"))
-            else:
-                state = "healthy"
-            teeth.append({"id": int(k), "state": state, "surfaces": {}, "notes": ""})
-        affected = sum(1 for t in teeth if t.get("state", "healthy") != "healthy")
-        return {"teeth": teeth, "affected_count": affected, "format_version": "2.0"}
-
-    return {"teeth": [], "affected_count": 0, "format_version": "2.0"}
+    from shared.odontogram_utils import normalize_to_v3
+    return normalize_to_v3(raw)
 
 
 # ---------------------------------------------------------------------------

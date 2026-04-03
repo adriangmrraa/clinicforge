@@ -847,7 +847,39 @@
       "missing": "Missing",
       "prosthesis": "Prosthesis",
       "root_canal": "Root Canal"
-    }
+    },
+    "surfaces": {
+      "occlusal": "Occlusal",
+      "vestibular": "Buccal",
+      "lingual": "Lingual",
+      "mesial": "Mesial",
+      "distal": "Distal"
+    },
+    "conditions": {
+      "good": "Good",
+      "bad": "Bad",
+      "undefined": "Undefined"
+    },
+    "categories": {
+      "preexistente": "Pre-existing",
+      "lesion": "Lesion"
+    },
+    "tabs": {
+      "permanent": "Permanent",
+      "deciduous": "Deciduous"
+    },
+    "modal": {
+      "surface_details": "Surface Details",
+      "select_condition": "Select condition",
+      "select_category": "Select category",
+      "notes": "Notes",
+      "notes_placeholder": "Additional observations...",
+      "apply": "Apply",
+      "cancel": "Cancel"
+    },
+    "mobile_tap_surface": "Tap a surface",
+    "instruction_first_click": "1st click: select tooth",
+    "instruction_second_click": "2nd click: apply state"
   },
   "document_gallery": {
     "title": "Documents Gallery",

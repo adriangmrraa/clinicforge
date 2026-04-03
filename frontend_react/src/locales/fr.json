@@ -820,7 +820,7 @@
     "save_error": "Erreur lors de l'enregistrement de l'odontogramme",
     "reset": "Réinitialiser",
     "selecting_tooth": "Dent",
-    "select_state": "S\u00e9lectionnez un \u00e9tat",
+    "select_state": "Sélectionnez un état",
     "upper_arch": "Arcade Supérieure",
     "lower_arch": "Arcade Inférieure",
     "legend": "Légende",
@@ -831,13 +831,45 @@
       "caries": "Carie",
       "restoration": "Restauration",
       "extraction": "Extraction",
-      "treatment_planned": "Planifi\u00e9",
+      "treatment_planned": "Planifié",
       "crown": "Couronne",
       "implant": "Implant",
       "missing": "Absent",
-      "prosthesis": "Proth\u00e8se",
+      "prosthesis": "Prothèse",
       "root_canal": "Traitement Canalaire"
-    }
+    },
+    "surfaces": {
+      "occlusal": "Occlusale",
+      "vestibular": "Vestibulaire",
+      "lingual": "Linguale",
+      "mesial": "Mésiale",
+      "distal": "Distale"
+    },
+    "conditions": {
+      "good": "Bon",
+      "bad": "Mauvais",
+      "undefined": "Indéfini"
+    },
+    "categories": {
+      "preexistente": "Pré-existant",
+      "lesion": "Lésion"
+    },
+    "tabs": {
+      "permanent": "Permanente",
+      "deciduous": "Temporaire"
+    },
+    "modal": {
+      "surface_details": "Détails de la Surface",
+      "select_condition": "Sélectionner la condition",
+      "select_category": "Sélectionner la catégorie",
+      "notes": "Notes",
+      "notes_placeholder": "Observations supplémentaires...",
+      "apply": "Appliquer",
+      "cancel": "Annuler"
+    },
+    "mobile_tap_surface": "Touchez une surface",
+    "instruction_first_click": "1er clic: sélectionner dent",
+    "instruction_second_click": "2e clic: appliquer état"
   },
   "document_gallery": {
     "title": "Galerie de Documents",
