@@ -7,22 +7,13 @@ export type SurfaceName = 'occlusal' | 'vestibular' | 'lingual' | 'mesial' | 'di
 /**
  * SVG paths for a 40x40 viewBox, center (20,20).
  * Outer circle R=18, inner circle r=7.
- * Diagonal cross at 45/135/225/315 degrees divides into 4 outer ring segments + center.
- *
- * Diagonal points:
- *   Outer: (32.7, 7.3), (32.7, 32.7), (7.3, 32.7), (7.3, 7.3)
- *   Inner: (25, 15), (25, 25), (15, 25), (15, 15)
+ * Diagonal cross at 45 degrees divides into 4 outer ring segments + center.
  */
 export const SURFACE_PATHS: Record<SurfaceName, string> = {
-  // Center circle — occlusal (biting surface)
   occlusal: 'M 20,13 A 7,7 0 1,0 20,27 A 7,7 0 1,0 20,13 Z',
-  // Top ring segment — vestibular (buccal/cheek side)
   vestibular: 'M 7.3,7.3 A 18,18 0 0,1 32.7,7.3 L 25,15 A 7,7 0 0,0 15,15 Z',
-  // Right ring segment — distal (away from midline)
   distal: 'M 32.7,7.3 A 18,18 0 0,1 32.7,32.7 L 25,25 A 7,7 0 0,0 25,15 Z',
-  // Bottom ring segment — lingual (tongue/palatal side)
   lingual: 'M 32.7,32.7 A 18,18 0 0,1 7.3,32.7 L 15,25 A 7,7 0 0,0 25,25 Z',
-  // Left ring segment — mesial (toward midline)
   mesial: 'M 7.3,32.7 A 18,18 0 0,1 7.3,7.3 L 15,15 A 7,7 0 0,0 15,25 Z',
 };
 
@@ -66,10 +57,10 @@ export function ToothSVG({
   return (
     <svg
       viewBox="0 0 40 40"
-      className={`w-[40px] h-[40px] sm:w-[44px] sm:h-[44px] shrink-0
-        transition-all duration-300 ease-out
-        ${readOnly ? 'cursor-default' : 'cursor-pointer hover:scale-110 active:scale-95'}
-        ${isSelected ? 'scale-115 z-10' : ''}
+      className={`w-9 h-9 sm:w-11 sm:h-11 shrink-0
+        transition-all duration-300 ease-out touch-manipulation
+        ${readOnly ? 'cursor-default' : 'cursor-pointer active:scale-90'}
+        ${isSelected ? 'scale-[1.2] z-10' : ''}
         ${justChanged ? 'animate-[toothPop_0.4s_ease-out]' : ''}
       `}
       style={{ filter: fills.glow || undefined }}
@@ -98,15 +89,12 @@ export function ToothSVG({
         />
       ))}
 
-      {/* Structural dividers — always visible, drawn OVER surfaces */}
-      {/* Diagonal cross from outer circle to inner circle */}
+      {/* Structural dividers */}
       <line x1="7.3" y1="7.3" x2="15" y2="15" stroke="#06060e" strokeWidth="1.2" opacity={isAbsent ? 0.3 : 0.9} />
       <line x1="32.7" y1="7.3" x2="25" y2="15" stroke="#06060e" strokeWidth="1.2" opacity={isAbsent ? 0.3 : 0.9} />
       <line x1="32.7" y1="32.7" x2="25" y2="25" stroke="#06060e" strokeWidth="1.2" opacity={isAbsent ? 0.3 : 0.9} />
       <line x1="7.3" y1="32.7" x2="15" y2="25" stroke="#06060e" strokeWidth="1.2" opacity={isAbsent ? 0.3 : 0.9} />
-      {/* Inner circle border — separates occlusal from outer sections */}
       <circle cx="20" cy="20" r="7" fill="none" stroke="#06060e" strokeWidth="1" opacity={isAbsent ? 0.3 : 0.85} />
-      {/* Outer circle border */}
       <circle cx="20" cy="20" r="18" fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="0.6" />
 
       {/* X overlay for extraction */}
@@ -117,7 +105,7 @@ export function ToothSVG({
         </g>
       )}
 
-      {/* Dash for missing/ausente */}
+      {/* Dash for missing */}
       {(state === 'ausente' || state === 'missing') && (
         <line x1="10" y1="20" x2="30" y2="20" stroke="rgba(255,255,255,0.3)" strokeWidth="2.5" strokeLinecap="round" className="animate-[fadeIn_0.3s_ease-out]" />
       )}
