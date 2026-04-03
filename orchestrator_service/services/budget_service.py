@@ -11,6 +11,7 @@ Layers:
 """
 
 import asyncio
+import json
 import logging
 import os
 import uuid as _uuid
@@ -83,6 +84,7 @@ async def gather_budget_data(pool, plan_id: str, tenant_id: int) -> Optional[dic
             tp.name,
             tp.status,
             tp.approved_total,
+            tp.notes,
             tp.created_at,
             tp.approved_at,
             pat.first_name || ' ' || COALESCE(pat.last_name, '') AS patient_name,
@@ -150,6 +152,21 @@ async def gather_budget_data(pool, plan_id: str, tenant_id: int) -> Optional[dic
     # approved_total on the plan takes precedence; fall back to sum of estimated
     approved = float(plan["approved_total"] or estimated)
     paid = sum(float(p["amount"] or 0) for p in payments)
+    pending = round(approved - paid, 2)
+
+    # ── Parse budget config from notes JSON ─────────────────────────────────
+    budget_cfg = {}
+    if plan["notes"]:
+        try:
+            budget_cfg = json.loads(plan["notes"]) if isinstance(plan["notes"], str) else plan["notes"]
+        except Exception:
+            budget_cfg = {}
+
+    installments_count = int(budget_cfg.get("installments") or 0)
+    installment_amount = round(pending / installments_count, 2) if installments_count > 1 and pending > 0 else 0
+    payment_conditions = budget_cfg.get("payment_conditions") or ""
+    discount_pct = float(budget_cfg.get("discount_pct") or 0)
+    discount_fixed = float(budget_cfg.get("discount_amount") or 0)
 
     # ── Assemble ─────────────────────────────────────────────────────────────
     return {
@@ -160,6 +177,13 @@ async def gather_budget_data(pool, plan_id: str, tenant_id: int) -> Optional[dic
             "estimated_total": estimated,
             "created_at": plan["created_at"].strftime("%d/%m/%Y") if plan["created_at"] else "",
             "approved_at": plan["approved_at"].strftime("%d/%m/%Y") if plan["approved_at"] else None,
+        },
+        "budget_config": {
+            "installments": installments_count if installments_count > 1 else 0,
+            "installment_amount": installment_amount,
+            "payment_conditions": payment_conditions,
+            "discount_pct": discount_pct,
+            "discount_fixed": discount_fixed,
         },
         "patient": {
             "name": (plan["patient_name"] or "").strip() or "Paciente",
@@ -199,7 +223,7 @@ async def gather_budget_data(pool, plan_id: str, tenant_id: int) -> Optional[dic
             "estimated": round(estimated, 2),
             "approved": round(approved, 2),
             "paid": round(paid, 2),
-            "pending": round(approved - paid, 2),
+            "pending": pending,
             "progress_pct": round(paid / approved * 100, 1) if approved > 0 else 0,
         },
         "generated_at": datetime.now().strftime("%d/%m/%Y a las %H:%M"),

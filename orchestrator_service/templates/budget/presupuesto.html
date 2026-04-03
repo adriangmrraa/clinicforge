@@ -6,96 +6,126 @@
 /* ── Page setup ── */
 @page {
     size: A4;
-    margin: 2cm 2.5cm;
+    margin: 1.8cm 2cm;
     @bottom-center {
-        content: "Generado el {{ generated_at }}  —  Pg. " counter(page) " / " counter(pages);
-        font-family: Arial, Helvetica, sans-serif;
+        content: "Pg. " counter(page) " / " counter(pages);
+        font-family: 'Segoe UI', Arial, Helvetica, sans-serif;
         font-size: 7.5pt;
-        color: #718096;
+        color: #94a3b8;
     }
 }
 
 /* ── Base ── */
-* {
-    box-sizing: border-box;
-}
+* { box-sizing: border-box; }
 
 body {
-    font-family: Arial, Helvetica, sans-serif;
-    font-size: 11pt;
-    line-height: 1.6;
-    color: #2d3748;
+    font-family: 'Segoe UI', Arial, Helvetica, sans-serif;
+    font-size: 10pt;
+    line-height: 1.5;
+    color: #1e293b;
     margin: 0;
     padding: 0;
 }
 
 /* ── Header ── */
 .header {
-    border-bottom: 3px solid #1a365d;
-    padding-bottom: 14px;
-    margin-bottom: 22px;
-    overflow: hidden;
+    display: table;
+    width: 100%;
+    border-bottom: 2.5px solid #0f4c81;
+    padding-bottom: 12px;
+    margin-bottom: 18px;
 }
 
-.header-logo-block {
-    float: left;
-    margin-right: 16px;
+.header-left {
+    display: table-cell;
+    vertical-align: middle;
+    width: 70%;
+}
+
+.header-right {
+    display: table-cell;
+    vertical-align: middle;
+    text-align: right;
+    width: 30%;
 }
 
 .header-logo {
-    max-height: 60px;
-    max-width: 140px;
+    max-height: 55px;
+    max-width: 130px;
     display: block;
 }
 
 .header-clinic-name {
-    font-family: Georgia, 'Times New Roman', serif;
-    font-size: 19pt;
-    font-weight: bold;
-    color: #1a365d;
+    font-size: 17pt;
+    font-weight: 700;
+    color: #0f4c81;
     margin: 0 0 2px 0;
     line-height: 1.2;
+    letter-spacing: -0.3px;
 }
 
 .header-contact {
-    font-size: 9pt;
-    color: #718096;
+    font-size: 8.5pt;
+    color: #64748b;
     line-height: 1.5;
     margin: 0;
+}
+
+.header-date-block {
+    background: #f1f5f9;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    padding: 8px 14px;
+    display: inline-block;
+    text-align: center;
+}
+
+.header-date-label {
+    font-size: 7pt;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-weight: 600;
+    margin: 0;
+}
+
+.header-date-value {
+    font-size: 11pt;
+    color: #0f4c81;
+    font-weight: 700;
+    margin: 2px 0 0 0;
 }
 
 /* ── Document title ── */
 .doc-title-block {
     text-align: center;
-    margin: 0 0 22px 0;
-    padding: 12px 0;
-    border-top: 1px solid #e2e8f0;
-    border-bottom: 1px solid #e2e8f0;
-    background: #f7fafc;
-    clear: both;
+    margin: 0 0 18px 0;
+    padding: 10px 0;
+    background: linear-gradient(135deg, #0f4c81 0%, #1e6db5 100%);
+    border-radius: 6px;
 }
 
 .doc-title {
-    font-family: Georgia, 'Times New Roman', serif;
-    font-size: 16pt;
-    font-weight: bold;
-    color: #1a365d;
-    letter-spacing: 2px;
+    font-size: 14pt;
+    font-weight: 700;
+    color: #ffffff;
+    letter-spacing: 2.5px;
     text-transform: uppercase;
     margin: 0;
 }
 
 .doc-subtitle {
-    font-size: 10pt;
-    color: #718096;
+    font-size: 9pt;
+    color: rgba(255,255,255,0.75);
     margin: 2px 0 0 0;
 }
 
 /* ── Info grid (patient + professional) ── */
 .info-grid {
     width: 100%;
-    border-collapse: collapse;
-    margin-bottom: 22px;
+    border-collapse: separate;
+    border-spacing: 10px 0;
+    margin: 0 -10px 18px -10px;
 }
 
 .info-grid td {
@@ -105,53 +135,46 @@ body {
 }
 
 .info-box {
-    background: #f7fafc;
+    background: #f8fafc;
     border: 1px solid #e2e8f0;
+    border-radius: 6px;
     padding: 10px 14px;
     height: 100%;
 }
 
 .info-box h3 {
-    font-family: Arial, Helvetica, sans-serif;
-    font-size: 8pt;
-    font-weight: bold;
-    color: #3182ce;
+    font-size: 7.5pt;
+    font-weight: 700;
+    color: #0f4c81;
     text-transform: uppercase;
     letter-spacing: 1px;
-    margin: 0 0 8px 0;
+    margin: 0 0 6px 0;
     padding-bottom: 4px;
-    border-bottom: 1px solid #bee3f8;
+    border-bottom: 1.5px solid #bfdbfe;
 }
 
 .info-row {
-    font-size: 10pt;
-    color: #2d3748;
+    font-size: 9.5pt;
+    color: #334155;
     margin: 3px 0;
     line-height: 1.4;
 }
 
 .info-label {
-    font-weight: bold;
-    color: #4a5568;
-    display: inline;
-}
-
-/* spacer between info boxes */
-.info-spacer {
-    width: 12px;
+    font-weight: 600;
+    color: #475569;
 }
 
 /* ── Section title ── */
 .section-title {
-    font-family: Georgia, 'Times New Roman', serif;
-    font-size: 12pt;
-    font-weight: bold;
-    color: #1a365d;
+    font-size: 10.5pt;
+    font-weight: 700;
+    color: #0f4c81;
     text-transform: uppercase;
-    letter-spacing: 1px;
-    border-left: 4px solid #3182ce;
+    letter-spacing: 0.8px;
+    border-left: 3.5px solid #0f4c81;
     padding-left: 10px;
-    margin: 22px 0 10px 0;
+    margin: 20px 0 10px 0;
     line-height: 1.3;
 }
 
@@ -160,29 +183,37 @@ body {
     width: 100%;
     border-collapse: collapse;
     margin-bottom: 4px;
-    font-size: 10pt;
+    font-size: 9.5pt;
+    border-radius: 6px;
+    overflow: hidden;
 }
 
 .treatments-table th {
-    background: #1a365d;
+    background: #0f4c81;
     color: #ffffff;
-    font-weight: bold;
-    font-size: 9.5pt;
+    font-weight: 600;
+    font-size: 8.5pt;
     text-align: left;
     padding: 8px 10px;
-    border: 1px solid #1a365d;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
 }
 
 .treatments-table th.col-price {
     text-align: right;
-    width: 120px;
+    width: 110px;
+}
+
+.treatments-table th.col-status {
+    text-align: center;
+    width: 90px;
 }
 
 .treatments-table td {
     padding: 7px 10px;
-    border: 1px solid #e2e8f0;
+    border-bottom: 1px solid #e2e8f0;
     vertical-align: middle;
-    color: #2d3748;
+    color: #334155;
 }
 
 .treatments-table td.col-price {
@@ -191,131 +222,201 @@ body {
 }
 
 .treatments-table tr:nth-child(even) td {
-    background: #f7fafc;
+    background: #f8fafc;
 }
 
 .treatments-table tr.total-row td {
-    background: #edf2f7;
-    font-weight: bold;
-    font-size: 10.5pt;
-    border-top: 2px solid #1a365d;
-    color: #1a365d;
+    background: #eef2ff;
+    font-weight: 700;
+    font-size: 10pt;
+    border-top: 2px solid #0f4c81;
+    color: #0f4c81;
 }
 
-.treatments-table tr.total-row td.col-price {
-    font-size: 11pt;
-}
-
-/* approved price: show in blue when different from estimated */
 .price-final {
-    color: #2b6cb0;
-    font-weight: bold;
+    color: #0f4c81;
+    font-weight: 700;
 }
 
-/* status badge inside table */
+/* status badge */
 .status-badge {
     display: inline-block;
-    font-size: 8pt;
-    font-weight: bold;
-    padding: 1px 7px;
-    border-radius: 3px;
+    font-size: 7pt;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 10px;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.3px;
 }
-.status-pending   { background: #fefcbf; color: #744210; }
-.status-approved  { background: #c6f6d5; color: #22543d; }
-.status-completed { background: #bee3f8; color: #2c5282; }
-.status-cancelled { background: #fed7d7; color: #742a2a; }
+.status-pending   { background: #fef3c7; color: #92400e; }
+.status-approved  { background: #d1fae5; color: #065f46; }
+.status-completed { background: #dbeafe; color: #1e40af; }
+.status-cancelled { background: #fee2e2; color: #991b1b; }
 
-/* ── Payment status section ── */
-.payment-summary {
+/* ── Payment summary cards ── */
+.payment-cards {
     width: 100%;
-    border-collapse: collapse;
-    margin-bottom: 8px;
-    font-size: 11pt;
+    border-collapse: separate;
+    border-spacing: 8px 0;
+    margin: 8px -8px 6px -8px;
 }
 
-.payment-summary td {
-    padding: 6px 10px;
-    vertical-align: middle;
+.payment-cards td {
+    vertical-align: top;
+    padding: 0;
 }
 
-.payment-summary .ps-label {
-    font-weight: bold;
-    color: #4a5568;
-    width: 220px;
+.pay-card {
+    border-radius: 6px;
+    padding: 10px 14px;
+    text-align: center;
 }
 
-.payment-summary .ps-value {
-    color: #2d3748;
-    font-variant-numeric: tabular-nums;
+.pay-card-approved {
+    background: #eef2ff;
+    border: 1.5px solid #c7d2fe;
 }
 
-.payment-summary .ps-value.total-approved {
-    font-weight: bold;
-    color: #1a365d;
-    font-size: 12pt;
+.pay-card-paid {
+    background: #ecfdf5;
+    border: 1.5px solid #a7f3d0;
 }
 
-.payment-summary .ps-value.paid {
-    color: #22543d;
-    font-weight: bold;
+.pay-card-pending {
+    background: #fff7ed;
+    border: 1.5px solid #fed7aa;
 }
 
-.payment-summary .ps-value.pending {
-    color: #c05621;
-    font-weight: bold;
+.pay-card-label {
+    font-size: 7pt;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin: 0 0 4px 0;
 }
+
+.pay-card-value {
+    font-size: 14pt;
+    font-weight: 700;
+    margin: 0;
+}
+
+.pay-card-approved .pay-card-label { color: #4338ca; }
+.pay-card-approved .pay-card-value { color: #1e3a8a; }
+.pay-card-paid .pay-card-label { color: #059669; }
+.pay-card-paid .pay-card-value { color: #065f46; }
+.pay-card-pending .pay-card-label { color: #d97706; }
+.pay-card-pending .pay-card-value { color: #92400e; }
 
 /* Progress bar */
 .progress-bar-outer {
     width: 100%;
     background: #e2e8f0;
-    border-radius: 4px;
-    height: 10px;
+    border-radius: 6px;
+    height: 8px;
     margin: 8px 0 4px 0;
     overflow: hidden;
 }
 
 .progress-bar-inner {
-    background: #3182ce;
-    height: 10px;
-    border-radius: 4px;
+    background: linear-gradient(90deg, #0f4c81, #3b82f6);
+    height: 8px;
+    border-radius: 6px;
 }
 
 .progress-label {
-    font-size: 9pt;
-    color: #718096;
-    margin: 0 0 14px 0;
+    font-size: 8pt;
+    color: #64748b;
+    margin: 0 0 12px 0;
     text-align: right;
 }
 
-/* ── Payment history table (if payments exist) ── */
+/* ── Installments section ── */
+.installments-box {
+    background: #eff6ff;
+    border: 1.5px solid #bfdbfe;
+    border-radius: 6px;
+    padding: 14px 18px;
+    margin: 14px 0;
+    page-break-inside: avoid;
+}
+
+.installments-title {
+    font-size: 10pt;
+    font-weight: 700;
+    color: #1e40af;
+    margin: 0 0 8px 0;
+    display: flex;
+    align-items: center;
+}
+
+.installments-grid {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 8px 0;
+    margin: 0 -8px;
+}
+
+.installments-grid td {
+    vertical-align: top;
+    padding: 0;
+}
+
+.inst-card {
+    background: #ffffff;
+    border: 1px solid #dbeafe;
+    border-radius: 6px;
+    padding: 10px 14px;
+    text-align: center;
+}
+
+.inst-card-label {
+    font-size: 7pt;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: #6366f1;
+    margin: 0 0 3px 0;
+}
+
+.inst-card-value {
+    font-size: 13pt;
+    font-weight: 700;
+    color: #1e3a8a;
+    margin: 0;
+}
+
+.inst-card-sub {
+    font-size: 8pt;
+    color: #64748b;
+    margin: 2px 0 0 0;
+}
+
+/* ── Payment history table ── */
 .payments-table {
     width: 100%;
     border-collapse: collapse;
     margin: 8px 0 18px 0;
-    font-size: 9.5pt;
+    font-size: 9pt;
 }
 
 .payments-table th {
-    background: #2d3748;
+    background: #334155;
     color: #ffffff;
-    font-size: 9pt;
-    font-weight: bold;
+    font-size: 8pt;
+    font-weight: 600;
     padding: 6px 10px;
     text-align: left;
-    border: 1px solid #2d3748;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
 }
 
-.payments-table th.col-right {
-    text-align: right;
-}
+.payments-table th.col-right { text-align: right; }
 
 .payments-table td {
     padding: 5px 10px;
-    border: 1px solid #e2e8f0;
-    color: #2d3748;
+    border-bottom: 1px solid #e2e8f0;
+    color: #334155;
 }
 
 .payments-table td.col-right {
@@ -323,27 +424,25 @@ body {
     font-variant-numeric: tabular-nums;
 }
 
-.payments-table tr:nth-child(even) td {
-    background: #f7fafc;
-}
+.payments-table tr:nth-child(even) td { background: #f8fafc; }
 
 /* ── Conditions ── */
 .conditions {
-    background: #f7fafc;
+    background: #f8fafc;
     border: 1px solid #e2e8f0;
-    border-left: 4px solid #3182ce;
+    border-left: 3.5px solid #0f4c81;
+    border-radius: 0 6px 6px 0;
     padding: 12px 16px;
-    margin-bottom: 22px;
-    font-size: 10pt;
-    color: #4a5568;
+    margin-bottom: 20px;
+    font-size: 9pt;
+    color: #475569;
 }
 
 .conditions h3 {
-    font-family: Georgia, 'Times New Roman', serif;
-    font-size: 11pt;
-    font-weight: bold;
-    color: #1a365d;
-    margin: 0 0 8px 0;
+    font-size: 10pt;
+    font-weight: 700;
+    color: #0f4c81;
+    margin: 0 0 6px 0;
 }
 
 .conditions ul {
@@ -356,8 +455,8 @@ body {
 .signatures {
     width: 100%;
     border-collapse: collapse;
-    margin-top: 32px;
-    margin-bottom: 28px;
+    margin-top: 28px;
+    margin-bottom: 20px;
     page-break-inside: avoid;
 }
 
@@ -368,25 +467,23 @@ body {
     text-align: center;
 }
 
-.signatures .spacer-col {
-    width: 8%;
-}
+.signatures .spacer-col { width: 8%; }
 
 .sig-line {
-    border-top: 1px solid #2d3748;
+    border-top: 1px solid #334155;
     margin-bottom: 6px;
-    margin-top: 40px;
+    margin-top: 36px;
 }
 
 .sig-label {
-    font-size: 9.5pt;
-    color: #4a5568;
-    font-weight: bold;
+    font-size: 9pt;
+    color: #334155;
+    font-weight: 600;
 }
 
 .sig-sublabel {
-    font-size: 8.5pt;
-    color: #718096;
+    font-size: 8pt;
+    color: #64748b;
     margin-top: 2px;
 }
 
@@ -394,8 +491,8 @@ body {
 .footer {
     border-top: 1px solid #e2e8f0;
     padding-top: 8px;
-    font-size: 8.5pt;
-    color: #a0aec0;
+    font-size: 8pt;
+    color: #94a3b8;
     text-align: center;
     margin-top: 8px;
 }
@@ -408,83 +505,56 @@ body {
 <body>
 
 <!-- ════════════════ HEADER ════════════════ -->
-<div class="header clearfix">
-    {% if clinic.logo_url %}
-    <div class="header-logo-block">
-        <img class="header-logo" src="{{ clinic.logo_url }}" alt="Logo {{ clinic.name }}">
+<div class="header">
+    <div class="header-left">
+        {% if clinic.logo_url %}
+        <div style="float: left; margin-right: 14px;">
+            <img class="header-logo" src="{{ clinic.logo_url }}" alt="Logo">
+        </div>
+        {% endif %}
+        <div>
+            <p class="header-clinic-name">{{ clinic.name }}</p>
+            <p class="header-contact">
+                {% if clinic.address %}{{ clinic.address }}{% endif %}
+                {% if clinic.address and clinic.phone %} &nbsp;&middot;&nbsp; {% endif %}
+                {% if clinic.phone %}Tel: {{ clinic.phone }}{% endif %}
+            </p>
+        </div>
     </div>
-    {% endif %}
-    <div>
-        <p class="header-clinic-name">{{ clinic.name }}</p>
-        <p class="header-contact">
-            {% if clinic.address %}{{ clinic.address }}{% endif %}
-            {% if clinic.address and clinic.phone %} &nbsp;·&nbsp; {% endif %}
-            {% if clinic.phone %}Tel: {{ clinic.phone }}{% endif %}
-        </p>
+    <div class="header-right">
+        <div class="header-date-block">
+            <p class="header-date-label">Fecha</p>
+            <p class="header-date-value">
+                {% if plan.approved_at %}{{ plan.approved_at }}{% else %}{{ plan.created_at }}{% endif %}
+            </p>
+        </div>
     </div>
 </div>
 
 <!-- ════════════════ DOCUMENT TITLE ════════════════ -->
 <div class="doc-title-block">
     <p class="doc-title">Presupuesto de Tratamiento</p>
-    <p class="doc-subtitle">
-        {{ plan.name }}
-        {% if plan.approved_at %}
-        &nbsp;·&nbsp; Aprobado el {{ plan.approved_at }}
-        {% elif plan.created_at %}
-        &nbsp;·&nbsp; Fecha: {{ plan.created_at }}
-        {% endif %}
-    </p>
+    <p class="doc-subtitle">{{ plan.name }}</p>
 </div>
 
 <!-- ════════════════ PATIENT + PROFESSIONAL ════════════════ -->
 <table class="info-grid">
     <tr>
-        <!-- Patient -->
         <td>
             <div class="info-box">
                 <h3>Paciente</h3>
-                <div class="info-row">
-                    <span class="info-label">Nombre:</span> {{ patient.name }}
-                </div>
-                {% if patient.dni %}
-                <div class="info-row">
-                    <span class="info-label">DNI:</span> {{ patient.dni }}
-                </div>
-                {% endif %}
-                {% if patient.phone %}
-                <div class="info-row">
-                    <span class="info-label">Teléfono:</span> {{ patient.phone }}
-                </div>
-                {% endif %}
-                {% if patient.email %}
-                <div class="info-row">
-                    <span class="info-label">Email:</span> {{ patient.email }}
-                </div>
-                {% endif %}
+                <div class="info-row"><span class="info-label">Nombre:</span> {{ patient.name }}</div>
+                {% if patient.dni %}<div class="info-row"><span class="info-label">DNI:</span> {{ patient.dni }}</div>{% endif %}
+                {% if patient.phone %}<div class="info-row"><span class="info-label">Tel:</span> {{ patient.phone }}</div>{% endif %}
+                {% if patient.email %}<div class="info-row"><span class="info-label">Email:</span> {{ patient.email }}</div>{% endif %}
             </div>
         </td>
-        <td class="info-spacer"></td>
-        <!-- Professional -->
         <td>
             <div class="info-box">
                 <h3>Profesional</h3>
-                {% if professional.name %}
-                <div class="info-row">
-                    <span class="info-label">Nombre:</span> {{ professional.name }}
-                </div>
-                {% endif %}
-                {% if professional.specialty %}
-                <div class="info-row">
-                    <span class="info-label">Especialidad:</span> {{ professional.specialty }}
-                </div>
-                {% endif %}
-                <div class="info-row">
-                    <span class="info-label">Clínica:</span> {{ clinic.name }}
-                </div>
-                <div class="info-row">
-                    <span class="info-label">Fecha:</span> {{ plan.created_at }}
-                </div>
+                {% if professional.name %}<div class="info-row"><span class="info-label">Nombre:</span> {{ professional.name }}</div>{% endif %}
+                {% if professional.specialty %}<div class="info-row"><span class="info-label">Especialidad:</span> {{ professional.specialty }}</div>{% endif %}
+                <div class="info-row"><span class="info-label">Clinica:</span> {{ clinic.name }}</div>
             </div>
         </td>
     </tr>
@@ -500,7 +570,7 @@ body {
             <th>Tratamiento</th>
             <th class="col-price">Precio estimado</th>
             <th class="col-price">Precio final</th>
-            <th style="width: 100px; text-align: center;">Estado</th>
+            <th class="col-status">Estado</th>
         </tr>
     </thead>
     <tbody>
@@ -512,25 +582,18 @@ body {
                 {% if item.approved_price is not none %}
                     <span class="price-final">${{ item.approved_price | ars }}</span>
                 {% else %}
-                    <span style="color: #a0aec0; font-style: italic;">A confirmar</span>
+                    <span style="color: #94a3b8; font-style: italic; font-size: 8.5pt;">A confirmar</span>
                 {% endif %}
             </td>
             <td style="text-align: center;">
                 {% set s = item.status %}
-                {% if s == 'approved' %}
-                    <span class="status-badge status-approved">Aprobado</span>
-                {% elif s == 'completed' %}
-                    <span class="status-badge status-completed">Realizado</span>
-                {% elif s == 'cancelled' %}
-                    <span class="status-badge status-cancelled">Cancelado</span>
-                {% else %}
-                    <span class="status-badge status-pending">Pendiente</span>
-                {% endif %}
+                {% if s == 'approved' %}<span class="status-badge status-approved">Aprobado</span>
+                {% elif s == 'completed' %}<span class="status-badge status-completed">Realizado</span>
+                {% elif s == 'cancelled' %}<span class="status-badge status-cancelled">Cancelado</span>
+                {% else %}<span class="status-badge status-pending">Pendiente</span>{% endif %}
             </td>
         </tr>
         {% endfor %}
-
-        <!-- Total row -->
         <tr class="total-row">
             <td><strong>TOTAL</strong></td>
             <td class="col-price">${{ totals.estimated | ars }}</td>
@@ -539,24 +602,40 @@ body {
         </tr>
     </tbody>
 </table>
+
+{% if budget_config.discount_pct > 0 or budget_config.discount_fixed > 0 %}
+<div style="text-align: right; font-size: 9pt; color: #059669; font-weight: 600; margin-top: 4px;">
+    {% if budget_config.discount_pct > 0 %}Descuento: {{ budget_config.discount_pct }}%{% endif %}
+    {% if budget_config.discount_pct > 0 and budget_config.discount_fixed > 0 %} + {% endif %}
+    {% if budget_config.discount_fixed > 0 %}Descuento fijo: ${{ budget_config.discount_fixed | ars }}{% endif %}
+</div>
+{% endif %}
 </div>
 
 <!-- ════════════════ PAYMENT STATUS ════════════════ -->
 <div class="section-title">Estado de Pagos</div>
 
 <div class="no-break">
-<table class="payment-summary">
+<table class="payment-cards">
     <tr>
-        <td class="ps-label">Total aprobado:</td>
-        <td class="ps-value total-approved">${{ totals.approved | ars }}</td>
-    </tr>
-    <tr>
-        <td class="ps-label">Abonado hasta la fecha:</td>
-        <td class="ps-value paid">${{ totals.paid | ars }}</td>
-    </tr>
-    <tr>
-        <td class="ps-label">Saldo pendiente:</td>
-        <td class="ps-value pending">${{ totals.pending | ars }}</td>
+        <td width="33%">
+            <div class="pay-card pay-card-approved">
+                <p class="pay-card-label">Total aprobado</p>
+                <p class="pay-card-value">${{ totals.approved | ars }}</p>
+            </div>
+        </td>
+        <td width="33%">
+            <div class="pay-card pay-card-paid">
+                <p class="pay-card-label">Abonado</p>
+                <p class="pay-card-value">${{ totals.paid | ars }}</p>
+            </div>
+        </td>
+        <td width="33%">
+            <div class="pay-card pay-card-pending">
+                <p class="pay-card-label">Saldo pendiente</p>
+                <p class="pay-card-value">${{ totals.pending | ars }}</p>
+            </div>
+        </td>
     </tr>
 </table>
 
@@ -568,14 +647,44 @@ body {
 {% endif %}
 </div>
 
-<!-- Payment history (only shown if there are payments) -->
+<!-- ════════════════ INSTALLMENTS (only if configured) ════════════════ -->
+{% if budget_config.installments > 1 %}
+<div class="installments-box no-break">
+    <p class="installments-title">Plan de Cuotas</p>
+    <table class="installments-grid">
+        <tr>
+            <td width="33%">
+                <div class="inst-card">
+                    <p class="inst-card-label">Cantidad de cuotas</p>
+                    <p class="inst-card-value">{{ budget_config.installments }}</p>
+                </div>
+            </td>
+            <td width="33%">
+                <div class="inst-card">
+                    <p class="inst-card-label">Monto por cuota</p>
+                    <p class="inst-card-value">${{ budget_config.installment_amount | ars }}</p>
+                </div>
+            </td>
+            <td width="33%">
+                <div class="inst-card">
+                    <p class="inst-card-label">Saldo a financiar</p>
+                    <p class="inst-card-value">${{ totals.pending | ars }}</p>
+                </div>
+            </td>
+        </tr>
+    </table>
+</div>
+{% endif %}
+
+<!-- ════════════════ PAYMENT HISTORY ════════════════ -->
 {% if payments %}
+<div class="section-title">Historial de Pagos</div>
 <div class="no-break">
 <table class="payments-table">
     <thead>
         <tr>
             <th>Fecha</th>
-            <th>Método</th>
+            <th>Metodo</th>
             <th class="col-right">Monto</th>
             <th>Notas</th>
         </tr>
@@ -603,10 +712,17 @@ body {
 <div class="conditions no-break">
     <h3>Condiciones</h3>
     <ul>
-        <li>Presupuesto válido por <strong>30 días</strong> a partir de la fecha de emisión.</li>
-        <li>Los precios son referenciales y pueden ajustarse según la evaluación clínica al momento del tratamiento.</li>
-        <li>Métodos de pago aceptados: <strong>Efectivo · Transferencia bancaria · Tarjeta de débito/crédito</strong>.</li>
-        <li>El inicio del tratamiento queda sujeto a la aprobación formal del presente presupuesto.</li>
+        {% if budget_config.payment_conditions %}
+        <li><strong>{{ budget_config.payment_conditions }}</strong></li>
+        {% else %}
+        <li>Presupuesto valido por <strong>30 dias</strong> a partir de la fecha de emision.</li>
+        {% endif %}
+        <li>Los precios son referenciales y pueden ajustarse segun la evaluacion clinica al momento del tratamiento.</li>
+        <li>Metodos de pago aceptados: <strong>Efectivo &middot; Transferencia bancaria &middot; Tarjeta de debito/credito</strong>.</li>
+        {% if budget_config.installments > 1 %}
+        <li>Financiacion disponible en <strong>{{ budget_config.installments }} cuotas</strong> de <strong>${{ budget_config.installment_amount | ars }}</strong>.</li>
+        {% endif %}
+        <li>El inicio del tratamiento queda sujeto a la aprobacion formal del presente presupuesto.</li>
     </ul>
 </div>
 
@@ -621,14 +737,14 @@ body {
             {% if professional.specialty %}
             <div class="sig-sublabel">{{ professional.specialty }}</div>
             {% endif %}
-            <div class="sig-sublabel">Firma y aclaración</div>
+            <div class="sig-sublabel">Firma y aclaracion</div>
         </td>
         <td class="spacer-col"></td>
         <td>
             <div class="sig-line"></div>
             <div class="sig-label">{{ patient.name }}</div>
             {% if patient.dni %}<div class="sig-sublabel">DNI: {{ patient.dni }}</div>{% endif %}
-            <div class="sig-sublabel">Firma y aclaración del paciente</div>
+            <div class="sig-sublabel">Firma y aclaracion del paciente</div>
         </td>
     </tr>
 </table>
@@ -636,7 +752,7 @@ body {
 <!-- ════════════════ FOOTER ════════════════ -->
 <div class="footer">
     Documento generado el {{ generated_at }} por {{ clinic.name }}
-    {% if clinic.address %} &nbsp;·&nbsp; {{ clinic.address }}{% endif %}
+    {% if clinic.address %} &nbsp;&middot;&nbsp; {{ clinic.address }}{% endif %}
 </div>
 
 </body>
