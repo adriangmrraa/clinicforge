@@ -4596,6 +4596,19 @@ async def update_odontogram(
         tenant_id,
     )
 
+    # Emit Socket.IO event for real-time UI sync
+    try:
+        from main import sio, to_json_safe
+        v3_normalized = normalize_to_v3(odontogram_data.odontogram_data)
+        await sio.emit("ODONTOGRAM_UPDATED", to_json_safe({
+            "patient_id": patient_id,
+            "record_id": record_id,
+            "tenant_id": tenant_id,
+            "odontogram_data": v3_normalized,
+        }))
+    except Exception:
+        pass  # Non-critical — UI will still get the REST response
+
     return {"status": "ok", "message": "Odontograma actualizado"}
 
 

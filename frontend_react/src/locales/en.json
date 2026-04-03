@@ -916,6 +916,8 @@
     "piece": "Tooth",
     "change_state": "Change state",
     "hint_select": "Tap a tooth to edit it, or a specific section",
+    "hint_surface_card": "Tap a surface to change its state",
+    "nova_updated": "Nova updated the odontogram",
     "tap_surface": "Tap a surface to edit it",
     "mobile_tap_surface": "Tap a surface",
     "instruction_first_click": "1st click: select tooth",

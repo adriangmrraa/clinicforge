@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from '../context/LanguageContext';
 import { Save, RotateCcw, AlertCircle, Check } from 'lucide-react';
+import { io, Socket } from 'socket.io-client';
+import { WS_URL } from '../api/axios';
 import api from '../api/axios';
 import { ToothSVG, type SurfaceName } from './odontogram/ToothSVG';
 import { OdontogramLegend } from './odontogram/OdontogramLegend';
@@ -53,6 +55,8 @@ const DEFAULT_SURFACES: SurfaceStates = {
   occlusal: 'healthy', vestibular: 'healthy', lingual: 'healthy', mesial: 'healthy', distal: 'healthy',
 };
 
+const SURFACE_KEYS: SurfaceName[] = ['occlusal', 'vestibular', 'lingual', 'mesial', 'distal'];
+
 function buildDefaultTeeth(ids: number[]): ToothState[] {
   return ids.map(id => ({ id, state: 'healthy', surfaces: { ...DEFAULT_SURFACES }, notes: '' }));
 }
@@ -62,14 +66,11 @@ function fdiLabel(id: number): string {
 }
 
 function computeToothState(surfaces: SurfaceStates): string {
-  const nonHealthy = new Set(
-    Object.values(surfaces).filter(s => s !== 'healthy')
-  );
+  const nonHealthy = new Set(Object.values(surfaces).filter(s => s !== 'healthy'));
   if (nonHealthy.size === 1) return [...nonHealthy][0];
   return 'healthy';
 }
 
-/** Normalize legacy tooth data from API into current format */
 function normalizeToothData(raw: any, allIds: number[]): ToothState[] {
   if (!raw?.teeth || !Array.isArray(raw.teeth)) return buildDefaultTeeth(allIds);
 
@@ -86,7 +87,7 @@ function normalizeToothData(raw: any, allIds: number[]): ToothState[] {
     tooth.notes = t.notes || '';
 
     if (t.surfaces && typeof t.surfaces === 'object') {
-      for (const sk of Object.keys(DEFAULT_SURFACES) as SurfaceName[]) {
+      for (const sk of SURFACE_KEYS) {
         const sv = t.surfaces[sk];
         if (sv && typeof sv === 'object' && sv.state) {
           tooth.surfaces[sk] = normalizeLegacyStateId(sv.state);
@@ -97,8 +98,7 @@ function normalizeToothData(raw: any, allIds: number[]): ToothState[] {
         }
       }
     } else {
-      // No surface data → all surfaces inherit tooth state
-      for (const sk of Object.keys(DEFAULT_SURFACES) as SurfaceName[]) {
+      for (const sk of SURFACE_KEYS) {
         tooth.surfaces[sk] = state;
       }
     }
@@ -130,8 +130,8 @@ export default function Odontogram({ patientId, recordId, initialData, onSave, r
   const [success, setSuccess] = useState<string | null>(null);
   const [changedTeeth, setChangedTeeth] = useState<Set<number>>(new Set());
   const [hasChanges, setHasChanges] = useState(false);
+  const [novaUpdate, setNovaUpdate] = useState<string | null>(null);
 
-  // Detect mobile
   const isMobile = typeof window !== 'undefined' && window.innerWidth < 640;
 
   const teeth = activeDentition === 'permanent' ? permanentTeeth : deciduousTeeth;
@@ -142,11 +142,9 @@ export default function Odontogram({ patientId, recordId, initialData, onSave, r
   // ── Initialize from API data ──
   useEffect(() => {
     if (initialData) {
-      // v3 format has permanent/deciduous objects
       if (initialData.permanent) {
         setPermanentTeeth(normalizeToothData(initialData.permanent, ALL_PERMANENT));
       } else if (initialData.teeth) {
-        // v2 format — all teeth in one array, assume permanent
         setPermanentTeeth(normalizeToothData(initialData, ALL_PERMANENT));
       }
       if (initialData.deciduous) {
@@ -166,6 +164,86 @@ export default function Odontogram({ patientId, recordId, initialData, onSave, r
       setHasChanges(current !== initialRef.current);
     }
   }, [permanentTeeth, deciduousTeeth]);
+
+  // ── WebSocket: listen for Nova real-time updates ──
+  useEffect(() => {
+    const jwtToken = localStorage.getItem('access_token');
+    const socket: Socket = io(WS_URL, {
+      transports: ['websocket', 'polling'],
+      auth: { token: jwtToken || '' },
+    });
+
+    socket.on('ODONTOGRAM_UPDATED', (payload: {
+      patient_id?: number;
+      odontogram_data?: any;
+    }) => {
+      if (payload.patient_id !== patientId) return;
+
+      const data = payload.odontogram_data;
+      if (!data) return;
+
+      // Apply the new data with animations
+      if (data.permanent) {
+        const newPerm = normalizeToothData(data.permanent, ALL_PERMANENT);
+        setPermanentTeeth(prev => {
+          // Find changed teeth for animation
+          const changed = new Set<number>();
+          for (const nt of newPerm) {
+            const old = prev.find(p => p.id === nt.id);
+            if (old && JSON.stringify(old) !== JSON.stringify(nt)) {
+              changed.add(nt.id);
+            }
+          }
+          if (changed.size > 0) {
+            setChangedTeeth(prev => new Set([...prev, ...changed]));
+            setTimeout(() => {
+              setChangedTeeth(prev => {
+                const next = new Set(prev);
+                changed.forEach(id => next.delete(id));
+                return next;
+              });
+            }, 800);
+          }
+          return newPerm;
+        });
+      }
+      if (data.deciduous) {
+        const newDecid = normalizeToothData(data.deciduous, ALL_DECIDUOUS);
+        setDeciduousTeeth(prev => {
+          const changed = new Set<number>();
+          for (const nt of newDecid) {
+            const old = prev.find(p => p.id === nt.id);
+            if (old && JSON.stringify(old) !== JSON.stringify(nt)) {
+              changed.add(nt.id);
+            }
+          }
+          if (changed.size > 0) {
+            setChangedTeeth(prev => new Set([...prev, ...changed]));
+            setTimeout(() => {
+              setChangedTeeth(prev => {
+                const next = new Set(prev);
+                changed.forEach(id => next.delete(id));
+                return next;
+              });
+            }, 800);
+          }
+          return newDecid;
+        });
+      }
+
+      // Show a brief Nova notification
+      setNovaUpdate(t('odontogram.nova_updated', 'Nova actualizó el odontograma'));
+      setTimeout(() => setNovaUpdate(null), 3000);
+
+      // Update the initial ref so we don't show false "unsaved changes"
+      setTimeout(() => {
+        initialRef.current = JSON.stringify({ permanentTeeth, deciduousTeeth });
+        setHasChanges(false);
+      }, 100);
+    });
+
+    return () => { socket.disconnect(); };
+  }, [patientId]);
 
   // Collect used states for legend
   const usedStates = new Set<string>();
@@ -193,13 +271,9 @@ export default function Odontogram({ patientId, recordId, initialData, onSave, r
     if (readOnly) return;
 
     if (selectedTooth === toothId) {
-      // Already selected → on mobile show zoom, on desktop open modal for the tooth-level state
-      if (isMobile) {
-        setShowMobileZoom(true);
-      } else {
-        setSelectedSurface(null);
-        setShowModal(true);
-      }
+      // Deselect on second click
+      setSelectedTooth(null);
+      setSelectedSurface(null);
     } else {
       setSelectedTooth(toothId);
       setSelectedSurface(null);
@@ -207,7 +281,16 @@ export default function Odontogram({ patientId, recordId, initialData, onSave, r
     }
   };
 
-  const handleSurfaceClick = (toothId: number, surface: SurfaceName) => {
+  const handleSurfaceCardClick = (surface: SurfaceName) => {
+    if (readOnly) return;
+    setSelectedSurface(surface);
+    if (isMobile) {
+      setShowMobileZoom(false);
+    }
+    setShowModal(true);
+  };
+
+  const handleSurfaceClickOnTooth = (toothId: number, surface: SurfaceName) => {
     if (readOnly) return;
     setSelectedTooth(toothId);
     setSelectedSurface(surface);
@@ -223,11 +306,9 @@ export default function Odontogram({ patientId, recordId, initialData, onSave, r
       const newSurfaces = { ...tooth.surfaces };
 
       if (selectedSurface) {
-        // Apply to specific surface
         newSurfaces[selectedSurface] = odState.id;
       } else {
-        // Apply to ALL surfaces (whole tooth)
-        for (const sk of Object.keys(DEFAULT_SURFACES) as SurfaceName[]) {
+        for (const sk of SURFACE_KEYS) {
           newSurfaces[sk] = odState.id;
         }
       }
@@ -286,7 +367,7 @@ export default function Odontogram({ patientId, recordId, initialData, onSave, r
     setSelectedSurface(null);
   };
 
-  // ── Render helpers ──
+  // ── Render ──
 
   const selectedToothData = selectedTooth ? teeth.find(t => t.id === selectedTooth) : null;
 
@@ -312,7 +393,7 @@ export default function Odontogram({ patientId, recordId, initialData, onSave, r
               justChanged={changedTeeth.has(id)}
               surfaceStates={tooth.surfaces as Record<SurfaceName, string>}
               selectedSurface={isSelected ? selectedSurface : null}
-              onSurfaceClick={(surface) => handleSurfaceClick(id, surface)}
+              onSurfaceClick={(surface) => handleSurfaceClickOnTooth(id, surface)}
             />
             {numbersBelow && (
               <span className={`text-[9px] sm:text-[10px] font-bold mt-0.5 select-none transition-colors duration-200 ${isSelected ? 'text-blue-400' : 'text-white/40'}`}>
@@ -330,14 +411,12 @@ export default function Odontogram({ patientId, recordId, initialData, onSave, r
   const lowerRight = activeDentition === 'permanent' ? PERM_LOWER_RIGHT : DECID_LOWER_RIGHT;
   const lowerLeft = activeDentition === 'permanent' ? PERM_LOWER_LEFT : DECID_LOWER_LEFT;
 
-  // Current surface state for the modal
   const currentSurfaceState = selectedToothData && selectedSurface
     ? selectedToothData.surfaces[selectedSurface]
     : selectedToothData?.state || 'healthy';
 
   return (
     <div className="bg-white/[0.03] backdrop-blur-sm rounded-2xl border border-white/[0.06] p-4 sm:p-6 w-full max-w-full overflow-hidden relative pb-20">
-      {/* Keyframes */}
       <style>{`
         @keyframes toothPop {
           0% { transform: scale(1); }
@@ -346,16 +425,24 @@ export default function Odontogram({ patientId, recordId, initialData, onSave, r
           100% { transform: scale(1); }
         }
         @keyframes fadeIn {
-          from { opacity: 0; }
-          to { opacity: 1; }
+          from { opacity: 0; transform: translateY(-4px); }
+          to { opacity: 1; transform: translateY(0); }
         }
         @keyframes slideUp {
           from { transform: translateY(20px); opacity: 0; }
           to { transform: translateY(0); opacity: 1; }
         }
+        @keyframes slideDown {
+          from { max-height: 0; opacity: 0; }
+          to { max-height: 200px; opacity: 1; }
+        }
         @keyframes pulseGlow {
           0%, 100% { box-shadow: 0 0 0 0 rgba(59,130,246,0.3); }
           50% { box-shadow: 0 0 12px 4px rgba(59,130,246,0.15); }
+        }
+        @keyframes novaGlow {
+          0%, 100% { box-shadow: 0 0 0 0 rgba(168,85,247,0.4); }
+          50% { box-shadow: 0 0 16px 6px rgba(168,85,247,0.2); }
         }
       `}</style>
 
@@ -380,76 +467,91 @@ export default function Odontogram({ patientId, recordId, initialData, onSave, r
 
       {/* Status messages */}
       {error && (
-        <div className="mb-4 p-3 bg-red-500/10 border border-red-500/20 text-red-400 rounded-xl flex items-center gap-2 text-sm animate-[slideUp_0.3s_ease-out]">
+        <div className="mb-4 p-3 bg-red-500/10 border border-red-500/20 text-red-400 rounded-xl flex items-center gap-2 text-sm animate-[fadeIn_0.3s_ease-out]">
           <AlertCircle size={16} />
           <span>{error}</span>
         </div>
       )}
       {success && (
-        <div className="mb-4 p-3 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-xl text-sm flex items-center gap-2 animate-[slideUp_0.3s_ease-out]">
+        <div className="mb-4 p-3 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-xl text-sm flex items-center gap-2 animate-[fadeIn_0.3s_ease-out]">
           <Check size={16} />
           {success}
         </div>
       )}
 
-      {/* Selected tooth info bar */}
+      {/* Nova real-time update notification */}
+      {novaUpdate && (
+        <div className="mb-4 p-3 bg-purple-500/10 border border-purple-500/20 text-purple-300 rounded-xl text-sm flex items-center gap-2 animate-[fadeIn_0.3s_ease-out]" style={{ animation: 'novaGlow 2s ease-in-out infinite, fadeIn 0.3s ease-out' }}>
+          <span className="text-base">✦</span>
+          {novaUpdate}
+        </div>
+      )}
+
+      {/* Surface cards — appear when a tooth is selected */}
       {!readOnly && selectedToothData && (
-        <div className="mb-4 p-3 bg-white/[0.03] rounded-xl border border-white/[0.06] animate-[fadeIn_0.2s_ease-out]">
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-white/50">{t('odontogram.piece')}</span>
-              <span className="text-lg font-black text-blue-400">{fdiLabel(selectedTooth!)}</span>
-            </div>
-            <span className="text-[10px] text-white/30">—</span>
-            <span className="text-xs text-white/50">
-              {t(`odontogram.states.${selectedToothData.state}`, selectedToothData.state)}
-            </span>
-            <div className="ml-auto flex items-center gap-2">
-              <button
-                onClick={() => { setSelectedSurface(null); setShowModal(true); }}
-                className="px-3 py-1.5 text-[10px] font-bold bg-blue-500/10 border border-blue-500/30 text-blue-400 rounded-lg hover:bg-blue-500/20 transition-colors"
-              >
-                {t('odontogram.change_state', 'Cambiar estado')}
-              </button>
+        <div className="mb-4 overflow-hidden animate-[fadeIn_0.25s_ease-out]">
+          <div className="p-3 bg-white/[0.03] rounded-xl border border-white/[0.06]">
+            {/* Tooth header */}
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-white/50">{t('odontogram.piece')}</span>
+                <span className="text-lg font-black text-blue-400">{fdiLabel(selectedTooth!)}</span>
+                <span className="text-[10px] text-white/30">—</span>
+                <span className="text-xs text-white/50">
+                  {t(`odontogram.states.${selectedToothData.state}`, selectedToothData.state)}
+                </span>
+              </div>
               <button
                 onClick={() => { setSelectedTooth(null); setSelectedSurface(null); }}
-                className="px-2 py-1.5 text-[10px] text-white/40 hover:text-white/60 transition-colors"
+                className="w-6 h-6 rounded-full bg-white/5 text-white/30 text-xs flex items-center justify-center hover:bg-white/10 hover:text-white/50 transition-all"
               >
                 ✕
               </button>
             </div>
-          </div>
-          {/* Surface states summary */}
-          <div className="flex gap-1 mt-2">
-            {(Object.keys(DEFAULT_SURFACES) as SurfaceName[]).map(sk => {
-              const surfState = selectedToothData.surfaces[sk];
-              const stateInfo = getStateById(surfState);
-              const isActiveSurf = selectedSurface === sk;
-              return (
-                <button
-                  key={sk}
-                  onClick={() => handleSurfaceClick(selectedTooth!, sk)}
-                  className={`flex-1 px-1 py-1 rounded text-center text-[9px] border transition-all ${
-                    isActiveSurf
-                      ? 'bg-blue-500/20 border-blue-500/40 text-blue-300'
-                      : surfState !== 'healthy'
-                        ? 'border-white/10 text-white/60'
-                        : 'bg-white/[0.02] border-white/[0.06] text-white/30'
-                  }`}
-                  style={surfState !== 'healthy' && stateInfo ? { borderColor: stateInfo.defaultColor + '40' } : undefined}
-                >
-                  <div className="font-bold">{stateInfo?.symbol || '○'}</div>
-                  <div className="truncate">{t(`odontogram.surfaces.${sk}`, sk)}</div>
-                </button>
-              );
-            })}
+
+            {/* 5 surface cards */}
+            <div className="grid grid-cols-5 gap-1.5">
+              {SURFACE_KEYS.map((sk, i) => {
+                const surfState = selectedToothData.surfaces[sk];
+                const stateInfo = getStateById(surfState);
+                const isHealthy = surfState === 'healthy';
+                return (
+                  <button
+                    key={sk}
+                    onClick={() => handleSurfaceCardClick(sk)}
+                    className={`p-2 rounded-lg border transition-all duration-200 hover:scale-[1.03] active:scale-95 ${
+                      isHealthy
+                        ? 'bg-white/[0.02] border-white/[0.06] hover:border-white/[0.15]'
+                        : 'border-white/10 hover:border-white/20'
+                    }`}
+                    style={!isHealthy && stateInfo ? {
+                      backgroundColor: stateInfo.defaultColor + '12',
+                      borderColor: stateInfo.defaultColor + '30',
+                    } : undefined}
+                  >
+                    <div className={`text-center text-base font-bold mb-0.5 ${isHealthy ? 'text-white/20' : ''}`}
+                      style={!isHealthy && stateInfo ? { color: stateInfo.defaultColor } : undefined}
+                    >
+                      {stateInfo?.symbol || '○'}
+                    </div>
+                    <div className="text-[8px] sm:text-[9px] text-white/40 text-center leading-tight truncate">
+                      {t(`odontogram.surfaces.${sk}`, sk)}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            <p className="text-[9px] text-white/25 text-center mt-2">
+              {t('odontogram.hint_surface_card', 'Tocá una superficie para cambiar su estado')}
+            </p>
           </div>
         </div>
       )}
 
-      {/* Instruction hint when no tooth is selected */}
+      {/* Instruction hint when no tooth selected */}
       {!readOnly && !selectedToothData && (
-        <div className="mb-4 text-center text-xs text-white/30 py-2">
+        <div className="mb-4 text-center text-xs text-white/25 py-2">
           {t('odontogram.hint_select', 'Tocá un diente para editarlo, o una sección específica')}
         </div>
       )}
@@ -457,19 +559,16 @@ export default function Odontogram({ patientId, recordId, initialData, onSave, r
       {/* Odontogram chart */}
       <div className="mb-6 overflow-x-auto">
         <div className="min-w-max mx-auto flex flex-col items-center gap-0">
-          {/* Upper jaw */}
           <div className="flex gap-1 sm:gap-2">
             {renderTeethRow(upperRight, false)}
             <div className="w-px bg-white/[0.08] mx-1 self-stretch" />
             {renderTeethRow(upperLeft, false)}
           </div>
 
-          {/* Jaw separator */}
           <div className="w-full max-w-md my-2">
             <div className="h-[2px] bg-white/[0.10] rounded-full" />
           </div>
 
-          {/* Lower jaw */}
           <div className="flex gap-1 sm:gap-2">
             {renderTeethRow(lowerRight, true)}
             <div className="w-px bg-white/[0.08] mx-1 self-stretch" />
@@ -514,7 +613,7 @@ export default function Odontogram({ patientId, recordId, initialData, onSave, r
         </div>
       )}
 
-      {/* State selector modal */}
+      {/* State selector modal — only opens from surface card click */}
       <SymbolSelectorModal
         isOpen={showModal}
         onClose={() => { setShowModal(false); setSelectedSurface(null); }}
@@ -522,7 +621,7 @@ export default function Odontogram({ patientId, recordId, initialData, onSave, r
         currentStateId={currentSurfaceState}
       />
 
-      {/* Mobile tooth zoom */}
+      {/* Mobile zoom (optional, for direct surface click on small screens) */}
       {showMobileZoom && selectedToothData && (
         <div className="fixed inset-0 z-40 flex items-center justify-center">
           <div className="absolute inset-0 bg-black/40" onClick={() => setShowMobileZoom(false)} />

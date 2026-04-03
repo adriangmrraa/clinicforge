@@ -928,6 +928,8 @@
     "piece": "Pieza",
     "change_state": "Cambiar estado",
     "hint_select": "Tocá un diente para editarlo, o una sección específica",
+    "hint_surface_card": "Tocá una superficie para cambiar su estado",
+    "nova_updated": "Nova actualizó el odontograma",
     "tap_surface": "Tocá una superficie para editarla",
     "mobile_tap_surface": "Tocá una superficie",
     "instruction_first_click": "1er click: seleccionar pieza",

@@ -845,11 +845,11 @@ IMPORTANTE — REGLAS QUIRÚRGICAS:
                                 "type": "object",
                                 "description": "Superficies afectadas (opcional). Solo pasar las que cambian.",
                                 "properties": {
-                                    "oclusal": {"type": "string", "enum": ["healthy", "caries", "treated"]},
-                                    "mesial": {"type": "string", "enum": ["healthy", "caries", "treated"]},
-                                    "distal": {"type": "string", "enum": ["healthy", "caries", "treated"]},
-                                    "bucal": {"type": "string", "enum": ["healthy", "caries", "treated"]},
-                                    "lingual": {"type": "string", "enum": ["healthy", "caries", "treated"]},
+                                    "occlusal": {"type": "string", "description": "Estado de superficie oclusal (cualquiera de los 42 estados)"},
+                                    "vestibular": {"type": "string", "description": "Estado de superficie vestibular/bucal"},
+                                    "lingual": {"type": "string", "description": "Estado de superficie lingual/palatino"},
+                                    "mesial": {"type": "string", "description": "Estado de superficie mesial"},
+                                    "distal": {"type": "string", "description": "Estado de superficie distal"},
                                 },
                             },
                             "notas": {"type": "string", "description": "Nota clínica para esta pieza (opcional)"},
@@ -858,91 +858,6 @@ IMPORTANTE — REGLAS QUIRÚRGICAS:
                     },
                 },
                 "diagnostico": {"type": "string", "description": "Diagnóstico general asociado a estos cambios (opcional, ej: 'Caries en piezas 16 y 18')"},
-            },
-            "required": ["patient_id", "piezas"],
-        },
-    },
-            "required": ["patient_id"],
-        },
-    },
-    {
-        "type": "function",
-        "name": "modificar_odontograma",
-        "description": """Modifica el estado de UNA O VARIAS piezas dentales en el odontograma del paciente. Los cambios se persisten en el registro clínico más reciente (o se crea uno nuevo si no existe).
-IMPORTANTE — REGLAS QUIRÚRGICAS:
-1. SIEMPRE llamá 'ver_odontograma' ANTES para conocer el estado actual.
-2. OBLIGATORIO: el parámetro 'piezas' con los números FDI exactos. Si el usuario NO dice números de piezas → NO llamar esta tool, PREGUNTAR primero cuáles son.
-3. NUNCA asumas números de piezas. Si el usuario dice 'tiene caries' sin decir qué pieza → preguntá: '¿En qué pieza o piezas?'
-4. Nomenclatura FDI: 1.1-1.8 (superior derecho), 2.1-2.8 (superior izquierdo), 3.1-3.8 (inferior izquierdo), 4.1-4.8 (inferior derecho). Pasá como número entero sin punto: 16, 18, 21, 36, etc.
-5. Podés modificar varias piezas en una sola llamada pasando múltiples entradas en 'piezas'.""",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "patient_id": {"type": "integer", "description": "ID del paciente"},
-                "piezas": {
-                    "type": "array",
-                    "description": "Lista de piezas a modificar. Cada entrada tiene número FDI, estado y opcionalmente superficies afectadas.",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "numero": {
-                                "type": "integer",
-                                "description": "Número FDI de la pieza (ej: 16, 21, 36, 48). SIN punto.",
-                            },
-                            "estado": {
-                                "type": "string",
-                                "enum": [
-                                    "healthy",
-                                    "caries",
-                                    "restoration",
-                                    "extraction",
-                                    "treatment_planned",
-                                    "crown",
-                                    "implant",
-                                    "missing",
-                                    "prosthesis",
-                                    "root_canal",
-                                ],
-                                "description": "Estado de la pieza: healthy=sano, caries=caries, restoration=restauración, extraction=extracción, treatment_planned=planificado, crown=corona, implant=implante, missing=ausente, prosthesis=prótesis, root_canal=conducto",
-                            },
-                            "superficies": {
-                                "type": "object",
-                                "description": "Superficies afectadas (opcional). Solo pasar las que cambian.",
-                                "properties": {
-                                    "oclusal": {
-                                        "type": "string",
-                                        "enum": ["healthy", "caries", "treated"],
-                                    },
-                                    "mesial": {
-                                        "type": "string",
-                                        "enum": ["healthy", "caries", "treated"],
-                                    },
-                                    "distal": {
-                                        "type": "string",
-                                        "enum": ["healthy", "caries", "treated"],
-                                    },
-                                    "bucal": {
-                                        "type": "string",
-                                        "enum": ["healthy", "caries", "treated"],
-                                    },
-                                    "lingual": {
-                                        "type": "string",
-                                        "enum": ["healthy", "caries", "treated"],
-                                    },
-                                },
-                            },
-                            "notas": {
-                                "type": "string",
-                                "description": "Nota clínica para esta pieza (opcional)",
-                            },
-                        },
-                        "required": ["numero", "estado"],
-                    },
-                },
-                "diagnostico": {
-                    "type": "string",
-                    "description": "Diagnóstico general asociado a estos cambios (opcional, ej: 'Caries en piezas 16 y 18')",
-                },
             },
             "required": ["patient_id", "piezas"],
         },
@@ -4715,7 +4630,7 @@ async def _get_latest_odontogram(patient_id: int, tenant_id: int):
 
 
 async def _ver_odontograma(args: Dict, tenant_id: int, user_role: str) -> str:
-    """Shows the full current odontogram for a patient."""
+    """Shows the full current odontogram for a patient (v3 format)."""
     if user_role not in ("ceo", "professional"):
         return _role_error("ver_odontograma", ["ceo", "professional"])
 
@@ -4725,45 +4640,78 @@ async def _ver_odontograma(args: Dict, tenant_id: int, user_role: str) -> str:
 
     patient = await db.pool.fetchrow(
         "SELECT first_name, last_name FROM patients WHERE id = $1 AND tenant_id = $2",
-        int(pid),
-        tenant_id,
+        int(pid), tenant_id,
     )
     if not patient:
         return "No encontré a ese paciente."
 
-    record_id, teeth = await _get_latest_odontogram(int(pid), tenant_id)
+    record_id, _ = await _get_latest_odontogram(int(pid), tenant_id)
     name = f"{patient['first_name']} {patient['last_name'] or ''}".strip()
 
-    # Count non-healthy teeth
-    modified = [t for t in teeth if t.get("state", "healthy") != "healthy"]
-    if not modified:
-        return (
-            f"Odontograma de {name}: todas las piezas están sanas (sin modificaciones)."
+    # Read and normalize to v3
+    from shared.odontogram_utils import normalize_to_v3
+    raw_data = None
+    if record_id:
+        raw_data = await db.pool.fetchval(
+            "SELECT odontogram_data FROM clinical_records WHERE id = $1 AND tenant_id = $2",
+            record_id, tenant_id,
         )
+    v3_data = normalize_to_v3(raw_data)
 
-    lines = [f"Odontograma de {name} ({len(modified)} pieza(s) con hallazgos):\n"]
+    # Determine which dentition to show
+    denticion = args.get("denticion", "permanente")
+    dentition_key = "deciduous" if denticion == "temporal" else "permanent"
+    teeth = v3_data.get(dentition_key, {}).get("teeth", [])
 
-    quadrants = {1: [], 2: [], 3: [], 4: []}
+    def _surface_state(s):
+        """Extract state string from v3 surface (dict or string)."""
+        if isinstance(s, dict):
+            return s.get("state", "healthy")
+        if isinstance(s, str):
+            return s
+        return "healthy"
+
+    # Count non-healthy teeth (including surface-level)
+    modified = []
     for t in teeth:
-        state = t.get("state", "healthy")
-        if state == "healthy":
-            continue
+        tooth_state = t.get("state", "healthy")
+        surfaces = t.get("surfaces", {})
+        has_surface_change = False
+        if isinstance(surfaces, dict):
+            has_surface_change = any(
+                _surface_state(surfaces.get(sk, {})) != "healthy"
+                for sk in ["occlusal", "vestibular", "lingual", "mesial", "distal"]
+            )
+        if tooth_state != "healthy" or has_surface_change:
+            modified.append(t)
+
+    dentition_label = "temporal" if denticion == "temporal" else "permanente"
+    total = len(teeth)
+    if not modified:
+        return f"Odontograma de {name} ({dentition_label}): todas las {total} piezas están sanas."
+
+    lines = [f"Odontograma de {name} — dentición {dentition_label} ({len(modified)} pieza(s) con hallazgos):\n"]
+
+    quadrants: Dict[int, list] = {}
+    for t in modified:
         num = t.get("id", 0)
         q = num // 10
         if q not in quadrants:
-            continue
+            quadrants[q] = []
 
+        state = t.get("state", "healthy")
         status_es = _STATUS_ES.get(state, state)
         fdi_name = _FDI_NAMES.get(num, f"pieza {num}")
         detail = f"  Pieza {num} ({fdi_name}): {status_es}"
 
+        # Show per-surface states
         surfaces = t.get("surfaces", {})
-        if surfaces and isinstance(surfaces, dict):
-            affected = [
-                f"{s}={_STATUS_ES.get(v, v)}"
-                for s, v in surfaces.items()
-                if v and v != "healthy"
-            ]
+        if isinstance(surfaces, dict):
+            affected = []
+            for sk in ["occlusal", "vestibular", "lingual", "mesial", "distal"]:
+                sv = _surface_state(surfaces.get(sk, {}))
+                if sv != "healthy":
+                    affected.append(f"{sk}={_STATUS_ES.get(sv, sv)}")
             if affected:
                 detail += f" [{', '.join(affected)}]"
 
@@ -4774,18 +4722,18 @@ async def _ver_odontograma(args: Dict, tenant_id: int, user_role: str) -> str:
         quadrants[q].append(detail)
 
     q_names = {
-        1: "Superior Derecho (Q1)",
-        2: "Superior Izquierdo (Q2)",
-        3: "Inferior Izquierdo (Q3)",
-        4: "Inferior Derecho (Q4)",
+        1: "Superior Derecho (Q1)", 2: "Superior Izquierdo (Q2)",
+        3: "Inferior Izquierdo (Q3)", 4: "Inferior Derecho (Q4)",
+        5: "Superior Derecho temporal (Q5)", 6: "Superior Izquierdo temporal (Q6)",
+        7: "Inferior Izquierdo temporal (Q7)", 8: "Inferior Derecho temporal (Q8)",
     }
-    for q in [1, 2, 3, 4]:
+    for q in sorted(quadrants.keys()):
         if quadrants[q]:
-            lines.append(f"{q_names[q]}:")
+            lines.append(f"{q_names.get(q, f'Cuadrante {q}')}:")
             lines.extend(quadrants[q])
             lines.append("")
 
-    lines.append(f"Las {32 - len(modified)} piezas restantes están sanas.")
+    lines.append(f"Las {total - len(modified)} piezas restantes están sanas.")
     return "\n".join(lines)
 
 
@@ -4862,89 +4810,106 @@ async def _modificar_odontograma(
         )
         current_teeth = _build_default_teeth()
 
-    # Apply changes to the teeth array (same format as frontend: [{id, state, surfaces, notes}])
+    # Surface name mapping: Spanish/legacy → canonical v3 keys
     surface_map = {
-        "oclusal": "occlusal",
-        "mesial": "mesial",
-        "distal": "distal",
-        "bucal": "buccal",
-        "lingual": "lingual",
-        "occlusal": "occlusal",
-        "buccal": "buccal",
+        "oclusal": "occlusal", "occlusal": "occlusal",
+        "mesial": "mesial", "distal": "distal",
+        "bucal": "vestibular", "buccal": "vestibular", "vestibular": "vestibular",
+        "lingual": "lingual", "palatino": "lingual",
     }
+    SURFACE_KEYS = ["occlusal", "vestibular", "lingual", "mesial", "distal"]
+
+    # Determine dentition type from the pieces
+    denticion = args.get("denticion", "permanente")
+    is_deciduous = denticion == "temporal" or any(
+        int(p.get("numero", 0)) >= 51 for p in piezas
+    )
+
+    # Read current v3 data from DB
+    from shared.odontogram_utils import normalize_to_v3
+    from datetime import datetime as _dt
+
+    raw_data = await db.pool.fetchval(
+        "SELECT odontogram_data FROM clinical_records WHERE id = $1 AND tenant_id = $2",
+        record_id, tenant_id,
+    ) if record_id else None
+
+    v3_data = normalize_to_v3(raw_data)
+    dentition_key = "deciduous" if is_deciduous else "permanent"
+    target_teeth = v3_data.get(dentition_key, {}).get("teeth", [])
+    teeth_map = {t["id"]: t for t in target_teeth}
+
     changes_summary = []
     for pieza in piezas:
         num = int(pieza["numero"])
         estado = pieza["estado"]
 
-        # Find the tooth in the array and update it
-        found = False
-        for i, t in enumerate(current_teeth):
-            if t.get("id") == num:
-                current_teeth[i]["state"] = estado
+        if num not in teeth_map:
+            continue
 
-                # Surfaces (merge)
-                surfaces_input = pieza.get("superficies", {})
-                if surfaces_input and isinstance(surfaces_input, dict):
-                    existing_surfaces = current_teeth[i].get("surfaces", {})
-                    if not isinstance(existing_surfaces, dict):
-                        existing_surfaces = {}
-                    for s_name, s_val in surfaces_input.items():
-                        en_name = surface_map.get(s_name.lower(), s_name.lower())
-                        existing_surfaces[en_name] = s_val
-                    current_teeth[i]["surfaces"] = existing_surfaces
+        tooth = teeth_map[num]
 
-                # Notes
-                notas = pieza.get("notas", "")
-                if notas:
-                    current_teeth[i]["notes"] = notas
+        # Update surfaces: if specific surfaces given, only change those.
+        # Otherwise, set ALL surfaces to the new state.
+        surfaces_input = pieza.get("superficies", {})
+        if surfaces_input and isinstance(surfaces_input, dict):
+            for s_name, s_val in surfaces_input.items():
+                en_name = surface_map.get(s_name.lower(), s_name.lower())
+                if en_name in SURFACE_KEYS:
+                    tooth["surfaces"][en_name] = {"state": s_val, "condition": None, "color": None}
+        else:
+            # No specific surfaces → apply state to ALL surfaces
+            for sk in SURFACE_KEYS:
+                tooth["surfaces"][sk] = {"state": estado, "condition": None, "color": None}
 
-                found = True
-                break
+        # Compute tooth-level state from surfaces
+        non_healthy = set()
+        for sk in SURFACE_KEYS:
+            s = tooth["surfaces"].get(sk, {})
+            st = s.get("state", "healthy") if isinstance(s, dict) else s
+            if st != "healthy":
+                non_healthy.add(st)
+        tooth["state"] = non_healthy.pop() if len(non_healthy) == 1 else ("healthy" if not non_healthy else estado)
 
-        if not found:
-            # Tooth not in array (shouldn't happen with 32 default teeth, but just in case)
-            current_teeth.append(
-                {
-                    "id": num,
-                    "state": estado,
-                    "surfaces": {},
-                    "notes": pieza.get("notas", ""),
-                }
-            )
+        notas = pieza.get("notas", "")
+        if notas:
+            tooth["notes"] = notas
 
         fdi_name = _FDI_NAMES.get(num, f"pieza {num}")
         status_es = _STATUS_ES.get(estado, estado)
-        changes_summary.append(f"  Pieza {num} ({fdi_name}) → {status_es}")
 
-    # Save in frontend-compatible v2.0 format
-    from datetime import datetime as _dt
+        # Add surface detail to summary
+        surf_details = []
+        if surfaces_input and isinstance(surfaces_input, dict):
+            for s_name, s_val in surfaces_input.items():
+                en_name = surface_map.get(s_name.lower(), s_name.lower())
+                surf_details.append(f"{en_name}={_STATUS_ES.get(s_val, s_val)}")
 
-    odontogram_data_v2 = {
-        "teeth": current_teeth,
-        "last_updated": _dt.now().isoformat(),
-        "version": "2.0",
-    }
+        summary = f"  Pieza {num} ({fdi_name}) → {status_es}"
+        if surf_details:
+            summary += f" [{', '.join(surf_details)}]"
+        changes_summary.append(summary)
 
-    # Persist to database
+    # Rebuild v3 data
+    v3_data[dentition_key]["teeth"] = list(teeth_map.values())
+    v3_data["last_updated"] = _dt.now().isoformat()
+
+    # Persist v3 to database
     await db.pool.execute(
         """
         UPDATE clinical_records
         SET odontogram_data = $1::jsonb, updated_at = NOW()
         WHERE id = $2 AND tenant_id = $3
         """,
-        json.dumps(odontogram_data_v2),
+        json.dumps(v3_data),
         record_id,
         tenant_id,
     )
 
-    # Also update diagnosis if provided
     if diagnostico:
         await db.pool.execute(
             "UPDATE clinical_records SET diagnosis = $1 WHERE id = $2 AND tenant_id = $3",
-            diagnostico,
-            record_id,
-            tenant_id,
+            diagnostico, record_id, tenant_id,
         )
 
     name = f"{patient['first_name']} {patient['last_name'] or ''}".strip()
@@ -4952,14 +4917,14 @@ async def _modificar_odontograma(
         f"🦷 NOVA Odontograma: patient={pid} ({name}) updated {len(piezas)} teeth, record={record_id}"
     )
 
-    # Emit real-time Socket.IO event so any open Odontogram UI refreshes immediately
+    # Emit real-time Socket.IO event with v3 data
     await _nova_emit(
         "ODONTOGRAM_UPDATED",
         {
             "patient_id": int(pid),
             "record_id": str(record_id),
             "tenant_id": tenant_id,
-            "odontogram_data": odontogram_data_v2,
+            "odontogram_data": v3_data,
         },
     )
 

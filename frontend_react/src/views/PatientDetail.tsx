@@ -159,12 +159,8 @@ export default function PatientDetail() {
       }
     });
 
-    socketRef.current.on('ODONTOGRAM_UPDATED', (payload: { patient_id?: number }) => {
-      const currentPatientId = id ? parseInt(id) : null;
-      if (payload.patient_id && payload.patient_id === currentPatientId) {
-        fetchPatientData();
-      }
-    });
+    // ODONTOGRAM_UPDATED is handled directly by the Odontogram component via its own socket listener.
+    // No page reload needed — the component updates in real-time with animations.
 
     socketRef.current.on('DIGITAL_RECORD_CREATED', (payload: { patient_id?: number }) => {
       const currentPatientId = id ? parseInt(id) : null;

@@ -906,6 +906,8 @@
     "piece": "Dent",
     "change_state": "Changer l'état",
     "hint_select": "Touchez une dent pour l'éditer, ou une section spécifique",
+    "hint_surface_card": "Touchez une surface pour changer son état",
+    "nova_updated": "Nova a mis à jour l'odontogramme",
     "tap_surface": "Touchez une surface pour l'éditer",
     "mobile_tap_surface": "Touchez une surface",
     "instruction_first_click": "1er clic: sélectionner dent",
