@@ -89,13 +89,13 @@ export function ToothSVG({
         />
       ))}
 
-      {/* Structural dividers */}
-      <line x1="7.3" y1="7.3" x2="15" y2="15" stroke="#06060e" strokeWidth="1.2" opacity={isAbsent ? 0.3 : 0.9} />
-      <line x1="32.7" y1="7.3" x2="25" y2="15" stroke="#06060e" strokeWidth="1.2" opacity={isAbsent ? 0.3 : 0.9} />
-      <line x1="32.7" y1="32.7" x2="25" y2="25" stroke="#06060e" strokeWidth="1.2" opacity={isAbsent ? 0.3 : 0.9} />
-      <line x1="7.3" y1="32.7" x2="15" y2="25" stroke="#06060e" strokeWidth="1.2" opacity={isAbsent ? 0.3 : 0.9} />
-      <circle cx="20" cy="20" r="7" fill="none" stroke="#06060e" strokeWidth="1" opacity={isAbsent ? 0.3 : 0.85} />
-      <circle cx="20" cy="20" r="18" fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="0.6" />
+      {/* Structural dividers — white lines visible on dark background */}
+      <line x1="7.3" y1="7.3" x2="15" y2="15" stroke="rgba(255,255,255,0.18)" strokeWidth="0.8" opacity={isAbsent ? 0.3 : 1} />
+      <line x1="32.7" y1="7.3" x2="25" y2="15" stroke="rgba(255,255,255,0.18)" strokeWidth="0.8" opacity={isAbsent ? 0.3 : 1} />
+      <line x1="32.7" y1="32.7" x2="25" y2="25" stroke="rgba(255,255,255,0.18)" strokeWidth="0.8" opacity={isAbsent ? 0.3 : 1} />
+      <line x1="7.3" y1="32.7" x2="15" y2="25" stroke="rgba(255,255,255,0.18)" strokeWidth="0.8" opacity={isAbsent ? 0.3 : 1} />
+      <circle cx="20" cy="20" r="7" fill="none" stroke="rgba(255,255,255,0.18)" strokeWidth="0.7" opacity={isAbsent ? 0.3 : 1} />
+      <circle cx="20" cy="20" r="18" fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth="0.5" />
 
       {/* X overlay for extraction */}
       {(state === 'indicacion_extraccion' || state === 'extraction') && (

@@ -1,7 +1,7 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { useTranslation } from '../../context/LanguageContext';
 import { ODONTOGRAM_STATES, OdontogramState, OdontogramCategory } from '../../constants/odontogramStates';
-import { Search, X, Check } from 'lucide-react';
+import { Search, X, Check, ChevronLeft } from 'lucide-react';
 
 interface SymbolSelectorModalProps {
   isOpen: boolean;
@@ -16,11 +16,6 @@ const CATEGORY_BADGE: Record<OdontogramCategory, string> = {
   lesion: 'bg-red-500/20 text-red-400 border-red-500/30',
 };
 
-const CATEGORY_LABEL: Record<OdontogramCategory, string> = {
-  preexistente: 'PREEXISTENTE',
-  lesion: 'LESION',
-};
-
 function normalizeAccents(text: string): string {
   return text.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 }
@@ -28,6 +23,16 @@ function normalizeAccents(text: string): string {
 export default function SymbolSelectorModal({ isOpen, onClose, onSelect, currentStateId, surfaceName }: SymbolSelectorModalProps) {
   const { t } = useTranslation();
   const [search, setSearch] = useState('');
+  const searchRef = useRef<HTMLInputElement>(null);
+
+  // Focus search on open
+  useEffect(() => {
+    if (isOpen) {
+      setTimeout(() => searchRef.current?.focus(), 300);
+    } else {
+      setSearch('');
+    }
+  }, [isOpen]);
 
   const filteredStates = useMemo(() => {
     const states = ODONTOGRAM_STATES.filter(s => s.id !== 'healthy');
@@ -39,11 +44,10 @@ export default function SymbolSelectorModal({ isOpen, onClose, onSelect, current
     });
   }, [search, t]);
 
-  const grouped = useMemo(() => {
-    const preexistente = filteredStates.filter(s => s.category === 'preexistente');
-    const lesion = filteredStates.filter(s => s.category === 'lesion');
-    return { preexistente, lesion };
-  }, [filteredStates]);
+  const grouped = useMemo(() => ({
+    preexistente: filteredStates.filter(s => s.category === 'preexistente'),
+    lesion: filteredStates.filter(s => s.category === 'lesion'),
+  }), [filteredStates]);
 
   const handleSelect = (state: OdontogramState) => {
     setSearch('');
@@ -62,17 +66,16 @@ export default function SymbolSelectorModal({ isOpen, onClose, onSelect, current
     return (
       <div key={category} className="mb-5">
         <span className={`inline-block px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border mb-3 ${CATEGORY_BADGE[category]}`}>
-          {CATEGORY_LABEL[category]}
+          {category === 'preexistente' ? 'PREEXISTENTE' : 'LESIÓN'}
         </span>
-        {/* 3 columns on mobile for bigger touch targets, 2 on desktop for more info */}
-        <div className="grid grid-cols-3 sm:grid-cols-2 gap-1.5 sm:gap-2">
+        <div className="grid grid-cols-3 sm:grid-cols-3 gap-1.5">
           {states.map(state => {
             const isActive = currentStateId === state.id;
             return (
               <button
                 key={state.id}
                 onClick={() => handleSelect(state)}
-                className={`relative flex flex-col items-center gap-1 p-2.5 sm:p-3 rounded-xl border
+                className={`relative flex flex-col items-center gap-1 p-2.5 rounded-xl border
                   transition-all duration-150 touch-manipulation active:scale-95 ${
                   isActive
                     ? 'bg-blue-500/20 border-blue-500/50 ring-1 ring-blue-500/30'
@@ -85,12 +88,12 @@ export default function SymbolSelectorModal({ isOpen, onClose, onSelect, current
                   </div>
                 )}
                 <span
-                  className="w-9 h-9 sm:w-10 sm:h-10 rounded-lg flex items-center justify-center text-sm sm:text-base font-bold"
+                  className="w-9 h-9 rounded-lg flex items-center justify-center text-sm font-bold"
                   style={{ backgroundColor: state.defaultColor + '25', color: state.defaultColor }}
                 >
                   {state.symbol}
                 </span>
-                <span className="text-[10px] sm:text-xs text-white/70 text-center leading-tight line-clamp-2">
+                <span className="text-[10px] text-white/70 text-center leading-tight line-clamp-2">
                   {t(state.labelKey, state.id)}
                 </span>
               </button>
@@ -102,51 +105,68 @@ export default function SymbolSelectorModal({ isOpen, onClose, onSelect, current
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center">
-      {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={handleClose} />
+    <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center">
+      {/* Backdrop — click to close */}
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={handleClose} />
 
-      {/* Bottom sheet */}
-      <div className="relative w-full sm:max-w-lg sm:mx-4 sm:mb-4 bg-[#0d1117] border border-white/10
+      {/* Modal — bottom sheet on mobile, centered on desktop */}
+      <div className="relative w-full sm:max-w-md sm:mx-4
+        bg-[#0d1117] border border-white/10
         rounded-t-2xl sm:rounded-2xl shadow-2xl overflow-hidden
-        animate-[slideUp_0.25s_ease-out] max-h-[90vh] sm:max-h-[80vh] flex flex-col">
+        animate-[slideUp_0.2s_ease-out]
+        max-h-[85vh] sm:max-h-[75vh] flex flex-col">
 
-        {/* Mobile drag handle */}
-        <div className="flex justify-center pt-2 pb-1 sm:hidden">
+        {/* Drag handle — mobile only */}
+        <div className="flex justify-center pt-2 pb-0.5 sm:hidden">
           <div className="w-10 h-1 bg-white/20 rounded-full" />
         </div>
 
-        {/* Header */}
-        <div className="flex items-center justify-between px-4 pt-2 sm:pt-4 pb-3 border-b border-white/[0.06] shrink-0">
-          <div>
-            <h2 className="text-sm sm:text-base font-semibold text-white">
-              {t('odontogram.modal.selectState', 'Seleccionar estado')}
-            </h2>
-            {surfaceName && (
-              <p className="text-[10px] text-white/40 mt-0.5">{surfaceName}</p>
-            )}
+        {/* Sticky header with close button + search */}
+        <div className="shrink-0 border-b border-white/[0.06]">
+          {/* Title row */}
+          <div className="flex items-center justify-between px-4 pt-2 sm:pt-3 pb-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <button
+                onClick={handleClose}
+                className="p-1.5 -ml-1.5 rounded-lg active:bg-white/10 transition-colors touch-manipulation sm:hidden"
+              >
+                <ChevronLeft className="w-5 h-5 text-white/50" />
+              </button>
+              <div className="min-w-0">
+                <h2 className="text-sm font-semibold text-white truncate">
+                  {t('odontogram.modal.selectState', 'Seleccionar estado')}
+                </h2>
+                {surfaceName && (
+                  <p className="text-[10px] text-blue-400/70 mt-0.5">{surfaceName}</p>
+                )}
+              </div>
+            </div>
+            <button
+              onClick={handleClose}
+              className="p-2 -mr-1 rounded-xl hover:bg-white/10 active:bg-white/10 transition-colors touch-manipulation"
+            >
+              <X className="w-5 h-5 text-white/50" />
+            </button>
           </div>
-          <button onClick={handleClose} className="p-2 -mr-1 rounded-xl active:bg-white/10 transition-colors touch-manipulation">
-            <X className="w-5 h-5 text-white/50" />
-          </button>
+
+          {/* Search — always visible */}
+          <div className="px-4 pb-3">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
+              <input
+                ref={searchRef}
+                type="text"
+                placeholder={t('odontogram.modal.searchPlaceholder', 'Buscar símbolo...')}
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full pl-9 pr-4 py-2.5 bg-white/[0.04] border border-white/[0.08] rounded-xl text-sm text-white placeholder-white/30 focus:outline-none focus:border-blue-500/40 transition-colors"
+              />
+            </div>
+          </div>
         </div>
 
-        {/* Search */}
-        <div className="px-4 py-2.5 shrink-0">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
-            <input
-              type="text"
-              placeholder={t('odontogram.modal.searchPlaceholder', 'Buscar símbolo...')}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-9 pr-4 py-2.5 bg-white/[0.04] border border-white/[0.08] rounded-xl text-sm text-white placeholder-white/30 focus:outline-none focus:border-blue-500/40 transition-colors"
-            />
-          </div>
-        </div>
-
-        {/* States Grid */}
-        <div className="flex-1 overflow-y-auto px-4 pb-4 min-h-0 overscroll-contain">
+        {/* States Grid — scrollable */}
+        <div className="flex-1 overflow-y-auto px-4 pt-3 pb-4 min-h-0 overscroll-contain">
           {renderCategory('preexistente', grouped.preexistente)}
           {renderCategory('lesion', grouped.lesion)}
 
@@ -157,17 +177,24 @@ export default function SymbolSelectorModal({ isOpen, onClose, onSelect, current
           )}
         </div>
 
-        {/* Sano/reset button — safe area padding for iPhone */}
-        <div className="px-4 pt-2 pb-4 sm:pb-3 border-t border-white/[0.06] shrink-0" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}>
+        {/* Reset to healthy + close — safe area */}
+        <div className="shrink-0 px-4 pt-2 pb-3 border-t border-white/[0.06] flex gap-2"
+          style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}>
+          <button
+            onClick={handleClose}
+            className="flex-1 py-2.5 rounded-xl text-sm font-medium bg-white/[0.04] text-white/50 border border-white/[0.08] active:bg-white/[0.08] transition-all touch-manipulation"
+          >
+            {t('odontogram.modal.cancel', 'Cancelar')}
+          </button>
           <button
             onClick={() => handleSelect(ODONTOGRAM_STATES[0])}
-            className={`w-full py-3 sm:py-2.5 rounded-xl text-sm font-medium transition-all touch-manipulation active:scale-[0.98] ${
+            className={`flex-1 py-2.5 rounded-xl text-sm font-medium transition-all touch-manipulation ${
               currentStateId === 'healthy'
-                ? 'bg-white/10 text-white border border-white/20'
+                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
                 : 'bg-white/[0.04] text-white/60 border border-white/[0.08] active:bg-white/[0.08]'
             }`}
           >
-            {t('odontogram.states.healthy', 'Sano')} (reset)
+            ○ {t('odontogram.states.healthy', 'Sano')}
           </button>
         </div>
       </div>
