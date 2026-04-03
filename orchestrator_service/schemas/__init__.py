@@ -2,7 +2,7 @@
 Schemas package for ClinicForge API
 """
 
-from orchestrator_service.schemas.treatment_plan import (
+from schemas.treatment_plan import (
     # Enums
     PlanStatus,
     ItemStatus,
