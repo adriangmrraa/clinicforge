@@ -483,9 +483,9 @@ class EmailService:
             msg.attach(pdf_part)
 
             if self.smtp_port == 465:
-                server = smtplib.SMTP_SSL(self.smtp_host, self.smtp_port)
+                server = smtplib.SMTP_SSL(self.smtp_host, self.smtp_port, timeout=15)
             else:
-                server = smtplib.SMTP(self.smtp_host, self.smtp_port)
+                server = smtplib.SMTP(self.smtp_host, self.smtp_port, timeout=15)
                 server.starttls()
 
             server.login(self.smtp_user, self.smtp_pass)
@@ -497,7 +497,7 @@ class EmailService:
 
         except Exception as e:
             logger.error(f"❌ Error sending digital record email: {e}")
-            return False
+            raise RuntimeError(f"Error SMTP al enviar email: {e}") from e
 
 
 email_service = EmailService()

@@ -3,7 +3,7 @@ import { useTranslation } from '../context/LanguageContext';
 import {
   FileText, Plus, Download, Mail, Trash2, Edit,
   RefreshCw, Loader2, X, ChevronLeft, AlertTriangle,
-  Send, Save, Eye, Lock
+  Send, Save, Eye, Lock, Check, AlertCircle
 } from 'lucide-react';
 import DOMPurify from 'dompurify';
 import api from '../api/axios';
@@ -133,6 +133,7 @@ export default function DigitalRecordsTab({ patientId, patientEmail, refreshKey 
   const [emailModalOpen, setEmailModalOpen] = useState(false);
   const [emailTo, setEmailTo] = useState('');
   const [sending, setSending] = useState(false);
+  const [emailStatus, setEmailStatus] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
   const [generating, setGenerating] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -196,15 +197,19 @@ export default function DigitalRecordsTab({ patientId, patientEmail, refreshKey 
   const handleSendEmail = async () => {
     if (!selectedRecord || !emailTo.trim()) return;
     setSending(true);
+    setEmailStatus(null);
     try {
       await api.post(`/admin/patients/${patientId}/digital-records/${selectedRecord.id}/email`, { to_email: emailTo });
       const updated = { ...selectedRecord, sent_to_email: emailTo, sent_at: new Date().toISOString(), status: 'sent' };
       setRecords(prev => prev.map(r => r.id === selectedRecord.id ? updated : r));
       setSelectedRecord(updated);
-      setEmailModalOpen(false);
-      setEmailTo('');
-    } catch (err) { console.error('Error sending email:', err); }
-    finally { setSending(false); }
+      setEmailStatus({ type: 'success', msg: `Email enviado a ${emailTo}` });
+      setTimeout(() => { setEmailModalOpen(false); setEmailTo(''); setEmailStatus(null); }, 1500);
+    } catch (err: any) {
+      console.error('Error sending email:', err);
+      const detail = err?.response?.data?.detail || 'Error al enviar el email. Intentá de nuevo.';
+      setEmailStatus({ type: 'error', msg: detail });
+    } finally { setSending(false); }
   };
 
   const handleDelete = async (recordId: string) => {
@@ -520,9 +525,19 @@ export default function DigitalRecordsTab({ patientId, patientEmail, refreshKey 
                 <input type="email" value={emailTo} onChange={e => setEmailTo(e.target.value)} placeholder={t('digitalRecords.emailPlaceholder')}
                   className="w-full bg-white/[0.04] border border-white/[0.08] text-white placeholder-white/30 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-white/20" />
               </div>
+              {emailStatus && (
+                <div className={`p-2.5 rounded-lg text-xs flex items-center gap-2 ${
+                  emailStatus.type === 'success'
+                    ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400'
+                    : 'bg-red-500/10 border border-red-500/20 text-red-400'
+                }`}>
+                  {emailStatus.type === 'success' ? <Check size={14} /> : <AlertCircle size={14} />}
+                  {emailStatus.msg}
+                </div>
+              )}
               <div className="flex gap-3 pt-1">
-                <button onClick={() => setEmailModalOpen(false)} className="flex-1 px-4 py-2.5 bg-white/[0.06] border border-white/[0.08] text-white/70 rounded-lg hover:bg-white/[0.1] text-sm">{t('common.cancel')}</button>
-                <button onClick={handleSendEmail} disabled={sending || !emailTo.trim()}
+                <button onClick={() => { setEmailModalOpen(false); setEmailStatus(null); }} className="flex-1 px-4 py-2.5 bg-white/[0.06] border border-white/[0.08] text-white/70 rounded-lg hover:bg-white/[0.1] text-sm">{t('common.cancel')}</button>
+                <button onClick={handleSendEmail} disabled={sending || !emailTo.trim() || emailStatus?.type === 'success'}
                   className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-white text-[#0a0e1a] rounded-lg hover:bg-white/90 text-sm font-medium disabled:opacity-50">
                   {sending ? <><Loader2 size={14} className="animate-spin" /> {t('digitalRecords.sending')}</> : <><Send size={14} /> Enviar</>}
                 </button>

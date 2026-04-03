@@ -404,13 +404,17 @@ async def send_record_email(
             tenant_id,
         )
 
-    # Send email with PDF attachment
+    # Send email with PDF attachment (run in thread to avoid blocking event loop)
+    import asyncio
     try:
-        email_service.send_digital_record_email(
-            to_email=body.to_email,
-            pdf_path=pdf_path,
-            patient_name=row["title"],
-            document_title=row["title"],
+        await asyncio.get_event_loop().run_in_executor(
+            None,
+            lambda: email_service.send_digital_record_email(
+                to_email=body.to_email,
+                pdf_path=pdf_path,
+                patient_name=row["title"],
+                document_title=row["title"],
+            ),
         )
     except Exception as e:
         logger.error(f"Error sending digital record email: {e}")
