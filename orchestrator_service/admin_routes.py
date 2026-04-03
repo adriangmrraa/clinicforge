@@ -4529,8 +4529,17 @@ async def add_clinical_note(
     if not patient:
         raise HTTPException(status_code=404, detail="Paciente no encontrado")
 
-    # Incluir odontogram_data si está presente
-    odontogram_json = json.dumps(note.odontogram_data) if note.odontogram_data else "{}"
+    # Incluir odontogram_data solo si tiene datos reales (no vacío)
+    odontogram_json = None
+    if note.odontogram_data and isinstance(note.odontogram_data, dict):
+        # Check it actually has teeth data, not just an empty shell
+        has_data = (
+            note.odontogram_data.get("teeth")
+            or note.odontogram_data.get("permanent")
+            or any(str(k).isdigit() for k in note.odontogram_data.keys())
+        )
+        if has_data:
+            odontogram_json = json.dumps(note.odontogram_data)
 
     await db.pool.execute(
         """

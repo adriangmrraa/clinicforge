@@ -252,7 +252,10 @@ async def gather_patient_data(
             """
             SELECT odontogram_data
             FROM clinical_records
-            WHERE patient_id=$1 AND tenant_id=$2 AND odontogram_data IS NOT NULL
+            WHERE patient_id=$1 AND tenant_id=$2
+              AND odontogram_data IS NOT NULL
+              AND odontogram_data != '{}'::jsonb
+              AND odontogram_data != 'null'::jsonb
             ORDER BY created_at DESC
             LIMIT 1
             """,
