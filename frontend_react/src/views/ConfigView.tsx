@@ -1,5 +1,5 @@
 import React, { useState, useEffect, lazy, Suspense } from 'react';
-import { Settings, Globe, Loader2, CheckCircle2, Copy, Trash2, Edit2, Zap, MessageCircle, Key, User, Plus, Info, Database, AlertTriangle, Clock, MessageSquare, AlertCircle, Facebook } from 'lucide-react';
+import { Settings, Globe, Loader2, CheckCircle2, Copy, Trash2, Edit2, Zap, MessageCircle, Key, User, Plus, Info, Database, AlertTriangle, Clock, MessageSquare, AlertCircle, Facebook, Image, Upload, Stethoscope } from 'lucide-react';
 import api from '../api/axios';
 import { useTranslation } from '../context/LanguageContext';
 import PageHeader from '../components/PageHeader';
@@ -22,6 +22,9 @@ const LANGUAGE_OPTIONS: { value: UiLanguage; labelKey: string }[] = [
     { value: 'en', labelKey: 'config.language_en' },
     { value: 'fr', labelKey: 'config.language_fr' },
 ];
+
+const ACCEPTED_FILE_TYPES = '.png,.jpg,.jpeg,.svg,.webp,.ico';
+const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2 MB
 
 interface Tenant {
     id: number;
@@ -59,7 +62,7 @@ interface IntegrationConfig {
 export default function ConfigView() {
     const { t, language, setLanguage } = useTranslation();
     const { user } = useAuth();
-    const [activeTab, setActiveTab] = useState<'general' | 'ycloud' | 'chatwoot' | 'others' | 'maintenance' | 'leads' | 'meta'>('general');
+    const [activeTab, setActiveTab] = useState<'general' | 'ycloud' | 'chatwoot' | 'others' | 'maintenance' | 'leads' | 'meta' | 'branding'>('general');
 
     // General Settings State
     const [settings, setSettings] = useState<ClinicSettings | null>(null);
@@ -83,6 +86,14 @@ export default function ConfigView() {
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState<string | null>(null);
+
+    // Branding State
+    const [brandingTenantId, setBrandingTenantId] = useState<number | null>(null);
+    const [logoFile, setLogoFile] = useState<File | null>(null);
+    const [logoPreview, setLogoPreview] = useState<string | null>(null);
+    const [uploadingLogo, setUploadingLogo] = useState(false);
+    const [logoError, setLogoError] = useState<string | null>(null);
+    const [currentLogoUrl, setCurrentLogoUrl] = useState<string | null>(null);
 
     useEffect(() => {
         loadGeneralSettings();
@@ -138,6 +149,17 @@ export default function ConfigView() {
         }
     };
 
+    const loadCurrentLogo = async (tenantId: number) => {
+        try {
+            const url = `/admin/public/tenant-logo/${tenantId}?t=${Date.now()}`;
+            const response = await api.get(url, { responseType: 'blob' });
+            const objectUrl = URL.createObjectURL(response.data);
+            setCurrentLogoUrl(objectUrl);
+        } catch (e) {
+            setCurrentLogoUrl(null);
+        }
+    };
+
     const loadIntegrationConfig = async (provider: 'ycloud' | 'chatwoot', tenantId: number | null) => {
         try {
             setLoading(true);
@@ -160,6 +182,62 @@ export default function ConfigView() {
             console.error(err);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const validateFile = (file: File): string | null => {
+        const ext = file.name.split('.').pop()?.toLowerCase();
+        const allowedExts = ['png', 'jpg', 'jpeg', 'svg', 'webp', 'ico'];
+        if (!ext || !allowedExts.includes(ext)) {
+            return t('branding.error_unsupported_format');
+        }
+        if (file.size > MAX_FILE_SIZE) {
+            return t('branding.error_file_too_large');
+        }
+        return null;
+    };
+
+    const handleFileSelect = (file: File | null) => {
+        setLogoError(null);
+        if (!file) {
+            setLogoFile(null);
+            setLogoPreview(null);
+            return;
+        }
+        const error = validateFile(file);
+        if (error) {
+            setLogoError(error);
+            setLogoFile(null);
+            setLogoPreview(null);
+            return;
+        }
+        setLogoFile(file);
+        const previewUrl = URL.createObjectURL(file);
+        setLogoPreview(previewUrl);
+    };
+
+    const handleUpload = async () => {
+        if (!logoFile || !brandingTenantId) return;
+        setUploadingLogo(true);
+        setLogoError(null);
+        const formData = new FormData();
+        formData.append('logo', logoFile);
+        try {
+            await api.post(`/admin/tenants/${brandingTenantId}/logo`, formData, {
+                headers: { 'Content-Type': 'multipart/form-data' },
+            });
+            // Refresh current logo preview
+            await loadCurrentLogo(brandingTenantId);
+            // Emit event for Sidebar
+            window.dispatchEvent(new CustomEvent('tenant-logo-updated', { detail: { tenant_id: brandingTenantId } }));
+            showSuccess(t('branding.upload_success'));
+            // Reset file selection
+            setLogoFile(null);
+            setLogoPreview(null);
+        } catch (err: any) {
+            setLogoError(err.message || t('branding.upload_error'));
+        } finally {
+            setUploadingLogo(false);
         }
     };
 
@@ -653,6 +731,131 @@ export default function ConfigView() {
         </div>
     );
 
+    const renderBrandingTab = () => (
+        <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-300">
+            {/* 1. Tenant Selection */}
+            <div className="bg-white/[0.03] border border-white/[0.06] rounded-2xl p-4 sm:p-6">
+                <div className="flex items-center gap-2 mb-4">
+                    <Stethoscope size={20} className="text-white/60" />
+                    <h2 className="text-lg font-semibold text-white">{t('branding.select_clinic')}</h2>
+                </div>
+                <p className="text-sm text-white/40 mb-4">{t('branding.select_clinic_hint')}</p>
+                <select
+                    className="w-full px-4 py-2 bg-white/[0.04] border-white/[0.06] rounded-xl text-white focus:ring-2 focus:ring-purple-500 outline-none transition-all"
+                    value={brandingTenantId === null ? '' : brandingTenantId}
+                    onChange={(e) => {
+                        const tid = e.target.value ? Number(e.target.value) : null;
+                        setBrandingTenantId(tid);
+                        if (tid) loadCurrentLogo(tid);
+                    }}
+                >
+                    <option value="">{t('config.select_placeholder')}</option>
+                    {tenants.map(t => <option key={t.id} value={t.id}>{t.clinic_name}</option>)}
+                </select>
+            </div>
+
+            {/* 2. Current Logo Preview */}
+            {brandingTenantId && (
+                <div className="bg-white/[0.03] border border-white/[0.06] rounded-2xl p-4 sm:p-6">
+                    <div className="flex items-center gap-2 mb-4">
+                        <Image size={20} className="text-white/60" />
+                        <h2 className="text-lg font-semibold text-white">{t('branding.current_logo')}</h2>
+                    </div>
+                    <p className="text-sm text-white/40 mb-4">{t('branding.current_logo_hint')}</p>
+                    <div className="flex items-center justify-center p-8 bg-white/[0.02] rounded-xl border border-dashed border-white/[0.06]">
+                        {currentLogoUrl ? (
+                            <img src={currentLogoUrl} alt={t('branding.current_logo')} className="max-h-32 max-w-full object-contain rounded-lg" />
+                        ) : (
+                            <div className="text-center text-white/30">
+                                <Image size={48} className="mx-auto mb-2 opacity-30" />
+                                <p className="text-sm">{t('branding.no_logo_uploaded')}</p>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* 3. Upload Zone */}
+            <div className="bg-white/[0.03] border border-white/[0.06] rounded-2xl p-4 sm:p-6">
+                <div className="flex items-center gap-2 mb-4">
+                    <Upload size={20} className="text-white/60" />
+                    <h2 className="text-lg font-semibold text-white">{t('branding.upload_new_logo')}</h2>
+                </div>
+                <p className="text-sm text-white/40 mb-4">{t('branding.upload_hint')}</p>
+
+                {/* Drag‑and‑drop zone */}
+                <div
+                    className={`border-2 border-dashed rounded-2xl p-8 text-center transition-colors ${
+                        logoError ? 'border-red-500/30 bg-red-500/5' : 'border-white/[0.08] hover:border-purple-500/40'
+                    }`}
+                    onDragOver={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                    }}
+                    onDrop={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const file = e.dataTransfer.files[0];
+                        handleFileSelect(file);
+                    }}
+                >
+                    <Upload size={48} className="mx-auto mb-4 text-white/20" />
+                    <p className="text-white/60 mb-2">{t('branding.dropzone_text')}</p>
+                    <p className="text-xs text-white/30 mb-4">
+                        {t('branding.formats')}: PNG, JPG, SVG, WebP, ICO • {t('branding.max_size')}: 2MB
+                    </p>
+                    <label className="inline-block px-6 py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-medium cursor-pointer transition-colors">
+                        {t('branding.browse_files')}
+                        <input
+                            type="file"
+                            className="hidden"
+                            accept={ACCEPTED_FILE_TYPES}
+                            onChange={(e) => handleFileSelect(e.target.files?.[0] || null)}
+                        />
+                    </label>
+                </div>
+
+                {/* Selected file preview */}
+                {logoPreview && (
+                    <div className="mt-6 p-4 bg-white/[0.02] rounded-xl border border-white/[0.06]">
+                        <h3 className="text-sm font-medium text-white/70 mb-2">{t('branding.selected_file')}</h3>
+                        <div className="flex items-center gap-4">
+                            <img src={logoPreview} alt={t('branding.preview')} className="w-16 h-16 object-cover rounded-lg" />
+                            <div className="flex-1">
+                                <p className="text-white font-mono text-sm truncate">{logoFile?.name}</p>
+                                <p className="text-xs text-white/40">{logoFile && (logoFile.size / 1024).toFixed(0)} KB</p>
+                            </div>
+                            <button
+                                onClick={() => handleFileSelect(null)}
+                                className="p-2 text-white/40 hover:text-red-400 hover:bg-red-500/10 rounded-lg"
+                                title={t('common.remove')}
+                            >
+                                <Trash2 size={16} />
+                            </button>
+                        </div>
+                    </div>
+                )}
+
+                {/* Error message */}
+                {logoError && (
+                    <div className="mt-4 p-3 bg-red-500/10 border border-red-500/20 text-red-400 text-sm rounded-xl flex items-center gap-2">
+                        <AlertCircle size={16} /> {logoError}
+                    </div>
+                )}
+
+                {/* Upload button */}
+                <button
+                    onClick={handleUpload}
+                    disabled={!logoFile || !brandingTenantId || uploadingLogo}
+                    className="w-full py-3 mt-6 bg-purple-600 hover:bg-purple-700 disabled:bg-white/[0.06] disabled:text-white/30 text-white rounded-xl font-semibold shadow-lg shadow-purple-600/20 transition-all flex justify-center items-center gap-2"
+                >
+                    {uploadingLogo ? <Loader2 className="animate-spin" /> : <CheckCircle2 size={18} />}
+                    {uploadingLogo ? t('branding.uploading') : t('branding.upload_logo')}
+                </button>
+            </div>
+        </div>
+    );
+
     if (loading && !settings) {
         return (
             <div className="p-4 sm:p-6 flex items-center justify-center min-h-[400px]">
@@ -718,6 +921,12 @@ export default function ConfigView() {
                                 <Database size={18} /> Mantenimiento
                             </button>
                             <button
+                                onClick={() => setActiveTab('branding')}
+                                className={`px-6 py-4 font-medium text-sm whitespace-nowrap border-b-2 transition-all flex items-center gap-2 ${activeTab === 'branding' ? 'border-purple-600 text-purple-600 font-semibold' : 'border-transparent text-white/40 hover:text-purple-400 hover:border-purple-500/20'}`}
+                            >
+                                <Image size={18} /> {t('branding.tab_title')}
+                            </button>
+                            <button
                                 onClick={() => setActiveTab('leads')}
                                 className={`px-6 py-4 font-medium text-sm whitespace-nowrap border-b-2 transition-all flex items-center gap-2 ${activeTab === 'leads' ? 'border-blue-600 text-blue-600 font-semibold' : 'border-transparent text-white/40 hover:text-blue-400 hover:border-blue-500/20'}`}
                             >
@@ -742,6 +951,7 @@ export default function ConfigView() {
                     {activeTab === 'chatwoot' && user?.role === 'ceo' && renderChatwootTab()}
                     {activeTab === 'others' && user?.role === 'ceo' && renderOthersTab()}
                     {activeTab === 'maintenance' && user?.role === 'ceo' && renderMaintenanceTab()}
+                    {activeTab === 'branding' && user?.role === 'ceo' && renderBrandingTab()}
                     {activeTab === 'leads' && user?.role === 'ceo' && renderLeadsTab()}
                     {activeTab === 'meta' && user?.role === 'ceo' && (
                         <Suspense fallback={<div className="flex justify-center py-20"><Loader2 size={24} className="animate-spin text-blue-600" /></div>}>
