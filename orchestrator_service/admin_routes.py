@@ -9539,7 +9539,7 @@ async def get_patient_billing_summary(
         patient_id,
     )
 
-    # 2. Build appointments list
+    # 2. Build appointments list (keys match frontend AppointmentBilling interface)
     appointments = []
     for row in rows:
         receipt = row["payment_receipt_data"]
@@ -9552,7 +9552,7 @@ async def get_patient_billing_summary(
         appointments.append(
             {
                 "id": str(row["appointment_id"]),
-                "datetime": row["appointment_datetime"].isoformat()
+                "scheduled_at": row["appointment_datetime"].isoformat()
                 if row["appointment_datetime"]
                 else None,
                 "status": row["appointment_status"],
@@ -9563,7 +9563,7 @@ async def get_patient_billing_summary(
                 "billing_installments": row["billing_installments"],
                 "billing_notes": row["billing_notes"],
                 "payment_status": row["payment_status"] or "pending",
-                "payment_receipt": receipt,
+                "payment_receipt_data": receipt,
                 "professional_name": (row["professional_name"] or "").strip(),
                 "plan_item_id": str(row["plan_item_id"])
                 if row["plan_item_id"]
@@ -9572,7 +9572,7 @@ async def get_patient_billing_summary(
             }
         )
 
-    # 3. Group by treatment
+    # 3. Group by treatment — include full appointment objects (not just IDs)
     groups_map = {}
     for apt in appointments:
         code = apt["treatment_code"] or "sin_tipo"
@@ -9582,14 +9582,12 @@ async def get_patient_billing_summary(
                 "treatment_name": apt["treatment_name"],
                 "base_price": apt["base_price"],
                 "appointments": [],
-                "appointment_count": 0,
                 "total_billed": 0.0,
                 "total_paid": 0.0,
                 "total_pending": 0.0,
             }
         g = groups_map[code]
-        g["appointments"].append(apt["id"])
-        g["appointment_count"] += 1
+        g["appointments"].append(apt)
         g["total_billed"] += apt["billing_amount"]
         if apt["payment_status"] == "paid":
             g["total_paid"] += apt["billing_amount"]
@@ -9620,14 +9618,12 @@ async def get_patient_billing_summary(
     return {
         "appointments": appointments,
         "treatment_groups": treatment_groups,
-        "totals": {
-            "estimated": round(total_estimated, 2),
-            "paid": round(total_paid, 2),
-            "pending": round(total_estimated - total_paid, 2),
-            "appointment_count": len(appointments),
-        },
+        "global_total_estimated": round(total_estimated, 2),
+        "global_total_paid": round(total_paid, 2),
+        "global_total_pending": round(total_estimated - total_paid, 2),
         "has_active_plan": active_plan is not None,
         "active_plan_id": str(active_plan["id"]) if active_plan else None,
+        "patient_email": None,
     }
 
 
@@ -9793,7 +9789,7 @@ async def generate_plan_from_appointments(
                     INSERT INTO treatment_plan_items
                     (id, plan_id, tenant_id, treatment_type_code, custom_description,
                      estimated_price, approved_price, status, sort_order, created_at, updated_at)
-                    VALUES ($1, $2, $3, $4, $5, $6, 0, 'pending', $7, NOW(), NOW())
+                    VALUES ($1, $2, $3, $4, $5, $6, NULL, 'pending', $7, NOW(), NOW())
                     """,
                     item_id,
                     plan_id,

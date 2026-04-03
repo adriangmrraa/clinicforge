@@ -75,10 +75,14 @@ interface TreatmentType {
 }
 
 interface AppointmentBilling {
-  id: number;
-  scheduled_at: string;
+  id: number | string;
+  scheduled_at?: string | null;
+  datetime?: string | null;
   professional_name: string | null;
   status: string;
+  treatment_name?: string;
+  treatment_code?: string;
+  base_price?: number;
   billing_amount: number | null;
   payment_status: string | null;
   payment_receipt_data: {
@@ -140,13 +144,13 @@ const apptStatusColors: Record<string, { bg: string; text: string }> = {
 
 // ─── Utils ───────────────────────────────────────────────────────────────────
 
-const formatCurrency = (amount: number) =>
+const formatCurrency = (amount: number | null | undefined) =>
   new Intl.NumberFormat('es-AR', {
     style: 'currency',
     currency: 'ARS',
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
-  }).format(amount);
+  }).format(amount || 0);
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
 
@@ -203,14 +207,18 @@ function TreatmentGroupCard({ group }: { group: TreatmentGroup }) {
       {/* Appointment rows */}
       <div className="space-y-2 mb-4">
         {group.appointments.map((appt) => {
-          const apptDate = new Date(appt.scheduled_at);
+          const rawDate = appt.scheduled_at || appt.datetime;
+          const apptDate = rawDate ? new Date(rawDate) : null;
+          const isValidDate = apptDate && !isNaN(apptDate.getTime());
           const statusStyle = apptStatusColors[appt.status] || { bg: 'bg-white/10', text: 'text-white/50' };
           return (
             <div key={appt.id} className="flex flex-wrap items-center gap-2 py-2 border-b border-white/[0.04] last:border-0">
               <div className="flex-1 min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-xs text-white/70">
-                    {apptDate.toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric' })}
+                    {isValidDate
+                      ? apptDate.toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric' })
+                      : 'Sin fecha'}
                   </span>
                   {appt.professional_name && (
                     <span className="text-xs text-white/40">{appt.professional_name}</span>
@@ -779,14 +787,18 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
           /* Flat list fallback when no treatment groups */
           <div className="bg-white/[0.02] border border-white/[0.06] rounded-xl p-4 space-y-2">
             {billingData.appointments.map((appt) => {
-              const apptDate = new Date(appt.scheduled_at);
+              const rawDate = appt.scheduled_at || (appt as any).datetime;
+              const apptDate = rawDate ? new Date(rawDate) : null;
+              const isValidDate = apptDate && !isNaN(apptDate.getTime());
               const statusStyle = apptStatusColors[appt.status] || { bg: 'bg-white/10', text: 'text-white/50' };
               return (
                 <div key={appt.id} className="flex flex-wrap items-center gap-2 py-2 border-b border-white/[0.04] last:border-0">
                   <div className="flex-1 min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="text-xs text-white/70">
-                        {apptDate.toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric' })}
+                        {isValidDate
+                          ? apptDate.toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric' })
+                          : 'Sin fecha'}
                       </span>
                       {appt.professional_name && (
                         <span className="text-xs text-white/40">{appt.professional_name}</span>
