@@ -154,15 +154,14 @@ def upgrade():
         )
         print("✅ Created professional_commissions table")
 
-        # UNIQUE constraint: (tenant_id, professional_id, COALESCE(treatment_code, '__default__'))
+        # UNIQUE index with expression (constraints don't support expressions, indexes do)
         op.execute(
             """
-            ALTER TABLE professional_commissions
-            ADD CONSTRAINT uq_prof_comm
-            UNIQUE (tenant_id, professional_id, COALESCE(treatment_code, '__default__'))
+            CREATE UNIQUE INDEX uq_prof_comm
+            ON professional_commissions (tenant_id, professional_id, COALESCE(treatment_code, '__default__'))
             """
         )
-        print("✅ Added UNIQUE constraint uq_prof_comm")
+        print("✅ Added UNIQUE index uq_prof_comm")
 
         # Indexes with tenant_id filter
         op.create_index(
