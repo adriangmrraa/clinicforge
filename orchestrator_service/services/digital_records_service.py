@@ -86,6 +86,31 @@ def normalize_odontogram(raw) -> dict:
     if not isinstance(raw, dict):
         return empty
 
+    # v3 format: {"version": "3.0", "permanent": {"teeth": [...]}, "deciduous": {"teeth": [...]}}
+    if raw.get("version") == "3.0" and ("permanent" in raw or "deciduous" in raw):
+        teeth = []
+        for dentition_key in ("permanent", "deciduous"):
+            dentition = raw.get(dentition_key, {})
+            if isinstance(dentition, dict):
+                for t in dentition.get("teeth", []):
+                    if not isinstance(t, dict):
+                        continue
+                    # Flatten v3 surfaces {sk: {state, condition, color}} → {sk: state_str}
+                    flat_surfaces = {}
+                    for sk, sv in t.get("surfaces", {}).items():
+                        if isinstance(sv, dict):
+                            flat_surfaces[sk] = sv.get("state", "healthy")
+                        elif isinstance(sv, str):
+                            flat_surfaces[sk] = sv
+                    teeth.append({
+                        "id": t.get("id"),
+                        "state": t.get("state", "healthy"),
+                        "surfaces": flat_surfaces,
+                        "notes": t.get("notes", ""),
+                    })
+        affected = sum(1 for t in teeth if t.get("state", "healthy") != "healthy")
+        return {"teeth": teeth, "affected_count": affected, "format_version": "2.0"}
+
     # v2 format: {"teeth": [...]}
     if "teeth" in raw and isinstance(raw["teeth"], list):
         teeth = raw["teeth"]
