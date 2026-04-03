@@ -33,6 +33,8 @@ from pydantic import BaseModel
 from db import db
 from gcal_service import gcal_service
 from analytics_service import analytics_service
+from services.liquidation_service import liquidation_service
+from services.financial_dashboard_service import financial_dashboard_service
 from email_service import (
     email_service,
     send_welcome_email,
@@ -11635,3 +11637,873 @@ async def link_appointment_to_plan_item(
         "appointment_id": appointment_uuid,
         "plan_item_id": plan_item_uuid,
     }
+
+
+# =============================================
+# Financial Command Center
+# =============================================
+
+# --- Pydantic Models for Financial Endpoints ---
+
+
+class GenerateLiquidationBody(BaseModel):
+    professional_id: int
+    period_start: str
+    period_end: str
+
+
+class GenerateBulkLiquidationsBody(BaseModel):
+    period_start: str
+    period_end: str
+
+
+class UpdateLiquidationStatusBody(BaseModel):
+    status: str
+    notes: Optional[str] = None
+
+
+class CreatePayoutBody(BaseModel):
+    amount: float
+    payment_method: str
+    payment_date: str
+    reference_number: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class UpsertCommissionBody(BaseModel):
+    default_commission_pct: float
+    per_treatment: Optional[List[dict]] = None
+
+
+# --- EP-FC-01: POST /admin/liquidations/generate ---
+
+
+@router.post(
+    "/liquidations/generate",
+    dependencies=[Depends(verify_admin_token)],
+    tags=["Financial Command Center"],
+    summary="Generate a liquidation for a specific professional and period",
+)
+async def generate_liquidation(
+    body: GenerateLiquidationBody,
+    user_data=Depends(verify_admin_token),
+    tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    """
+    EP-FC-01: Generates a liquidation snapshot for a professional in a given period.
+    Idempotent: returns existing record if one already exists.
+    Returns 201 for new records, 200 for existing.
+    """
+    # Validate dates
+    try:
+        period_start = date.fromisoformat(body.period_start)
+        period_end = date.fromisoformat(body.period_end)
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail="Formato de fecha inválido. Usar YYYY-MM-DD.",
+        )
+
+    if period_start > period_end:
+        raise HTTPException(
+            status_code=400,
+            detail="period_start debe ser menor o igual a period_end.",
+        )
+
+    if (period_end - period_start).days > 366:
+        raise HTTPException(
+            status_code=400,
+            detail="El rango no puede superar 366 días.",
+        )
+
+    # Verify professional exists and belongs to tenant
+    prof = await db.pool.fetchrow(
+        """
+        SELECT id, first_name, last_name FROM professionals
+        WHERE id = $1 AND tenant_id = $2
+        """,
+        body.professional_id,
+        tenant_id,
+    )
+    if not prof:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Profesional {body.professional_id} no encontrado en esta clínica.",
+        )
+
+    try:
+        record = await liquidation_service.generate_liquidation(
+            pool=db.pool,
+            tenant_id=tenant_id,
+            professional_id=body.professional_id,
+            period_start=period_start,
+            period_end=period_end,
+            generated_by_email=user_data.email or "admin",
+        )
+
+        # Determine if it was newly created or existing
+        created_at = record.get("created_at")
+        is_new = False
+        if created_at and isinstance(created_at, datetime):
+            diff = (datetime.utcnow() - created_at).total_seconds()
+            is_new = diff < 60
+
+        status_code = 201 if is_new else 200
+        return JSONResponse(content=record, status_code=status_code)
+
+    except Exception as e:
+        logger.error(f"Error generating liquidation: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error interno del servidor")
+
+
+# --- EP-FC-02: POST /admin/liquidations/generate-bulk ---
+
+
+@router.post(
+    "/liquidations/generate-bulk",
+    dependencies=[Depends(verify_admin_token)],
+    tags=["Financial Command Center"],
+    summary="Generate liquidations for all active professionals in a period",
+)
+async def generate_bulk_liquidations(
+    body: GenerateBulkLiquidationsBody,
+    user_data=Depends(verify_admin_token),
+    tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    """
+    EP-FC-02: Generates liquidations for ALL active professionals in the period.
+    Returns { generated_count, skipped_count, liquidations: [...] }.
+    """
+    # Validate dates
+    try:
+        period_start = date.fromisoformat(body.period_start)
+        period_end = date.fromisoformat(body.period_end)
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail="Formato de fecha inválido. Usar YYYY-MM-DD.",
+        )
+
+    if period_start > period_end:
+        raise HTTPException(
+            status_code=400,
+            detail="period_start debe ser menor o igual a period_end.",
+        )
+
+    if (period_end - period_start).days > 366:
+        raise HTTPException(
+            status_code=400,
+            detail="El rango no puede superar 366 días.",
+        )
+
+    try:
+        result = await liquidation_service.generate_bulk_liquidations(
+            pool=db.pool,
+            tenant_id=tenant_id,
+            period_start=period_start,
+            period_end=period_end,
+            generated_by_email=user_data.email or "admin",
+        )
+        return JSONResponse(content=result, status_code=201)
+
+    except Exception as e:
+        logger.error(f"Error generating bulk liquidations: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error interno del servidor")
+
+
+# --- EP-FC-03: GET /admin/liquidations ---
+
+
+@router.get(
+    "/liquidations",
+    dependencies=[Depends(verify_admin_token)],
+    tags=["Financial Command Center"],
+    summary="List liquidations with filters and pagination",
+)
+async def list_liquidations(
+    professional_id: Optional[int] = Query(None),
+    status: Optional[str] = Query(None),
+    period_start: Optional[str] = Query(None),
+    period_end: Optional[str] = Query(None),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    """
+    EP-FC-03: Paginated list of liquidation records with optional filters.
+    """
+    # Parse optional dates
+    parsed_start = None
+    parsed_end = None
+    if period_start:
+        try:
+            parsed_start = date.fromisoformat(period_start)
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail="Formato de period_start inválido. Usar YYYY-MM-DD.",
+            )
+    if period_end:
+        try:
+            parsed_end = date.fromisoformat(period_end)
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail="Formato de period_end inválido. Usar YYYY-MM-DD.",
+            )
+
+    limit = page_size
+    offset = (page - 1) * page_size
+
+    try:
+        result = await liquidation_service.list_liquidations(
+            pool=db.pool,
+            tenant_id=tenant_id,
+            professional_id=professional_id,
+            status=status,
+            period_start=parsed_start,
+            period_end=parsed_end,
+            limit=limit,
+            offset=offset,
+        )
+        return result
+
+    except Exception as e:
+        logger.error(f"Error listing liquidations: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error interno del servidor")
+
+
+# --- EP-FC-04: GET /admin/liquidations/{liquidation_id} ---
+
+
+@router.get(
+    "/liquidations/{liquidation_id}",
+    dependencies=[Depends(verify_admin_token)],
+    tags=["Financial Command Center"],
+    summary="Get full liquidation detail with treatment groups and payouts",
+)
+async def get_liquidation_detail(
+    liquidation_id: int,
+    tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    """
+    EP-FC-04: Returns full liquidation detail including treatment groups and payouts.
+    """
+    try:
+        detail = await liquidation_service.get_liquidation_detail(
+            pool=db.pool,
+            tenant_id=tenant_id,
+            liquidation_id=liquidation_id,
+        )
+        if not detail:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Liquidación {liquidation_id} no encontrada.",
+            )
+        return detail
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting liquidation detail: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error interno del servidor")
+
+
+# --- EP-FC-05: PATCH /admin/liquidations/{liquidation_id} ---
+
+
+@router.patch(
+    "/liquidations/{liquidation_id}",
+    dependencies=[Depends(verify_admin_token)],
+    tags=["Financial Command Center"],
+    summary="Update liquidation status with audit trail",
+)
+async def update_liquidation_status(
+    liquidation_id: int,
+    body: UpdateLiquidationStatusBody,
+    user_data=Depends(verify_admin_token),
+    tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    """
+    EP-FC-05: Updates liquidation status with validation of allowed transitions.
+    Valid transitions: draft→generated→approved→paid
+    """
+    valid_statuses = ("draft", "generated", "approved", "paid")
+    if body.status not in valid_statuses:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Status inválido. Valores permitidos: {', '.join(valid_statuses)}.",
+        )
+
+    try:
+        result = await liquidation_service.update_liquidation_status(
+            pool=db.pool,
+            tenant_id=tenant_id,
+            liquidation_id=liquidation_id,
+            new_status=body.status,
+            user_email=user_data.email or "admin",
+            notes=body.notes,
+        )
+        if not result:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Liquidación {liquidation_id} no encontrada.",
+            )
+        return result
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating liquidation status: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error interno del servidor")
+
+
+# --- EP-FC-06: POST /admin/liquidations/{liquidation_id}/payout ---
+
+
+@router.post(
+    "/liquidations/{liquidation_id}/payout",
+    dependencies=[Depends(verify_admin_token)],
+    tags=["Financial Command Center"],
+    summary="Register a payout to a professional",
+)
+async def create_payout(
+    liquidation_id: int,
+    body: CreatePayoutBody,
+    user_data=Depends(verify_admin_token),
+    tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    """
+    EP-FC-06: Creates a professional payout record.
+    Auto-updates liquidation status to 'paid' if total payouts >= payout_amount.
+    """
+    # Validate amount
+    if body.amount <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail="El monto debe ser mayor a 0.",
+        )
+
+    # Validate payment method
+    valid_methods = ["transfer", "cash", "check"]
+    if body.payment_method not in valid_methods:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Método de pago inválido. Valores permitidos: {', '.join(valid_methods)}.",
+        )
+
+    # Parse payment date
+    try:
+        payment_date = date.fromisoformat(body.payment_date)
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail="Formato de payment_date inválido. Usar YYYY-MM-DD.",
+        )
+
+    try:
+        payout = await liquidation_service.create_payout(
+            pool=db.pool,
+            tenant_id=tenant_id,
+            liquidation_id=liquidation_id,
+            amount=body.amount,
+            payment_method=body.payment_method,
+            payment_date=payment_date,
+            reference_number=body.reference_number,
+            notes=body.notes,
+            user_email=user_data.email or "admin",
+        )
+        return JSONResponse(content=payout, status_code=201)
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error creating payout: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error interno del servidor")
+
+
+# --- EP-FC-07: GET /admin/liquidations/{liquidation_id}/payouts ---
+
+
+@router.get(
+    "/liquidations/{liquidation_id}/payouts",
+    dependencies=[Depends(verify_admin_token)],
+    tags=["Financial Command Center"],
+    summary="List all payouts for a liquidation",
+)
+async def get_liquidation_payouts(
+    liquidation_id: int,
+    tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    """
+    EP-FC-07: Returns all payouts associated with a liquidation.
+    """
+    try:
+        # First verify the liquidation belongs to this tenant
+        record = await db.pool.fetchrow(
+            """
+            SELECT id FROM liquidation_records
+            WHERE id = $1 AND tenant_id = $2
+            """,
+            liquidation_id,
+            tenant_id,
+        )
+        if not record:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Liquidación {liquidation_id} no encontrada.",
+            )
+
+        payouts = await db.pool.fetch(
+            """
+            SELECT id, liquidation_id, professional_id, amount,
+                   payment_method, payment_date, reference_number,
+                   notes, created_at
+            FROM professional_payouts
+            WHERE liquidation_id = $1 AND tenant_id = $2
+            ORDER BY payment_date DESC
+            """,
+            liquidation_id,
+            tenant_id,
+        )
+
+        result = []
+        for p in payouts:
+            result.append(
+                {
+                    "id": p["id"],
+                    "liquidation_id": p["liquidation_id"],
+                    "amount": float(p["amount"]),
+                    "payment_method": p["payment_method"],
+                    "payment_date": p["payment_date"].isoformat()
+                    if p["payment_date"]
+                    else None,
+                    "reference_number": p["reference_number"],
+                    "notes": p["notes"],
+                    "created_at": p["created_at"].isoformat()
+                    if p["created_at"]
+                    else None,
+                }
+            )
+
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting payouts: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error interno del servidor")
+
+
+# --- EP-FC-08: GET /admin/financial-dashboard ---
+
+
+@router.get(
+    "/financial-dashboard",
+    dependencies=[Depends(verify_admin_token)],
+    tags=["Financial Command Center"],
+    summary="Get comprehensive financial dashboard data",
+)
+async def get_financial_dashboard(
+    period_start: str = Query(...),
+    period_end: str = Query(...),
+    tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    """
+    EP-FC-08: Returns aggregated financial dashboard data including:
+    - Summary (revenue, payouts, profit, pending)
+    - Revenue by professional
+    - Revenue by treatment
+    - Daily cash flow
+    - Month-over-month growth
+    - Top treatments
+    - Pending collections
+    """
+    # Validate dates
+    try:
+        p_start = date.fromisoformat(period_start)
+        p_end = date.fromisoformat(period_end)
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail="Formato de fecha inválido. Usar YYYY-MM-DD.",
+        )
+
+    if p_start > p_end:
+        raise HTTPException(
+            status_code=400,
+            detail="period_start debe ser menor o igual a period_end.",
+        )
+
+    try:
+        # Fetch all dashboard data in parallel would be ideal, but we do sequential for simplicity
+        summary = await financial_dashboard_service.get_financial_summary(
+            pool=db.pool,
+            tenant_id=tenant_id,
+            period_start=p_start,
+            period_end=p_end,
+        )
+        revenue_by_professional = (
+            await financial_dashboard_service.get_revenue_by_professional(
+                pool=db.pool,
+                tenant_id=tenant_id,
+                period_start=p_start,
+                period_end=p_end,
+            )
+        )
+        revenue_by_treatment = (
+            await financial_dashboard_service.get_revenue_by_treatment(
+                pool=db.pool,
+                tenant_id=tenant_id,
+                period_start=p_start,
+                period_end=p_end,
+            )
+        )
+        daily_cash_flow = await financial_dashboard_service.get_daily_cash_flow(
+            pool=db.pool,
+            tenant_id=tenant_id,
+            period_start=p_start,
+            period_end=p_end,
+        )
+        mom_growth = await financial_dashboard_service.get_mom_growth(
+            pool=db.pool,
+            tenant_id=tenant_id,
+            period_start=p_start,
+            period_end=p_end,
+        )
+        top_treatments = await financial_dashboard_service.get_top_treatments(
+            pool=db.pool,
+            tenant_id=tenant_id,
+            period_start=p_start,
+            period_end=p_end,
+        )
+        pending_collections = await financial_dashboard_service.get_pending_collections(
+            pool=db.pool,
+            tenant_id=tenant_id,
+            period_start=p_start,
+            period_end=p_end,
+        )
+
+        return {
+            "summary": summary,
+            "revenue_by_professional": revenue_by_professional,
+            "revenue_by_treatment": revenue_by_treatment,
+            "daily_cash_flow": daily_cash_flow,
+            "mom_growth": mom_growth,
+            "top_treatments": top_treatments,
+            "pending_collections": pending_collections,
+        }
+
+    except Exception as e:
+        logger.error(f"Error getting financial dashboard: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error interno del servidor")
+
+
+# --- EP-FC-09: GET /admin/professionals/{professional_id}/commissions ---
+
+
+@router.get(
+    "/professionals/{professional_id}/commissions",
+    dependencies=[Depends(verify_admin_token)],
+    tags=["Financial Command Center"],
+    summary="Get commission configuration for a professional",
+)
+async def get_professional_commissions(
+    professional_id: int,
+    tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    """
+    EP-FC-09: Returns commission configuration for a professional.
+    If no config exists, returns 0% with a warning field.
+    """
+    # Verify professional exists and belongs to tenant
+    prof = await db.pool.fetchrow(
+        """
+        SELECT id, first_name, last_name FROM professionals
+        WHERE id = $1 AND tenant_id = $2
+        """,
+        professional_id,
+        tenant_id,
+    )
+    if not prof:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Profesional {professional_id} no encontrado en esta clínica.",
+        )
+
+    try:
+        config = await liquidation_service.get_commission_config(
+            pool=db.pool,
+            tenant_id=tenant_id,
+            professional_id=professional_id,
+        )
+        # Add professional name
+        config["professional_name"] = (
+            f"{prof['first_name']} {prof['last_name']}".strip()
+        )
+        return config
+
+    except Exception as e:
+        logger.error(f"Error getting commission config: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error interno del servidor")
+
+
+# --- EP-FC-10: PUT /admin/professionals/{professional_id}/commissions ---
+
+
+@router.put(
+    "/professionals/{professional_id}/commissions",
+    dependencies=[Depends(verify_admin_token)],
+    tags=["Financial Command Center"],
+    summary="Create or update commission configuration for a professional",
+)
+async def upsert_professional_commissions(
+    professional_id: int,
+    body: UpsertCommissionBody,
+    tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    """
+    EP-FC-10: Creates or updates commission configuration for a professional.
+    Validates percentages (0-100) and treatment codes.
+    """
+    # Validate default commission percentage
+    if not (0 <= body.default_commission_pct <= 100):
+        raise HTTPException(
+            status_code=400,
+            detail="default_commission_pct debe estar entre 0 y 100.",
+        )
+
+    # Validate per-treatment percentages
+    if body.per_treatment:
+        for entry in body.per_treatment:
+            pct = entry.get("commission_pct", 0)
+            if not (0 <= pct <= 100):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"commission_pct para {entry.get('treatment_code', 'unknown')} debe estar entre 0 y 100.",
+                )
+            if not entry.get("treatment_code"):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Cada override de tratamiento requiere treatment_code.",
+                )
+
+        # Validate treatment codes exist
+        treatment_codes = [e["treatment_code"] for e in body.per_treatment]
+        existing_treatments = await db.pool.fetch(
+            """
+            SELECT code FROM treatment_types
+            WHERE tenant_id = $1 AND code = ANY($2)
+            """,
+            tenant_id,
+            treatment_codes,
+        )
+        existing_codes = {r["code"] for r in existing_treatments}
+        missing_codes = set(treatment_codes) - existing_codes
+        if missing_codes:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Tratamientos no encontrados: {', '.join(missing_codes)}",
+            )
+
+    # Verify professional exists and belongs to tenant
+    prof = await db.pool.fetchrow(
+        """
+        SELECT id FROM professionals
+        WHERE id = $1 AND tenant_id = $2
+        """,
+        professional_id,
+        tenant_id,
+    )
+    if not prof:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Profesional {professional_id} no encontrado en esta clínica.",
+        )
+
+    try:
+        result = await liquidation_service.upsert_commission_config(
+            pool=db.pool,
+            tenant_id=tenant_id,
+            professional_id=professional_id,
+            default_commission_pct=body.default_commission_pct,
+            per_treatment=body.per_treatment or [],
+        )
+        return result
+
+    except Exception as e:
+        logger.error(f"Error upserting commission config: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error interno del servidor")
+
+
+# --- EP-FC-11: GET /admin/reconciliation ---
+
+
+@router.get(
+    "/reconciliation",
+    dependencies=[Depends(verify_admin_token)],
+    tags=["Financial Command Center"],
+    summary="Financial reconciliation report comparing patient payments vs professional payouts",
+)
+async def get_reconciliation(
+    period_start: str = Query(...),
+    period_end: str = Query(...),
+    tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    """
+    EP-FC-11: Compares patient payments vs professional payouts and detects discrepancies.
+    Discrepancies = paid appointments not included in any liquidation record.
+    """
+    # Validate dates
+    try:
+        p_start = date.fromisoformat(period_start)
+        p_end = date.fromisoformat(period_end)
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail="Formato de fecha inválido. Usar YYYY-MM-DD.",
+        )
+
+    if p_start > p_end:
+        raise HTTPException(
+            status_code=400,
+            detail="period_start debe ser menor o igual a period_end.",
+        )
+
+    try:
+        # 1. Total patient payments (paid appointments + treatment plan payments)
+        total_patient_appt = await db.pool.fetchval(
+            """
+            SELECT COALESCE(SUM(billing_amount), 0)
+            FROM appointments
+            WHERE tenant_id = $1
+              AND appointment_datetime >= $2
+              AND appointment_datetime < ($3::date + INTERVAL '1 day')
+              AND payment_status = 'paid'
+              AND status NOT IN ('cancelled', 'deleted')
+            """,
+            tenant_id,
+            p_start,
+            p_end,
+        )
+
+        total_plan_payments = await db.pool.fetchval(
+            """
+            SELECT COALESCE(SUM(amount), 0)
+            FROM treatment_plan_payments tpp
+            JOIN treatment_plans tp ON tp.id = tpp.plan_id AND tp.tenant_id = $1
+            WHERE tpp.tenant_id = $1
+              AND tpp.payment_date >= $2
+              AND tpp.payment_date < ($3::date + INTERVAL '1 day')
+            """,
+            tenant_id,
+            p_start,
+            p_end,
+        )
+
+        total_patient_payments = float(total_patient_appt or 0) + float(
+            total_plan_payments or 0
+        )
+
+        # 2. Total professional payouts
+        total_professional_payouts = await db.pool.fetchval(
+            """
+            SELECT COALESCE(SUM(amount), 0)
+            FROM professional_payouts
+            WHERE tenant_id = $1
+              AND payment_date >= $2
+              AND payment_date < ($3::date + INTERVAL '1 day')
+            """,
+            tenant_id,
+            p_start,
+            p_end,
+        )
+        total_professional_payouts = float(total_professional_payouts or 0)
+
+        difference = total_patient_payments - total_professional_payouts
+
+        # 3. Detect discrepancies: paid appointments not in any liquidation
+        # Get all paid appointment IDs in the period
+        paid_appts = await db.pool.fetch(
+            """
+            SELECT
+                a.id AS appointment_id,
+                a.appointment_datetime,
+                a.billing_amount,
+                a.payment_status,
+                pat.first_name || ' ' || COALESCE(pat.last_name, '') AS patient_name,
+                COALESCE(tt.name, a.appointment_type, 'Sin tratamiento') AS treatment_name,
+                p.first_name || ' ' || COALESCE(p.last_name, '') AS professional_name
+            FROM appointments a
+            JOIN patients pat ON pat.id = a.patient_id AND pat.tenant_id = $1
+            LEFT JOIN treatment_types tt ON tt.code = a.appointment_type AND tt.tenant_id = $1
+            LEFT JOIN professionals p ON p.id = a.professional_id AND p.tenant_id = $1
+            WHERE a.tenant_id = $1
+              AND a.appointment_datetime >= $2
+              AND a.appointment_datetime < ($3::date + INTERVAL '1 day')
+              AND a.payment_status = 'paid'
+              AND a.status NOT IN ('cancelled', 'deleted')
+              AND a.billing_amount > 0
+            """,
+            tenant_id,
+            p_start,
+            p_end,
+        )
+
+        # Get all appointment IDs that ARE in liquidation records for the period
+        liquidated_appt_ids = await db.pool.fetch(
+            """
+            SELECT DISTINCT a.id
+            FROM appointments a
+            JOIN liquidation_records lr ON lr.tenant_id = $1
+                AND lr.professional_id = a.professional_id
+                AND a.appointment_datetime >= lr.period_start
+                AND a.appointment_datetime < (lr.period_end::date + INTERVAL '1 day')
+            WHERE a.tenant_id = $1
+              AND a.appointment_datetime >= $2
+              AND a.appointment_datetime < ($3::date + INTERVAL '1 day')
+              AND a.payment_status = 'paid'
+              AND a.status NOT IN ('cancelled', 'deleted')
+            """,
+            tenant_id,
+            p_start,
+            p_end,
+        )
+        liquidated_ids = {r["id"] for r in liquidated_appt_ids}
+
+        # Build discrepancies
+        discrepancies = []
+        for appt in paid_appts:
+            if appt["appointment_id"] not in liquidated_ids:
+                discrepancies.append(
+                    {
+                        "type": "payment_without_liquidation",
+                        "appointment_id": appt["appointment_id"],
+                        "patient_name": (appt["patient_name"] or "").strip(),
+                        "treatment_name": appt["treatment_name"],
+                        "amount": float(appt["billing_amount"]),
+                        "appointment_date": appt["appointment_datetime"].isoformat()
+                        if appt["appointment_datetime"]
+                        else None,
+                        "professional_name": (appt["professional_name"] or "").strip(),
+                        "description": "Pago registrado sin liquidación asociada",
+                    }
+                )
+
+        return {
+            "period_start": period_start,
+            "period_end": period_end,
+            "total_patient_payments": round(total_patient_payments, 2),
+            "total_professional_payouts": round(total_professional_payouts, 2),
+            "difference": round(difference, 2),
+            "discrepancies": discrepancies,
+            "discrepancy_count": len(discrepancies),
+        }
+
+    except Exception as e:
+        logger.error(f"Error in reconciliation: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error interno del servidor")
