@@ -72,6 +72,7 @@ from schemas.treatment_plan import (
     ItemStatus,
     PlanStatus,
     RegisterPaymentBody,
+    LinkPlanItemBody,
 )
 
 

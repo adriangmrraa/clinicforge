@@ -1818,7 +1818,7 @@ async def _ver_presupuesto_paciente(args: Dict, tenant_id: int) -> str:
 
 async def _format_plan_detail(plan, tenant_id: int) -> str:
     """Formatea el detalle de un plan de tratamiento."""
-    from orchestrator_service.services import db
+    from db import db
 
     plan_id = str(plan["id"])
 
