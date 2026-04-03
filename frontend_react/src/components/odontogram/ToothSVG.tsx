@@ -98,11 +98,16 @@ export function ToothSVG({
         />
       ))}
 
-      {/* Diagonal cross dividers */}
-      <line x1="7.3" y1="7.3" x2="15" y2="15" stroke={fills.stroke} strokeWidth="0.5" opacity={isAbsent ? 0.15 : 0.3} />
-      <line x1="32.7" y1="7.3" x2="25" y2="15" stroke={fills.stroke} strokeWidth="0.5" opacity={isAbsent ? 0.15 : 0.3} />
-      <line x1="32.7" y1="32.7" x2="25" y2="25" stroke={fills.stroke} strokeWidth="0.5" opacity={isAbsent ? 0.15 : 0.3} />
-      <line x1="7.3" y1="32.7" x2="15" y2="25" stroke={fills.stroke} strokeWidth="0.5" opacity={isAbsent ? 0.15 : 0.3} />
+      {/* Structural dividers — always visible, drawn OVER surfaces */}
+      {/* Diagonal cross from outer circle to inner circle */}
+      <line x1="7.3" y1="7.3" x2="15" y2="15" stroke="#06060e" strokeWidth="1.2" opacity={isAbsent ? 0.3 : 0.9} />
+      <line x1="32.7" y1="7.3" x2="25" y2="15" stroke="#06060e" strokeWidth="1.2" opacity={isAbsent ? 0.3 : 0.9} />
+      <line x1="32.7" y1="32.7" x2="25" y2="25" stroke="#06060e" strokeWidth="1.2" opacity={isAbsent ? 0.3 : 0.9} />
+      <line x1="7.3" y1="32.7" x2="15" y2="25" stroke="#06060e" strokeWidth="1.2" opacity={isAbsent ? 0.3 : 0.9} />
+      {/* Inner circle border — separates occlusal from outer sections */}
+      <circle cx="20" cy="20" r="7" fill="none" stroke="#06060e" strokeWidth="1" opacity={isAbsent ? 0.3 : 0.85} />
+      {/* Outer circle border */}
+      <circle cx="20" cy="20" r="18" fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="0.6" />
 
       {/* X overlay for extraction */}
       {(state === 'indicacion_extraccion' || state === 'extraction') && (

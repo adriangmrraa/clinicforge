@@ -103,11 +103,13 @@ export function MobileToothZoom({
             onClick={() => onSurfaceClick(surface)}
           />
         ))}
-        {/* Diagonal cross dividers */}
-        <line x1="22" y1="22" x2="45" y2="45" stroke={fills.stroke} strokeWidth="1" opacity="0.3" />
-        <line x1="98" y1="22" x2="75" y2="45" stroke={fills.stroke} strokeWidth="1" opacity="0.3" />
-        <line x1="98" y1="98" x2="75" y2="75" stroke={fills.stroke} strokeWidth="1" opacity="0.3" />
-        <line x1="22" y1="98" x2="45" y2="75" stroke={fills.stroke} strokeWidth="1" opacity="0.3" />
+        {/* Structural dividers */}
+        <line x1="22" y1="22" x2="45" y2="45" stroke="#06060e" strokeWidth="3" opacity="0.9" />
+        <line x1="98" y1="22" x2="75" y2="45" stroke="#06060e" strokeWidth="3" opacity="0.9" />
+        <line x1="98" y1="98" x2="75" y2="75" stroke="#06060e" strokeWidth="3" opacity="0.9" />
+        <line x1="22" y1="98" x2="45" y2="75" stroke="#06060e" strokeWidth="3" opacity="0.9" />
+        <circle cx="60" cy="60" r="21" fill="none" stroke="#06060e" strokeWidth="2.5" opacity="0.85" />
+        <circle cx="60" cy="60" r="54" fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth="1.5" />
       </svg>
 
       <p className="text-[10px] text-white/40 text-center mt-1">
