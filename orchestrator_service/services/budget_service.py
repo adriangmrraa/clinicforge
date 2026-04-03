@@ -93,7 +93,7 @@ async def gather_budget_data(pool, plan_id: str, tenant_id: int) -> Optional[dic
             prof.specialty,
             t.clinic_name,
             t.address AS clinic_address,
-            t.phone AS clinic_phone,
+            t.bot_phone_number AS clinic_phone,
             t.logo_url
         FROM treatment_plans tp
         JOIN patients pat ON pat.id = tp.patient_id AND pat.tenant_id = tp.tenant_id
