@@ -221,7 +221,7 @@ export default function ConfigView() {
         setUploadingLogo(true);
         setLogoError(null);
         const formData = new FormData();
-        formData.append('logo', logoFile);
+        formData.append('file', logoFile);
         try {
             await api.post(`/admin/tenants/${brandingTenantId}/logo`, formData, {
                 headers: { 'Content-Type': 'multipart/form-data' },
