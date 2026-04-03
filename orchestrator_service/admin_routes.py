@@ -11136,14 +11136,21 @@ async def send_treatment_plan_email(
     resolved_tenant_id: int = Depends(get_resolved_tenant_id),
 ):
     """Envía presupuesto por email al paciente con PDF adjunto."""
+    import asyncio
+    from email_service import email_service
+    from services.budget_service import generate_budget_pdf, gather_budget_data
+
     body = await request.json()
     to_email = body.get("email") or body.get("to_email")
     if not to_email:
         raise HTTPException(status_code=422, detail="Email requerido")
 
-    from services.budget_service import generate_budget_pdf, gather_budget_data
-
-    pdf_path = await generate_budget_pdf(db.pool, plan_id, resolved_tenant_id)
+    # Generate PDF (same pattern as digital records)
+    try:
+        pdf_path = await generate_budget_pdf(db.pool, plan_id, resolved_tenant_id)
+    except Exception as e:
+        logger.error(f"Error generating budget PDF: {e}")
+        raise HTTPException(status_code=500, detail=f"Error generando PDF: {str(e)}")
     if not pdf_path:
         raise HTTPException(status_code=404, detail="Plan no encontrado")
 
@@ -11151,15 +11158,11 @@ async def send_treatment_plan_email(
     if not data:
         raise HTTPException(status_code=404, detail="Datos del plan no encontrados")
 
-    import asyncio
-    from email_service import EmailService
-
-    email_svc = EmailService()
-    loop = asyncio.get_event_loop()
+    # Send email with PDF attachment (same pattern as digital records)
     try:
-        await loop.run_in_executor(
+        await asyncio.get_event_loop().run_in_executor(
             None,
-            lambda: email_svc.send_budget_email(
+            lambda: email_service.send_budget_email(
                 to_email=to_email,
                 pdf_path=pdf_path,
                 patient_name=data["patient"]["name"],
@@ -11167,6 +11170,7 @@ async def send_treatment_plan_email(
             ),
         )
     except Exception as e:
+        logger.error(f"Error sending budget email: {e}")
         raise HTTPException(status_code=500, detail=f"Error enviando email: {str(e)}")
 
     return {"success": True, "message": f"Presupuesto enviado a {to_email}"}
