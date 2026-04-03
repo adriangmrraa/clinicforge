@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useTranslation } from 'context/LanguageContext';
+import { useTranslation } from '../context/LanguageContext';
 import {
   Plus, Trash2, Edit2, Loader2, Receipt, X,
   Banknote, ArrowRightLeft, CreditCard, Check, AlertCircle,
