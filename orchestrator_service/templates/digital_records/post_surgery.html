@@ -2,59 +2,86 @@
 {% block content %}
 
 <div data-section="patient_info" data-editable="false">
-    <h2 class="section-title">INFORME POST-QUIRÚRGICO</h2>
-    <div class="patient-data">
-        <table>
+    <h2 class="section-title">INFORME POST-QUIRURGICO</h2>
+    <div class="patient-data" style="background: #f7fafc; border: 1px solid #e2e8f0; border-radius: 4px; padding: 14px 18px; margin-bottom: 24px;">
+        <table style="width: 100%; border-collapse: collapse;">
             <tr>
-                <td class="label">Paciente:</td>
-                <td>{{ data.patient.full_name or '[Sin nombre]' }}</td>
-                <td class="label">DNI:</td>
-                <td>{{ data.patient.dni or 'No registrado' }}</td>
+                <td style="padding: 4px 8px; font-size: 10pt; color: #718096; width: 120px;">Paciente:</td>
+                <td style="padding: 4px 8px; font-size: 10pt; font-weight: bold;">{{ data.patient.full_name or '[Sin nombre]' }}</td>
+                <td style="padding: 4px 8px; font-size: 10pt; color: #718096; width: 120px;">DNI:</td>
+                <td style="padding: 4px 8px; font-size: 10pt; font-weight: bold;">{{ data.patient.dni or 'No registrado' }}</td>
             </tr>
             <tr>
-                <td class="label">Obra Social:</td>
-                <td>{{ data.patient.insurance or 'Particular' }}</td>
-                <td class="label">Fecha:</td>
-                <td>{{ data.generated_at[:10] | default('') }}</td>
+                <td style="padding: 4px 8px; font-size: 10pt; color: #718096;">Edad:</td>
+                <td style="padding: 4px 8px; font-size: 10pt; font-weight: bold;">{{ data.patient.age or '—' }}</td>
+                <td style="padding: 4px 8px; font-size: 10pt; color: #718096;">Telefono:</td>
+                <td style="padding: 4px 8px; font-size: 10pt; font-weight: bold;">{{ data.patient.phone or 'No registrado' }}</td>
+            </tr>
+            <tr>
+                <td style="padding: 4px 8px; font-size: 10pt; color: #718096;">Obra Social:</td>
+                <td style="padding: 4px 8px; font-size: 10pt; font-weight: bold;">{{ data.patient.insurance or 'Particular' }}</td>
+                <td style="padding: 4px 8px; font-size: 10pt; color: #718096;">Fecha:</td>
+                <td style="padding: 4px 8px; font-size: 10pt; font-weight: bold;">{{ data.generated_at[:10] | default('') }}</td>
             </tr>
         </table>
     </div>
 </div>
 
 <div data-section="contexto" data-editable="true">
+    <h3 class="section-title">Contexto</h3>
     <div class="narrative">{{ ai.contexto | default('') }}</div>
 </div>
 
 {% if ai.antecedente_quirurgico %}
 <div data-section="antecedente_quirurgico" data-editable="true">
+    <h3 class="section-title">Antecedente Quirurgico</h3>
     <div class="narrative">{{ ai.antecedente_quirurgico }}</div>
 </div>
 {% endif %}
 
 <div data-section="procedimiento_actual" data-editable="true">
-    <div class="narrative">{{ ai.procedimiento_actual | default('') }}</div>
+    <h3 class="section-title">Procedimiento Actual</h3>
+    <div style="background: #ebf8ff; border-left: 4px solid #3182ce; padding: 12px 16px; margin-bottom: 16px; border-radius: 0 4px 4px 0;">
+        <div class="narrative" style="margin-bottom: 0;">{{ ai.procedimiento_actual | default('') }}</div>
+    </div>
 </div>
 
 <div data-section="evolucion" data-editable="true">
-    <div class="narrative">{{ ai.evolucion | default('El/la paciente evoluciona dentro de parámetros esperables para el tipo de intervención realizada.') }}</div>
+    <h3 class="section-title">Evolucion</h3>
+    <div class="narrative">{{ ai.evolucion | default('El/la paciente evoluciona dentro de parametros esperables para el tipo de intervencion realizada.') }}</div>
 </div>
 
 <div data-section="conducta" data-editable="true">
-    <h3 class="section-title">Conducta y seguimiento</h3>
+    <h3 class="section-title">Conducta y Seguimiento</h3>
     <div class="narrative">{{ ai.conducta | default('Se indica control postoperatorio.') }}</div>
 </div>
 
 {% if data.next_appointment %}
 <div data-section="proximo_turno" data-editable="false">
-    <h3 class="section-title">Próximo turno programado</h3>
-    <p><strong>Fecha:</strong> {{ data.next_appointment.date }}</p>
-    <p><strong>Hora:</strong> {{ data.next_appointment.time }} hs</p>
-    <p><strong>Motivo:</strong> {{ data.next_appointment.reason or 'Control' }}</p>
+    <h3 class="section-title">Proximo Turno Programado</h3>
+    <div style="background: #f0fff4; border: 1px solid #c6f6d5; border-radius: 4px; padding: 12px 16px; margin-bottom: 16px;">
+        <table style="width: 100%; border-collapse: collapse;">
+            <tr>
+                <td style="padding: 4px 8px; font-size: 10pt; color: #718096; width: 120px;">Fecha:</td>
+                <td style="padding: 4px 8px; font-size: 10pt; font-weight: bold;">{{ data.next_appointment.date }}</td>
+            </tr>
+            <tr>
+                <td style="padding: 4px 8px; font-size: 10pt; color: #718096;">Tratamiento:</td>
+                <td style="padding: 4px 8px; font-size: 10pt; font-weight: bold;">{{ data.next_appointment.treatment or 'Control' }}</td>
+            </tr>
+            <tr>
+                <td style="padding: 4px 8px; font-size: 10pt; color: #718096;">Profesional:</td>
+                <td style="padding: 4px 8px; font-size: 10pt; font-weight: bold;">{{ data.next_appointment.professional or '—' }}</td>
+            </tr>
+        </table>
+    </div>
 </div>
 {% endif %}
 
 <div data-section="constancia" data-editable="false">
-    <p class="constancia">{{ ai.constancia | default('Se deja constancia que los tiempos de evolución y controles indicados corresponden a la complejidad del procedimiento realizado.') }}</p>
+    <div style="border: 1px solid #e2e8f0; border-radius: 4px; padding: 14px 18px; margin-top: 24px; background: #fafafa;">
+        <p style="font-style: italic; font-size: 9.5pt; color: #4a5568; margin: 0; text-align: justify;">{{ ai.constancia | default('Se deja constancia que los tiempos de evolucion y controles indicados corresponden a la complejidad del procedimiento realizado.') }}</p>
+    </div>
 </div>
 
 {% endblock %}

@@ -2,41 +2,48 @@
 {% block content %}
 
 <div data-section="patient_info" data-editable="false">
-    <h2 class="section-title">EVALUACIÓN ODONTOLÓGICA</h2>
-    <div class="patient-data">
-        <table>
+    <h2 class="section-title">EVALUACION ODONTOLOGICA</h2>
+    <div class="patient-data" style="background: #f7fafc; border: 1px solid #e2e8f0; border-radius: 4px; padding: 14px 18px; margin-bottom: 24px;">
+        <table style="width: 100%; border-collapse: collapse;">
             <tr>
-                <td class="label">Paciente:</td>
-                <td>{{ data.patient.full_name or '[Sin nombre]' }}</td>
-                <td class="label">DNI:</td>
-                <td>{{ data.patient.dni or 'No registrado' }}</td>
+                <td style="padding: 4px 8px; font-size: 10pt; color: #718096; width: 120px;">Paciente:</td>
+                <td style="padding: 4px 8px; font-size: 10pt; font-weight: bold;">{{ data.patient.full_name or '[Sin nombre]' }}</td>
+                <td style="padding: 4px 8px; font-size: 10pt; color: #718096; width: 120px;">DNI:</td>
+                <td style="padding: 4px 8px; font-size: 10pt; font-weight: bold;">{{ data.patient.dni or 'No registrado' }}</td>
             </tr>
             <tr>
-                <td class="label">Obra Social / ART:</td>
-                <td>{{ data.patient.insurance or 'Particular' }}{% if data.patient.insurance_id %} ({{ data.patient.insurance_id }}){% endif %}</td>
-                <td class="label">Fecha:</td>
-                <td>{{ data.generated_at[:10] | default('') }}</td>
+                <td style="padding: 4px 8px; font-size: 10pt; color: #718096;">Edad:</td>
+                <td style="padding: 4px 8px; font-size: 10pt; font-weight: bold;">{{ data.patient.age or '—' }}</td>
+                <td style="padding: 4px 8px; font-size: 10pt; color: #718096;">Telefono:</td>
+                <td style="padding: 4px 8px; font-size: 10pt; font-weight: bold;">{{ data.patient.phone or 'No registrado' }}</td>
+            </tr>
+            <tr>
+                <td style="padding: 4px 8px; font-size: 10pt; color: #718096;">Obra Social:</td>
+                <td style="padding: 4px 8px; font-size: 10pt; font-weight: bold;">{{ data.patient.insurance or 'Particular' }}</td>
+                <td style="padding: 4px 8px; font-size: 10pt; color: #718096;">Fecha:</td>
+                <td style="padding: 4px 8px; font-size: 10pt; font-weight: bold;">{{ data.generated_at[:10] | default('') }}</td>
             </tr>
         </table>
     </div>
 </div>
 
 <div data-section="tipo_evaluacion" data-editable="true">
-    <div class="narrative">{{ ai.tipo_evaluacion | default('Se realiza evaluación clínica odontológica y confección de odontograma.') }}</div>
+    <h3 class="section-title">Tipo de Evaluacion</h3>
+    <div class="narrative">{{ ai.tipo_evaluacion | default('Se realiza evaluacion clinica odontologica y confeccion de odontograma.') }}</div>
 </div>
 
 <div data-section="hallazgos" data-editable="true">
-    <h3 class="section-title">Hallazgos Clínicos</h3>
+    <h3 class="section-title">Hallazgos Clinicos</h3>
     <div class="narrative">{{ ai.hallazgos | default('Sin hallazgos registrados.') }}</div>
 </div>
 
 <div data-section="odontograma" data-editable="false">
     <h3 class="section-title">Odontograma</h3>
-    <div class="odontogram-container">
+    <div style="text-align: center; margin: 16px 0; padding: 16px; border: 1px solid #e2e8f0; border-radius: 4px; background: #ffffff;">
         {{ odontogram_svg | safe }}
     </div>
     {% if data.odontogram and data.odontogram.affected_count is defined %}
-    <p style="text-align: center; font-size: 9pt; color: #666; margin-top: 8px;">
+    <p style="text-align: center; font-size: 9pt; color: #718096; margin-top: 6px;">
         Piezas afectadas: {{ data.odontogram.affected_count }} / 32
     </p>
     {% endif %}
@@ -44,18 +51,24 @@
 
 {% if data.odontogram and data.odontogram.teeth | length > 0 %}
 <div data-section="detalle_piezas" data-editable="false">
-    <h3 class="section-title">Detalle por Pieza</h3>
-    <table class="data-table">
+    <h3 class="section-title">Detalle de Piezas</h3>
+    <table style="width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 10pt;">
         <thead>
-            <tr><th>Pieza (FDI)</th><th>Estado</th><th>Notas</th></tr>
+            <tr>
+                <th style="background: #1a365d; color: #ffffff; border: 1px solid #1a365d; padding: 8px 12px; text-align: left; font-weight: bold;">Pieza FDI</th>
+                <th style="background: #1a365d; color: #ffffff; border: 1px solid #1a365d; padding: 8px 12px; text-align: left; font-weight: bold;">Estado</th>
+            </tr>
         </thead>
         <tbody>
             {% for tooth in data.odontogram.teeth %}
             {% if tooth.state != 'healthy' %}
-            <tr>
-                <td>{{ (tooth.id // 10) }}.{{ (tooth.id % 10) }}</td>
-                <td>{{ tooth.state }}</td>
-                <td>{{ tooth.notes or '—' }}</td>
+            {% if loop.index % 2 == 1 %}
+            <tr style="background: #ffffff;">
+            {% else %}
+            <tr style="background: #f7fafc;">
+            {% endif %}
+                <td style="border: 1px solid #e2e8f0; padding: 6px 12px; font-weight: bold;">{{ (tooth.id // 10) }}.{{ (tooth.id % 10) }}</td>
+                <td style="border: 1px solid #e2e8f0; padding: 6px 12px;">{{ tooth.state }}</td>
             </tr>
             {% endif %}
             {% endfor %}
@@ -65,8 +78,8 @@
 {% endif %}
 
 <div data-section="observacion" data-editable="true">
-    <h3 class="section-title">Observación</h3>
-    <div class="narrative">{{ ai.observacion | default('<span class="placeholder">[Motivo de emisión — dato pendiente de completar]</span>') }}</div>
+    <h3 class="section-title">Observacion</h3>
+    <div class="narrative">{{ ai.observacion | default('<span class="placeholder">[Motivo de emision — dato pendiente de completar]</span>') }}</div>
 </div>
 
 {% endblock %}

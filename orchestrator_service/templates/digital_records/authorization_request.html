@@ -1,60 +1,83 @@
 {% extends "base.html" %}
 {% block content %}
 
+<h2 class="section-title">SOLICITUD DE AUTORIZACIÓN</h2>
+
+<!-- Patient Info Card -->
 <div data-section="patient_info" data-editable="false">
-    <h2 class="section-title">SOLICITUD DE AUTORIZACIÓN</h2>
-    <div class="patient-data">
-        <table>
-            <tr>
-                <td class="label">Paciente:</td>
-                <td>{{ data.patient.full_name or '[Sin nombre]' }}</td>
-                <td class="label">DNI:</td>
-                <td>{{ data.patient.dni or 'No registrado' }}</td>
-            </tr>
-            <tr>
-                <td class="label">Obra Social / ART:</td>
-                <td>{{ data.patient.insurance or 'Particular' }}{% if data.patient.insurance_id %} ({{ data.patient.insurance_id }}){% endif %}</td>
-                <td class="label">Fecha:</td>
-                <td>{{ data.generated_at[:10] | default('') }}</td>
-            </tr>
-        </table>
-    </div>
+    <table style="width: 100%; border-collapse: collapse; background: #f7fafc; border: 1px solid #e2e8f0; margin-bottom: 24px;">
+        <tr>
+            <td style="padding: 8px 14px; font-weight: bold; color: #333; width: 130px; border-bottom: 1px solid #e2e8f0;">Paciente</td>
+            <td style="padding: 8px 14px; border-bottom: 1px solid #e2e8f0;">{{ data.patient.full_name or '[Sin nombre]' }}</td>
+            <td style="padding: 8px 14px; font-weight: bold; color: #333; width: 130px; border-bottom: 1px solid #e2e8f0;">DNI</td>
+            <td style="padding: 8px 14px; border-bottom: 1px solid #e2e8f0;">{{ data.patient.dni or 'No registrado' }}</td>
+        </tr>
+        <tr>
+            <td style="padding: 8px 14px; font-weight: bold; color: #333; border-bottom: 1px solid #e2e8f0;">Teléfono</td>
+            <td style="padding: 8px 14px; border-bottom: 1px solid #e2e8f0;">{{ data.patient.phone or 'No registrado' }}</td>
+            <td style="padding: 8px 14px; font-weight: bold; color: #333; border-bottom: 1px solid #e2e8f0;">Obra Social</td>
+            <td style="padding: 8px 14px; border-bottom: 1px solid #e2e8f0;">{{ data.patient.insurance or 'Particular' }}</td>
+        </tr>
+        <tr>
+            <td style="padding: 8px 14px; font-weight: bold; color: #333;">Edad</td>
+            <td style="padding: 8px 14px;">{{ data.patient.age or '—' }}</td>
+            <td style="padding: 8px 14px; font-weight: bold; color: #333;">Fecha</td>
+            <td style="padding: 8px 14px;">{{ data.generated_at[:10] | default('') }}</td>
+        </tr>
+    </table>
 </div>
 
+<!-- Diagnóstico -->
 <div data-section="diagnostico" data-editable="true">
     <h3 class="section-title">Diagnóstico</h3>
     <div class="narrative">{{ ai.diagnostico | default('Sin diagnóstico registrado.') }}</div>
 </div>
 
+<!-- Tratamiento Realizado -->
 <div data-section="tratamiento_realizado" data-editable="true">
     <h3 class="section-title">Tratamiento Realizado</h3>
     <div class="narrative">{{ ai.tratamiento_realizado | default('Sin tratamientos previos registrados.') }}</div>
 </div>
 
+<!-- Tratamiento Solicitado — Highlight Box -->
 <div data-section="tratamiento_solicitado" data-editable="true">
     <h3 class="section-title">Tratamiento Solicitado</h3>
-    <div class="narrative">{{ ai.tratamiento_solicitado | default('<span class="placeholder">[Tratamiento solicitado — dato pendiente de completar]</span>') }}</div>
+    <div style="background: #fffff0; border-left: 4px solid #d69e2e; padding: 12px 16px; margin-bottom: 16px;">
+        <div class="narrative" style="margin-bottom: 0;">{{ ai.tratamiento_solicitado | default('<span class="placeholder">[Tratamiento solicitado — dato pendiente de completar]</span>') }}</div>
+    </div>
 </div>
 
+<!-- Materiales / Objetivo -->
 <div data-section="material_objetivo" data-editable="true">
-    <h3 class="section-title">Material y Objetivo</h3>
+    <h3 class="section-title">Materiales / Objetivo</h3>
     <div class="narrative">{{ ai.material_objetivo | default('<span class="placeholder">[Material y objetivo — dato pendiente de completar]</span>') }}</div>
 </div>
 
+<!-- Justificación Clínica — Bordered Section -->
 <div data-section="justificacion" data-editable="true">
     <h3 class="section-title">Justificación Clínica</h3>
-    <div class="narrative">{{ ai.justificacion | default('') }}</div>
+    <div style="border: 1px solid #e2e8f0; padding: 14px 16px; background: #ffffff; margin-bottom: 16px;">
+        <div class="narrative" style="margin-bottom: 0;">{{ ai.justificacion | default('') }}</div>
+    </div>
 </div>
 
+<!-- Valor Estimado -->
 <div data-section="valor" data-editable="true">
-    <h3 class="section-title">Valor del Tratamiento</h3>
+    <h3 class="section-title">Valor Estimado del Tratamiento</h3>
     {% if data.appointments and data.appointments | length > 0 and data.appointments[0].amount %}
-    <p><strong>$ {{ "{:,.0f}".format(data.appointments[0].amount).replace(",", ".") }}</strong></p>
+    <table style="width: 100%; border-collapse: collapse; margin-bottom: 16px;">
+        <tr>
+            <td style="background: #f0fff4; border: 1px solid #38a169; padding: 20px; text-align: center;">
+                <span style="font-size: 22pt; font-weight: bold; color: #22543d;">$ {{ "{:,.0f}".format(data.appointments[0].amount).replace(",", ".") }}</span>
+            </td>
+        </tr>
+    </table>
     {% else %}
     <p class="placeholder">[Valor pendiente de completar]</p>
     {% endif %}
 </div>
 
+<!-- Observaciones -->
 <div data-section="observaciones" data-editable="true">
     <h3 class="section-title">Observaciones</h3>
     <div class="narrative">{{ ai.observaciones | default('') }}</div>

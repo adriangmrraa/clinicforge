@@ -3,55 +3,96 @@
 <head>
 <meta charset="UTF-8">
 <style>
+/* ── Page Setup ── */
 @page {
     size: A4;
     margin: 2cm 2.5cm;
     @top-center {
-        content: "{{ clinic_name }}";
-        font-size: 8pt;
-        color: #888;
+        content: "{{ data.clinic.name or '' }}";
+        font-family: Arial, Helvetica, sans-serif;
+        font-size: 7.5pt;
+        color: #718096;
+        letter-spacing: 0.5px;
     }
     @bottom-center {
-        content: "Página " counter(page) " de " counter(pages);
-        font-size: 8pt;
-        color: #888;
+        content: "Pg. " counter(page) " / " counter(pages);
+        font-family: Arial, Helvetica, sans-serif;
+        font-size: 7.5pt;
+        color: #718096;
     }
 }
 
+/* ── Base Typography ── */
 body {
-    font-family: 'Liberation Sans', 'DejaVu Sans', Arial, sans-serif;
+    font-family: Arial, Helvetica, sans-serif;
     font-size: 11pt;
     line-height: 1.6;
-    color: #1a1a1a;
+    color: #2d3748;
     margin: 0;
     padding: 0;
 }
 
+h1, h2, h3 {
+    font-family: Georgia, 'Times New Roman', serif;
+    color: #1a365d;
+}
+
+/* ── Header ── */
 .header {
-    text-align: center;
-    border-bottom: 2px solid #333;
-    padding-bottom: 12px;
-    margin-bottom: 20px;
+    border-bottom: 2px solid #1a365d;
+    padding-bottom: 14px;
+    margin-bottom: 24px;
 }
 
-.header h1 {
-    font-size: 16pt;
-    margin: 0 0 4px 0;
-    color: #111;
+.header-table {
+    width: 100%;
+    border-collapse: collapse;
 }
 
-.header .subtitle {
-    font-size: 9pt;
-    color: #666;
+.header-table td {
+    vertical-align: middle;
+    padding: 0;
+}
+
+.header-left {
+    text-align: left;
+}
+
+.header-right {
+    text-align: right;
+    width: 40%;
+}
+
+.header-logo {
+    max-height: 60px;
+    margin-bottom: 6px;
+    display: block;
+}
+
+.header-clinic-name {
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: 20pt;
+    font-weight: bold;
+    color: #1a365d;
     margin: 0;
+    padding: 0;
+    line-height: 1.2;
 }
 
+.header-contact {
+    font-size: 9pt;
+    color: #718096;
+    line-height: 1.5;
+    margin: 0;
+    padding: 0;
+}
+
+/* ── Patient Data (reused by child templates) ── */
 .patient-data {
-    background: #f8f9fa;
-    border: 1px solid #dee2e6;
-    border-radius: 4px;
+    background: #f7fafc;
+    border: 1px solid #e2e8f0;
     padding: 12px 16px;
-    margin-bottom: 20px;
+    margin-bottom: 22px;
 }
 
 .patient-data table {
@@ -63,59 +104,82 @@ body {
     padding: 3px 8px;
     font-size: 10pt;
     vertical-align: top;
+    color: #2d3748;
 }
 
 .patient-data .label {
     font-weight: bold;
-    color: #333;
-    width: 140px;
+    color: #1a365d;
+    width: 130px;
+    white-space: nowrap;
 }
 
+/* ── Section Titles ── */
 .section-title {
-    font-size: 12pt;
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: 14pt;
     font-weight: bold;
-    color: #111;
-    border-bottom: 1px solid #ccc;
-    padding-bottom: 4px;
-    margin-top: 20px;
-    margin-bottom: 10px;
+    color: #1a365d;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    border-left: 4px solid #3182ce;
+    padding-left: 12px;
+    margin-top: 24px;
+    margin-bottom: 8px;
+    line-height: 1.3;
 }
 
+/* ── Narrative Text ── */
 .narrative {
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 11pt;
+    color: #2d3748;
+    line-height: 1.6;
     text-align: justify;
     margin-bottom: 16px;
 }
 
+/* ── Placeholder (editable fields) ── */
 .placeholder {
-    background: #fff3cd;
-    border: 1px dashed #ffc107;
-    padding: 4px 8px;
-    border-radius: 3px;
-    color: #856404;
+    background: #fffff0;
+    border: 1px dashed #ecc94b;
+    padding: 3px 8px;
+    color: #975a16;
     font-style: italic;
-}
-
-.signature-block {
-    margin-top: 60px;
-    text-align: center;
-}
-
-.signature-block .line {
-    border-top: 1px solid #333;
-    width: 250px;
-    margin: 0 auto 8px auto;
-}
-
-.signature-block p {
-    margin: 2px 0;
     font-size: 10pt;
 }
 
-.signature-block .name {
-    font-weight: bold;
-    font-size: 11pt;
+/* ── Data Tables ── */
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0;
+    font-size: 10pt;
 }
 
+.data-table th {
+    background: #edf2f7;
+    border: 1px solid #e2e8f0;
+    padding: 7px 10px;
+    text-align: left;
+    font-weight: bold;
+    color: #1a365d;
+    font-size: 9pt;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.data-table td {
+    border: 1px solid #e2e8f0;
+    padding: 6px 10px;
+    color: #2d3748;
+}
+
+.data-table tr:nth-child(even) td {
+    background: #f7fafc;
+}
+
+/* ── Odontogram ── */
 .odontogram-container {
     margin: 20px 0;
     text-align: center;
@@ -125,58 +189,93 @@ body {
     max-width: 100%;
 }
 
-/* Tables for clinical data */
-.data-table {
-    width: 100%;
-    border-collapse: collapse;
-    margin: 10px 0;
-    font-size: 10pt;
+/* ── Signature Block ── */
+.signature-block {
+    margin-top: 40px;
+    text-align: center;
 }
 
-.data-table th {
-    background: #f0f0f0;
-    border: 1px solid #ccc;
-    padding: 6px 10px;
-    text-align: left;
+.signature-block .line {
+    border-top: 1px solid #cbd5e0;
+    width: 260px;
+    margin: 0 auto 10px auto;
+}
+
+.signature-block .name {
+    font-family: Georgia, 'Times New Roman', serif;
     font-weight: bold;
+    font-size: 12pt;
+    color: #1a365d;
+    margin: 0 0 2px 0;
 }
 
-.data-table td {
-    border: 1px solid #ddd;
-    padding: 6px 10px;
+.signature-block .credential {
+    font-size: 10pt;
+    color: #718096;
+    margin: 0;
 }
 
+/* ── Footer ── */
+.doc-footer {
+    margin-top: 36px;
+    padding-top: 10px;
+    border-top: 1px solid #e2e8f0;
+    text-align: center;
+    font-size: 8pt;
+    color: #a0aec0;
+}
+
+/* ── Constancia ── */
 .constancia {
     margin-top: 30px;
     font-size: 9pt;
-    color: #666;
+    color: #718096;
     font-style: italic;
 }
 </style>
 </head>
 <body>
 
+<!-- ── Header ── -->
 <div class="header">
-    {% if data.clinic.logo_url %}
-    <img src="{{ data.clinic.logo_url }}" alt="Logo" style="max-height: 60px; margin-bottom: 8px;">
-    {% endif %}
-    <h1>{{ data.clinic.name or 'Clínica' }}</h1>
-    <p class="subtitle">{{ data.clinic.address or '' }}{% if data.clinic.phone %} | Tel: {{ data.clinic.phone }}{% endif %}</p>
+    <table class="header-table">
+        <tr>
+            <td class="header-left">
+                {% if data.clinic.logo_url %}
+                <img src="{{ data.clinic.logo_url }}" alt="Logo" class="header-logo">
+                {% endif %}
+                <div class="header-clinic-name">{{ data.clinic.name or 'Clinica' }}</div>
+            </td>
+            <td class="header-right">
+                <p class="header-contact">
+                    {% if data.clinic.address %}{{ data.clinic.address }}<br>{% endif %}
+                    {% if data.clinic.phone %}Tel: {{ data.clinic.phone }}{% endif %}
+                </p>
+            </td>
+        </tr>
+    </table>
 </div>
 
+<!-- ── Content (child templates) ── -->
 {% block content %}{% endblock %}
 
+<!-- ── Signature ── -->
 <div class="signature-block">
     <div class="line"></div>
     <p class="name">{{ data.professional.full_name or '[Profesional]' }}</p>
     {% if data.professional.mp %}
-    <p>M.P. {{ data.professional.mp }}</p>
+    <p class="credential">M.P. {{ data.professional.mp }}</p>
     {% else %}
     <p class="placeholder">[M.P. Completar]</p>
     {% endif %}
     {% if data.professional.specialty %}
-    <p>{{ data.professional.specialty }}</p>
+    <p class="credential">{{ data.professional.specialty }}</p>
     {% endif %}
+</div>
+
+<!-- ── Footer ── -->
+<div class="doc-footer">
+    Documento generado digitalmente &mdash; ClinicForge
 </div>
 
 </body>

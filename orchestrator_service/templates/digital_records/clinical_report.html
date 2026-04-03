@@ -1,77 +1,176 @@
 {% extends "base.html" %}
 {% block content %}
 
-<div data-section="patient_info" data-editable="false">
-    <h2 class="section-title">INFORME CLÍNICO</h2>
-    <div class="patient-data">
-        <table>
-            <tr>
-                <td class="label">Paciente:</td>
-                <td>{{ data.patient.full_name or '[Sin nombre]' }}</td>
-                <td class="label">DNI:</td>
-                <td>{{ data.patient.dni or 'No registrado' }}</td>
-            </tr>
-            <tr>
-                <td class="label">Obra Social:</td>
-                <td>{{ data.patient.insurance or 'Particular' }}{% if data.patient.insurance_id %} ({{ data.patient.insurance_id }}){% endif %}</td>
-                <td class="label">Fecha:</td>
-                <td>{{ data.generated_at[:10] | default('') }}</td>
-            </tr>
-            {% if data.patient.birth_date %}
-            <tr>
-                <td class="label">Fecha Nac.:</td>
-                <td>{{ data.patient.birth_date }}</td>
-                <td class="label">Teléfono:</td>
-                <td>{{ data.patient.phone or 'No registrado' }}</td>
-            </tr>
-            {% endif %}
-        </table>
+<!-- ── Patient Info Card ── -->
+<div data-section="patient_info" data-editable="false" style="
+    background: #f7fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 16px 20px;
+    margin-bottom: 24px;
+">
+    <table style="width: 100%; border-collapse: collapse;">
+        <tr>
+            <td style="padding: 6px 12px; width: 50%;">
+                <span style="display: block; font-size: 8pt; text-transform: uppercase; letter-spacing: 0.5px; color: #718096; margin-bottom: 2px;">Paciente</span>
+                <span style="font-size: 11pt; font-weight: bold; color: #1a202c;">{{ data.patient.full_name or '[Sin nombre]' }}</span>
+            </td>
+            <td style="padding: 6px 12px; width: 50%;">
+                <span style="display: block; font-size: 8pt; text-transform: uppercase; letter-spacing: 0.5px; color: #718096; margin-bottom: 2px;">DNI</span>
+                <span style="font-size: 11pt; font-weight: bold; color: #1a202c;">{{ data.patient.dni or 'No registrado' }}</span>
+            </td>
+        </tr>
+        <tr>
+            <td style="padding: 6px 12px;">
+                <span style="display: block; font-size: 8pt; text-transform: uppercase; letter-spacing: 0.5px; color: #718096; margin-bottom: 2px;">Tel&eacute;fono</span>
+                <span style="font-size: 11pt; font-weight: bold; color: #1a202c;">{{ data.patient.phone or 'No registrado' }}</span>
+            </td>
+            <td style="padding: 6px 12px;">
+                <span style="display: block; font-size: 8pt; text-transform: uppercase; letter-spacing: 0.5px; color: #718096; margin-bottom: 2px;">Obra Social</span>
+                <span style="font-size: 11pt; font-weight: bold; color: #1a202c;">{{ data.patient.insurance or 'Particular' }}</span>
+            </td>
+        </tr>
+        <tr>
+            <td style="padding: 6px 12px;">
+                <span style="display: block; font-size: 8pt; text-transform: uppercase; letter-spacing: 0.5px; color: #718096; margin-bottom: 2px;">Edad</span>
+                <span style="font-size: 11pt; font-weight: bold; color: #1a202c;">{{ data.patient.age or '—' }}{% if data.patient.age %} a&ntilde;os{% endif %}</span>
+            </td>
+            <td style="padding: 6px 12px;">
+                <span style="display: block; font-size: 8pt; text-transform: uppercase; letter-spacing: 0.5px; color: #718096; margin-bottom: 2px;">Fecha del Informe</span>
+                <span style="font-size: 11pt; font-weight: bold; color: #1a202c;">{{ data.generated_at[:10] | default('—') }}</span>
+            </td>
+        </tr>
+    </table>
+</div>
+
+<!-- ── 1. Resumen Cl&iacute;nico ── -->
+<div data-section="resumen_clinico" data-editable="true">
+    <h3 class="section-title" style="
+        font-family: Georgia, 'Times New Roman', serif;
+        font-size: 12pt;
+        font-weight: bold;
+        text-transform: uppercase;
+        color: #1a365d;
+        border-left: 4px solid #3182ce;
+        border-bottom: none;
+        padding: 4px 0 4px 12px;
+        margin-top: 24px;
+        margin-bottom: 10px;
+    ">Resumen Cl&iacute;nico</h3>
+    <div class="narrative" style="font-family: Arial, sans-serif; font-size: 11pt; line-height: 1.7; text-align: justify; margin-bottom: 16px;">
+        {{ ai.resumen_clinico | default('Sin datos suficientes para generar resumen.') }}
     </div>
 </div>
 
-<div data-section="resumen_clinico" data-editable="true">
-    <h3 class="section-title">Resumen Clínico</h3>
-    <div class="narrative">{{ ai.resumen_clinico | default('Sin datos suficientes para generar resumen.') }}</div>
-</div>
-
+<!-- ── 2. Antecedentes ── -->
 <div data-section="antecedentes" data-editable="true">
-    <h3 class="section-title">Antecedentes Médicos</h3>
-    <div class="narrative">{{ ai.antecedentes | default('No se registran antecedentes médicos relevantes.') }}</div>
+    <h3 class="section-title" style="
+        font-family: Georgia, 'Times New Roman', serif;
+        font-size: 12pt;
+        font-weight: bold;
+        text-transform: uppercase;
+        color: #1a365d;
+        border-left: 4px solid #3182ce;
+        border-bottom: none;
+        padding: 4px 0 4px 12px;
+        margin-top: 24px;
+        margin-bottom: 10px;
+    ">Antecedentes M&eacute;dicos</h3>
+    <div class="narrative" style="font-family: Arial, sans-serif; font-size: 11pt; line-height: 1.7; text-align: justify; margin-bottom: 16px;">
+        {{ ai.antecedentes | default('No se registran antecedentes médicos relevantes.') }}
+    </div>
 </div>
 
+<!-- ── 3. Odontograma (conditional) ── -->
 {% if data.odontogram and data.odontogram.teeth | length > 0 %}
 <div data-section="odontograma" data-editable="false">
-    <h3 class="section-title">Odontograma</h3>
-    <div class="odontogram-container">
+    <h3 class="section-title" style="
+        font-family: Georgia, 'Times New Roman', serif;
+        font-size: 12pt;
+        font-weight: bold;
+        text-transform: uppercase;
+        color: #1a365d;
+        border-left: 4px solid #3182ce;
+        border-bottom: none;
+        padding: 4px 0 4px 12px;
+        margin-top: 24px;
+        margin-bottom: 10px;
+    ">Odontograma</h3>
+    <div class="odontogram-container" style="margin: 16px 0; text-align: center;">
         {{ odontogram_svg | safe }}
     </div>
 </div>
 {% endif %}
 
+<!-- ── 4. Estado Dental ── -->
 <div data-section="estado_dental" data-editable="true">
-    <h3 class="section-title">Estado Dental</h3>
-    <div class="narrative">{{ ai.estado_dental | default('Sin datos de odontograma registrados.') }}</div>
+    <h3 class="section-title" style="
+        font-family: Georgia, 'Times New Roman', serif;
+        font-size: 12pt;
+        font-weight: bold;
+        text-transform: uppercase;
+        color: #1a365d;
+        border-left: 4px solid #3182ce;
+        border-bottom: none;
+        padding: 4px 0 4px 12px;
+        margin-top: 24px;
+        margin-bottom: 10px;
+    ">Estado Dental</h3>
+    <div class="narrative" style="font-family: Arial, sans-serif; font-size: 11pt; line-height: 1.7; text-align: justify; margin-bottom: 16px;">
+        {{ ai.estado_dental | default('Sin datos de odontograma registrados.') }}
+    </div>
 </div>
 
+<!-- ── 5. Tratamientos Realizados ── -->
 <div data-section="tratamientos_realizados" data-editable="true">
-    <h3 class="section-title">Tratamientos Realizados</h3>
-    <div class="narrative">{{ ai.tratamientos_realizados | default('Sin registros de tratamientos.') }}</div>
+    <h3 class="section-title" style="
+        font-family: Georgia, 'Times New Roman', serif;
+        font-size: 12pt;
+        font-weight: bold;
+        text-transform: uppercase;
+        color: #1a365d;
+        border-left: 4px solid #3182ce;
+        border-bottom: none;
+        padding: 4px 0 4px 12px;
+        margin-top: 24px;
+        margin-bottom: 10px;
+    ">Tratamientos Realizados</h3>
+    <div class="narrative" style="font-family: Arial, sans-serif; font-size: 11pt; line-height: 1.7; text-align: justify; margin-bottom: 16px;">
+        {{ ai.tratamientos_realizados | default('Sin registros de tratamientos.') }}
+    </div>
 </div>
 
+<!-- ── 6. Clinical History Table ── -->
 {% if data.clinical_records | length > 0 %}
 <div data-section="historial_tabla" data-editable="false">
-    <h3 class="section-title">Historial de Registros Clínicos</h3>
-    <table class="data-table">
+    <h3 class="section-title" style="
+        font-family: Georgia, 'Times New Roman', serif;
+        font-size: 12pt;
+        font-weight: bold;
+        text-transform: uppercase;
+        color: #1a365d;
+        border-left: 4px solid #3182ce;
+        border-bottom: none;
+        padding: 4px 0 4px 12px;
+        margin-top: 24px;
+        margin-bottom: 10px;
+    ">Historial de Registros Cl&iacute;nicos</h3>
+    <table style="width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 10pt;">
         <thead>
-            <tr><th>Fecha</th><th>Diagnóstico</th><th>Notas</th><th>Profesional</th></tr>
+            <tr>
+                <th style="background: #1a365d; color: #ffffff; padding: 8px 10px; text-align: left; font-weight: bold; border: 1px solid #1a365d;">Fecha</th>
+                <th style="background: #1a365d; color: #ffffff; padding: 8px 10px; text-align: left; font-weight: bold; border: 1px solid #1a365d;">Diagn&oacute;stico</th>
+                <th style="background: #1a365d; color: #ffffff; padding: 8px 10px; text-align: left; font-weight: bold; border: 1px solid #1a365d;">Notas Cl&iacute;nicas</th>
+                <th style="background: #1a365d; color: #ffffff; padding: 8px 10px; text-align: left; font-weight: bold; border: 1px solid #1a365d;">Profesional</th>
+            </tr>
         </thead>
         <tbody>
             {% for rec in data.clinical_records %}
             <tr>
-                <td>{{ rec.date or '—' }}</td>
-                <td>{{ rec.diagnosis or '—' }}</td>
-                <td>{{ rec.clinical_notes or '—' }}</td>
-                <td>{{ rec.professional_name or '—' }}</td>
+                <td style="padding: 7px 10px; border: 1px solid #e2e8f0; {% if loop.index is odd %}background: #f7fafc;{% else %}background: #ffffff;{% endif %} vertical-align: top; white-space: nowrap;">{{ rec.date or '—' }}</td>
+                <td style="padding: 7px 10px; border: 1px solid #e2e8f0; {% if loop.index is odd %}background: #f7fafc;{% else %}background: #ffffff;{% endif %} vertical-align: top;">{{ rec.diagnosis or '—' }}</td>
+                <td style="padding: 7px 10px; border: 1px solid #e2e8f0; {% if loop.index is odd %}background: #f7fafc;{% else %}background: #ffffff;{% endif %} vertical-align: top;">{{ rec.clinical_notes or '—' }}</td>
+                <td style="padding: 7px 10px; border: 1px solid #e2e8f0; {% if loop.index is odd %}background: #f7fafc;{% else %}background: #ffffff;{% endif %} vertical-align: top;">{{ rec.professional_name or '—' }}</td>
             </tr>
             {% endfor %}
         </tbody>
@@ -79,14 +178,42 @@
 </div>
 {% endif %}
 
+<!-- ── 7. Plan de Tratamiento ── -->
 <div data-section="plan_tratamiento" data-editable="true">
-    <h3 class="section-title">Plan de Tratamiento</h3>
-    <div class="narrative">{{ ai.plan_tratamiento | default('A definir en consulta.') }}</div>
+    <h3 class="section-title" style="
+        font-family: Georgia, 'Times New Roman', serif;
+        font-size: 12pt;
+        font-weight: bold;
+        text-transform: uppercase;
+        color: #1a365d;
+        border-left: 4px solid #3182ce;
+        border-bottom: none;
+        padding: 4px 0 4px 12px;
+        margin-top: 24px;
+        margin-bottom: 10px;
+    ">Plan de Tratamiento</h3>
+    <div class="narrative" style="font-family: Arial, sans-serif; font-size: 11pt; line-height: 1.7; text-align: justify; margin-bottom: 16px;">
+        {{ ai.plan_tratamiento | default('A definir en consulta.') }}
+    </div>
 </div>
 
+<!-- ── 8. Recomendaciones ── -->
 <div data-section="recomendaciones" data-editable="true">
-    <h3 class="section-title">Recomendaciones</h3>
-    <div class="narrative">{{ ai.recomendaciones | default('') }}</div>
+    <h3 class="section-title" style="
+        font-family: Georgia, 'Times New Roman', serif;
+        font-size: 12pt;
+        font-weight: bold;
+        text-transform: uppercase;
+        color: #1a365d;
+        border-left: 4px solid #3182ce;
+        border-bottom: none;
+        padding: 4px 0 4px 12px;
+        margin-top: 24px;
+        margin-bottom: 10px;
+    ">Recomendaciones</h3>
+    <div class="narrative" style="font-family: Arial, sans-serif; font-size: 11pt; line-height: 1.7; text-align: justify; margin-bottom: 16px;">
+        {{ ai.recomendaciones | default('Sin recomendaciones adicionales.') }}
+    </div>
 </div>
 
 {% endblock %}
