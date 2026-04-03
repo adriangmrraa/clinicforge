@@ -12,9 +12,12 @@ Rules:
 """
 
 import asyncio
+import base64
 import json
 import logging
+import os
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -23,6 +26,29 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 # HELPERS
 # =============================================================================
+
+
+def resolve_logo_data_uri(tenant_id: int) -> Optional[str]:
+    """Read logo file from disk and return as base64 data URI for PDF embedding."""
+    upload_dir = Path(f"/app/uploads/tenants/{tenant_id}")
+    if not upload_dir.exists():
+        return None
+    mime_map = {
+        "png": "image/png",
+        "jpg": "image/jpeg",
+        "jpeg": "image/jpeg",
+        "svg": "image/svg+xml",
+        "webp": "image/webp",
+        "ico": "image/x-icon",
+    }
+    for ext in ("png", "jpg", "jpeg", "svg", "webp", "ico"):
+        logo_path = upload_dir / f"logo.{ext}"
+        if logo_path.exists():
+            raw = logo_path.read_bytes()
+            b64 = base64.b64encode(raw).decode()
+            mime = mime_map.get(ext, "image/png")
+            return f"data:{mime};base64,{b64}"
+    return None
 
 
 def _safe_json(value) -> object:
@@ -403,7 +429,9 @@ async def gather_patient_data(
         "name": (tenant_row.get("clinic_name") if tenant_row else None) or "Clínica",
         "address": (tenant_row.get("address") if tenant_row else None) or None,
         "phone": (tenant_row.get("phone") if tenant_row else None) or None,
-        "logo_url": (tenant_row.get("logo_url") if tenant_row else None) or None,
+        "logo_url": resolve_logo_data_uri(tenant_id)
+        or (tenant_row.get("logo_url") if tenant_row else None)
+        or None,
         "country_code": (tenant_row.get("country_code") if tenant_row else None)
         or "AR",
     }

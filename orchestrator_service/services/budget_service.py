@@ -20,6 +20,8 @@ from typing import Optional
 
 from jinja2 import Environment, FileSystemLoader
 
+from services.digital_records_service import resolve_logo_data_uri
+
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -173,7 +175,7 @@ async def gather_budget_data(pool, plan_id: str, tenant_id: int) -> Optional[dic
             "name": plan["clinic_name"] or "Clínica",
             "address": plan["clinic_address"] or "",
             "phone": plan["clinic_phone"] or "",
-            "logo_url": plan["logo_url"] or "",
+            "logo_url": resolve_logo_data_uri(tenant_id) or plan["logo_url"] or "",
         },
         "items": [
             {

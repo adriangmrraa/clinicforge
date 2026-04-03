@@ -18,6 +18,8 @@ from typing import Optional
 
 from jinja2 import Environment, FileSystemLoader
 
+from services.digital_records_service import resolve_logo_data_uri
+
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -495,7 +497,7 @@ async def gather_liquidation_pdf_data(
             "name": record["clinic_name"] or "Clínica",
             "address": record["clinic_address"] or "",
             "phone": record["clinic_phone"] or "",
-            "logo_url": record["logo_url"] or "",
+            "logo_url": resolve_logo_data_uri(tenant_id) or record["logo_url"] or "",
         },
         "professional": {
             "full_name": (record["professional_full_name"] or "").strip()
