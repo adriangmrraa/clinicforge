@@ -1136,7 +1136,7 @@
     "paid": "Pagado",
     "pending": "Pendiente",
     "paid_complete": "Pagado completo",
-    "no_approved_total": "Sin批准 total",
+    "no_approved_total": "Sin total aprobado",
     "treatments": "Tratamientos",
     "add_treatment": "Agregar tratamiento",
     "no_items": "No hay tratamientos en este presupuesto",
@@ -1147,6 +1147,7 @@
     "status_item": "Estado",
     "item_status": {
       "pending": "Pendiente",
+      "in_progress": "En curso",
       "completed": "Completado",
       "cancelled": "Cancelado"
     },
@@ -1171,6 +1172,9 @@
     "pending_balance_helper": "Saldo pendiente: ${{amount}}",
     "delete_payment_confirm": "¿Eliminar este pago?",
     "error_generic": "Error al procesar la solicitud",
+    "error_load": "Error al cargar presupuestos",
+    "error_save": "Error al guardar",
+    "notes_placeholder": "Notas opcionales...",
     "saving": "Guardando..."
   },
   "marketing_google": {

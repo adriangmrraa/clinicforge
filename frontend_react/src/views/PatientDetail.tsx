@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, User, Phone, Mail, AlertTriangle,
   FileText, Plus, Activity, Heart, Pill, Stethoscope, Megaphone,
-  ClipboardList, History, Folder, X, HeartPulse, Link, Check, Copy
+  ClipboardList, History, Folder, X, HeartPulse, Link, Check, Copy, Receipt
 } from 'lucide-react';
 import api from '../api/axios';
 import { useTranslation } from '../context/LanguageContext';
@@ -13,6 +13,7 @@ import AttachmentSummaryCard from '../components/AttachmentSummaryCard';
 import DocumentGallery from '../components/DocumentGallery';
 import AnamnesisPanel from '../components/AnamnesisPanel';
 import DigitalRecordsTab from '../components/DigitalRecordsTab';
+import BillingTab from '../components/BillingTab';
 import { io, Socket } from 'socket.io-client';
 import { WS_URL } from '../api/axios';
 
@@ -70,7 +71,7 @@ const criticalConditions = [
   'vih', 'hepatitis', 'asma severa'
 ];
 
-type TabType = 'summary' | 'history' | 'documents' | 'anamnesis' | 'digital_records';
+type TabType = 'summary' | 'history' | 'documents' | 'anamnesis' | 'digital_records' | 'billing';
 
 export default function PatientDetail() {
   const { id } = useParams<{ id: string }>();
@@ -89,6 +90,7 @@ export default function PatientDetail() {
   const socketRef = useRef<Socket | null>(null);
   const [anamnesisRefreshKey, setAnamnesisRefreshKey] = useState(0);
   const [digitalRecordsRefreshKey, setDigitalRecordsRefreshKey] = useState(0);
+  const [billingRefreshKey, setBillingRefreshKey] = useState(0);
   const [attachmentSummary, setAttachmentSummary] = useState<AttachmentSummary | null>(null);
 
   const [formData, setFormData] = useState({
@@ -173,6 +175,20 @@ export default function PatientDetail() {
       const currentPatientId = id ? parseInt(id) : null;
       if (payload.patient_id && payload.patient_id === currentPatientId) {
         setDigitalRecordsRefreshKey(prev => prev + 1);
+      }
+    });
+
+    socketRef.current.on('TREATMENT_PLAN_UPDATED', (payload: { patient_id?: number }) => {
+      const currentPatientId = id ? parseInt(id) : null;
+      if (payload.patient_id && payload.patient_id === currentPatientId) {
+        setBillingRefreshKey(prev => prev + 1);
+      }
+    });
+
+    socketRef.current.on('BILLING_UPDATED', (payload: { patient_id?: number }) => {
+      const currentPatientId = id ? parseInt(id) : null;
+      if (payload.patient_id && payload.patient_id === currentPatientId) {
+        setBillingRefreshKey(prev => prev + 1);
       }
     });
 
@@ -526,6 +542,14 @@ export default function PatientDetail() {
           />
         );
 
+      case 'billing':
+        return (
+          <BillingTab
+            patientId={parseInt(id!)}
+            refreshKey={billingRefreshKey}
+          />
+        );
+
       default:
         return null;
     }
@@ -712,6 +736,19 @@ export default function PatientDetail() {
                 <FileText size={16} />
                 <span className="hidden sm:inline">{t('digitalRecords.tab')}</span>
                 <span className="sm:hidden">Fichas</span>
+              </div>
+            </button>
+            <button
+              onClick={() => setActiveTab('billing')}
+              className={`flex-shrink-0 py-3 px-3 lg:px-4 text-xs lg:text-sm font-medium transition-colors whitespace-nowrap ${activeTab === 'billing'
+                ? 'text-primary border-b-2 border-primary'
+                : 'text-white/40 hover:text-white/70 hover:bg-white/[0.04]'
+                }`}
+            >
+              <div className="flex items-center justify-center gap-1.5">
+                <Receipt size={16} />
+                <span className="hidden sm:inline">{t('billing.tab')}</span>
+                <span className="sm:hidden">Presupuesto</span>
               </div>
             </button>
           </div>

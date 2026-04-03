@@ -425,3 +425,265 @@ def render_payment_email_from_country(
         clinic_address=clinic_address,
         clinic_phone=clinic_phone,
     )
+
+
+# ============================================================
+# Welcome Email Templates (professional, secretary, CEO)
+# ============================================================
+
+WELCOME_EMAIL_TEMPLATES = {
+    "professional": {
+        "subject": "Bienvenido a {clinic_name} - Tu acceso al sistema",
+        "html": """
+        <!DOCTYPE html>
+        <html lang="es">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Bienvenido</title>
+        </head>
+        <body style="font-family: 'Segoe UI', Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto; line-height: 1.6;">
+            <div style="background: linear-gradient(135deg, #3b82f6, #1d4ed8); padding: 25px; text-align: center; border-radius: 12px 12px 0 0;">
+                <h1 style="color: white; margin: 0; font-size: 24px;">🏥 Bienvenido a {clinic_name}</h1>
+                <p style="color: rgba(255,255,255,0.9); margin: 8px 0 0; font-size: 15px;">Tu acceso al sistema</p>
+            </div>
+
+            <div style="padding: 25px; background: #fff; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 12px 12px;">
+                <p style="font-size: 16px; margin-bottom: 20px;">
+                    Hola <strong>{user_first_name}</strong>!<br>
+                    ¡Bienvenido a nuestro equipo! Estos son tus datos de acceso:
+                </p>
+
+                <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 20px; margin-bottom: 25px;">
+                    <h2 style="color: #1e40af; margin-top: 0; border-bottom: 2px solid #3b82f6; padding-bottom: 8px;">📋 Credenciales</h2>
+                    
+                    <table style="width: 100%; border-collapse: collapse;">
+                        <tr>
+                            <td style="padding: 10px 0; font-weight: bold; width: 40%;">Usuario:</td>
+                            <td style="padding: 10px 0;">{user_email}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 10px 0; font-weight: bold;">Link de acceso:</td>
+                            <td style="padding: 10px 0;">
+                                <a href="{login_url}" style="color: #3b82f6; text-decoration: none; font-weight: bold;">{login_url}</a>
+                            </td>
+                        </tr>
+                    </table>
+                </div>
+
+                <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 18px; margin-bottom: 25px;">
+                    <h3 style="color: #065f46; margin-top: 0;">🏥 Datos de la clínica</h3>
+                    <p style="margin: 8px 0;">
+                        <strong>{clinic_name}</strong><br>
+                        {clinic_address}<br>
+                        Teléfono: {clinic_phone}
+                    </p>
+                </div>
+
+                <div style="background: #faf5ff; border: 1px solid #e9d5ff; border-radius: 8px; padding: 18px; margin-bottom: 25px;">
+                    <h3 style="color: #7c3aed; margin-top: 0;">📅 Sistema de Agenda</h3>
+                    <p style="margin: 8px 0;">
+                        Podés ver tu agenda, gestionar tus turnos y consultar tus pacientes desde el panel.
+                    </p>
+                </div>
+
+                <div style="text-align: center; margin-top: 25px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
+                    <p style="color: #6b7280; font-size: 14px; margin: 0;">
+                        Si tenés dudas, escribinos a {support_email}
+                    </p>
+                </div>
+            </div>
+        </body>
+        </html>
+        """,
+    },
+    "secretary": {
+        "subject": "Bienvenida a {clinic_name} - Tu acceso como Secretaría",
+        "html": """
+        <!DOCTYPE html>
+        <html lang="es">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Bienvenida</title>
+        </head>
+        <body style="font-family: 'Segoe UI', Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto; line-height: 1.6;">
+            <div style="background: linear-gradient(135deg, #8b5cf6, #6d28d9); padding: 25px; text-align: center; border-radius: 12px 12px 0 0;">
+                <h1 style="color: white; margin: 0; font-size: 24px;">👋 Bienvenida a {clinic_name}</h1>
+                <p style="color: rgba(255,255,255,0.9); margin: 8px 0 0; font-size: 15px;">Tu acceso como Secretaría</p>
+            </div>
+
+            <div style="padding: 25px; background: #fff; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 12px 12px;">
+                <p style="font-size: 16px; margin-bottom: 20px;">
+                    Hola <strong>{user_first_name}</strong>!<br>
+                    ¡Estamos felices de tenerte en el equipo! Estos son tus datos de acceso:
+                </p>
+
+                <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 20px; margin-bottom: 25px;">
+                    <h2 style="color: #1e40af; margin-top: 0; border-bottom: 2px solid #8b5cf6; padding-bottom: 8px;">📋 Credenciales</h2>
+                    
+                    <table style="width: 100%; border-collapse: collapse;">
+                        <tr>
+                            <td style="padding: 10px 0; font-weight: bold; width: 40%;">Usuario:</td>
+                            <td style="padding: 10px 0;">{user_email}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 10px 0; font-weight: bold;">Link de acceso:</td>
+                            <td style="padding: 10px 0;">
+                                <a href="{login_url}" style="color: #8b5cf6; text-decoration: none; font-weight: bold;">{login_url}</a>
+                            </td>
+                        </tr>
+                    </table>
+                </div>
+
+                <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 18px; margin-bottom: 25px;">
+                    <h3 style="color: #065f46; margin-top: 0;">🏥 Datos de la clínica</h3>
+                    <p style="margin: 8px 0;">
+                        <strong>{clinic_name}</strong><br>
+                        {clinic_address}<br>
+                        Teléfono: {clinic_phone}
+                    </p>
+                </div>
+
+                <div style="background: #fef3c7; border: 1px solid #fcd34d; border-radius: 8px; padding: 18px; margin-bottom: 25px;">
+                    <h3 style="color: #92400e; margin-top: 0;">📋 Funcionalidades disponibles</h3>
+                    <ul style="margin: 8px 0; padding-left: 20px; color: #451a03;">
+                        <li>Gestión de turnos y agenda</li>
+                        <li>Registro de pacientes</li>
+                        <li>Confirmación de turnos</li>
+                        <li>Historial de conversaciones</li>
+                    </ul>
+                </div>
+
+                <div style="text-align: center; margin-top: 25px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
+                    <p style="color: #6b7280; font-size: 14px; margin: 0;">
+                        Si tenés dudas, escribinos a {support_email}
+                    </p>
+                </div>
+            </div>
+        </body>
+        </html>
+        """,
+    },
+    "ceo": {
+        "subject": "Bienvenido a {clinic_name} - Acceso como Administrador",
+        "html": """
+        <!DOCTYPE html>
+        <html lang="es">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Bienvenido Administrador</title>
+        </head>
+        <body style="font-family: 'Segoe UI', Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto; line-height: 1.6;">
+            <div style="background: linear-gradient(135deg, #f59e0b, #d97706); padding: 25px; text-align: center; border-radius: 12px 12px 0 0;">
+                <h1 style="color: white; margin: 0; font-size: 24px;">⚙️ Bienvenido a {clinic_name}</h1>
+                <p style="color: rgba(255,255,255,0.9); margin: 8px 0 0; font-size: 15px;">Acceso como Administrador</p>
+            </div>
+
+            <div style="padding: 25px; background: #fff; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 12px 12px;">
+                <p style="font-size: 16px; margin-bottom: 20px;">
+                    Hola <strong>{user_first_name}</strong>!<br>
+                    ¡Bienvenido como administrador! Tenés acceso completo al sistema. Estos son tus datos de acceso:
+                </p>
+
+                <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 20px; margin-bottom: 25px;">
+                    <h2 style="color: #1e40af; margin-top: 0; border-bottom: 2px solid #f59e0b; padding-bottom: 8px;">📋 Credenciales</h2>
+                    
+                    <table style="width: 100%; border-collapse: collapse;">
+                        <tr>
+                            <td style="padding: 10px 0; font-weight: bold; width: 40%;">Usuario:</td>
+                            <td style="padding: 10px 0;">{user_email}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 10px 0; font-weight: bold;">Link de acceso:</td>
+                            <td style="padding: 10px 0;">
+                                <a href="{login_url}" style="color: #f59e0b; text-decoration: none; font-weight: bold;">{login_url}</a>
+                            </td>
+                        </tr>
+                    </table>
+                </div>
+
+                <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 18px; margin-bottom: 25px;">
+                    <h3 style="color: #065f46; margin-top: 0;">🏥 Datos de la clínica</h3>
+                    <p style="margin: 8px 0;">
+                        <strong>{clinic_name}</strong><br>
+                        {clinic_address}<br>
+                        Teléfono: {clinic_phone}
+                    </p>
+                </div>
+
+                <div style="background: #f0f9ff; border: 1px solid #7dd3fc; border-radius: 8px; padding: 18px; margin-bottom: 25px;">
+                    <h3 style="color: #0369a1; margin-top: 0;">📊 Dashboard y Métricas</h3>
+                    <ul style="margin: 8px 0; padding-left: 20px; color: #0c4a6e;">
+                        <li>Ver ingresos y estadísticas</li>
+                        <li>Gestión de relaciones</li>
+                        <li>Reportes detallados</li>
+                    </ul>
+                </div>
+
+                <div style="background: #fef3c7; border: 1px solid #fcd34d; border-radius: 8px; padding: 18px; margin-bottom: 25px;">
+                    <h3 style="color: #92400e; margin-top: 0;">⚙️ Configuraciones disponibles</h3>
+                    <ul style="margin: 8px 0; padding-left: 20px; color: #451a03;">
+                        <li>Configurar clínica</li>
+                        <li>Gestionar usuarios y permisos</li>
+                        <li>Ajustar agenda y horarios</li>
+                        <li>Integrar calendario Google</li>
+                    </ul>
+                </div>
+
+                <div style="text-align: center; margin-top: 25px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
+                    <p style="color: #6b7280; font-size: 14px; margin: 0;">
+                        Si tenés dudas, escribinos a {support_email}
+                    </p>
+                </div>
+            </div>
+        </body>
+        </html>
+        """,
+    },
+}
+
+
+def render_welcome_email(
+    role: str,
+    user_first_name: str,
+    user_email: str,
+    clinic_name: str,
+    clinic_address: str = "",
+    clinic_phone: str = "",
+    login_url: str = "",
+    support_email: str = "",
+) -> dict:
+    """
+    Render a welcome email for the given role.
+
+    Roles: "professional", "secretary", "ceo"
+
+    Returns dict with "subject" and "html" keys.
+    Falls back to professional template if role not found.
+    """
+    # Normalize role
+    role_key = role.lower().strip() if role else "professional"
+
+    # Fallback to professional if role not available
+    template = WELCOME_EMAIL_TEMPLATES.get(
+        role_key, WELCOME_EMAIL_TEMPLATES["professional"]
+    )
+
+    # Prepare context
+    context = {
+        "user_first_name": user_first_name,
+        "user_email": user_email,
+        "clinic_name": clinic_name,
+        "clinic_address": clinic_address if clinic_address else "—",
+        "clinic_phone": clinic_phone if clinic_phone else "—",
+        "login_url": login_url if login_url else "—",
+        "support_email": support_email if support_email else "—",
+    }
+
+    # Render subject and HTML
+    subject = template["subject"].format(**context)
+    html = template["html"].format(**context)
+
+    return {"subject": subject, "html": html}

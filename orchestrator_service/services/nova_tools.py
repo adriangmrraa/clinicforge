@@ -326,13 +326,17 @@ NOVA_TOOLS_SCHEMA: List[Dict[str, Any]] = [
     {
         "type": "function",
         "name": "registrar_pago",
-        "description": "Registra el pago de un turno completado. Solo para CEO y secretarias.",
+        "description": "Registra el pago de un turno completado o de un plan de tratamiento. Solo para CEO y secretarias.",
         "parameters": {
             "type": "object",
             "properties": {
                 "appointment_id": {
                     "type": "string",
-                    "description": "UUID del turno",
+                    "description": "UUID del turno (opcional si se proporciona plan_id)",
+                },
+                "plan_id": {
+                    "type": "string",
+                    "description": "UUID del plan de tratamiento (opcional si se proporciona appointment_id)",
                 },
                 "amount": {
                     "type": "number",
@@ -348,7 +352,39 @@ NOVA_TOOLS_SCHEMA: List[Dict[str, Any]] = [
                     "description": "Notas del pago",
                 },
             },
-            "required": ["appointment_id", "amount", "method"],
+            "required": ["amount", "method"],
+        },
+    },
+    {
+        "type": "function",
+        "name": "registrar_pago_plan",
+        "description": "Registra un pago en un plan de tratamiento. Solo para CEO y secretarias.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "plan_id": {
+                    "type": "string",
+                    "description": "UUID del plan de tratamiento",
+                },
+                "amount": {
+                    "type": "number",
+                    "description": "Monto pagado",
+                },
+                "method": {
+                    "type": "string",
+                    "enum": ["cash", "card", "transfer", "insurance"],
+                    "description": "Metodo de pago",
+                },
+                "notes": {
+                    "type": "string",
+                    "description": "Notas del pago",
+                },
+                "payment_date": {
+                    "type": "string",
+                    "description": "Fecha de pago en formato YYYY-MM-DD (opcional, por defecto hoy)",
+                },
+            },
+            "required": ["plan_id", "amount", "method"],
         },
     },
     {
@@ -801,9 +837,9 @@ NOVA_TOOLS_SCHEMA: List[Dict[str, Any]] = [
             "properties": {
                 "patient_id": {"type": "integer", "description": "ID del paciente"},
                 "denticion": {
-                    "type": "string", 
+                    "type": "string",
                     "enum": ["permanente", "temporal"],
-                    "description": "Tipo de dentición: 'permanente' (32 piezas, FDI 11-48) o 'temporal' (20 piezas, FDI 51-85). Por defecto 'permanente'."
+                    "description": "Tipo de dentición: 'permanente' (32 piezas, FDI 11-48) o 'temporal' (20 piezas, FDI 51-85). Por defecto 'permanente'.",
                 },
             },
             "required": ["patient_id"],
@@ -825,9 +861,9 @@ IMPORTANTE — REGLAS QUIRÚRGICAS:
             "properties": {
                 "patient_id": {"type": "integer", "description": "ID del paciente"},
                 "denticion": {
-                    "type": "string", 
+                    "type": "string",
                     "enum": ["permanente", "temporal"],
-                    "description": "Tipo de dentición: 'permanente' (32 piezas) o 'temporal' (20 piezas). Por defecto 'permanente'."
+                    "description": "Tipo de dentición: 'permanente' (32 piezas) o 'temporal' (20 piezas). Por defecto 'permanente'.",
                 },
                 "piezas": {
                     "type": "array",
@@ -835,29 +871,102 @@ IMPORTANTE — REGLAS QUIRÚRGICAS:
                     "items": {
                         "type": "object",
                         "properties": {
-                            "numero": {"type": "integer", "description": "Número FDI de la pieza (ej: 16, 21, 36, 48, 51, 55, etc.). SIN punto."},
+                            "numero": {
+                                "type": "integer",
+                                "description": "Número FDI de la pieza (ej: 16, 21, 36, 48, 51, 55, etc.). SIN punto.",
+                            },
                             "estado": {
                                 "type": "string",
-                                "enum": ["healthy", "caries", "restauracion_resina", "restauracion_amalgama", "restauracion_temporal", "sellador_fisuras", "carilla", "puente", "corona_porcelana", "corona_resina", "corona_metalceramica", "corona_temporal", "incrustacion", "onlay", "poste", "perno", "fibras_ribbond", "tratamiento_conducto", "implante", "radiografia", "protesis_fija", "protesis_removible", "blanqueamiento", "fluorosis", "hipoplasia", "desgaste", "caries_incipiente", "caries_recurrente", "caries_radicular", "fractura", "fisura", "absceso", "fistula", "sinus", "periodontitis", "gingivitis", "recesion_gingival", "movilidad_dental", "necrosis", "pulpotomia", "apicogenesis", "apicificacion", "extraction", "treatment_planned", "crown", "missing", "prosthesis", "root_canal"],
-                                "description": "Estado de la pieza (42 opciones): healthy=sano, caries=caries, restauracion_resina=resina, restauracion_amalgama=amalgama, restauracion_temporal=restauración temporal, sellador_fisuras=sellador, carilla=carilla, puente=puente, corona_porcelana=corona porcelana, corona_resina=corona resina, corona_metalceramica=corona metalcerámica, corona_temporal=corona temporal, incrustacion=incrustación, onlay=onlay, poste=poste, perno=perno, fibras_ribbond=fibras ribbond, tratamiento_conducto=tratamiento de conducto, implante=implante, radiografia=radiografía, protesis_fija=prótesis fija, protesis_removible=prótesis removible, blanqueamiento=blanqueamiento, fluorosis=fluorosis, hipoplasia=hipoplasia, desgaste=desgaste, caries_incipiente=caries incipiente, caries_recurrente=caries recurrente, caries_radicular=caries radicular, fractura=fractura, fisura=fisura, absceso=absceso, fistula=fístula, sinus=sinus, periodontitis=periodontitis, gingivitis=gingivitis, recesion_gingival=recesión gingival, movilidad_dental=movilidad, necrosis=necrosis, pulpotomia=pulpotomía, apicogenesis=apicogénesis, apicificacion=apicificación, extraction=extracción, treatment_planned=planificado, crown=corona, missing=ausente, prosthesis=prótesis, root_canal=conducto"
+                                "enum": [
+                                    "healthy",
+                                    "caries",
+                                    "restauracion_resina",
+                                    "restauracion_amalgama",
+                                    "restauracion_temporal",
+                                    "sellador_fisuras",
+                                    "carilla",
+                                    "puente",
+                                    "corona_porcelana",
+                                    "corona_resina",
+                                    "corona_metalceramica",
+                                    "corona_temporal",
+                                    "incrustacion",
+                                    "onlay",
+                                    "poste",
+                                    "perno",
+                                    "fibras_ribbond",
+                                    "tratamiento_conducto",
+                                    "implante",
+                                    "radiografia",
+                                    "protesis_fija",
+                                    "protesis_removible",
+                                    "blanqueamiento",
+                                    "fluorosis",
+                                    "hipoplasia",
+                                    "desgaste",
+                                    "caries_incipiente",
+                                    "caries_recurrente",
+                                    "caries_radicular",
+                                    "fractura",
+                                    "fisura",
+                                    "absceso",
+                                    "fistula",
+                                    "sinus",
+                                    "periodontitis",
+                                    "gingivitis",
+                                    "recesion_gingival",
+                                    "movilidad_dental",
+                                    "necrosis",
+                                    "pulpotomia",
+                                    "apicogenesis",
+                                    "apicificacion",
+                                    "extraction",
+                                    "treatment_planned",
+                                    "crown",
+                                    "missing",
+                                    "prosthesis",
+                                    "root_canal",
+                                ],
+                                "description": "Estado de la pieza (42 opciones): healthy=sano, caries=caries, restauracion_resina=resina, restauracion_amalgama=amalgama, restauracion_temporal=restauración temporal, sellador_fisuras=sellador, carilla=carilla, puente=puente, corona_porcelana=corona porcelana, corona_resina=corona resina, corona_metalceramica=corona metalcerámica, corona_temporal=corona temporal, incrustacion=incrustación, onlay=onlay, poste=poste, perno=perno, fibras_ribbond=fibras ribbond, tratamiento_conducto=tratamiento de conducto, implante=implante, radiografia=radiografía, protesis_fija=prótesis fija, protesis_removible=prótesis removible, blanqueamiento=blanqueamiento, fluorosis=fluorosis, hipoplasia=hipoplasia, desgaste=desgaste, caries_incipiente=caries incipiente, caries_recurrente=caries recurrente, caries_radicular=caries radicular, fractura=fractura, fisura=fisura, absceso=absceso, fistula=fístula, sinus=sinus, periodontitis=periodontitis, gingivitis=gingivitis, recesion_gingival=recesión gingival, movilidad_dental=movilidad, necrosis=necrosis, pulpotomia=pulpotomía, apicogenesis=apicogénesis, apicificacion=apicificación, extraction=extracción, treatment_planned=planificado, crown=corona, missing=ausente, prosthesis=prótesis, root_canal=conducto",
                             },
                             "superficies": {
                                 "type": "object",
                                 "description": "Superficies afectadas (opcional). Solo pasar las que cambian.",
                                 "properties": {
-                                    "occlusal": {"type": "string", "description": "Estado de superficie oclusal (cualquiera de los 42 estados)"},
-                                    "vestibular": {"type": "string", "description": "Estado de superficie vestibular/bucal"},
-                                    "lingual": {"type": "string", "description": "Estado de superficie lingual/palatino"},
-                                    "mesial": {"type": "string", "description": "Estado de superficie mesial"},
-                                    "distal": {"type": "string", "description": "Estado de superficie distal"},
+                                    "occlusal": {
+                                        "type": "string",
+                                        "description": "Estado de superficie oclusal (cualquiera de los 42 estados)",
+                                    },
+                                    "vestibular": {
+                                        "type": "string",
+                                        "description": "Estado de superficie vestibular/bucal",
+                                    },
+                                    "lingual": {
+                                        "type": "string",
+                                        "description": "Estado de superficie lingual/palatino",
+                                    },
+                                    "mesial": {
+                                        "type": "string",
+                                        "description": "Estado de superficie mesial",
+                                    },
+                                    "distal": {
+                                        "type": "string",
+                                        "description": "Estado de superficie distal",
+                                    },
                                 },
                             },
-                            "notas": {"type": "string", "description": "Nota clínica para esta pieza (opcional)"},
+                            "notas": {
+                                "type": "string",
+                                "description": "Nota clínica para esta pieza (opcional)",
+                            },
                         },
                         "required": ["numero", "estado"],
                     },
                 },
-                "diagnostico": {"type": "string", "description": "Diagnóstico general asociado a estos cambios (opcional, ej: 'Caries en piezas 16 y 18')"},
+                "diagnostico": {
+                    "type": "string",
+                    "description": "Diagnóstico general asociado a estos cambios (opcional, ej: 'Caries en piezas 16 y 18')",
+                },
             },
             "required": ["patient_id", "piezas"],
         },
@@ -1095,6 +1204,67 @@ IMPORTANTE — REGLAS QUIRÚRGICAS:
                 },
             },
             "required": ["patient_id"],
+        },
+    },
+    # O. Treatment Plans / Budget (NEW)
+    # -------------------------------------------------------------------------
+    {
+        "type": "function",
+        "name": "ver_presupuesto_paciente",
+        "description": "Muestra el/los presupuesto(s) de tratamiento de un paciente: items, precios, pagos y saldo pendiente. Si hay múltiples pacientes, pide aclarar. Si no hay planes activos, informa claramente.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "patient_id": {
+                    "type": "integer",
+                    "description": "ID del paciente (opcional si se busca por nombre)",
+                },
+                "patient_name": {
+                    "type": "string",
+                    "description": "Nombre del paciente para buscar (opcional si se usa patient_id)",
+                },
+                "plan_id": {
+                    "type": "string",
+                    "description": "ID específico del plan a ver (opcional)",
+                },
+                "include_completed": {
+                    "type": "boolean",
+                    "description": "Incluir planes completados (default: false)",
+                },
+            },
+        },
+    },
+    # O2. Aprobar presupuesto
+    # -------------------------------------------------------------------------
+    {
+        "type": "function",
+        "name": "aprobar_presupuesto",
+        "description": "Aprueba un plan de tratamiento fijando el precio final. Solo CEO puede aprobar presupuestos.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "plan_id": {
+                    "type": "string",
+                    "description": "ID UUID del plan a aprobar",
+                },
+                "patient_id": {
+                    "type": "integer",
+                    "description": "ID del paciente (opcional si se pasa plan_id)",
+                },
+                "patient_name": {
+                    "type": "string",
+                    "description": "Nombre del paciente para buscar (opcional)",
+                },
+                "approved_total": {
+                    "type": "number",
+                    "description": "Monto total aprobado (puede diferir del estimado)",
+                },
+                "notes": {
+                    "type": "string",
+                    "description": "Notas adicionales de la aprobación",
+                },
+            },
+            "required": ["approved_total"],
         },
     },
 ]
@@ -1525,6 +1695,338 @@ async def _actualizar_paciente(args: Dict, tenant_id: int) -> str:
         "PATIENT_UPDATED", {"patient_id": int(pid), "tenant_id": tenant_id}
     )
     return f"Paciente {pid}: campo '{field}' actualizado."
+
+
+async def _actualizar_email_paciente(args: Dict, tenant_id: int) -> str:
+    """Actualiza el email de un paciente."""
+    import re
+
+    pid = args.get("patient_id")
+    email = args.get("email")
+
+    if not pid or not email:
+        return "Necesito patient_id y email."
+
+    # Validar formato de email
+    email_pattern = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
+    if not re.match(email_pattern, email):
+        return "El formato del email no es valido."
+
+    result = await db.pool.execute(
+        "UPDATE patients SET email = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3",
+        email,
+        int(pid),
+        tenant_id,
+    )
+    if result == "UPDATE 0":
+        return "No encontre a ese paciente."
+    await _nova_emit(
+        "PATIENT_UPDATED", {"patient_id": int(pid), "tenant_id": tenant_id}
+    )
+    return f"Email actualizado para paciente {pid}: {email}"
+
+
+async def _ver_presupuesto_paciente(args: Dict, tenant_id: int) -> str:
+    """
+    Muestra el/los presupuesto(s) de tratamiento de un paciente:
+    items, precios, pagos y saldo pendiente.
+    """
+
+    patient_id = args.get("patient_id")
+    patient_name = args.get("patient_name")
+    plan_id = args.get("plan_id")
+    include_completed = args.get("include_completed", False)
+
+    # 1. Buscar paciente
+    if patient_id:
+        patient = await db.pool.fetchrow(
+            "SELECT id, first_name, last_name FROM patients WHERE id = $1 AND tenant_id = $2",
+            int(patient_id),
+            tenant_id,
+        )
+        if not patient:
+            return f"No encontré un paciente con ID {patient_id}."
+    elif patient_name:
+        patients = await db.pool.fetch(
+            "SELECT id, first_name, last_name FROM patients WHERE tenant_id = $1 AND LOWER(first_name || ' ' || COALESCE(last_name, '')) LIKE $2",
+            tenant_id,
+            f"%{patient_name.lower()}%",
+        )
+        if len(patients) > 1:
+            names = ", ".join(
+                [f"{p['first_name']} {p['last_name']}" for p in patients[:5]]
+            )
+            return f"Hay múltiples pacientes con ese nombre: {names}. Por favor usá el patient_id."
+        if not patients:
+            return f"No encontré ningún paciente con nombre '{patient_name}'."
+        patient = patients[0]
+        patient_id = patient["id"]
+    else:
+        return "Necesito patient_id o patient_name para buscar el presupuesto."
+
+    # 2. Obtener planes del paciente
+    status_filter = "" if include_completed else "AND tp.status != 'completed'"
+    plans = await db.pool.fetch(
+        f"""
+        SELECT tp.id, tp.name, tp.status, tp.estimated_total, tp.approved_total, tp.created_at,
+               prof.first_name as professional_name
+        FROM treatment_plans tp
+        LEFT JOIN professionals prof ON tp.professional_id = prof.id
+        WHERE tp.patient_id = $1 AND tp.tenant_id = $2 {status_filter}
+        ORDER BY tp.created_at DESC
+        """,
+        patient["id"],
+        tenant_id,
+    )
+
+    if not plans:
+        return f"El paciente {patient['first_name']} {patient['last_name']} no tiene presupuestos activos."
+
+    # 3. Si hay plan_id específico, obtener detalle
+    if plan_id:
+        plan = next((p for p in plans if str(p["id"]) == plan_id), None)
+        if not plan:
+            return f"No encontré el plan con ID {plan_id} para este paciente."
+        return await _format_plan_detail(plan, tenant_id)
+
+    # 4. Mostrar lista de planes o detalle según cantidad
+    if len(plans) == 1:
+        return await _format_plan_detail(plans[0], tenant_id)
+
+    # Múltiples planes - mostrar lista
+    lines = [f"Presupuestos de {patient['first_name']} {patient['last_name']}:"]
+    for p in plans:
+        status_emoji = {
+            "draft": "📝",
+            "approved": "✅",
+            "in_progress": "⏳",
+            "completed": "🎉",
+            "cancelled": "❌",
+        }.get(p["status"], "❓")
+        est = float(p["estimated_total"] or 0)
+        app = float(p["approved_total"] or 0)
+        total = app if app > 0 else est
+        lines.append(
+            f"{status_emoji} *{p['name']}* — ${total:,.0f} ({p['status']}) [ID: {p['id']}]"
+        )
+        if p["professional_name"]:
+            lines.append(f"   Profesional: {p['professional_name']}")
+
+    lines.append("\nPara ver el detalle de un plan específico, usá plan_id.")
+    return "\n".join(lines)
+
+
+async def _format_plan_detail(plan, tenant_id: int) -> str:
+    """Formatea el detalle de un plan de tratamiento."""
+    from orchestrator_service.services import db
+
+    plan_id = str(plan["id"])
+
+    # Obtener items
+    items = await db.pool.fetch(
+        """
+        SELECT tpi.id, tpi.treatment_type_code, tpi.custom_description,
+               tpi.estimated_price, tpi.approved_price, tpi.status,
+               tt.name as treatment_name
+        FROM treatment_plan_items tpi
+        LEFT JOIN treatment_types tt ON tpi.treatment_type_code = tt.code AND tpi.tenant_id = tt.tenant_id
+        WHERE tpi.plan_id = $1 AND tpi.tenant_id = $2 AND tpi.status != 'cancelled'
+        ORDER BY tpi.sort_order
+        """,
+        plan_id,
+        tenant_id,
+    )
+
+    # Obtener pagos
+    payments = await db.pool.fetch(
+        """
+        SELECT amount, payment_method, payment_date, notes
+        FROM treatment_plan_payments
+        WHERE plan_id = $1 AND tenant_id = $2
+        ORDER BY payment_date DESC
+        """,
+        plan_id,
+        tenant_id,
+    )
+
+    # Calcular totales
+    estimated_total = float(plan["estimated_total"] or 0)
+    approved_total = float(plan["approved_total"] or 0)
+    total = approved_total if approved_total > 0 else estimated_total
+
+    paid_total = sum(float(p["amount"]) for p in payments)
+    pending = max(total - paid_total, 0)
+
+    status_emoji = {
+        "draft": "📝",
+        "approved": "✅",
+        "in_progress": "⏳",
+        "completed": "🎉",
+        "cancelled": "❌",
+    }.get(plan["status"], "❓")
+
+    lines = [
+        f"📋 *{plan['name']}* {status_emoji}",
+        f"Estado: {plan['status']}",
+        f"",
+        f"💰 FINANCIERO:",
+        f"  Total estimado: ${estimated_total:,.0f}",
+        f"  Total aprobado: ${approved_total:,.0f}"
+        if approved_total > 0
+        else f"  Total: ${total:,.0f}",
+        f"  Pagado: ${paid_total:,.0f}",
+        f"  Pendiente: ${pending:,.0f}",
+        f"  Progreso: {int((paid_total / total) * 100)}%"
+        if total > 0
+        else "  Progreso: 0%",
+        f"",
+    ]
+
+    if items:
+        lines.append("📦 TRATAMIENTOS:")
+        for item in items:
+            name = (
+                item["custom_description"]
+                or item["treatment_name"]
+                or item["treatment_type_code"]
+                or "Tratamiento"
+            )
+            est = float(item["estimated_price"] or 0)
+            app = item["approved_price"]
+            price = f"${app:,.0f}" if app else f"${est:,.0f}"
+            status_icon = {"pending": "⏳", "in_progress": "🔄", "completed": "✅"}.get(
+                item["status"], "❓"
+            )
+            lines.append(f"  • {name} — {price} [{status_icon} {item['status']}]")
+    else:
+        lines.append("📦 Sin tratamientos registrados.")
+
+    if payments:
+        lines.append(f"\n💳 PAGOS ({len(payments)}):")
+        for p in payments:
+            method_icon = {"cash": "💵", "transfer": "🏦", "card": "💳"}.get(
+                p["payment_method"], "💰"
+            )
+            lines.append(
+                f"  {method_icon} ${p['amount']:,.0f} ({p['payment_method']}) — {p['payment_date']}"
+            )
+    else:
+        lines.append("\n💳 Sin pagos registrados.")
+
+    return "\n".join(lines)
+
+
+async def _aprobar_presupuesto(
+    args: Dict, tenant_id: int, user_role: str, user_id: str
+) -> str:
+    """
+    Aprueba un plan de tratamiento fijando el precio final.
+    Solo CEO puede aprobar presupuestos.
+    """
+
+    # Validar que es CEO
+    if user_role != "ceo":
+        return _role_error("aprobar_presupuesto", ["ceo"])
+
+    plan_id = args.get("plan_id")
+    patient_id = args.get("patient_id")
+    patient_name = args.get("patient_name")
+    approved_total = args.get("approved_total")
+    notes = args.get("notes", "")
+
+    if not approved_total:
+        return "Necesito el approved_total (monto aprobado)."
+
+    # Buscar plan
+    if plan_id:
+        plan = await db.pool.fetchrow(
+            "SELECT id, name, status FROM treatment_plans WHERE id = $1 AND tenant_id = $2",
+            plan_id,
+            tenant_id,
+        )
+        if not plan:
+            return f"No encontré el plan con ID {plan_id}."
+    elif patient_id and patient_name:
+        # Buscar por paciente y nombre
+        plan = await db.pool.fetchrow(
+            """
+            SELECT tp.id, tp.name, tp.status
+            FROM treatment_plans tp
+            JOIN patients p ON tp.patient_id = p.id
+            WHERE p.id = $1 AND p.tenant_id = $2 AND LOWER(tp.name) LIKE $3
+            """,
+            int(patient_id),
+            tenant_id,
+            f"%{patient_name.lower()}%",
+        )
+        if not plan:
+            return f"No encontré un plan '{patient_name}' para ese paciente."
+    elif patient_name and not patient_id:
+        # FIX H9 — solo patient_name: fuzzy search en pacientes, luego en planes draft
+        patients = await db.pool.fetch(
+            "SELECT id, first_name, last_name FROM patients WHERE tenant_id = $1 AND LOWER(first_name || ' ' || COALESCE(last_name, '')) LIKE $2",
+            tenant_id,
+            f"%{patient_name.lower()}%",
+        )
+        if not patients:
+            return f"No hay presupuestos en borrador para ese paciente ('{patient_name}' no encontrado)."
+
+        patient_ids = [p["id"] for p in patients]
+        draft_plans = await db.pool.fetch(
+            """
+            SELECT tp.id, tp.name, tp.status,
+                   p.first_name || ' ' || COALESCE(p.last_name, '') AS patient_full_name
+            FROM treatment_plans tp
+            JOIN patients p ON tp.patient_id = p.id
+            WHERE tp.tenant_id = $1 AND tp.status = 'draft' AND tp.patient_id = ANY($2::int[])
+            ORDER BY tp.created_at DESC
+            """,
+            tenant_id,
+            patient_ids,
+        )
+        if not draft_plans:
+            return f"No hay presupuestos en borrador para ese paciente."
+        if len(draft_plans) > 1:
+            lines = [f"Encontré {len(draft_plans)} presupuestos en borrador. Especificá cuál querés aprobar usando plan_id:"]
+            for dp in draft_plans:
+                lines.append(f"  • *{dp['name']}* — {dp['patient_full_name']} [ID: {dp['id']}]")
+            return "\n".join(lines)
+        plan = draft_plans[0]
+        # Ensure plan_id is set for the UPDATE below
+        plan_id = str(plan["id"])
+        if not patient_id:
+            # Recover patient_id for the emit
+            patient_id = await db.pool.fetchval(
+                "SELECT patient_id FROM treatment_plans WHERE id = $1 AND tenant_id = $2",
+                plan["id"], tenant_id
+            )
+    else:
+        return "Necesito plan_id, o patient_name (solo nombre), o (patient_id + patient_name)."
+
+    # Validar estado
+    if plan["status"] != "draft":
+        return f"El plan '{plan['name']}' no está en estado 'draft' (actual: {plan['status']}). Solo se pueden aprobar planes en borrador."
+
+    # Actualizar plan
+    await db.pool.execute(
+        """
+        UPDATE treatment_plans
+        SET status = 'approved', approved_total = $1, approved_by = $2, approved_at = NOW(), notes = COALESCE(notes, '') || $3, updated_at = NOW()
+        WHERE id = $4 AND tenant_id = $5
+        """,
+        float(approved_total),
+        user_id,
+        f"\n[Aprobado: {notes}]" if notes else "",
+        plan_id,
+        tenant_id,
+    )
+
+    await _nova_emit(
+        "TREATMENT_PLAN_UPDATED",
+        {"plan_id": plan_id, "tenant_id": tenant_id, "patient_id": patient_id},
+    )
+
+    return f"✅ Presupuesto aprobado: *{plan['name']}*\nMonto aprobado: ${float(approved_total):,.0f}\nEl plan ahora está activo y se pueden registrar pagos."
 
 
 async def _historial_clinico(args: Dict, tenant_id: int, user_role: str) -> str:
@@ -2095,20 +2597,30 @@ async def _listar_tratamientos(args: Dict, tenant_id: int) -> str:
 
 
 async def _registrar_pago(args: Dict, tenant_id: int, user_role: str) -> str:
+    """
+    Registra un pago de un turno (appointment_id) o de un plan de tratamiento (plan_id).
+    Solo para CEO y secretarias.
+    """
     if user_role not in ("ceo", "secretary"):
         return _role_error("registrar_pago", ["ceo", "secretary"])
 
+    plan_id = args.get("plan_id")
+    # Si se proporciona plan_id, delegar a la función específica de plan
+    if plan_id:
+        return await _registrar_pago_plan(args, tenant_id, user_role)
+
+    # Lógica original para pagos de turnos
     appt_id = args.get("appointment_id")
     amount = args.get("amount")
     method = args.get("method")
 
     if not appt_id or amount is None or not method:
-        return "Necesito appointment_id, amount y method."
+        return "Necesito appointment_id (o plan_id), amount y method."
 
     try:
         appt_uuid = uuid.UUID(appt_id)
     except ValueError:
-        return "ID de turno invalido."
+        return "ID de turno inválido."
 
     # Verify appointment exists
     appt = await db.pool.fetchrow(
@@ -2123,7 +2635,7 @@ async def _registrar_pago(args: Dict, tenant_id: int, user_role: str) -> str:
         tenant_id,
     )
     if not appt:
-        return "No encontre ese turno."
+        return "No encontré ese turno."
 
     # Update appointment billing
     await db.pool.execute(
@@ -2168,7 +2680,114 @@ async def _registrar_pago(args: Dict, tenant_id: int, user_role: str) -> str:
     return f"Pago de {_fmt_money(amount)} registrado para {appt['patient_name']} ({method_labels.get(method, method)})."
 
 
+async def _registrar_pago_plan(args: Dict, tenant_id: int, user_role: str) -> str:
+    """
+    Registra un pago en un plan de tratamiento.
+    Solo para CEO y secretarias.
+    """
+    if user_role not in ("ceo", "secretary"):
+        return _role_error("registrar_pago_plan", ["ceo", "secretary"])
+
+    plan_id = args.get("plan_id")
+    amount = args.get("amount")
+    method = args.get("method")
+    notes = args.get("notes", "")
+    payment_date = args.get("payment_date")
+
+    if not plan_id or amount is None or not method:
+        return "Necesito plan_id, amount y method."
+
+    try:
+        plan_uuid = uuid.UUID(plan_id)
+    except ValueError:
+        return "ID de plan inválido."
+
+    # Verificar que el plan existe y pertenece al tenant
+    plan = await db.pool.fetchrow(
+        """
+        SELECT id, name, patient_id, approved_total,
+               (SELECT first_name || ' ' || COALESCE(last_name, '')
+                FROM patients WHERE id = tp.patient_id) AS patient_name
+        FROM treatment_plans tp
+        WHERE id = $1 AND tenant_id = $2
+        """,
+        plan_uuid,
+        tenant_id,
+    )
+    if not plan:
+        return "No encontré ese plan de tratamiento."
+
+    # Insertar pago
+    payment_id = uuid.uuid4()
+    await db.pool.execute(
+        """
+        INSERT INTO treatment_plan_payments
+            (id, plan_id, amount, payment_method, payment_date,
+             notes, recorded_by_user_id, tenant_id)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        """,
+        payment_id,
+        plan_uuid,
+        Decimal(str(amount)),
+        method,
+        payment_date if payment_date else _today().isoformat(),
+        notes,
+        args.get("recorded_by_user_id"),  # Podría ser None, el sistema lo maneja
+        tenant_id,
+    )
+
+    method_labels = {
+        "cash": "efectivo",
+        "card": "tarjeta",
+        "transfer": "transferencia",
+        "insurance": "obra social",
+    }
+
+    # FIX C6 — Sync to accounting_transactions
+    try:
+        await db.pool.execute(
+            """INSERT INTO accounting_transactions
+               (tenant_id, patient_id, transaction_type, transaction_date, amount,
+                payment_method, description, status)
+               VALUES ($1, $2, 'payment', NOW(), $3, $4, $5, 'completed')""",
+            tenant_id,
+            plan["patient_id"],
+            Decimal(str(amount)),
+            method,
+            f"Pago plan '{plan['name']}' - {method_labels.get(method, method)}"
+        )
+    except Exception as acc_err:
+        logger.warning(f"accounting_transaction sync failed (non-fatal): {acc_err}")
+
+    # FIX C7 — Auto-complete plan if fully paid
+    try:
+        total_paid = await db.pool.fetchval(
+            "SELECT COALESCE(SUM(amount), 0) FROM treatment_plan_payments WHERE plan_id = $1 AND tenant_id = $2",
+            plan_uuid, tenant_id
+        )
+        if float(total_paid) >= float(plan["approved_total"]):
+            await db.pool.execute(
+                "UPDATE treatment_plans SET status = 'completed', updated_at = NOW() WHERE id = $1 AND tenant_id = $2",
+                plan_uuid, tenant_id
+            )
+            logger.info(f"Plan {plan_uuid} auto-completed (total_paid={total_paid} >= approved={plan['approved_total']})")
+    except Exception as complete_err:
+        logger.warning(f"Auto-complete check failed (non-fatal): {complete_err}")
+
+    # Emitir evento para actualizar frontend
+    await _nova_emit(
+        "BILLING_UPDATED",
+        {
+            "plan_id": str(plan_uuid),
+            "patient_id": plan["patient_id"],
+            "tenant_id": tenant_id,
+        },
+    )
+    return f"Pago de {_fmt_money(amount)} registrado en el plan '{plan['name']}' para {plan['patient_name']} ({method_labels.get(method, method)})."
+
+
 async def _facturacion_pendiente(tenant_id: int) -> str:
+    # Turnos con facturación pendiente (excluye turnos vinculados a planes)
     rows = await db.pool.fetch(
         """
         SELECT a.id, a.appointment_datetime, a.appointment_type,
@@ -2180,22 +2799,58 @@ async def _facturacion_pendiente(tenant_id: int) -> str:
         WHERE a.tenant_id = $1
           AND a.status = 'completed'
           AND (a.payment_status = 'pending' OR a.payment_status IS NULL)
+          AND a.plan_item_id IS NULL
         ORDER BY a.appointment_datetime DESC
         LIMIT 20
         """,
         tenant_id,
     )
 
-    if not rows:
+    # Planes con saldo pendiente
+    plans = await db.pool.fetch(
+        """
+        SELECT tp.id, tp.name, tp.approved_total,
+               COALESCE(payments.total_paid, 0) as total_paid,
+               pat.first_name || ' ' || COALESCE(pat.last_name, '') AS patient_name
+        FROM treatment_plans tp
+        JOIN patients pat ON tp.patient_id = pat.id AND pat.tenant_id = tp.tenant_id
+        LEFT JOIN (
+            SELECT plan_id, SUM(amount) as total_paid
+            FROM treatment_plan_payments
+            WHERE tenant_id = $1
+            GROUP BY plan_id
+        ) payments ON tp.id = payments.plan_id
+        WHERE tp.tenant_id = $1
+          AND tp.status IN ('approved', 'in_progress')
+          AND tp.approved_total IS NOT NULL
+          AND (payments.total_paid IS NULL OR payments.total_paid < tp.approved_total)
+        ORDER BY tp.approved_total - COALESCE(payments.total_paid, 0) DESC
+        LIMIT 20
+        """,
+        tenant_id,
+    )
+
+    if not rows and not plans:
         return "No hay facturacion pendiente. Todo al dia."
 
-    lines = [f"Facturacion pendiente ({len(rows)} turnos):"]
-    for r in rows:
-        dt = _fmt_date(r["appointment_datetime"])
-        price = _fmt_money(r["base_price"]) if r["base_price"] else "sin precio"
-        lines.append(
-            f"• {r['patient_name']} — {r['appointment_type']} ({dt}) — {price}"
-        )
+    lines = []
+    if rows:
+        lines.append(f"Facturacion pendiente ({len(rows)} turnos):")
+        for r in rows:
+            dt = _fmt_date(r["appointment_datetime"])
+            price = _fmt_money(r["base_price"]) if r["base_price"] else "sin precio"
+            lines.append(
+                f"• {r['patient_name']} — {r['appointment_type']} ({dt}) — {price}"
+            )
+    if plans:
+        if lines:
+            lines.append("")  # separator
+        lines.append(f"Planes con saldo pendiente ({len(plans)} planes):")
+        for p in plans:
+            pending = float(p["approved_total"]) - float(p["total_paid"])
+            lines.append(
+                f"• {p['patient_name']} — {p['name']} — Pendiente: {_fmt_money(pending)} (aprobado: {_fmt_money(p['approved_total'])}, pagado: {_fmt_money(p['total_paid'])})"
+            )
     return "\n".join(lines)
 
 
@@ -2216,7 +2871,7 @@ async def _resumen_semana(tenant_id: int, user_role: str) -> str:
             COUNT(*) FILTER (WHERE status = 'completed') AS completados,
             COUNT(*) FILTER (WHERE status = 'cancelled') AS cancelados,
             COUNT(*) FILTER (WHERE status = 'scheduled') AS pendientes,
-            COALESCE(SUM(billing_amount) FILTER (WHERE payment_status = 'paid'), 0) AS facturado
+            COALESCE(SUM(billing_amount) FILTER (WHERE payment_status = 'paid' AND plan_item_id IS NULL), 0) AS facturado
         FROM appointments
         WHERE tenant_id = $1
           AND appointment_datetime::date BETWEEN $2 AND $3
@@ -2687,6 +3342,8 @@ async def execute_nova_tool(
             return await _registrar_paciente(args, tenant_id)
         elif name == "actualizar_paciente":
             return await _actualizar_paciente(args, tenant_id)
+        elif name == "actualizar_email_paciente":
+            return await _actualizar_email_paciente(args, tenant_id)
         elif name == "historial_clinico":
             return await _historial_clinico(args, tenant_id, user_role)
         elif name == "registrar_nota_clinica":
@@ -2711,6 +3368,8 @@ async def execute_nova_tool(
             return await _listar_tratamientos(args, tenant_id)
         elif name == "registrar_pago":
             return await _registrar_pago(args, tenant_id, user_role)
+        elif name == "registrar_pago_plan":
+            return await _registrar_pago_plan(args, tenant_id, user_role)
         elif name == "facturacion_pendiente":
             return await _facturacion_pendiente(tenant_id)
 
@@ -2803,6 +3462,12 @@ async def execute_nova_tool(
             return await _generar_ficha_digital(args, tenant_id)
         elif name == "enviar_ficha_digital":
             return await _enviar_ficha_digital(args, tenant_id)
+
+        # O. Treatment Plans
+        elif name == "ver_presupuesto_paciente":
+            return await _ver_presupuesto_paciente(args, tenant_id)
+        elif name == "aprobar_presupuesto":
+            return await _aprobar_presupuesto(args, tenant_id, user_role, user_id)
 
         # J. CRUD genérico
         elif name == "obtener_registros":
@@ -3885,7 +4550,7 @@ async def _resumen_financiero(args: Dict, tenant_id: int, user_role: str) -> str
     )
 
     try:
-        # Revenue by treatment
+        # Revenue by treatment (excluye turnos vinculados a planes para evitar doble conteo)
         by_treatment = await db.pool.fetch(
             """
             SELECT a.appointment_type, COUNT(*) as cnt,
@@ -3894,13 +4559,14 @@ async def _resumen_financiero(args: Dict, tenant_id: int, user_role: str) -> str
             FROM appointments a
             WHERE a.tenant_id = $1 AND a.appointment_datetime >= NOW() - INTERVAL '1 day' * $2
             AND a.status IN ('completed', 'confirmed', 'scheduled')
+            AND a.plan_item_id IS NULL
             GROUP BY a.appointment_type ORDER BY revenue DESC
         """,
             tenant_id,
             days,
         )
 
-        # Revenue by professional
+        # Revenue by professional (excluye turnos vinculados a planes para evitar doble conteo)
         by_prof = await db.pool.fetch(
             """
             SELECT prof.first_name, COUNT(*) as cnt,
@@ -3909,23 +4575,47 @@ async def _resumen_financiero(args: Dict, tenant_id: int, user_role: str) -> str
             LEFT JOIN professionals prof ON a.professional_id = prof.id
             WHERE a.tenant_id = $1 AND a.appointment_datetime >= NOW() - INTERVAL '1 day' * $2
             AND a.status IN ('completed', 'confirmed', 'scheduled')
+            AND a.plan_item_id IS NULL
             GROUP BY prof.first_name ORDER BY revenue DESC
         """,
             tenant_id,
             days,
         )
 
-        # Pending payments
+        # Pending payments (excluye turnos vinculados a planes)
         pending = await db.pool.fetchrow(
             """
             SELECT COUNT(*) as cnt, COALESCE(SUM(billing_amount), 0) as amount
             FROM appointments WHERE tenant_id = $1 AND payment_status = 'pending'
             AND billing_amount > 0 AND status IN ('scheduled', 'confirmed')
+            AND plan_item_id IS NULL
         """,
             tenant_id,
         )
 
-        total_revenue = sum(float(r["revenue"]) for r in by_treatment)
+        # Planes de tratamiento activos (todos, sin filtro por período)
+        plan_rows = await db.pool.fetch(
+            """
+            SELECT tp.name, tp.approved_total, tp.status,
+                   pat.first_name || ' ' || COALESCE(pat.last_name, '') as patient_name,
+                   COALESCE(payments.total_paid, 0) as total_paid
+            FROM treatment_plans tp
+            JOIN patients pat ON tp.patient_id = pat.id AND pat.tenant_id = tp.tenant_id
+            LEFT JOIN (
+                SELECT plan_id, SUM(amount) as total_paid
+                FROM treatment_plan_payments WHERE tenant_id = $1
+                GROUP BY plan_id
+            ) payments ON tp.id = payments.plan_id
+            WHERE tp.tenant_id = $1
+              AND tp.status IN ('approved', 'in_progress')
+            ORDER BY tp.approved_total DESC
+            LIMIT 10
+            """,
+            tenant_id,
+        )
+
+        plan_revenue = sum(float(r["total_paid"]) for r in plan_rows) if plan_rows else 0.0
+        total_revenue = sum(float(r["revenue"]) for r in by_treatment) + plan_revenue
         parts = [f"Finanzas últimos {days} días:"]
         parts.append(f"Facturación total: ${int(total_revenue):,}".replace(",", "."))
         parts.append(
@@ -3933,6 +4623,16 @@ async def _resumen_financiero(args: Dict, tenant_id: int, user_role: str) -> str
                 ",", "."
             )
         )
+        # Sección de planes de tratamiento activos (detalle por plan)
+        if plan_rows:
+            parts.append(f"\nPlanes de tratamiento activos ({len(plan_rows)}):")
+            for p in plan_rows:
+                pending_amount = float(p["approved_total"]) - float(p["total_paid"])
+                parts.append(
+                    f"  • {p['patient_name']} — {p['name']}: ${int(float(p['approved_total'])):,} total, ${int(float(p['total_paid'])):,} pagado, ${int(pending_amount):,} pendiente".replace(
+                        ",", "."
+                    )
+                )
 
         if by_treatment:
             parts.append("\nPor tratamiento:")
@@ -4640,7 +5340,8 @@ async def _ver_odontograma(args: Dict, tenant_id: int, user_role: str) -> str:
 
     patient = await db.pool.fetchrow(
         "SELECT first_name, last_name FROM patients WHERE id = $1 AND tenant_id = $2",
-        int(pid), tenant_id,
+        int(pid),
+        tenant_id,
     )
     if not patient:
         return "No encontré a ese paciente."
@@ -4650,11 +5351,13 @@ async def _ver_odontograma(args: Dict, tenant_id: int, user_role: str) -> str:
 
     # Read and normalize to v3
     from shared.odontogram_utils import normalize_to_v3
+
     raw_data = None
     if record_id:
         raw_data = await db.pool.fetchval(
             "SELECT odontogram_data FROM clinical_records WHERE id = $1 AND tenant_id = $2",
-            record_id, tenant_id,
+            record_id,
+            tenant_id,
         )
     v3_data = normalize_to_v3(raw_data)
 
@@ -4690,7 +5393,9 @@ async def _ver_odontograma(args: Dict, tenant_id: int, user_role: str) -> str:
     if not modified:
         return f"Odontograma de {name} ({dentition_label}): todas las {total} piezas están sanas."
 
-    lines = [f"Odontograma de {name} — dentición {dentition_label} ({len(modified)} pieza(s) con hallazgos):\n"]
+    lines = [
+        f"Odontograma de {name} — dentición {dentition_label} ({len(modified)} pieza(s) con hallazgos):\n"
+    ]
 
     quadrants: Dict[int, list] = {}
     for t in modified:
@@ -4722,10 +5427,14 @@ async def _ver_odontograma(args: Dict, tenant_id: int, user_role: str) -> str:
         quadrants[q].append(detail)
 
     q_names = {
-        1: "Superior Derecho (Q1)", 2: "Superior Izquierdo (Q2)",
-        3: "Inferior Izquierdo (Q3)", 4: "Inferior Derecho (Q4)",
-        5: "Superior Derecho temporal (Q5)", 6: "Superior Izquierdo temporal (Q6)",
-        7: "Inferior Izquierdo temporal (Q7)", 8: "Inferior Derecho temporal (Q8)",
+        1: "Superior Derecho (Q1)",
+        2: "Superior Izquierdo (Q2)",
+        3: "Inferior Izquierdo (Q3)",
+        4: "Inferior Derecho (Q4)",
+        5: "Superior Derecho temporal (Q5)",
+        6: "Superior Izquierdo temporal (Q6)",
+        7: "Inferior Izquierdo temporal (Q7)",
+        8: "Inferior Derecho temporal (Q8)",
     }
     for q in sorted(quadrants.keys()):
         if quadrants[q]:
@@ -4812,10 +5521,15 @@ async def _modificar_odontograma(
 
     # Surface name mapping: Spanish/legacy → canonical v3 keys
     surface_map = {
-        "oclusal": "occlusal", "occlusal": "occlusal",
-        "mesial": "mesial", "distal": "distal",
-        "bucal": "vestibular", "buccal": "vestibular", "vestibular": "vestibular",
-        "lingual": "lingual", "palatino": "lingual",
+        "oclusal": "occlusal",
+        "occlusal": "occlusal",
+        "mesial": "mesial",
+        "distal": "distal",
+        "bucal": "vestibular",
+        "buccal": "vestibular",
+        "vestibular": "vestibular",
+        "lingual": "lingual",
+        "palatino": "lingual",
     }
     SURFACE_KEYS = ["occlusal", "vestibular", "lingual", "mesial", "distal"]
 
@@ -4829,10 +5543,15 @@ async def _modificar_odontograma(
     from shared.odontogram_utils import normalize_to_v3
     from datetime import datetime as _dt
 
-    raw_data = await db.pool.fetchval(
-        "SELECT odontogram_data FROM clinical_records WHERE id = $1 AND tenant_id = $2",
-        record_id, tenant_id,
-    ) if record_id else None
+    raw_data = (
+        await db.pool.fetchval(
+            "SELECT odontogram_data FROM clinical_records WHERE id = $1 AND tenant_id = $2",
+            record_id,
+            tenant_id,
+        )
+        if record_id
+        else None
+    )
 
     v3_data = normalize_to_v3(raw_data)
     dentition_key = "deciduous" if is_deciduous else "permanent"
@@ -4856,11 +5575,19 @@ async def _modificar_odontograma(
             for s_name, s_val in surfaces_input.items():
                 en_name = surface_map.get(s_name.lower(), s_name.lower())
                 if en_name in SURFACE_KEYS:
-                    tooth["surfaces"][en_name] = {"state": s_val, "condition": None, "color": None}
+                    tooth["surfaces"][en_name] = {
+                        "state": s_val,
+                        "condition": None,
+                        "color": None,
+                    }
         else:
             # No specific surfaces → apply state to ALL surfaces
             for sk in SURFACE_KEYS:
-                tooth["surfaces"][sk] = {"state": estado, "condition": None, "color": None}
+                tooth["surfaces"][sk] = {
+                    "state": estado,
+                    "condition": None,
+                    "color": None,
+                }
 
         # Compute tooth-level state from surfaces
         non_healthy = set()
@@ -4869,7 +5596,11 @@ async def _modificar_odontograma(
             st = s.get("state", "healthy") if isinstance(s, dict) else s
             if st != "healthy":
                 non_healthy.add(st)
-        tooth["state"] = non_healthy.pop() if len(non_healthy) == 1 else ("healthy" if not non_healthy else estado)
+        tooth["state"] = (
+            non_healthy.pop()
+            if len(non_healthy) == 1
+            else ("healthy" if not non_healthy else estado)
+        )
 
         notas = pieza.get("notas", "")
         if notas:
@@ -4909,7 +5640,9 @@ async def _modificar_odontograma(
     if diagnostico:
         await db.pool.execute(
             "UPDATE clinical_records SET diagnosis = $1 WHERE id = $2 AND tenant_id = $3",
-            diagnostico, record_id, tenant_id,
+            diagnostico,
+            record_id,
+            tenant_id,
         )
 
     name = f"{patient['first_name']} {patient['last_name'] or ''}".strip()

@@ -1636,6 +1636,7 @@
     "status_item": "Statut",
     "item_status": {
       "pending": "En attente",
+      "in_progress": "En cours",
       "completed": "Terminé",
       "cancelled": "Annulé"
     },
@@ -1660,6 +1661,9 @@
     "pending_balance_helper": "Solde en attente: {{amount}}$",
     "delete_payment_confirm": "Supprimer ce paiement?",
     "error_generic": "Erreur lors du traitement",
+    "error_load": "Erreur de chargement",
+    "error_save": "Erreur de sauvegarde",
+    "notes_placeholder": "Notes optionnelles...",
     "saving": "Enregistrement..."
   }
 }

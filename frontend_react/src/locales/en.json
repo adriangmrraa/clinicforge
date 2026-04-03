@@ -1848,6 +1848,7 @@
     "status_item": "Status",
     "item_status": {
       "pending": "Pending",
+      "in_progress": "In Progress",
       "completed": "Completed",
       "cancelled": "Cancelled"
     },
@@ -1872,6 +1873,9 @@
     "pending_balance_helper": "Pending balance: ${{amount}}",
     "delete_payment_confirm": "Delete this payment?",
     "error_generic": "Error processing request",
+    "error_load": "Error loading budgets",
+    "error_save": "Error saving",
+    "notes_placeholder": "Optional notes...",
     "saving": "Saving..."
   }
 }

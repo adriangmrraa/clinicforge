@@ -2502,7 +2502,7 @@ async def get_dashboard_stats(
                 """
             SELECT COALESCE(SUM(amount), 0)
             FROM treatment_plan_payments
-            WHERE tenant_id = $1 AND payment_date = CURRENT_DATE
+            WHERE tenant_id = $1 AND DATE(payment_date AT TIME ZONE 'America/Argentina/Buenos_Aires') = CURRENT_DATE
         """,
                 tenant_id,
             )
@@ -9481,14 +9481,23 @@ def validate_plan_status_transition(current: str, new: str) -> bool:
 async def list_patient_treatment_plans(
     patient_id: int,
     request: Request,
+    status: str = None,
     user_data=Depends(verify_admin_token),
     resolved_tenant_id: int = Depends(get_resolved_tenant_id),
 ):
     """
     Lista todos los planes de tratamiento de un paciente.
     Retorna cada plan con campos agregados: items_count, paid_total, pending_total.
+    Acepta query param opcional ?status= para filtrar por estado.
     """
     tenant_id = resolved_tenant_id
+
+    ALLOWED_PLAN_STATUSES = {"draft", "approved", "in_progress", "completed", "cancelled"}
+    if status is not None and status not in ALLOWED_PLAN_STATUSES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Estado inválido. Valores permitidos: {', '.join(sorted(ALLOWED_PLAN_STATUSES))}",
+        )
 
     patient = await db.pool.fetchrow(
         "SELECT id FROM patients WHERE id = $1 AND tenant_id = $2",
@@ -9498,25 +9507,47 @@ async def list_patient_treatment_plans(
     if not patient:
         raise HTTPException(status_code=404, detail="Paciente no encontrado")
 
-    rows = await db.pool.fetch(
-        """
-        SELECT 
-            tp.id, tp.tenant_id, tp.patient_id, tp.professional_id, tp.name, tp.status,
-            tp.estimated_total, tp.approved_total, tp.approved_by, tp.approved_at,
-            tp.notes, tp.created_at, tp.updated_at,
-            prof.first_name as professional_first_name,
-            (SELECT COUNT(*) FROM treatment_plan_items tpi 
-             WHERE tpi.plan_id = tp.id AND tpi.tenant_id = tp.tenant_id AND tpi.status != 'cancelled') as items_count,
-            COALESCE((SELECT SUM(tp_pay.amount) FROM treatment_plan_payments tp_pay 
-                      WHERE tp_pay.plan_id = tp.id AND tp_pay.tenant_id = tp.tenant_id), 0) as paid_total
-        FROM treatment_plans tp
-        LEFT JOIN professionals prof ON tp.professional_id = prof.id
-        WHERE tp.patient_id = $1 AND tp.tenant_id = $2
-        ORDER BY tp.created_at DESC
-        """,
-        patient_id,
-        tenant_id,
-    )
+    if status is not None:
+        rows = await db.pool.fetch(
+            """
+            SELECT
+                tp.id, tp.tenant_id, tp.patient_id, tp.professional_id, tp.name, tp.status,
+                tp.estimated_total, tp.approved_total, tp.approved_by, tp.approved_at,
+                tp.notes, tp.created_at, tp.updated_at,
+                prof.first_name as professional_first_name,
+                (SELECT COUNT(*) FROM treatment_plan_items tpi
+                 WHERE tpi.plan_id = tp.id AND tpi.tenant_id = tp.tenant_id AND tpi.status != 'cancelled') as items_count,
+                COALESCE((SELECT SUM(tp_pay.amount) FROM treatment_plan_payments tp_pay
+                          WHERE tp_pay.plan_id = tp.id AND tp_pay.tenant_id = tp.tenant_id), 0) as paid_total
+            FROM treatment_plans tp
+            LEFT JOIN professionals prof ON tp.professional_id = prof.id
+            WHERE tp.patient_id = $1 AND tp.tenant_id = $2 AND tp.status = $3
+            ORDER BY tp.created_at DESC
+            """,
+            patient_id,
+            tenant_id,
+            status,
+        )
+    else:
+        rows = await db.pool.fetch(
+            """
+            SELECT
+                tp.id, tp.tenant_id, tp.patient_id, tp.professional_id, tp.name, tp.status,
+                tp.estimated_total, tp.approved_total, tp.approved_by, tp.approved_at,
+                tp.notes, tp.created_at, tp.updated_at,
+                prof.first_name as professional_first_name,
+                (SELECT COUNT(*) FROM treatment_plan_items tpi
+                 WHERE tpi.plan_id = tp.id AND tpi.tenant_id = tp.tenant_id AND tpi.status != 'cancelled') as items_count,
+                COALESCE((SELECT SUM(tp_pay.amount) FROM treatment_plan_payments tp_pay
+                          WHERE tp_pay.plan_id = tp.id AND tp_pay.tenant_id = tp.tenant_id), 0) as paid_total
+            FROM treatment_plans tp
+            LEFT JOIN professionals prof ON tp.professional_id = prof.id
+            WHERE tp.patient_id = $1 AND tp.tenant_id = $2
+            ORDER BY tp.created_at DESC
+            """,
+            patient_id,
+            tenant_id,
+        )
 
     plans = []
     for row in rows:
@@ -9748,7 +9779,16 @@ async def get_treatment_plan_detail(
     items = await db.pool.fetch(
         """
         SELECT tpi.*, tt.name as treatment_name,
-               (SELECT COUNT(*) FROM appointments a WHERE a.plan_item_id = tpi.id AND a.tenant_id = tpi.tenant_id) as appointments_count
+               (SELECT COUNT(*) FROM appointments a WHERE a.plan_item_id = tpi.id AND a.tenant_id = tpi.tenant_id) as appointments_count,
+               (SELECT COALESCE(JSON_AGG(JSON_BUILD_OBJECT(
+                   'id', a.id,
+                   'datetime', a.appointment_datetime,
+                   'status', a.status,
+                   'type', COALESCE(a.appointment_type, 'Sin tipo')
+               ) ORDER BY a.appointment_datetime), '[]'::json)
+               FROM appointments a
+               WHERE a.plan_item_id = tpi.id AND a.tenant_id = $2
+               ) as appointments
         FROM treatment_plan_items tpi
         LEFT JOIN treatment_types tt ON tpi.treatment_type_code = tt.code AND tpi.tenant_id = tt.tenant_id
         WHERE tpi.plan_id = $1 AND tpi.tenant_id = $2
@@ -9760,6 +9800,12 @@ async def get_treatment_plan_detail(
 
     items_list = []
     for item in items:
+        raw_appointments = item["appointments"]
+        if isinstance(raw_appointments, str):
+            import json as _json
+            appts = _json.loads(raw_appointments)
+        else:
+            appts = raw_appointments if raw_appointments is not None else []
         items_list.append(
             {
                 "id": str(item["id"]),
@@ -9777,6 +9823,7 @@ async def get_treatment_plan_detail(
                 "updated_at": item["updated_at"].isoformat(),
                 "treatment_name": item["treatment_name"],
                 "appointments_count": item["appointments_count"] or 0,
+                "appointments": appts,
             }
         )
 
@@ -9817,6 +9864,7 @@ async def get_treatment_plan_detail(
     approved = float(plan["approved_total"] or 0)
     paid = sum(float(p["amount"]) for p in payments_list)
     pending = max(approved - paid, 0) if approved > 0 else 0
+    progress_pct = round(paid / approved * 100, 1) if approved > 0 else 0.0
     patient_name = (
         f"{plan['patient_first_name']} {plan['patient_last_name'] or ''}".strip()
     )
@@ -9831,6 +9879,7 @@ async def get_treatment_plan_detail(
         "estimated_total": float(plan["estimated_total"]),
         "approved_total": plan["approved_total"],
         "approved_by": plan["approved_by"],
+        "approved_by_name": plan.get("approved_by") or None,
         "approved_at": plan["approved_at"].isoformat() if plan["approved_at"] else None,
         "notes": plan["notes"],
         "created_at": plan["created_at"].isoformat(),
@@ -9841,6 +9890,7 @@ async def get_treatment_plan_detail(
         "patient_name": patient_name,
         "paid_total": paid,
         "pending_total": pending,
+        "progress_pct": progress_pct,
     }
 
 
@@ -9901,7 +9951,7 @@ async def update_treatment_plan(
     if payload.status is not None:
         if not validate_plan_status_transition(plan["status"], payload.status):
             raise HTTPException(
-                status_code=400,
+                status_code=422,
                 detail=f"Transición de estado inválida: {plan['status']} -> {payload.status}",
             )
 
@@ -9910,7 +9960,7 @@ async def update_treatment_plan(
             params.append(payload.status)
             idx += 1
             update_fields.append(f"approved_by = ${idx}")
-            params.append(user_data.email)
+            params.append(user_data.email)  # approved_by stores user email (VARCHAR column)
             idx += 1
             update_fields.append(f"approved_at = NOW()")
             if payload.approved_total is not None:
@@ -10049,13 +10099,9 @@ async def delete_treatment_plan(
         "UPDATE treatment_plans SET status = 'cancelled', updated_at = NOW() WHERE id = $1",
         plan_uuid,
     )
-    await db.pool.execute(
-        "UPDATE treatment_plan_items SET status = 'cancelled', updated_at = NOW() WHERE plan_id = $1",
-        plan_uuid,
-    )
 
     await emit_treatment_plan_event(
-        "TREATMENT_PLAN_CANCELLED",
+        "TREATMENT_PLAN_UPDATED",
         {
             "plan_id": str(plan_uuid),
             "patient_id": plan["patient_id"],
@@ -10141,7 +10187,7 @@ async def add_plan_item(
     # Validar estado del plan
     if plan["status"] in ("cancelled", "completed"):
         raise HTTPException(
-            status_code=400,
+            status_code=422,
             detail=f"No se puede agregar ítems a un plan en estado '{plan['status']}'",
         )
 
@@ -10236,7 +10282,7 @@ async def add_plan_item(
     )
 
     return {
-        "message": "Ítem agregado al plan",
+        "status": "created",
         "item": response.model_dump(),
         "plan_estimated_total": float(new_total),
     }
@@ -10287,14 +10333,14 @@ async def update_plan_item(
     # Validar estado del ítem (no permite cambiar de completed a pending)
     if item["status"] == "completed" and payload.status == "pending":
         raise HTTPException(
-            status_code=400,
+            status_code=422,
             detail="No se puede revertir un ítem completado a pendiente",
         )
 
     # Validar estado del plan
     if item["plan_status"] in ("cancelled", "completed"):
         raise HTTPException(
-            status_code=400,
+            status_code=422,
             detail=f"No se puede modificar un ítem de un plan en estado '{item['plan_status']}'",
         )
 
@@ -10430,7 +10476,8 @@ async def update_plan_item(
     )
 
     return {
-        "message": "Ítem actualizado",
+        "status": "updated",
+        "item_id": str(item_uuid),
         "item": response.model_dump(),
         "plan_estimated_total": float(new_total),
     }
@@ -10531,7 +10578,8 @@ async def delete_plan_item(
     )
 
     return {
-        "message": "Ítem eliminado",
+        "status": "deleted",
+        "item_id": str(item_uuid),
         "plan_estimated_total": float(new_total),
     }
 
@@ -10601,77 +10649,80 @@ async def register_plan_payment(
     # 4. Generar payment_id
     payment_id = str(uuid.uuid4())
 
-    # 5. INSERT en treatment_plan_payments
-    await db.pool.execute(
-        """
-        INSERT INTO treatment_plan_payments (
-            id, plan_id, tenant_id, amount, payment_method,
-            payment_date, recorded_by, appointment_id, receipt_data, notes,
-            created_at
-        )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
-        """,
-        payment_id,
-        plan_id,
-        resolved_tenant_id,
-        body.amount,
-        body.payment_method.value
-        if hasattr(body.payment_method, "value")
-        else body.payment_method,
-        body.payment_date,
-        user_data.id,
-        body.appointment_id,
-        json.dumps(body.receipt_data) if body.receipt_data else None,
-        body.notes,
-    )
+    # 5-8. Ejecutar en transacción atómica
+    async with db.pool.acquire() as conn:
+        async with conn.transaction():
+            # 5. INSERT en treatment_plan_payments
+            await conn.execute(
+                """
+                INSERT INTO treatment_plan_payments (
+                    id, plan_id, tenant_id, amount, payment_method,
+                    payment_date, recorded_by, appointment_id, receipt_data, notes,
+                    created_at
+                )
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
+                """,
+                payment_id,
+                plan_id,
+                resolved_tenant_id,
+                body.amount,
+                body.payment_method.value
+                if hasattr(body.payment_method, "value")
+                else body.payment_method,
+                body.payment_date,
+                user_data.id,
+                body.appointment_id,
+                json.dumps(body.receipt_data) if body.receipt_data else None,
+                body.notes,
+            )
 
-    # 6. Sync con accounting_transactions
-    accounting_tx_id = str(uuid.uuid4())
-    await db.pool.execute(
-        """
-        INSERT INTO accounting_transactions (
-            id, tenant_id, patient_id, amount,
-            transaction_type, payment_method, status,
-            description, reference_id, reference_type,
-            created_at, updated_at
-        )
-        VALUES ($1, $2, $3, $4, 'payment', $5, 'completed', $6, $7, 'treatment_plan_payment', NOW(), NOW())
-        """,
-        accounting_tx_id,
-        resolved_tenant_id,
-        plan["patient_id"],
-        body.amount,
-        body.payment_method.value
-        if hasattr(body.payment_method, "value")
-        else body.payment_method,
-        f"Pago plan: {plan['name']}",
-        payment_id,
-    )
+            # 6. Sync con accounting_transactions
+            accounting_tx_id = str(uuid.uuid4())
+            await conn.execute(
+                """
+                INSERT INTO accounting_transactions (
+                    id, tenant_id, patient_id, amount,
+                    transaction_type, payment_method, status,
+                    description, reference_id, reference_type,
+                    created_at, updated_at
+                )
+                VALUES ($1, $2, $3, $4, 'payment', $5, 'completed', $6, $7, 'treatment_plan_payment', NOW(), NOW())
+                """,
+                accounting_tx_id,
+                resolved_tenant_id,
+                plan["patient_id"],
+                body.amount,
+                body.payment_method.value
+                if hasattr(body.payment_method, "value")
+                else body.payment_method,
+                f"Pago plan: {plan['name']}",
+                payment_id,
+            )
 
-    # 7. Actualizar accounting_transaction_id en el pago
-    await db.pool.execute(
-        """
-        UPDATE treatment_plan_payments
-        SET accounting_transaction_id = $1
-        WHERE id = $2
-        """,
-        accounting_tx_id,
-        payment_id,
-    )
+            # 7. Actualizar accounting_transaction_id en el pago
+            await conn.execute(
+                """
+                UPDATE treatment_plan_payments
+                SET accounting_transaction_id = $1
+                WHERE id = $2
+                """,
+                accounting_tx_id,
+                payment_id,
+            )
 
-    # 8. Auto-avance de estado: approved → in_progress
-    new_plan_status = plan["status"]
-    if plan["status"] == "approved":
-        new_plan_status = "in_progress"
-        await db.pool.execute(
-            """
-            UPDATE treatment_plans
-            SET status = 'in_progress', updated_at = NOW()
-            WHERE id = $1 AND tenant_id = $2
-            """,
-            plan_id,
-            resolved_tenant_id,
-        )
+            # 8. Auto-avance de estado: approved → in_progress
+            new_plan_status = plan["status"]
+            if plan["status"] == "approved":
+                new_plan_status = "in_progress"
+                await conn.execute(
+                    """
+                    UPDATE treatment_plans
+                    SET status = 'in_progress', updated_at = NOW()
+                    WHERE id = $1 AND tenant_id = $2
+                    """,
+                    plan_id,
+                    resolved_tenant_id,
+                )
 
     # 9. Emitir evento Socket.IO
     await emit_appointment_event(
@@ -10787,6 +10838,7 @@ async def get_plan_payments(
 )
 async def delete_plan_payment(
     payment_id: str,
+    request: Request,
     user_data=Depends(verify_admin_token),
     resolved_tenant_id: int = Depends(get_resolved_tenant_id),
 ):
@@ -10841,7 +10893,7 @@ async def delete_plan_payment(
             "payment_id": payment_id,
             "action": "payment_deleted",
         },
-        Request,
+        request,
     )
 
     return None

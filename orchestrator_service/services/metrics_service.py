@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 class AttributionType(Enum):
     """Types of attribution for metrics calculation"""
+
     FIRST_TOUCH = "first_touch"
     LAST_TOUCH = "last_touch"
     CONVERSION = "conversion"
@@ -22,6 +23,7 @@ class AttributionType(Enum):
 
 class MetricPeriod(Enum):
     """Time periods for metrics aggregation"""
+
     DAILY = "daily"
     WEEKLY = "weekly"
     MONTHLY = "monthly"
@@ -31,76 +33,76 @@ class MetricPeriod(Enum):
 
 class MetricsService:
     """Service for unified metrics calculation"""
-    
+
     @staticmethod
     async def get_campaign_metrics(
         tenant_id: int,
         period: MetricPeriod = MetricPeriod.MONTHLY,
         date_from: Optional[str] = None,
         date_to: Optional[str] = None,
-        attribution_type: AttributionType = AttributionType.FIRST_TOUCH
+        attribution_type: AttributionType = AttributionType.FIRST_TOUCH,
     ) -> Dict[str, Any]:
         """
         Get unified campaign metrics combining WhatsApp referrals and Leads Forms
-        
+
         Args:
             tenant_id: Tenant ID
             period: Aggregation period
             date_from: Start date (YYYY-MM-DD)
             date_to: End date (YYYY-MM-DD)
             attribution_type: Type of attribution to use
-            
+
         Returns:
             Dict with campaign metrics
         """
         try:
             # Determine date range
-            date_range = await MetricsService._get_date_range(period, date_from, date_to)
-            
+            date_range = await MetricsService._get_date_range(
+                period, date_from, date_to
+            )
+
             # Get metrics from different sources
             whatsapp_metrics = await MetricsService._get_whatsapp_campaign_metrics(
                 tenant_id, date_range, attribution_type
             )
-            
+
             leads_metrics = await MetricsService._get_leads_campaign_metrics(
                 tenant_id, date_range
             )
-            
+
             # Combine and unify metrics
             unified_metrics = await MetricsService._unify_campaign_metrics(
                 whatsapp_metrics, leads_metrics, attribution_type
             )
-            
+
             # Calculate ROI and other derived metrics
             enriched_metrics = await MetricsService._enrich_metrics_with_roi(
                 unified_metrics, tenant_id, date_range
             )
-            
+
             return {
                 "success": True,
                 "period": period.value,
                 "date_range": date_range,
                 "attribution_type": attribution_type.value,
                 "metrics": enriched_metrics,
-                "summary": await MetricsService._calculate_summary(enriched_metrics)
+                "summary": await MetricsService._calculate_summary(enriched_metrics),
             }
-            
+
         except Exception as e:
             logger.error(f"Error getting campaign metrics: {e}")
             raise
-    
+
     @staticmethod
     async def _get_date_range(
-        period: MetricPeriod,
-        date_from: Optional[str],
-        date_to: Optional[str]
+        period: MetricPeriod, date_from: Optional[str], date_to: Optional[str]
     ) -> Dict[str, str]:
         """Calculate date range based on period"""
         today = datetime.utcnow().date()
-        
+
         if date_from and date_to:
             return {"from": date_from, "to": date_to}
-        
+
         if period == MetricPeriod.DAILY:
             start_date = today
         elif period == MetricPeriod.WEEKLY:
@@ -113,20 +115,15 @@ class MetricsService:
             start_date = today - timedelta(days=365)
         else:
             start_date = today - timedelta(days=30)
-        
-        return {
-            "from": start_date.isoformat(),
-            "to": today.isoformat()
-        }
-    
+
+        return {"from": start_date.isoformat(), "to": today.isoformat()}
+
     @staticmethod
     async def _get_whatsapp_campaign_metrics(
-        tenant_id: int,
-        date_range: Dict[str, str],
-        attribution_type: AttributionType
+        tenant_id: int, date_range: Dict[str, str], attribution_type: AttributionType
     ) -> List[Dict[str, Any]]:
         """Get campaign metrics from WhatsApp referrals"""
-        
+
         # Determine which fields to use based on attribution type
         if attribution_type == AttributionType.FIRST_TOUCH:
             ad_id_field = "first_touch_ad_id"
@@ -140,7 +137,7 @@ class MetricsService:
             campaign_id_field = "last_touch_campaign_id"
             campaign_name_field = "last_touch_campaign_name"
             source_field = "last_touch_source"
-        
+
         query = f"""
             SELECT 
                 COALESCE({campaign_id_field}, 'unknown') as campaign_id,
@@ -159,41 +156,46 @@ class MetricsService:
             GROUP BY {campaign_id_field}, {campaign_name_field}, {ad_id_field}, {ad_name_field}
             ORDER BY total_patients DESC
         """
-        
+
         try:
             results = await db.pool.fetch(
                 query, tenant_id, date_range["from"], date_range["to"]
             )
-            
+
             metrics = []
             for row in results:
-                metrics.append({
-                    "source": "whatsapp",
-                    "campaign_id": row["campaign_id"],
-                    "campaign_name": row["campaign_name"],
-                    "ad_id": row["ad_id"],
-                    "ad_name": row["ad_name"],
-                    "total_patients": row["total_patients"],
-                    "unique_patients": row["unique_patients"],
-                    "first_interaction": row["first_interaction"].isoformat() if row["first_interaction"] else None,
-                    "last_interaction": row["last_interaction"].isoformat() if row["last_interaction"] else None,
-                    "conversions": 0,  # WhatsApp doesn't have separate conversion tracking
-                    "conversion_rate": 0
-                })
-            
+                metrics.append(
+                    {
+                        "source": "whatsapp",
+                        "campaign_id": row["campaign_id"],
+                        "campaign_name": row["campaign_name"],
+                        "ad_id": row["ad_id"],
+                        "ad_name": row["ad_name"],
+                        "total_patients": row["total_patients"],
+                        "unique_patients": row["unique_patients"],
+                        "first_interaction": row["first_interaction"].isoformat()
+                        if row["first_interaction"]
+                        else None,
+                        "last_interaction": row["last_interaction"].isoformat()
+                        if row["last_interaction"]
+                        else None,
+                        "conversions": 0,  # WhatsApp doesn't have separate conversion tracking
+                        "conversion_rate": 0,
+                    }
+                )
+
             return metrics
-            
+
         except Exception as e:
             logger.error(f"Error getting WhatsApp metrics: {e}")
             return []
-    
+
     @staticmethod
     async def _get_leads_campaign_metrics(
-        tenant_id: int,
-        date_range: Dict[str, str]
+        tenant_id: int, date_range: Dict[str, str]
     ) -> List[Dict[str, Any]]:
         """Get campaign metrics from Leads Forms"""
-        
+
         query = """
             SELECT 
                 COALESCE(campaign_id, 'unknown') as campaign_id,
@@ -212,49 +214,57 @@ class MetricsService:
             GROUP BY campaign_id, campaign_name, ad_id, ad_name
             ORDER BY total_leads DESC
         """
-        
+
         try:
             results = await db.pool.fetch(
                 query, tenant_id, date_range["from"], date_range["to"]
             )
-            
+
             metrics = []
             for row in results:
                 total_leads = row["total_leads"] or 0
                 converted_leads = row["converted_leads"] or 0
-                conversion_rate = (converted_leads / total_leads * 100) if total_leads > 0 else 0
-                
-                metrics.append({
-                    "source": "leads_form",
-                    "campaign_id": row["campaign_id"],
-                    "campaign_name": row["campaign_name"],
-                    "ad_id": row["ad_id"],
-                    "ad_name": row["ad_name"],
-                    "total_leads": total_leads,
-                    "unique_leads": row["unique_leads"],
-                    "converted_leads": converted_leads,
-                    "conversion_rate": round(conversion_rate, 2),
-                    "first_lead": row["first_lead"].isoformat() if row["first_lead"] else None,
-                    "last_lead": row["last_lead"].isoformat() if row["last_lead"] else None
-                })
-            
+                conversion_rate = (
+                    (converted_leads / total_leads * 100) if total_leads > 0 else 0
+                )
+
+                metrics.append(
+                    {
+                        "source": "leads_form",
+                        "campaign_id": row["campaign_id"],
+                        "campaign_name": row["campaign_name"],
+                        "ad_id": row["ad_id"],
+                        "ad_name": row["ad_name"],
+                        "total_leads": total_leads,
+                        "unique_leads": row["unique_leads"],
+                        "converted_leads": converted_leads,
+                        "conversion_rate": round(conversion_rate, 2),
+                        "first_lead": row["first_lead"].isoformat()
+                        if row["first_lead"]
+                        else None,
+                        "last_lead": row["last_lead"].isoformat()
+                        if row["last_lead"]
+                        else None,
+                    }
+                )
+
             return metrics
-            
+
         except Exception as e:
             logger.error(f"Error getting Leads metrics: {e}")
             return []
-    
+
     @staticmethod
     async def _unify_campaign_metrics(
         whatsapp_metrics: List[Dict[str, Any]],
         leads_metrics: List[Dict[str, Any]],
-        attribution_type: AttributionType
+        attribution_type: AttributionType,
     ) -> List[Dict[str, Any]]:
         """Unify metrics from different sources"""
-        
+
         # Create a dictionary keyed by campaign_id + ad_id
         unified_dict = {}
-        
+
         # Process WhatsApp metrics
         for metric in whatsapp_metrics:
             key = f"{metric['campaign_id']}_{metric['ad_id']}"
@@ -270,13 +280,13 @@ class MetricsService:
                 "leads_conversion_rate": 0,
                 "total_patients": metric["total_patients"],  # WhatsApp patients
                 "total_conversions": 0,  # Will be updated with leads conversions
-                "sources": ["whatsapp"]
+                "sources": ["whatsapp"],
             }
-        
+
         # Process Leads metrics
         for metric in leads_metrics:
             key = f"{metric['campaign_id']}_{metric['ad_id']}"
-            
+
             if key in unified_dict:
                 # Update existing entry
                 unified_dict[key]["leads_total"] = metric["total_leads"]
@@ -298,47 +308,54 @@ class MetricsService:
                     "leads_conversion_rate": metric["conversion_rate"],
                     "total_patients": 0,  # No WhatsApp patients
                     "total_conversions": metric["converted_leads"],
-                    "sources": ["leads_form"]
+                    "sources": ["leads_form"],
                 }
-        
+
         # Convert to list and calculate derived metrics
         unified_list = []
         for key, metric in unified_dict.items():
             # Calculate overall metrics
             total_patients = metric["whatsapp_patients"] + metric["leads_converted"]
             total_interactions = metric["whatsapp_patients"] + metric["leads_total"]
-            
+
             # Calculate overall conversion rate
             if total_interactions > 0:
-                overall_conversion_rate = (total_patients / total_interactions * 100)
+                overall_conversion_rate = total_patients / total_interactions * 100
             else:
                 overall_conversion_rate = 0
-            
-            unified_list.append({
-                **metric,
-                "total_patients": total_patients,
-                "total_interactions": total_interactions,
-                "overall_conversion_rate": round(overall_conversion_rate, 2),
-                "attribution_type": attribution_type.value
-            })
-        
+
+            unified_list.append(
+                {
+                    **metric,
+                    "total_patients": total_patients,
+                    "total_interactions": total_interactions,
+                    "overall_conversion_rate": round(overall_conversion_rate, 2),
+                    "attribution_type": attribution_type.value,
+                }
+            )
+
         # Sort by total patients (descending)
         unified_list.sort(key=lambda x: x["total_patients"], reverse=True)
-        
+
         return unified_list
-    
+
     @staticmethod
-    async def _get_real_spend_data(tenant_id: int, time_range: str = "last_30d") -> Dict[str, Any]:
+    async def _get_real_spend_data(
+        tenant_id: int, time_range: str = "last_30d"
+    ) -> Dict[str, Any]:
         """Fetch real spend data from MarketingService, with graceful fallback."""
         try:
             from services.marketing_service import MarketingService
+
             roi_stats = await MarketingService.get_roi_stats(tenant_id, time_range)
             return {
                 "total_spend": float(roi_stats.get("total_spend", 0)),
                 "total_revenue": float(roi_stats.get("total_revenue", 0)),
                 "is_connected": roi_stats.get("is_connected", False),
                 "currency": roi_stats.get("currency", "ARS"),
-                "data_source": "meta_api" if roi_stats.get("is_connected") and roi_stats.get("total_spend", 0) > 0 else "estimated"
+                "data_source": "meta_api"
+                if roi_stats.get("is_connected") and roi_stats.get("total_spend", 0) > 0
+                else "estimated",
             }
         except Exception as e:
             logger.warning(f"Could not fetch real spend data, using estimates: {e}")
@@ -347,7 +364,7 @@ class MetricsService:
                 "total_revenue": 0,
                 "is_connected": False,
                 "currency": "ARS",
-                "data_source": "estimated"
+                "data_source": "estimated",
             }
 
     @staticmethod
@@ -362,18 +379,41 @@ class MetricsService:
             return 500.0
 
     @staticmethod
-    async def _get_billing_revenue(tenant_id: int, date_from: str, date_to: str) -> float:
+    async def _get_billing_revenue(
+        tenant_id: int, date_from: str, date_to: str
+    ) -> float:
         """Get real revenue from billing data."""
         try:
-            revenue = await db.pool.fetchval("""
+            # Source 1: legacy appointments (plan_item_id IS NULL)
+            appointments_revenue = await db.pool.fetchval(
+                """
                 SELECT COALESCE(SUM(billing_amount), 0)
                 FROM appointments
                 WHERE tenant_id = $1
                 AND payment_status IN ('paid', 'partial')
                 AND appointment_datetime >= $2::timestamp
                 AND appointment_datetime <= $3::timestamp
-            """, tenant_id, date_from, date_to)
-            return float(revenue) if revenue else 0.0
+                AND plan_item_id IS NULL
+            """,
+                tenant_id,
+                date_from,
+                date_to,
+            )
+            # Source 2: treatment plan payments within date range (payment_date anchor)
+            plan_payments_revenue = await db.pool.fetchval(
+                """
+                SELECT COALESCE(SUM(amount), 0)
+                FROM treatment_plan_payments
+                WHERE tenant_id = $1
+                AND payment_date >= $2::date
+                AND payment_date <= $3::date
+            """,
+                tenant_id,
+                date_from,
+                date_to,
+            )
+            total = float(appointments_revenue or 0) + float(plan_payments_revenue or 0)
+            return total
         except Exception:
             return 0.0
 
@@ -381,7 +421,7 @@ class MetricsService:
     async def _enrich_metrics_with_roi(
         metrics: List[Dict[str, Any]],
         tenant_id: int,
-        date_range: Optional[Dict[str, str]] = None
+        date_range: Optional[Dict[str, str]] = None,
     ) -> List[Dict[str, Any]]:
         """Enrich metrics with real ROI calculations from Meta API + billing data."""
 
@@ -389,6 +429,7 @@ class MetricsService:
         time_range = "last_30d"
         if date_range:
             from datetime import datetime as dt
+
             try:
                 d_from = dt.fromisoformat(date_range["from"])
                 d_to = dt.fromisoformat(date_range["to"])
@@ -429,25 +470,37 @@ class MetricsService:
 
             # Revenue: use billing if available, else estimate from consultation_price
             if billing_revenue > 0 and total_patients_all > 0:
-                campaign_revenue = billing_revenue * (patient_count / total_patients_all)
+                campaign_revenue = billing_revenue * (
+                    patient_count / total_patients_all
+                )
             else:
                 campaign_revenue = patient_count * consultation_price
 
-            roi = ((campaign_revenue - campaign_spend) / campaign_spend * 100) if campaign_spend > 0 else 0
+            roi = (
+                ((campaign_revenue - campaign_spend) / campaign_spend * 100)
+                if campaign_spend > 0
+                else 0
+            )
 
-            enriched_metrics.append({
-                **metric,
-                "spend": round(campaign_spend, 2),
-                "revenue": round(campaign_revenue, 2),
-                "roi": round(roi, 2),
-                "cost_per_patient": round(campaign_spend / patient_count, 2) if patient_count > 0 else 0,
-                "value_per_patient": round(campaign_revenue / patient_count, 2) if patient_count > 0 else consultation_price,
-                "data_source": data_source,
-                "currency": spend_data["currency"]
-            })
+            enriched_metrics.append(
+                {
+                    **metric,
+                    "spend": round(campaign_spend, 2),
+                    "revenue": round(campaign_revenue, 2),
+                    "roi": round(roi, 2),
+                    "cost_per_patient": round(campaign_spend / patient_count, 2)
+                    if patient_count > 0
+                    else 0,
+                    "value_per_patient": round(campaign_revenue / patient_count, 2)
+                    if patient_count > 0
+                    else consultation_price,
+                    "data_source": data_source,
+                    "currency": spend_data["currency"],
+                }
+            )
 
         return enriched_metrics
-    
+
     @staticmethod
     async def _calculate_summary(metrics: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Calculate summary statistics"""
@@ -462,7 +515,7 @@ class MetricsService:
                 "total_spend": 0,
                 "average_roi": 0,
                 "cost_per_patient": 0,
-                "data_source": "estimated"
+                "data_source": "estimated",
             }
 
         total_campaigns = len(metrics)
@@ -470,17 +523,19 @@ class MetricsService:
         total_interactions = sum(m["total_interactions"] for m in metrics)
         total_revenue = sum(m.get("revenue", 0) for m in metrics)
         total_spend = sum(m.get("spend", 0) for m in metrics)
-        data_source = metrics[0].get("data_source", "estimated") if metrics else "estimated"
+        data_source = (
+            metrics[0].get("data_source", "estimated") if metrics else "estimated"
+        )
 
         # Calculate average conversion rate
         if total_interactions > 0:
-            avg_conversion_rate = (total_patients / total_interactions * 100)
+            avg_conversion_rate = total_patients / total_interactions * 100
         else:
             avg_conversion_rate = 0
 
         # Calculate ROI
         if total_spend > 0:
-            avg_roi = ((total_revenue - total_spend) / total_spend * 100)
+            avg_roi = (total_revenue - total_spend) / total_spend * 100
         else:
             avg_roi = 0
 
@@ -492,52 +547,56 @@ class MetricsService:
             "total_revenue": round(total_revenue, 2),
             "total_spend": round(total_spend, 2),
             "average_roi": round(avg_roi, 2),
-            "cost_per_patient": round(total_spend / total_patients, 2) if total_patients > 0 else 0,
-            "data_source": data_source
+            "cost_per_patient": round(total_spend / total_patients, 2)
+            if total_patients > 0
+            else 0,
+            "data_source": data_source,
         }
-    
+
     @staticmethod
     async def get_detailed_attribution_report(
         tenant_id: int,
         campaign_id: Optional[str] = None,
         date_from: Optional[str] = None,
-        date_to: Optional[str] = None
+        date_to: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Get detailed attribution report showing patient journey
-        
+
         Args:
             tenant_id: Tenant ID
             campaign_id: Optional campaign ID filter
             date_from: Start date (YYYY-MM-DD)
             date_to: End date (YYYY-MM-DD)
-            
+
         Returns:
             Detailed attribution report
         """
-        
+
         # Build query conditions
         conditions = ["p.tenant_id = $1"]
         params = [tenant_id]
         param_count = 1
-        
+
         if date_from:
             param_count += 1
             conditions.append(f"p.created_at >= ${param_count}::timestamp")
             params.append(date_from)
-        
+
         if date_to:
             param_count += 1
             conditions.append(f"p.created_at <= ${param_count}::timestamp")
             params.append(date_to)
-        
+
         if campaign_id:
             param_count += 1
-            conditions.append(f"(p.first_touch_campaign_id = ${param_count} OR p.last_touch_campaign_id = ${param_count})")
+            conditions.append(
+                f"(p.first_touch_campaign_id = ${param_count} OR p.last_touch_campaign_id = ${param_count})"
+            )
             params.append(campaign_id)
-        
+
         where_clause = " AND ".join(conditions)
-        
+
         query = f"""
             SELECT 
                 p.id as patient_id,
@@ -582,10 +641,10 @@ class MetricsService:
             ORDER BY p.created_at DESC
             LIMIT 100
         """
-        
+
         try:
             results = await db.pool.fetch(query, *params)
-            
+
             patients = []
             for row in results:
                 patient = {
@@ -593,8 +652,9 @@ class MetricsService:
                     "full_name": row["full_name"],
                     "phone_number": row["phone_number"],
                     "email": row["email"],
-                    "patient_created": row["patient_created"].isoformat() if row["patient_created"] else None,
-                    
+                    "patient_created": row["patient_created"].isoformat()
+                    if row["patient_created"]
+                    else None,
                     "first_touch": {
                         "source": row["first_touch_source"],
                         "ad_id": row["first_touch_ad_id"],
@@ -602,18 +662,22 @@ class MetricsService:
                         "campaign_id": row["first_touch_campaign_id"],
                         "campaign_name": row["first_touch_campaign_name"],
                         "headline": row["first_touch_ad_headline"],
-                        "body": row["first_touch_ad_body"]
-                    } if row["first_touch_source"] else None,
-                    
+                        "body": row["first_touch_ad_body"],
+                    }
+                    if row["first_touch_source"]
+                    else None,
                     "last_touch": {
                         "source": row["last_touch_source"],
                         "ad_id": row["last_touch_ad_id"],
                         "ad_name": row["last_touch_ad_name"],
                         "campaign_id": row["last_touch_campaign_id"],
                         "campaign_name": row["last_touch_campaign_name"],
-                        "timestamp": row["last_touch_timestamp"].isoformat() if row["last_touch_timestamp"] else None
-                    } if row["last_touch_source"] else None,
-                    
+                        "timestamp": row["last_touch_timestamp"].isoformat()
+                        if row["last_touch_timestamp"]
+                        else None,
+                    }
+                    if row["last_touch_source"]
+                    else None,
                     "conversion": {
                         "lead_id": row["lead_id"],
                         "ad_id": row["conversion_ad_id"],
@@ -621,24 +685,36 @@ class MetricsService:
                         "campaign_id": row["conversion_campaign_id"],
                         "campaign_name": row["conversion_campaign_name"],
                         "status": row["lead_status"],
-                        "timestamp": row["conversion_timestamp"].isoformat() if row["conversion_timestamp"] else None
-                    } if row["lead_id"] else None,
-                    
-                    "attribution_events_count": row["attribution_events_count"]
+                        "timestamp": row["conversion_timestamp"].isoformat()
+                        if row["conversion_timestamp"]
+                        else None,
+                    }
+                    if row["lead_id"]
+                    else None,
+                    "attribution_events_count": row["attribution_events_count"],
                 }
-                
+
                 # Determine attribution path
                 attribution_path = []
                 if patient["first_touch"]:
-                    attribution_path.append(f"First: {patient['first_touch']['source']}")
-                if patient["last_touch"] and patient["last_touch"] != patient["first_touch"]:
+                    attribution_path.append(
+                        f"First: {patient['first_touch']['source']}"
+                    )
+                if (
+                    patient["last_touch"]
+                    and patient["last_touch"] != patient["first_touch"]
+                ):
                     attribution_path.append(f"Last: {patient['last_touch']['source']}")
                 if patient["conversion"]:
-                    attribution_path.append(f"Converted: {patient['conversion']['status']}")
-                
-                patient["attribution_path"] = " → ".join(attribution_path) if attribution_path else "Organic"
+                    attribution_path.append(
+                        f"Converted: {patient['conversion']['status']}"
+                    )
+
+                patient["attribution_path"] = (
+                    " → ".join(attribution_path) if attribution_path else "Organic"
+                )
                 patients.append(patient)
-            
+
             # Get attribution history for the first few patients
             if patients:
                 patient_ids = [p["patient_id"] for p in patients[:5]]
@@ -647,70 +723,77 @@ class MetricsService:
                     WHERE patient_id = ANY($1) AND tenant_id = $2
                     ORDER BY event_timestamp DESC
                 """
-                history_results = await db.pool.fetch(history_query, patient_ids, tenant_id)
-                
+                history_results = await db.pool.fetch(
+                    history_query, patient_ids, tenant_id
+                )
+
                 # Group history by patient
                 history_by_patient = {}
                 for row in history_results:
                     patient_id = row["patient_id"]
                     if patient_id not in history_by_patient:
                         history_by_patient[patient_id] = []
-                    
-                    history_by_patient[patient_id].append({
-                        "attribution_type": row["attribution_type"],
-                        "source": row["source"],
-                        "ad_name": row["ad_name"],
-                        "campaign_name": row["campaign_name"],
-                        "event_timestamp": row["event_timestamp"].isoformat() if row["event_timestamp"] else None,
-                        "event_description": row["event_description"]
-                    })
-            
+
+                    history_by_patient[patient_id].append(
+                        {
+                            "attribution_type": row["attribution_type"],
+                            "source": row["source"],
+                            "ad_name": row["ad_name"],
+                            "campaign_name": row["campaign_name"],
+                            "event_timestamp": row["event_timestamp"].isoformat()
+                            if row["event_timestamp"]
+                            else None,
+                            "event_description": row["event_description"],
+                        }
+                    )
+
             return {
                 "success": True,
                 "total_patients": len(patients),
                 "patients": patients,
-                "sample_attribution_history": history_by_patient if patients else {}
+                "sample_attribution_history": history_by_patient if patients else {},
             }
-            
+
         except Exception as e:
             logger.error(f"Error getting detailed attribution report: {e}")
             raise
-    
+
     @staticmethod
     async def get_roi_dashboard(
-        tenant_id: int,
-        period: MetricPeriod = MetricPeriod.MONTHLY
+        tenant_id: int, period: MetricPeriod = MetricPeriod.MONTHLY
     ) -> Dict[str, Any]:
         """
         Get ROI dashboard with key metrics
-        
+
         Args:
             tenant_id: Tenant ID
             period: Time period for metrics
-            
+
         Returns:
             ROI dashboard data
         """
-        
+
         try:
             # Get metrics for different attribution types
             first_touch_metrics = await MetricsService.get_campaign_metrics(
                 tenant_id, period, attribution_type=AttributionType.FIRST_TOUCH
             )
-            
+
             last_touch_metrics = await MetricsService.get_campaign_metrics(
                 tenant_id, period, attribution_type=AttributionType.LAST_TOUCH
             )
-            
+
             # Calculate trend data
             trend_data = await MetricsService._get_trend_data(tenant_id, period)
-            
+
             # Get top performing campaigns
             top_campaigns = await MetricsService._get_top_campaigns(tenant_id, period)
-            
+
             # Get attribution mix
-            attribution_mix = await MetricsService._get_attribution_mix(tenant_id, period)
-            
+            attribution_mix = await MetricsService._get_attribution_mix(
+                tenant_id, period
+            )
+
             return {
                 "success": True,
                 "period": period.value,
@@ -721,27 +804,35 @@ class MetricsService:
                 "attribution_mix": attribution_mix,
                 "comparison": {
                     "attribution_difference": {
-                        "patients": last_touch_metrics.get("summary", {}).get("total_patients", 0) - 
-                                   first_touch_metrics.get("summary", {}).get("total_patients", 0),
-                        "conversion_rate": round(
-                            last_touch_metrics.get("summary", {}).get("average_conversion_rate", 0) - 
-                            first_touch_metrics.get("summary", {}).get("average_conversion_rate", 0), 2
+                        "patients": last_touch_metrics.get("summary", {}).get(
+                            "total_patients", 0
                         )
+                        - first_touch_metrics.get("summary", {}).get(
+                            "total_patients", 0
+                        ),
+                        "conversion_rate": round(
+                            last_touch_metrics.get("summary", {}).get(
+                                "average_conversion_rate", 0
+                            )
+                            - first_touch_metrics.get("summary", {}).get(
+                                "average_conversion_rate", 0
+                            ),
+                            2,
+                        ),
                     }
-                }
+                },
             }
-            
+
         except Exception as e:
             logger.error(f"Error getting ROI dashboard: {e}")
             raise
-    
+
     @staticmethod
     async def _get_trend_data(
-        tenant_id: int,
-        period: MetricPeriod
+        tenant_id: int, period: MetricPeriod
     ) -> List[Dict[str, Any]]:
         """Get trend data over time"""
-        
+
         # Determine interval based on period
         if period == MetricPeriod.DAILY:
             interval = "1 day"
@@ -755,7 +846,7 @@ class MetricsService:
         else:
             interval = "1 month"
             date_format = "YYYY-MM"
-        
+
         query = f"""
             WITH date_series AS (
                 SELECT generate_series(
@@ -777,39 +868,43 @@ class MetricsService:
             GROUP BY TO_CHAR(ds.date, '{date_format}')
             ORDER BY MIN(ds.date)
         """
-        
+
         try:
             results = await db.pool.fetch(query, tenant_id)
-            
+
             trend_data = []
             for row in results:
-                trend_data.append({
-                    "period": row["period"],
-                    "total_patients": row["total_patients"] or 0,
-                    "first_touch_patients": row["first_touch_patients"] or 0,
-                    "last_touch_patients": row["last_touch_patients"] or 0,
-                    "total_leads": row["total_leads"] or 0,
-                    "converted_leads": row["converted_leads"] or 0,
-                    "conversion_rate": round(
-                        (row["converted_leads"] / row["total_leads"] * 100) if row["total_leads"] > 0 else 0, 2
-                    )
-                })
-            
+                trend_data.append(
+                    {
+                        "period": row["period"],
+                        "total_patients": row["total_patients"] or 0,
+                        "first_touch_patients": row["first_touch_patients"] or 0,
+                        "last_touch_patients": row["last_touch_patients"] or 0,
+                        "total_leads": row["total_leads"] or 0,
+                        "converted_leads": row["converted_leads"] or 0,
+                        "conversion_rate": round(
+                            (row["converted_leads"] / row["total_leads"] * 100)
+                            if row["total_leads"] > 0
+                            else 0,
+                            2,
+                        ),
+                    }
+                )
+
             return trend_data
-            
+
         except Exception as e:
             logger.error(f"Error getting trend data: {e}")
             return []
-    
+
     @staticmethod
     async def _get_top_campaigns(
-        tenant_id: int,
-        period: MetricPeriod
+        tenant_id: int, period: MetricPeriod
     ) -> List[Dict[str, Any]]:
         """Get top performing campaigns"""
-        
+
         date_range = await MetricsService._get_date_range(period, None, None)
-        
+
         query = """
             WITH campaign_stats AS (
                 -- WhatsApp patients (first touch)
@@ -853,46 +948,48 @@ class MetricsService:
             ORDER BY total_patients DESC
             LIMIT 10
         """
-        
+
         try:
             results = await db.pool.fetch(
                 query, tenant_id, date_range["from"], date_range["to"]
             )
-            
+
             top_campaigns = []
             for row in results:
                 total_interactions = row["total_whatsapp_patients"] + row["total_leads"]
                 conversion_rate = (
-                    (row["total_patients"] / total_interactions * 100) 
-                    if total_interactions > 0 else 0
+                    (row["total_patients"] / total_interactions * 100)
+                    if total_interactions > 0
+                    else 0
                 )
-                
-                top_campaigns.append({
-                    "campaign_id": row["campaign_id"],
-                    "campaign_name": row["campaign_name"],
-                    "whatsapp_patients": row["total_whatsapp_patients"],
-                    "total_leads": row["total_leads"],
-                    "converted_leads": row["total_converted_leads"],
-                    "total_patients": row["total_patients"],
-                    "conversion_rate": round(conversion_rate, 2),
-                    "sources": []
-                })
-            
+
+                top_campaigns.append(
+                    {
+                        "campaign_id": row["campaign_id"],
+                        "campaign_name": row["campaign_name"],
+                        "whatsapp_patients": row["total_whatsapp_patients"],
+                        "total_leads": row["total_leads"],
+                        "converted_leads": row["total_converted_leads"],
+                        "total_patients": row["total_patients"],
+                        "conversion_rate": round(conversion_rate, 2),
+                        "sources": [],
+                    }
+                )
+
             return top_campaigns
-            
+
         except Exception as e:
             logger.error(f"Error getting top campaigns: {e}")
             return []
-    
+
     @staticmethod
     async def _get_attribution_mix(
-        tenant_id: int,
-        period: MetricPeriod
+        tenant_id: int, period: MetricPeriod
     ) -> Dict[str, Any]:
         """Get attribution mix (first touch vs last touch vs conversion)"""
-        
+
         date_range = await MetricsService._get_date_range(period, None, None)
-        
+
         query = """
             SELECT 
                 -- First touch attribution
@@ -916,42 +1013,44 @@ class MetricsService:
             AND p.created_at >= $2::timestamp
             AND p.created_at <= $3::timestamp
         """
-        
+
         try:
             result = await db.pool.fetchrow(
                 query, tenant_id, date_range["from"], date_range["to"]
             )
-            
+
             if not result:
                 return {}
-            
+
             total_patients = result["total_patients"] or 0
-            
+
             if total_patients == 0:
                 return {
                     "first_touch_percentage": 0,
                     "last_touch_percentage": 0,
                     "both_touch_percentage": 0,
                     "conversion_percentage": 0,
-                    "organic_percentage": 100
+                    "organic_percentage": 100,
                 }
-            
+
             first_touch_patients = result["first_touch_patients"] or 0
             last_touch_patients = result["last_touch_patients"] or 0
             both_touch_patients = result["both_touch_patients"] or 0
             conversion_patients = result["conversion_patients"] or 0
-            
+
             # Calculate percentages
-            first_touch_percentage = (first_touch_patients / total_patients * 100)
-            last_touch_percentage = (last_touch_patients / total_patients * 100)
-            both_touch_percentage = (both_touch_patients / total_patients * 100)
-            conversion_percentage = (conversion_patients / total_patients * 100)
-            
+            first_touch_percentage = first_touch_patients / total_patients * 100
+            last_touch_percentage = last_touch_patients / total_patients * 100
+            both_touch_percentage = both_touch_patients / total_patients * 100
+            conversion_percentage = conversion_patients / total_patients * 100
+
             # Organic = total - attributed
-            attributed_patients = first_touch_patients + last_touch_patients - both_touch_patients
+            attributed_patients = (
+                first_touch_patients + last_touch_patients - both_touch_patients
+            )
             organic_patients = total_patients - attributed_patients
-            organic_percentage = (organic_patients / total_patients * 100)
-            
+            organic_percentage = organic_patients / total_patients * 100
+
             return {
                 "first_touch_percentage": round(first_touch_percentage, 2),
                 "last_touch_percentage": round(last_touch_percentage, 2),
@@ -960,17 +1059,16 @@ class MetricsService:
                 "organic_percentage": round(organic_percentage, 2),
                 "total_patients": total_patients,
                 "attributed_patients": attributed_patients,
-                "organic_patients": organic_patients
+                "organic_patients": organic_patients,
             }
-            
+
         except Exception as e:
             logger.error(f"Error getting attribution mix: {e}")
             return {}
 
     @staticmethod
     async def get_executive_summary(
-        tenant_id: int,
-        period: str = "last_30d"
+        tenant_id: int, period: str = "last_30d"
     ) -> Dict[str, Any]:
         """
         Get executive ROI summary with real spend data.
@@ -982,10 +1080,14 @@ class MetricsService:
             "last_90d": (MetricPeriod.QUARTERLY, "last_90d"),
             "this_year": (MetricPeriod.YEARLY, "this_year"),
         }
-        metric_period, marketing_range = period_map.get(period, (MetricPeriod.MONTHLY, "last_30d"))
+        metric_period, marketing_range = period_map.get(
+            period, (MetricPeriod.MONTHLY, "last_30d")
+        )
 
         try:
-            spend_data = await MetricsService._get_real_spend_data(tenant_id, marketing_range)
+            spend_data = await MetricsService._get_real_spend_data(
+                tenant_id, marketing_range
+            )
             date_range = await MetricsService._get_date_range(metric_period, None, None)
             billing_revenue = await MetricsService._get_billing_revenue(
                 tenant_id, date_range["from"], date_range["to"]
@@ -993,35 +1095,61 @@ class MetricsService:
             consultation_price = await MetricsService._get_consultation_price(tenant_id)
 
             # Count leads and conversions in period
-            leads = await db.pool.fetchval("""
+            leads = (
+                await db.pool.fetchval(
+                    """
                 SELECT COUNT(*) FROM patients
                 WHERE tenant_id = $1 AND acquisition_source = 'META_ADS'
                 AND created_at >= $2::timestamp AND created_at <= $3::timestamp
-            """, tenant_id, date_range["from"], date_range["to"]) or 0
+            """,
+                    tenant_id,
+                    date_range["from"],
+                    date_range["to"],
+                )
+                or 0
+            )
 
-            conversions = await db.pool.fetchval("""
+            conversions = (
+                await db.pool.fetchval(
+                    """
                 SELECT COUNT(DISTINCT p.id) FROM patients p
                 JOIN appointments a ON p.id = a.patient_id AND p.tenant_id = a.tenant_id
                 WHERE p.tenant_id = $1 AND p.acquisition_source = 'META_ADS'
                 AND a.status IN ('confirmed', 'completed')
                 AND a.appointment_datetime >= $2::timestamp AND a.appointment_datetime <= $3::timestamp
-            """, tenant_id, date_range["from"], date_range["to"]) or 0
+            """,
+                    tenant_id,
+                    date_range["from"],
+                    date_range["to"],
+                )
+                or 0
+            )
 
             total_spend = spend_data["total_spend"]
-            total_revenue = billing_revenue if billing_revenue > 0 else (conversions * consultation_price)
-            roi = ((total_revenue - total_spend) / total_spend * 100) if total_spend > 0 else 0
+            total_revenue = (
+                billing_revenue
+                if billing_revenue > 0
+                else (conversions * consultation_price)
+            )
+            roi = (
+                ((total_revenue - total_spend) / total_spend * 100)
+                if total_spend > 0
+                else 0
+            )
             conversion_rate = (conversions / leads * 100) if leads > 0 else 0
             cost_per_lead = total_spend / leads if leads > 0 else 0
             cost_per_conversion = total_spend / conversions if conversions > 0 else 0
 
             # Top campaign
-            top_campaigns = await MetricsService._get_top_campaigns(tenant_id, metric_period)
+            top_campaigns = await MetricsService._get_top_campaigns(
+                tenant_id, metric_period
+            )
             top_campaign = None
             if top_campaigns:
                 tc = top_campaigns[0]
                 top_campaign = {
                     "name": tc["campaign_name"],
-                    "patients": tc["total_patients"]
+                    "patients": tc["total_patients"],
                 }
 
             return {
@@ -1038,7 +1166,7 @@ class MetricsService:
                 "top_campaign": top_campaign,
                 "data_source": spend_data["data_source"],
                 "currency": spend_data["currency"],
-                "platforms": ["meta"] if spend_data["is_connected"] else []
+                "platforms": ["meta"] if spend_data["is_connected"] else [],
             }
         except Exception as e:
             logger.error(f"Error getting executive summary: {e}")

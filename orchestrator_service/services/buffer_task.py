@@ -1139,6 +1139,36 @@ async def process_buffer_task(
                             f"Error checking pending payment: {pay_check_err}"
                         )
 
+                    # --- Fallback: check treatment plan pending balance ---
+                    has_pending_plan = False
+                    if not has_pending_payment:
+                        try:
+                            pending_plan = await pool.fetchval(
+                                """
+                                SELECT tp.id FROM treatment_plans tp
+                                LEFT JOIN (
+                                    SELECT plan_id, SUM(amount) as total_paid
+                                    FROM treatment_plan_payments WHERE tenant_id = $1
+                                    GROUP BY plan_id
+                                ) pay ON pay.plan_id = tp.id
+                                WHERE tp.tenant_id = $1 AND tp.patient_id = $2
+                                  AND tp.status IN ('approved', 'in_progress')
+                                  AND tp.approved_total > COALESCE(pay.total_paid, 0)
+                                LIMIT 1
+                                """,
+                                tenant_id,
+                                patient_row["id"],
+                            )
+                            if pending_plan:
+                                has_pending_payment = True
+                                has_pending_plan = True
+                                logger.info(
+                                    f"💰 buffer_task: patient has pending treatment plan balance, "
+                                    f"activating payment receipt context (plan_id={pending_plan})"
+                                )
+                        except Exception as plan_check_err:
+                            logger.warning(f"Error checking plan pending: {plan_check_err}")
+
                     if has_pending_payment:
                         # Fase 2 - Task 2.3: Override payment context if classified as medical
                         # Medical documents take priority over payment verification
@@ -1149,24 +1179,44 @@ async def process_buffer_task(
                             media_context += "Responde confirmando que recibiste el archivo y que ya lo guardaste en su ficha médica para que la Dra. lo vea. Usa un tono amable y profesional."
                         elif is_classified_payment:
                             # Explicitly classified as payment - inject payment verification context
-                            media_context += (
-                                "PROBABLE COMPROBANTE DE PAGO: El paciente tiene un turno con seña pendiente y acaba de enviar una imagen/documento. "
-                                "Es MUY probable que sea un comprobante de transferencia bancaria. "
-                                "ACCIÓN OBLIGATORIA: Usá 'verify_payment_receipt' para verificar el comprobante. "
-                                "Pasá la descripción de la imagen del CONTEXTO VISUAL como 'receipt_description' y el monto que detectes como 'amount_detected'. "
-                                "NO digas 'ya lo guardé en tu ficha'. Decí 'Recibí tu comprobante, voy a verificarlo' y ejecutá la tool. "
-                                "Si la verificación es exitosa → confirmá el pago. Si falla → explicá qué falló."
-                            )
+                            if has_pending_plan:
+                                media_context += (
+                                    "PROBABLE COMPROBANTE DE PAGO: El paciente tiene un plan de tratamiento con saldo pendiente y acaba de enviar una imagen/documento. "
+                                    "Es MUY probable que sea un comprobante de transferencia bancaria para abonar una cuota del plan. "
+                                    "ACCIÓN OBLIGATORIA: Usá 'verify_payment_receipt' para verificar el comprobante. "
+                                    "Pasá la descripción de la imagen del CONTEXTO VISUAL como 'receipt_description' y el monto que detectes como 'amount_detected'. "
+                                    "NO digas 'ya lo guardé en tu ficha'. Decí 'Recibí tu comprobante, voy a verificarlo' y ejecutá la tool. "
+                                    "Si la verificación es exitosa → confirmá el pago al plan. Si falla → explicá qué falló."
+                                )
+                            else:
+                                media_context += (
+                                    "PROBABLE COMPROBANTE DE PAGO: El paciente tiene un turno con seña pendiente y acaba de enviar una imagen/documento. "
+                                    "Es MUY probable que sea un comprobante de transferencia bancaria. "
+                                    "ACCIÓN OBLIGATORIA: Usá 'verify_payment_receipt' para verificar el comprobante. "
+                                    "Pasá la descripción de la imagen del CONTEXTO VISUAL como 'receipt_description' y el monto que detectes como 'amount_detected'. "
+                                    "NO digas 'ya lo guardé en tu ficha'. Decí 'Recibí tu comprobante, voy a verificarlo' y ejecutá la tool. "
+                                    "Si la verificación es exitosa → confirmá el pago. Si falla → explicá qué falló."
+                                )
                         else:
                             # Not classified - use legacy behavior with pending payment check
-                            media_context += (
-                                "PROBABLE COMPROBANTE DE PAGO: El paciente tiene un turno con seña pendiente y acaba de enviar una imagen/documento. "
-                                "Es MUY probable que sea un comprobante de transferencia bancaria. "
-                                "ACCIÓN OBLIGATORIA: Usá 'verify_payment_receipt' para verificar el comprobante. "
-                                "Pasá la descripción de la imagen del CONTEXTO VISUAL como 'receipt_description' y el monto que detectes como 'amount_detected'. "
-                                "NO digas 'ya lo guardé en tu ficha'. Decí 'Recibí tu comprobante, voy a verificarlo' y ejecutá la tool. "
-                                "Si la verificación es exitosa → confirmá el pago. Si falla → explicá qué falló."
-                            )
+                            if has_pending_plan:
+                                media_context += (
+                                    "PROBABLE COMPROBANTE DE PAGO: El paciente tiene un plan de tratamiento con saldo pendiente y acaba de enviar una imagen/documento. "
+                                    "Es MUY probable que sea un comprobante de transferencia bancaria para abonar una cuota del plan. "
+                                    "ACCIÓN OBLIGATORIA: Usá 'verify_payment_receipt' para verificar el comprobante. "
+                                    "Pasá la descripción de la imagen del CONTEXTO VISUAL como 'receipt_description' y el monto que detectes como 'amount_detected'. "
+                                    "NO digas 'ya lo guardé en tu ficha'. Decí 'Recibí tu comprobante, voy a verificarlo' y ejecutá la tool. "
+                                    "Si la verificación es exitosa → confirmá el pago al plan. Si falla → explicá qué falló."
+                                )
+                            else:
+                                media_context += (
+                                    "PROBABLE COMPROBANTE DE PAGO: El paciente tiene un turno con seña pendiente y acaba de enviar una imagen/documento. "
+                                    "Es MUY probable que sea un comprobante de transferencia bancaria. "
+                                    "ACCIÓN OBLIGATORIA: Usá 'verify_payment_receipt' para verificar el comprobante. "
+                                    "Pasá la descripción de la imagen del CONTEXTO VISUAL como 'receipt_description' y el monto que detectes como 'amount_detected'. "
+                                    "NO digas 'ya lo guardé en tu ficha'. Decí 'Recibí tu comprobante, voy a verificarlo' y ejecutá la tool. "
+                                    "Si la verificación es exitosa → confirmá el pago. Si falla → explicá qué falló."
+                                )
                     else:
                         # No pending payment - treat as medical document
                         media_context += "Responde confirmando que recibiste el archivo y que ya lo guardaste en su ficha médica para que la Dra. lo vea. Usa un tono amable y profesional."

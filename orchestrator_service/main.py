@@ -4175,7 +4175,7 @@ async def verify_payment_receipt(
         if appointment_id:
             apt = await db.pool.fetchrow(
                 """
-                SELECT a.id, a.status, a.billing_amount, a.payment_status, a.appointment_datetime,
+                SELECT a.id, a.patient_id, a.status, a.billing_amount, a.payment_status, a.appointment_datetime,
                        a.appointment_type, a.professional_id, a.payment_receipt_data,
                        p.first_name, p.last_name, p.email,
                        prof.first_name as prof_name, prof.consultation_price as prof_price,
@@ -4194,7 +4194,7 @@ async def verify_payment_receipt(
             phone_digits_apt = normalize_phone_digits(phone)
             apt = await db.pool.fetchrow(
                 """
-                SELECT a.id, a.status, a.billing_amount, a.payment_status, a.appointment_datetime,
+                SELECT a.id, a.patient_id, a.status, a.billing_amount, a.payment_status, a.appointment_datetime,
                        a.appointment_type, a.professional_id, a.payment_receipt_data,
                        p.first_name, p.last_name, p.email,
                        prof.first_name as prof_name, prof.consultation_price as prof_price,
@@ -4216,13 +4216,53 @@ async def verify_payment_receipt(
         if not apt:
             return "No encontré un turno pendiente asociado a tu número. Verificá con la clínica."
 
-        # 3. Determine expected SEÑA amount (50% of consultation price)
-        # Priority: billing_amount > 50% of professional price > 50% of treatment price > 50% of tenant price
+        # 3. Determine expected amount
+        # Priority: billing_amount > plan pending balance > 50% of professional price > 50% of treatment price > 50% of tenant price
         # MUST match the same priority chain used in book_appointment
         expected_amount = None
+        payment_context = "appointment"  # "appointment" or "plan"
+        plan_id = None
+        plan_row = None
+
+        # 1. billing_amount on the appointment (explicit override)
         if apt["billing_amount"] and float(apt["billing_amount"]) > 0:
             expected_amount = float(apt["billing_amount"])
-        else:
+
+        # 2. Active treatment plan pending balance (plan context takes priority over generic price fallbacks)
+        if not expected_amount or expected_amount <= 0:
+            try:
+                patient_id = apt["patient_id"]
+                plan_row = await db.pool.fetchrow(
+                    """
+                    SELECT tp.id as plan_id, tp.name as plan_name, tp.approved_total,
+                           COALESCE(SUM(tpp.amount), 0) as total_paid
+                    FROM treatment_plans tp
+                    LEFT JOIN treatment_plan_payments tpp
+                          ON tpp.plan_id = tp.id AND tpp.tenant_id = tp.tenant_id
+                    WHERE tp.tenant_id = $1 AND tp.patient_id = $2
+                      AND tp.status IN ('approved', 'in_progress')
+                    GROUP BY tp.id, tp.name, tp.approved_total
+                    HAVING tp.approved_total > COALESCE(SUM(tpp.amount), 0)
+                    ORDER BY tp.created_at DESC
+                    LIMIT 1
+                    """,
+                    tenant_id,
+                    patient_id,
+                )
+                if plan_row:
+                    plan_pending = float(plan_row["approved_total"]) - float(plan_row["total_paid"])
+                    expected_amount = plan_pending
+                    payment_context = "plan"
+                    plan_id = plan_row["plan_id"]
+                    logger.info(
+                        f"💰 verify_receipt: billing_amount=0, using treatment plan "
+                        f"plan_id={plan_id} plan_name='{plan_row['plan_name']}' pending=${plan_pending}"
+                    )
+            except Exception as plan_lookup_err:
+                logger.warning(f"💰 verify_receipt: plan lookup failed (non-fatal): {plan_lookup_err}")
+
+        # 3. Fallback to price-based seña (50%) when no billing_amount and no active plan
+        if not expected_amount or expected_amount <= 0:
             full_price = None
             # a) Professional's consultation_price
             prof_price = apt.get("prof_price")
@@ -4528,28 +4568,72 @@ async def verify_payment_receipt(
                     )
                 )
 
-            await db.pool.execute(
-                """
-                UPDATE appointments SET
-                    status = $1,
-                    payment_status = $2,
-                    payment_receipt_data = $3::jsonb,
-                    billing_amount = COALESCE(NULLIF(billing_amount, 0), $6),
-                    billing_notes = CASE
-                        WHEN $7 > 0 THEN '[Excedente seña: $' || $7::text || ']'
-                        ELSE billing_notes
-                    END,
-                    updated_at = NOW()
-                WHERE id = $4 AND tenant_id = $5
-            """,
-                new_status,
-                payment_status,
-                json.dumps(receipt_data),
-                str(apt["id"]),
-                tenant_id,
-                amount_value or expected_amount,
-                int(amount_overpaid),
-            )
+            if payment_context == "plan" and plan_id and plan_row:
+                # Plan payment: insert into treatment_plan_payments + accounting_transactions
+                import uuid as _uuid_mod
+                await db.pool.execute(
+                    """
+                    INSERT INTO treatment_plan_payments
+                        (id, plan_id, tenant_id, amount, payment_method, payment_date, notes)
+                    VALUES ($1, $2, $3, $4, 'transfer', NOW(), $5)
+                    """,
+                    str(_uuid_mod.uuid4()),
+                    plan_id,
+                    tenant_id,
+                    amount_value or expected_amount,
+                    "Verificado automáticamente por IA",
+                )
+                # Sync to accounting_transactions
+                try:
+                    await db.pool.execute(
+                        """
+                        INSERT INTO accounting_transactions
+                            (tenant_id, patient_id, transaction_type, transaction_date,
+                             amount, payment_method, description, status)
+                        VALUES ($1, $2, 'payment', NOW(), $3, 'transfer', $4, 'completed')
+                        """,
+                        tenant_id,
+                        apt["patient_id"],
+                        amount_value or expected_amount,
+                        f"Pago verificado por IA - Plan: {plan_row['plan_name']}",
+                    )
+                except Exception as acct_err:
+                    logger.warning(f"💰 verify_receipt: accounting_transactions insert failed (non-fatal): {acct_err}")
+                # Check if plan is now fully paid
+                new_total_paid = float(plan_row["total_paid"]) + (amount_value or 0)
+                if new_total_paid >= float(plan_row["approved_total"]):
+                    await db.pool.execute(
+                        "UPDATE treatment_plans SET status = 'completed', updated_at = NOW() WHERE id = $1",
+                        plan_id,
+                    )
+                    logger.info(f"💰 verify_receipt: plan {plan_id} marked as completed (fully paid)")
+                logger.info(
+                    f"💰 verify_receipt: plan payment recorded plan_id={plan_id} amount=${amount_value or expected_amount}"
+                )
+            else:
+                # Appointment payment: update appointments table
+                await db.pool.execute(
+                    """
+                    UPDATE appointments SET
+                        status = $1,
+                        payment_status = $2,
+                        payment_receipt_data = $3::jsonb,
+                        billing_amount = COALESCE(NULLIF(billing_amount, 0), $6),
+                        billing_notes = CASE
+                            WHEN $7 > 0 THEN '[Excedente seña: $' || $7::text || ']'
+                            ELSE billing_notes
+                        END,
+                        updated_at = NOW()
+                    WHERE id = $4 AND tenant_id = $5
+                """,
+                    new_status,
+                    payment_status,
+                    json.dumps(receipt_data),
+                    str(apt["id"]),
+                    tenant_id,
+                    amount_value or expected_amount,
+                    int(amount_overpaid),
+                )
 
             # Emit WebSocket events
             try:
@@ -4592,6 +4676,22 @@ async def verify_payment_receipt(
                 logger.warning(f"Error setting payment cooldown: {cooldown_err}")
 
             patient_name = f"{apt['first_name']} {apt['last_name'] or ''}".strip()
+
+            # --- Plan payment: return plan-specific confirmation and exit early ---
+            if payment_context == "plan" and plan_row:
+                amount_str_plan = str(int(amount_value)) if amount_value else "0"
+                new_total_paid_plan = float(plan_row["total_paid"]) + (amount_value or 0)
+                remaining = float(plan_row["approved_total"]) - new_total_paid_plan
+                if remaining <= 0:
+                    balance_msg = "¡El plan está completamente saldado! 🎉"
+                else:
+                    remaining_str = f"${int(remaining):,}".replace(",", ".")
+                    balance_msg = f"Saldo pendiente del plan: {remaining_str}."
+                return (
+                    f"✅ Pago de ${amount_str_plan} verificado correctamente para tu plan de tratamiento "
+                    f"'{plan_row['plan_name']}'. {balance_msg} ¡Gracias!"
+                )
+
             apt_dt = apt["appointment_datetime"]
             # Convert UTC to Argentina timezone for display
             apt_dt_arg = apt_dt.astimezone(ARG_TZ) if apt_dt.tzinfo else apt_dt
@@ -4618,6 +4718,7 @@ async def verify_payment_receipt(
             )
 
             # Send payment confirmation email if patient has email
+            # Task 6.3: If no email, return flag so agent can ask for it
             patient_email = apt.get("email")
             if patient_email and patient_email.strip():
                 try:
@@ -4649,12 +4750,18 @@ async def verify_payment_receipt(
                         )
                 except Exception as e:
                     logger.error(f"❌ Error sending payment email: {e}")
-            else:
-                logger.warning(
-                    f"⚠️ Patient {patient_name} has no email, skipping payment confirmation email"
-                )
 
-            return f"✅ Comprobante verificado correctamente! Tu turno de {treatment_display} el {fecha} con {apt['prof_name'] or 'el profesional'} queda CONFIRMADO. Te esperamos! 😊{overpaid_msg}"
+                return f"✅ Comprobante verificado correctamente! Tu turno de {treatment_display} el {fecha} con {apt['prof_name'] or 'el profesional'} queda CONFIRMADO. Te esperamos! 😊{overpaid_msg}"
+
+            # No email - return flag for agent to request it
+            logger.info(
+                f"⚠️ Patient {patient_name} has no email, returning email_required flag"
+            )
+            return {
+                "message": f"✅ Comprobante verificado correctamente! Tu turno de {treatment_display} el {fecha} con {apt['prof_name'] or 'el profesional'} queda CONFIRMADO. Te esperamos! 😊{overpaid_msg}",
+                "email_required": True,
+                "summary": f"Pago verificado. Seña de ${amount_str or '0'} confirmada. Turno: {treatment_display} el {fecha}.",
+            }
 
         elif not holder_match:
             # Save failed attempt for manual review
@@ -5854,6 +5961,20 @@ Mapeá al canónico → validá con list_services → si no existe, mostrá los 
   POLÍTICA DE SEÑA: Si el paciente tenía una seña pagada, la seña NO se devuelve al cancelar. La tool ya informa esto automáticamente en su respuesta. NO ofrezcas reembolso ni digas que se puede devolver la seña.
 • REPROGRAMAR → `reschedule_appointment`: "reprogramar", "cambiar turno", "mover turno", "otro día", "reagendar"
 Si el mensaje coincide con alguna variante, ejecutá la tool. No esperes palabras exactas.
+
+## MANEJO DE MÚLTIPLES ADJUNTOS (IMÁGENES Y PDFs)
+El sistema analiza AUTOMÁTICAMENTE todos los archivos que envía el paciente por WhatsApp:
+• Hasta 10 imágenes y 5 PDFs por conversación (los que excedan se ignoran silenciosamente).
+• Cada archivo se analiza con Vision AI y se clasifica como "comprobante de pago" o "documento clínico".
+• Los archivos se guardan automáticamente en la ficha del paciente (patient_documents).
+• Se genera un resumen LLM consolidado de todos los adjuntos.
+
+REGLAS PARA VOS:
+• Si el paciente pregunta "¿recibiste mis documentos/fotos?" → Confirmá: "Sí, ya tengo todo registrado en tu ficha."
+• Si recibís CONTEXTO VISUAL con múltiples descripciones → Referenciá lo relevante: "Veo que me enviaste X archivos, incluyendo [descripción breve]."
+• NUNCA inventes contenido de archivos. Solo usá las descripciones del CONTEXTO VISUAL que te llegan.
+• Si NO hay CONTEXTO VISUAL aún → "Estoy procesando tus archivos, dame un momento."
+• Para ver el historial de documentos del paciente → usá la tool `list_patient_documents`.
 
 ## WHATSAPP (EXPERIENCIA MOBILE)
 • Máximo 3-4 líneas por mensaje. Mejor 3 mensajes cortos que 1 largo.
