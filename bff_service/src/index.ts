@@ -134,7 +134,7 @@ app.use(async (req: Request, res: Response) => {
 
     // Detect if this request expects a binary response (PDF, images, media proxy, etc.)
     const acceptHeader = (req.headers['accept'] || '').toLowerCase();
-    const isPdfRequest = req.originalUrl.endsWith('/pdf') || acceptHeader.includes('application/pdf');
+    const isPdfRequest = req.originalUrl.endsWith('/pdf') || req.originalUrl.includes('/generate-pdf') || acceptHeader.includes('application/pdf');
     const isMediaProxy = /\/documents\/\d+\/proxy/.test(req.originalUrl)
         || req.originalUrl.includes('/chat/media/proxy')
         || req.originalUrl.includes('/uploads/')
