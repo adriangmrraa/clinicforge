@@ -11143,7 +11143,7 @@ async def send_treatment_plan_email(
 ):
     """Envía presupuesto por email al paciente con PDF adjunto."""
     body = await request.json()
-    to_email = body.get("to_email")
+    to_email = body.get("email") or body.get("to_email")
     if not to_email:
         raise HTTPException(status_code=422, detail="Email requerido")
 

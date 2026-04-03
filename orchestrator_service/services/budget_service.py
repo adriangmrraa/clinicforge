@@ -13,6 +13,7 @@ Layers:
 import asyncio
 import logging
 import os
+import uuid as _uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -65,6 +66,13 @@ async def gather_budget_data(pool, plan_id: str, tenant_id: int) -> Optional[dic
     All queries are scoped to tenant_id (multi-tenant isolation rule).
     Returns None if the plan is not found.
     """
+    # Convert plan_id to UUID for asyncpg
+    try:
+        plan_uuid = _uuid.UUID(plan_id) if isinstance(plan_id, str) else plan_id
+    except ValueError:
+        logger.error("gather_budget_data: invalid plan_id %s", plan_id)
+        return None
+
     # ── Plan + patient + professional + clinic (single JOIN query) ──────────
     plan = await pool.fetchrow(
         """
@@ -91,7 +99,7 @@ async def gather_budget_data(pool, plan_id: str, tenant_id: int) -> Optional[dic
         JOIN tenants t ON t.id = tp.tenant_id
         WHERE tp.id = $1 AND tp.tenant_id = $2
         """,
-        plan_id,
+        plan_uuid,
         tenant_id,
     )
 
@@ -120,7 +128,7 @@ async def gather_budget_data(pool, plan_id: str, tenant_id: int) -> Optional[dic
         ORDER BY tpi.sort_order, tpi.created_at
         """,
         tenant_id,
-        plan_id,
+        plan_uuid,
     )
 
     # ── Payments ─────────────────────────────────────────────────────────────
@@ -131,7 +139,7 @@ async def gather_budget_data(pool, plan_id: str, tenant_id: int) -> Optional[dic
         WHERE plan_id = $1 AND tenant_id = $2
         ORDER BY payment_date DESC
         """,
-        plan_id,
+        plan_uuid,
         tenant_id,
     )
 
