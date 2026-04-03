@@ -1,22 +1,29 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from '../context/LanguageContext';
 import { Save, RotateCcw, AlertCircle, Check } from 'lucide-react';
 import api from '../api/axios';
-import { ToothSVG, STATE_FILLS, type ToothStatus } from './odontogram/ToothSVG';
+import { ToothSVG, type SurfaceName } from './odontogram/ToothSVG';
 import { OdontogramLegend } from './odontogram/OdontogramLegend';
 import { OdontogramTabs, type DentitionType } from './odontogram/OdontogramTabs';
+import { MobileToothZoom } from './odontogram/MobileToothZoom';
+import SymbolSelectorModal from './odontogram/SymbolSelectorModal';
+import { OdontogramState, normalizeLegacyStateId, getStateById } from '../constants/odontogramStates';
+
+// ── Types ──
+
+interface SurfaceStates {
+  occlusal: string;
+  vestibular: string;
+  lingual: string;
+  mesial: string;
+  distal: string;
+}
 
 interface ToothState {
   id: number;
-  state: ToothStatus;
-  surfaces?: {
-    buccal?: string;
-    lingual?: string;
-    occlusal?: string;
-    mesial?: string;
-    distal?: string;
-  };
-  notes?: string;
+  state: string;
+  surfaces: SurfaceStates;
+  notes: string;
 }
 
 interface OdontogramProps {
@@ -27,119 +34,214 @@ interface OdontogramProps {
   readOnly?: boolean;
 }
 
-// FDI standard quadrants
-const UPPER_RIGHT: number[] = [18, 17, 16, 15, 14, 13, 12, 11];
-const UPPER_LEFT: number[] = [21, 22, 23, 24, 25, 26, 27, 28];
-const LOWER_RIGHT: number[] = [48, 47, 46, 45, 44, 43, 42, 41];
-const LOWER_LEFT: number[] = [31, 32, 33, 34, 35, 36, 37, 38];
+// ── FDI quadrants ──
 
-const ALL_TEETH = [...UPPER_RIGHT, ...UPPER_LEFT, ...LOWER_RIGHT, ...LOWER_LEFT];
+const PERM_UPPER_RIGHT = [18, 17, 16, 15, 14, 13, 12, 11];
+const PERM_UPPER_LEFT  = [21, 22, 23, 24, 25, 26, 27, 28];
+const PERM_LOWER_RIGHT = [48, 47, 46, 45, 44, 43, 42, 41];
+const PERM_LOWER_LEFT  = [31, 32, 33, 34, 35, 36, 37, 38];
 
-// Tailwind classes for state selector buttons
-const STATE_BTN: Record<ToothStatus, string> = {
-  healthy:           'bg-white/[0.06] border-white/[0.15] text-white/60',
-  caries:            'bg-red-500/10 border-red-500/30 text-red-400',
-  restoration:       'bg-blue-500/10 border-blue-500/30 text-blue-400',
-  root_canal:        'bg-orange-500/10 border-orange-500/30 text-orange-400',
-  crown:             'bg-violet-500/10 border-violet-500/30 text-violet-400',
-  implant:           'bg-indigo-500/10 border-indigo-500/30 text-indigo-400',
-  prosthesis:        'bg-teal-500/10 border-teal-500/30 text-teal-400',
-  extraction:        'bg-white/[0.04] border-white/[0.12] text-white/40',
-  missing:           'bg-white/[0.02] border-white/[0.08] text-white/30',
-  treatment_planned: 'bg-yellow-500/10 border-yellow-500/30 text-yellow-400',
+const DECID_UPPER_RIGHT = [55, 54, 53, 52, 51];
+const DECID_UPPER_LEFT  = [61, 62, 63, 64, 65];
+const DECID_LOWER_RIGHT = [85, 84, 83, 82, 81];
+const DECID_LOWER_LEFT  = [71, 72, 73, 74, 75];
+
+const ALL_PERMANENT = [...PERM_UPPER_RIGHT, ...PERM_UPPER_LEFT, ...PERM_LOWER_RIGHT, ...PERM_LOWER_LEFT];
+const ALL_DECIDUOUS = [...DECID_UPPER_RIGHT, ...DECID_UPPER_LEFT, ...DECID_LOWER_RIGHT, ...DECID_LOWER_LEFT];
+
+const DEFAULT_SURFACES: SurfaceStates = {
+  occlusal: 'healthy', vestibular: 'healthy', lingual: 'healthy', mesial: 'healthy', distal: 'healthy',
 };
 
-const STATE_SYMBOLS: Record<ToothStatus, string> = {
-  healthy: '○', caries: 'C', restoration: 'R', root_canal: 'Tc',
-  crown: 'Co', implant: 'Im', prosthesis: 'Pr', extraction: '✕',
-  missing: '—', treatment_planned: 'P',
-};
+function buildDefaultTeeth(ids: number[]): ToothState[] {
+  return ids.map(id => ({ id, state: 'healthy', surfaces: { ...DEFAULT_SURFACES }, notes: '' }));
+}
 
 function fdiLabel(id: number): string {
   return `${Math.floor(id / 10)}.${id % 10}`;
 }
 
+function computeToothState(surfaces: SurfaceStates): string {
+  const nonHealthy = new Set(
+    Object.values(surfaces).filter(s => s !== 'healthy')
+  );
+  if (nonHealthy.size === 1) return [...nonHealthy][0];
+  return 'healthy';
+}
+
+/** Normalize legacy tooth data from API into current format */
+function normalizeToothData(raw: any, allIds: number[]): ToothState[] {
+  if (!raw?.teeth || !Array.isArray(raw.teeth)) return buildDefaultTeeth(allIds);
+
+  const teethMap = new Map<number, ToothState>();
+  for (const id of allIds) {
+    teethMap.set(id, { id, state: 'healthy', surfaces: { ...DEFAULT_SURFACES }, notes: '' });
+  }
+
+  for (const t of raw.teeth) {
+    if (!t?.id || !teethMap.has(t.id)) continue;
+    const tooth = teethMap.get(t.id)!;
+    const state = normalizeLegacyStateId(t.state || 'healthy');
+    tooth.state = state;
+    tooth.notes = t.notes || '';
+
+    if (t.surfaces && typeof t.surfaces === 'object') {
+      for (const sk of Object.keys(DEFAULT_SURFACES) as SurfaceName[]) {
+        const sv = t.surfaces[sk];
+        if (sv && typeof sv === 'object' && sv.state) {
+          tooth.surfaces[sk] = normalizeLegacyStateId(sv.state);
+        } else if (sv && typeof sv === 'string') {
+          tooth.surfaces[sk] = normalizeLegacyStateId(sv);
+        } else {
+          tooth.surfaces[sk] = state;
+        }
+      }
+    } else {
+      // No surface data → all surfaces inherit tooth state
+      for (const sk of Object.keys(DEFAULT_SURFACES) as SurfaceName[]) {
+        tooth.surfaces[sk] = state;
+      }
+    }
+  }
+
+  return Array.from(teethMap.values());
+}
+
+// ── Component ──
+
 export default function Odontogram({ patientId, recordId, initialData, onSave, readOnly = false }: OdontogramProps) {
   const { t } = useTranslation();
-  const [teeth, setTeeth] = useState<ToothState[]>([]);
-  const [selectedTooth, setSelectedTooth] = useState<number | null>(null);
-  const [selectedState, setSelectedState] = useState<ToothStatus>('healthy');
+
+  // Data
+  const [permanentTeeth, setPermanentTeeth] = useState<ToothState[]>(() => buildDefaultTeeth(ALL_PERMANENT));
+  const [deciduousTeeth, setDeciduousTeeth] = useState<ToothState[]>(() => buildDefaultTeeth(ALL_DECIDUOUS));
   const [activeDentition, setActiveDentition] = useState<DentitionType>('permanent');
+  const initialRef = useRef<string>('');
+
+  // Selection
+  const [selectedTooth, setSelectedTooth] = useState<number | null>(null);
+  const [selectedSurface, setSelectedSurface] = useState<SurfaceName | null>(null);
+  const [showModal, setShowModal] = useState(false);
+  const [showMobileZoom, setShowMobileZoom] = useState(false);
+
+  // UI state
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [changedTeeth, setChangedTeeth] = useState<Set<number>>(new Set());
   const [hasChanges, setHasChanges] = useState(false);
-  const initialTeethRef = useRef<string>('');
 
-  const availableStates: { id: ToothStatus; label: string }[] = [
-    { id: 'healthy', label: t('odontogram.states.healthy') },
-    { id: 'caries', label: t('odontogram.states.caries') },
-    { id: 'restoration', label: t('odontogram.states.restoration') },
-    { id: 'root_canal', label: t('odontogram.states.root_canal') },
-    { id: 'crown', label: t('odontogram.states.crown') },
-    { id: 'implant', label: t('odontogram.states.implant') },
-    { id: 'prosthesis', label: t('odontogram.states.prosthesis') },
-    { id: 'extraction', label: t('odontogram.states.extraction') },
-    { id: 'missing', label: t('odontogram.states.missing') },
-    { id: 'treatment_planned', label: t('odontogram.states.treatment_planned') },
-  ];
+  // Detect mobile
+  const isMobile = typeof window !== 'undefined' && window.innerWidth < 640;
 
-  // Check if there's deciduous data
-  const hasDecidData = initialData?.teeth?.some((t: ToothState) => t.id < 30) || false;
+  const teeth = activeDentition === 'permanent' ? permanentTeeth : deciduousTeeth;
+  const setTeeth = activeDentition === 'permanent' ? setPermanentTeeth : setDeciduousTeeth;
 
+  const hasDecidData = deciduousTeeth.some(t => t.state !== 'healthy');
+
+  // ── Initialize from API data ──
   useEffect(() => {
-    const initial = initialData?.teeth
-      ? initialData.teeth
-      : ALL_TEETH.map(id => ({ id, state: 'healthy' as ToothStatus, surfaces: {}, notes: '' }));
-    setTeeth(initial);
-    initialTeethRef.current = JSON.stringify(initial);
+    if (initialData) {
+      // v3 format has permanent/deciduous objects
+      if (initialData.permanent) {
+        setPermanentTeeth(normalizeToothData(initialData.permanent, ALL_PERMANENT));
+      } else if (initialData.teeth) {
+        // v2 format — all teeth in one array, assume permanent
+        setPermanentTeeth(normalizeToothData(initialData, ALL_PERMANENT));
+      }
+      if (initialData.deciduous) {
+        setDeciduousTeeth(normalizeToothData(initialData.deciduous, ALL_DECIDUOUS));
+      }
+      if (initialData.active_dentition) {
+        setActiveDentition(initialData.active_dentition);
+      }
+    }
+    initialRef.current = JSON.stringify({ permanentTeeth, deciduousTeeth });
   }, [initialData]);
 
   // Track changes
   useEffect(() => {
-    if (initialTeethRef.current) {
-      setHasChanges(JSON.stringify(teeth) !== initialTeethRef.current);
+    if (initialRef.current) {
+      const current = JSON.stringify({ permanentTeeth, deciduousTeeth });
+      setHasChanges(current !== initialRef.current);
     }
-  }, [teeth]);
+  }, [permanentTeeth, deciduousTeeth]);
+
+  // Collect used states for legend
+  const usedStates = new Set<string>();
+  [...permanentTeeth, ...deciduousTeeth].forEach(tooth => {
+    if (tooth.state !== 'healthy') usedStates.add(tooth.state);
+    Object.values(tooth.surfaces).forEach(s => {
+      if (s !== 'healthy') usedStates.add(s);
+    });
+  });
+
+  // ── Handlers ──
+
+  const markChanged = useCallback((toothId: number) => {
+    setChangedTeeth(prev => new Set(prev).add(toothId));
+    setTimeout(() => {
+      setChangedTeeth(prev => {
+        const next = new Set(prev);
+        next.delete(toothId);
+        return next;
+      });
+    }, 500);
+  }, []);
 
   const handleToothClick = (toothId: number) => {
     if (readOnly) return;
+
     if (selectedTooth === toothId) {
-      setTeeth(prev => prev.map(tooth =>
-        tooth.id === toothId ? { ...tooth, state: selectedState } : tooth
-      ));
-      setChangedTeeth(prev => new Set(prev).add(toothId));
-      setTimeout(() => {
-        setChangedTeeth(prev => {
-          const next = new Set(prev);
-          next.delete(toothId);
-          return next;
-        });
-      }, 500);
+      // Already selected → on mobile show zoom, on desktop open modal for the tooth-level state
+      if (isMobile) {
+        setShowMobileZoom(true);
+      } else {
+        setSelectedSurface(null);
+        setShowModal(true);
+      }
     } else {
       setSelectedTooth(toothId);
-      const tooth = teeth.find(t => t.id === toothId);
-      if (tooth) setSelectedState(tooth.state);
+      setSelectedSurface(null);
+      setShowMobileZoom(false);
     }
   };
 
-  const handleStateChange = (state: ToothStatus) => {
+  const handleSurfaceClick = (toothId: number, surface: SurfaceName) => {
     if (readOnly) return;
-    setSelectedState(state);
-    if (selectedTooth) {
-      setTeeth(prev => prev.map(tooth =>
-        tooth.id === selectedTooth ? { ...tooth, state } : tooth
-      ));
-      setChangedTeeth(prev => new Set(prev).add(selectedTooth));
-      setTimeout(() => {
-        setChangedTeeth(prev => {
-          const next = new Set(prev);
-          next.delete(selectedTooth!);
-          return next;
-        });
-      }, 500);
-    }
+    setSelectedTooth(toothId);
+    setSelectedSurface(surface);
+    setShowModal(true);
+  };
+
+  const handleStateSelect = (odState: OdontogramState) => {
+    if (!selectedTooth) return;
+
+    setTeeth(prev => prev.map(tooth => {
+      if (tooth.id !== selectedTooth) return tooth;
+
+      const newSurfaces = { ...tooth.surfaces };
+
+      if (selectedSurface) {
+        // Apply to specific surface
+        newSurfaces[selectedSurface] = odState.id;
+      } else {
+        // Apply to ALL surfaces (whole tooth)
+        for (const sk of Object.keys(DEFAULT_SURFACES) as SurfaceName[]) {
+          newSurfaces[sk] = odState.id;
+        }
+      }
+
+      return {
+        ...tooth,
+        state: computeToothState(newSurfaces),
+        surfaces: newSurfaces,
+      };
+    }));
+
+    markChanged(selectedTooth);
+    setShowModal(false);
+    setSelectedSurface(null);
   };
 
   const handleSave = async () => {
@@ -148,11 +250,12 @@ export default function Odontogram({ patientId, recordId, initialData, onSave, r
     setError(null);
     setSuccess(null);
     try {
-      const odontogramData = { 
-        teeth, 
-        last_updated: new Date().toISOString(), 
-        version: '2.0',
-        active_dentition: activeDentition 
+      const odontogramData = {
+        version: '3.0',
+        last_updated: new Date().toISOString(),
+        active_dentition: activeDentition,
+        permanent: { teeth: permanentTeeth },
+        deciduous: { teeth: deciduousTeeth },
       };
       if (recordId) {
         await api.put(`/admin/patients/${patientId}/records/${recordId}/odontogram`, { odontogram_data: odontogramData });
@@ -160,7 +263,7 @@ export default function Odontogram({ patientId, recordId, initialData, onSave, r
         await api.post(`/admin/patients/${patientId}/records`, { content: t('odontogram.automatic_note'), odontogram_data: odontogramData });
       }
       setSuccess(t('odontogram.save_success'));
-      initialTeethRef.current = JSON.stringify(teeth);
+      initialRef.current = JSON.stringify({ permanentTeeth, deciduousTeeth });
       setHasChanges(false);
       if (onSave) onSave(odontogramData);
       setTimeout(() => setSuccess(null), 3000);
@@ -174,40 +277,63 @@ export default function Odontogram({ patientId, recordId, initialData, onSave, r
 
   const handleReset = () => {
     if (readOnly) return;
-    setTeeth(ALL_TEETH.map(id => ({ id, state: 'healthy' as ToothStatus, surfaces: {}, notes: '' })));
+    if (activeDentition === 'permanent') {
+      setPermanentTeeth(buildDefaultTeeth(ALL_PERMANENT));
+    } else {
+      setDeciduousTeeth(buildDefaultTeeth(ALL_DECIDUOUS));
+    }
     setSelectedTooth(null);
-    setSelectedState('healthy');
+    setSelectedSurface(null);
   };
 
-  // Render a row of teeth with numbers
+  // ── Render helpers ──
+
+  const selectedToothData = selectedTooth ? teeth.find(t => t.id === selectedTooth) : null;
+
   const renderTeethRow = (ids: number[], numbersBelow: boolean) => (
     <div className="flex gap-[2px] sm:gap-1">
       {ids.map(id => {
         const tooth = teeth.find(t => t.id === id);
-        const state = (tooth?.state || 'healthy') as ToothStatus;
+        if (!tooth) return null;
         const isSelected = selectedTooth === id;
-        const label = fdiLabel(id);
         return (
           <div key={id} className="flex flex-col items-center">
             {!numbersBelow && (
-              <span className={`text-[9px] sm:text-[10px] font-bold mb-0.5 select-none transition-colors duration-200 ${isSelected ? 'text-blue-400' : 'text-white/40'}`}>{label}</span>
+              <span className={`text-[9px] sm:text-[10px] font-bold mb-0.5 select-none transition-colors duration-200 ${isSelected ? 'text-blue-400' : 'text-white/40'}`}>
+                {fdiLabel(id)}
+              </span>
             )}
             <ToothSVG
               toothId={id}
-              state={state}
+              state={tooth.state}
               isSelected={isSelected}
               readOnly={readOnly}
               onClick={() => handleToothClick(id)}
               justChanged={changedTeeth.has(id)}
+              surfaceStates={tooth.surfaces as Record<SurfaceName, string>}
+              selectedSurface={isSelected ? selectedSurface : null}
+              onSurfaceClick={(surface) => handleSurfaceClick(id, surface)}
             />
             {numbersBelow && (
-              <span className={`text-[9px] sm:text-[10px] font-bold mt-0.5 select-none transition-colors duration-200 ${isSelected ? 'text-blue-400' : 'text-white/40'}`}>{label}</span>
+              <span className={`text-[9px] sm:text-[10px] font-bold mt-0.5 select-none transition-colors duration-200 ${isSelected ? 'text-blue-400' : 'text-white/40'}`}>
+                {fdiLabel(id)}
+              </span>
             )}
           </div>
         );
       })}
     </div>
   );
+
+  const upperRight = activeDentition === 'permanent' ? PERM_UPPER_RIGHT : DECID_UPPER_RIGHT;
+  const upperLeft = activeDentition === 'permanent' ? PERM_UPPER_LEFT : DECID_UPPER_LEFT;
+  const lowerRight = activeDentition === 'permanent' ? PERM_LOWER_RIGHT : DECID_LOWER_RIGHT;
+  const lowerLeft = activeDentition === 'permanent' ? PERM_LOWER_LEFT : DECID_LOWER_LEFT;
+
+  // Current surface state for the modal
+  const currentSurfaceState = selectedToothData && selectedSurface
+    ? selectedToothData.surfaces[selectedSurface]
+    : selectedToothData?.state || 'healthy';
 
   return (
     <div className="bg-white/[0.03] backdrop-blur-sm rounded-2xl border border-white/[0.06] p-4 sm:p-6 w-full max-w-full overflow-hidden relative pb-20">
@@ -233,7 +359,7 @@ export default function Odontogram({ patientId, recordId, initialData, onSave, r
         }
       `}</style>
 
-      {/* Header — title only, buttons moved to floating */}
+      {/* Header */}
       <div className="mb-5">
         <h3 className="text-lg font-bold text-white">{t('odontogram.title')}</h3>
         <p className="text-xs text-white/40">{t('odontogram.subtitle')}</p>
@@ -243,7 +369,11 @@ export default function Odontogram({ patientId, recordId, initialData, onSave, r
       <div className="mb-4">
         <OdontogramTabs
           activeDentition={activeDentition}
-          onChange={setActiveDentition}
+          onChange={(d) => {
+            setActiveDentition(d);
+            setSelectedTooth(null);
+            setSelectedSurface(null);
+          }}
           hasDecidData={hasDecidData}
         />
       </div>
@@ -262,39 +392,54 @@ export default function Odontogram({ patientId, recordId, initialData, onSave, r
         </div>
       )}
 
-      {/* State selector */}
-      {!readOnly && (
-        <div className="mb-5 p-3 bg-white/[0.03] rounded-2xl border border-white/[0.06]">
-          <div className="flex items-center gap-2 mb-2">
-            {selectedTooth && (
-              <>
-                <span className="text-xs font-bold text-white/50">{t('odontogram.selecting_tooth')}</span>
-                <span className="text-sm font-black text-blue-400 animate-[fadeIn_0.2s_ease-out]">{fdiLabel(selectedTooth)}</span>
-                <span className="text-[10px] text-white/30">—</span>
-              </>
-            )}
-            <span className="text-[10px] font-bold text-white/30 uppercase tracking-wider">
-              {selectedTooth ? t('odontogram.states.' + selectedState) : t('odontogram.select_state')}
+      {/* Selected tooth info bar */}
+      {!readOnly && selectedToothData && (
+        <div className="mb-4 p-3 bg-white/[0.03] rounded-xl border border-white/[0.06] animate-[fadeIn_0.2s_ease-out]">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-white/50">{t('odontogram.piece')}</span>
+              <span className="text-lg font-black text-blue-400">{fdiLabel(selectedTooth!)}</span>
+            </div>
+            <span className="text-[10px] text-white/30">—</span>
+            <span className="text-xs text-white/50">
+              {t(`odontogram.states.${selectedToothData.state}`, selectedToothData.state)}
             </span>
+            <div className="ml-auto flex items-center gap-2">
+              <button
+                onClick={() => { setSelectedSurface(null); setShowModal(true); }}
+                className="px-3 py-1.5 text-[10px] font-bold bg-blue-500/10 border border-blue-500/30 text-blue-400 rounded-lg hover:bg-blue-500/20 transition-colors"
+              >
+                {t('odontogram.change_state', 'Cambiar estado')}
+              </button>
+              <button
+                onClick={() => { setSelectedTooth(null); setSelectedSurface(null); }}
+                className="px-2 py-1.5 text-[10px] text-white/40 hover:text-white/60 transition-colors"
+              >
+                ✕
+              </button>
+            </div>
           </div>
-          <div className="flex flex-wrap gap-1.5">
-            {availableStates.map(s => {
-              const active = selectedState === s.id;
+          {/* Surface states summary */}
+          <div className="flex gap-1 mt-2">
+            {(Object.keys(DEFAULT_SURFACES) as SurfaceName[]).map(sk => {
+              const surfState = selectedToothData.surfaces[sk];
+              const stateInfo = getStateById(surfState);
+              const isActiveSurf = selectedSurface === sk;
               return (
                 <button
-                  key={s.id}
-                  onClick={() => handleStateChange(s.id)}
-                  className={`
-                    px-2.5 py-1.5 rounded-lg border-2 text-[10px] font-bold
-                    transition-all duration-200 ease-out
-                    active:scale-90
-                    ${active
-                      ? `${STATE_BTN[s.id]} ring-2 ring-offset-1 ring-offset-[#06060e] ring-blue-400 scale-105`
-                      : 'bg-white/[0.04] border-white/[0.10] text-white/50 hover:border-white/[0.20] hover:bg-white/[0.06]'
-                    }
-                  `}
+                  key={sk}
+                  onClick={() => handleSurfaceClick(selectedTooth!, sk)}
+                  className={`flex-1 px-1 py-1 rounded text-center text-[9px] border transition-all ${
+                    isActiveSurf
+                      ? 'bg-blue-500/20 border-blue-500/40 text-blue-300'
+                      : surfState !== 'healthy'
+                        ? 'border-white/10 text-white/60'
+                        : 'bg-white/[0.02] border-white/[0.06] text-white/30'
+                  }`}
+                  style={surfState !== 'healthy' && stateInfo ? { borderColor: stateInfo.defaultColor + '40' } : undefined}
                 >
-                  {STATE_SYMBOLS[s.id]} {s.label}
+                  <div className="font-bold">{stateInfo?.symbol || '○'}</div>
+                  <div className="truncate">{t(`odontogram.surfaces.${sk}`, sk)}</div>
                 </button>
               );
             })}
@@ -302,14 +447,21 @@ export default function Odontogram({ patientId, recordId, initialData, onSave, r
         </div>
       )}
 
-      {/* Odontogram chart — FDI layout */}
+      {/* Instruction hint when no tooth is selected */}
+      {!readOnly && !selectedToothData && (
+        <div className="mb-4 text-center text-xs text-white/30 py-2">
+          {t('odontogram.hint_select', 'Tocá un diente para editarlo, o una sección específica')}
+        </div>
+      )}
+
+      {/* Odontogram chart */}
       <div className="mb-6 overflow-x-auto">
         <div className="min-w-max mx-auto flex flex-col items-center gap-0">
           {/* Upper jaw */}
           <div className="flex gap-1 sm:gap-2">
-            {renderTeethRow(UPPER_RIGHT, false)}
+            {renderTeethRow(upperRight, false)}
             <div className="w-px bg-white/[0.08] mx-1 self-stretch" />
-            {renderTeethRow(UPPER_LEFT, false)}
+            {renderTeethRow(upperLeft, false)}
           </div>
 
           {/* Jaw separator */}
@@ -319,17 +471,17 @@ export default function Odontogram({ patientId, recordId, initialData, onSave, r
 
           {/* Lower jaw */}
           <div className="flex gap-1 sm:gap-2">
-            {renderTeethRow(LOWER_RIGHT, true)}
+            {renderTeethRow(lowerRight, true)}
             <div className="w-px bg-white/[0.08] mx-1 self-stretch" />
-            {renderTeethRow(LOWER_LEFT, true)}
+            {renderTeethRow(lowerLeft, true)}
           </div>
         </div>
       </div>
 
       {/* Legend */}
-      <OdontogramLegend availableStates={availableStates} />
+      <OdontogramLegend usedStates={usedStates} />
 
-      {/* Floating action buttons — always visible at bottom */}
+      {/* Floating action buttons */}
       {!readOnly && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-30 flex items-center gap-3 animate-[slideUp_0.4s_ease-out]">
           <button
@@ -357,8 +509,37 @@ export default function Odontogram({ patientId, recordId, initialData, onSave, r
             ) : (
               <Save size={14} />
             )}
-            {saving ? t('odontogram.saving') : hasChanges ? t('odontogram.save') : t('odontogram.save')}
+            {saving ? t('odontogram.saving') : t('odontogram.save')}
           </button>
+        </div>
+      )}
+
+      {/* State selector modal */}
+      <SymbolSelectorModal
+        isOpen={showModal}
+        onClose={() => { setShowModal(false); setSelectedSurface(null); }}
+        onSelect={handleStateSelect}
+        currentStateId={currentSurfaceState}
+      />
+
+      {/* Mobile tooth zoom */}
+      {showMobileZoom && selectedToothData && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setShowMobileZoom(false)} />
+          <div className="relative z-50">
+            <MobileToothZoom
+              toothId={selectedTooth!}
+              toothState={selectedToothData.state}
+              surfaceStates={selectedToothData.surfaces as Record<SurfaceName, string>}
+              selectedSurface={selectedSurface}
+              onSurfaceClick={(surface) => {
+                setSelectedSurface(surface);
+                setShowMobileZoom(false);
+                setShowModal(true);
+              }}
+              onClose={() => setShowMobileZoom(false)}
+            />
+          </div>
         </div>
       )}
     </div>

@@ -1,18 +1,24 @@
 import React from 'react';
 import { useTranslation } from '../../context/LanguageContext';
-import { STATE_FILLS, type ToothStatus } from './ToothSVG';
+import { STATE_FILLS } from '../../constants/odontogramStates';
 
-interface AvailableState {
-  id: ToothStatus;
+interface LegendItem {
+  id: string;
   label: string;
 }
 
 interface OdontogramLegendProps {
-  availableStates: AvailableState[];
+  usedStates: Set<string>;
 }
 
-export function OdontogramLegend({ availableStates }: OdontogramLegendProps) {
+export function OdontogramLegend({ usedStates }: OdontogramLegendProps) {
   const { t } = useTranslation();
+
+  const items: LegendItem[] = Array.from(usedStates)
+    .filter(id => id !== 'healthy')
+    .map(id => ({ id, label: t(`odontogram.states.${id}`, id) }));
+
+  if (items.length === 0) return null;
 
   return (
     <div className="mt-4 pt-4 border-t border-white/[0.06]">
@@ -20,8 +26,8 @@ export function OdontogramLegend({ availableStates }: OdontogramLegendProps) {
         {t('odontogram.legend')}
       </h4>
       <div className="flex flex-wrap gap-2">
-        {availableStates.map(s => {
-          const fills = STATE_FILLS[s.id];
+        {items.map(s => {
+          const fills = STATE_FILLS[s.id] || STATE_FILLS['healthy'];
           return (
             <div key={s.id} className="flex items-center gap-1.5">
               <svg viewBox="0 0 12 12" className="w-3 h-3">

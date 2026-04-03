@@ -1,6 +1,6 @@
 import React from 'react';
 import { useTranslation } from '../../context/LanguageContext';
-import { ToothSVG, type SurfaceName, type ToothStatus } from './ToothSVG';
+import { ToothSVG, type SurfaceName } from './ToothSVG';
 
 export type DentitionType = 'permanent' | 'deciduous';
 
@@ -29,8 +29,8 @@ export const DECIDUOUS_QUADRANTS: QuadrantsConfig = {
 
 export interface ToothState {
   id: number;
-  state: ToothStatus;
-  surfaces?: Record<SurfaceName, ToothStatus>;
+  state: string;
+  surfaces?: Record<SurfaceName, string>;
   notes?: string;
 }
 
@@ -67,7 +67,7 @@ export function DentitionChart({
     <div className="flex gap-[2px] sm:gap-1">
       {ids.map(id => {
         const tooth = teeth.find(t => t.id === id);
-        const state = (tooth?.state || 'healthy') as ToothStatus;
+        const state = (tooth?.state || 'healthy') as string;
         const isSelected = selectedTooth === id;
         const justChanged = changedTeeth.has(id);
         const label = fdiLabel(id);

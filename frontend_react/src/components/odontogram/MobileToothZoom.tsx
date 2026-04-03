@@ -1,25 +1,30 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from '../../context/LanguageContext';
-import { SurfacePath, type ToothStatus } from './SurfacePath';
-import { SurfaceName } from './ToothSVG';
+import { SurfacePath } from './SurfacePath';
+import { type SurfaceName } from './ToothSVG';
+import { STATE_FILLS } from '../../constants/odontogramStates';
 
-// Enlarged surface paths for mobile zoom (3x scale from 40px to 120px)
+/**
+ * 3x scale of SURFACE_PATHS (120x120 viewBox, center 60,60)
+ * Outer R=54, inner r=21, diagonal cross at 45 degrees.
+ */
 const ZOOM_SURFACE_PATHS: Record<SurfaceName, string> = {
-  occlusal: 'M60,60 m-21,0 a21,21 0 1,0 42,0 a21,21 0 1,0 -42,0',
-  vestibular: 'M60,39 A54,54 0 0,1 114,60 A54,54 0 0,1 60,81 L60,39',
-  lingual: 'M60,81 A54,54 0 0,1 6,60 A54,54 0 0,1 60,39 L60,81',
-  mesial: 'M39,60 A54,54 0 0,1 60,6 L60,39 A21,21 0 0,0 39,60 Z',
-  distal: 'M81,60 A54,54 0 0,1 60,114 L60,81 A21,21 0 0,0 81,60 Z',
+  occlusal:   'M 60,39 A 21,21 0 1,0 60,81 A 21,21 0 1,0 60,39 Z',
+  vestibular: 'M 22,22 A 54,54 0 0,1 98,22 L 75,45 A 21,21 0 0,0 45,45 Z',
+  distal:     'M 98,22 A 54,54 0 0,1 98,98 L 75,75 A 21,21 0 0,0 75,45 Z',
+  lingual:    'M 98,98 A 54,54 0 0,1 22,98 L 45,75 A 21,21 0 0,0 75,75 Z',
+  mesial:     'M 22,98 A 54,54 0 0,1 22,22 L 45,45 A 21,21 0 0,0 45,75 Z',
 };
+
+const SURFACES: SurfaceName[] = ['occlusal', 'vestibular', 'lingual', 'mesial', 'distal'];
 
 interface MobileToothZoomProps {
   toothId: number;
-  toothState: ToothStatus;
-  surfaceStates?: Record<SurfaceName, ToothStatus>;
+  toothState: string;
+  surfaceStates?: Record<SurfaceName, string>;
   selectedSurface: SurfaceName | null;
   onSurfaceClick: (surface: SurfaceName) => void;
   onClose: () => void;
-  triggerRef: React.RefObject<HTMLDivElement | null>;
 }
 
 export function MobileToothZoom({
@@ -29,48 +34,24 @@ export function MobileToothZoom({
   selectedSurface,
   onSurfaceClick,
   onClose,
-  triggerRef,
 }: MobileToothZoomProps) {
   const { t } = useTranslation();
   const modalRef = useRef<HTMLDivElement>(null);
-  const [position, setPosition] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
   const [isVisible, setIsVisible] = useState(false);
 
-  // Get position from trigger element
   useEffect(() => {
-    if (triggerRef.current) {
-      const rect = triggerRef.current.getBoundingClientRect();
-      // Position above the tooth, centered horizontally
-      const newTop = rect.top - 280; // 120px height + padding
-      const newLeft = rect.left + rect.width / 2 - 60; // Center on tooth
-      
-      setPosition({
-        top: Math.max(10, newTop), // Keep within viewport
-        left: Math.max(10, Math.min(newLeft, window.innerWidth - 130)),
-      });
-    }
-  }, [triggerRef]);
-
-  // Animate in
-  useEffect(() => {
-    requestAnimationFrame(() => {
-      setIsVisible(true);
-    });
+    requestAnimationFrame(() => setIsVisible(true));
   }, []);
 
-  // Handle click outside to close
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (modalRef.current && !modalRef.current.contains(e.target as Node)) {
         handleClose();
       }
     };
-
-    // Slight delay to prevent immediate close on open
     const timer = setTimeout(() => {
       document.addEventListener('click', handleClickOutside);
     }, 100);
-
     return () => {
       clearTimeout(timer);
       document.removeEventListener('click', handleClickOutside);
@@ -79,102 +60,59 @@ export function MobileToothZoom({
 
   const handleClose = () => {
     setIsVisible(false);
-    setTimeout(onClose, 200); // Wait for animation
+    setTimeout(onClose, 200);
   };
 
-  const handleSurfaceClick = (surface: SurfaceName) => (e: React.MouseEvent) => {
-    e.stopPropagation();
-    onSurfaceClick(surface);
+  const getSurfaceState = (surface: SurfaceName): string => {
+    return surfaceStates?.[surface] || toothState;
   };
 
-  // Get state for each surface
-  const getSurfaceState = (surface: SurfaceName): ToothStatus => {
-    if (surfaceStates && surfaceStates[surface]) {
-      return surfaceStates[surface];
-    }
-    return toothState;
-  };
-
-  // Surface labels with translations
-  const surfaceLabels: Record<SurfaceName, string> = {
-    occlusal: t('odontogram.surfaces.occlusal'),
-    vestibular: t('odontogram.surfaces.vestibular'),
-    lingual: t('odontogram.surfaces.lingual'),
-    mesial: t('odontogram.surfaces.mesial'),
-    distal: t('odontogram.surfaces.distal'),
-  };
+  const fills = STATE_FILLS[toothState] || STATE_FILLS['healthy'];
 
   return (
     <div
       ref={modalRef}
       className={`
-        fixed z-50 transition-all duration-300 ease-out
+        bg-[#0d1117]/95 backdrop-blur-xl rounded-2xl border border-white/10 shadow-2xl p-3
+        transition-all duration-200 ease-out
         ${isVisible ? 'opacity-100 scale-100' : 'opacity-0 scale-90 pointer-events-none'}
       `}
-      style={{
-        top: position.top,
-        left: position.left,
-        width: 120,
-        height: 120,
-      }}
     >
-      {/* Modal container */}
-      <div className="relative w-full h-full">
-        {/* Background */}
-        <div className="absolute inset-0 bg-[#0d1117]/95 backdrop-blur-xl rounded-2xl border border-white/[0.10] shadow-2xl" />
-        
-        {/* Tooth ID label */}
-        <div className="absolute -top-7 left-1/2 -translate-x-1/2 text-[10px] font-bold text-white/60">
-          {Math.floor(toothId / 10)}.{toothId % 10}
-        </div>
-
-        {/* Close button */}
+      {/* Header */}
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-sm font-bold text-white">
+          {t('odontogram.piece')} {Math.floor(toothId / 10)}.{toothId % 10}
+        </span>
         <button
           onClick={handleClose}
-          className="absolute -top-3 -right-3 w-6 h-6 rounded-full bg-red-500/20 border border-red-500/40 text-red-400 text-xs flex items-center justify-center hover:bg-red-500/30 transition-colors z-10"
+          className="w-6 h-6 rounded-full bg-white/5 text-white/40 text-xs flex items-center justify-center hover:bg-white/10"
         >
-          ×
+          x
         </button>
-
-        {/* SVG Surface buttons */}
-        <svg
-          viewBox="0 0 120 120"
-          className="w-full h-full p-2"
-        >
-          {(['occlusal', 'vestibular', 'lingual', 'mesial', 'distal'] as SurfaceName[]).map(surface => {
-            const surfaceState = getSurfaceState(surface);
-            const isSurfaceSelected = selectedSurface === surface;
-            
-            return (
-              <g key={surface} onClick={handleSurfaceClick(surface)} className="cursor-pointer">
-                <SurfacePath
-                  pathD={ZOOM_SURFACE_PATHS[surface]}
-                  surfaceName={surface}
-                  state={surfaceState}
-                  isSelected={isSurfaceSelected}
-                  onClick={() => {}}
-                />
-                {/* Surface label */}
-                {isSurfaceSelected && (
-                  <text
-                    x="60"
-                    y="115"
-                    textAnchor="middle"
-                    className="fill-white/80 text-[8px] font-bold"
-                  >
-                    {surfaceLabels[surface]}
-                  </text>
-                )}
-              </g>
-            );
-          })}
-        </svg>
-
-        {/* Instructions */}
-        <div className="absolute bottom-[-28px] left-1/2 -translate-x-1/2 text-[9px] text-white/40 whitespace-nowrap">
-          {t('odontogram.mobile_tap_surface')}
-        </div>
       </div>
+
+      {/* Zoomed SVG */}
+      <svg viewBox="0 0 120 120" className="w-[140px] h-[140px] mx-auto">
+        {SURFACES.map(surface => (
+          <SurfacePath
+            key={surface}
+            pathD={ZOOM_SURFACE_PATHS[surface]}
+            surfaceName={surface}
+            state={getSurfaceState(surface)}
+            isSelected={selectedSurface === surface}
+            onClick={() => onSurfaceClick(surface)}
+          />
+        ))}
+        {/* Diagonal cross dividers */}
+        <line x1="22" y1="22" x2="45" y2="45" stroke={fills.stroke} strokeWidth="1" opacity="0.3" />
+        <line x1="98" y1="22" x2="75" y2="45" stroke={fills.stroke} strokeWidth="1" opacity="0.3" />
+        <line x1="98" y1="98" x2="75" y2="75" stroke={fills.stroke} strokeWidth="1" opacity="0.3" />
+        <line x1="22" y1="98" x2="45" y2="75" stroke={fills.stroke} strokeWidth="1" opacity="0.3" />
+      </svg>
+
+      <p className="text-[10px] text-white/40 text-center mt-1">
+        {t('odontogram.tap_surface')}
+      </p>
     </div>
   );
 }
