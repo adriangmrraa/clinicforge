@@ -4645,6 +4645,41 @@ async def verify_payment_receipt(
                     int(amount_overpaid),
                 )
 
+                # Also register in treatment_plan_payments if active plan exists
+                try:
+                    import uuid as _uuid_mod2
+                    active_plan = await db.pool.fetchrow(
+                        """
+                        SELECT tp.id FROM treatment_plans tp
+                        WHERE tp.tenant_id = $1 AND tp.patient_id = $2
+                          AND tp.status IN ('approved', 'in_progress')
+                        ORDER BY tp.created_at DESC LIMIT 1
+                        """,
+                        tenant_id,
+                        apt["patient_id"],
+                    )
+                    if active_plan:
+                        pay_amount = amount_value or expected_amount
+                        await db.pool.execute(
+                            """
+                            INSERT INTO treatment_plan_payments
+                                (id, plan_id, tenant_id, amount, payment_method, payment_date, notes)
+                            VALUES ($1, $2, $3, $4, 'transfer', NOW(), $5)
+                            """,
+                            str(_uuid_mod2.uuid4()),
+                            str(active_plan["id"]),
+                            tenant_id,
+                            pay_amount,
+                            f"Seña verificada por IA (turno {str(apt['id'])[:8]}...)",
+                        )
+                        logger.info(
+                            f"💰 verify_receipt: seña also recorded in plan {active_plan['id']}"
+                        )
+                except Exception as plan_link_err:
+                    logger.warning(
+                        f"💰 verify_receipt: plan link for seña failed (non-fatal): {plan_link_err}"
+                    )
+
             # Emit WebSocket events
             try:
                 from main import sio
@@ -4931,8 +4966,10 @@ async def verify_payment_receipt(
 @tool
 async def get_patient_payment_status():
     """
-    Consulta el estado de pago de TODOS los turnos del paciente (seña pendiente, pagada, monto).
-    Usar cuando el paciente pregunta sobre pagos, señas, deudas, o cuánto debe.
+    Consulta el estado de pago completo del paciente:
+    1. Presupuesto/plan de tratamiento activo (total, pagado, pendiente, cuotas)
+    2. Turnos futuros con sus pagos de seña
+    Usar cuando el paciente pregunta sobre pagos, señas, deudas, cuánto debe, cuotas, o saldo.
     """
     phone = current_customer_phone.get()
     if not phone:
@@ -4940,6 +4977,72 @@ async def get_patient_payment_status():
     tenant_id = current_tenant_id.get()
     phone_digits = normalize_phone_digits(phone)
     try:
+        lines = []
+
+        # 1. Treatment plan / budget info
+        plan_row = await db.pool.fetchrow(
+            """
+            SELECT tp.id, tp.name, tp.status, tp.estimated_total, tp.approved_total,
+                   tp.notes,
+                   COALESCE(SUM(tpp.amount), 0) AS total_paid
+            FROM treatment_plans tp
+            JOIN patients p ON p.id = tp.patient_id AND p.tenant_id = tp.tenant_id
+            LEFT JOIN treatment_plan_payments tpp ON tpp.plan_id = tp.id AND tpp.tenant_id = tp.tenant_id
+            WHERE tp.tenant_id = $1
+              AND REGEXP_REPLACE(p.phone_number, '[^0-9]', '', 'g') = $2
+              AND tp.status IN ('draft', 'approved', 'in_progress')
+            GROUP BY tp.id
+            ORDER BY tp.created_at DESC
+            LIMIT 1
+            """,
+            tenant_id,
+            phone_digits,
+        )
+        if plan_row:
+            approved = float(plan_row["approved_total"] or plan_row["estimated_total"] or 0)
+            paid = float(plan_row["total_paid"] or 0)
+            pending = round(approved - paid, 2)
+
+            # Parse budget config from notes JSON
+            budget_cfg = {}
+            if plan_row["notes"]:
+                try:
+                    budget_cfg = json.loads(plan_row["notes"]) if isinstance(plan_row["notes"], str) else plan_row["notes"]
+                except Exception:
+                    budget_cfg = {}
+
+            installments = int(budget_cfg.get("installments") or 1)
+            per_installment = round(pending / installments, 2) if installments > 0 and pending > 0 else 0
+
+            lines.append(f"PRESUPUESTO: {plan_row['name']} ({plan_row['status']})")
+            lines.append(f"  Total aprobado: ${int(approved)} | Pagado: ${int(paid)} | Pendiente: ${int(pending)}")
+            if installments > 1:
+                lines.append(f"  Cuotas restantes: {installments} de ${int(per_installment)}")
+            conditions = budget_cfg.get("payment_conditions")
+            if conditions:
+                lines.append(f"  Condiciones: {conditions}")
+
+            # Recent payments on the plan
+            plan_payments = await db.pool.fetch(
+                """
+                SELECT payment_date, amount, payment_method, notes
+                FROM treatment_plan_payments
+                WHERE plan_id = $1 AND tenant_id = $2
+                ORDER BY payment_date DESC
+                LIMIT 5
+                """,
+                plan_row["id"],
+                tenant_id,
+            )
+            if plan_payments:
+                lines.append("  Últimos pagos:")
+                for pp in plan_payments:
+                    pdate = pp["payment_date"].strftime("%d/%m/%y") if pp["payment_date"] else "—"
+                    method_map = {"cash": "Efectivo", "transfer": "Transferencia", "card": "Tarjeta"}
+                    method = method_map.get(pp["payment_method"], pp["payment_method"] or "—")
+                    lines.append(f"    {pdate} | ${int(float(pp['amount'] or 0))} | {method} | {pp['notes'] or ''}")
+
+        # 2. Appointment-level payment info (señas)
         rows = await db.pool.fetch(
             """
             SELECT a.appointment_datetime, a.appointment_type, a.status,
@@ -4959,27 +5062,31 @@ async def get_patient_payment_status():
             tenant_id,
             phone_digits,
         )
-        if not rows:
-            return "No tenés turnos futuros con pagos pendientes."
-        lines = []
-        for r in rows:
-            dt = r["appointment_datetime"]
-            if hasattr(dt, "astimezone"):
-                dt = dt.astimezone(ARG_TZ)
-            fecha = dt.strftime("%d/%m/%y")
-            pay = r.get("payment_status") or "pending"
-            amt = r.get("billing_amount")
-            prof_cp = r.get("prof_price")
-            tprice = r.get("treatment_price")
-            sena_base = (
-                float(prof_cp) / 2
-                if prof_cp and float(prof_cp) > 0
-                else (float(amt) if amt else 0)
-            )
-            treat = f"${int(tprice)}" if tprice and float(tprice) > 0 else "—"
-            lines.append(
-                f"{fecha}|{r['appointment_type']}|{r.get('prof_name', '—')}|pago:{pay}|seña:${int(sena_base)}|tratamiento:{treat}"
-            )
+        if rows:
+            if lines:
+                lines.append("")
+            lines.append("TURNOS PRÓXIMOS:")
+            for r in rows:
+                dt = r["appointment_datetime"]
+                if hasattr(dt, "astimezone"):
+                    dt = dt.astimezone(ARG_TZ)
+                fecha = dt.strftime("%d/%m/%y")
+                pay = r.get("payment_status") or "pending"
+                amt = r.get("billing_amount")
+                prof_cp = r.get("prof_price")
+                tprice = r.get("treatment_price")
+                sena_base = (
+                    float(prof_cp) / 2
+                    if prof_cp and float(prof_cp) > 0
+                    else (float(amt) if amt else 0)
+                )
+                treat = f"${int(tprice)}" if tprice and float(tprice) > 0 else "—"
+                lines.append(
+                    f"  {fecha}|{r['appointment_type']}|{r.get('prof_name', '—')}|pago:{pay}|seña:${int(sena_base)}|tratamiento:{treat}"
+                )
+
+        if not lines:
+            return "No tenés presupuesto activo ni turnos futuros con pagos pendientes."
         return "\n".join(lines)
     except Exception as e:
         logger.error(f"Error en get_patient_payment_status: {e}")

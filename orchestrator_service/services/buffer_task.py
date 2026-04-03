@@ -457,6 +457,62 @@ async def process_buffer_task(
                             f"    Próximo turno: {minor_apt['treatment_name'] or 'Consulta'} el {dias_semana[mdt.weekday()]} {mdt.strftime('%d/%m')} a las {mdt.strftime('%H:%M')}"
                         )
 
+            # --- TREATMENT PLAN / BUDGET CONTEXT ---
+            try:
+                plan_row = await pool.fetchrow(
+                    """
+                    SELECT tp.id, tp.name, tp.status, tp.estimated_total, tp.approved_total,
+                           tp.notes,
+                           COALESCE(SUM(tpp.amount), 0) AS total_paid
+                    FROM treatment_plans tp
+                    LEFT JOIN treatment_plan_payments tpp ON tpp.plan_id = tp.id AND tpp.tenant_id = tp.tenant_id
+                    WHERE tp.tenant_id = $1 AND tp.patient_id = $2
+                      AND tp.status IN ('draft', 'approved', 'in_progress')
+                    GROUP BY tp.id
+                    ORDER BY tp.created_at DESC
+                    LIMIT 1
+                    """,
+                    tenant_id,
+                    p_id,
+                )
+                if plan_row:
+                    approved = float(plan_row["approved_total"] or plan_row["estimated_total"] or 0)
+                    paid = float(plan_row["total_paid"] or 0)
+                    pending = round(approved - paid, 2)
+
+                    # Parse budget config from notes JSON
+                    budget_cfg = {}
+                    if plan_row["notes"]:
+                        try:
+                            budget_cfg = json.loads(plan_row["notes"]) if isinstance(plan_row["notes"], str) else plan_row["notes"]
+                        except Exception:
+                            budget_cfg = {}
+
+                    installments = int(budget_cfg.get("installments") or 1)
+                    per_installment = round(pending / installments, 2) if installments > 0 and pending > 0 else 0
+
+                    identity_lines.append("")
+                    identity_lines.append("PRESUPUESTO ACTIVO:")
+                    identity_lines.append(f"  Plan: {plan_row['name']}")
+                    identity_lines.append(f"  Estado: {plan_row['status']}")
+                    identity_lines.append(f"  Total aprobado: ${approved:,.0f}".replace(",", "."))
+                    identity_lines.append(f"  Pagado: ${paid:,.0f}".replace(",", "."))
+                    identity_lines.append(f"  Pendiente: ${pending:,.0f}".replace(",", "."))
+                    if installments > 1:
+                        identity_lines.append(f"  Cuotas: {installments} (${per_installment:,.0f}/cuota)".replace(",", "."))
+                    discount_pct = float(budget_cfg.get("discount_pct") or 0)
+                    discount_amt = float(budget_cfg.get("discount_amount") or 0)
+                    if discount_pct > 0:
+                        identity_lines.append(f"  Descuento: {discount_pct}%")
+                    if discount_amt > 0:
+                        identity_lines.append(f"  Descuento fijo: ${discount_amt:,.0f}".replace(",", "."))
+                    conditions = budget_cfg.get("payment_conditions")
+                    if conditions:
+                        identity_lines.append(f"  Condiciones: {conditions}")
+                    logger.info(f"💰 Treatment plan context injected for patient {p_id}")
+            except Exception as plan_err:
+                logger.warning(f"⚠️ Treatment plan context (non-fatal): {plan_err}")
+
             # --- PATIENT MEMORY: Retrieve persistent memories ---
             try:
                 memory_text = await format_memories_for_prompt(
