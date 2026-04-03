@@ -88,6 +88,34 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle, onCloseMo
     });
   }, []);
 
+  // Listen for logo updates from ConfigView
+  useEffect(() => {
+    const handleLogoUpdated = (event: CustomEvent<{ tenant_id: number }>) => {
+      const currentTenantId = localStorage.getItem('X-Tenant-ID');
+      // Only refresh if the updated logo belongs to the currently viewed tenant
+      if (currentTenantId && parseInt(currentTenantId) === event.detail.tenant_id) {
+        // Re‑fetch logo with cache busting
+        const logoPath = `/admin/public/tenant-logo/${currentTenantId}?t=${Date.now()}`;
+        api.get(logoPath, { responseType: 'blob' })
+          .then(res => {
+            const url = URL.createObjectURL(res.data);
+            setLogoUrl(url);
+            localStorage.setItem('CLINIC_LOGO', logoPath);
+            const link = document.querySelector("link[rel~='icon']") as HTMLLinkElement;
+            if (link) link.href = url;
+          })
+          .catch(() => {
+            // Logo may have been removed; clear local storage
+            localStorage.removeItem('CLINIC_LOGO');
+            setLogoUrl('');
+          });
+      }
+    };
+    // Cast to any because TypeScript doesn't know about detail typing
+    window.addEventListener('tenant-logo-updated', handleLogoUpdated as EventListener);
+    return () => window.removeEventListener('tenant-logo-updated', handleLogoUpdated as EventListener);
+  }, []);
+
   const [tooltipId, setTooltipId] = useState<string | null>(null);
   const tooltipTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 

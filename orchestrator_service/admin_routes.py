@@ -151,6 +151,12 @@ class UpdateTreatmentPlanBody(BaseModel):
     status: Optional[str] = None  # draft, approved, in_progress, completed, cancelled
     approved_total: Optional[float] = None
     notes: Optional[str] = None
+    # Campos de configuración presupuesto (opcionales)
+    payment_conditions: Optional[str] = None  # e.g. "Válido por 30 días"
+    discount_pct: Optional[float] = None       # porcentaje de descuento 0-100
+    discount_amount: Optional[float] = None    # descuento fijo en $
+    installments: Optional[int] = None         # cantidad de cuotas
+    installments_amount: Optional[float] = None  # monto por cuota
 
 
 class TreatmentPlanItemResponse(BaseModel):
@@ -10294,11 +10300,17 @@ async def get_treatment_plan_detail(
     }
 
 
-# EP-04: PUT /admin/treatment-plans/{plan_id}
-@router.put(
+# EP-04: PATCH /admin/treatment-plans/{plan_id}  (also accepts PUT for backwards compat)
+@router.patch(
     "/treatment-plans/{plan_id}",
     tags=["Treatment Plans"],
     summary="EP-04: Actualizar plan de tratamiento",
+)
+@router.put(
+    "/treatment-plans/{plan_id}",
+    tags=["Treatment Plans"],
+    summary="EP-04: Actualizar plan de tratamiento (PUT alias)",
+    include_in_schema=False,
 )
 async def update_treatment_plan(
     plan_id: str,
@@ -10379,9 +10391,52 @@ async def update_treatment_plan(
         params.append(payload.approved_total)
         idx += 1
 
+    # Merge budget config fields into notes when no new DB columns exist yet.
+    # If `notes` was explicitly sent, use it as-is (caller already composed the string).
+    # Otherwise, if any budget field is present, build a JSON metadata note.
+    budget_fields_present = any([
+        payload.payment_conditions is not None,
+        payload.discount_pct is not None,
+        payload.discount_amount is not None,
+        payload.installments is not None,
+        payload.installments_amount is not None,
+    ])
+
     if payload.notes is not None:
+        # Explicit notes wins; budget fields are ignored for storage (already in approved_total)
         update_fields.append(f"notes = ${idx}")
         params.append(payload.notes)
+        idx += 1
+    elif budget_fields_present:
+        # Build a structured JSON note from budget config fields
+        import json as _json
+        budget_meta: dict = {}
+        if payload.payment_conditions is not None:
+            budget_meta["payment_conditions"] = payload.payment_conditions
+        if payload.discount_pct is not None:
+            budget_meta["discount_pct"] = payload.discount_pct
+        if payload.discount_amount is not None:
+            budget_meta["discount_amount"] = payload.discount_amount
+        if payload.installments is not None:
+            budget_meta["installments"] = payload.installments
+        if payload.installments_amount is not None:
+            budget_meta["installments_amount"] = payload.installments_amount
+        # Merge with existing notes if any
+        existing_notes = plan["notes"] or ""
+        try:
+            existing_meta = _json.loads(existing_notes) if existing_notes.strip().startswith("{") else {}
+        except Exception:
+            existing_meta = {}
+        if existing_meta:
+            existing_meta.update(budget_meta)
+            merged_notes = _json.dumps(existing_meta, ensure_ascii=False)
+        else:
+            # Preserve plain-text notes; append JSON budget block as a separator
+            plain = existing_notes.strip()
+            budget_str = _json.dumps(budget_meta, ensure_ascii=False)
+            merged_notes = f"{plain}\n{budget_str}".strip() if plain else budget_str
+        update_fields.append(f"notes = ${idx}")
+        params.append(merged_notes)
         idx += 1
 
     if not update_fields:

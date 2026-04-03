@@ -4,7 +4,7 @@ import {
   Plus, Trash2, Loader2, Receipt, X,
   Banknote, ArrowRightLeft, CreditCard, Check, AlertCircle,
   User, Mail, Download, Sparkles,
-  CheckCircle2, Clock, Search
+  CheckCircle2, Clock, Search, Edit2
 } from 'lucide-react';
 import api from '../api/axios';
 
@@ -50,6 +50,10 @@ interface TreatmentPlanPayment {
   recorded_by_name: string | null;
   notes: string | null;
   appointment_id?: number;
+  payment_receipt_data?: {
+    status?: 'verified' | 'pending' | 'review' | 'rejected';
+    amount?: number;
+  } | null;
 }
 
 interface TreatmentPlanDetail extends TreatmentPlan {
@@ -285,6 +289,10 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
   const [editingPlanName, setEditingPlanName] = useState(false);
   const [planNameDraft, setPlanNameDraft] = useState('');
 
+  // ── Inline edit state (approved total)
+  const [editingApprovedTotal, setEditingApprovedTotal] = useState(false);
+  const [approvedTotalDraft, setApprovedTotalDraft] = useState('');
+
   // ── Inline delete confirmations
   const [deletingItemId, setDeletingItemId] = useState<string | null>(null);
   const [deletingPaymentId, setDeletingPaymentId] = useState<string | null>(null);
@@ -368,6 +376,13 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
       setPlanDetail(null);
     }
   }, [selectedPlanId]);
+
+  useEffect(() => {
+    if (error) {
+      const timer = setTimeout(() => setError(null), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [error]);
 
   const loadPlanDetail = async (planId: string) => {
     try {
@@ -475,6 +490,20 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
       await loadPlanDetail(planDetail.id);
     } catch (err) {
       console.error('Error updating plan name:', err);
+      setError(t('billing.error_save'));
+    }
+  };
+
+  const handleUpdateApprovedTotal = async () => {
+    if (!approvedTotalDraft || !planDetail) return;
+    try {
+      await api.patch(`/admin/treatment-plans/${planDetail.id}`, {
+        approved_total: parseFloat(approvedTotalDraft),
+      });
+      setEditingApprovedTotal(false);
+      await loadPlanDetail(planDetail.id);
+    } catch (err) {
+      console.error('Error updating approved total:', err);
       setError(t('billing.error_save'));
     }
   };
@@ -904,8 +933,35 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
                 <p className="text-base font-bold text-white">{formatCurrency(estimatedTotal)}</p>
               </div>
               <div className="bg-white/[0.02] border border-white/[0.06] rounded-xl p-3">
-                <p className="text-[10px] text-white/40 uppercase font-bold">{t('billing.approved_total')}</p>
-                <p className="text-base font-bold text-white">{approvedTotal > 0 ? formatCurrency(approvedTotal) : t('billing.no_approved_total')}</p>
+                <span className="text-[10px] font-bold text-white/40 uppercase flex items-center gap-1 mb-0.5">
+                  {t('billing.approved_total')}
+                  <Edit2 size={10} className="text-white/20" />
+                </span>
+                {editingApprovedTotal ? (
+                  <input
+                    type="number"
+                    value={approvedTotalDraft}
+                    onChange={(e) => setApprovedTotalDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleUpdateApprovedTotal();
+                      if (e.key === 'Escape') setEditingApprovedTotal(false);
+                    }}
+                    onBlur={handleUpdateApprovedTotal}
+                    className="w-full px-2 py-1 bg-white/[0.04] border border-white/[0.08] rounded text-white text-base font-bold focus:outline-none focus:ring-1 focus:ring-primary"
+                    autoFocus
+                  />
+                ) : (
+                  <p
+                    onClick={() => {
+                      setEditingApprovedTotal(true);
+                      setApprovedTotalDraft(String(planDetail.approved_total || planDetail.estimated_total || ''));
+                    }}
+                    className="text-base font-bold text-white cursor-pointer hover:text-primary transition-colors"
+                    title={t('billing.click_to_edit') || 'Click para editar'}
+                  >
+                    {approvedTotal > 0 ? formatCurrency(approvedTotal) : t('billing.no_approved_total')}
+                  </p>
+                )}
               </div>
               <div className="bg-white/[0.02] border border-white/[0.06] rounded-xl p-3">
                 <p className="text-[10px] text-white/40 uppercase font-bold">{t('billing.paid')}</p>
@@ -1138,6 +1194,7 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
                         <th className="text-right py-3 px-2">{t('billing.amount')}</th>
                         <th className="text-left py-3 px-2">{t('billing.method_label')}</th>
                         <th className="text-left py-3 px-2">{t('billing.recorded_by')}</th>
+                        <th className="text-left py-3 px-2">{t('billing.receipt') || 'Comprobante'}</th>
                         <th className="text-left py-3 px-2">{t('billing.notes')}</th>
                         <th className="w-10"></th>
                       </tr>
