@@ -91,7 +91,7 @@ async def gather_budget_data(pool, plan_id: str, tenant_id: int) -> Optional[dic
             pat.email AS patient_email,
             prof.first_name || ' ' || COALESCE(prof.last_name, '') AS professional_name,
             prof.specialty,
-            t.name AS clinic_name,
+            t.clinic_name,
             t.address AS clinic_address,
             t.phone AS clinic_phone,
             t.logo_url
