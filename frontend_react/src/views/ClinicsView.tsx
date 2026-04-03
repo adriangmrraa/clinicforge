@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Building2, Plus, Edit, Trash2, Phone, Loader2, AlertCircle, CheckCircle2, Calendar, Clock, MapPin, HelpCircle, ChevronDown, X, DollarSign, Shield, GitMerge, ToggleLeft, ToggleRight, Info } from 'lucide-react';
+import { Building2, Plus, Edit, Trash2, Phone, Loader2, AlertCircle, CheckCircle2, Calendar, Clock, MapPin, HelpCircle, ChevronDown, X, DollarSign, Shield, GitMerge, ToggleLeft, ToggleRight, Info, Search, Check } from 'lucide-react';
 import api from '../api/axios';
 import { useTranslation } from '../context/LanguageContext';
 import PageHeader from '../components/PageHeader';
@@ -146,6 +146,8 @@ export default function ClinicsView() {
         provider_name: '', status: 'accepted', requires_copay: true, sort_order: 0, is_active: true,
     });
     const [insuranceSaving, setInsuranceSaving] = useState(false);
+    const [insuranceTreatments, setInsuranceTreatments] = useState<{code: string; name: string}[]>([]);
+    const [insuranceTreatmentSearch, setInsuranceTreatmentSearch] = useState('');
 
     // Derivation state
     const [derivationRules, setDerivationRules] = useState<DerivationRule[]>([]);
@@ -403,10 +405,31 @@ export default function ClinicsView() {
         if (!selectedClinicId) return;
         setInsuranceLoading(true);
         try {
-            const resp = await api.get('/admin/insurance-providers', tenantHeaders);
-            setInsuranceProviders(resp.data);
+            const th = { headers: { 'X-Tenant-ID': String(selectedClinicId) } };
+            const [insResp, treatResp] = await Promise.allSettled([
+                api.get('/admin/insurance-providers', th),
+                api.get('/admin/treatment-types', th),
+            ]);
+            if (insResp.status === 'fulfilled') setInsuranceProviders(insResp.value.data);
+            if (treatResp.status === 'fulfilled') {
+                setInsuranceTreatments(
+                    Array.isArray(treatResp.value.data)
+                        ? treatResp.value.data.map((t: any) => ({ code: t.code, name: t.name }))
+                        : []
+                );
+            }
         } catch (err) { console.error('Error cargando obras sociales:', err); }
         finally { setInsuranceLoading(false); }
+    };
+
+    // Helper: parse restrictions field — may be JSON array of codes or legacy free text
+    const parseRestrictionsAsCodes = (restrictions?: string): string[] => {
+        if (!restrictions) return [];
+        try {
+            const parsed = JSON.parse(restrictions);
+            if (Array.isArray(parsed)) return parsed;
+        } catch { /* legacy free text — ignore */ }
+        return [];
     };
 
     const openInsuranceModal = (item: InsuranceProvider | null = null) => {
@@ -415,8 +438,9 @@ export default function ClinicsView() {
             setInsuranceForm({ ...item });
         } else {
             setEditingInsurance(null);
-            setInsuranceForm({ provider_name: '', status: 'accepted', requires_copay: true, sort_order: 0, is_active: true });
+            setInsuranceForm({ provider_name: '', status: 'accepted', requires_copay: true, sort_order: 0, is_active: true, restrictions: '[]' });
         }
+        setInsuranceTreatmentSearch('');
         setInsuranceModalOpen(true);
     };
 
@@ -695,7 +719,7 @@ export default function ClinicsView() {
                                         <tr className="border-b border-white/[0.06] bg-white/[0.02]">
                                             <th className="text-left px-4 py-3 text-xs font-bold text-white/40 uppercase tracking-wider">{t('settings.insurance.fields.providerName')}</th>
                                             <th className="text-left px-4 py-3 text-xs font-bold text-white/40 uppercase tracking-wider">{t('settings.insurance.fields.status')}</th>
-                                            <th className="text-left px-4 py-3 text-xs font-bold text-white/40 uppercase tracking-wider">{t('settings.insurance.fields.restrictions')}</th>
+                                            <th className="text-left px-4 py-3 text-xs font-bold text-white/40 uppercase tracking-wider">{t('settings.insurance.fields.coveredTreatments')}</th>
                                             <th className="text-left px-4 py-3 text-xs font-bold text-white/40 uppercase tracking-wider">{t('settings.insurance.fields.requiresCopay')}</th>
                                             <th className="text-right px-4 py-3 text-xs font-bold text-white/40 uppercase tracking-wider">{t('common.edit')}</th>
                                         </tr>
@@ -709,8 +733,20 @@ export default function ClinicsView() {
                                                         {t(`settings.insurance.status.${prov.status}`)}
                                                     </span>
                                                 </td>
-                                                <td className="px-4 py-3 text-xs text-white/50 max-w-xs truncate">
-                                                    {prov.status === 'external_derivation' ? prov.external_target : prov.restrictions || '—'}
+                                                <td className="px-4 py-3 text-xs text-white/50 max-w-xs">
+                                                    {prov.status === 'external_derivation' ? prov.external_target : (() => {
+                                                        const codes = parseRestrictionsAsCodes(prov.restrictions);
+                                                        if (codes.length === 0) return prov.restrictions || '\u2014';
+                                                        return (
+                                                            <div className="flex flex-wrap gap-1">
+                                                                {codes.slice(0, 3).map(code => {
+                                                                    const treat = insuranceTreatments.find(t => t.code === code);
+                                                                    return <span key={code} className="inline-block px-1.5 py-0.5 bg-emerald-500/10 text-emerald-400 rounded text-[10px] font-semibold">{treat ? treat.name : code}</span>;
+                                                                })}
+                                                                {codes.length > 3 && <span className="text-white/30 text-[10px]">+{codes.length - 3}</span>}
+                                                            </div>
+                                                        );
+                                                    })()}
                                                 </td>
                                                 <td className="px-4 py-3 text-xs text-white/50">
                                                     {prov.requires_copay ? <span className="text-amber-400 font-semibold">{t('common.yes')}</span> : <span className="text-white/30">{t('common.no')}</span>}
@@ -1296,10 +1332,84 @@ export default function ClinicsView() {
                                 </select>
                             </div>
                             {insuranceForm.status === 'restricted' && (
-                                <div className="space-y-1">
-                                    <label className="text-sm font-semibold text-white/60">{t('settings.insurance.fields.restrictions')}</label>
-                                    <textarea value={insuranceForm.restrictions || ''} onChange={e => setInsuranceForm(p => ({ ...p, restrictions: e.target.value }))} rows={3}
-                                        className="w-full px-4 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white placeholder-white/20 focus:ring-2 focus:ring-blue-500 outline-none resize-none" />
+                                <div className="space-y-2">
+                                    <label className="text-sm font-semibold text-white/60">{t('settings.insurance.fields.coveredTreatments')}</label>
+                                    <p className="text-xs text-white/30">{t('settings.insurance.fields.coveredTreatmentsHint')}</p>
+                                    {/* Selected treatments tags */}
+                                    {(() => {
+                                        const selectedCodes = parseRestrictionsAsCodes(insuranceForm.restrictions);
+                                        return selectedCodes.length > 0 && (
+                                            <div className="flex flex-wrap gap-1.5">
+                                                {selectedCodes.map(code => {
+                                                    const treat = insuranceTreatments.find(t => t.code === code);
+                                                    return (
+                                                        <span key={code} className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-500/10 text-emerald-400 rounded-lg text-xs font-semibold border border-emerald-500/20">
+                                                            {treat ? treat.name : code}
+                                                            <button type="button" onClick={() => {
+                                                                const updated = selectedCodes.filter(c => c !== code);
+                                                                setInsuranceForm(p => ({ ...p, restrictions: JSON.stringify(updated) }));
+                                                            }} className="ml-0.5 hover:text-red-400 transition-colors">
+                                                                <X size={12} />
+                                                            </button>
+                                                        </span>
+                                                    );
+                                                })}
+                                            </div>
+                                        );
+                                    })()}
+                                    {/* Search input */}
+                                    <div className="relative">
+                                        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" />
+                                        <input
+                                            type="text"
+                                            value={insuranceTreatmentSearch}
+                                            onChange={e => setInsuranceTreatmentSearch(e.target.value)}
+                                            placeholder={t('settings.insurance.fields.searchTreatments')}
+                                            className="w-full pl-9 pr-4 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white text-sm placeholder-white/20 focus:ring-2 focus:ring-blue-500 outline-none"
+                                        />
+                                    </div>
+                                    {/* Treatment list */}
+                                    <div className="max-h-48 overflow-y-auto rounded-lg border border-white/[0.08] bg-white/[0.02] divide-y divide-white/[0.04]">
+                                        {insuranceTreatments.length === 0 ? (
+                                            <p className="text-xs text-white/30 p-3 text-center">{t('settings.insurance.fields.noTreatments')}</p>
+                                        ) : (
+                                            insuranceTreatments
+                                                .filter(t => {
+                                                    if (!insuranceTreatmentSearch) return true;
+                                                    const q = insuranceTreatmentSearch.toLowerCase();
+                                                    return t.name.toLowerCase().includes(q) || t.code.toLowerCase().includes(q);
+                                                })
+                                                .map(treat => {
+                                                    const selectedCodes = parseRestrictionsAsCodes(insuranceForm.restrictions);
+                                                    const isSelected = selectedCodes.includes(treat.code);
+                                                    return (
+                                                        <button
+                                                            key={treat.code}
+                                                            type="button"
+                                                            onClick={() => {
+                                                                const codes = parseRestrictionsAsCodes(insuranceForm.restrictions);
+                                                                const updated = isSelected
+                                                                    ? codes.filter(c => c !== treat.code)
+                                                                    : [...codes, treat.code];
+                                                                setInsuranceForm(p => ({ ...p, restrictions: JSON.stringify(updated) }));
+                                                            }}
+                                                            className={`w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors ${isSelected ? 'bg-emerald-500/10' : 'hover:bg-white/[0.04]'}`}
+                                                        >
+                                                            <div className={`flex-shrink-0 w-5 h-5 rounded border flex items-center justify-center transition-all ${isSelected ? 'bg-emerald-500 border-emerald-500' : 'border-white/20 bg-white/[0.04]'}`}>
+                                                                {isSelected && <Check size={12} className="text-white" />}
+                                                            </div>
+                                                            <div className="flex-1 min-w-0">
+                                                                <span className="text-sm text-white font-medium">{treat.name}</span>
+                                                                <span className="text-xs text-white/30 ml-2">{treat.code}</span>
+                                                            </div>
+                                                        </button>
+                                                    );
+                                                })
+                                        )}
+                                    </div>
+                                    <p className="text-xs text-white/30">
+                                        {parseRestrictionsAsCodes(insuranceForm.restrictions).length} {t('settings.insurance.fields.treatmentsSelected')}
+                                    </p>
                                 </div>
                             )}
                             {insuranceForm.status === 'external_derivation' && (
