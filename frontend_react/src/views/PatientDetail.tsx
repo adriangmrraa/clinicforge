@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ArrowLeft, User, Phone, Mail, AlertTriangle,
   FileText, Plus, Activity, Heart, Pill, Stethoscope, Megaphone,
@@ -76,6 +76,7 @@ type TabType = 'summary' | 'history' | 'documents' | 'anamnesis' | 'digital_reco
 export default function PatientDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { t, language } = useTranslation();
   const dateLocale = language === 'es' ? 'es-AR' : language === 'fr' ? 'fr-FR' : 'en-US';
   const [patient, setPatient] = useState<Patient | null>(null);
@@ -84,7 +85,8 @@ export default function PatientDetail() {
   const [showNoteForm, setShowNoteForm] = useState(false);
   const [criticalConditionsFound, setCriticalConditionsFound] = useState<string[]>([]);
   const [linkCopied, setLinkCopied] = useState(false);
-  const [activeTab, setActiveTab] = useState<TabType>('summary');
+  const initialTab = (searchParams.get('tab') as TabType) || 'summary';
+  const [activeTab, setActiveTab] = useState<TabType>(initialTab);
   const { user } = useAuth();
   const idRef = useRef<string | undefined>(id);
   const socketRef = useRef<Socket | null>(null);

@@ -1684,6 +1684,19 @@
     "go_to_plan": "Voir le budget",
     "confirm_generate": "Un budget sera créé à partir des rendez-vous existants. Continuer?",
     "plan_already_exists": "Ce patient a déjà un budget actif",
-    "no_appointments_to_generate": "Aucun rendez-vous pour générer un budget"
+    "no_appointments_to_generate": "Aucun rendez-vous pour générer un budget",
+    "linked_to_plan": "Ce rendez-vous est lié à un plan de traitement",
+    "view_plan": "Voir le budget",
+    "receipt": "Reçu",
+    "click_to_edit": "Cliquez pour modifier",
+    "budget_config": "Configuration du budget",
+    "payment_conditions": "Conditions de paiement",
+    "discount_pct": "Remise %",
+    "discount_amount": "Remise fixe $",
+    "installments": "Versements",
+    "installments_amount": "Montant par versement",
+    "verified": "Vérifié",
+    "rejected": "Rejeté",
+    "save_config": "Enregistrer la configuration"
   }
 }

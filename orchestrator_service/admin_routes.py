@@ -153,9 +153,9 @@ class UpdateTreatmentPlanBody(BaseModel):
     notes: Optional[str] = None
     # Campos de configuración presupuesto (opcionales)
     payment_conditions: Optional[str] = None  # e.g. "Válido por 30 días"
-    discount_pct: Optional[float] = None       # porcentaje de descuento 0-100
-    discount_amount: Optional[float] = None    # descuento fijo en $
-    installments: Optional[int] = None         # cantidad de cuotas
+    discount_pct: Optional[float] = None  # porcentaje de descuento 0-100
+    discount_amount: Optional[float] = None  # descuento fijo en $
+    installments: Optional[int] = None  # cantidad de cuotas
     installments_amount: Optional[float] = None  # monto por cuota
 
 
@@ -693,7 +693,10 @@ async def update_user_status(
                         raise
 
     # Enviar email de bienvenida al aprobar (activar) un profesional o secretaria
-    if payload.status == "active" and target_user["role"] in ("professional", "secretary"):
+    if payload.status == "active" and target_user["role"] in (
+        "professional",
+        "secretary",
+    ):
         try:
             # Resolver tenant_id: buscar la sede vinculada al profesional, o la primera sede
             _wel_tenant = await db.pool.fetchval(
@@ -707,7 +710,9 @@ async def update_user_status(
             asyncio.create_task(
                 send_welcome_email(_wel_tid, str(uid), target_user["role"], db.pool)
             )
-            logger.info(f"📧 Email de bienvenida programado para usuario aprobado {uid}")
+            logger.info(
+                f"📧 Email de bienvenida programado para usuario aprobado {uid}"
+            )
         except Exception as e:
             logger.warning(f"Welcome email failed for approved user {uid}: {e}")
 
@@ -5458,14 +5463,18 @@ async def get_appointment_by_id(
         SELECT a.id, a.patient_id, a.appointment_datetime, a.duration_minutes, a.status, a.urgency_level,
                a.source, a.appointment_type, a.notes,
                a.billing_amount, a.billing_installments, a.billing_notes, a.payment_status, a.payment_receipt_data,
+               a.plan_item_id,
                (p.first_name || ' ' || COALESCE(p.last_name, '')) as patient_name,
                p.phone_number as patient_phone,
                prof.first_name as professional_name, prof.id as professional_id,
-               COALESCE(tt.name, a.appointment_type, 'Consulta') as appointment_name
+               COALESCE(tt.name, a.appointment_type, 'Consulta') as appointment_name,
+               tp.name as plan_name, tp.id as plan_id
         FROM appointments a
         JOIN patients p ON a.patient_id = p.id
         LEFT JOIN professionals prof ON a.professional_id = prof.id
         LEFT JOIN treatment_types tt ON a.appointment_type = tt.code AND a.tenant_id = tt.tenant_id
+        LEFT JOIN treatment_plan_items tpi ON a.plan_item_id = tpi.id AND a.tenant_id = tpi.tenant_id
+        LEFT JOIN treatment_plans tp ON tpi.plan_id = tp.id AND tpi.tenant_id = tp.tenant_id
         WHERE a.id = $1 AND a.tenant_id = $2
     """,
         apt_uuid,
@@ -7184,6 +7193,7 @@ def _validate_insurance_provider(data) -> None:
         # Support JSON array of treatment codes (new format)
         try:
             import json
+
             parsed = json.loads(data.restrictions)
             if isinstance(parsed, list) and len(parsed) == 0:
                 raise HTTPException(
@@ -9537,22 +9547,28 @@ async def get_patient_billing_summary(
             except Exception:
                 receipt = None
 
-        appointments.append({
-            "id": str(row["appointment_id"]),
-            "datetime": row["appointment_datetime"].isoformat() if row["appointment_datetime"] else None,
-            "status": row["appointment_status"],
-            "treatment_code": row["treatment_code"] or row["appointment_type"],
-            "treatment_name": row["treatment_name"],
-            "base_price": float(row["base_price"]) if row["base_price"] else 0,
-            "billing_amount": float(row["billing_amount"] or 0),
-            "billing_installments": row["billing_installments"],
-            "billing_notes": row["billing_notes"],
-            "payment_status": row["payment_status"] or "pending",
-            "payment_receipt": receipt,
-            "professional_name": (row["professional_name"] or "").strip(),
-            "plan_item_id": str(row["plan_item_id"]) if row["plan_item_id"] else None,
-            "duration_minutes": row["duration_minutes"] or 30,
-        })
+        appointments.append(
+            {
+                "id": str(row["appointment_id"]),
+                "datetime": row["appointment_datetime"].isoformat()
+                if row["appointment_datetime"]
+                else None,
+                "status": row["appointment_status"],
+                "treatment_code": row["treatment_code"] or row["appointment_type"],
+                "treatment_name": row["treatment_name"],
+                "base_price": float(row["base_price"]) if row["base_price"] else 0,
+                "billing_amount": float(row["billing_amount"] or 0),
+                "billing_installments": row["billing_installments"],
+                "billing_notes": row["billing_notes"],
+                "payment_status": row["payment_status"] or "pending",
+                "payment_receipt": receipt,
+                "professional_name": (row["professional_name"] or "").strip(),
+                "plan_item_id": str(row["plan_item_id"])
+                if row["plan_item_id"]
+                else None,
+                "duration_minutes": row["duration_minutes"] or 30,
+            }
+        )
 
     # 3. Group by treatment
     groups_map = {}
@@ -9582,11 +9598,15 @@ async def get_patient_billing_summary(
         g["total_paid"] = round(g["total_paid"], 2)
         g["total_pending"] = round(g["total_pending"], 2)
 
-    treatment_groups = sorted(groups_map.values(), key=lambda x: x["total_billed"], reverse=True)
+    treatment_groups = sorted(
+        groups_map.values(), key=lambda x: x["total_billed"], reverse=True
+    )
 
     # 4. Totals
     total_estimated = sum(a["billing_amount"] for a in appointments)
-    total_paid = sum(a["billing_amount"] for a in appointments if a["payment_status"] == "paid")
+    total_paid = sum(
+        a["billing_amount"] for a in appointments if a["payment_status"] == "paid"
+    )
 
     # 5. Check active plan
     active_plan = await db.pool.fetchrow(
@@ -9689,15 +9709,19 @@ async def generate_plan_from_appointments(
             except Exception:
                 receipt = None
 
-        appointments.append({
-            "id": str(row["appointment_id"]),
-            "treatment_code": row["treatment_code"] or row["appointment_type"] or "sin_tipo",
-            "treatment_name": row["treatment_name"],
-            "base_price": float(row["base_price"]) if row["base_price"] else 0.0,
-            "billing_amount": float(row["billing_amount"] or 0),
-            "payment_status": row["payment_status"] or "pending",
-            "payment_receipt": receipt,
-        })
+        appointments.append(
+            {
+                "id": str(row["appointment_id"]),
+                "treatment_code": row["treatment_code"]
+                or row["appointment_type"]
+                or "sin_tipo",
+                "treatment_name": row["treatment_name"],
+                "base_price": float(row["base_price"]) if row["base_price"] else 0.0,
+                "billing_amount": float(row["billing_amount"] or 0),
+                "payment_status": row["payment_status"] or "pending",
+                "payment_receipt": receipt,
+            }
+        )
 
     # 4. Agrupar por treatment_code
     groups_map: Dict[str, Dict] = {}
@@ -9723,7 +9747,9 @@ async def generate_plan_from_appointments(
             tenant_id,
         )
         if patient_row:
-            full_name = f"{patient_row['first_name']} {patient_row['last_name'] or ''}".strip()
+            full_name = (
+                f"{patient_row['first_name']} {patient_row['last_name'] or ''}".strip()
+            )
             plan_name = f"Tratamiento de {full_name}"
         else:
             plan_name = f"Tratamiento generado"
@@ -9754,7 +9780,11 @@ async def generate_plan_from_appointments(
             # 6b. Por cada grupo crear un treatment_plan_item y vincular sus appointments
             for sort_order, (code, group) in enumerate(groups_map.items()):
                 item_id = uuid.uuid4()
-                estimated_price = group["total_billed"] if group["total_billed"] > 0 else group["base_price"]
+                estimated_price = (
+                    group["total_billed"]
+                    if group["total_billed"] > 0
+                    else group["base_price"]
+                )
 
                 await conn.execute(
                     """
@@ -9804,8 +9834,14 @@ async def generate_plan_from_appointments(
                         continue
 
                     # Monto: preferir amount_detected del comprobante, fallback a billing_amount
-                    amount_detected = receipt.get("amount_detected") or receipt.get("amount")
-                    payment_amount = float(amount_detected) if amount_detected else apt["billing_amount"]
+                    amount_detected = receipt.get("amount_detected") or receipt.get(
+                        "amount"
+                    )
+                    payment_amount = (
+                        float(amount_detected)
+                        if amount_detected
+                        else apt["billing_amount"]
+                    )
 
                     if payment_amount <= 0:
                         continue
@@ -9898,7 +9934,13 @@ async def list_patient_treatment_plans(
     """
     tenant_id = resolved_tenant_id
 
-    ALLOWED_PLAN_STATUSES = {"draft", "approved", "in_progress", "completed", "cancelled"}
+    ALLOWED_PLAN_STATUSES = {
+        "draft",
+        "approved",
+        "in_progress",
+        "completed",
+        "cancelled",
+    }
     if status is not None and status not in ALLOWED_PLAN_STATUSES:
         raise HTTPException(
             status_code=400,
@@ -10209,6 +10251,7 @@ async def get_treatment_plan_detail(
         raw_appointments = item["appointments"]
         if isinstance(raw_appointments, str):
             import json as _json
+
             appts = _json.loads(raw_appointments)
         else:
             appts = raw_appointments if raw_appointments is not None else []
@@ -10372,7 +10415,9 @@ async def update_treatment_plan(
             params.append(payload.status)
             idx += 1
             update_fields.append(f"approved_by = ${idx}")
-            params.append(user_data.email)  # approved_by stores user email (VARCHAR column)
+            params.append(
+                user_data.email
+            )  # approved_by stores user email (VARCHAR column)
             idx += 1
             update_fields.append(f"approved_at = NOW()")
             if payload.approved_total is not None:
@@ -10394,13 +10439,15 @@ async def update_treatment_plan(
     # Merge budget config fields into notes when no new DB columns exist yet.
     # If `notes` was explicitly sent, use it as-is (caller already composed the string).
     # Otherwise, if any budget field is present, build a JSON metadata note.
-    budget_fields_present = any([
-        payload.payment_conditions is not None,
-        payload.discount_pct is not None,
-        payload.discount_amount is not None,
-        payload.installments is not None,
-        payload.installments_amount is not None,
-    ])
+    budget_fields_present = any(
+        [
+            payload.payment_conditions is not None,
+            payload.discount_pct is not None,
+            payload.discount_amount is not None,
+            payload.installments is not None,
+            payload.installments_amount is not None,
+        ]
+    )
 
     if payload.notes is not None:
         # Explicit notes wins; budget fields are ignored for storage (already in approved_total)
@@ -10410,6 +10457,7 @@ async def update_treatment_plan(
     elif budget_fields_present:
         # Build a structured JSON note from budget config fields
         import json as _json
+
         budget_meta: dict = {}
         if payload.payment_conditions is not None:
             budget_meta["payment_conditions"] = payload.payment_conditions
@@ -10424,7 +10472,11 @@ async def update_treatment_plan(
         # Merge with existing notes if any
         existing_notes = plan["notes"] or ""
         try:
-            existing_meta = _json.loads(existing_notes) if existing_notes.strip().startswith("{") else {}
+            existing_meta = (
+                _json.loads(existing_notes)
+                if existing_notes.strip().startswith("{")
+                else {}
+            )
         except Exception:
             existing_meta = {}
         if existing_meta:
@@ -11213,7 +11265,9 @@ async def register_plan_payment(
                 if hasattr(body.payment_method, "value")
                 else body.payment_method,
                 body.payment_date or datetime.now(),
-                body.recorded_by or getattr(user_data, 'email', None) or str(getattr(user_data, 'id', '')),
+                body.recorded_by
+                or getattr(user_data, "email", None)
+                or str(getattr(user_data, "id", "")),
                 body.appointment_id,
                 json.dumps(body.receipt_data) if body.receipt_data else None,
                 body.notes,
@@ -11305,7 +11359,8 @@ async def register_plan_payment(
             "payment_date": (body.payment_date or datetime.now()).isoformat()
             if hasattr((body.payment_date or datetime.now()), "isoformat")
             else str(body.payment_date or datetime.now()),
-            "recorded_by": getattr(user_data, 'email', None) or str(getattr(user_data, 'id', '')),
+            "recorded_by": getattr(user_data, "email", None)
+            or str(getattr(user_data, "id", "")),
             "appointment_id": body.appointment_id,
             "notes": body.notes,
             "created_at": datetime.now(timezone.utc).isoformat(),

@@ -1896,6 +1896,19 @@
     "go_to_plan": "View budget",
     "confirm_generate": "A budget will be created from existing appointments. Continue?",
     "plan_already_exists": "This patient already has an active budget",
-    "no_appointments_to_generate": "No appointments to generate budget from"
+    "no_appointments_to_generate": "No appointments to generate budget from",
+    "linked_to_plan": "This appointment is linked to a treatment plan",
+    "view_plan": "View budget",
+    "receipt": "Receipt",
+    "click_to_edit": "Click to edit",
+    "budget_config": "Budget configuration",
+    "payment_conditions": "Payment conditions",
+    "discount_pct": "Discount %",
+    "discount_amount": "Fixed discount $",
+    "installments": "Installments",
+    "installments_amount": "Amount per installment",
+    "verified": "Verified",
+    "rejected": "Rejected",
+    "save_config": "Save configuration"
   }
 }

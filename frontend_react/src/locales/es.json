@@ -1195,7 +1195,20 @@
     "go_to_plan": "Ver presupuesto",
     "confirm_generate": "Se creará un presupuesto con los turnos existentes. ¿Continuar?",
     "plan_already_exists": "Este paciente ya tiene un presupuesto activo",
-    "no_appointments_to_generate": "No hay turnos para generar presupuesto"
+    "no_appointments_to_generate": "No hay turnos para generar presupuesto",
+    "linked_to_plan": "Este turno pertenece a un plan de tratamiento",
+    "view_plan": "Ver presupuesto",
+    "receipt": "Comprobante",
+    "click_to_edit": "Click para editar",
+    "budget_config": "Configuración del presupuesto",
+    "payment_conditions": "Condiciones de pago",
+    "discount_pct": "Descuento %",
+    "discount_amount": "Descuento fijo $",
+    "installments": "Cuotas",
+    "installments_amount": "Monto por cuota",
+    "verified": "Verificado",
+    "rejected": "Rechazado",
+    "save_config": "Guardar configuración"
   },
   "marketing_google": {
     "title": "Google Ads",

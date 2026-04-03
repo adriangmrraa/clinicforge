@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Calendar, User, Clock, FileText, DollarSign, Activity, AlertTriangle, Trash2, Check } from 'lucide-react';
+import { X, Calendar, User, Clock, FileText, DollarSign, Activity, AlertTriangle, Trash2, Check, ExternalLink, Info } from 'lucide-react';
 import type { Appointment, Patient, Professional } from '../views/AgendaView';
 import api, { WS_URL } from '../api/axios';
 import { useTranslation } from '../context/LanguageContext';
@@ -554,6 +554,77 @@ export default function AppointmentForm({
                                 <div className="text-center py-10 text-white/30">
                                     <DollarSign size={48} className="mx-auto mb-3 opacity-20" />
                                     <p className="text-sm">{t('agenda.billing_save_first')}</p>
+                                </div>
+                            ) : fullAppointment?.plan_item_id ? (
+                                /* ── Read-only billing: appointment linked to treatment plan ── */
+                                <div className="space-y-4">
+                                    {/* Info banner */}
+                                    <div className="rounded-xl border border-blue-500/20 bg-blue-500/[0.07] p-4 space-y-3">
+                                        <div className="flex items-start gap-3">
+                                            <Info size={20} className="text-blue-400 flex-shrink-0 mt-0.5" />
+                                            <div className="space-y-1">
+                                                <p className="text-sm font-semibold text-blue-300">
+                                                    {t('billing.linked_to_plan')}
+                                                </p>
+                                                {fullAppointment?.plan_name && (
+                                                    <p className="text-xs text-blue-400/70">
+                                                        {fullAppointment.plan_name}
+                                                    </p>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Read-only billing summary */}
+                                    <div className="rounded-xl border border-white/[0.06] bg-white/[0.03] p-4 space-y-3">
+                                        <h4 className="text-xs font-bold text-white/40 uppercase tracking-wider">
+                                            {t('agenda.tab_billing')}
+                                        </h4>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <div className="space-y-1">
+                                                <span className="text-[11px] text-white/40">{t('agenda.appointment_type')}</span>
+                                                <p className="text-sm font-medium text-white">
+                                                    {fullAppointment?.appointment_name || formData.appointment_type}
+                                                </p>
+                                            </div>
+                                            <div className="space-y-1">
+                                                <span className="text-[11px] text-white/40">{t('agenda.billing_amount')}</span>
+                                                <p className="text-sm font-medium text-white">
+                                                    {billingData.billing_amount ? `$${Number(billingData.billing_amount).toLocaleString('es-AR')}` : '—'}
+                                                </p>
+                                            </div>
+                                            <div className="space-y-1 col-span-2">
+                                                <span className="text-[11px] text-white/40">{t('agenda.payment_status')}</span>
+                                                <div className="flex items-center gap-2">
+                                                    <span className={`inline-flex items-center px-2.5 py-1 text-xs font-semibold rounded-full ${
+                                                        billingData.payment_status === 'paid'
+                                                            ? 'bg-green-500/15 text-green-400 border border-green-500/20'
+                                                            : billingData.payment_status === 'partial'
+                                                            ? 'bg-yellow-500/15 text-yellow-400 border border-yellow-500/20'
+                                                            : 'bg-white/[0.06] text-white/50 border border-white/[0.08]'
+                                                    }`}>
+                                                        {t(`agenda.payment_${billingData.payment_status}`)}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Navigate to plan button */}
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            const patientId = fullAppointment?.patient_id || formData.patient_id;
+                                            if (patientId) {
+                                                onClose();
+                                                window.location.href = `/pacientes/${patientId}?tab=billing`;
+                                            }
+                                        }}
+                                        className="w-full px-4 py-3 text-sm font-semibold text-blue-300 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 hover:border-blue-500/30 rounded-xl transition-all flex items-center justify-center gap-2"
+                                    >
+                                        <ExternalLink size={16} />
+                                        {t('billing.view_plan')}
+                                    </button>
                                 </div>
                             ) : (
                                 <>

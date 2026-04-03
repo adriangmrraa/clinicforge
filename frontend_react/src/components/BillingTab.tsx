@@ -176,7 +176,7 @@ function PaymentReceiptBadge({ receipt }: { receipt: AppointmentBilling['payment
     return (
       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-red-500/10 text-red-400">
         <X size={10} />
-        Rechazado
+        {t('billing.rejected')}
       </span>
     );
   }
@@ -297,6 +297,16 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
   const [deletingItemId, setDeletingItemId] = useState<string | null>(null);
   const [deletingPaymentId, setDeletingPaymentId] = useState<string | null>(null);
 
+  // ── Budget config state
+  const [budgetConfig, setBudgetConfig] = useState<{
+    payment_conditions: string;
+    discount_pct: string;
+    discount_amount: string;
+    installments: string;
+    installments_amount: string;
+  }>({ payment_conditions: '', discount_pct: '', discount_amount: '', installments: '', installments_amount: '' });
+  const [savingBudgetConfig, setSavingBudgetConfig] = useState(false);
+
   // ── Form data
   const [newPlanData, setNewPlanData] = useState({ name: '', professional_id: '', notes: '' });
   const [newItemData, setNewItemData] = useState({ treatment_type_code: '', custom_description: '', estimated_price: '' });
@@ -396,6 +406,28 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
     }
   };
 
+  // ─── Parse budget config from plan notes ────────────────────────────────
+
+  useEffect(() => {
+    if (planDetail?.notes) {
+      try {
+        const parsed = JSON.parse(planDetail.notes);
+        setBudgetConfig({
+          payment_conditions: parsed.payment_conditions || '',
+          discount_pct: parsed.discount_pct != null ? String(parsed.discount_pct) : '',
+          discount_amount: parsed.discount_amount != null ? String(parsed.discount_amount) : '',
+          installments: parsed.installments != null ? String(parsed.installments) : '',
+          installments_amount: parsed.installments_amount != null ? String(parsed.installments_amount) : '',
+        });
+      } catch {
+        // notes is not JSON — reset budget config
+        setBudgetConfig({ payment_conditions: '', discount_pct: '', discount_amount: '', installments: '', installments_amount: '' });
+      }
+    } else {
+      setBudgetConfig({ payment_conditions: '', discount_pct: '', discount_amount: '', installments: '', installments_amount: '' });
+    }
+  }, [planDetail?.notes]);
+
   // ─── Computed totals (plan_view) ─────────────────────────────────────────
 
   const estimatedTotal = planDetail?.estimated_total || 0;
@@ -403,6 +435,17 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
   const paidTotal = planDetail?.payments?.reduce((sum, p) => sum + p.amount, 0) || 0;
   const pendingTotal = Math.max(approvedTotal - paidTotal, 0);
   const progressPercent = approvedTotal > 0 ? Math.min((paidTotal / approvedTotal) * 100, 100) : 0;
+
+  // ─── Auto-calc installments_amount when installments change ──────────────
+
+  useEffect(() => {
+    const numInstallments = parseInt(budgetConfig.installments);
+    if (numInstallments > 0 && approvedTotal > 0) {
+      const perInstallment = Math.round(approvedTotal / numInstallments);
+      setBudgetConfig(prev => ({ ...prev, installments_amount: String(perInstallment) }));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [budgetConfig.installments, approvedTotal]);
 
   // ─── Handlers ─────────────────────────────────────────────────────────────
 
@@ -630,6 +673,26 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
   const openEmailModal = () => {
     setEmailTo(billingData?.patient_email || '');
     setShowEmailModal(true);
+  };
+
+  const handleSaveBudgetConfig = async () => {
+    if (!planDetail) return;
+    try {
+      setSavingBudgetConfig(true);
+      await api.patch(`/admin/treatment-plans/${planDetail.id}`, {
+        payment_conditions: budgetConfig.payment_conditions || null,
+        discount_pct: budgetConfig.discount_pct ? parseFloat(budgetConfig.discount_pct) : null,
+        discount_amount: budgetConfig.discount_amount ? parseFloat(budgetConfig.discount_amount) : null,
+        installments: budgetConfig.installments ? parseInt(budgetConfig.installments) : null,
+        installments_amount: budgetConfig.installments_amount ? parseFloat(budgetConfig.installments_amount) : null,
+      });
+      await loadPlanDetail(planDetail.id);
+    } catch (err) {
+      console.error('Error saving budget config:', err);
+      setError(t('billing.error_save'));
+    } finally {
+      setSavingBudgetConfig(false);
+    }
   };
 
   // ─── Render: loading ──────────────────────────────────────────────────────
@@ -1167,6 +1230,80 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
             )}
           </div>
 
+          {/* Budget Configuration Section */}
+          <div className="bg-white/[0.02] border border-white/[0.06] rounded-xl p-4">
+            <h4 className="text-sm font-semibold text-white mb-4">{t('billing.budget_config')}</h4>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="sm:col-span-2 lg:col-span-3">
+                <label className="block text-xs text-white/40 mb-1">{t('billing.payment_conditions')}</label>
+                <input
+                  type="text"
+                  value={budgetConfig.payment_conditions}
+                  onChange={(e) => setBudgetConfig({ ...budgetConfig, payment_conditions: e.target.value })}
+                  placeholder="Ej: Válido por 30 días"
+                  className="w-full px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white placeholder-white/30 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-white/40 mb-1">{t('billing.discount_pct')}</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.5"
+                  value={budgetConfig.discount_pct}
+                  onChange={(e) => setBudgetConfig({ ...budgetConfig, discount_pct: e.target.value })}
+                  placeholder="0"
+                  className="w-full px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white placeholder-white/30 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-white/40 mb-1">{t('billing.discount_amount')}</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="100"
+                  value={budgetConfig.discount_amount}
+                  onChange={(e) => setBudgetConfig({ ...budgetConfig, discount_amount: e.target.value })}
+                  placeholder="0"
+                  className="w-full px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white placeholder-white/30 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-white/40 mb-1">{t('billing.installments')}</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="48"
+                  value={budgetConfig.installments}
+                  onChange={(e) => setBudgetConfig({ ...budgetConfig, installments: e.target.value })}
+                  placeholder="1"
+                  className="w-full px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white placeholder-white/30 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-white/40 mb-1">{t('billing.installments_amount')}</label>
+                <div className="px-3 py-2 bg-white/[0.02] border border-white/[0.06] rounded-lg text-white/60 text-sm">
+                  {budgetConfig.installments_amount ? formatCurrency(parseFloat(budgetConfig.installments_amount)) : '—'}
+                </div>
+              </div>
+            </div>
+            <div className="mt-4 flex justify-end">
+              <button
+                onClick={handleSaveBudgetConfig}
+                disabled={savingBudgetConfig}
+                className="flex items-center gap-2 bg-primary hover:bg-primary/80 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+              >
+                {savingBudgetConfig ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : (
+                  <Check size={14} />
+                )}
+                {t('billing.save_config')}
+              </button>
+            </div>
+          </div>
+
           {/* Payments Section */}
           <div className="bg-white/[0.02] border border-white/[0.06] rounded-xl p-4">
             <div className="flex justify-between items-center mb-4">
@@ -1194,7 +1331,7 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
                         <th className="text-right py-3 px-2">{t('billing.amount')}</th>
                         <th className="text-left py-3 px-2">{t('billing.method_label')}</th>
                         <th className="text-left py-3 px-2">{t('billing.recorded_by')}</th>
-                        <th className="text-left py-3 px-2">{t('billing.receipt') || 'Comprobante'}</th>
+                        <th className="text-left py-3 px-2">{t('billing.receipt')}</th>
                         <th className="text-left py-3 px-2">{t('billing.notes')}</th>
                         <th className="w-10"></th>
                       </tr>
@@ -1218,6 +1355,13 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
                           </td>
                           <td className="py-3 px-2 text-sm text-white/60">
                             {payment.recorded_by_name || '-'}
+                          </td>
+                          <td className="py-3 px-2">
+                            {payment.payment_receipt_data ? (
+                              <PaymentReceiptBadge receipt={payment.payment_receipt_data} />
+                            ) : (
+                              <span className="text-white/30 text-xs">—</span>
+                            )}
                           </td>
                           <td className="px-3 py-2 text-white/50 text-xs max-w-[120px] truncate" title={payment.notes || ''}>
                             {payment.notes || '-'}
@@ -1259,6 +1403,11 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
                         <p className="text-white/40 text-xs">
                           {new Date(payment.payment_date).toLocaleDateString('es-AR')} — {t(`billing.method.${payment.payment_method}`)}
                         </p>
+                        {payment.payment_receipt_data && (
+                          <div className="mt-1">
+                            <PaymentReceiptBadge receipt={payment.payment_receipt_data} />
+                          </div>
+                        )}
                         {payment.notes && <p className="text-white/30 text-xs truncate mt-1">{payment.notes}</p>}
                       </div>
                       <div className="ml-2 flex-shrink-0">
