@@ -132,13 +132,13 @@ class RegisterPaymentBody(BaseModel):
 
     amount: Decimal = Field(..., gt=0, description="Monto del pago")
     payment_method: PaymentMethod = Field(..., description="Método de pago")
-    payment_date: date = Field(..., description="Fecha del pago")
+    payment_date: Optional[date] = Field(None, description="Fecha del pago (default: hoy)")
     appointment_id: Optional[str] = Field(
         None, description="ID del turno asociado (opcional)"
     )
     receipt_data: Optional[dict] = Field(None, description="Datos del comprobante")
     notes: Optional[str] = Field(None, description="Notas del pago")
-    recorded_by: int = Field(..., description="ID del usuario que registra el pago")
+    recorded_by: Optional[str] = Field(None, description="Email del usuario que registra (se extrae del JWT si no se envía)")
 
     @field_validator("amount")
     @classmethod

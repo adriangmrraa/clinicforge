@@ -1160,7 +1160,7 @@
     "no_payments": "No hay pagos registrados",
     "date": "Fecha",
     "amount": "Monto",
-    "method": "Método",
+    "method_label": "Método de pago",
     "recorded_by": "Registrado por",
     "method": {
       "cash": "Efectivo",
@@ -1169,7 +1169,7 @@
       "insurance": "Obra social"
     },
     "payment_date": "Fecha de pago",
-    "pending_balance_helper": "Saldo pendiente: ${{amount}}",
+    "pending_balance_helper": "Saldo pendiente:",
     "delete_payment_confirm": "¿Eliminar este pago?",
     "error_generic": "Error al procesar la solicitud",
     "error_load": "Error al cargar presupuestos",

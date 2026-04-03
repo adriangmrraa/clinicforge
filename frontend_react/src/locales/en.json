@@ -1861,7 +1861,7 @@
     "no_payments": "No payments recorded",
     "date": "Date",
     "amount": "Amount",
-    "method": "Method",
+    "method_label": "Payment method",
     "recorded_by": "Recorded by",
     "method": {
       "cash": "Cash",
@@ -1870,7 +1870,7 @@
       "insurance": "Insurance"
     },
     "payment_date": "Payment date",
-    "pending_balance_helper": "Pending balance: ${{amount}}",
+    "pending_balance_helper": "Pending balance:",
     "delete_payment_confirm": "Delete this payment?",
     "error_generic": "Error processing request",
     "error_load": "Error loading budgets",

@@ -1649,7 +1649,7 @@
     "no_payments": "Aucun paiement enregistré",
     "date": "Date",
     "amount": "Montant",
-    "method": "Méthode",
+    "method_label": "Méthode de paiement",
     "recorded_by": "Enregistré par",
     "method": {
       "cash": "Espèces",
@@ -1658,7 +1658,7 @@
       "insurance": "Assurance"
     },
     "payment_date": "Date de paiement",
-    "pending_balance_helper": "Solde en attente: {{amount}}$",
+    "pending_balance_helper": "Solde en attente:",
     "delete_payment_confirm": "Supprimer ce paiement?",
     "error_generic": "Erreur lors du traitement",
     "error_load": "Erreur de chargement",

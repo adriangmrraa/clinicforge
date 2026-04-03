@@ -10673,8 +10673,8 @@ async def register_plan_payment(
                 body.payment_method.value
                 if hasattr(body.payment_method, "value")
                 else body.payment_method,
-                body.payment_date,
-                user_data.id,
+                body.payment_date or datetime.now(),
+                body.recorded_by or getattr(user_data, 'email', None) or str(getattr(user_data, 'id', '')),
                 body.appointment_id,
                 json.dumps(body.receipt_data) if body.receipt_data else None,
                 body.notes,
@@ -10763,10 +10763,10 @@ async def register_plan_payment(
             "payment_method": body.payment_method.value
             if hasattr(body.payment_method, "value")
             else body.payment_method,
-            "payment_date": body.payment_date.isoformat()
-            if hasattr(body.payment_date, "isoformat")
-            else str(body.payment_date),
-            "recorded_by": user_data.id,
+            "payment_date": (body.payment_date or datetime.now()).isoformat()
+            if hasattr((body.payment_date or datetime.now()), "isoformat")
+            else str(body.payment_date or datetime.now()),
+            "recorded_by": getattr(user_data, 'email', None) or str(getattr(user_data, 'id', '')),
             "appointment_id": body.appointment_id,
             "notes": body.notes,
             "created_at": datetime.now(timezone.utc).isoformat(),

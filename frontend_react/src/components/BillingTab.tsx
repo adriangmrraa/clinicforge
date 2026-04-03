@@ -741,7 +741,7 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
                       <tr className="text-[10px] font-bold text-white/40 uppercase border-b border-white/[0.04]">
                         <th className="text-left py-3 px-2">{t('billing.date')}</th>
                         <th className="text-right py-3 px-2">{t('billing.amount')}</th>
-                        <th className="text-left py-3 px-2">{t('billing.method')}</th>
+                        <th className="text-left py-3 px-2">{t('billing.method_label')}</th>
                         <th className="text-left py-3 px-2">{t('billing.recorded_by')}</th>
                         <th className="text-left py-3 px-2">{t('billing.notes')}</th>
                         <th className="w-10"></th>
@@ -955,10 +955,10 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
                 placeholder={formatCurrency(pendingTotal)}
                 className="w-full px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-primary"
               />
-              <p className="text-xs text-white/40 mt-1">{t('billing.pending_balance_helper')}{formatCurrency(pendingTotal)}</p>
+              <p className="text-xs text-white/40 mt-1">{t('billing.pending_balance_helper')} {formatCurrency(pendingTotal)}</p>
             </div>
             <div>
-              <label className="block text-sm text-white/60 mb-2">{t('billing.method')}</label>
+              <label className="block text-sm text-white/60 mb-2">{t('billing.method_label')}</label>
               <div className="flex gap-2">
                 {(['cash', 'transfer', 'card'] as const).map((method) => (
                   <button
