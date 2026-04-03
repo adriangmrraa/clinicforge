@@ -46,7 +46,9 @@ services:
   # --- Existing Backend Services ---
 
   orchestrator_service:
-    build: ./orchestrator_service
+    build:
+      context: .
+      dockerfile: orchestrator_service/Dockerfile
     # Port not exposed to host — only accessible via BFF on Docker network
     volumes:
       - orchestrator_uploads:/app/uploads
