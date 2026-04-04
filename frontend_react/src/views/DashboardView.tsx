@@ -141,6 +141,17 @@ export default function DashboardView() {
       loadUrgencies();
     });
 
+    // Nova billing/CRUD updates — refetch dashboard stats
+    socketRef.current.on('BILLING_UPDATED', () => {
+      loadDashboardData(dateRange);
+    });
+    socketRef.current.on('RECORD_UPDATED', () => {
+      loadDashboardData(dateRange);
+    });
+    socketRef.current.on('TREATMENT_PLAN_UPDATED', () => {
+      loadDashboardData(dateRange);
+    });
+
     const loadDashboardData = async (range: string) => {
       try {
         setLoading(true);

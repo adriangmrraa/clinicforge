@@ -194,6 +194,30 @@ export default function PatientDetail() {
       }
     });
 
+    // Nova CRUD/odontogram updates — refresh all tabs for this patient
+    socketRef.current.on('RECORD_UPDATED', (payload: { patient_id?: number }) => {
+      const currentPatientId = id ? parseInt(id) : null;
+      if (!payload.patient_id || payload.patient_id === currentPatientId) {
+        fetchPatientData();
+        setBillingRefreshKey(prev => prev + 1);
+        setDigitalRecordsRefreshKey(prev => prev + 1);
+      }
+    });
+
+    socketRef.current.on('ODONTOGRAM_UPDATED', (payload: { patient_id?: number }) => {
+      const currentPatientId = id ? parseInt(id) : null;
+      if (payload.patient_id && payload.patient_id === currentPatientId) {
+        fetchPatientData();
+      }
+    });
+
+    socketRef.current.on('PAYMENT_CONFIRMED', (payload: { patient_id?: number }) => {
+      const currentPatientId = id ? parseInt(id) : null;
+      if (!payload.patient_id || payload.patient_id === currentPatientId) {
+        setBillingRefreshKey(prev => prev + 1);
+      }
+    });
+
     return () => {
       socketRef.current?.disconnect();
     };

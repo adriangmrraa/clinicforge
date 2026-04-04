@@ -366,6 +366,11 @@ export default function ChatsView() {
       });
     });
 
+    // Nova sent a message — refresh chat list
+    socketRef.current.on('MESSAGE_SENT', () => {
+      fetchChats();
+    });
+
     // Cleanup
     return () => {
       if (socketRef.current) {

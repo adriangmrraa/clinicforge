@@ -3897,6 +3897,7 @@ async def _enviar_mensaje(args: Dict, tenant_id: int, user_role: str) -> str:
             logger.info(
                 f"📩 NOVA {channel_es} sent via Chatwoot to {display}: {message[:80]}"
             )
+            await _nova_emit("MESSAGE_SENT", {"patient_name": display, "channel": channel, "tenant_id": tenant_id})
             return f'Mensaje enviado a {display} por {channel_es}: "{message[:80]}{"..." if len(message) > 80 else ""}"'
 
         # ── META DIRECT (Instagram / Facebook via Graph API) ──
@@ -3977,6 +3978,7 @@ async def _enviar_mensaje(args: Dict, tenant_id: int, user_role: str) -> str:
                 logger.info(
                     f"📩 NOVA {channel_es} sent via Meta Direct to {display}: {message[:80]}"
                 )
+                await _nova_emit("MESSAGE_SENT", {"patient_name": display, "channel": channel, "tenant_id": tenant_id})
                 return f'Mensaje enviado a {display} por {channel_es}: "{message[:80]}{"..." if len(message) > 80 else ""}"'
 
             error_body = resp.text[:200] if hasattr(resp, "text") else ""
@@ -4041,6 +4043,7 @@ async def _enviar_mensaje(args: Dict, tenant_id: int, user_role: str) -> str:
                 logger.info(
                     f"📩 NOVA WhatsApp sent via YCloud to {display} ({phone}): {message[:80]}"
                 )
+                await _nova_emit("MESSAGE_SENT", {"patient_name": display, "channel": "whatsapp", "tenant_id": tenant_id})
                 return f'Mensaje enviado a {display} por WhatsApp: "{message[:80]}{"..." if len(message) > 80 else ""}"'
 
             error_body = resp.text[:200] if hasattr(resp, "text") else ""

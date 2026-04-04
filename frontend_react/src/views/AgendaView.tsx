@@ -379,6 +379,8 @@ export default function AgendaView() {
     socketRef.current.on('NEW_APPOINTMENT', () => fetchDataRef.current?.(true));
     socketRef.current.on('APPOINTMENT_UPDATED', () => fetchDataRef.current?.(true));
     socketRef.current.on('PAYMENT_CONFIRMED', () => fetchDataRef.current?.(true));
+    socketRef.current.on('BILLING_UPDATED', () => fetchDataRef.current?.(true));
+    socketRef.current.on('RECORD_UPDATED', () => fetchDataRef.current?.(true));
     socketRef.current.on('APPOINTMENT_DELETED', (deletedAppointmentId: string) => {
       setAppointments(prevAppointments => {
         const updated = prevAppointments.filter(apt => apt.id !== deletedAppointmentId);
