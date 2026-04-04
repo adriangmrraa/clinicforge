@@ -4652,29 +4652,37 @@ async def verify_payment_receipt(
                         """
                         SELECT tp.id FROM treatment_plans tp
                         WHERE tp.tenant_id = $1 AND tp.patient_id = $2
-                          AND tp.status IN ('approved', 'in_progress')
+                          AND tp.status IN ('draft', 'approved', 'in_progress')
                         ORDER BY tp.created_at DESC LIMIT 1
                         """,
                         tenant_id,
                         apt["patient_id"],
                     )
                     if active_plan:
-                        pay_amount = amount_value or expected_amount
-                        await db.pool.execute(
-                            """
-                            INSERT INTO treatment_plan_payments
-                                (id, plan_id, tenant_id, amount, payment_method, payment_date, notes)
-                            VALUES ($1, $2, $3, $4, 'transfer', NOW(), $5)
-                            """,
-                            str(_uuid_mod2.uuid4()),
-                            str(active_plan["id"]),
-                            tenant_id,
-                            pay_amount,
-                            f"Seña verificada por IA (turno {str(apt['id'])[:8]}...)",
+                        apt_id_str = str(apt["id"])
+                        # Duplicate check: avoid re-inserting for same appointment
+                        existing = await db.pool.fetchval(
+                            "SELECT id FROM treatment_plan_payments WHERE plan_id=$1 AND notes LIKE $2",
+                            active_plan["id"],
+                            f"%apt:{apt_id_str}%",
                         )
-                        logger.info(
-                            f"💰 verify_receipt: seña also recorded in plan {active_plan['id']}"
-                        )
+                        if not existing:
+                            pay_amount = amount_value or expected_amount
+                            await db.pool.execute(
+                                """
+                                INSERT INTO treatment_plan_payments
+                                    (id, plan_id, tenant_id, amount, payment_method, payment_date, notes)
+                                VALUES ($1, $2, $3, $4, 'transfer', NOW(), $5)
+                                """,
+                                str(_uuid_mod2.uuid4()),
+                                str(active_plan["id"]),
+                                tenant_id,
+                                pay_amount,
+                                f"migrated:apt:{apt_id_str}",
+                            )
+                            logger.info(
+                                f"💰 verify_receipt: seña also recorded in plan {active_plan['id']}"
+                            )
                 except Exception as plan_link_err:
                     logger.warning(
                         f"💰 verify_receipt: plan link for seña failed (non-fatal): {plan_link_err}"

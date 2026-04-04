@@ -46,8 +46,9 @@ interface TreatmentPlanPayment {
   id: string;
   amount: number;
   payment_method: 'cash' | 'transfer' | 'card';
-  payment_date: string;
-  recorded_by_name: string | null;
+  payment_date: string | null;
+  recorded_by?: string | null;
+  recorded_by_name?: string | null;
   notes: string | null;
   appointment_id?: number;
   payment_receipt_data?: {
@@ -1442,7 +1443,7 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
                       {planDetail.payments.map((payment) => (
                         <tr key={payment.id} className="border-b border-white/[0.04] hover:bg-white/[0.02]">
                           <td className="py-3 px-2 text-sm text-white">
-                            {new Date(payment.payment_date).toLocaleDateString('es-AR')}
+                            {payment.payment_date ? new Date(payment.payment_date).toLocaleDateString('es-AR') : '—'}
                           </td>
                           <td className="py-3 px-2 text-sm text-white text-right font-medium">
                             {formatCurrency(payment.amount)}
@@ -1456,7 +1457,7 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
                             </div>
                           </td>
                           <td className="py-3 px-2 text-sm text-white/60">
-                            {payment.recorded_by_name || '-'}
+                            {payment.recorded_by || payment.recorded_by_name || '-'}
                           </td>
                           <td className="py-3 px-2">
                             {payment.payment_receipt_data ? (
@@ -1503,7 +1504,7 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
                       <div className="flex-1 min-w-0">
                         <p className="text-white text-sm font-medium">{formatCurrency(payment.amount)}</p>
                         <p className="text-white/40 text-xs">
-                          {new Date(payment.payment_date).toLocaleDateString('es-AR')} — {t(`billing.method.${payment.payment_method}`)}
+                          {payment.payment_date ? new Date(payment.payment_date).toLocaleDateString('es-AR') : '—'} — {t(`billing.method.${payment.payment_method}`)}
                         </p>
                         {payment.payment_receipt_data && (
                           <div className="mt-1">

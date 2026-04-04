@@ -9615,6 +9615,14 @@ async def get_patient_billing_summary(
         patient_id,
     )
 
+    # 6. Patient email
+    patient_email_row = await db.pool.fetchrow(
+        "SELECT email FROM patients WHERE id=$1 AND tenant_id=$2",
+        patient_id,
+        tenant_id,
+    )
+    patient_email = patient_email_row["email"] if patient_email_row and patient_email_row["email"] else None
+
     return {
         "appointments": appointments,
         "treatment_groups": treatment_groups,
@@ -9623,7 +9631,7 @@ async def get_patient_billing_summary(
         "global_total_pending": round(total_estimated - total_paid, 2),
         "has_active_plan": active_plan is not None,
         "active_plan_id": str(active_plan["id"]) if active_plan else None,
-        "patient_email": None,
+        "patient_email": patient_email,
     }
 
 
@@ -10073,10 +10081,11 @@ async def sync_appointments_to_plan(
                         continue
 
                     apt_id = apt["id"]
+                    # Use full apt_id in both check and insert for reliable dedup
                     existing_payment = await conn.fetchval(
                         "SELECT id FROM treatment_plan_payments WHERE plan_id=$1 AND notes LIKE $2",
                         plan_uuid,
-                        f"%{apt_id}%",
+                        f"%apt:{apt_id}%",
                     )
                     if existing_payment:
                         continue
@@ -10099,7 +10108,7 @@ async def sync_appointments_to_plan(
                         item_id,
                         tenant_id,
                         payment_amount,
-                        f"Seña verificada (turno {apt_id[:8]}...)",
+                        f"migrated:apt:{apt_id}",
                     )
                     payments_migrated += 1
 
