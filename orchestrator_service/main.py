@@ -6954,9 +6954,10 @@ except ImportError as e:
     logger.warning(f"⚠️ Could not import metrics router: {e}")
 
 try:
-    from routes.nova_routes import router as nova_router
+    from routes.nova_routes import router as nova_router, _tg_verify_router
 
     app.include_router(nova_router)
+    app.include_router(_tg_verify_router)
     logger.info("nova_routes_registered")
 except Exception as e:
     logger.error(f"nova_routes_registration_failed: {e}")
@@ -8168,6 +8169,15 @@ page=billing / page=presupuesto → MODO FACTURACIÓN:
   Contexto: presupuestos y cobros.
   ACCIONES PRIORITARIAS: facturacion_pendiente, obtener_registros(treatment_plans), registrar_pago.
   SUGERENCIAS PROACTIVAS: "Hay X planes con saldo pendiente por $Y total."
+
+page=telegram → MODO TELEGRAM:
+  Contexto: texto puro (no voz). Respuestas CONCISAS.
+  Formatear: **bold** para títulos/datos importantes, listas con •, números con formato $X.XXX
+  Máximo ~3000 chars por respuesta (Telegram limita a 4096).
+  NO emojis excesivos (1-2 máximo por respuesta).
+  Priorizar datos concretos sobre explicaciones largas.
+  "Hola" / primer mensaje → resumen_semana automáticamente.
+  ACCIONES PRIORITARIAS: todas — mismo poder que en cualquier otra página.
 
 CUALQUIER OTRA PÁGINA → Modo general. Usá todo el arsenal sin restricción.
 

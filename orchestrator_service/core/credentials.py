@@ -56,6 +56,11 @@ GOOGLE_LOGIN_REDIRECT_URI = "GOOGLE_LOGIN_REDIRECT_URI"
 GOOGLE_DEVELOPER_TOKEN = "GOOGLE_DEVELOPER_TOKEN"
 GOOGLE_ADS_API_VERSION = "GOOGLE_ADS_API_VERSION"
 
+# Telegram Bot Constants
+TELEGRAM_BOT_TOKEN = "TELEGRAM_BOT_TOKEN"
+TELEGRAM_WEBHOOK_SECRET = "TELEGRAM_WEBHOOK_SECRET"
+TELEGRAM_WEBHOOK_ACCESS_TOKEN = "TELEGRAM_WEBHOOK_ACCESS_TOKEN"
+
 
 async def get_tenant_credential(tenant_id: int, name: str) -> Optional[str]:
     """Obtiene el valor de una credencial del tenant desde la tabla credentials."""

@@ -4413,6 +4413,28 @@ async def _onboarding_status(args: Dict, tenant_id: int, user_role: str) -> str:
 # =============================================================================
 
 
+def nova_tools_for_chat_completions() -> List[Dict[str, Any]]:
+    """
+    Convert NOVA_TOOLS_SCHEMA from OpenAI Realtime flat format to Chat Completions format.
+
+    Realtime format:  {"type": "function", "name": ..., "description": ..., "parameters": ...}
+    Chat Completions: {"type": "function", "function": {"name": ..., "description": ..., "parameters": ...}}
+    """
+    tools = []
+    for tool in NOVA_TOOLS_SCHEMA:
+        tools.append(
+            {
+                "type": "function",
+                "function": {
+                    "name": tool["name"],
+                    "description": tool.get("description", ""),
+                    "parameters": tool.get("parameters", {}),
+                },
+            }
+        )
+    return tools
+
+
 async def execute_nova_tool(
     name: str,
     args: Dict[str, Any],

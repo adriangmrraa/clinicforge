@@ -47,9 +47,13 @@ limiter = Limiter(key_func=get_remote_address)
 # Configuración
 from core.credentials import (
     get_tenant_credential,
+    save_tenant_credential,
     CREDENTIALS_FERNET_KEY,
     encrypt_value,
     decrypt_value,
+    TELEGRAM_BOT_TOKEN,
+    TELEGRAM_WEBHOOK_SECRET,
+    TELEGRAM_WEBHOOK_ACCESS_TOKEN,
 )
 from core.auth import verify_admin_token, get_resolved_tenant_id, ADMIN_TOKEN
 from core.security_utils import generate_signed_url
@@ -12936,3 +12940,370 @@ async def send_liquidation_email_endpoint(
         "success": True,
         "message": f"Liquidación enviada a {to_email}",
     }
+
+
+# ---------------------------------------------------------------------------
+# T1.3 — Telegram Authorized Users CRUD
+# ---------------------------------------------------------------------------
+
+class TelegramAuthorizedUserCreate(BaseModel):
+    display_name: str
+    telegram_chat_id: str
+    user_role: str = "ceo"
+
+
+class TelegramAuthorizedUserUpdate(BaseModel):
+    display_name: Optional[str] = None
+    user_role: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+def _mask_chat_id(chat_id: str) -> str:
+    """Return first 3 chars + *** + last 3 chars. Falls back to full masking for short values."""
+    if len(chat_id) <= 6:
+        return "***"
+    return f"{chat_id[:3]}***{chat_id[-3:]}"
+
+
+@router.get("/telegram/authorized-users", tags=["Telegram"])
+async def list_telegram_authorized_users(
+    user_data=Depends(verify_admin_token),
+    resolved_tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    """Lista usuarios autorizados de Telegram para el tenant (chat_id enmascarado)."""
+    rows = await db.fetch(
+        """
+        SELECT id, display_name, user_role, is_active, telegram_chat_id, created_at, updated_at
+        FROM telegram_authorized_users
+        WHERE tenant_id = $1
+        ORDER BY created_at ASC
+        """,
+        resolved_tenant_id,
+    )
+
+    result = []
+    for row in rows:
+        decrypted = decrypt_value(row["telegram_chat_id"])
+        result.append(
+            {
+                "id": row["id"],
+                "display_name": row["display_name"],
+                "user_role": row["user_role"],
+                "is_active": row["is_active"],
+                "telegram_chat_id": _mask_chat_id(decrypted),
+                "created_at": row["created_at"].isoformat() if row["created_at"] else None,
+                "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None,
+            }
+        )
+
+    return result
+
+
+@router.post("/telegram/authorized-users", tags=["Telegram"])
+async def create_telegram_authorized_user(
+    payload: TelegramAuthorizedUserCreate,
+    user_data=Depends(verify_admin_token),
+    resolved_tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    """Agrega un usuario autorizado de Telegram. Encripta el chat_id antes de guardar."""
+    encrypted_chat_id = encrypt_value(payload.telegram_chat_id)
+
+    try:
+        row = await db.pool.fetchrow(
+            """
+            INSERT INTO telegram_authorized_users
+                (tenant_id, display_name, telegram_chat_id, user_role, is_active, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, true, NOW(), NOW())
+            RETURNING id, display_name, user_role, is_active, telegram_chat_id, created_at, updated_at
+            """,
+            resolved_tenant_id,
+            payload.display_name,
+            encrypted_chat_id,
+            payload.user_role,
+        )
+    except asyncpg.UniqueViolationError:
+        raise HTTPException(
+            status_code=409,
+            detail="Ya existe un usuario con ese Telegram chat ID para este tenant.",
+        )
+
+    decrypted = decrypt_value(row["telegram_chat_id"])
+    return {
+        "id": row["id"],
+        "display_name": row["display_name"],
+        "user_role": row["user_role"],
+        "is_active": row["is_active"],
+        "telegram_chat_id": _mask_chat_id(decrypted),
+        "created_at": row["created_at"].isoformat() if row["created_at"] else None,
+        "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None,
+    }
+
+
+@router.put("/telegram/authorized-users/{user_id}", tags=["Telegram"])
+async def update_telegram_authorized_user(
+    user_id: int,
+    payload: TelegramAuthorizedUserUpdate,
+    user_data=Depends(verify_admin_token),
+    resolved_tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    """Actualiza display_name, user_role o is_active de un usuario autorizado."""
+    # Build dynamic SET clause from non-None fields
+    set_clauses = []
+    values: List[Any] = []
+    param_idx = 1
+
+    if payload.display_name is not None:
+        set_clauses.append(f"display_name = ${param_idx}")
+        values.append(payload.display_name)
+        param_idx += 1
+
+    if payload.user_role is not None:
+        set_clauses.append(f"user_role = ${param_idx}")
+        values.append(payload.user_role)
+        param_idx += 1
+
+    if payload.is_active is not None:
+        set_clauses.append(f"is_active = ${param_idx}")
+        values.append(payload.is_active)
+        param_idx += 1
+
+    if not set_clauses:
+        raise HTTPException(status_code=400, detail="No hay campos para actualizar.")
+
+    set_clauses.append(f"updated_at = NOW()")
+
+    values.append(user_id)           # $N   → WHERE id
+    values.append(resolved_tenant_id)  # $N+1 → WHERE tenant_id
+
+    query = f"""
+        UPDATE telegram_authorized_users
+        SET {', '.join(set_clauses)}
+        WHERE id = ${param_idx} AND tenant_id = ${param_idx + 1}
+        RETURNING id, display_name, user_role, is_active, telegram_chat_id, created_at, updated_at
+    """
+
+    row = await db.pool.fetchrow(query, *values)
+    if not row:
+        raise HTTPException(
+            status_code=404,
+            detail="Usuario no encontrado o no pertenece a este tenant.",
+        )
+
+    decrypted = decrypt_value(row["telegram_chat_id"])
+    return {
+        "id": row["id"],
+        "display_name": row["display_name"],
+        "user_role": row["user_role"],
+        "is_active": row["is_active"],
+        "telegram_chat_id": _mask_chat_id(decrypted),
+        "created_at": row["created_at"].isoformat() if row["created_at"] else None,
+        "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None,
+    }
+
+
+@router.delete("/telegram/authorized-users/{user_id}", tags=["Telegram"])
+async def delete_telegram_authorized_user(
+    user_id: int,
+    user_data=Depends(verify_admin_token),
+    resolved_tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    """Elimina un usuario autorizado de Telegram verificando propiedad del tenant."""
+    result = await db.pool.execute(
+        """
+        DELETE FROM telegram_authorized_users
+        WHERE id = $1 AND tenant_id = $2
+        """,
+        user_id,
+        resolved_tenant_id,
+    )
+
+    # asyncpg returns "DELETE N" — check count
+    deleted = int(result.split()[-1])
+    if deleted == 0:
+        raise HTTPException(
+            status_code=404,
+            detail="Usuario no encontrado o no pertenece a este tenant.",
+        )
+
+    return {"success": True, "deleted_id": user_id}
+
+
+# ---------------------------------------------------------------------------
+# T1.4 — Telegram Integration Config
+# ---------------------------------------------------------------------------
+
+class TelegramConfigCreate(BaseModel):
+    bot_token: str
+
+
+@router.get("/telegram/config", tags=["Telegram"])
+async def get_telegram_config(
+    request: Request,
+    user_data=Depends(verify_admin_token),
+    resolved_tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    """
+    Devuelve configuración del bot de Telegram para el tenant.
+    Si no está configurado: { configured: false }.
+    Si está configurado: llama a getMe para obtener el username del bot.
+    """
+    token = await get_tenant_credential(resolved_tenant_id, TELEGRAM_BOT_TOKEN)
+    if not token:
+        return {"configured": False}
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(f"https://api.telegram.org/bot{token}/getMe")
+            resp.raise_for_status()
+            bot_info = resp.json().get("result", {})
+    except Exception as e:
+        logger.error(f"[Telegram] getMe failed for tenant {resolved_tenant_id}: {e}")
+        raise HTTPException(
+            status_code=502,
+            detail="No se pudo verificar el bot con Telegram. Revisá el token.",
+        )
+
+    api_base = os.getenv("BASE_URL", "").rstrip("/")
+    if not api_base:
+        scheme = request.headers.get("x-forwarded-proto", request.url.scheme)
+        host = request.headers.get("x-forwarded-host", request.url.netloc)
+        api_base = f"{scheme}://{host}"
+
+    access_token = await get_tenant_credential(
+        resolved_tenant_id, TELEGRAM_WEBHOOK_ACCESS_TOKEN
+    )
+    webhook_url = (
+        f"{api_base}/telegram/webhook/{access_token}" if access_token else None
+    )
+
+    return {
+        "configured": True,
+        "bot_username": bot_info.get("username"),
+        "webhook_url": webhook_url,
+    }
+
+
+@router.post("/telegram/config", tags=["Telegram"])
+async def save_telegram_config(
+    payload: TelegramConfigCreate,
+    request: Request,
+    user_data=Depends(verify_admin_token),
+    resolved_tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    """
+    Configura el bot de Telegram para el tenant:
+    1. Valida el token llamando a getMe.
+    2. Genera webhook_secret y access_token aleatorios.
+    3. Guarda las tres credenciales encriptadas.
+    4. Registra el webhook en Telegram.
+    """
+    # 1. Validate token first
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(
+                f"https://api.telegram.org/bot{payload.bot_token}/getMe"
+            )
+            resp.raise_for_status()
+            bot_info = resp.json().get("result", {})
+    except Exception as e:
+        logger.error(f"[Telegram] getMe validation failed: {e}")
+        raise HTTPException(
+            status_code=400,
+            detail="Token inválido o Telegram no accesible. Verificá el bot token.",
+        )
+
+    # 2. Generate secrets
+    webhook_secret = os.urandom(32).hex()  # 64 hex chars
+    access_token = str(uuid.uuid4())
+
+    # 3. Persist credentials (encrypted via save_tenant_credential)
+    await save_tenant_credential(
+        resolved_tenant_id, TELEGRAM_BOT_TOKEN, payload.bot_token, "telegram"
+    )
+    await save_tenant_credential(
+        resolved_tenant_id, TELEGRAM_WEBHOOK_SECRET, webhook_secret, "telegram"
+    )
+    await save_tenant_credential(
+        resolved_tenant_id, TELEGRAM_WEBHOOK_ACCESS_TOKEN, access_token, "telegram"
+    )
+
+    # 4. Build webhook URL
+    api_base = os.getenv("BASE_URL", "").rstrip("/")
+    if not api_base:
+        scheme = request.headers.get("x-forwarded-proto", request.url.scheme)
+        host = request.headers.get("x-forwarded-host", request.url.netloc)
+        api_base = f"{scheme}://{host}"
+
+    webhook_url = f"{api_base}/telegram/webhook/{access_token}"
+
+    # 5. Register webhook with Telegram
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post(
+                f"https://api.telegram.org/bot{payload.bot_token}/setWebhook",
+                json={
+                    "url": webhook_url,
+                    "secret_token": webhook_secret,
+                    "allowed_updates": ["message", "callback_query"],
+                },
+            )
+            resp.raise_for_status()
+            tg_result = resp.json()
+    except Exception as e:
+        logger.error(
+            f"[Telegram] setWebhook failed for tenant {resolved_tenant_id}: {e}"
+        )
+        raise HTTPException(
+            status_code=502,
+            detail="Credenciales guardadas pero no se pudo registrar el webhook en Telegram.",
+        )
+
+    if not tg_result.get("ok"):
+        raise HTTPException(
+            status_code=502,
+            detail=f"Telegram rechazó el webhook: {tg_result.get('description')}",
+        )
+
+    return {
+        "configured": True,
+        "bot_username": bot_info.get("username"),
+        "webhook_url": webhook_url,
+    }
+
+
+@router.delete("/telegram/config", tags=["Telegram"])
+async def delete_telegram_config(
+    user_data=Depends(verify_admin_token),
+    resolved_tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    """
+    Desactiva el bot de Telegram para el tenant:
+    1. Llama a deleteWebhook en Telegram.
+    2. Elimina las tres credenciales del vault.
+    """
+    token = await get_tenant_credential(resolved_tenant_id, TELEGRAM_BOT_TOKEN)
+
+    if token:
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.post(
+                    f"https://api.telegram.org/bot{token}/deleteWebhook"
+                )
+                resp.raise_for_status()
+        except Exception as e:
+            # Log but continue — we still remove credentials locally
+            logger.warning(
+                f"[Telegram] deleteWebhook failed for tenant {resolved_tenant_id}: {e}"
+            )
+
+    # Remove all three credentials
+    await db.pool.execute(
+        """
+        DELETE FROM credentials
+        WHERE tenant_id = $1 AND name = ANY($2::text[])
+        """,
+        resolved_tenant_id,
+        [TELEGRAM_BOT_TOKEN, TELEGRAM_WEBHOOK_SECRET, TELEGRAM_WEBHOOK_ACCESS_TOKEN],
+    )
+
+    return {"configured": False}

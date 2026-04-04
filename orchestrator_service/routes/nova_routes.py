@@ -10,7 +10,7 @@ import logging
 from datetime import datetime, timedelta, date, timezone
 from typing import List, Optional, Dict, Any
 
-from fastapi import APIRouter, HTTPException, Query, Depends, Request, Body
+from fastapi import APIRouter, HTTPException, Query, Depends, Request, Body, Header
 from pydantic import BaseModel
 
 from db import db
@@ -1302,3 +1302,205 @@ async def apply_suggestion(
     except Exception as e:
         logger.error(f"nova_apply_suggestion_error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error aplicando sugerencia: {str(e)}")
+
+
+# ===================================================================
+# 8. POST /admin/nova/telegram-message
+# ===================================================================
+
+class TelegramMessageRequest(BaseModel):
+    tenant_id: int
+    text: str
+    user_role: str = "ceo"
+    user_id: str = ""
+
+
+@router.post("/telegram-message")
+async def nova_telegram_message(
+    body: TelegramMessageRequest,
+    user_data=Depends(verify_admin_token),
+):
+    """
+    Process a Telegram text message through Nova using OpenAI Chat Completions.
+    Returns the assistant's response text and a list of tool names called.
+    """
+    import json as json_mod
+    import openai
+    from services.nova_tools import execute_nova_tool, nova_tools_for_chat_completions
+
+    tenant_id = body.tenant_id
+    user_role = body.user_role
+    user_id = body.user_id
+
+    # 1. Build Nova system prompt (re-use the inline prompt pattern from main.py)
+    clinic_name = "la clinica"
+    try:
+        cn = await db.pool.fetchval(
+            "SELECT clinic_name FROM tenants WHERE id = $1", tenant_id
+        )
+        if cn:
+            clinic_name = cn
+    except Exception:
+        pass
+
+    system_prompt = f"""IDIOMA: Espanol argentino con voseo. NUNCA cambies de idioma.
+
+Sos Nova, la inteligencia artificial operativa de "{clinic_name}". No sos un asistente — sos el sistema nervioso central de la clínica.
+Página: telegram. Rol: {user_role}. Tenant: {tenant_id}.
+
+PRINCIPIO JARVIS (AGRESIVO — esto es tu ADN):
+1. TE PIDEN → EJECUTÁS. No "voy a buscar", no "déjame verificar" — HACELO y respondé con el resultado.
+2. NO TE PIDEN PERO VES LA OPORTUNIDAD → SUGERÍ LA ACCIÓN.
+3. FALTA UN DATO → INFERILO del contexto. Solo si es IMPOSIBLE inferir → preguntá UNA vez.
+4. DESPUÉS DE EJECUTAR → NO pares. Ofrecé el SIGUIENTE paso lógico.
+5. NUNCA digas "no puedo", "no tengo acceso", "necesito que me des". TENÉS ACCESO A TODO. BUSCALO.
+
+page=telegram → MODO TELEGRAM:
+  Contexto: texto puro (no voz). Respuestas CONCISAS.
+  Formatear: **bold** para títulos/datos importantes, listas con •, números con formato $X.XXX
+  Máximo ~3000 chars por respuesta (Telegram limita a 4096).
+  NO emojis excesivos (1-2 máximo por respuesta).
+  Priorizar datos concretos sobre explicaciones largas.
+  "Hola" / primer mensaje → resumen_semana automáticamente.
+  ACCIONES PRIORITARIAS: todas — mismo poder que en cualquier otra página.
+
+RAZONAMIENTO POR ROL:
+- CEO (user_role=ceo): Acceso total. Priorizá datos financieros, analytics, comparativas.
+- Professional (user_role=professional): Su agenda, sus pacientes. Priorizá datos clínicos.
+- Secretary (user_role=secretary): Agenda, pacientes, cobros. NO analytics CEO.
+"""
+
+    # 2. Convert tool schemas to Chat Completions format
+    cc_tools = nova_tools_for_chat_completions()
+
+    # 3. OpenAI Chat Completions agentic loop (max 10 rounds)
+    client = openai.AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": body.text},
+    ]
+    tools_called: List[str] = []
+    response_text = ""
+
+    for _round in range(10):
+        try:
+            completion = await client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=messages,
+                tools=cc_tools,
+                tool_choice="auto",
+            )
+        except Exception as api_err:
+            logger.error(f"nova_telegram_openai_error: {api_err}", exc_info=True)
+            raise HTTPException(status_code=502, detail=f"Error de OpenAI: {str(api_err)}")
+
+        msg = completion.choices[0].message
+
+        # No tool calls → final text response
+        if not msg.tool_calls:
+            response_text = msg.content or ""
+            break
+
+        # Append assistant message with tool calls
+        messages.append(
+            {
+                "role": "assistant",
+                "content": msg.content or "",
+                "tool_calls": [
+                    {
+                        "id": tc.id,
+                        "type": "function",
+                        "function": {
+                            "name": tc.function.name,
+                            "arguments": tc.function.arguments,
+                        },
+                    }
+                    for tc in msg.tool_calls
+                ],
+            }
+        )
+
+        # 4. Execute tool calls
+        for tc in msg.tool_calls:
+            tool_name = tc.function.name
+            tools_called.append(tool_name)
+            try:
+                args = json_mod.loads(tc.function.arguments or "{}")
+            except Exception:
+                args = {}
+
+            try:
+                tool_result = await execute_nova_tool(
+                    name=tool_name,
+                    args=args,
+                    tenant_id=tenant_id,
+                    user_role=user_role,
+                    user_id=user_id,
+                )
+            except Exception as tool_err:
+                logger.error(f"nova_telegram_tool_error [{tool_name}]: {tool_err}", exc_info=True)
+                tool_result = f"Error ejecutando {tool_name}: {str(tool_err)}"
+
+            messages.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": tc.id,
+                    "content": str(tool_result),
+                }
+            )
+
+    logger.info(
+        f"nova_telegram: tenant={tenant_id} role={user_role} "
+        f"tools={tools_called} resp_len={len(response_text)}"
+    )
+
+    return {"response_text": response_text, "tools_called": tools_called}
+
+
+# ===================================================================
+# 9. GET /admin/telegram/verify-user/{tenant_id}/{chat_id}
+# ===================================================================
+
+_tg_verify_router = APIRouter(prefix="/admin/telegram", tags=["telegram"])
+
+
+@_tg_verify_router.get("/verify-user/{tenant_id}/{chat_id}")
+async def telegram_verify_user(
+    tenant_id: int,
+    chat_id: str,
+    x_admin_token: str = Header(None),
+):
+    """
+    Verify whether a Telegram chat_id is authorized for a given tenant.
+    Called by telegram_service internally — uses X-Admin-Token only (no JWT needed).
+    Returns { authorized, user_role, display_name }.
+    """
+    from core.auth import ADMIN_TOKEN
+    from core.credentials import decrypt_value
+
+    if x_admin_token != ADMIN_TOKEN:
+        raise HTTPException(status_code=401, detail="Token de infraestructura inválido.")
+
+    rows = await db.pool.fetch(
+        """
+        SELECT telegram_chat_id, user_role, display_name
+        FROM telegram_authorized_users
+        WHERE tenant_id = $1 AND is_active = true
+        """,
+        tenant_id,
+    )
+
+    for row in rows:
+        try:
+            decrypted = decrypt_value(row["telegram_chat_id"])
+        except Exception:
+            decrypted = row["telegram_chat_id"]
+
+        if str(decrypted).strip() == str(chat_id).strip():
+            return {
+                "authorized": True,
+                "user_role": row["user_role"],
+                "display_name": row["display_name"],
+            }
+
+    return {"authorized": False, "user_role": None, "display_name": None}
