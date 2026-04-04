@@ -46,6 +46,8 @@ _rate_limiter: Dict[int, float] = {}  # chat_id → last_message_time
 RATE_LIMIT_SECONDS = 2
 MAX_TOOL_ROUNDS = 10
 TELEGRAM_MAX_LEN = 4096
+HISTORY_TTL = 1800       # 30 min conversation memory
+MAX_HISTORY_MESSAGES = 40  # keep last 40 messages (20 exchanges)
 
 # ── Buffer constants ──────────────────────────────────────────────────────────
 BUFFER_TTL_TEXT = 12    # seconds — text messages
@@ -138,17 +140,50 @@ def clear_auth_cache():
 
 # ── Nova Processing (DIRECT — no HTTP) ────────────────────────────────────────
 
+async def _get_conversation_history(tenant_id: int, chat_id: int) -> list:
+    """Load conversation history from Redis."""
+    try:
+        redis = _get_redis()
+        key = f"tg_history:{tenant_id}:{chat_id}"
+        data = redis.get(key)
+        if data:
+            history = json.loads(data if isinstance(data, str) else data.decode())
+            return history[-MAX_HISTORY_MESSAGES:]
+        return []
+    except Exception as e:
+        logger.warning(f"Failed to load Telegram history: {e}")
+        return []
+
+
+async def _save_conversation_history(
+    tenant_id: int, chat_id: int, history: list
+) -> None:
+    """Save conversation history to Redis with TTL."""
+    try:
+        redis = _get_redis()
+        key = f"tg_history:{tenant_id}:{chat_id}"
+        # Only keep user/assistant messages (no tool calls — they bloat history)
+        trimmed = [
+            m for m in history
+            if m.get("role") in ("user", "assistant") and isinstance(m.get("content"), str)
+        ][-MAX_HISTORY_MESSAGES:]
+        redis.setex(key, HISTORY_TTL, json.dumps(trimmed))
+    except Exception as e:
+        logger.warning(f"Failed to save Telegram history: {e}")
+
+
 async def _process_with_nova(
-    text: str, tenant_id: int, user_role: str, user_id: str, display_name: str
+    text: str, tenant_id: int, user_role: str, user_id: str, display_name: str,
+    chat_id: int = 0,
 ) -> tuple:
-    """Process a message through Nova. Returns (response_text, tools_called)."""
+    """Process a message through Nova with conversation history. Returns (response_text, tools_called)."""
     from services.nova_tools import execute_nova_tool, nova_tools_for_chat_completions
 
     try:
         import openai
         client = openai.AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-        # Build system prompt
+        # Build system prompt — SAME as Nova Realtime, page=telegram
         try:
             from db import db as db_pool
             clinic_row = await db_pool.fetchrow(
@@ -158,26 +193,18 @@ async def _process_with_nova(
         except Exception:
             clinic_name = "Clínica"
 
-        system_prompt = f"""Sos Nova, la inteligencia artificial operativa de "{clinic_name}". Comunicación por Telegram.
-Rol: {user_role}. Tenant: {tenant_id}. Usuario: {display_name}.
-
-REGLAS TELEGRAM:
-- Respuestas CONCISAS (máximo 3000 chars). Datos concretos, no explicaciones largas.
-- Formateá con texto plano legible: bullets •, separadores ---, mayúsculas para títulos.
-- 1-2 emojis máximo por respuesta.
-- Ejecutar tools PRIMERO, hablar después. NUNCA "voy a buscar" — HACELO.
-- Encadenar 3-5 tools es NORMAL. Sin confirmación intermedia.
-- "Hola" = resumen_semana automáticamente.
-- NUNCA digas "no puedo". Tenés acceso a TODO via tools.
-"""
+        from main import build_nova_system_prompt
+        system_prompt = build_nova_system_prompt(clinic_name, "telegram", user_role, tenant_id)
 
         # Convert tool schemas
         cc_tools = nova_tools_for_chat_completions()
 
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": text},
-        ]
+        # Load conversation history
+        history = await _get_conversation_history(tenant_id, chat_id) if chat_id else []
+
+        messages = [{"role": "system", "content": system_prompt}]
+        messages.extend(history)
+        messages.append({"role": "user", "content": text})
 
         tools_called = []
 
@@ -195,7 +222,12 @@ REGLAS TELEGRAM:
 
             # No tool calls — we have the final answer
             if not choice.message.tool_calls:
-                return (choice.message.content or "", tools_called)
+                response_text = choice.message.content or ""
+                # Save user + assistant to history
+                history.append({"role": "user", "content": text})
+                history.append({"role": "assistant", "content": response_text})
+                await _save_conversation_history(tenant_id, chat_id, history)
+                return (response_text, tools_called)
 
             # Process tool calls
             messages.append(choice.message)
@@ -226,7 +258,11 @@ REGLAS TELEGRAM:
             model="gpt-4o-mini",
             messages=messages,
         )
-        return (final.choices[0].message.content or "", tools_called)
+        response_text = final.choices[0].message.content or ""
+        history.append({"role": "user", "content": text})
+        history.append({"role": "assistant", "content": response_text})
+        await _save_conversation_history(tenant_id, chat_id, history)
+        return (response_text, tools_called)
 
     except Exception as e:
         logger.error(f"Nova Telegram processing error: {e}", exc_info=True)
@@ -464,6 +500,7 @@ async def _process_and_respond(
             user_role=user_info["user_role"],
             user_id=str(chat_id),
             display_name=user_info["display_name"],
+            chat_id=chat_id,
         )
     finally:
         cancel_typing.set()
@@ -971,6 +1008,7 @@ async def _handle_callback(update: Update, context) -> None:
         user_role=user_info["user_role"],
         user_id=str(chat_id),
         display_name=user_info["display_name"],
+        chat_id=chat_id,
     )
 
     chunks = chunk_message(response_text or "Sin datos")
