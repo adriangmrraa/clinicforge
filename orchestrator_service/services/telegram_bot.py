@@ -177,11 +177,13 @@ def clear_auth_cache():
 # ── Nova Processing (DIRECT — no HTTP) ────────────────────────────────────────
 
 async def _get_conversation_history(tenant_id: int, chat_id: int) -> list:
-    """Load conversation history from Redis."""
+    """Load conversation history from Redis (async)."""
     try:
         redis = _get_redis()
+        if not redis:
+            return []
         key = f"tg_history:{tenant_id}:{chat_id}"
-        data = redis.get(key)
+        data = await redis.get(key)
         if data:
             history = json.loads(data if isinstance(data, str) else data.decode())
             return history[-MAX_HISTORY_MESSAGES:]
@@ -194,16 +196,18 @@ async def _get_conversation_history(tenant_id: int, chat_id: int) -> list:
 async def _save_conversation_history(
     tenant_id: int, chat_id: int, history: list
 ) -> None:
-    """Save conversation history to Redis with TTL."""
+    """Save conversation history to Redis with TTL (async)."""
     try:
         redis = _get_redis()
+        if not redis:
+            return
         key = f"tg_history:{tenant_id}:{chat_id}"
         # Only keep user/assistant messages (no tool calls — they bloat history)
         trimmed = [
             m for m in history
             if m.get("role") in ("user", "assistant") and isinstance(m.get("content"), str)
         ][-MAX_HISTORY_MESSAGES:]
-        redis.setex(key, HISTORY_TTL, json.dumps(trimmed))
+        await redis.setex(key, HISTORY_TTL, json.dumps(trimmed))
     except Exception as e:
         logger.warning(f"Failed to save Telegram history: {e}")
 

@@ -7337,15 +7337,16 @@ async def _generar_ficha_digital(args: Dict, tenant_id: int) -> str:
             assemble_html,
         )
         from services.odontogram_svg import render_odontogram_svg
-        import db as _db
+        from db import db as _db_inst
         import uuid as _uuid
+        _pool = _db_inst.pool
 
         # Layer 1: Gather
-        source_data = await gather_patient_data(_db.pool, patient_id, tenant_id, tipo)
+        source_data = await gather_patient_data(_pool, patient_id, tenant_id, tipo)
 
         # Layer 2: AI Narrative
         narrative_result = await generate_narrative(
-            _db.pool, tenant_id, tipo, source_data
+            _pool, tenant_id, tipo, source_data
         )
         ai_sections = narrative_result.get("sections", {})
         warnings = narrative_result.get("warnings", [])

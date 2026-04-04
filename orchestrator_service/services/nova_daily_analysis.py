@@ -354,6 +354,9 @@ async def _analyze_with_gpt(
     uses_new_api = any(validated_model.startswith(p) for p in ("gpt-5", "o3", "o4", "o1"))
     token_param = "max_completion_tokens" if uses_new_api else "max_tokens"
 
+    # gpt-5 family only supports temperature=1 (default) — omit parameter
+    supports_temperature = not any(validated_model.startswith(p) for p in ("gpt-5", "o3", "o4", "o1"))
+
     request_json = {
         "model": validated_model,
         "messages": [
@@ -363,9 +366,10 @@ async def _analyze_with_gpt(
             },
             {"role": "user", "content": prompt},
         ],
-        "temperature": 0,
         token_param: 700,
     }
+    if supports_temperature:
+        request_json["temperature"] = 0
     if supports_json:
         request_json["response_format"] = {"type": "json_object"}
 
