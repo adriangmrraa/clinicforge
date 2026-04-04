@@ -1888,6 +1888,8 @@
     "receipt_pending": "Pending",
     "receipt_review": "Under review",
     "generate_pdf": "Generate PDF",
+    "sync_appointments": "Sync appointments",
+    "sync_no_changes": "All appointments are already linked to the budget",
     "send_email": "Send by email",
     "send_email_title": "Send budget by email",
     "send_email_to": "Patient email",

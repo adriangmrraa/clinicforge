@@ -9912,6 +9912,224 @@ async def generate_plan_from_appointments(
     }
 
 
+# EP-NEW-05: POST /admin/treatment-plans/{plan_id}/sync-appointments
+@router.post(
+    "/treatment-plans/{plan_id}/sync-appointments",
+    tags=["Planes de Tratamiento"],
+    summary="EP-NEW-05: Sincronizar turnos no vinculados al plan existente",
+)
+async def sync_appointments_to_plan(
+    plan_id: str,
+    request: Request,
+    user_data=Depends(verify_admin_token),
+    resolved_tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    """
+    Detecta turnos del paciente que NO están vinculados a ningún plan y los agrega
+    como items al plan existente. Migra pagos verificados de esos turnos.
+    """
+    tenant_id = resolved_tenant_id
+
+    try:
+        plan_uuid = uuid.UUID(plan_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="ID de plan inválido")
+
+    # 1. Get plan + patient_id
+    plan = await db.pool.fetchrow(
+        "SELECT id, patient_id, status FROM treatment_plans WHERE id=$1 AND tenant_id=$2",
+        plan_uuid,
+        tenant_id,
+    )
+    if not plan:
+        raise HTTPException(status_code=404, detail="Plan no encontrado")
+    if plan["status"] in ("cancelled", "completed"):
+        raise HTTPException(status_code=422, detail="No se puede sincronizar un plan finalizado")
+
+    patient_id = plan["patient_id"]
+
+    # 2. Fetch unlinked appointments (no plan_item_id)
+    rows = await db.pool.fetch(
+        """
+        SELECT
+            a.id as appointment_id,
+            a.appointment_type,
+            COALESCE(tt.name, a.appointment_type, 'Consulta') as treatment_name,
+            tt.base_price,
+            tt.code as treatment_code,
+            COALESCE(a.billing_amount, tt.base_price, 0) as billing_amount,
+            a.payment_status,
+            a.payment_receipt_data
+        FROM appointments a
+        LEFT JOIN treatment_types tt ON tt.code = a.appointment_type AND tt.tenant_id = $1
+        WHERE a.tenant_id = $1
+          AND a.patient_id = $2
+          AND a.status NOT IN ('cancelled', 'deleted')
+          AND a.plan_item_id IS NULL
+        ORDER BY a.appointment_datetime ASC
+        """,
+        tenant_id,
+        patient_id,
+    )
+
+    if not rows:
+        return {"status": "no_changes", "message": "Todos los turnos ya están vinculados al presupuesto"}
+
+    # 3. Parse appointments
+    appointments = []
+    for row in rows:
+        receipt = row["payment_receipt_data"]
+        if isinstance(receipt, str):
+            try:
+                receipt = json.loads(receipt)
+            except Exception:
+                receipt = None
+        appointments.append({
+            "id": str(row["appointment_id"]),
+            "treatment_code": row["treatment_code"] or row["appointment_type"] or "sin_tipo",
+            "treatment_name": row["treatment_name"],
+            "base_price": float(row["base_price"]) if row["base_price"] else 0.0,
+            "billing_amount": float(row["billing_amount"] or 0),
+            "payment_status": row["payment_status"] or "pending",
+            "payment_receipt": receipt,
+        })
+
+    # 4. Group by treatment_code
+    groups_map: Dict[str, Dict] = {}
+    for apt in appointments:
+        code = apt["treatment_code"]
+        if code not in groups_map:
+            groups_map[code] = {
+                "treatment_code": code,
+                "treatment_name": apt["treatment_name"],
+                "base_price": apt["base_price"],
+                "appointments": [],
+                "total_billed": 0.0,
+            }
+        groups_map[code]["appointments"].append(apt)
+        groups_map[code]["total_billed"] += apt["billing_amount"]
+
+    # 5. Check which treatment codes already exist as items in this plan
+    existing_items = await db.pool.fetch(
+        "SELECT id, treatment_type_code FROM treatment_plan_items WHERE plan_id=$1 AND tenant_id=$2",
+        plan_uuid,
+        tenant_id,
+    )
+    existing_codes = {ei["treatment_type_code"]: ei["id"] for ei in existing_items}
+    max_sort = await db.pool.fetchval(
+        "SELECT COALESCE(MAX(sort_order), -1) FROM treatment_plan_items WHERE plan_id=$1",
+        plan_uuid,
+    )
+
+    items_created = 0
+    items_updated = 0
+    payments_migrated = 0
+
+    async with db.pool.acquire() as conn:
+        async with conn.transaction():
+            for code, group in groups_map.items():
+                if code in existing_codes:
+                    # Item already exists — just link appointments to it
+                    item_id = existing_codes[code]
+                    items_updated += 1
+                else:
+                    # Create new item
+                    max_sort += 1
+                    item_id = uuid.uuid4()
+                    estimated_price = group["total_billed"] if group["total_billed"] > 0 else group["base_price"]
+                    await conn.execute(
+                        """
+                        INSERT INTO treatment_plan_items
+                        (id, plan_id, tenant_id, treatment_type_code, custom_description,
+                         estimated_price, approved_price, status, sort_order, created_at, updated_at)
+                        VALUES ($1, $2, $3, $4, $5, $6, NULL, 'pending', $7, NOW(), NOW())
+                        """,
+                        item_id,
+                        plan_uuid,
+                        tenant_id,
+                        code if code != "sin_tipo" else None,
+                        group["treatment_name"],
+                        estimated_price,
+                        max_sort,
+                    )
+                    items_created += 1
+
+                # Link appointments to item
+                for apt in group["appointments"]:
+                    await conn.execute(
+                        "UPDATE appointments SET plan_item_id = $1 WHERE id = $2 AND tenant_id = $3",
+                        item_id,
+                        uuid.UUID(apt["id"]),
+                        tenant_id,
+                    )
+
+                # Migrate verified payments
+                for apt in group["appointments"]:
+                    receipt = apt["payment_receipt"]
+                    if not receipt:
+                        continue
+                    receipt_status = receipt.get("status", "")
+                    if receipt_status not in ("verified", "verified_manual"):
+                        continue
+
+                    apt_id = apt["id"]
+                    existing_payment = await conn.fetchval(
+                        "SELECT id FROM treatment_plan_payments WHERE plan_id=$1 AND notes LIKE $2",
+                        plan_uuid,
+                        f"%{apt_id}%",
+                    )
+                    if existing_payment:
+                        continue
+
+                    amount_detected = receipt.get("amount_detected") or receipt.get("amount")
+                    payment_amount = float(amount_detected) if amount_detected else apt["billing_amount"]
+                    if payment_amount <= 0:
+                        continue
+
+                    payment_id = uuid.uuid4()
+                    await conn.execute(
+                        """
+                        INSERT INTO treatment_plan_payments
+                        (id, plan_id, plan_item_id, tenant_id, amount, payment_method,
+                         notes, created_at, updated_at)
+                        VALUES ($1, $2, $3, $4, $5, 'transfer', $6, NOW(), NOW())
+                        """,
+                        payment_id,
+                        plan_uuid,
+                        item_id,
+                        tenant_id,
+                        payment_amount,
+                        f"Seña verificada (turno {apt_id[:8]}...)",
+                    )
+                    payments_migrated += 1
+
+            # Recalculate estimated_total
+            new_total = await recalculate_plan_estimated_total(conn, plan_uuid, tenant_id)
+            await conn.execute(
+                "UPDATE treatment_plans SET estimated_total=$1, updated_at=NOW() WHERE id=$2",
+                new_total,
+                plan_uuid,
+            )
+
+    # Emit event
+    try:
+        await emit_appointment_event(
+            "TREATMENT_PLAN_UPDATED",
+            {"plan_id": str(plan_uuid), "tenant_id": tenant_id},
+            request,
+        )
+    except Exception:
+        pass
+
+    return {
+        "status": "synced",
+        "items_created": items_created,
+        "items_updated": items_updated,
+        "payments_migrated": payments_migrated,
+        "new_estimated_total": float(new_total),
+    }
+
+
 # EP-01: GET /admin/patients/{patient_id}/treatment-plans
 @router.get(
     "/patients/{patient_id}/treatment-plans",
@@ -10303,6 +10521,7 @@ async def get_treatment_plan_detail(
                 if pay["appointment_id"]
                 else None,
                 "receipt_data": pay["receipt_data"],
+                "payment_receipt_data": pay["receipt_data"],
                 "notes": pay["notes"],
                 "created_at": pay["created_at"].isoformat(),
             }

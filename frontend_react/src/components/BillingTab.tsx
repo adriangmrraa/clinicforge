@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from '../context/LanguageContext';
 import {
-  Plus, Trash2, Loader2, Receipt, X,
+  Plus, Trash2, Loader2, Receipt, X, RefreshCw,
   Banknote, ArrowRightLeft, CreditCard, Check, AlertCircle,
   User, Mail, Download, Sparkles,
   CheckCircle2, Clock, Search, Edit2
@@ -333,6 +333,7 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
 
   // ── Generate plan loading
   const [generatingPlan, setGeneratingPlan] = useState(false);
+  const [syncingAppointments, setSyncingAppointments] = useState(false);
 
   // ─── Mount: fetch billing-summary FIRST, then decide state ───────────────
 
@@ -644,6 +645,26 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
       setError(msg || t('billing.error_save'));
     } finally {
       setGeneratingPlan(false);
+    }
+  };
+
+  const handleSyncAppointments = async () => {
+    if (!planDetail) return;
+    try {
+      setSyncingAppointments(true);
+      setError(null);
+      const res = await api.post(`/admin/treatment-plans/${planDetail.id}/sync-appointments`);
+      if (res.data.status === 'no_changes') {
+        setError(t('billing.sync_no_changes') || 'Todos los turnos ya están vinculados');
+      }
+      await loadPlanDetail(planDetail.id);
+      await loadBillingSummary();
+    } catch (err: unknown) {
+      console.error('Error syncing appointments:', err);
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      setError(msg || t('billing.error_save'));
+    } finally {
+      setSyncingAppointments(false);
     }
   };
 
@@ -1009,6 +1030,19 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
               >
                 <Mail size={14} />
                 {t('billing.send_email')}
+              </button>
+
+              <button
+                onClick={handleSyncAppointments}
+                disabled={syncingAppointments}
+                className="flex items-center gap-2 bg-blue-500/10 text-blue-400 border border-blue-500/20 px-3 py-1.5 rounded-lg text-sm hover:bg-blue-500/20 transition-colors disabled:opacity-50"
+              >
+                {syncingAppointments ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : (
+                  <RefreshCw size={14} />
+                )}
+                {t('billing.sync_appointments') || 'Sincronizar turnos'}
               </button>
             </div>
 

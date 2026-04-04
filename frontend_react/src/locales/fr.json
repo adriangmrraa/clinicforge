@@ -1676,6 +1676,8 @@
     "receipt_pending": "En attente",
     "receipt_review": "En cours de vérification",
     "generate_pdf": "Générer PDF",
+    "sync_appointments": "Synchroniser rendez-vous",
+    "sync_no_changes": "Tous les rendez-vous sont déjà liés au budget",
     "send_email": "Envoyer par email",
     "send_email_title": "Envoyer le budget par email",
     "send_email_to": "Email du patient",
