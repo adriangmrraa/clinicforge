@@ -289,6 +289,8 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
   const [showRegisterPayment, setShowRegisterPayment] = useState(false);
   const [showApprovePlan, setShowApprovePlan] = useState(false);
   const [showEmailModal, setShowEmailModal] = useState(false);
+  const [showTreatmentPicker, setShowTreatmentPicker] = useState(false);
+  const [selectedTreatmentCodes, setSelectedTreatmentCodes] = useState<string[]>([]);
 
   // ── Inline edit state (items)
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
@@ -631,13 +633,24 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
     setShowCreatePlan(true);
   };
 
-  const handleGeneratePlanFromAppointments = async () => {
-    if (!window.confirm(t('billing.confirm_generate'))) return;
+  const openTreatmentPicker = () => {
+    // Get unlinked treatments from billing data
+    const unlinked = (billingData?.appointments || []).filter((a: AppointmentBilling) => !a.plan_item_id);
+    const codes = [...new Set(unlinked.map((a: AppointmentBilling) => a.treatment_code || 'sin_tipo'))];
+    setSelectedTreatmentCodes(codes as string[]); // all selected by default
+    setShowTreatmentPicker(true);
+  };
+
+  const handleGeneratePlanFromAppointments = async (treatmentCodes?: string[]) => {
     try {
       setGeneratingPlan(true);
       setError(null);
-      await api.post(`/admin/patients/${patientId}/generate-plan-from-appointments`);
-      // Reload — billing summary will detect new plan
+      setShowTreatmentPicker(false);
+      const payload: Record<string, unknown> = {};
+      if (treatmentCodes && treatmentCodes.length > 0) {
+        payload.treatment_codes = treatmentCodes;
+      }
+      await api.post(`/admin/patients/${patientId}/generate-plan-from-appointments`, payload);
       await loadBillingSummary();
     } catch (err: unknown) {
       console.error('Error generating plan:', err);
@@ -885,7 +898,7 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
         {/* Action buttons */}
         <div className="flex flex-col sm:flex-row gap-3">
           <button
-            onClick={handleGeneratePlanFromAppointments}
+            onClick={openTreatmentPicker}
             disabled={generatingPlan}
             className="flex-1 flex items-center justify-center gap-2 bg-white text-[#0a0e1a] px-5 py-3 rounded-xl hover:opacity-90 transition-opacity font-semibold text-sm disabled:opacity-50"
           >
@@ -966,7 +979,7 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
         </button>
         {billingData?.appointments?.some((a: AppointmentBilling) => !a.plan_item_id) && (
           <button
-            onClick={handleGeneratePlanFromAppointments}
+            onClick={openTreatmentPicker}
             disabled={generatingPlan}
             className="flex items-center gap-2 bg-blue-500/10 text-blue-400 border border-blue-500/20 px-4 py-2 rounded-lg hover:bg-blue-500/20 transition-colors disabled:opacity-50 text-sm"
           >
@@ -1717,6 +1730,108 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
           </div>
         </Modal>
       )}
+
+      {/* Treatment Picker Modal */}
+      {showTreatmentPicker && (() => {
+        const unlinked = (billingData?.appointments || []).filter((a: AppointmentBilling) => !a.plan_item_id);
+        const groupMap: Record<string, { code: string; name: string; count: number; total: number; hasPaid: boolean }> = {};
+        unlinked.forEach((a: AppointmentBilling) => {
+          const code = a.treatment_code || 'sin_tipo';
+          if (!groupMap[code]) {
+            groupMap[code] = { code, name: a.treatment_name || code, count: 0, total: 0, hasPaid: false };
+          }
+          groupMap[code].count += 1;
+          groupMap[code].total += (a.billing_amount || 0);
+          if (a.payment_status === 'paid') groupMap[code].hasPaid = true;
+        });
+        const groups = Object.values(groupMap);
+
+        const toggleCode = (code: string) => {
+          setSelectedTreatmentCodes(prev =>
+            prev.includes(code) ? prev.filter(c => c !== code) : [...prev, code]
+          );
+        };
+
+        const selectAll = () => setSelectedTreatmentCodes(groups.map(g => g.code));
+        const selectNone = () => setSelectedTreatmentCodes([]);
+
+        return (
+          <Modal onClose={() => setShowTreatmentPicker(false)}>
+            <h3 className="text-lg font-semibold text-white mb-2">
+              {t('billing.select_treatments') || 'Seleccionar tratamientos'}
+            </h3>
+            <p className="text-sm text-white/50 mb-4">
+              {t('billing.select_treatments_desc') || 'Elegí qué tratamientos incluir en el presupuesto'}
+            </p>
+
+            {/* Select all / none */}
+            <div className="flex gap-3 mb-3">
+              <button onClick={selectAll} className="text-xs text-blue-400 hover:text-blue-300">
+                {t('billing.select_all') || 'Seleccionar todos'}
+              </button>
+              <button onClick={selectNone} className="text-xs text-white/40 hover:text-white/60">
+                {t('billing.select_none') || 'Ninguno'}
+              </button>
+            </div>
+
+            {/* Treatment checkboxes */}
+            <div className="space-y-2 mb-6 max-h-60 overflow-y-auto">
+              {groups.map((g) => (
+                <label
+                  key={g.code}
+                  className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                    selectedTreatmentCodes.includes(g.code)
+                      ? 'bg-blue-500/10 border-blue-500/30'
+                      : 'bg-white/[0.02] border-white/[0.06] hover:bg-white/[0.04]'
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedTreatmentCodes.includes(g.code)}
+                    onChange={() => toggleCode(g.code)}
+                    className="w-4 h-4 rounded border-white/20 bg-white/[0.04] text-blue-500 focus:ring-blue-500/30"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-white">{g.name}</p>
+                    <p className="text-xs text-white/40">
+                      {g.count} turno{g.count !== 1 ? 's' : ''}
+                      {g.total > 0 && ` · ${formatCurrency(g.total)}`}
+                      {g.hasPaid && ' · Tiene pagos verificados'}
+                    </p>
+                  </div>
+                </label>
+              ))}
+              {groups.length === 0 && (
+                <p className="text-sm text-white/40 text-center py-4">
+                  {t('billing.no_unlinked') || 'No hay turnos sin presupuesto asignado'}
+                </p>
+              )}
+            </div>
+
+            {/* Actions */}
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowTreatmentPicker(false)}
+                className="flex-1 py-2 rounded-lg border border-white/[0.08] text-white/60 hover:bg-white/[0.04] transition-colors text-sm"
+              >
+                {t('billing.cancel') || 'Cancelar'}
+              </button>
+              <button
+                onClick={() => handleGeneratePlanFromAppointments(selectedTreatmentCodes)}
+                disabled={selectedTreatmentCodes.length === 0 || generatingPlan}
+                className="flex-1 flex items-center justify-center gap-2 bg-white text-[#0a0e1a] py-2 rounded-lg hover:opacity-90 disabled:opacity-50 font-medium text-sm"
+              >
+                {generatingPlan ? (
+                  <Loader2 size={16} className="animate-spin" />
+                ) : (
+                  <Sparkles size={16} />
+                )}
+                {t('billing.create_budget') || 'Crear presupuesto'} ({selectedTreatmentCodes.length})
+              </button>
+            </div>
+          </Modal>
+        );
+      })()}
     </div>
   );
 }

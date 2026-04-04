@@ -9631,6 +9631,7 @@ async def get_patient_billing_summary(
 class GeneratePlanFromAppointmentsBody(BaseModel):
     name: Optional[str] = None
     professional_id: Optional[int] = None
+    treatment_codes: Optional[List[str]] = None  # Filter: only include these treatment types
 
 
 @router.post(
@@ -9709,6 +9710,16 @@ async def generate_plan_from_appointments(
                 "payment_receipt": receipt,
             }
         )
+
+    # 3b. Filter by selected treatment_codes if provided
+    if payload.treatment_codes:
+        selected = set(payload.treatment_codes)
+        appointments = [a for a in appointments if a["treatment_code"] in selected]
+        if not appointments:
+            raise HTTPException(
+                status_code=422,
+                detail="Ninguno de los tratamientos seleccionados tiene turnos sin asignar",
+            )
 
     # 4. Agrupar por treatment_code
     groups_map: Dict[str, Dict] = {}
