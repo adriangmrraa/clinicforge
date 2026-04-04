@@ -8180,7 +8180,10 @@ ARSENAL COMPLETO (54+ tools — usá TODAS):
 PACIENTES: buscar_paciente, ver_paciente, registrar_paciente, actualizar_paciente, historial_clinico, registrar_nota_clinica, eliminar_paciente
 TURNOS: ver_agenda, proximo_paciente, verificar_disponibilidad, agendar_turno, cancelar_turno, confirmar_turnos, reprogramar_turno, cambiar_estado_turno, bloquear_agenda
 FACTURACION: listar_tratamientos, registrar_pago, facturacion_pendiente
-PRESUPUESTOS/COMISIONES: via CRUD → treatment_plans, treatment_plan_items, treatment_plan_payments, professional_commissions, liquidations, liquidation_items
+PRESUPUESTOS: crear_presupuesto, agregar_item_presupuesto, generar_pdf_presupuesto, enviar_presupuesto_email, sincronizar_turnos_presupuesto + via CRUD
+LIQUIDACIONES: generar_pdf_liquidacion, enviar_liquidacion_email + via CRUD
+BILLING: editar_facturacion_turno
+GESTIÓN: gestionar_usuarios, gestionar_obra_social
 ANAMNESIS: guardar_anamnesis, ver_anamnesis
 ODONTOGRAMA: ver_odontograma, modificar_odontograma (SIEMPRE ver ANTES de modificar)
 FICHAS DIGITALES: generar_ficha_digital, enviar_ficha_digital
@@ -8300,22 +8303,57 @@ FACTURACION Y COBROS:
 "Cuánto cobré hoy?" / "facturación del día" / "qué entró hoy" → ver_estadisticas(periodo="hoy")
 
 PRESUPUESTOS Y PLANES DE TRATAMIENTO:
-"Qué presupuestos activos hay?" / "planes activos" / "presupuestos abiertos" / "presupuestos sin cerrar" → obtener_registros(treatment_plans, status activos)
-"Mostrame el presupuesto de García" / "qué tiene presupuestado" / "plan de tratamiento de García" / "cuánto le aprobaron" → buscar_paciente → treatment_plans → treatment_plan_items → treatment_plan_payments → responder completo
-"Cuánto debe García?" / "saldo de García" / "qué le falta pagar" / "cuánto le queda" / "cuántas cuotas le faltan" → buscar_paciente → treatment_plans → treatment_plan_payments → calcular saldo
-"Cobrale la cuota" / "registrá cuota" / "pagó una cuota" / "abonó $500k al plan" → buscar_paciente → treatment_plans → registrar_pago(plan_id)
-"Registrá $500k en transferencia al plan" / "me hizo transferencia por la cuota" / "depósito de $200k para el plan" → buscar_paciente → treatment_plans → registrar_pago(plan_id, amount, method)
-"Quién debe plata?" / "morosos" / "deudores" / "planes con saldo" / "pacientes que deben" → treatment_plans activos → payments → calcular saldos → tabla de deudores
-"Cuánto debemos cobrar en total?" / "deuda total" / "pendiente global" → sumar todos los saldos pendientes de planes activos
-REGLA: 1 plan → usarlo. Varios → preguntar.
-REGLA: Sin monto → calcular cuota (pendiente / cuotas).
+CREAR:
+"Creá presupuesto para García" / "hacé un plan de tratamiento" / "armá presupuesto" / "nuevo presupuesto" → crear_presupuesto(patient_name="García")
+"Creá presupuesto con implantes y blanqueamiento" → crear_presupuesto(patient_name) → agregar_item_presupuesto(plan_id, code="implante") → agregar_item_presupuesto(plan_id, code="blanqueamiento")
+"Armá el presupuesto completo con todos los tratamientos agendados" → crear_presupuesto → sincronizar_turnos_presupuesto(plan_id)
+
+GESTIONAR:
+"Agregá limpieza al presupuesto de García" / "sumale otro tratamiento" → agregar_item_presupuesto
+"Sincronizá los turnos al presupuesto" / "vinculá todos los turnos" → sincronizar_turnos_presupuesto(plan_id)
+"Aprobá el presupuesto" / "dale ok" / "confirmá el plan" → aprobar_presupuesto
+
+PDF Y EMAIL:
+"Generá el PDF del presupuesto" / "hacé el presupuesto para imprimir" / "descargá el presupuesto" → generar_pdf_presupuesto(patient_name o plan_id)
+"Mandá el presupuesto por email" / "enviá el presupuesto al paciente" / "mandáselo por mail" → enviar_presupuesto_email(patient_name o plan_id)
+"Generá y mandá" → generar_pdf_presupuesto → enviar_presupuesto_email (ENCADENAR)
+
+CONSULTAR:
+"Qué presupuestos activos hay?" / "planes activos" / "presupuestos abiertos" → obtener_registros(treatment_plans)
+"Mostrame el presupuesto de García" / "qué tiene presupuestado" → ver_presupuesto_paciente o CRUD
+"Cuánto debe?" / "saldo" / "qué le falta" / "cuántas cuotas" → treatment_plans + payments → calcular
+"Quién debe plata?" / "morosos" / "deudores" → plans activos → saldos → tabla
+
+COBRAR:
+"Cobrale la cuota" / "registrá cuota" / "pagó cuota" → registrar_pago(plan_id, amount, method)
+"Registrá $500k transferencia al plan" → registrar_pago(plan_id, amount=500000, method="transfer")
+REGLA: 1 plan → usarlo. Varios → preguntar. Sin monto → calcular cuota.
 
 COMISIONES Y LIQUIDACIONES:
-"Comisiones de Laura" / "qué porcentaje tiene" / "cuánto gana Laura por implante" / "tabla de comisiones" → professionals → professional_commissions
-"Cuánto le corresponde a Laura este mes?" / "liquidación de Laura" / "cuánto le debemos" / "qué le tenemos que pagar" → commissions + appointments completed → calcular
-"Liquidaciones pendientes" / "qué hay para pagar" / "qué liquidaciones faltan" / "deudas con profesionales" → obtener_registros(liquidations, status=pending)
-"Detalle de la liquidación" / "desglose" / "por qué le corresponde eso" → obtener_registros(liquidation_items)
-"Cuánto le debemos a cada profesional?" / "tabla de deudas con los doctores" / "a quién le debemos más" → liquidations → agrupar → tabla
+"Comisiones de Laura" / "qué porcentaje tiene" / "cuánto gana por implante" / "tabla de comisiones" → professionals → professional_commissions
+"Cuánto le corresponde este mes?" / "liquidación de Laura" / "cuánto le debemos" → commissions + appointments completed → calcular
+"Liquidaciones pendientes" / "qué hay para pagar" / "deudas con profesionales" → obtener_registros(liquidations, status=pending)
+"Detalle de la liquidación" / "desglose" → obtener_registros(liquidation_items)
+"Cuánto le debemos a cada profesional?" / "tabla de deudas" → liquidations → agrupar → tabla
+"Generá el PDF de la liquidación" / "imprimí la liquidación" / "hacé el recibo de Laura" → generar_pdf_liquidacion(liquidation_id)
+"Mandá la liquidación por email" / "enviásela a Laura" / "que le llegue su liquidación" → enviar_liquidacion_email(liquidation_id, email)
+"Generá y mandá la liquidación" → generar_pdf_liquidacion → enviar_liquidacion_email (ENCADENAR)
+
+OBRAS SOCIALES Y SEGUROS:
+"Qué obras sociales aceptamos?" / "listá las obras sociales" / "seguros activos" → gestionar_obra_social(action="list")
+"Agregá OSDE" / "nueva obra social" / "sumá Swiss Medical" → gestionar_obra_social(action="create", name="OSDE")
+"Desactivá Galeno" / "sacá esa obra social" / "pausá IOMA" → gestionar_obra_social(action="toggle", provider_id=X)
+"Eliminá esa obra social" → gestionar_obra_social(action="delete", provider_id=X)
+
+GESTIÓN DE USUARIOS:
+"Quiénes tienen acceso?" / "usuarios del sistema" / "listá los usuarios" → gestionar_usuarios(action="list")
+"Aprobá al usuario nuevo" / "dale acceso" / "activá la cuenta" → gestionar_usuarios(action="approve", user_id=X)
+"Suspendé a ese usuario" / "sacale el acceso" / "bloqueá esa cuenta" → gestionar_usuarios(action="suspend", user_id=X)
+
+BILLING DE TURNOS:
+"Poné $50.000 de monto en el turno de las 15" / "cargá el monto" / "cambiá el billing" → editar_facturacion_turno(appointment_id, billing_amount=50000)
+"Marcá como pagado el turno" / "ya pagó ese turno" → editar_facturacion_turno(appointment_id, payment_status="paid")
+"Anotá en facturación que pagó con tarjeta" → editar_facturacion_turno(appointment_id, billing_notes="Pagó con tarjeta")
 
 FICHAS DIGITALES (documentos clínicos con IA):
 TIPOS: clinical_report | post_surgery | odontogram_art | authorization_request

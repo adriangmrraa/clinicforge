@@ -1234,6 +1234,255 @@ IMPORTANTE — REGLAS QUIRÚRGICAS:
             },
         },
     },
+    # O3. Crear presupuesto
+    # -------------------------------------------------------------------------
+    {
+        "type": "function",
+        "name": "crear_presupuesto",
+        "description": "Crea un nuevo plan de tratamiento (presupuesto) en estado borrador para un paciente.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "patient_id": {
+                    "type": "integer",
+                    "description": "ID del paciente (requerido si no se provee patient_name)",
+                },
+                "patient_name": {
+                    "type": "string",
+                    "description": "Nombre del paciente para buscar (opcional, alternativa a patient_id)",
+                },
+                "name": {
+                    "type": "string",
+                    "description": "Nombre del plan (opcional, se auto-genera si no se provee)",
+                },
+                "professional_id": {
+                    "type": "integer",
+                    "description": "ID del profesional asignado (opcional)",
+                },
+            },
+            "required": [],
+        },
+    },
+    # O4. Agregar item a presupuesto
+    # -------------------------------------------------------------------------
+    {
+        "type": "function",
+        "name": "agregar_item_presupuesto",
+        "description": "Agrega un ítem de tratamiento a un plan de presupuesto existente.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "plan_id": {
+                    "type": "string",
+                    "description": "ID UUID del plan de tratamiento",
+                },
+                "treatment_code": {
+                    "type": "string",
+                    "description": "Código del tipo de tratamiento (ej: 'ORTODONCIA', 'IMPLANTE')",
+                },
+                "custom_description": {
+                    "type": "string",
+                    "description": "Descripción personalizada del ítem (opcional)",
+                },
+                "estimated_price": {
+                    "type": "number",
+                    "description": "Precio estimado (opcional, se usa base_price del tratamiento si no se provee)",
+                },
+            },
+            "required": ["plan_id", "treatment_code"],
+        },
+    },
+    # O5. Generar PDF presupuesto
+    # -------------------------------------------------------------------------
+    {
+        "type": "function",
+        "name": "generar_pdf_presupuesto",
+        "description": "Genera el PDF de un presupuesto de tratamiento. Puede buscar por plan_id, patient_id o nombre del paciente.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "plan_id": {
+                    "type": "string",
+                    "description": "ID UUID del plan (opcional)",
+                },
+                "patient_id": {
+                    "type": "integer",
+                    "description": "ID del paciente — toma el plan activo más reciente (opcional)",
+                },
+                "patient_name": {
+                    "type": "string",
+                    "description": "Nombre del paciente para buscar (opcional)",
+                },
+            },
+            "required": [],
+        },
+    },
+    # O6. Enviar presupuesto por email
+    # -------------------------------------------------------------------------
+    {
+        "type": "function",
+        "name": "enviar_presupuesto_email",
+        "description": "Genera y envía el PDF de un presupuesto por email al paciente.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "plan_id": {
+                    "type": "string",
+                    "description": "ID UUID del plan (opcional)",
+                },
+                "patient_id": {
+                    "type": "integer",
+                    "description": "ID del paciente — toma el plan activo más reciente (opcional)",
+                },
+                "patient_name": {
+                    "type": "string",
+                    "description": "Nombre del paciente para buscar (opcional)",
+                },
+                "email": {
+                    "type": "string",
+                    "description": "Email de destino (opcional, se usa el del paciente si no se provee)",
+                },
+            },
+            "required": [],
+        },
+    },
+    # O7. Editar facturación de turno
+    # -------------------------------------------------------------------------
+    {
+        "type": "function",
+        "name": "editar_facturacion_turno",
+        "description": "Edita los campos de facturación de un turno: monto, estado de pago y notas.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "appointment_id": {
+                    "type": "string",
+                    "description": "ID UUID del turno",
+                },
+                "billing_amount": {
+                    "type": "number",
+                    "description": "Monto de facturación (opcional)",
+                },
+                "payment_status": {
+                    "type": "string",
+                    "description": "Estado de pago: pending, partial o paid",
+                    "enum": ["pending", "partial", "paid"],
+                },
+                "billing_notes": {
+                    "type": "string",
+                    "description": "Notas de facturación (opcional)",
+                },
+            },
+            "required": ["appointment_id"],
+        },
+    },
+    # O8. Gestionar usuarios
+    # -------------------------------------------------------------------------
+    {
+        "type": "function",
+        "name": "gestionar_usuarios",
+        "description": "Gestión de usuarios del sistema: listar, aprobar o suspender. Solo CEO.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "description": "Acción a realizar: list, approve o suspend",
+                    "enum": ["list", "approve", "suspend"],
+                },
+                "user_id": {
+                    "type": "string",
+                    "description": "ID UUID del usuario (requerido para approve/suspend)",
+                },
+            },
+            "required": ["action"],
+        },
+    },
+    # O9. Gestionar obra social
+    # -------------------------------------------------------------------------
+    {
+        "type": "function",
+        "name": "gestionar_obra_social",
+        "description": "CRUD de obras sociales/seguros de la clínica: listar, crear, actualizar, activar/desactivar o eliminar. Solo CEO.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "description": "Acción: list, create, update, toggle o delete",
+                    "enum": ["list", "create", "update", "toggle", "delete"],
+                },
+                "provider_id": {
+                    "type": "integer",
+                    "description": "ID del proveedor (requerido para update/toggle/delete)",
+                },
+                "name": {
+                    "type": "string",
+                    "description": "Nombre de la obra social (requerido para create)",
+                },
+                "coverage_details": {
+                    "type": "string",
+                    "description": "Detalles de cobertura / restricciones (opcional)",
+                },
+            },
+            "required": ["action"],
+        },
+    },
+    # O10. Generar PDF liquidación
+    # -------------------------------------------------------------------------
+    {
+        "type": "function",
+        "name": "generar_pdf_liquidacion",
+        "description": "Genera el PDF de una liquidación profesional. Solo CEO.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "liquidation_id": {
+                    "type": "string",
+                    "description": "ID de la liquidación (número entero como string)",
+                },
+            },
+            "required": ["liquidation_id"],
+        },
+    },
+    # O11. Enviar liquidación por email
+    # -------------------------------------------------------------------------
+    {
+        "type": "function",
+        "name": "enviar_liquidacion_email",
+        "description": "Genera y envía el PDF de una liquidación profesional por email. Solo CEO.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "liquidation_id": {
+                    "type": "string",
+                    "description": "ID de la liquidación (número entero como string)",
+                },
+                "email": {
+                    "type": "string",
+                    "description": "Email de destino (opcional, se usa el del profesional si no se provee)",
+                },
+            },
+            "required": ["liquidation_id"],
+        },
+    },
+    # O12. Sincronizar turnos a presupuesto
+    # -------------------------------------------------------------------------
+    {
+        "type": "function",
+        "name": "sincronizar_turnos_presupuesto",
+        "description": "Sincroniza turnos no vinculados del paciente al plan de tratamiento activo, migrando pagos verificados.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "plan_id": {
+                    "type": "string",
+                    "description": "ID UUID del plan de tratamiento",
+                },
+            },
+            "required": ["plan_id"],
+        },
+    },
     # O2. Aprobar presupuesto
     # -------------------------------------------------------------------------
     {
@@ -2027,6 +2276,828 @@ async def _aprobar_presupuesto(
     )
 
     return f"✅ Presupuesto aprobado: *{plan['name']}*\nMonto aprobado: ${float(approved_total):,.0f}\nEl plan ahora está activo y se pueden registrar pagos."
+
+
+# =============================================================================
+# O3–O12. NEW BUDGET / BILLING / ADMIN TOOLS
+# =============================================================================
+
+
+async def _crear_presupuesto(args: Dict, tenant_id: int, user_role: str) -> str:
+    """Crea un plan de tratamiento en estado draft."""
+    if user_role not in ("ceo", "secretary"):
+        return _role_error("crear_presupuesto", ["ceo", "secretary"])
+
+    patient_id = args.get("patient_id")
+    patient_name = args.get("patient_name")
+    name = args.get("name")
+    professional_id = args.get("professional_id")
+
+    # Resolver paciente por nombre si no hay patient_id
+    if not patient_id and patient_name:
+        row = await db.pool.fetchrow(
+            """
+            SELECT id, first_name, last_name FROM patients
+            WHERE tenant_id = $1 AND LOWER(first_name || ' ' || COALESCE(last_name, '')) LIKE $2
+            ORDER BY created_at DESC LIMIT 1
+            """,
+            tenant_id,
+            f"%{patient_name.lower()}%",
+        )
+        if not row:
+            return f"No encontré ningún paciente con el nombre '{patient_name}'."
+        patient_id = row["id"]
+        patient_name = f"{row['first_name']} {row['last_name'] or ''}".strip()
+    elif patient_id:
+        row = await db.pool.fetchrow(
+            "SELECT first_name, last_name FROM patients WHERE id = $1 AND tenant_id = $2",
+            int(patient_id),
+            tenant_id,
+        )
+        if not row:
+            return f"No encontré el paciente con ID {patient_id}."
+        patient_name = f"{row['first_name']} {row['last_name'] or ''}".strip()
+    else:
+        return "Necesito patient_id o patient_name para crear el presupuesto."
+
+    plan_name = name or f"Tratamiento de {patient_name}"
+    plan_id = str(uuid.uuid4())
+
+    await db.pool.execute(
+        """
+        INSERT INTO treatment_plans (id, tenant_id, patient_id, professional_id, name, status, estimated_total, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, 'draft', 0, NOW(), NOW())
+        """,
+        plan_id,
+        tenant_id,
+        int(patient_id),
+        int(professional_id) if professional_id else None,
+        plan_name,
+    )
+
+    await _nova_emit(
+        "TREATMENT_PLAN_UPDATED",
+        {"plan_id": plan_id, "tenant_id": tenant_id, "patient_id": patient_id},
+    )
+
+    logger.info(f"Nova: crear_presupuesto → plan {plan_id} para paciente {patient_id}")
+    return f"✅ Presupuesto creado: *{plan_name}* (ID: {plan_id})\nEstado: borrador. Podés agregar ítems con agregar_item_presupuesto."
+
+
+async def _agregar_item_presupuesto(args: Dict, tenant_id: int, user_role: str) -> str:
+    """Agrega un ítem a un plan de tratamiento."""
+    if user_role not in ("ceo", "secretary"):
+        return _role_error("agregar_item_presupuesto", ["ceo", "secretary"])
+
+    plan_id = args.get("plan_id")
+    treatment_code = args.get("treatment_code")
+    custom_description = args.get("custom_description")
+    estimated_price = args.get("estimated_price")
+
+    if not plan_id or not treatment_code:
+        return "Necesito plan_id y treatment_code para agregar el ítem."
+
+    # Validar plan
+    plan = await db.pool.fetchrow(
+        "SELECT id, name, patient_id FROM treatment_plans WHERE id = $1 AND tenant_id = $2",
+        plan_id,
+        tenant_id,
+    )
+    if not plan:
+        return f"No encontré el plan con ID {plan_id}."
+
+    # Obtener precio base del tratamiento si no se proveyó
+    if estimated_price is None:
+        tt = await db.pool.fetchrow(
+            "SELECT base_price, name FROM treatment_types WHERE code = $1 AND tenant_id = $2",
+            treatment_code.upper(),
+            tenant_id,
+        )
+        if tt:
+            estimated_price = float(tt["base_price"] or 0)
+            if not custom_description:
+                custom_description = tt["name"]
+        else:
+            estimated_price = 0.0
+
+    # Calcular sort_order
+    max_order = await db.pool.fetchval(
+        "SELECT COALESCE(MAX(sort_order), 0) FROM treatment_plan_items WHERE plan_id = $1 AND tenant_id = $2",
+        plan_id,
+        tenant_id,
+    )
+    sort_order = (max_order or 0) + 1
+
+    item_id = str(uuid.uuid4())
+    await db.pool.execute(
+        """
+        INSERT INTO treatment_plan_items (id, tenant_id, plan_id, treatment_type_code, custom_description, estimated_price, sort_order, status, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', NOW(), NOW())
+        """,
+        item_id,
+        tenant_id,
+        plan_id,
+        treatment_code.upper(),
+        custom_description,
+        float(estimated_price),
+        sort_order,
+    )
+
+    # Recalcular estimated_total del plan
+    await db.pool.execute(
+        """
+        UPDATE treatment_plans
+        SET estimated_total = (
+            SELECT COALESCE(SUM(estimated_price), 0)
+            FROM treatment_plan_items
+            WHERE plan_id = $1 AND tenant_id = $2
+        ), updated_at = NOW()
+        WHERE id = $1 AND tenant_id = $2
+        """,
+        plan_id,
+        tenant_id,
+    )
+
+    await _nova_emit(
+        "TREATMENT_PLAN_UPDATED",
+        {"plan_id": plan_id, "tenant_id": tenant_id, "patient_id": plan["patient_id"]},
+    )
+
+    desc = custom_description or treatment_code.upper()
+    logger.info(f"Nova: agregar_item_presupuesto → plan {plan_id}, item {item_id}")
+    return f"✅ Ítem agregado al plan *{plan['name']}*:\n• {desc} — {_fmt_money(estimated_price)}\nTotal actualizado del plan calculado correctamente."
+
+
+async def _generar_pdf_presupuesto(args: Dict, tenant_id: int, user_role: str) -> str:
+    """Genera el PDF de un presupuesto."""
+    if user_role not in ("ceo", "secretary"):
+        return _role_error("generar_pdf_presupuesto", ["ceo", "secretary"])
+
+    plan_id = args.get("plan_id")
+    patient_id = args.get("patient_id")
+    patient_name = args.get("patient_name")
+
+    try:
+        # Resolver plan_id si no se proveyó directamente
+        if not plan_id:
+            if patient_id:
+                row = await db.pool.fetchrow(
+                    """
+                    SELECT id FROM treatment_plans
+                    WHERE patient_id = $1 AND tenant_id = $2 AND status NOT IN ('cancelled')
+                    ORDER BY updated_at DESC LIMIT 1
+                    """,
+                    int(patient_id),
+                    tenant_id,
+                )
+            elif patient_name:
+                row = await db.pool.fetchrow(
+                    """
+                    SELECT tp.id FROM treatment_plans tp
+                    JOIN patients p ON p.id = tp.patient_id
+                    WHERE tp.tenant_id = $1 AND p.tenant_id = $1
+                      AND LOWER(p.first_name || ' ' || COALESCE(p.last_name, '')) LIKE $2
+                      AND tp.status NOT IN ('cancelled')
+                    ORDER BY tp.updated_at DESC LIMIT 1
+                    """,
+                    tenant_id,
+                    f"%{patient_name.lower()}%",
+                )
+            else:
+                return "Necesito plan_id, patient_id o patient_name para generar el PDF."
+
+            if not row:
+                return "No encontré ningún plan activo para ese paciente."
+            plan_id = str(row["id"])
+
+        from services.budget_service import generate_budget_pdf
+
+        pdf_path = await generate_budget_pdf(db.pool, plan_id, tenant_id)
+        if not pdf_path:
+            return "Error generando el PDF. Verificá que el plan tenga ítems."
+
+        await _nova_emit("BILLING_UPDATED", {"plan_id": plan_id, "tenant_id": tenant_id})
+
+        logger.info(f"Nova: generar_pdf_presupuesto → {pdf_path}")
+        return f"✅ PDF generado correctamente.\nRuta: {pdf_path}"
+
+    except Exception as e:
+        logger.error(f"_generar_pdf_presupuesto error: {e}", exc_info=True)
+        return f"Error generando el PDF: {str(e)}"
+
+
+async def _enviar_presupuesto_email(args: Dict, tenant_id: int, user_role: str) -> str:
+    """Genera y envía el PDF de un presupuesto por email."""
+    if user_role not in ("ceo", "secretary"):
+        return _role_error("enviar_presupuesto_email", ["ceo", "secretary"])
+
+    plan_id = args.get("plan_id")
+    patient_id = args.get("patient_id")
+    patient_name_arg = args.get("patient_name")
+    email = args.get("email")
+
+    try:
+        # Resolver plan_id
+        if not plan_id:
+            if patient_id:
+                row = await db.pool.fetchrow(
+                    """
+                    SELECT id FROM treatment_plans
+                    WHERE patient_id = $1 AND tenant_id = $2 AND status NOT IN ('cancelled')
+                    ORDER BY updated_at DESC LIMIT 1
+                    """,
+                    int(patient_id),
+                    tenant_id,
+                )
+            elif patient_name_arg:
+                row = await db.pool.fetchrow(
+                    """
+                    SELECT tp.id FROM treatment_plans tp
+                    JOIN patients p ON p.id = tp.patient_id
+                    WHERE tp.tenant_id = $1 AND p.tenant_id = $1
+                      AND LOWER(p.first_name || ' ' || COALESCE(p.last_name, '')) LIKE $2
+                      AND tp.status NOT IN ('cancelled')
+                    ORDER BY tp.updated_at DESC LIMIT 1
+                    """,
+                    tenant_id,
+                    f"%{patient_name_arg.lower()}%",
+                )
+            else:
+                return "Necesito plan_id, patient_id o patient_name para enviar el presupuesto."
+
+            if not row:
+                return "No encontré ningún plan activo para ese paciente."
+            plan_id = str(row["id"])
+
+        # Obtener email del paciente si no se proveyó
+        if not email:
+            patient_row = await db.pool.fetchrow(
+                """
+                SELECT p.email FROM patients p
+                JOIN treatment_plans tp ON tp.patient_id = p.id
+                WHERE tp.id = $1 AND tp.tenant_id = $2
+                """,
+                plan_id,
+                tenant_id,
+            )
+            email = patient_row["email"] if patient_row else None
+
+        if not email:
+            return "El paciente no tiene email registrado. Proporcioná un email de destino."
+
+        from services.budget_service import gather_budget_data, generate_budget_pdf
+
+        pdf_path = await generate_budget_pdf(db.pool, plan_id, tenant_id)
+        if not pdf_path:
+            return "Error generando el PDF. Verificá que el plan tenga ítems."
+
+        data = await gather_budget_data(db.pool, plan_id, tenant_id)
+        if not data:
+            return "No se pudo obtener los datos del presupuesto."
+
+        from email_service import email_service
+        import asyncio as _asyncio
+
+        patient_name = data.get("patient", {}).get("name", "Paciente")
+        clinic_name = data.get("clinic", {}).get("name", "Clínica")
+
+        await _asyncio.to_thread(
+            lambda: email_service.send_budget_email(
+                to_email=email,
+                pdf_path=pdf_path,
+                patient_name=patient_name,
+                clinic_name=clinic_name,
+            )
+        )
+
+        await _nova_emit("BILLING_UPDATED", {"plan_id": plan_id, "tenant_id": tenant_id})
+
+        logger.info(f"Nova: enviar_presupuesto_email → {email}")
+        return f"✅ Presupuesto enviado a {email} para {patient_name}."
+
+    except Exception as e:
+        logger.error(f"_enviar_presupuesto_email error: {e}", exc_info=True)
+        return f"Error enviando el presupuesto: {str(e)}"
+
+
+async def _editar_facturacion_turno(args: Dict, tenant_id: int, user_role: str) -> str:
+    """Edita los campos de facturación de un turno."""
+    if user_role not in ("ceo", "secretary"):
+        return _role_error("editar_facturacion_turno", ["ceo", "secretary"])
+
+    appointment_id = args.get("appointment_id")
+    billing_amount = args.get("billing_amount")
+    payment_status = args.get("payment_status")
+    billing_notes = args.get("billing_notes")
+
+    if not appointment_id:
+        return "Necesito appointment_id para editar la facturación."
+
+    try:
+        appt_uuid = uuid.UUID(str(appointment_id))
+    except ValueError:
+        return "ID de turno inválido."
+
+    # Validar turno
+    appt = await db.pool.fetchrow(
+        "SELECT id FROM appointments WHERE id = $1 AND tenant_id = $2",
+        appt_uuid,
+        tenant_id,
+    )
+    if not appt:
+        return f"No encontré el turno con ID {appointment_id}."
+
+    # Construir SET dinámico
+    set_parts = []
+    values = []
+    idx = 1
+
+    if billing_amount is not None:
+        set_parts.append(f"billing_amount = ${idx}")
+        values.append(float(billing_amount))
+        idx += 1
+
+    if payment_status is not None:
+        if payment_status not in ("pending", "partial", "paid"):
+            return "payment_status debe ser: pending, partial o paid."
+        set_parts.append(f"payment_status = ${idx}")
+        values.append(payment_status)
+        idx += 1
+
+    if billing_notes is not None:
+        set_parts.append(f"billing_notes = ${idx}")
+        values.append(billing_notes)
+        idx += 1
+
+    if not set_parts:
+        return "No se especificó ningún campo a actualizar."
+
+    set_parts.append(f"updated_at = NOW()")
+    values.extend([appt_uuid, tenant_id])
+
+    await db.pool.execute(
+        f"UPDATE appointments SET {', '.join(set_parts)} WHERE id = ${idx} AND tenant_id = ${idx + 1}",
+        *values,
+    )
+
+    await _nova_emit(
+        "APPOINTMENT_UPDATED",
+        {"appointment_id": str(appt_uuid), "tenant_id": tenant_id},
+    )
+
+    parts = []
+    if billing_amount is not None:
+        parts.append(f"monto: {_fmt_money(billing_amount)}")
+    if payment_status is not None:
+        parts.append(f"estado: {payment_status}")
+    if billing_notes is not None:
+        parts.append("notas actualizadas")
+
+    logger.info(f"Nova: editar_facturacion_turno → {appointment_id}")
+    return f"✅ Facturación del turno actualizada: {', '.join(parts)}."
+
+
+async def _gestionar_usuarios(args: Dict, tenant_id: int, user_role: str) -> str:
+    """Gestión de usuarios: list / approve / suspend. Solo CEO."""
+    if user_role != "ceo":
+        return _role_error("gestionar_usuarios", ["ceo"])
+
+    action = args.get("action", "list")
+    user_id = args.get("user_id")
+
+    if action == "list":
+        rows = await db.pool.fetch(
+            """
+            SELECT id, email, role, status, first_name, last_name, created_at
+            FROM users
+            WHERE tenant_id = $1
+            ORDER BY created_at DESC
+            """,
+            tenant_id,
+        )
+        if not rows:
+            return "No hay usuarios registrados."
+        lines = ["Usuarios del sistema:"]
+        for r in rows:
+            name = f"{r['first_name'] or ''} {r['last_name'] or ''}".strip() or r["email"]
+            lines.append(f"• {name} ({r['role']}) — {r['status']} [ID: {r['id']}]")
+        return "\n".join(lines)
+
+    if not user_id:
+        return f"Necesito user_id para la acción '{action}'."
+
+    try:
+        user_uuid = uuid.UUID(str(user_id))
+    except ValueError:
+        return "ID de usuario inválido."
+
+    target = await db.pool.fetchrow(
+        "SELECT id, email, status, role FROM users WHERE id = $1 AND tenant_id = $2",
+        user_uuid,
+        tenant_id,
+    )
+    if not target:
+        return f"No encontré el usuario con ID {user_id}."
+
+    if action == "approve":
+        if target["status"] == "active":
+            return f"El usuario {target['email']} ya está activo."
+        await db.pool.execute(
+            "UPDATE users SET status = 'active', updated_at = NOW() WHERE id = $1 AND tenant_id = $2",
+            user_uuid,
+            tenant_id,
+        )
+        await _nova_emit("RECORD_UPDATED", {"entity": "user", "user_id": str(user_uuid), "tenant_id": tenant_id})
+        logger.info(f"Nova: gestionar_usuarios approve → {user_id}")
+        return f"✅ Usuario {target['email']} aprobado. Ahora puede acceder al sistema."
+
+    if action == "suspend":
+        if target["status"] == "suspended":
+            return f"El usuario {target['email']} ya está suspendido."
+        await db.pool.execute(
+            "UPDATE users SET status = 'suspended', updated_at = NOW() WHERE id = $1 AND tenant_id = $2",
+            user_uuid,
+            tenant_id,
+        )
+        await _nova_emit("RECORD_UPDATED", {"entity": "user", "user_id": str(user_uuid), "tenant_id": tenant_id})
+        logger.info(f"Nova: gestionar_usuarios suspend → {user_id}")
+        return f"⚠️ Usuario {target['email']} suspendido. No podrá acceder hasta que se apruebe nuevamente."
+
+    return f"Acción '{action}' no reconocida. Usá: list, approve o suspend."
+
+
+async def _gestionar_obra_social(args: Dict, tenant_id: int, user_role: str) -> str:
+    """CRUD de obras sociales / seguros. Solo CEO."""
+    if user_role != "ceo":
+        return _role_error("gestionar_obra_social", ["ceo"])
+
+    action = args.get("action", "list")
+    provider_id = args.get("provider_id")
+    name = args.get("name")
+    coverage_details = args.get("coverage_details")
+
+    if action == "list":
+        rows = await db.pool.fetch(
+            """
+            SELECT id, provider_name, status, is_active, restrictions, requires_copay, sort_order
+            FROM tenant_insurance_providers
+            WHERE tenant_id = $1
+            ORDER BY sort_order, provider_name
+            """,
+            tenant_id,
+        )
+        if not rows:
+            return "No hay obras sociales registradas."
+        lines = ["Obras sociales:"]
+        for r in rows:
+            active = "activa" if r["is_active"] else "inactiva"
+            copay = " (requiere copago)" if r["requires_copay"] else ""
+            lines.append(f"• [{r['id']}] {r['provider_name']} — {r['status']} [{active}]{copay}")
+        return "\n".join(lines)
+
+    if action == "create":
+        if not name:
+            return "Necesito name para crear la obra social."
+        new_id = await db.pool.fetchval(
+            """
+            INSERT INTO tenant_insurance_providers
+              (tenant_id, provider_name, status, restrictions, is_active, requires_copay, sort_order, created_at, updated_at)
+            VALUES ($1, $2, 'accepted', $3, true, true, 0, NOW(), NOW())
+            RETURNING id
+            """,
+            tenant_id,
+            name,
+            coverage_details,
+        )
+        await _nova_emit("RECORD_UPDATED", {"entity": "insurance_provider", "provider_id": new_id, "tenant_id": tenant_id})
+        logger.info(f"Nova: gestionar_obra_social create → {new_id}")
+        return f"✅ Obra social '{name}' creada (ID: {new_id})."
+
+    if not provider_id:
+        return f"Necesito provider_id para la acción '{action}'."
+
+    existing = await db.pool.fetchrow(
+        "SELECT id, provider_name, is_active FROM tenant_insurance_providers WHERE id = $1 AND tenant_id = $2",
+        int(provider_id),
+        tenant_id,
+    )
+    if not existing:
+        return f"No encontré la obra social con ID {provider_id}."
+
+    if action == "update":
+        set_parts = []
+        values = []
+        idx = 1
+        if name:
+            set_parts.append(f"provider_name = ${idx}")
+            values.append(name)
+            idx += 1
+        if coverage_details is not None:
+            set_parts.append(f"restrictions = ${idx}")
+            values.append(coverage_details)
+            idx += 1
+        if not set_parts:
+            return "No se especificó ningún campo a actualizar."
+        set_parts.append("updated_at = NOW()")
+        values.extend([int(provider_id), tenant_id])
+        await db.pool.execute(
+            f"UPDATE tenant_insurance_providers SET {', '.join(set_parts)} WHERE id = ${idx} AND tenant_id = ${idx + 1}",
+            *values,
+        )
+        await _nova_emit("RECORD_UPDATED", {"entity": "insurance_provider", "provider_id": provider_id, "tenant_id": tenant_id})
+        logger.info(f"Nova: gestionar_obra_social update → {provider_id}")
+        return f"✅ Obra social '{existing['provider_name']}' actualizada."
+
+    if action == "toggle":
+        new_state = not existing["is_active"]
+        await db.pool.execute(
+            "UPDATE tenant_insurance_providers SET is_active = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3",
+            new_state,
+            int(provider_id),
+            tenant_id,
+        )
+        await _nova_emit("RECORD_UPDATED", {"entity": "insurance_provider", "provider_id": provider_id, "tenant_id": tenant_id})
+        state_str = "activada" if new_state else "desactivada"
+        logger.info(f"Nova: gestionar_obra_social toggle → {provider_id} → {new_state}")
+        return f"✅ Obra social '{existing['provider_name']}' {state_str}."
+
+    if action == "delete":
+        await db.pool.execute(
+            "DELETE FROM tenant_insurance_providers WHERE id = $1 AND tenant_id = $2",
+            int(provider_id),
+            tenant_id,
+        )
+        await _nova_emit("RECORD_UPDATED", {"entity": "insurance_provider", "provider_id": provider_id, "tenant_id": tenant_id})
+        logger.info(f"Nova: gestionar_obra_social delete → {provider_id}")
+        return f"✅ Obra social '{existing['provider_name']}' eliminada."
+
+    return f"Acción '{action}' no reconocida. Usá: list, create, update, toggle o delete."
+
+
+async def _generar_pdf_liquidacion(args: Dict, tenant_id: int, user_role: str) -> str:
+    """Genera el PDF de una liquidación profesional. Solo CEO."""
+    if user_role != "ceo":
+        return _role_error("generar_pdf_liquidacion", ["ceo"])
+
+    liquidation_id_raw = args.get("liquidation_id")
+    if not liquidation_id_raw:
+        return "Necesito liquidation_id para generar el PDF."
+
+    try:
+        liquidation_id = int(liquidation_id_raw)
+    except (ValueError, TypeError):
+        return "liquidation_id debe ser un número entero."
+
+    # Validar que la liquidación pertenece al tenant
+    record = await db.pool.fetchrow(
+        "SELECT id FROM liquidation_records WHERE id = $1 AND tenant_id = $2",
+        liquidation_id,
+        tenant_id,
+    )
+    if not record:
+        return f"No encontré la liquidación con ID {liquidation_id}."
+
+    try:
+        from services.liquidation_pdf_service import generate_liquidation_pdf
+
+        pdf_path = await generate_liquidation_pdf(db.pool, liquidation_id, tenant_id)
+        if not pdf_path:
+            return "Error generando el PDF de la liquidación."
+
+        await _nova_emit("BILLING_UPDATED", {"liquidation_id": liquidation_id, "tenant_id": tenant_id})
+
+        logger.info(f"Nova: generar_pdf_liquidacion → {pdf_path}")
+        return f"✅ PDF de liquidación generado correctamente.\nRuta: {pdf_path}"
+
+    except Exception as e:
+        logger.error(f"_generar_pdf_liquidacion error: {e}", exc_info=True)
+        return f"Error generando el PDF: {str(e)}"
+
+
+async def _enviar_liquidacion_email(args: Dict, tenant_id: int, user_role: str) -> str:
+    """Genera y envía el PDF de una liquidación por email. Solo CEO."""
+    if user_role != "ceo":
+        return _role_error("enviar_liquidacion_email", ["ceo"])
+
+    liquidation_id_raw = args.get("liquidation_id")
+    email = args.get("email")
+
+    if not liquidation_id_raw:
+        return "Necesito liquidation_id para enviar la liquidación."
+
+    try:
+        liquidation_id = int(liquidation_id_raw)
+    except (ValueError, TypeError):
+        return "liquidation_id debe ser un número entero."
+
+    try:
+        # Validar y obtener email del profesional
+        record = await db.pool.fetchrow(
+            """
+            SELECT lr.*, p.email AS professional_email
+            FROM liquidation_records lr
+            JOIN professionals p ON p.id = lr.professional_id AND p.tenant_id = lr.tenant_id
+            WHERE lr.id = $1 AND lr.tenant_id = $2
+            """,
+            liquidation_id,
+            tenant_id,
+        )
+        if not record:
+            return f"No encontré la liquidación con ID {liquidation_id}."
+
+        to_email = email or record.get("professional_email")
+        if not to_email:
+            return "El profesional no tiene email registrado. Proporcioná un email de destino."
+
+        from services.liquidation_pdf_service import (
+            gather_liquidation_pdf_data,
+            generate_liquidation_pdf,
+            render_liquidation_email_html,
+        )
+
+        pdf_path = await generate_liquidation_pdf(db.pool, liquidation_id, tenant_id)
+        if not pdf_path:
+            return "Error generando el PDF de la liquidación."
+
+        data = await gather_liquidation_pdf_data(db.pool, liquidation_id, tenant_id)
+        if not data:
+            return "No se pudo obtener los datos de la liquidación."
+
+        email_html = render_liquidation_email_html(data)
+
+        from email_service import EmailService
+        import asyncio as _asyncio
+
+        email_svc = EmailService()
+        await _asyncio.to_thread(
+            lambda: email_svc.send_liquidation_email(
+                to_email=to_email,
+                pdf_path=pdf_path,
+                professional_name=data["professional"]["full_name"],
+                clinic_name=data["clinic"]["name"],
+                period_label=data["period"]["label"],
+                payout_amount=data["summary"]["payout_amount"],
+                html_body=email_html,
+            )
+        )
+
+        await _nova_emit("BILLING_UPDATED", {"liquidation_id": liquidation_id, "tenant_id": tenant_id})
+
+        logger.info(f"Nova: enviar_liquidacion_email → {to_email}")
+        return f"✅ Liquidación enviada a {to_email} para {data['professional']['full_name']}."
+
+    except Exception as e:
+        logger.error(f"_enviar_liquidacion_email error: {e}", exc_info=True)
+        return f"Error enviando la liquidación: {str(e)}"
+
+
+async def _sincronizar_turnos_presupuesto(args: Dict, tenant_id: int, user_role: str) -> str:
+    """Sincroniza turnos no vinculados al plan de tratamiento."""
+    if user_role not in ("ceo", "secretary"):
+        return _role_error("sincronizar_turnos_presupuesto", ["ceo", "secretary"])
+
+    plan_id = args.get("plan_id")
+    if not plan_id:
+        return "Necesito plan_id para sincronizar los turnos."
+
+    try:
+        # Obtener plan y patient_id
+        plan = await db.pool.fetchrow(
+            "SELECT id, patient_id, name FROM treatment_plans WHERE id = $1 AND tenant_id = $2",
+            plan_id,
+            tenant_id,
+        )
+        if not plan:
+            return f"No encontré el plan con ID {plan_id}."
+
+        patient_id = plan["patient_id"]
+
+        # Buscar turnos del paciente no vinculados a ningún pago del plan
+        # (turnos con billing_amount > 0 y payment_status paid/partial que no tienen
+        #  entrada en treatment_plan_payments para este plan)
+        unlinked = await db.pool.fetch(
+            """
+            SELECT a.id, a.appointment_datetime, a.billing_amount, a.payment_status,
+                   a.payment_receipt_data, a.billing_notes,
+                   tt.name AS treatment_name, tt.code AS treatment_code
+            FROM appointments a
+            LEFT JOIN treatment_types tt ON tt.code = a.treatment_type AND tt.tenant_id = a.tenant_id
+            WHERE a.patient_id = $1
+              AND a.tenant_id = $2
+              AND a.billing_amount > 0
+              AND a.payment_status IN ('paid', 'partial')
+              AND NOT EXISTS (
+                  SELECT 1 FROM treatment_plan_payments tpp
+                  WHERE tpp.appointment_id = a.id AND tpp.plan_id = $3
+              )
+            ORDER BY a.appointment_datetime
+            """,
+            patient_id,
+            tenant_id,
+            plan_id,
+        )
+
+        if not unlinked:
+            return f"No hay turnos pagados sin vincular para el plan *{plan['name']}*."
+
+        linked_count = 0
+        total_migrated = 0.0
+
+        for appt in unlinked:
+            amount = float(appt["billing_amount"] or 0)
+            if amount <= 0:
+                continue
+
+            # Buscar si ya hay un ítem con el mismo treatment_code en el plan
+            existing_item = None
+            if appt.get("treatment_code"):
+                existing_item = await db.pool.fetchrow(
+                    """
+                    SELECT id FROM treatment_plan_items
+                    WHERE plan_id = $1 AND tenant_id = $2 AND treatment_type_code = $3
+                    LIMIT 1
+                    """,
+                    plan_id,
+                    tenant_id,
+                    appt["treatment_code"],
+                )
+
+            # Crear ítem si no existe
+            if not existing_item and appt.get("treatment_code"):
+                item_id = str(uuid.uuid4())
+                max_order = await db.pool.fetchval(
+                    "SELECT COALESCE(MAX(sort_order), 0) FROM treatment_plan_items WHERE plan_id = $1 AND tenant_id = $2",
+                    plan_id,
+                    tenant_id,
+                )
+                await db.pool.execute(
+                    """
+                    INSERT INTO treatment_plan_items
+                      (id, tenant_id, plan_id, treatment_type_code, custom_description, estimated_price, sort_order, status, created_at, updated_at)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, 'completed', NOW(), NOW())
+                    """,
+                    item_id,
+                    tenant_id,
+                    plan_id,
+                    appt["treatment_code"],
+                    appt.get("treatment_name"),
+                    amount,
+                    (max_order or 0) + 1,
+                )
+
+            # Migrar pago verificado al plan
+            payment_id = str(uuid.uuid4())
+            apt_dt = appt["appointment_datetime"]
+            payment_date = apt_dt.date() if hasattr(apt_dt, "date") else apt_dt
+            await db.pool.execute(
+                """
+                INSERT INTO treatment_plan_payments
+                  (id, tenant_id, plan_id, amount, payment_method, payment_date, appointment_id, receipt_data, notes, created_at)
+                VALUES ($1, $2, $3, $4, 'transfer', $5, $6, $7, $8, NOW())
+                """,
+                payment_id,
+                tenant_id,
+                plan_id,
+                amount,
+                payment_date,
+                appt["id"],
+                appt.get("payment_receipt_data"),
+                appt.get("billing_notes") or f"Migrado desde turno {appt['id']}",
+            )
+
+            linked_count += 1
+            total_migrated += amount
+
+        # Recalcular estimated_total del plan
+        await db.pool.execute(
+            """
+            UPDATE treatment_plans
+            SET estimated_total = (
+                SELECT COALESCE(SUM(estimated_price), 0)
+                FROM treatment_plan_items
+                WHERE plan_id = $1 AND tenant_id = $2
+            ), updated_at = NOW()
+            WHERE id = $1 AND tenant_id = $2
+            """,
+            plan_id,
+            tenant_id,
+        )
+
+        await _nova_emit(
+            "TREATMENT_PLAN_UPDATED",
+            {"plan_id": plan_id, "tenant_id": tenant_id, "patient_id": patient_id},
+        )
+
+        logger.info(f"Nova: sincronizar_turnos_presupuesto → plan {plan_id}, {linked_count} turnos, ${total_migrated:,.0f}")
+        return (
+            f"✅ Sincronización completada para el plan *{plan['name']}*:\n"
+            f"• {linked_count} turno(s) vinculados\n"
+            f"• {_fmt_money(total_migrated)} migrados como pagos al plan"
+        )
+
+    except Exception as e:
+        logger.error(f"_sincronizar_turnos_presupuesto error: {e}", exc_info=True)
+        return f"Error sincronizando turnos: {str(e)}"
 
 
 async def _historial_clinico(args: Dict, tenant_id: int, user_role: str) -> str:
@@ -3044,6 +4115,11 @@ async def _ir_a_pagina(args: Dict) -> str:
         "configuracion": "Configuracion",
         "marketing": "Marketing",
         "leads": "Leads",
+        "roi": "ROI Dashboard",
+        "presupuestos": "Presupuestos",
+        "finanzas": "Centro Financiero",
+        "liquidaciones": "Liquidaciones",
+        "fichas": "Fichas Digitales",
     }
     label = page_labels.get(page, page)
     return json.dumps(
@@ -3493,6 +4569,26 @@ async def execute_nova_tool(
             return await _ver_presupuesto_paciente(args, tenant_id)
         elif name == "aprobar_presupuesto":
             return await _aprobar_presupuesto(args, tenant_id, user_role, user_id)
+        elif name == "crear_presupuesto":
+            return await _crear_presupuesto(args, tenant_id, user_role)
+        elif name == "agregar_item_presupuesto":
+            return await _agregar_item_presupuesto(args, tenant_id, user_role)
+        elif name == "generar_pdf_presupuesto":
+            return await _generar_pdf_presupuesto(args, tenant_id, user_role)
+        elif name == "enviar_presupuesto_email":
+            return await _enviar_presupuesto_email(args, tenant_id, user_role)
+        elif name == "editar_facturacion_turno":
+            return await _editar_facturacion_turno(args, tenant_id, user_role)
+        elif name == "gestionar_usuarios":
+            return await _gestionar_usuarios(args, tenant_id, user_role)
+        elif name == "gestionar_obra_social":
+            return await _gestionar_obra_social(args, tenant_id, user_role)
+        elif name == "generar_pdf_liquidacion":
+            return await _generar_pdf_liquidacion(args, tenant_id, user_role)
+        elif name == "enviar_liquidacion_email":
+            return await _enviar_liquidacion_email(args, tenant_id, user_role)
+        elif name == "sincronizar_turnos_presupuesto":
+            return await _sincronizar_turnos_presupuesto(args, tenant_id, user_role)
 
         # J. CRUD genérico
         elif name == "obtener_registros":
