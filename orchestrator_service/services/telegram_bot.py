@@ -193,7 +193,7 @@ async def _process_with_nova(
         except Exception:
             clinic_name = "Clínica"
 
-        from main import build_nova_system_prompt
+        from services.nova_prompt import build_nova_system_prompt
         system_prompt = build_nova_system_prompt(clinic_name, "telegram", user_role, tenant_id)
 
         # Convert tool schemas
