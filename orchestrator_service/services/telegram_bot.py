@@ -292,10 +292,11 @@ async def _process_with_nova(
             # No tool calls — we have the final answer
             if not choice.message.tool_calls:
                 response_text = choice.message.content or ""
-                # Save user + assistant to history
+                # Save user + assistant to history (strip PDF markers from history)
+                clean_for_history = PDF_MARKER_RE.sub('', response_text).strip() if 'PDF_ATTACHMENT' in response_text else response_text
                 history.append({"role": "user", "content": text})
                 tool_note = f"[Herramientas: {', '.join(tools_called)}]\n" if tools_called else ""
-                history.append({"role": "assistant", "content": tool_note + response_text})
+                history.append({"role": "assistant", "content": tool_note + clean_for_history})
                 await _save_conversation_history(tenant_id, chat_id, history)
                 return (response_text, tools_called)
 
@@ -332,9 +333,10 @@ async def _process_with_nova(
             messages=messages,
         )
         response_text = final.choices[0].message.content or ""
+        clean_for_history = PDF_MARKER_RE.sub('', response_text).strip() if 'PDF_ATTACHMENT' in response_text else response_text
         history.append({"role": "user", "content": text})
         tool_note = f"[Herramientas: {', '.join(tools_called)}]\n" if tools_called else ""
-        history.append({"role": "assistant", "content": tool_note + response_text})
+        history.append({"role": "assistant", "content": tool_note + clean_for_history})
         await _save_conversation_history(tenant_id, chat_id, history)
         return (response_text, tools_called)
 
