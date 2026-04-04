@@ -131,6 +131,28 @@ services:
     depends_on:
       - orchestrator_service
 
+  telegram_service:
+    build: ./telegram_service
+    # Port not exposed to host — internal service, webhooks proxied via BFF/nginx
+    environment:
+      - ORCHESTRATOR_URL=http://orchestrator_service:8000
+      - ADMIN_TOKEN=${ADMIN_TOKEN}
+      - TELEGRAM_SERVICE_PORT=8003
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8003/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.25'
+        reservations:
+          memory: 64M
+    depends_on:
+      - orchestrator_service
+
   # --- Infrastructure ---
 
   redis:
