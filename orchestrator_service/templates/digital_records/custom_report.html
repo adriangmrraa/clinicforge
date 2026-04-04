@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<style>
+/* ── Page Setup ── */
+@page {
+    size: A4;
+    margin: 2cm 2.5cm;
+    @top-center {
+        content: "{{ data.clinic.name or '' }}";
+        font-family: Arial, Helvetica, sans-serif;
+        font-size: 7.5pt;
+        color: #718096;
+        letter-spacing: 0.5px;
+    }
+    @bottom-center {
+        content: "Pg. " counter(page) " / " counter(pages);
+        font-family: Arial, Helvetica, sans-serif;
+        font-size: 7.5pt;
+        color: #718096;
+    }
+}
+
+/* ── Base Typography ── */
+body {
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 11pt;
+    line-height: 1.6;
+    color: #2d3748;
+    margin: 0;
+    padding: 0;
+}
+
+h1, h2, h3 {
+    font-family: Georgia, 'Times New Roman', serif;
+    color: #1a365d;
+}
+
+/* ── Header ── */
+.header {
+    border-bottom: 2px solid #1a365d;
+    padding-bottom: 14px;
+    margin-bottom: 24px;
+}
+
+.header-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.header-table td {
+    vertical-align: middle;
+    padding: 0;
+}
+
+.header-left {
+    text-align: left;
+}
+
+.header-right {
+    text-align: right;
+    width: 40%;
+}
+
+.header-logo {
+    max-height: 60px;
+    margin-bottom: 6px;
+    display: block;
+}
+
+.header-clinic-name {
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: 20pt;
+    font-weight: bold;
+    color: #1a365d;
+    margin: 0;
+    padding: 0;
+    line-height: 1.2;
+}
+
+.header-contact {
+    font-size: 9pt;
+    color: #718096;
+    line-height: 1.5;
+    margin: 0;
+    padding: 0;
+}
+
+/* ── Report Header ── */
+.report-title {
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: 18pt;
+    font-weight: bold;
+    color: #1a365d;
+    margin: 0 0 8px 0;
+    padding: 0;
+}
+
+.report-subtitle {
+    font-size: 11pt;
+    color: #4a5568;
+    margin: 0 0 6px 0;
+    font-style: italic;
+}
+
+.report-date {
+    font-size: 9pt;
+    color: #718096;
+    margin: 0 0 24px 0;
+}
+
+/* ── Report Content ── */
+.report-content {
+    margin-bottom: 32px;
+}
+
+.report-content h2 {
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: 14pt;
+    font-weight: bold;
+    color: #1a365d;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    border-left: 4px solid #3182ce;
+    padding-left: 12px;
+    margin-top: 24px;
+    margin-bottom: 8px;
+    line-height: 1.3;
+}
+
+.report-content h3 {
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: 12pt;
+    font-weight: bold;
+    color: #2d3748;
+    margin-top: 16px;
+    margin-bottom: 6px;
+}
+
+.report-content p {
+    margin: 0 0 12px 0;
+    text-align: justify;
+}
+
+.report-content ul, .report-content ol {
+    margin: 8px 0 12px 0;
+    padding-left: 24px;
+}
+
+.report-content li {
+    margin-bottom: 4px;
+}
+
+.report-content table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0 16px 0;
+    font-size: 10pt;
+}
+
+.report-content th {
+    background: #edf2f7;
+    border: 1px solid #e2e8f0;
+    padding: 7px 10px;
+    text-align: left;
+    font-weight: bold;
+    color: #1a365d;
+    font-size: 9pt;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.report-content td {
+    border: 1px solid #e2e8f0;
+    padding: 6px 10px;
+    color: #2d3748;
+}
+
+.report-content tr:nth-child(even) td {
+    background: #f7fafc;
+}
+
+/* ── Footer ── */
+.doc-footer {
+    margin-top: 36px;
+    padding-top: 10px;
+    border-top: 1px solid #e2e8f0;
+    text-align: center;
+    font-size: 8pt;
+    color: #a0aec0;
+}
+</style>
+</head>
+<body>
+
+<!-- ── Header ── -->
+<div class="header">
+    <table class="header-table">
+        <tr>
+            <td class="header-left">
+                {% if data.clinic.logo_url %}
+                <img src="{{ data.clinic.logo_url }}" alt="Logo" class="header-logo">
+                {% endif %}
+                <div class="header-clinic-name">{{ data.clinic.name or 'Clínica' }}</div>
+            </td>
+            <td class="header-right">
+                <p class="header-contact">
+                    {% if data.clinic.address %}{{ data.clinic.address }}<br>{% endif %}
+                </p>
+            </td>
+        </tr>
+    </table>
+</div>
+
+<!-- ── Report Title ── -->
+<h1 class="report-title">{{ data.titulo }}</h1>
+{% if data.subtitulo %}
+<p class="report-subtitle">{{ data.subtitulo }}</p>
+{% endif %}
+<p class="report-date">{{ data.fecha }}</p>
+
+<!-- ── Content ── -->
+<div class="report-content">
+    {{ data.contenido | safe }}
+</div>
+
+<!-- ── Footer ── -->
+<div class="doc-footer">
+    Generado por Nova AI &mdash; {{ data.clinic.name or 'ClinicForge' }} &mdash; {{ data.fecha }}
+</div>
+
+</body>
+</html>

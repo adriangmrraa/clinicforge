@@ -1206,6 +1206,59 @@ IMPORTANTE — REGLAS QUIRÚRGICAS:
             "required": ["patient_id"],
         },
     },
+    # N2. PDF Telegram Tools
+    # -------------------------------------------------------------------------
+    {
+        "type": "function",
+        "name": "enviar_pdf_telegram",
+        "description": "Envía un PDF de ficha digital existente por el chat de Telegram. Busca el registro en patient_digital_records, genera el PDF si no existe, y lo envía como archivo adjunto.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "patient_id": {
+                    "type": "integer",
+                    "description": "ID del paciente",
+                },
+                "record_id": {
+                    "type": "string",
+                    "description": "UUID del registro específico (opcional — si no se especifica, busca el más reciente)",
+                },
+                "tipo_documento": {
+                    "type": "string",
+                    "enum": [
+                        "clinical_report",
+                        "post_surgery",
+                        "odontogram_art",
+                        "authorization_request",
+                    ],
+                    "description": "Tipo de documento a buscar (opcional — si no se especifica, busca el más reciente de cualquier tipo)",
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "name": "generar_reporte_personalizado",
+        "description": "Genera un PDF personalizado con el análisis/reporte que escribiste. El PDF tiene logo y branding de la clínica. Usá esto después de recopilar datos y escribir tu análisis como HTML.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "titulo": {
+                    "type": "string",
+                    "description": "Título del reporte (ej: 'Comparativa Abril vs Diciembre 2025')",
+                },
+                "contenido": {
+                    "type": "string",
+                    "description": "Contenido del reporte en HTML. Usá <h2>, <table>, <ul>, <p>, <b> para formatear.",
+                },
+                "subtitulo": {
+                    "type": "string",
+                    "description": "Subtítulo o descripción breve (opcional)",
+                },
+            },
+            "required": ["titulo", "contenido"],
+        },
+    },
     # O. Treatment Plans / Budget (NEW)
     # -------------------------------------------------------------------------
     {
@@ -4860,6 +4913,10 @@ async def execute_nova_tool(
             return await _generar_ficha_digital(args, tenant_id)
         elif name == "enviar_ficha_digital":
             return await _enviar_ficha_digital(args, tenant_id)
+        elif name == "enviar_pdf_telegram":
+            return await _enviar_pdf_telegram(args, tenant_id)
+        elif name == "generar_reporte_personalizado":
+            return await _generar_reporte_personalizado(args, tenant_id)
 
         # O. Treatment Plans
         elif name == "ver_presupuesto_paciente":
@@ -7444,3 +7501,133 @@ async def _enviar_ficha_digital(args: Dict, tenant_id: int) -> str:
     except Exception as e:
         logger.error(f"_enviar_ficha_digital error: {e}", exc_info=True)
         return f"Error: {str(e)}"
+
+
+async def _enviar_pdf_telegram(args: Dict, tenant_id: int) -> str:
+    """Find an existing digital record and return a PDF_ATTACHMENT marker for Telegram delivery."""
+    patient_id = args.get("patient_id")
+    record_id = args.get("record_id")
+    tipo_documento = args.get("tipo_documento")
+
+    try:
+        if record_id:
+            row = await db.pool.fetchrow(
+                """SELECT id, html_content, pdf_path, title, template_type
+                   FROM patient_digital_records
+                   WHERE id = $1 AND tenant_id = $2""",
+                record_id,
+                tenant_id,
+            )
+        elif patient_id and tipo_documento:
+            row = await db.pool.fetchrow(
+                """SELECT id, html_content, pdf_path, title, template_type
+                   FROM patient_digital_records
+                   WHERE patient_id = $1 AND tenant_id = $2 AND template_type = $3
+                   ORDER BY created_at DESC LIMIT 1""",
+                patient_id,
+                tenant_id,
+                tipo_documento,
+            )
+        elif patient_id:
+            row = await db.pool.fetchrow(
+                """SELECT id, html_content, pdf_path, title, template_type
+                   FROM patient_digital_records
+                   WHERE patient_id = $1 AND tenant_id = $2
+                   ORDER BY created_at DESC LIMIT 1""",
+                patient_id,
+                tenant_id,
+            )
+        else:
+            return "Necesito al menos patient_id o record_id para buscar la ficha."
+
+        if not row:
+            return "No se encontró ninguna ficha digital para este paciente. ¿Querés que la genere?"
+
+        actual_record_id = str(row["id"])
+        title = row["title"] or "Ficha Digital"
+
+        # Ensure PDF exists — generate if missing
+        pdf_path = row["pdf_path"]
+        if not pdf_path or not os.path.exists(pdf_path):
+            from services.digital_records_service import generate_pdf
+
+            output_dir = f"/app/uploads/digital_records/{tenant_id}"
+            os.makedirs(output_dir, exist_ok=True)
+            pdf_path = f"{output_dir}/{actual_record_id}.pdf"
+            await generate_pdf(row["html_content"], pdf_path)
+            await db.pool.execute(
+                "UPDATE patient_digital_records SET pdf_path = $1, pdf_generated_at = NOW() WHERE id = $2",
+                pdf_path,
+                actual_record_id,
+            )
+
+        safe_filename = title.replace("/", "-").replace("\\", "-") + ".pdf"
+        return f"[PDF_ATTACHMENT:{pdf_path}|{safe_filename}]\nTe envío {title}."
+
+    except Exception as e:
+        logger.error(f"_enviar_pdf_telegram error: {e}", exc_info=True)
+        return f"Error al buscar la ficha: {str(e)}"
+
+
+async def _generar_reporte_personalizado(args: Dict, tenant_id: int) -> str:
+    """Generate a custom branded PDF report from Nova-written HTML content."""
+    titulo = args.get("titulo", "Reporte")
+    contenido = args.get("contenido", "")
+    subtitulo = args.get("subtitulo")
+
+    if not contenido:
+        return "Necesito el contenido del reporte para generarlo."
+
+    try:
+        import uuid as _uuid
+        from datetime import datetime
+        from jinja2 import Environment, FileSystemLoader
+        from services.digital_records_service import generate_pdf, resolve_logo_data_uri
+
+        # Load tenant data
+        tenant_row = await db.pool.fetchrow(
+            "SELECT clinic_name, address FROM tenants WHERE id = $1",
+            tenant_id,
+        )
+        clinic_name = (tenant_row["clinic_name"] if tenant_row else None) or "Clínica"
+
+        logo_url = resolve_logo_data_uri(tenant_id)
+
+        # Build template data
+        import os as _os
+        template_dir = _os.path.join(
+            _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))),
+            "templates",
+            "digital_records",
+        )
+
+        data = {
+            "clinic": {
+                "name": clinic_name,
+                "logo_url": logo_url,
+                "address": tenant_row["address"] if tenant_row else None,
+            },
+            "titulo": titulo,
+            "subtitulo": subtitulo,
+            "contenido": contenido,
+            "fecha": datetime.now().strftime("%d/%m/%Y %H:%M"),
+        }
+
+        env = Environment(loader=FileSystemLoader(template_dir))
+        template = env.get_template("custom_report.html")
+        html_content = template.render(data=data)
+
+        # Generate PDF
+        _os.makedirs("/tmp/nova_reports", exist_ok=True)
+        pdf_filename = f"{_uuid.uuid4()}.pdf"
+        pdf_path = f"/tmp/nova_reports/{pdf_filename}"
+        await generate_pdf(html_content, pdf_path)
+
+        safe_titulo = titulo.replace("/", "-").replace("\\", "-")
+        return f"[PDF_ATTACHMENT:{pdf_path}|{safe_titulo}.pdf]\nReporte generado: {titulo}"
+
+    except ImportError:
+        return "No se pudo generar el PDF. WeasyPrint no está instalado."
+    except Exception as e:
+        logger.error(f"_generar_reporte_personalizado error: {e}", exc_info=True)
+        return f"Error al generar el reporte: {str(e)}"

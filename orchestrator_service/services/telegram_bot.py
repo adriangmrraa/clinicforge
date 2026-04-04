@@ -73,6 +73,9 @@ PDF_ANALYSIS_PROMPT = (
 )
 
 
+# ── PDF Attachment Marker ─────────────────────────────────────────────────────
+PDF_MARKER_RE = re.compile(r'\[PDF_ATTACHMENT:([^|]+)\|([^\]]+)\]')
+
 # ── HTML Sanitizer for Telegram ───────────────────────────────────────────────
 
 _ALLOWED_TAGS = {"b", "i", "u", "s", "code", "pre", "a"}
@@ -608,6 +611,25 @@ async def _process_and_respond(
     if not response_text:
         response_text = "Procesé tu consulta pero no obtuve respuesta. Intentá reformular."
 
+    # Detect and send PDF attachments
+    pdf_matches = PDF_MARKER_RE.findall(response_text)
+    for pdf_path, pdf_filename in pdf_matches:
+        try:
+            if os.path.exists(pdf_path):
+                with open(pdf_path, 'rb') as pdf_file:
+                    await update.effective_chat.send_document(
+                        document=pdf_file,
+                        filename=pdf_filename,
+                        caption=f"📄 {pdf_filename}",
+                    )
+            else:
+                logger.warning(f"PDF not found: {pdf_path}")
+        except Exception as e:
+            logger.error(f"Failed to send PDF: {e}")
+
+    # Strip markers from text before display and history saving
+    response_text = PDF_MARKER_RE.sub('', response_text).strip()
+
     safe_text = _safe_html(response_text)
     chunks = chunk_message(safe_text)
     for i, chunk in enumerate(chunks):
@@ -616,7 +638,7 @@ async def _process_and_respond(
             await update.effective_chat.send_message(
                 chunk,
                 parse_mode=ParseMode.HTML,
-                reply_markup=QUICK_ACTIONS if is_last else None,
+                reply_markup=None,
             )
         except RetryAfter as e:
             await asyncio.sleep(e.retry_after)
@@ -1096,7 +1118,7 @@ async def _handle_callback(update: Update, context) -> None:
             await query.message.reply_text(
                 chunk,
                 parse_mode=ParseMode.HTML,
-                reply_markup=QUICK_ACTIONS if is_last else None,
+                reply_markup=None,
             )
         except Exception as e:
             logger.error(f"Callback send error: {e}")
