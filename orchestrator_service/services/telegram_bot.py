@@ -214,11 +214,25 @@ async def _process_with_nova(
 
     try:
         import openai
+        from db import db as db_pool
+
+        # Read model from system_config (same as patient chat agent)
+        model_name = "gpt-4o-mini"  # fallback
+        try:
+            model_row = await db_pool.fetchrow(
+                "SELECT value FROM system_config WHERE key = 'OPENAI_MODEL' AND tenant_id = $1",
+                tenant_id,
+            )
+            if model_row and model_row.get("value"):
+                model_name = str(model_row["value"]).strip()
+                logger.info(f"Telegram Nova: using model '{model_name}' for tenant {tenant_id}")
+        except Exception:
+            pass
+
         client = openai.AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
         # Build system prompt — SAME as Nova Realtime, page=telegram
         try:
-            from db import db as db_pool
             clinic_row = await db_pool.fetchrow(
                 "SELECT clinic_name FROM tenants WHERE id = $1", tenant_id
             )
@@ -244,7 +258,7 @@ async def _process_with_nova(
         # Agentic tool loop
         for _round in range(MAX_TOOL_ROUNDS):
             response = await client.chat.completions.create(
-                model="gpt-4o-mini",
+                model=model_name,
                 messages=messages,
                 tools=cc_tools,
                 tool_choice="auto",
@@ -288,7 +302,7 @@ async def _process_with_nova(
 
         # Max rounds reached — get final answer
         final = await client.chat.completions.create(
-            model="gpt-4o-mini",
+            model=model_name,
             messages=messages,
         )
         response_text = final.choices[0].message.content or ""
