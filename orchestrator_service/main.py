@@ -8213,16 +8213,19 @@ FACTURACION Y COBROS:
 
 PRESUPUESTOS Y PLANES DE TRATAMIENTO:
 "Que presupuestos activos hay?" → obtener_registros(tabla="treatment_plans", filtros="status IN ('draft','approved','in_progress')", orden="created_at DESC")
-"Mostrame el presupuesto de [paciente]" → buscar_paciente → obtener_registros(tabla="treatment_plans", filtros="patient_id=X")
-"Cuanto debe [paciente]?" → obtener_registros(tabla="treatment_plans", filtros="patient_id=X") + obtener_registros(tabla="treatment_plan_payments", filtros="plan_id=Y")
-"Cuantos pagos tiene el plan de Garcia?" → buscar_paciente → obtener_registros(tabla="treatment_plan_payments", filtros="plan_id=X")
-"Que tratamientos tiene el presupuesto?" → obtener_registros(tabla="treatment_plan_items", filtros="plan_id=X")
-ENCADENAMIENTO: Para saldo pendiente → leer approved_total del plan, sumar pagos, restar. HACELO sin preguntar.
+"Mostrame el presupuesto de [paciente]" → buscar_paciente → obtener_registros(tabla="treatment_plans", filtros="patient_id=X") → obtener_registros(tabla="treatment_plan_items", filtros="plan_id=Y") → obtener_registros(tabla="treatment_plan_payments", filtros="plan_id=Y") → Respondé con: nombre plan, tratamientos incluidos, total, pagado, pendiente.
+"Cuanto debe [paciente]?" → buscar_paciente → obtener_registros(treatment_plans, patient_id) → obtener_registros(treatment_plan_payments, plan_id) → calcular saldo → responder directo.
+"Cobrale la cuota a Garcia" → buscar_paciente → obtener_registros(treatment_plans, patient_id) → obtener_registros(treatment_plan_payments, plan_id) → calcular pendiente → registrar_pago(plan_id=X, amount=cuota, method="cash")
+"Registrá pago de $500.000 en transferencia al plan de Garcia" → buscar_paciente → obtener_registros(treatment_plans) → registrar_pago(plan_id=X, amount=500000, method="transfer")
+REGLA: Si el paciente tiene UN SOLO plan activo, usalo directamente. Si tiene varios, preguntá cuál.
+REGLA: Si dicen "cobrale" sin especificar monto, calculá la cuota del plan (pendiente / cuotas configuradas).
 
 COMISIONES Y LIQUIDACIONES:
-"Que comisiones tiene Laura?" → obtener_registros(tabla="professional_commissions", filtros="professional_id=X")
-"Mostrame las liquidaciones pendientes" → obtener_registros(tabla="liquidations", filtros="status=pending", orden="created_at DESC")
-"Detalle de la liquidacion X" → obtener_registros(tabla="liquidation_items", filtros="liquidation_id=X")
+"Que comisiones tiene Laura?" → obtener_registros(professionals, first_name=Laura) → obtener_registros(professional_commissions, professional_id=X)
+"Cuanto le corresponde a Laura este mes?" → obtener_registros(professional_commissions, professional_id) + obtener_registros(appointments, professional_id + status=completed + este mes) → calcular comisión
+"Liquidaciones pendientes" → obtener_registros(liquidations, filtros="status=pending", orden="created_at DESC")
+"Detalle de la liquidacion" → obtener_registros(liquidation_items, liquidation_id=X)
+"Cuanto le debemos a cada profesional?" → obtener_registros(liquidations, status=pending) → agrupar por profesional → presentar tabla
 
 FICHAS DIGITALES (documentos clínicos con IA):
 "Generame un informe clinico de [paciente]" → buscar_paciente → generar_ficha_digital(patient_id, tipo_documento="clinical_report")
