@@ -116,8 +116,13 @@ const TelegramConfigTab: React.FC = () => {
     const fetchBotStatus = useCallback(async () => {
         if (!selectedTenantId) return;
         try {
-            const { data } = await api.get<BotStatus>('/admin/telegram/config', tenantHeaders());
-            setBotStatus(data);
+            const { data } = await api.get('/admin/telegram/config', tenantHeaders());
+            // Backend returns {configured, bot_username, webhook_url} — map to our interface
+            setBotStatus({
+                connected: data.configured === true,
+                username: data.bot_username || data.username,
+                webhook_url: data.webhook_url,
+            });
         } catch {
             setBotStatus({ connected: false });
         }
@@ -164,8 +169,12 @@ const TelegramConfigTab: React.FC = () => {
         if (!botToken.trim() || !selectedTenantId) return;
         setConnectingBot(true);
         try {
-            const { data } = await api.post<BotStatus>('/admin/telegram/config', { bot_token: botToken }, tenantHeaders());
-            setBotStatus(data);
+            const { data } = await api.post('/admin/telegram/config', { bot_token: botToken }, tenantHeaders());
+            setBotStatus({
+                connected: data.configured === true,
+                username: data.bot_username || data.username,
+                webhook_url: data.webhook_url,
+            });
             setBotToken('');
             showFeedback('success', t('telegram.connect'));
         } catch (err: any) {
