@@ -9655,19 +9655,7 @@ async def generate_plan_from_appointments(
     """
     tenant_id = resolved_tenant_id
 
-    # 1. Verificar que no exista plan activo
-    existing_plan = await db.pool.fetchrow(
-        "SELECT id FROM treatment_plans WHERE tenant_id=$1 AND patient_id=$2 AND status IN ('draft','approved','in_progress') LIMIT 1",
-        tenant_id,
-        patient_id,
-    )
-    if existing_plan:
-        raise HTTPException(
-            status_code=409,
-            detail="El paciente ya tiene un presupuesto activo",
-        )
-
-    # 2. Fetch appointments del paciente (misma query que billing-summary)
+    # 1. Fetch UNLINKED appointments (not yet in any plan)
     rows = await db.pool.fetch(
         """
         SELECT
@@ -9685,6 +9673,7 @@ async def generate_plan_from_appointments(
         WHERE a.tenant_id = $1
           AND a.patient_id = $2
           AND a.status NOT IN ('cancelled', 'deleted')
+          AND a.plan_item_id IS NULL
         ORDER BY a.appointment_datetime ASC
         """,
         tenant_id,
@@ -9694,7 +9683,7 @@ async def generate_plan_from_appointments(
     if not rows:
         raise HTTPException(
             status_code=422,
-            detail="No hay turnos para generar presupuesto",
+            detail="No hay turnos sin presupuesto asignado. Todos los turnos ya están vinculados a un presupuesto existente.",
         )
 
     # 3. Preparar appointments parseando JSONB defensivamente

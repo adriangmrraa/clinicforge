@@ -964,6 +964,16 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
           <Plus size={18} />
           {t('billing.new_plan')}
         </button>
+        {billingData?.appointments?.some((a: AppointmentBilling) => !a.plan_item_id) && (
+          <button
+            onClick={handleGeneratePlanFromAppointments}
+            disabled={generatingPlan}
+            className="flex items-center gap-2 bg-blue-500/10 text-blue-400 border border-blue-500/20 px-4 py-2 rounded-lg hover:bg-blue-500/20 transition-colors disabled:opacity-50 text-sm"
+          >
+            {generatingPlan ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
+            {t('billing.generate_unlinked') || 'Presupuestar turnos sin asignar'}
+          </button>
+        )}
       </div>
 
       {/* Plan Detail */}

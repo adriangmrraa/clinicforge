@@ -1189,6 +1189,7 @@
     "generate_pdf": "Generar PDF",
     "sync_appointments": "Sincronizar turnos",
     "sync_no_changes": "Todos los turnos ya están vinculados al presupuesto",
+    "generate_unlinked": "Presupuestar turnos sin asignar",
     "send_email": "Enviar por email",
     "send_email_title": "Enviar presupuesto por email",
     "send_email_to": "Email del paciente",
