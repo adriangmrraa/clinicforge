@@ -17,6 +17,7 @@ from fastapi import FastAPI, Request, Response
 from telegram import Update, Bot
 from telegram.ext import (
     Application,
+    CallbackQueryHandler,
     CommandHandler,
     MessageHandler,
     filters,
@@ -28,6 +29,7 @@ from message_handler import (
     handle_start,
     handle_help,
     handle_status,
+    handle_callback_query,
     clear_auth_cache,
 )
 
@@ -114,6 +116,7 @@ async def _init_bot(
         app.add_handler(
             MessageHandler(filters.TEXT & ~filters.COMMAND, process_message)
         )
+        app.add_handler(CallbackQueryHandler(handle_callback_query))
 
         # Store tenant context in bot_data
         app.bot_data["tenant_id"] = tenant_id

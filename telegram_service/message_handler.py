@@ -13,7 +13,7 @@ import time
 from typing import Optional, Dict, Any
 
 import httpx
-from telegram import Update
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
 from config import ORCHESTRATOR_URL, ADMIN_TOKEN
@@ -163,12 +163,28 @@ async def process_message(
     formatted = format_response(response_text)
     chunks = chunk_message(formatted)
 
+    # Quick action keyboard (shown after last chunk only)
+    quick_actions = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("📋 Agenda", callback_data="__agenda"),
+            InlineKeyboardButton("💰 Pendientes", callback_data="__pendientes"),
+        ],
+        [
+            InlineKeyboardButton("📊 Resumen", callback_data="__resumen"),
+            InlineKeyboardButton("❓ Ayuda", callback_data="__ayuda"),
+        ],
+    ])
+
     import asyncio
     from telegram.error import RetryAfter
 
-    for chunk in chunks:
+    for i, chunk in enumerate(chunks):
+        is_last = (i == len(chunks) - 1)
         try:
-            await update.message.reply_text(chunk)
+            await update.message.reply_text(
+                chunk,
+                reply_markup=quick_actions if is_last else None,
+            )
         except RetryAfter as e:
             # Telegram rate limit — retry once after the requested delay
             retry_after = getattr(e, "retry_after", 5)
@@ -215,17 +231,23 @@ async def handle_start(
         return
 
     await update.message.reply_text(
-        f"Hola {user_info['display_name']}! Soy Nova, "
+        f"👋 Hola {user_info['display_name']}! Soy Nova, "
         f"la inteligencia artificial de {clinic_name}.\n\n"
-        "Podés preguntarme cualquier cosa sobre la clínica:\n"
-        "• Agenda y turnos\n"
-        "• Pacientes y fichas médicas\n"
-        "• Cobros y presupuestos\n"
-        "• Odontograma\n"
-        "• Informes y documentos\n"
-        "• Estadísticas y analytics\n"
-        "• Mensajes a pacientes\n\n"
-        "Escribime lo que necesites!"
+        "Podés preguntarme cualquier cosa:\n"
+        "📋 Agenda y turnos\n"
+        "👤 Pacientes y fichas médicas\n"
+        "💰 Cobros y presupuestos\n"
+        "🦷 Odontograma\n"
+        "📄 Informes y documentos\n"
+        "📊 Estadísticas y analytics\n"
+        "💬 Mensajes a pacientes\n\n"
+        "Escribime lo que necesites! 🚀",
+        reply_markup=InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("📋 Ver agenda", callback_data="__agenda"),
+                InlineKeyboardButton("📊 Resumen", callback_data="__resumen"),
+            ],
+        ]),
     )
 
 
@@ -313,3 +335,68 @@ async def handle_status(
     except Exception as e:
         logger.error(f"Error in /status: {e}")
         await update.message.reply_text("Error de conexión. Intentá de nuevo.")
+
+
+# Inline keyboard callback queries
+_QUICK_ACTIONS = {
+    "__agenda": "Qué turnos hay hoy",
+    "__pendientes": "Qué turnos están sin cobrar y quién debe plata",
+    "__resumen": "Dame el resumen de la semana",
+    "__ayuda": "/help",
+}
+
+
+async def handle_callback_query(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """Handle inline keyboard button presses."""
+    query = update.callback_query
+    if not query or not query.data:
+        return
+
+    await query.answer()  # Acknowledge the button press
+
+    action = _QUICK_ACTIONS.get(query.data)
+    if not action:
+        return
+
+    if action == "/help":
+        # Reuse help handler
+        await handle_help(update, context)
+        return
+
+    # Simulate a text message with the mapped query
+    chat_id = update.effective_chat.id
+    tenant_id = context.bot_data.get("tenant_id", 1)
+
+    user_info = await verify_user(tenant_id, chat_id)
+    if not user_info:
+        await query.message.reply_text("No tenés autorización.")
+        return
+
+    await update.effective_chat.send_action("typing")
+
+    try:
+        async with httpx.AsyncClient(timeout=60) as client:
+            resp = await client.post(
+                f"{ORCHESTRATOR_URL}/admin/nova/telegram-message",
+                json={
+                    "chat_id": chat_id,
+                    "text": action,
+                    "tenant_id": tenant_id,
+                    "user_role": user_info["user_role"],
+                    "user_id": str(chat_id),
+                    "display_name": user_info["display_name"],
+                },
+                headers={"X-Admin-Token": ADMIN_TOKEN},
+            )
+            if resp.status_code == 200:
+                result = resp.json()
+                chunks = chunk_message(result.get("response_text", "Sin datos"))
+                for chunk in chunks:
+                    await query.message.reply_text(chunk)
+            else:
+                await query.message.reply_text("❌ Error procesando la consulta.")
+    except Exception as e:
+        logger.error(f"Callback query error: {e}")
+        await query.message.reply_text("❌ Error de conexión.")
