@@ -280,6 +280,7 @@ async def _process_with_nova(
         messages.append({"role": "user", "content": text})
 
         tools_called = []
+        pdf_attachments = []  # Collect PDF markers from tool results
 
         # Agentic tool loop
         for _round in range(MAX_TOOL_ROUNDS):
@@ -296,8 +297,12 @@ async def _process_with_nova(
             # No tool calls — we have the final answer
             if not choice.message.tool_calls:
                 response_text = choice.message.content or ""
-                # Save user + assistant to history (strip PDF markers from history)
-                clean_for_history = PDF_MARKER_RE.sub('', response_text).strip() if 'PDF_ATTACHMENT' in response_text else response_text
+                # Prepend any PDF markers collected from tool results
+                if pdf_attachments:
+                    marker_block = "\n".join(pdf_attachments) + "\n"
+                    response_text = marker_block + response_text
+                # Save to history (clean)
+                clean_for_history = PDF_MARKER_RE.sub('', response_text).strip()
                 history.append({"role": "user", "content": text})
                 tool_note = f"[Herramientas: {', '.join(tools_called)}]\n" if tools_called else ""
                 history.append({"role": "assistant", "content": tool_note + clean_for_history})
@@ -324,11 +329,20 @@ async def _process_with_nova(
                     user_role=user_role,
                     user_id=user_id,
                 )
+                tool_result_str = str(tool_result)
                 tools_called.append(tool_name)
+
+                # Extract PDF markers from tool results before they get consumed by the LLM
+                for match in PDF_MARKER_RE.finditer(tool_result_str):
+                    pdf_attachments.append(match.group(0))
+                    logger.info(f"📎 PDF attachment captured: {match.group(2)}")
+
+                # Strip markers from the tool result sent to the LLM
+                clean_tool_result = PDF_MARKER_RE.sub('', tool_result_str).strip()
                 messages.append({
                     "role": "tool",
                     "tool_call_id": tc.id,
-                    "content": str(tool_result),
+                    "content": clean_tool_result,
                 })
 
         # Max rounds reached — get final answer
@@ -337,7 +351,10 @@ async def _process_with_nova(
             messages=messages,
         )
         response_text = final.choices[0].message.content or ""
-        clean_for_history = PDF_MARKER_RE.sub('', response_text).strip() if 'PDF_ATTACHMENT' in response_text else response_text
+        if pdf_attachments:
+            marker_block = "\n".join(pdf_attachments) + "\n"
+            response_text = marker_block + response_text
+        clean_for_history = PDF_MARKER_RE.sub('', response_text).strip()
         history.append({"role": "user", "content": text})
         tool_note = f"[Herramientas: {', '.join(tools_called)}]\n" if tools_called else ""
         history.append({"role": "assistant", "content": tool_note + clean_for_history})
