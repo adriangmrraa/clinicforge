@@ -9,6 +9,7 @@ Flow:
 5. Send back to Telegram chat
 """
 import logging
+import time
 from typing import Optional, Dict, Any
 
 import httpx
@@ -24,6 +25,20 @@ logger = logging.getLogger(__name__)
 # Key: f"{tenant_id}:{chat_id}", Value: {user_role, display_name}
 _auth_cache: Dict[str, Dict[str, str]] = {}
 _CACHE_TTL = 300  # 5 minutes — cleared on each verify call
+
+# Simple in-memory rate limiter
+_last_message: Dict[int, float] = {}  # chat_id → timestamp
+_RATE_LIMIT_SECONDS = 2  # Min seconds between messages per user
+
+
+def _check_rate_limit(chat_id: int) -> bool:
+    """Returns True if allowed, False if rate limited."""
+    now = time.time()
+    last = _last_message.get(chat_id, 0)
+    if now - last < _RATE_LIMIT_SECONDS:
+        return False
+    _last_message[chat_id] = now
+    return True
 
 
 async def verify_user(tenant_id: int, chat_id: int) -> Optional[Dict[str, str]]:
@@ -74,6 +89,13 @@ async def process_message(
     chat_id = update.effective_chat.id
     text = update.message.text
     tenant_id = context.bot_data.get("tenant_id", 1)
+
+    # 0. Rate limiting
+    if not _check_rate_limit(chat_id):
+        await update.message.reply_text(
+            "Esperá unos segundos antes de enviar otro mensaje."
+        )
+        return
 
     # 1. Verify authorized user
     user_info = await verify_user(tenant_id, chat_id)
@@ -141,16 +163,39 @@ async def process_message(
     formatted = format_response(response_text)
     chunks = chunk_message(formatted)
 
+    import asyncio
+    from telegram.error import RetryAfter
+
     for chunk in chunks:
         try:
             await update.message.reply_text(chunk)
-        except Exception as e:
-            logger.error(f"Error sending chunk to {chat_id}: {e}")
-            # Try without formatting as fallback
+        except RetryAfter as e:
+            # Telegram rate limit — retry once after the requested delay
+            retry_after = getattr(e, "retry_after", 5)
+            logger.warning(
+                f"Telegram 429 for tenant={tenant_id} chat_id={chat_id}, "
+                f"retrying after {retry_after}s"
+            )
+            await asyncio.sleep(retry_after)
             try:
-                await update.message.reply_text(chunk[:4096])
-            except Exception:
-                pass
+                await update.message.reply_text(chunk)
+            except Exception as retry_err:
+                logger.error(
+                    f"Retry failed for tenant={tenant_id} chat_id={chat_id}: {retry_err}"
+                )
+        except Exception as e:
+            logger.error(
+                f"Error sending chunk to tenant={tenant_id} chat_id={chat_id}: {e}"
+            )
+            # Fallback: resend as plain text (strips any MarkdownV2 formatting)
+            try:
+                plain = chunk.replace("*", "").replace("_", "").replace("`", "").replace("\\", "")
+                await update.message.reply_text(plain[:4096])
+            except Exception as fallback_err:
+                logger.error(
+                    f"Plain text fallback also failed for tenant={tenant_id} "
+                    f"chat_id={chat_id}: {fallback_err}"
+                )
 
 
 async def handle_start(
@@ -221,7 +266,9 @@ async def handle_help(
         "ODONTOGRAMA:\n"
         "• \"Caries en la 16 y 18\"\n"
         "• \"Mostrame el odontograma\"\n\n"
-        "Escribí cualquier cosa y yo la resuelvo!"
+        "Escribí cualquier cosa y yo la resuelvo!\n\n"
+        "Para configurar usuarios y ver instrucciones de setup, "
+        "ingresá a ClinicForge → Configuración → Telegram."
     )
 
 

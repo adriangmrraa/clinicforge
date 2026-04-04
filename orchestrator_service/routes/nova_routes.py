@@ -1311,6 +1311,8 @@ async def apply_suggestion(
 class TelegramMessageRequest(BaseModel):
     tenant_id: int
     text: str
+    chat_id: Optional[int] = None
+    display_name: str = ""
     user_role: str = "ceo"
     user_id: str = ""
 
@@ -1453,6 +1455,25 @@ RAZONAMIENTO POR ROL:
         f"nova_telegram: tenant={tenant_id} role={user_role} "
         f"tools={tools_called} resp_len={len(response_text)}"
     )
+
+    # Audit log — non-fatal
+    try:
+        await db.pool.execute(
+            """INSERT INTO automation_logs
+               (tenant_id, log_type, details, created_at)
+               VALUES ($1, 'nova_telegram', $2::jsonb, NOW())""",
+            tenant_id,
+            json_mod.dumps({
+                "chat_id": body.chat_id,
+                "display_name": body.display_name,
+                "user_role": body.user_role,
+                "message": body.text[:500],
+                "response": response_text[:500] if response_text else "",
+                "tools_called": tools_called,
+            })
+        )
+    except Exception:
+        pass  # Non-fatal
 
     return {"response_text": response_text, "tools_called": tools_called}
 
