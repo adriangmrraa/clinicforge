@@ -24,10 +24,12 @@ import io
 import json
 import logging
 import os
+import re
 import time
 from typing import Dict, List, Optional, Any
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.constants import ParseMode
 from telegram.ext import (
     Application,
     CallbackQueryHandler,
@@ -69,6 +71,37 @@ PDF_ANALYSIS_PROMPT = (
     "montos, diagnósticos, tratamientos mencionados.\n"
     "Respondé en español, máximo 5 oraciones."
 )
+
+
+# ── HTML Sanitizer for Telegram ───────────────────────────────────────────────
+
+_ALLOWED_TAGS = {"b", "i", "u", "s", "code", "pre", "a"}
+_TAG_RE = re.compile(r"</?(\w+)(?:\s[^>]*)?>")
+
+
+def _safe_html(text: str) -> str:
+    """Sanitize HTML for Telegram: keep allowed tags, escape the rest.
+
+    Also converts leftover **bold** markdown to <b>bold</b> as fallback.
+    """
+    # Convert markdown bold ** to <b> (LLM sometimes mixes formats)
+    text = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", text)
+    # Convert markdown italic _ to <i> (single underscores)
+    text = re.sub(r"(?<!\w)_(.+?)_(?!\w)", r"<i>\1</i>", text)
+    # Convert ``` code blocks
+    text = re.sub(r"```(?:\w*\n)?(.*?)```", r"<pre>\1</pre>", text, flags=re.DOTALL)
+    # Convert inline `code`
+    text = re.sub(r"`([^`]+)`", r"<code>\1</code>", text)
+
+    # Escape stray < > that aren't valid Telegram HTML tags
+    def _escape_invalid(match):
+        tag = match.group(1).lower()
+        if tag in _ALLOWED_TAGS:
+            return match.group(0)
+        return match.group(0).replace("<", "&lt;").replace(">", "&gt;")
+
+    text = _TAG_RE.sub(_escape_invalid, text)
+    return text
 
 
 # ── Message Chunking ──────────────────────────────────────────────────────────
@@ -537,24 +570,30 @@ async def _process_and_respond(
     if not response_text:
         response_text = "Procesé tu consulta pero no obtuve respuesta. Intentá reformular."
 
-    chunks = chunk_message(response_text)
+    safe_text = _safe_html(response_text)
+    chunks = chunk_message(safe_text)
     for i, chunk in enumerate(chunks):
         is_last = (i == len(chunks) - 1)
         try:
             await update.effective_chat.send_message(
                 chunk,
+                parse_mode=ParseMode.HTML,
                 reply_markup=QUICK_ACTIONS if is_last else None,
             )
         except RetryAfter as e:
             await asyncio.sleep(e.retry_after)
             try:
-                await update.effective_chat.send_message(chunk)
+                await update.effective_chat.send_message(
+                    chunk, parse_mode=ParseMode.HTML,
+                )
             except Exception:
                 pass
         except Exception as e:
             logger.error(f"Telegram send error: {e}")
+            # Fallback: send without HTML if parsing fails
             try:
-                await update.effective_chat.send_message(chunk[:4096])
+                plain = re.sub(r"<[^>]+>", "", chunk)
+                await update.effective_chat.send_message(plain[:4096])
             except Exception:
                 pass
 
@@ -1011,16 +1050,23 @@ async def _handle_callback(update: Update, context) -> None:
         chat_id=chat_id,
     )
 
-    chunks = chunk_message(response_text or "Sin datos")
+    safe_text = _safe_html(response_text or "Sin datos")
+    chunks = chunk_message(safe_text)
     for i, chunk in enumerate(chunks):
         is_last = (i == len(chunks) - 1)
         try:
             await query.message.reply_text(
                 chunk,
+                parse_mode=ParseMode.HTML,
                 reply_markup=QUICK_ACTIONS if is_last else None,
             )
         except Exception as e:
             logger.error(f"Callback send error: {e}")
+            try:
+                plain = re.sub(r"<[^>]+>", "", chunk)
+                await query.message.reply_text(plain[:4096])
+            except Exception:
+                pass
 
 
 # ── Bot Lifecycle ─────────────────────────────────────────────────────────────

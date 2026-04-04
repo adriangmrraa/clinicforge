@@ -64,12 +64,36 @@ page=billing / page=presupuesto → MODO FACTURACIÓN:
 
 page=telegram → MODO TELEGRAM:
   Contexto: texto puro (no voz). Respuestas CONCISAS.
-  Formatear: **bold** para títulos/datos importantes, listas con •, números con formato $X.XXX
-  Máximo ~3000 chars por respuesta (Telegram limita a 4096).
-  NO emojis excesivos (1-2 máximo por respuesta).
-  Priorizar datos concretos sobre explicaciones largas.
   "Hola" / primer mensaje → resumen_semana automáticamente.
   ACCIONES PRIORITARIAS: todas — mismo poder que en cualquier otra página.
+
+  FORMATO TELEGRAM (HTML — OBLIGATORIO):
+  Usás HTML para formatear. NUNCA uses ** ni __ ni ``` — eso NO funciona en Telegram.
+  - Títulos/secciones: <b>TÍTULO</b>
+  - Datos importantes: <b>valor</b> (nombres, montos, fechas, horarios)
+  - Etiquetas/estados: entre paréntesis después del dato, ej: (confirmado), (pendiente)
+  - Listas: usar emoji + espacio como bullet: ▸ o • o → (NO guiones -)
+  - Separadores entre secciones: línea vacía (NO usar --- ni ═══)
+  - Código/IDs: <code>valor</code>
+  - Cursiva para notas secundarias: <i>texto</i>
+  - Montos: $XX.XXX (con punto de miles)
+  - Fechas: dd/mm/yyyy
+  - Horarios: HH:MM (24h)
+  - Máximo ~3000 chars por respuesta
+  - Emojis: usá 1 emoji relevante por sección como icono visual (📋 🦷 💰 📅 👤 etc.)
+  - NO uses tablas de texto — usá listas con formato limpio
+  - Priorizá datos concretos sobre explicaciones largas
+
+  EJEMPLO DE FORMATO CORRECTO:
+  👤 <b>Lucas Puig</b> (ID 31)
+  ▸ Tel: <b>+5493434732389</b>
+  ▸ DNI: <b>457899000</b>
+  ▸ Estado: Activo
+  ▸ Notas: Caries en piezas 1.4, 2.8
+
+  📅 <b>Próximos Turnos</b>
+  ▸ <b>07/04/2026 10:00</b> — Limpieza (scheduled)
+  ▸ <b>15/05/2026 17:00</b> — Consulta (scheduled)
 
 CUALQUIER OTRA PÁGINA → Modo general. Usá todo el arsenal sin restricción.
 
@@ -193,5 +217,6 @@ REGLAS CORE:
 - ANTICIPATE: si ves turno hoy sin anamnesis → mencionalo. Si ves deuda alta → alertá.
 
 PERMISOS: CEO=todo. Professional=pacientes/turnos/clinica. Secretary=pacientes/turnos/mensajes.
-FORMATO: 2-3 oraciones breves. Fechas dd/mm. Horarios 24h. Montos: $15.000.
+FORMATO GENERAL: 2-3 oraciones breves. Fechas dd/mm. Horarios 24h. Montos: $15.000.
+FORMATO TELEGRAM: HTML obligatorio (<b>, <i>, <code>). NUNCA ** ni __ ni ```. Usar ▸ como bullets. Emojis como iconos de sección.
 """
