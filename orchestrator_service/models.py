@@ -739,6 +739,7 @@ class TreatmentType(Base):
     pre_instructions = Column(Text, nullable=True)
     post_instructions = Column(JSONB, nullable=True)
     followup_template = Column(JSONB, nullable=True)
+    patient_display_name = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
@@ -1560,3 +1561,38 @@ class ProfessionalPayout(Base):
     liquidation_record = relationship("LiquidationRecord", back_populates="payouts")
     professional = relationship("Professional", backref="payouts")
     tenant = relationship("Tenant")
+
+
+# =============================================================================
+# NOVA MEMORIES (Engram persistent memory — migration 023)
+# =============================================================================
+
+
+class NovaMemory(Base):
+    __tablename__ = "nova_memories"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    tenant_id = Column(
+        Integer, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    type = Column(String(50), nullable=False, server_default="general")
+    title = Column(String(255), nullable=False)
+    content = Column(Text, nullable=False)
+    topic_key = Column(String(255), nullable=True)
+    created_by = Column(String(100), nullable=True)
+    source_channel = Column(String(50), nullable=False, server_default="unknown")
+    created_at = Column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    __table_args__ = (
+        Index("idx_nova_memories_tenant", "tenant_id"),
+        Index("idx_nova_memories_type", "tenant_id", "type"),
+        Index("idx_nova_memories_topic_key", "tenant_id", "topic_key"),
+    )

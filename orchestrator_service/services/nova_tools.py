@@ -1516,6 +1516,108 @@ IMPORTANTE — REGLAS QUIRÚRGICAS:
             "required": ["approved_total"],
         },
     },
+    # -------------------------------------------------------------------------
+    # P. Memoria persistente — Engram (3)
+    # -------------------------------------------------------------------------
+    {
+        "type": "function",
+        "name": "guardar_memoria",
+        "description": "Guarda una nota o decisión importante en la memoria persistente de Nova (Engram). Usá esto para recordar cosas entre sesiones: decisiones del CEO, notas sobre pacientes, recordatorios, preferencias de la clínica, workflows establecidos. La memoria persiste PARA SIEMPRE — no se pierde al cerrar el chat. Si pasás topic_key, hace upsert (actualiza si ya existe esa clave).",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "titulo": {
+                    "type": "string",
+                    "description": "Título corto y buscable (ej: 'Precio limpieza actualizado', 'García debe seña')",
+                },
+                "contenido": {
+                    "type": "string",
+                    "description": "Detalle completo de lo que hay que recordar",
+                },
+                "tipo": {
+                    "type": "string",
+                    "enum": [
+                        "decision",
+                        "feedback",
+                        "patient_note",
+                        "reminder",
+                        "workflow",
+                        "preference",
+                        "discovery",
+                        "general",
+                    ],
+                    "description": "Tipo semántico de la memoria",
+                },
+                "topic_key": {
+                    "type": "string",
+                    "description": "Clave estable para upsert (ej: 'workflow/turno-flow', 'precio/limpieza'). Si ya existe una memoria con esta clave, se actualiza en lugar de crear una nueva.",
+                },
+            },
+            "required": ["titulo", "contenido"],
+        },
+    },
+    {
+        "type": "function",
+        "name": "buscar_memorias",
+        "description": "Busca en la memoria persistente de Nova (Engram). Busca por texto libre en títulos y contenido. Útil para recordar decisiones pasadas, notas de pacientes, preferencias del CEO, etc.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Texto a buscar (ej: 'precio', 'García', 'horarios')",
+                },
+                "tipo": {
+                    "type": "string",
+                    "enum": [
+                        "decision",
+                        "feedback",
+                        "patient_note",
+                        "reminder",
+                        "workflow",
+                        "preference",
+                        "discovery",
+                        "general",
+                    ],
+                    "description": "Filtrar por tipo (opcional)",
+                },
+                "limite": {
+                    "type": "integer",
+                    "description": "Máximo de resultados (default 10)",
+                },
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "type": "function",
+        "name": "ver_contexto_memorias",
+        "description": "Recupera las memorias más recientes de Nova (Engram), ordenadas por última actualización. Usá esto al inicio de sesión para restaurar contexto de sesiones anteriores.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "limite": {
+                    "type": "integer",
+                    "description": "Máximo de memorias a recuperar (default 10)",
+                },
+                "tipo": {
+                    "type": "string",
+                    "enum": [
+                        "decision",
+                        "feedback",
+                        "patient_note",
+                        "reminder",
+                        "workflow",
+                        "preference",
+                        "discovery",
+                        "general",
+                    ],
+                    "description": "Filtrar por tipo (opcional)",
+                },
+            },
+            "required": [],
+        },
+    },
 ]
 
 
@@ -4409,6 +4511,179 @@ async def _onboarding_status(args: Dict, tenant_id: int, user_role: str) -> str:
 
 
 # =============================================================================
+# K2. ENGRAM — PERSISTENT MEMORY IMPLEMENTATIONS
+# =============================================================================
+
+
+async def _guardar_memoria(args: Dict, tenant_id: int, user_role: str) -> str:
+    """
+    Save a memory to nova_memories. Supports upsert via topic_key.
+    Caller may inject _source_channel and _created_by into args before dispatch.
+    """
+    titulo = args.get("titulo", "").strip()
+    contenido = args.get("contenido", "").strip()
+    tipo = args.get("tipo", "general")
+    topic_key = args.get("topic_key") or None
+    source_channel = args.pop("_source_channel", "web")
+    created_by = args.pop("_created_by", user_role or "nova")
+
+    if not titulo or not contenido:
+        return "Necesito al menos 'titulo' y 'contenido' para guardar una memoria."
+
+    try:
+        if topic_key:
+            # Upsert: check if a memory with this topic_key already exists
+            existing = await db.pool.fetchrow(
+                "SELECT id FROM nova_memories WHERE tenant_id = $1 AND topic_key = $2",
+                tenant_id,
+                topic_key,
+            )
+            if existing:
+                await db.pool.execute(
+                    """
+                    UPDATE nova_memories
+                    SET title = $1, content = $2, type = $3, updated_at = NOW()
+                    WHERE id = $4
+                    """,
+                    titulo,
+                    contenido,
+                    tipo,
+                    existing["id"],
+                )
+                return f"Memoria actualizada (topic: {topic_key}): {titulo}"
+
+        # INSERT new memory
+        mem_id = await db.pool.fetchval(
+            """
+            INSERT INTO nova_memories
+                (tenant_id, type, title, content, topic_key, created_by, source_channel)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            RETURNING id
+            """,
+            tenant_id,
+            tipo,
+            titulo,
+            contenido,
+            topic_key,
+            created_by,
+            source_channel,
+        )
+        return f"Memoria guardada (ID {mem_id}): {titulo}"
+
+    except Exception as e:
+        logger.error(f"_guardar_memoria error: {e}", exc_info=True)
+        return f"Error al guardar memoria: {str(e)}"
+
+
+async def _buscar_memorias(args: Dict, tenant_id: int) -> str:
+    """Search nova_memories by ILIKE on title + content. Optional type filter."""
+    query = args.get("query", "").strip()
+    tipo = args.get("tipo") or None
+    limite = min(int(args.get("limite", 10)), 50)
+
+    if not query:
+        return "Necesito un texto de búsqueda."
+
+    try:
+        pattern = f"%{query}%"
+        if tipo:
+            rows = await db.pool.fetch(
+                """
+                SELECT id, type, title, content, topic_key, source_channel, updated_at
+                FROM nova_memories
+                WHERE tenant_id = $1
+                  AND type = $2
+                  AND (title ILIKE $3 OR content ILIKE $3)
+                ORDER BY updated_at DESC
+                LIMIT $4
+                """,
+                tenant_id,
+                tipo,
+                pattern,
+                limite,
+            )
+        else:
+            rows = await db.pool.fetch(
+                """
+                SELECT id, type, title, content, topic_key, source_channel, updated_at
+                FROM nova_memories
+                WHERE tenant_id = $1
+                  AND (title ILIKE $2 OR content ILIKE $2)
+                ORDER BY updated_at DESC
+                LIMIT $3
+                """,
+                tenant_id,
+                pattern,
+                limite,
+            )
+
+        if not rows:
+            return f"No encontré memorias que coincidan con '{query}'."
+
+        lines = [f"Memorias encontradas ({len(rows)}):"]
+        for r in rows:
+            fecha = r["updated_at"].strftime("%d/%m/%Y") if r["updated_at"] else "—"
+            key_info = f" [{r['topic_key']}]" if r.get("topic_key") else ""
+            lines.append(
+                f"\n• [{r['type']}]{key_info} {r['title']} ({fecha})\n  {r['content'][:200]}{'...' if len(r['content']) > 200 else ''}"
+            )
+        return "\n".join(lines)
+
+    except Exception as e:
+        logger.error(f"_buscar_memorias error: {e}", exc_info=True)
+        return f"Error al buscar memorias: {str(e)}"
+
+
+async def _ver_contexto_memorias(args: Dict, tenant_id: int) -> str:
+    """Return recent memories ordered by updated_at DESC for session context recovery."""
+    limite = min(int(args.get("limite", 10)), 50)
+    tipo = args.get("tipo") or None
+
+    try:
+        if tipo:
+            rows = await db.pool.fetch(
+                """
+                SELECT id, type, title, content, topic_key, source_channel, updated_at
+                FROM nova_memories
+                WHERE tenant_id = $1 AND type = $2
+                ORDER BY updated_at DESC
+                LIMIT $3
+                """,
+                tenant_id,
+                tipo,
+                limite,
+            )
+        else:
+            rows = await db.pool.fetch(
+                """
+                SELECT id, type, title, content, topic_key, source_channel, updated_at
+                FROM nova_memories
+                WHERE tenant_id = $1
+                ORDER BY updated_at DESC
+                LIMIT $2
+                """,
+                tenant_id,
+                limite,
+            )
+
+        if not rows:
+            return "No hay memorias guardadas todavía."
+
+        lines = [f"Contexto de memorias recientes ({len(rows)}):"]
+        for r in rows:
+            fecha = r["updated_at"].strftime("%d/%m/%Y %H:%M") if r["updated_at"] else "—"
+            key_info = f" [{r['topic_key']}]" if r.get("topic_key") else ""
+            lines.append(
+                f"\n• [{r['type']}]{key_info} {r['title']} — {fecha}\n  {r['content'][:300]}{'...' if len(r['content']) > 300 else ''}"
+            )
+        return "\n".join(lines)
+
+    except Exception as e:
+        logger.error(f"_ver_contexto_memorias error: {e}", exc_info=True)
+        return f"Error al recuperar contexto: {str(e)}"
+
+
+# =============================================================================
 # DISPATCHER
 # =============================================================================
 
@@ -4621,6 +4896,14 @@ async def execute_nova_tool(
             return await _crear_registro(args, tenant_id, user_role)
         elif name == "contar_registros":
             return await _contar_registros(args, tenant_id)
+
+        # K2. Engram — Persistent Memory
+        elif name == "guardar_memoria":
+            return await _guardar_memoria(args, tenant_id, user_role)
+        elif name == "buscar_memorias":
+            return await _buscar_memorias(args, tenant_id)
+        elif name == "ver_contexto_memorias":
+            return await _ver_contexto_memorias(args, tenant_id)
 
         else:
             return f"Tool '{name}' no reconocida."

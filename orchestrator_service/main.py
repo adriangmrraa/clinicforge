@@ -8119,6 +8119,9 @@ async def _nova_realtime_handler(websocket: WebSocket, session_id: str):
                             logger.info(
                                 f"🎙️ NOVA TOOL CALL: {tool_name}({json_mod.dumps(tool_args, ensure_ascii=False)[:200]}) tenant={tenant_id} role={user_role}"
                             )
+                            if tool_name == "guardar_memoria":
+                                tool_args["_source_channel"] = "realtime"
+                                tool_args["_created_by"] = user_id
                             result = await execute_nova_tool(
                                 tool_name, tool_args, tenant_id, user_role, user_id
                             )
@@ -8224,6 +8227,26 @@ async def nova_voice_direct(websocket: WebSocket):
                 pass
 
             system_prompt = build_nova_system_prompt(clinic_name, page, user_role, tenant_id)
+
+            # Inject Engram persistent memories
+            try:
+                mem_rows = await db.pool.fetch(
+                    "SELECT type, title, content, created_at FROM nova_memories "
+                    "WHERE tenant_id = $1 ORDER BY updated_at DESC LIMIT 20",
+                    tenant_id,
+                )
+                if mem_rows:
+                    mem_lines = []
+                    for m in mem_rows:
+                        date_str = m["created_at"].strftime("%d/%m") if m.get("created_at") else "?"
+                        mem_lines.append(f"• [{m['type']}] {m['title']}: {m['content'][:150]}")
+                    system_prompt += (
+                        "\n\nMEMORIA PERSISTENTE (Engram):\n"
+                        + "\n".join(mem_lines)
+                    )
+            except Exception as e:
+                logger.warning(f"Failed to load Engram memories for Realtime: {e}")
+
             await redis.setex(
                 f"nova_session:{session_id}",
                 360,

@@ -243,6 +243,25 @@ async def _process_with_nova(
         from services.nova_prompt import build_nova_system_prompt
         system_prompt = build_nova_system_prompt(clinic_name, "telegram", user_role, tenant_id)
 
+        # Inject Engram persistent memories
+        try:
+            mem_rows = await db_pool.fetch(
+                "SELECT type, title, content, created_at FROM nova_memories "
+                "WHERE tenant_id = $1 ORDER BY updated_at DESC LIMIT 20",
+                tenant_id,
+            )
+            if mem_rows:
+                mem_lines = []
+                for m in mem_rows:
+                    date_str = m["created_at"].strftime("%d/%m") if m.get("created_at") else "?"
+                    mem_lines.append(f"• [{m['type']}] {m['title']}: {m['content'][:150]}")
+                system_prompt += (
+                    "\n\nMEMORIA PERSISTENTE (Engram — recordás esto de sesiones anteriores):\n"
+                    + "\n".join(mem_lines)
+                )
+        except Exception as e:
+            logger.warning(f"Failed to load Engram memories: {e}")
+
         # Convert tool schemas
         cc_tools = nova_tools_for_chat_completions()
 
@@ -272,7 +291,8 @@ async def _process_with_nova(
                 response_text = choice.message.content or ""
                 # Save user + assistant to history
                 history.append({"role": "user", "content": text})
-                history.append({"role": "assistant", "content": response_text})
+                tool_note = f"[Herramientas: {', '.join(tools_called)}]\n" if tools_called else ""
+                history.append({"role": "assistant", "content": tool_note + response_text})
                 await _save_conversation_history(tenant_id, chat_id, history)
                 return (response_text, tools_called)
 
@@ -286,6 +306,9 @@ async def _process_with_nova(
                     tool_args = {}
 
                 logger.info(f"🤖 Telegram Nova tool: {tool_name}({list(tool_args.keys())})")
+                if tool_name == "guardar_memoria":
+                    tool_args["_source_channel"] = "telegram"
+                    tool_args["_created_by"] = display_name
                 tool_result = await execute_nova_tool(
                     name=tool_name,
                     args=tool_args,
@@ -307,7 +330,8 @@ async def _process_with_nova(
         )
         response_text = final.choices[0].message.content or ""
         history.append({"role": "user", "content": text})
-        history.append({"role": "assistant", "content": response_text})
+        tool_note = f"[Herramientas: {', '.join(tools_called)}]\n" if tools_called else ""
+        history.append({"role": "assistant", "content": tool_note + response_text})
         await _save_conversation_history(tenant_id, chat_id, history)
         return (response_text, tools_called)
 
