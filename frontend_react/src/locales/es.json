@@ -2212,7 +2212,10 @@
     "instructions_token": "Abrí Telegram → buscá @BotFather → enviá /newbot → copiá el token",
     "instructions_chatid": "Para obtener tu Chat ID, escribile a @userinfobot en Telegram",
     "copy_url": "Copiar URL",
-    "copied": "¡Copiado!"
+    "copied": "¡Copiado!",
+    "select_clinic": "Seleccionar clínica",
+    "select_clinic_hint": "Cada clínica tiene su propio bot de Telegram con sus pacientes y datos independientes.",
+    "select_clinic_first": "Seleccioná una clínica para configurar Telegram"
   }
 }
 

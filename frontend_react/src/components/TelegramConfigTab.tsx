@@ -1,7 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Send, Eye, EyeOff, Copy, Check, Trash2, ChevronDown, ChevronUp, Loader2, Plus, X } from 'lucide-react';
+import { Send, Eye, EyeOff, Copy, Check, Trash2, ChevronDown, ChevronUp, Loader2, Plus, X, Building2 } from 'lucide-react';
 import api from '../api/axios';
 import { useTranslation } from '../context/LanguageContext';
+
+interface Tenant {
+    id: number;
+    clinic_name: string;
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -43,6 +48,11 @@ const maskChatId = (id: string) => {
 const TelegramConfigTab: React.FC = () => {
     const { t } = useTranslation();
 
+    // Tenant selector state
+    const [tenants, setTenants] = useState<Tenant[]>([]);
+    const [selectedTenantId, setSelectedTenantId] = useState<number | null>(null);
+    const [loadingTenants, setLoadingTenants] = useState(true);
+
     // Bot config state
     const [botStatus, setBotStatus] = useState<BotStatus>({ connected: false });
     const [botToken, setBotToken] = useState('');
@@ -77,46 +87,84 @@ const TelegramConfigTab: React.FC = () => {
         setTimeout(() => setFeedback(null), 3500);
     };
 
+    // ── Tenant-scoped API helper ─────────────────────────────────────────────
+
+    const tenantHeaders = useCallback(() => {
+        if (!selectedTenantId) return {};
+        return { headers: { 'X-Tenant-ID': String(selectedTenantId) } };
+    }, [selectedTenantId]);
+
     // ── Data Fetchers ──────────────────────────────────────────────────────────
 
-    const fetchBotStatus = useCallback(async () => {
+    const fetchTenants = useCallback(async () => {
+        setLoadingTenants(true);
         try {
-            const { data } = await api.get<BotStatus>('/admin/telegram/config');
+            const { data } = await api.get<Tenant[]>('/admin/chat/tenants');
+            if (Array.isArray(data)) {
+                setTenants(data);
+                if (data.length > 0 && !selectedTenantId) {
+                    setSelectedTenantId(data[0].id);
+                }
+            }
+        } catch {
+            setTenants([]);
+        } finally {
+            setLoadingTenants(false);
+        }
+    }, []);
+
+    const fetchBotStatus = useCallback(async () => {
+        if (!selectedTenantId) return;
+        try {
+            const { data } = await api.get<BotStatus>('/admin/telegram/config', tenantHeaders());
             setBotStatus(data);
         } catch {
             setBotStatus({ connected: false });
         }
-    }, []);
+    }, [selectedTenantId, tenantHeaders]);
 
     const fetchUsers = useCallback(async () => {
+        if (!selectedTenantId) return;
         setLoadingUsers(true);
         try {
-            const { data } = await api.get<AuthorizedUser[]>('/admin/telegram/authorized-users');
+            const { data } = await api.get<AuthorizedUser[]>('/admin/telegram/authorized-users', tenantHeaders());
             setUsers(Array.isArray(data) ? data : []);
         } catch {
             setUsers([]);
         } finally {
             setLoadingUsers(false);
         }
-    }, []);
+    }, [selectedTenantId, tenantHeaders]);
 
+    // Load tenants on mount
     useEffect(() => {
-        fetchBotStatus();
-    }, [fetchBotStatus]);
+        fetchTenants();
+    }, [fetchTenants]);
 
+    // Reload bot status when tenant changes
     useEffect(() => {
-        if (botStatus.connected) {
+        if (selectedTenantId) {
+            setBotStatus({ connected: false });
+            setUsers([]);
+            setBotToken('');
+            fetchBotStatus();
+        }
+    }, [selectedTenantId]);
+
+    // Load users when bot is connected
+    useEffect(() => {
+        if (botStatus.connected && selectedTenantId) {
             fetchUsers();
         }
-    }, [botStatus.connected, fetchUsers]);
+    }, [botStatus.connected, selectedTenantId]);
 
     // ── Handlers ──────────────────────────────────────────────────────────────
 
     const handleConnect = async () => {
-        if (!botToken.trim()) return;
+        if (!botToken.trim() || !selectedTenantId) return;
         setConnectingBot(true);
         try {
-            const { data } = await api.post<BotStatus>('/admin/telegram/config', { bot_token: botToken });
+            const { data } = await api.post<BotStatus>('/admin/telegram/config', { bot_token: botToken }, tenantHeaders());
             setBotStatus(data);
             setBotToken('');
             showFeedback('success', t('telegram.connect'));
@@ -131,7 +179,7 @@ const TelegramConfigTab: React.FC = () => {
         if (!confirm(t('telegram.disconnect') + '?')) return;
         setDisconnectingBot(true);
         try {
-            await api.delete('/admin/telegram/config');
+            await api.delete('/admin/telegram/config', tenantHeaders());
             setBotStatus({ connected: false });
             setUsers([]);
         } catch (err: any) {
@@ -152,7 +200,7 @@ const TelegramConfigTab: React.FC = () => {
         e.preventDefault();
         setSavingUser(true);
         try {
-            await api.post('/admin/telegram/authorized-users', newUser);
+            await api.post('/admin/telegram/authorized-users', newUser, tenantHeaders());
             setIsModalOpen(false);
             setNewUser({ display_name: '', telegram_chat_id: '', user_role: 'secretary' });
             await fetchUsers();
@@ -167,7 +215,7 @@ const TelegramConfigTab: React.FC = () => {
     const handleToggleActive = async (user: AuthorizedUser) => {
         setTogglingId(user.id);
         try {
-            await api.put(`/admin/telegram/authorized-users/${user.id}`, { is_active: !user.is_active });
+            await api.put(`/admin/telegram/authorized-users/${user.id}`, { is_active: !user.is_active }, tenantHeaders());
             setUsers(prev => prev.map(u => u.id === user.id ? { ...u, is_active: !u.is_active } : u));
         } catch (err: any) {
             showFeedback('error', err?.response?.data?.detail || 'Error al actualizar');
@@ -180,7 +228,7 @@ const TelegramConfigTab: React.FC = () => {
         if (!confirm(t('telegram.confirm_delete'))) return;
         setDeletingId(id);
         try {
-            await api.delete(`/admin/telegram/authorized-users/${id}`);
+            await api.delete(`/admin/telegram/authorized-users/${id}`, tenantHeaders());
             setUsers(prev => prev.filter(u => u.id !== id));
             showFeedback('success', t('telegram.user_removed'));
         } catch (err: any) {
@@ -194,6 +242,43 @@ const TelegramConfigTab: React.FC = () => {
 
     return (
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+
+            {/* Clinic / Tenant Selector */}
+            <div className="bg-white/[0.03] border border-white/[0.06] rounded-2xl p-4 sm:p-6">
+                <div className="flex items-center gap-2 mb-3">
+                    <Building2 size={20} className="text-sky-400" />
+                    <h2 className="text-lg font-semibold text-white">{t('telegram.select_clinic') || 'Seleccionar clínica'}</h2>
+                </div>
+                <p className="text-sm text-white/40 mb-4">{t('telegram.select_clinic_hint') || 'Cada clínica tiene su propio bot de Telegram con sus pacientes y datos independientes.'}</p>
+                {loadingTenants ? (
+                    <div className="flex items-center gap-2 text-white/40 text-sm">
+                        <Loader2 size={16} className="animate-spin" /> Cargando clínicas...
+                    </div>
+                ) : tenants.length === 0 ? (
+                    <p className="text-sm text-white/40">No hay clínicas configuradas.</p>
+                ) : (
+                    <select
+                        className="w-full px-4 py-2.5 bg-white/[0.04] border border-white/[0.08] rounded-xl text-white focus:ring-2 focus:ring-sky-500 outline-none transition-all"
+                        value={selectedTenantId ?? ''}
+                        onChange={(e) => {
+                            const tid = e.target.value ? Number(e.target.value) : null;
+                            setSelectedTenantId(tid);
+                        }}
+                    >
+                        <option value="">{t('config.select_placeholder') || 'Seleccionar...'}</option>
+                        {tenants.map(tenant => (
+                            <option key={tenant.id} value={tenant.id}>{tenant.clinic_name}</option>
+                        ))}
+                    </select>
+                )}
+            </div>
+
+            {/* Everything below requires a selected tenant */}
+            {!selectedTenantId ? (
+                <div className="text-center py-8 text-white/30 text-sm">
+                    {t('telegram.select_clinic_first') || 'Seleccioná una clínica para configurar Telegram'}
+                </div>
+            ) : (<>
 
             {/* Feedback toast */}
             {feedback && (
@@ -490,6 +575,8 @@ const TelegramConfigTab: React.FC = () => {
                     </div>
                 </div>
             )}
+
+            </>)}
         </div>
     );
 };
