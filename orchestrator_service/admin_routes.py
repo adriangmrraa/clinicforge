@@ -13264,6 +13264,13 @@ async def save_telegram_config(
             detail=f"Telegram rechazó el webhook: {tg_result.get('description')}",
         )
 
+    # 6. Reload bot polling in background
+    try:
+        from services.telegram_bot import reload_telegram_bot
+        asyncio.ensure_future(reload_telegram_bot(resolved_tenant_id))
+    except Exception as e:
+        logger.warning(f"[Telegram] Bot reload after config: {e}")
+
     return {
         "configured": True,
         "bot_username": bot_info.get("username"),
@@ -13305,5 +13312,12 @@ async def delete_telegram_config(
         resolved_tenant_id,
         [TELEGRAM_BOT_TOKEN, TELEGRAM_WEBHOOK_SECRET, TELEGRAM_WEBHOOK_ACCESS_TOKEN],
     )
+
+    # Stop bot polling
+    try:
+        from services.telegram_bot import reload_telegram_bot
+        asyncio.ensure_future(reload_telegram_bot(resolved_tenant_id))
+    except Exception:
+        pass
 
     return {"configured": False}
