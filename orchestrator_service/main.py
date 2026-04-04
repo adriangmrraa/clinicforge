@@ -4215,7 +4215,56 @@ async def verify_payment_receipt(
             )
 
         if not apt:
-            return "No encontré un turno pendiente asociado a tu número. Verificá con la clínica."
+            # No future appointment — check if there's an active plan with pending balance
+            phone_digits_plan = normalize_phone_digits(phone)
+            plan_only = await db.pool.fetchrow(
+                """
+                SELECT tp.id as plan_id, tp.name as plan_name, tp.approved_total,
+                       COALESCE(SUM(tpp.amount), 0) as total_paid,
+                       p.id as patient_id, p.first_name, p.last_name, p.email
+                FROM treatment_plans tp
+                JOIN patients p ON p.id = tp.patient_id AND p.tenant_id = tp.tenant_id
+                LEFT JOIN treatment_plan_payments tpp ON tpp.plan_id = tp.id AND tpp.tenant_id = tp.tenant_id
+                WHERE tp.tenant_id = $1
+                  AND REGEXP_REPLACE(p.phone_number, '[^0-9]', '', 'g') = $2
+                  AND tp.status IN ('draft', 'approved', 'in_progress')
+                GROUP BY tp.id, p.id
+                HAVING COALESCE(tp.approved_total, 0) > COALESCE(SUM(tpp.amount), 0)
+                ORDER BY tp.created_at DESC LIMIT 1
+                """,
+                tenant_id,
+                phone_digits_plan,
+            )
+            if not plan_only:
+                return "No encontré un turno pendiente ni un presupuesto con saldo a tu nombre. Verificá con la clínica."
+
+            # Build a minimal apt-like dict so the rest of the flow works
+            apt = {
+                "id": None,
+                "patient_id": plan_only["patient_id"],
+                "status": None,
+                "billing_amount": None,
+                "payment_status": None,
+                "appointment_datetime": None,
+                "appointment_type": None,
+                "professional_id": None,
+                "payment_receipt_data": None,
+                "first_name": plan_only["first_name"],
+                "last_name": plan_only["last_name"],
+                "email": plan_only["email"],
+                "prof_name": None,
+                "prof_price": None,
+                "appointment_name": plan_only["plan_name"],
+            }
+            # Force plan payment context
+            _force_plan_context = {
+                "plan_id": plan_only["plan_id"],
+                "plan_name": plan_only["plan_name"],
+                "approved_total": float(plan_only["approved_total"] or 0),
+                "total_paid": float(plan_only["total_paid"] or 0),
+            }
+        else:
+            _force_plan_context = None
 
         # 3. Determine expected amount
         # Priority: billing_amount > plan pending balance > 50% of professional price > 50% of treatment price > 50% of tenant price
@@ -4233,23 +4282,27 @@ async def verify_payment_receipt(
         if not expected_amount or expected_amount <= 0:
             try:
                 patient_id = apt["patient_id"]
-                plan_row = await db.pool.fetchrow(
-                    """
-                    SELECT tp.id as plan_id, tp.name as plan_name, tp.approved_total,
-                           COALESCE(SUM(tpp.amount), 0) as total_paid
-                    FROM treatment_plans tp
-                    LEFT JOIN treatment_plan_payments tpp
-                          ON tpp.plan_id = tp.id AND tpp.tenant_id = tp.tenant_id
-                    WHERE tp.tenant_id = $1 AND tp.patient_id = $2
-                      AND tp.status IN ('approved', 'in_progress')
-                    GROUP BY tp.id, tp.name, tp.approved_total
-                    HAVING tp.approved_total > COALESCE(SUM(tpp.amount), 0)
-                    ORDER BY tp.created_at DESC
-                    LIMIT 1
-                    """,
-                    tenant_id,
-                    patient_id,
-                )
+                # Use pre-fetched plan context if available (plan-only flow, no appointment)
+                if _force_plan_context:
+                    plan_row = _force_plan_context
+                else:
+                    plan_row = await db.pool.fetchrow(
+                        """
+                        SELECT tp.id as plan_id, tp.name as plan_name, tp.approved_total,
+                               COALESCE(SUM(tpp.amount), 0) as total_paid
+                        FROM treatment_plans tp
+                        LEFT JOIN treatment_plan_payments tpp
+                              ON tpp.plan_id = tp.id AND tpp.tenant_id = tp.tenant_id
+                        WHERE tp.tenant_id = $1 AND tp.patient_id = $2
+                          AND tp.status IN ('draft', 'approved', 'in_progress')
+                        GROUP BY tp.id, tp.name, tp.approved_total
+                        HAVING tp.approved_total > COALESCE(SUM(tpp.amount), 0)
+                        ORDER BY tp.created_at DESC
+                        LIMIT 1
+                        """,
+                        tenant_id,
+                        patient_id,
+                    )
                 if plan_row:
                     plan_pending = float(plan_row["approved_total"]) - float(
                         plan_row["total_paid"]
@@ -4692,22 +4745,25 @@ async def verify_payment_receipt(
             try:
                 from main import sio
 
-                dias = [
-                    "Lunes",
-                    "Martes",
-                    "Miércoles",
-                    "Jueves",
-                    "Viernes",
-                    "Sábado",
-                    "Domingo",
-                ]
                 apt_dt = apt["appointment_datetime"]
-                dia_nombre = dias[apt_dt.weekday()]
+                if apt_dt:
+                    dias = [
+                        "Lunes",
+                        "Martes",
+                        "Miércoles",
+                        "Jueves",
+                        "Viernes",
+                        "Sábado",
+                        "Domingo",
+                    ]
+                    dia_nombre = dias[apt_dt.weekday()]
+                else:
+                    dia_nombre = ""
                 safe_data = to_json_safe(
                     {
-                        "id": str(apt["id"]),
+                        "id": str(apt["id"]) if apt["id"] else None,
                         "patient_name": f"{apt['first_name']} {apt['last_name'] or ''}".strip(),
-                        "appointment_datetime": apt_dt.isoformat(),
+                        "appointment_datetime": apt_dt.isoformat() if apt_dt else None,
                         "professional_name": apt["prof_name"],
                         "tenant_id": tenant_id,
                         "status": new_status,
@@ -5936,7 +5992,19 @@ IMPORTANTE: Si paga tratamiento completo, la seña queda cubierta. NO pedir señ
 ESCENARIO C — SI NO QUEDA CLARO:
 Preguntale: "Querés pagar la seña (mitad del valor de consulta del profesional) o el tratamiento completo (base_price)?"
 
+ESCENARIO D — PAGAR CUOTA DE PRESUPUESTO:
+Si el paciente tiene un PRESUPUESTO ACTIVO en su contexto (sección "PRESUPUESTO ACTIVO"):
+1. Usá 'get_patient_payment_status' para obtener el detalle actualizado (saldo, cuotas, pagos).
+2. Informale: "Tu presupuesto de [nombre] tiene un saldo de $[pendiente]. Podés pagar una cuota de $[monto_cuota]."
+3. Compartí datos bancarios y pedí comprobante → verificar con verify_payment_receipt.
+4. El sistema vinculará automáticamente el pago al presupuesto.
+NOTA: Si el paciente NO tiene turno pero SÍ tiene presupuesto, el pago funciona igual.
+
 NO necesitás ninguna tool extra — los datos bancarios YA están en tu contexto.
+
+CONSULTA DE SALDO / DEUDAS:
+Si el paciente pregunta "cuánto debo", "cuánto me falta", "cuáles son mis cuotas":
+→ Usá 'get_patient_payment_status' que devuelve info completa del presupuesto + turnos.
 
 VERIFICACIÓN DE COMPROBANTE (cuando el paciente envía imagen/PDF):
 6. Usá 'verify_payment_receipt' pasando:
@@ -5944,7 +6012,8 @@ VERIFICACIÓN DE COMPROBANTE (cuando el paciente envía imagen/PDF):
    - amount_detected: el monto que detectes (solo el número)
    - appointment_id: el ID del turno si lo tenés (opcional)
 7. Si la verificación retorna ✅ (EXITOSA):
-   → Turno pasa a CONFIRMADO automáticamente.
+   → Si es seña de turno: el turno pasa a CONFIRMADO automáticamente.
+   → Si es cuota de presupuesto: se registra el pago en el plan.
    → Agradecé al paciente.
    → Si aún no se envió MOMENTO 2: enviar "cómo nos conociste" + link de anamnesis.
 8. Si la verificación retorna ⚠️ (FALLIDA):

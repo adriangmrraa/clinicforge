@@ -390,7 +390,7 @@ NOVA_TOOLS_SCHEMA: List[Dict[str, Any]] = [
     {
         "type": "function",
         "name": "facturacion_pendiente",
-        "description": "Lista turnos completados que aun no tienen pago registrado.",
+        "description": "Lista turnos completados sin pago registrado + presupuestos de tratamiento con saldo pendiente.",
         "parameters": {"type": "object", "properties": {}},
     },
     # -------------------------------------------------------------------------
@@ -2871,7 +2871,7 @@ async def _resumen_semana(tenant_id: int, user_role: str) -> str:
             COUNT(*) FILTER (WHERE status = 'completed') AS completados,
             COUNT(*) FILTER (WHERE status = 'cancelled') AS cancelados,
             COUNT(*) FILTER (WHERE status = 'scheduled') AS pendientes,
-            COALESCE(SUM(billing_amount) FILTER (WHERE payment_status = 'paid' AND plan_item_id IS NULL), 0) AS facturado
+            COALESCE(SUM(billing_amount) FILTER (WHERE payment_status = 'paid'), 0) AS facturado_turnos
         FROM appointments
         WHERE tenant_id = $1
           AND appointment_datetime::date BETWEEN $2 AND $3
@@ -2880,6 +2880,17 @@ async def _resumen_semana(tenant_id: int, user_role: str) -> str:
         week_start,
         week_end,
     )
+
+    # Plan payments for the same week
+    plan_revenue = await db.pool.fetchval(
+        """
+        SELECT COALESCE(SUM(amount), 0) FROM treatment_plan_payments
+        WHERE tenant_id = $1 AND payment_date::date BETWEEN $2 AND $3
+        """,
+        tenant_id,
+        week_start,
+        week_end,
+    ) or 0
 
     new_patients = await db.pool.fetchval(
         """
@@ -2895,7 +2906,7 @@ async def _resumen_semana(tenant_id: int, user_role: str) -> str:
     completed = stats["completados"] or 0
     cancelled = stats["cancelados"] or 0
     pending = stats["pendientes"] or 0
-    revenue = stats["facturado"] or 0
+    revenue = float(stats["facturado_turnos"] or 0) + float(plan_revenue)
     cancel_rate = (
         f"{(cancelled / (total + cancelled) * 100):.1f}%"
         if (total + cancelled) > 0
@@ -2939,7 +2950,7 @@ async def _rendimiento_profesional(args: Dict, tenant_id: int, user_role: str) -
             COUNT(*) FILTER (WHERE status = 'completed') AS completados,
             COUNT(*) FILTER (WHERE status = 'cancelled') AS cancelados,
             COUNT(DISTINCT patient_id) AS pacientes_unicos,
-            COALESCE(SUM(billing_amount) FILTER (WHERE payment_status = 'paid'), 0) AS facturado
+            COALESCE(SUM(billing_amount) FILTER (WHERE payment_status = 'paid'), 0) AS facturado_turnos
         FROM appointments
         WHERE professional_id = $1 AND tenant_id = $2
           AND appointment_datetime::date >= $3
@@ -2949,11 +2960,25 @@ async def _rendimiento_profesional(args: Dict, tenant_id: int, user_role: str) -
         since,
     )
 
+    # Plan payments for this professional's patients
+    plan_revenue = await db.pool.fetchval(
+        """
+        SELECT COALESCE(SUM(tpp.amount), 0)
+        FROM treatment_plan_payments tpp
+        JOIN treatment_plans tp ON tp.id = tpp.plan_id AND tp.tenant_id = tpp.tenant_id
+        WHERE tp.professional_id = $1 AND tp.tenant_id = $2
+          AND tpp.payment_date::date >= $3
+        """,
+        int(prof_id),
+        tenant_id,
+        since,
+    ) or 0
+
     total = stats["total"] or 0
     completed = stats["completados"] or 0
     cancelled = stats["cancelados"] or 0
     unique_patients = stats["pacientes_unicos"] or 0
-    revenue = stats["facturado"] or 0
+    revenue = float(stats["facturado_turnos"] or 0) + float(plan_revenue)
     cancel_rate = f"{(cancelled / total * 100):.1f}%" if total > 0 else "0%"
 
     period_labels = {"week": "la semana", "month": "el mes", "quarter": "el trimestre"}
@@ -4080,7 +4105,23 @@ async def _ver_estadisticas(args: Dict, tenant_id: int) -> str:
     completed = stats["completed"] or 0
     cancelled = stats["cancelled"] or 0
     no_shows = stats["no_shows"] or 0
-    revenue = stats["revenue"] or 0
+    appt_revenue = float(stats["revenue"] or 0)
+
+    # Plan payments for the same period
+    if days == 0:
+        plan_rev = await db.pool.fetchval(
+            "SELECT COALESCE(SUM(amount), 0) FROM treatment_plan_payments WHERE tenant_id = $1 AND payment_date::date = CURRENT_DATE",
+            tenant_id,
+        ) or 0
+    else:
+        plan_rev = await db.pool.fetchval(
+            "SELECT COALESCE(SUM(amount), 0) FROM treatment_plan_payments WHERE tenant_id = $1 AND payment_date::date >= $2",
+            tenant_id,
+            since,
+        ) or 0
+
+    revenue = appt_revenue + float(plan_rev)
+
     new_patients = (
         await db.pool.fetchval(
             "SELECT COUNT(*) FROM patients WHERE tenant_id = $1 AND created_at::date >= $2",
@@ -4090,13 +4131,20 @@ async def _ver_estadisticas(args: Dict, tenant_id: int) -> str:
         or 0
     )
 
+    # Active plans count
+    active_plans = await db.pool.fetchval(
+        "SELECT COUNT(*) FROM treatment_plans WHERE tenant_id = $1 AND status IN ('draft','approved','in_progress')",
+        tenant_id,
+    ) or 0
+
     return f"""Estadisticas ({period}):
 • Turnos totales: {total}
 • Completados: {completed}
 • Cancelados: {cancelled}
 • No-shows: {no_shows}
 • Pacientes nuevos: {new_patients}
-• Facturacion: ${revenue:,.0f}
+• Presupuestos activos: {active_plans}
+• Facturacion: ${revenue:,.0f} (turnos: ${appt_revenue:,.0f} + planes: ${float(plan_rev):,.0f})
 • Tasa completitud: {(completed / total * 100) if total > 0 else 0:.1f}%"""
 
 
@@ -4762,6 +4810,16 @@ ALLOWED_TABLES = frozenset(
         "meta_ad_insights",
         "treatment_type_professionals",
         "users",
+        # Billing / Budget
+        "treatment_plans",
+        "treatment_plan_items",
+        "treatment_plan_payments",
+        # Financial Command Center
+        "professional_commissions",
+        "liquidations",
+        "liquidation_items",
+        # Accounting
+        "accounting_transactions",
     }
 )
 
