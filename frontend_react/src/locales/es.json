@@ -2188,6 +2188,31 @@
     "error_loading": "Error al cargar tus liquidaciones",
     "error_download_pdf": "Error al descargar PDF",
     "no_data_period": "Sin datos para este período"
+  },
+  "telegram": {
+    "tab_title": "Telegram",
+    "bot_config": "Configuración del Bot",
+    "bot_token": "Token del Bot",
+    "bot_token_placeholder": "Pegá el token de @BotFather",
+    "connect": "Conectar Bot",
+    "disconnect": "Desconectar",
+    "connected": "Conectado",
+    "disconnected": "Desconectado",
+    "webhook_url": "URL del Webhook",
+    "authorized_users": "Usuarios Autorizados",
+    "add_user": "Agregar usuario",
+    "chat_id": "Telegram Chat ID",
+    "display_name": "Nombre",
+    "role": "Rol",
+    "active": "Activo",
+    "confirm_delete": "¿Eliminar este usuario?",
+    "user_added": "Usuario agregado",
+    "user_removed": "Usuario eliminado",
+    "instructions_title": "¿Cómo configurar?",
+    "instructions_token": "Abrí Telegram → buscá @BotFather → enviá /newbot → copiá el token",
+    "instructions_chatid": "Para obtener tu Chat ID, escribile a @userinfobot en Telegram",
+    "copy_url": "Copiar URL",
+    "copied": "¡Copiado!"
   }
 }
 

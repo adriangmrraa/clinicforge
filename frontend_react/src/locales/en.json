@@ -2125,5 +2125,30 @@
     "error_loading": "Error loading your liquidations",
     "error_download_pdf": "Error downloading PDF",
     "no_data_period": "No data for this period"
+  },
+  "telegram": {
+    "tab_title": "Telegram",
+    "bot_config": "Bot Configuration",
+    "bot_token": "Bot Token",
+    "bot_token_placeholder": "Paste the token from @BotFather",
+    "connect": "Connect Bot",
+    "disconnect": "Disconnect",
+    "connected": "Connected",
+    "disconnected": "Disconnected",
+    "webhook_url": "Webhook URL",
+    "authorized_users": "Authorized Users",
+    "add_user": "Add user",
+    "chat_id": "Telegram Chat ID",
+    "display_name": "Name",
+    "role": "Role",
+    "active": "Active",
+    "confirm_delete": "Delete this user?",
+    "user_added": "User added",
+    "user_removed": "User removed",
+    "instructions_title": "How to set up?",
+    "instructions_token": "Open Telegram → search @BotFather → send /newbot → copy the token",
+    "instructions_chatid": "To get your Chat ID, message @userinfobot on Telegram",
+    "copy_url": "Copy URL",
+    "copied": "Copied!"
   }
 }

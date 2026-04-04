@@ -1,5 +1,5 @@
 import React, { useState, useEffect, lazy, Suspense } from 'react';
-import { Settings, Globe, Loader2, CheckCircle2, Copy, Trash2, Edit2, Zap, MessageCircle, Key, User, Plus, Info, Database, AlertTriangle, Clock, MessageSquare, AlertCircle, Facebook, Image, Upload, Stethoscope } from 'lucide-react';
+import { Settings, Globe, Loader2, CheckCircle2, Copy, Trash2, Edit2, Zap, MessageCircle, Key, User, Plus, Info, Database, AlertTriangle, Clock, MessageSquare, AlertCircle, Facebook, Image, Upload, Stethoscope, Send } from 'lucide-react';
 import api from '../api/axios';
 import { useTranslation } from '../context/LanguageContext';
 import PageHeader from '../components/PageHeader';
@@ -9,6 +9,7 @@ import { Modal } from '../components/Modal';
 // Lazy load integration tabs
 const LeadsFormsTab = lazy(() => import('../components/integrations/LeadsFormsTab'));
 const MetaConnectionTab = lazy(() => import('../components/integrations/MetaConnectionTab'));
+const TelegramConfigTab = lazy(() => import('../components/TelegramConfigTab'));
 
 type UiLanguage = 'es' | 'en' | 'fr';
 
@@ -62,7 +63,7 @@ interface IntegrationConfig {
 export default function ConfigView() {
     const { t, language, setLanguage } = useTranslation();
     const { user } = useAuth();
-    const [activeTab, setActiveTab] = useState<'general' | 'ycloud' | 'chatwoot' | 'others' | 'maintenance' | 'leads' | 'meta' | 'branding'>('general');
+    const [activeTab, setActiveTab] = useState<'general' | 'ycloud' | 'chatwoot' | 'others' | 'maintenance' | 'leads' | 'meta' | 'branding' | 'telegram'>('general');
 
     // General Settings State
     const [settings, setSettings] = useState<ClinicSettings | null>(null);
@@ -938,6 +939,12 @@ export default function ConfigView() {
                             >
                                 <Facebook size={18} /> Meta
                             </button>
+                            <button
+                                onClick={() => setActiveTab('telegram')}
+                                className={`px-6 py-4 font-medium text-sm whitespace-nowrap border-b-2 transition-all flex items-center gap-2 ${activeTab === 'telegram' ? 'border-sky-500 text-sky-400 font-semibold' : 'border-transparent text-white/40 hover:text-sky-400 hover:border-sky-500/20'}`}
+                            >
+                                <Send size={18} /> {t('telegram.tab_title')}
+                            </button>
                         </>
                     )}
                 </div>
@@ -956,6 +963,11 @@ export default function ConfigView() {
                     {activeTab === 'meta' && user?.role === 'ceo' && (
                         <Suspense fallback={<div className="flex justify-center py-20"><Loader2 size={24} className="animate-spin text-blue-600" /></div>}>
                             <MetaConnectionTab />
+                        </Suspense>
+                    )}
+                    {activeTab === 'telegram' && user?.role === 'ceo' && (
+                        <Suspense fallback={<div className="flex justify-center py-20"><Loader2 size={24} className="animate-spin text-sky-400" /></div>}>
+                            <TelegramConfigTab />
                         </Suspense>
                     )}
                 </div>
