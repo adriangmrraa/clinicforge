@@ -1672,6 +1672,62 @@ IMPORTANTE — REGLAS QUIRÚRGICAS:
             "required": [],
         },
     },
+    # K3. Patient Memories
+    {
+        "type": "function",
+        "name": "ver_memorias_paciente",
+        "description": "Ver las memorias/observaciones guardadas sobre un paciente. Incluye preferencias, comportamiento, miedos, notas familiares, etc. Usá esto cuando necesites contexto personal del paciente que no está en la ficha médica.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "patient_id": {
+                    "type": "integer",
+                    "description": "ID del paciente",
+                },
+            },
+            "required": ["patient_id"],
+        },
+    },
+    {
+        "type": "function",
+        "name": "agregar_memoria_paciente",
+        "description": "Guardar una observación/memoria sobre un paciente. Para cosas que NO van en la ficha médica: preferencias (horarios, profesional preferido), comportamiento (llega tarde, es ansioso), familia (mamá acompaña, tiene 2 hijos), logística (vive lejos, necesita presupuesto), etc.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "patient_id": {
+                    "type": "integer",
+                    "description": "ID del paciente",
+                },
+                "memoria": {
+                    "type": "string",
+                    "description": "La observación a guardar",
+                },
+                "categoria": {
+                    "type": "string",
+                    "enum": [
+                        "salud",
+                        "preferencia",
+                        "miedo",
+                        "familia",
+                        "logistica",
+                        "comportamiento",
+                        "referencia",
+                        "tratamiento",
+                        "financiero",
+                        "personal",
+                        "general",
+                    ],
+                    "description": "Categoría de la memoria",
+                },
+                "importancia": {
+                    "type": "integer",
+                    "description": "Importancia 1-10 (default 7). 10=crítico (alergia), 1=trivial",
+                },
+            },
+            "required": ["patient_id", "memoria"],
+        },
+    },
 ]
 
 
@@ -4737,6 +4793,72 @@ async def _ver_contexto_memorias(args: Dict, tenant_id: int) -> str:
         return f"Error al recuperar contexto: {str(e)}"
 
 
+async def _ver_memorias_paciente(args: Dict, tenant_id: int) -> str:
+    """Get patient memories/observations by patient_id."""
+    patient_id = args.get("patient_id")
+    if not patient_id:
+        return "Necesito el ID del paciente."
+    try:
+        patient = await db.pool.fetchrow(
+            "SELECT phone_number, first_name, last_name FROM patients WHERE id = $1 AND tenant_id = $2",
+            int(patient_id), tenant_id
+        )
+        if not patient:
+            return "No encontré a ese paciente."
+        phone = patient["phone_number"]
+        if not phone:
+            return "El paciente no tiene teléfono registrado (necesario para memorias)."
+
+        from services.patient_memory import get_memories
+        memories = await get_memories(db.pool, phone, tenant_id)
+
+        name = f"{patient['first_name']} {patient.get('last_name', '')}".strip()
+        if not memories:
+            return f"No hay memorias guardadas para {name}."
+
+        lines = [f"Memorias de {name} ({len(memories)} registros):"]
+        for m in memories:
+            cat = m.get("category", "general")
+            text = m.get("memory", "")
+            imp = m.get("importance", 5)
+            lines.append(f"• [{cat}] (imp:{imp}) {text[:200]}")
+        return "\n".join(lines)
+    except Exception as e:
+        logger.error(f"_ver_memorias_paciente error: {e}", exc_info=True)
+        return f"Error al buscar memorias: {str(e)[:200]}"
+
+
+async def _agregar_memoria_paciente(args: Dict, tenant_id: int) -> str:
+    """Add a memory/observation about a patient by patient_id."""
+    patient_id = args.get("patient_id")
+    memoria = args.get("memoria", "").strip()
+    categoria = args.get("categoria", "general")
+    importancia = int(args.get("importancia", 7))
+
+    if not patient_id or not memoria:
+        return "Necesito patient_id y memoria."
+
+    try:
+        patient = await db.pool.fetchrow(
+            "SELECT phone_number, first_name, last_name FROM patients WHERE id = $1 AND tenant_id = $2",
+            int(patient_id), tenant_id
+        )
+        if not patient:
+            return "No encontré a ese paciente."
+        phone = patient["phone_number"]
+        if not phone:
+            return "El paciente no tiene teléfono registrado."
+
+        from services.patient_memory import add_manual_memory
+        await add_manual_memory(db.pool, phone, tenant_id, memoria, categoria, importancia)
+
+        name = f"{patient['first_name']} {patient.get('last_name', '')}".strip()
+        return f"Memoria guardada para {name}: [{categoria}] {memoria}"
+    except Exception as e:
+        logger.error(f"_agregar_memoria_paciente error: {e}", exc_info=True)
+        return f"Error guardando memoria: {str(e)[:200]}"
+
+
 # =============================================================================
 # DISPATCHER
 # =============================================================================
@@ -4761,6 +4883,32 @@ def nova_tools_for_chat_completions() -> List[Dict[str, Any]]:
                 },
             }
         )
+    return tools
+
+
+# Tools to exclude per page (navigation tools don't make sense in Telegram/voice)
+_EXCLUDED_TOOLS_BY_PAGE: Dict[str, set] = {
+    "telegram": {"ir_a_pagina", "ir_a_paciente", "switch_sede", "onboarding_status"},
+    "dashboard": {"ir_a_paciente"},
+    "agenda": {"onboarding_status"},
+}
+
+
+def nova_tools_for_page(page: str = "telegram") -> List[Dict[str, Any]]:
+    """Return Chat Completions-formatted tools filtered by page context."""
+    excluded = _EXCLUDED_TOOLS_BY_PAGE.get(page, set())
+    tools = []
+    for tool in NOVA_TOOLS_SCHEMA:
+        if tool["name"] in excluded:
+            continue
+        tools.append({
+            "type": "function",
+            "function": {
+                "name": tool["name"],
+                "description": tool.get("description", ""),
+                "parameters": tool.get("parameters", {}),
+            },
+        })
     return tools
 
 
@@ -4962,6 +5110,12 @@ async def execute_nova_tool(
             return await _buscar_memorias(args, tenant_id)
         elif name == "ver_contexto_memorias":
             return await _ver_contexto_memorias(args, tenant_id)
+
+        # K3. Patient Memories
+        elif name == "ver_memorias_paciente":
+            return await _ver_memorias_paciente(args, tenant_id)
+        elif name == "agregar_memoria_paciente":
+            return await _agregar_memoria_paciente(args, tenant_id)
 
         else:
             return f"Tool '{name}' no reconocida."

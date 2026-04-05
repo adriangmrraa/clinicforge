@@ -41,6 +41,19 @@ from telegram.error import RetryAfter
 
 logger = logging.getLogger(__name__)
 
+# ── OpenAI Client Singleton ───────────────────────────────────────────────────
+_openai_client = None
+
+
+def _get_openai_client():
+    """Lazy singleton for OpenAI async client — avoids creating a new instance per call."""
+    global _openai_client
+    if _openai_client is None:
+        import openai
+        _openai_client = openai.AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    return _openai_client
+
+
 # ── State ─────────────────────────────────────────────────────────────────────
 _bots: Dict[int, Application] = {}  # tenant_id → Application
 _polling_tasks: Dict[int, asyncio.Task] = {}  # tenant_id → polling task
@@ -55,6 +68,22 @@ MAX_HISTORY_MESSAGES = 40  # keep last 40 messages (20 exchanges)
 BUFFER_TTL_TEXT = 12    # seconds — text messages
 BUFFER_TTL_MEDIA = 20   # seconds — audio/photo/document
 MIN_REMAINING_TTL = 4   # extend timer if less than this remains
+
+# ── Token Tracking Helpers ────────────────────────────────────────────────────
+
+async def _track_telegram_tokens(tenant_id: int, model: str, input_tokens: int, output_tokens: int, source: str = "telegram_nova"):
+    """Fire-and-forget token tracking for Telegram Nova."""
+    try:
+        from dashboard.token_tracker import track_service_usage
+        from db import db
+        await track_service_usage(
+            db.pool, tenant_id, model,
+            input_tokens, output_tokens,
+            source=source, phone=""
+        )
+    except Exception as e:
+        logger.debug(f"Token tracking error: {e}")
+
 
 # ── Vision Prompts ────────────────────────────────────────────────────────────
 VISION_PROMPT = (
@@ -217,10 +246,9 @@ async def _process_with_nova(
     chat_id: int = 0,
 ) -> tuple:
     """Process a message through Nova with conversation history. Returns (response_text, tools_called)."""
-    from services.nova_tools import execute_nova_tool, nova_tools_for_chat_completions
+    from services.nova_tools import execute_nova_tool, nova_tools_for_page
 
     try:
-        import openai
         from db import db as db_pool
 
         # Read model from system_config (same as patient chat agent)
@@ -236,7 +264,7 @@ async def _process_with_nova(
         except Exception:
             pass
 
-        client = openai.AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        client = _get_openai_client()
 
         # Build system prompt — SAME as Nova Realtime, page=telegram
         try:
@@ -269,8 +297,8 @@ async def _process_with_nova(
         except Exception as e:
             logger.warning(f"Failed to load Engram memories: {e}")
 
-        # Convert tool schemas
-        cc_tools = nova_tools_for_chat_completions()
+        # Convert tool schemas — filtered for Telegram context (no UI navigation tools)
+        cc_tools = nova_tools_for_page("telegram")
 
         # Load conversation history
         history = await _get_conversation_history(tenant_id, chat_id) if chat_id else []
@@ -291,6 +319,12 @@ async def _process_with_nova(
                 tool_choice="auto",
                 temperature=0.3,
             )
+            if response.usage:
+                asyncio.get_running_loop().create_task(_track_telegram_tokens(
+                    tenant_id, model_name,
+                    response.usage.prompt_tokens,
+                    response.usage.completion_tokens,
+                ))
 
             choice = response.choices[0]
 
@@ -350,6 +384,12 @@ async def _process_with_nova(
             model=model_name,
             messages=messages,
         )
+        if final.usage:
+            asyncio.get_running_loop().create_task(_track_telegram_tokens(
+                tenant_id, model_name,
+                final.usage.prompt_tokens,
+                final.usage.completion_tokens,
+            ))
         response_text = final.choices[0].message.content or ""
         if pdf_attachments:
             marker_block = "\n".join(pdf_attachments) + "\n"
@@ -368,10 +408,9 @@ async def _process_with_nova(
 
 # ── Media Processing Helpers ──────────────────────────────────────────────────
 
-async def _transcribe_audio(audio_bytes: bytes, filename: str = "voice.ogg") -> str:
+async def _transcribe_audio(audio_bytes: bytes, filename: str = "voice.ogg", tenant_id: int = 0) -> str:
     """Transcribe audio bytes using OpenAI Whisper API. Returns transcribed text."""
-    import openai
-    client = openai.AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    client = _get_openai_client()
 
     audio_file = io.BytesIO(audio_bytes)
     audio_file.name = filename
@@ -380,18 +419,22 @@ async def _transcribe_audio(audio_bytes: bytes, filename: str = "voice.ogg") -> 
         model="whisper-1",
         file=audio_file,
     )
+    # Whisper doesn't return token counts — track the call symbolically
+    if tenant_id:
+        asyncio.get_running_loop().create_task(_track_telegram_tokens(
+            tenant_id, "whisper-1", 0, 0, source="telegram_whisper"
+        ))
     return transcript.text
 
 
 async def _analyze_image_bytes(
-    image_bytes: bytes, mime_type: str = "image/jpeg", caption: str = ""
+    image_bytes: bytes, mime_type: str = "image/jpeg", caption: str = "", tenant_id: int = 0
 ) -> dict:
     """
     Analyze image bytes with GPT-4o vision.
     Returns {description, is_payment, is_medical}.
     """
-    import openai
-    client = openai.AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    client = _get_openai_client()
 
     b64 = base64.b64encode(image_bytes).decode()
     prompt_text = VISION_PROMPT
@@ -409,6 +452,13 @@ async def _analyze_image_bytes(
         }],
         max_tokens=500,
     )
+    if tenant_id and response.usage:
+        asyncio.get_running_loop().create_task(_track_telegram_tokens(
+            tenant_id, "gpt-4o",
+            response.usage.prompt_tokens,
+            response.usage.completion_tokens,
+            source="telegram_vision",
+        ))
     description = response.choices[0].message.content or ""
 
     # Classify using existing classifier
@@ -429,13 +479,12 @@ async def _analyze_image_bytes(
     }
 
 
-async def _analyze_pdf_bytes(pdf_bytes: bytes, filename: str = "document.pdf") -> str:
+async def _analyze_pdf_bytes(pdf_bytes: bytes, filename: str = "document.pdf", tenant_id: int = 0) -> str:
     """
     Analyze PDF bytes with GPT-4o vision using base64 inline encoding.
     Returns a textual description of the document.
     """
-    import openai
-    client = openai.AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    client = _get_openai_client()
 
     b64 = base64.b64encode(pdf_bytes).decode()
 
@@ -450,6 +499,13 @@ async def _analyze_pdf_bytes(pdf_bytes: bytes, filename: str = "document.pdf") -
         }],
         max_tokens=500,
     )
+    if tenant_id and response.usage:
+        asyncio.get_running_loop().create_task(_track_telegram_tokens(
+            tenant_id, "gpt-4o",
+            response.usage.prompt_tokens,
+            response.usage.completion_tokens,
+            source="telegram_vision",
+        ))
     return response.choices[0].message.content or ""
 
 
@@ -775,7 +831,7 @@ async def _handle_voice(update: Update, context) -> None:
         audio_bytearray = await tg_file.download_as_bytearray()
         audio_bytes = bytes(audio_bytearray)
 
-        transcribed = await _transcribe_audio(audio_bytes, filename)
+        transcribed = await _transcribe_audio(audio_bytes, filename, tenant_id=tenant_id)
     except Exception as e:
         logger.error(f"Telegram voice transcription failed: {e}", exc_info=True)
         cancel_typing.set()
@@ -857,7 +913,7 @@ async def _handle_photo(update: Update, context) -> None:
         img_bytearray = await tg_file.download_as_bytearray()
         img_bytes = bytes(img_bytearray)
 
-        result = await _analyze_image_bytes(img_bytes, "image/jpeg", caption)
+        result = await _analyze_image_bytes(img_bytes, "image/jpeg", caption, tenant_id=tenant_id)
     except Exception as e:
         logger.error(f"Telegram photo analysis failed: {e}", exc_info=True)
         cancel_typing.set()
@@ -969,7 +1025,7 @@ async def _handle_document(update: Update, context) -> None:
         doc_bytes = bytes(doc_bytearray)
 
         if mime_type.startswith("image/"):
-            result = await _analyze_image_bytes(doc_bytes, mime_type, caption)
+            result = await _analyze_image_bytes(doc_bytes, mime_type, caption, tenant_id=tenant_id)
             description = result.get("description", "")
             is_payment = result.get("is_payment", False)
             enriched = f'[DOCUMENTO ({file_name}): "{description}"]'
@@ -979,7 +1035,7 @@ async def _handle_document(update: Update, context) -> None:
                 enriched += "\nPROBABLE COMPROBANTE DE PAGO — usar verify_payment_receipt"
         else:
             # PDF
-            description = await _analyze_pdf_bytes(doc_bytes, file_name)
+            description = await _analyze_pdf_bytes(doc_bytes, file_name, tenant_id=tenant_id)
             enriched = f'[DOCUMENTO ({file_name}): "{description}"]'
             if caption:
                 enriched += f'\nCaption: {caption}'

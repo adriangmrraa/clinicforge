@@ -227,3 +227,38 @@ def fire_telegram_notification(event: str, data: Any, tenant_id: Optional[int] =
         loop.create_task(notify_telegram(event, data, tenant_id))
     except RuntimeError:
         pass  # No event loop — skip silently
+
+
+async def send_proactive_message(tenant_id: int, html_text: str):
+    """Send a proactive message to all authorized Telegram users of a tenant."""
+    try:
+        from services.telegram_bot import _bots
+        app = _bots.get(tenant_id)
+        if not app:
+            return
+
+        from db import db
+        rows = await db.fetch(
+            "SELECT telegram_chat_id FROM telegram_authorized_users "
+            "WHERE tenant_id = $1 AND is_active = true",
+            tenant_id,
+        )
+        if not rows:
+            return
+
+        from core.credentials import decrypt_value
+        from telegram.constants import ParseMode
+
+        bot = app.bot
+        for row in rows:
+            try:
+                chat_id = int(decrypt_value(row["telegram_chat_id"]))
+                await bot.send_message(
+                    chat_id=chat_id,
+                    text=html_text,
+                    parse_mode=ParseMode.HTML,
+                )
+            except Exception as e:
+                logger.debug(f"Proactive message skip chat: {e}")
+    except Exception as e:
+        logger.warning(f"send_proactive_message error: {e}")

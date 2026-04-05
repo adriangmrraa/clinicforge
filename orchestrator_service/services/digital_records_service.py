@@ -639,8 +639,8 @@ def _build_system_prompt(template_type: str) -> str:
 
 async def _call_openai(
     system_prompt: str, user_content: str, model: str = "gpt-4o-mini"
-) -> dict:
-    """Low-level async OpenAI call with JSON response format."""
+) -> tuple:
+    """Low-level async OpenAI call with JSON response format. Returns (parsed_dict, usage)."""
     client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
     response = await client.chat.completions.create(
         model=model,
@@ -652,7 +652,7 @@ async def _call_openai(
         temperature=0.3,
         max_completion_tokens=2000,
     )
-    return json.loads(response.choices[0].message.content)
+    return json.loads(response.choices[0].message.content), response.usage
 
 
 async def generate_narrative(
@@ -698,7 +698,23 @@ async def generate_narrative(
 
     # --- Call OpenAI ---
     try:
-        sections = await _call_openai(system_prompt, user_content, model=model)
+        sections, _usage = await _call_openai(system_prompt, user_content, model=model)
+        # Track token usage — fire-and-forget, never blocks
+        if _usage:
+            try:
+                import asyncio as _asyncio
+                from dashboard.token_tracker import track_service_usage
+                _asyncio.get_running_loop().create_task(
+                    track_service_usage(
+                        pool, tenant_id, model,
+                        _usage.prompt_tokens,
+                        _usage.completion_tokens,
+                        source="digital_records",
+                        phone="",
+                    )
+                )
+            except Exception as _track_err:
+                logger.debug("generate_narrative: token tracking skipped: %s", _track_err)
     except Exception as ai_err:
         logger.error("generate_narrative: OpenAI call failed: %s", ai_err)
         raise

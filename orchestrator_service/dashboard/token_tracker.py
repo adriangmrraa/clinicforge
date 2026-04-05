@@ -318,6 +318,10 @@ class TokenTracker:
                             WHEN conversation_id LIKE 'nova_voice_%' THEN 'Nova Voz'
                             WHEN conversation_id LIKE 'nova_daily_analysis_%' THEN 'Análisis Diario'
                             WHEN conversation_id LIKE 'patient_memory_%' THEN 'Memoria Pacientes'
+                            WHEN conversation_id LIKE 'telegram_nova_%' THEN 'Nova Telegram'
+                            WHEN conversation_id LIKE 'telegram_whisper_%' THEN 'Whisper (Telegram)'
+                            WHEN conversation_id LIKE 'telegram_vision_%' THEN 'Vision (Telegram)'
+                            WHEN conversation_id LIKE 'digital_records_%' THEN 'Fichas Digitales'
                             ELSE 'Agente WhatsApp/IG/FB'
                         END as service,
                         model,
