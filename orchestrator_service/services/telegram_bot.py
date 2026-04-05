@@ -1106,8 +1106,25 @@ async def _handle_callback(update: Update, context) -> None:
     await query.answer()
 
     if query.data == "__ayuda":
-        # Fake an update with /help
-        await _handle_help(update, context)
+        await query.message.reply_text(
+            "📖 Ejemplos de lo que puedo hacer:\n\n"
+            "AGENDA:\n"
+            "• \"Qué turnos hay hoy\"\n"
+            "• \"Agendá turno para García\"\n"
+            "• \"Cancelá el de las 15\"\n\n"
+            "COBROS:\n"
+            "• \"Cobrale a García\"\n"
+            "• \"Quién debe plata\"\n\n"
+            "PACIENTES:\n"
+            "• \"Buscá a Martínez\"\n"
+            "• \"Resumen completo de García\"\n\n"
+            "ODONTOGRAMA:\n"
+            "• \"Caries en la 16 y 18\"\n\n"
+            "INFORMES:\n"
+            "• \"Resumen de la semana\"\n"
+            "• \"Mandame el PDF de García\"\n\n"
+            "Escribí cualquier cosa y yo la resuelvo! 💪",
+        )
         return
 
     action_text = QUICK_ACTION_MAP.get(query.data)
