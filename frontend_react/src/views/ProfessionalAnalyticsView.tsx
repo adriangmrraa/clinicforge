@@ -104,9 +104,17 @@ export default function ProfessionalAnalyticsView() {
       'Risk: No-Shows': <AlertTriangle size={11} />,
       'High Ticket': <DollarSign size={11} />,
     };
+    const tagKeys: Record<string, string> = {
+      'High Performance': 'analytics.tag_high_performance',
+      'Retention Master': 'analytics.tag_retention_master',
+      'Top Revenue': 'analytics.tag_top_revenue',
+      'Risk: Cancellations': 'analytics.tag_risk_cancellations',
+      'Risk: No-Shows': 'analytics.tag_risk_no_shows',
+      'High Ticket': 'analytics.tag_high_ticket',
+    };
     return (
       <span key={tag} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${styles[tag] || 'bg-white/[0.04] text-white/60 border-white/[0.06]'}`}>
-        {icons[tag]} {tag}
+        {icons[tag]} {t(tagKeys[tag] || tag)}
       </span>
     );
   };
@@ -176,14 +184,14 @@ export default function ProfessionalAnalyticsView() {
 
         {/* KPI Grid — 8 cards */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
-          <KPI icon={<DollarSign size={20} className="text-green-400" />} label="Ingresos estimados" value={`$${totalRevenue.toLocaleString()}`} sub={`${totalPaid} turnos pagados`} color="bg-green-500/10" trend={totalRevenue > 0 ? 'up' : null} image={CARD_IMAGES.revenue} />
-          <KPI icon={<CalendarCheck size={20} className="text-blue-400" />} label="Turnos totales" value={totalAppointments} sub={`${totalPatients} pacientes unicos`} color="bg-blue-500/10" image={CARD_IMAGES.appointments} />
-          <KPI icon={<Percent size={20} className="text-purple-400" />} label="Tasa de asistencia" value={`${avgCompletion.toFixed(0)}%`} sub={`${avgCancellation.toFixed(0)}% cancelaciones`} color="bg-purple-500/10" trend={avgCompletion > 80 ? 'up' : 'down'} image={CARD_IMAGES.completion} />
-          <KPI icon={<UserCheck size={20} className="text-emerald-400" />} label="Retencion" value={`${avgRetention.toFixed(0)}%`} sub="Pacientes que vuelven" color="bg-emerald-500/10" trend={avgRetention > 50 ? 'up' : null} image={CARD_IMAGES.patients} />
-          <KPI icon={<XCircle size={20} className="text-red-400" />} label="No-shows" value={`${avgNoShow.toFixed(1)}%`} sub="Promedio del equipo" color="bg-red-500/10" trend={avgNoShow > 10 ? 'down' : 'up'} image={CARD_IMAGES.analytics} />
-          <KPI icon={<Target size={20} className="text-amber-400" />} label="Ticket promedio" value={`$${totalAppointments > 0 ? Math.round(totalRevenue / totalAppointments).toLocaleString() : 0}`} sub="Por turno" color="bg-amber-500/10" image={CARD_IMAGES.revenue} />
-          <KPI icon={<Users size={20} className="text-indigo-400" />} label="Profesionales activos" value={data.length} sub={data.map(d => d.specialty).filter((v, i, a) => a.indexOf(v) === i).length + ' especialidades'} color="bg-indigo-500/10" image={CARD_IMAGES.team} />
-          <KPI icon={<Star size={20} className="text-pink-400" />} label="Mejor profesional" value={data.length > 0 ? data.sort((a, b) => b.metrics.revenue - a.metrics.revenue)[0]?.name.split(' ')[0] || '-' : '-'} sub="Por facturacion" color="bg-pink-500/10" image={CARD_IMAGES.profile} />
+          <KPI icon={<DollarSign size={20} className="text-green-400" />} label={t('analytics.estimated_revenue')} value={`$${totalRevenue.toLocaleString()}`} sub={`${totalPaid} ${t('analytics.paid_appointments')}`} color="bg-green-500/10" trend={totalRevenue > 0 ? 'up' : null} image={CARD_IMAGES.revenue} />
+          <KPI icon={<CalendarCheck size={20} className="text-blue-400" />} label={t('analytics.total_appointments')} value={totalAppointments} sub={`${totalPatients} ${t('analytics.patients')}`} color="bg-blue-500/10" image={CARD_IMAGES.appointments} />
+          <KPI icon={<Percent size={20} className="text-purple-400" />} label={t('analytics.completion_rate')} value={`${avgCompletion.toFixed(0)}%`} sub={`${avgCancellation.toFixed(0)}% ${t('analytics.cancellations')}`} color="bg-purple-500/10" trend={avgCompletion > 80 ? 'up' : 'down'} image={CARD_IMAGES.completion} />
+          <KPI icon={<UserCheck size={20} className="text-emerald-400" />} label={t('analytics.retention_rate')} value={`${avgRetention.toFixed(0)}%`} sub={t('analytics.patients_come_back')} color="bg-emerald-500/10" trend={avgRetention > 50 ? 'up' : null} image={CARD_IMAGES.patients} />
+          <KPI icon={<XCircle size={20} className="text-red-400" />} label={t('analytics.no_shows')} value={`${avgNoShow.toFixed(1)}%`} sub={t('analytics.team_average')} color="bg-red-500/10" trend={avgNoShow > 10 ? 'down' : 'up'} image={CARD_IMAGES.analytics} />
+          <KPI icon={<Target size={20} className="text-amber-400" />} label={t('analytics.avg_ticket')} value={`$${totalAppointments > 0 ? Math.round(totalRevenue / totalAppointments).toLocaleString() : 0}`} sub={t('analytics.per_appointment')} color="bg-amber-500/10" image={CARD_IMAGES.revenue} />
+          <KPI icon={<Users size={20} className="text-indigo-400" />} label={t('analytics.active_professionals')} value={data.length} sub={`${data.map(d => d.specialty).filter((v, i, a) => a.indexOf(v) === i).length} ${t('analytics.specialties')}`} color="bg-indigo-500/10" image={CARD_IMAGES.team} />
+          <KPI icon={<Star size={20} className="text-pink-400" />} label={t('analytics.best_professional')} value={data.length > 0 ? data.sort((a, b) => b.metrics.revenue - a.metrics.revenue)[0]?.name.split(' ')[0] || '-' : '-'} sub={t('analytics.by_revenue')} color="bg-pink-500/10" image={CARD_IMAGES.profile} />
         </div>
 
         {/* Charts Row */}
@@ -192,7 +200,7 @@ export default function ProfessionalAnalyticsView() {
           <GlassCard image={CARD_IMAGES.analytics} className="lg:col-span-2" hoverScale={false}>
             <div className="p-5">
               <h3 className="text-sm font-bold text-white mb-4 flex items-center gap-2">
-                <Activity size={16} className="text-blue-400" /> Rendimiento comparativo
+                <Activity size={16} className="text-blue-400" /> {t('analytics.comparative_performance')}
               </h3>
               <div className="h-72">
                 {chartData.length > 0 ? (
@@ -204,13 +212,13 @@ export default function ProfessionalAnalyticsView() {
                       <Tooltip
                         contentStyle={{ borderRadius: '12px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(10,14,26,0.9)', boxShadow: '0 4px 12px rgba(0,0,0,0.3)', fontSize: '12px', color: '#fff' }}
                       />
-                      <Bar dataKey="completionRate" name="Asistencia %" fill="#3b82f6" radius={[6, 6, 0, 0]} barSize={16} />
-                      <Bar dataKey="retentionRate" name="Retencion %" fill="#10b981" radius={[6, 6, 0, 0]} barSize={16} />
-                      <Bar dataKey="noShowRate" name="No-show %" fill="#ef4444" radius={[6, 6, 0, 0]} barSize={16} />
+                      <Bar dataKey="completionRate" name={t('analytics.attendance_pct')} fill="#3b82f6" radius={[6, 6, 0, 0]} barSize={16} />
+                      <Bar dataKey="retentionRate" name={t('analytics.retention_pct')} fill="#10b981" radius={[6, 6, 0, 0]} barSize={16} />
+                      <Bar dataKey="noShowRate" name={t('analytics.no_show_pct')} fill="#ef4444" radius={[6, 6, 0, 0]} barSize={16} />
                     </BarChart>
                   </ResponsiveContainer>
                 ) : (
-                  <div className="h-full flex items-center justify-center text-white/30 text-sm">Selecciona un rango de fechas</div>
+                  <div className="h-full flex items-center justify-center text-white/30 text-sm">{t('analytics.select_date_range')}</div>
                 )}
               </div>
             </div>
@@ -220,7 +228,7 @@ export default function ProfessionalAnalyticsView() {
           <GlassCard image={CARD_IMAGES.dental} hoverScale={false}>
             <div className="p-5">
               <h3 className="text-sm font-bold text-white mb-4 flex items-center gap-2">
-                <Target size={16} className="text-amber-400" /> Tratamiento top por profesional
+                <Target size={16} className="text-amber-400" /> {t('analytics.top_treatment_by_prof')}
               </h3>
               {treatmentDist.length > 0 ? (
                 <>
@@ -235,19 +243,19 @@ export default function ProfessionalAnalyticsView() {
                     </ResponsiveContainer>
                   </div>
                   <div className="space-y-2 mt-2">
-                    {treatmentDist.map((t, i) => (
+                    {treatmentDist.map((item, i) => (
                       <div key={i} className="flex items-center justify-between text-xs">
                         <div className="flex items-center gap-2">
                           <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
-                          <span className="text-white/60 truncate max-w-[120px]">{t.name}</span>
+                          <span className="text-white/60 truncate max-w-[120px]">{item.name}</span>
                         </div>
-                        <span className="text-white/40 font-medium">{t.value} turnos</span>
+                        <span className="text-white/40 font-medium">{item.value} {t('analytics.appointments')}</span>
                       </div>
                     ))}
                   </div>
                 </>
               ) : (
-                <div className="h-44 flex items-center justify-center text-white/30 text-sm">Sin datos</div>
+                <div className="h-44 flex items-center justify-center text-white/30 text-sm">{t('analytics.no_data_short')}</div>
               )}
             </div>
           </GlassCard>
@@ -256,12 +264,12 @@ export default function ProfessionalAnalyticsView() {
         {/* Professional Detail Cards — 2 columns on desktop */}
         <div>
           <h3 className="text-sm font-bold text-white flex items-center gap-2 mb-3">
-            <TrendingUp size={16} className="text-blue-400" /> Detalle por profesional
+            <TrendingUp size={16} className="text-blue-400" /> {t('analytics.professional_detail')}
           </h3>
           {data.length === 0 && (
             <GlassCard image={CARD_IMAGES.team} hoverScale={false}>
               <div className="p-8 text-center text-white/30 text-sm">
-                Selecciona un rango de fechas para ver las metricas
+                {t('analytics.select_dates_to_see')}
               </div>
             </GlassCard>
           )}
@@ -280,7 +288,7 @@ export default function ProfessionalAnalyticsView() {
                     </div>
                   </div>
                   <div className="flex flex-wrap gap-1">
-                    {prof.tags.length > 0 ? prof.tags.map(tag => getTagBadge(tag)) : <span className="text-[10px] text-white/30">Sin tags</span>}
+                    {prof.tags.length > 0 ? prof.tags.map(tag => getTagBadge(tag)) : <span className="text-[10px] text-white/30">{t('analytics.no_tags')}</span>}
                   </div>
                 </div>
 
@@ -288,43 +296,43 @@ export default function ProfessionalAnalyticsView() {
                 <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
                   <div className="text-center p-2 rounded-xl bg-white/[0.04]">
                     <p className="text-lg font-bold text-white">{prof.metrics.total_appointments}</p>
-                    <p className="text-[10px] text-white/40">Turnos</p>
+                    <p className="text-[10px] text-white/40">{t('analytics.appointments')}</p>
                   </div>
                   <div className="text-center p-2 rounded-xl bg-white/[0.04]">
                     <p className="text-lg font-bold text-green-400">${prof.metrics.revenue.toLocaleString()}</p>
-                    <p className="text-[10px] text-white/40">Facturado</p>
+                    <p className="text-[10px] text-white/40">{t('analytics.billed')}</p>
                   </div>
                   <div className="text-center p-2 rounded-xl bg-white/[0.04]">
                     <p className={`text-lg font-bold ${prof.metrics.completion_rate > 80 ? 'text-blue-400' : 'text-orange-400'}`}>{prof.metrics.completion_rate}%</p>
-                    <p className="text-[10px] text-white/40">Asistencia</p>
+                    <p className="text-[10px] text-white/40">{t('analytics.attendance')}</p>
                   </div>
                   <div className="text-center p-2 rounded-xl bg-white/[0.04]">
                     <p className={`text-lg font-bold ${(prof.metrics.no_show_rate || 0) < 10 ? 'text-green-400' : 'text-red-400'}`}>{prof.metrics.no_show_rate || 0}%</p>
-                    <p className="text-[10px] text-white/40">No-show</p>
+                    <p className="text-[10px] text-white/40">{t('analytics.no_show')}</p>
                   </div>
                   <div className="text-center p-2 rounded-xl bg-white/[0.04]">
                     <p className={`text-lg font-bold ${prof.metrics.retention_rate > 50 ? 'text-emerald-400' : 'text-white/60'}`}>{prof.metrics.retention_rate}%</p>
-                    <p className="text-[10px] text-white/40">Retencion</p>
+                    <p className="text-[10px] text-white/40">{t('analytics.retention_rate')}</p>
                   </div>
                   <div className="text-center p-2 rounded-xl bg-white/[0.04]">
                     <p className="text-lg font-bold text-white">{prof.metrics.unique_patients}</p>
-                    <p className="text-[10px] text-white/40">Pacientes</p>
+                    <p className="text-[10px] text-white/40">{t('analytics.patients')}</p>
                   </div>
                 </div>
 
                 {/* Extra info row */}
                 <div className="flex flex-wrap gap-4 mt-3 pt-3 border-t border-white/[0.06] text-xs text-white/40">
                   {prof.top_treatment?.name !== 'N/A' && (
-                    <span>Top: <strong className="text-white/60">{prof.top_treatment.name}</strong> ({prof.top_treatment.count})</span>
+                    <span>{t('analytics.top_treatment')}: <strong className="text-white/60">{prof.top_treatment.name}</strong> ({prof.top_treatment.count})</span>
                   )}
                   {prof.busiest_day !== 'N/A' && (
-                    <span>Dia mas activo: <strong className="text-white/60">{prof.busiest_day}</strong></span>
+                    <span>{t('analytics.busiest_day')}: <strong className="text-white/60">{prof.busiest_day}</strong></span>
                   )}
                   {prof.metrics.avg_revenue_per_appointment > 0 && (
-                    <span>Ticket prom: <strong className="text-white/60">${prof.metrics.avg_revenue_per_appointment.toLocaleString()}</strong></span>
+                    <span>{t('analytics.avg_ticket_short')}: <strong className="text-white/60">${prof.metrics.avg_revenue_per_appointment.toLocaleString()}</strong></span>
                   )}
                   {prof.metrics.paid_appointments > 0 && (
-                    <span>Pagados: <strong className="text-green-400">{prof.metrics.paid_appointments}</strong></span>
+                    <span>{t('analytics.paid_short')}: <strong className="text-green-400">{prof.metrics.paid_appointments}</strong></span>
                   )}
                 </div>
               </div>
