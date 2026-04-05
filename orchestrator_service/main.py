@@ -5584,13 +5584,20 @@ def _format_faqs(faqs: list) -> str:
     if not faqs:
         return ""
     lines = [
-        "FAQs OBLIGATORIAS (responder SIEMPRE con estas respuestas cuando aplique):"
+        "PREGUNTAS FRECUENTES (FAQs) — RESPUESTAS OFICIALES DE LA CLÍNICA:",
+        "⚠️ REGLA CRÍTICA: Cuando el paciente haga una pregunta que coincida (exacta o similar) con alguna de estas FAQs, "
+        "DEBÉS usar la respuesta oficial de abajo. NO inventes tu propia versión. "
+        "Podés parafrasear ligeramente para que suene natural, pero el CONTENIDO debe ser el de la FAQ. "
+        "Si la pregunta NO coincide con ninguna FAQ, respondé normalmente con tus conocimientos.",
+        "",
     ]
     for faq in faqs[:20]:  # Limitar a 20 FAQs por prompt
         cat = faq.get("category", "General") or "General"
         q = faq.get("question", "")
         a = faq.get("answer", "")
-        lines.append(f'[{cat}] {q}: "{a}"')
+        lines.append(f"PREGUNTA: {q}")
+        lines.append(f"RESPUESTA OFICIAL: {a}")
+        lines.append("")
     return "\n".join(lines)
 
 
