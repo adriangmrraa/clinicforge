@@ -75,30 +75,78 @@ async def generate_embedding(text: str) -> Optional[List[float]]:
         return None
 
 
-async def upsert_faq_embedding(tenant_id: int, faq_id: int, question: str, answer: str) -> bool:
-    """Generate and store embedding for a FAQ entry."""
-    if not await check_pgvector_available():
-        return False
+async def _ensure_faq_embeddings_json_table():
+    """Create faq_embeddings_json table if it doesn't exist (pgvector-free fallback)."""
+    try:
+        await db.pool.execute("""
+            CREATE TABLE IF NOT EXISTS faq_embeddings_json (
+                id SERIAL PRIMARY KEY,
+                tenant_id INTEGER NOT NULL,
+                faq_id INTEGER NOT NULL,
+                content TEXT NOT NULL,
+                embedding JSONB NOT NULL,
+                updated_at TIMESTAMPTZ DEFAULT NOW(),
+                UNIQUE(faq_id)
+            )
+        """)
+        await db.pool.execute(
+            "CREATE INDEX IF NOT EXISTS idx_faq_emb_json_tenant ON faq_embeddings_json(tenant_id)"
+        )
+    except Exception as e:
+        logger.debug(f"faq_embeddings_json table check: {e}")
 
+
+def _cosine_similarity(a: List[float], b: List[float]) -> float:
+    """Compute cosine similarity between two vectors in pure Python."""
+    dot = sum(x * y for x, y in zip(a, b))
+    norm_a = sum(x * x for x in a) ** 0.5
+    norm_b = sum(x * x for x in b) ** 0.5
+    if norm_a == 0 or norm_b == 0:
+        return 0.0
+    return dot / (norm_a * norm_b)
+
+
+async def upsert_faq_embedding(tenant_id: int, faq_id: int, question: str, answer: str) -> bool:
+    """Generate and store embedding for a FAQ entry. Works with or without pgvector."""
     content = f"{question} {answer}"
     embedding = await generate_embedding(content)
     if not embedding:
         return False
 
+    # Try pgvector first
+    if await check_pgvector_available():
+        try:
+            embedding_str = f"[{','.join(str(x) for x in embedding)}]"
+            await db.pool.execute("""
+                INSERT INTO faq_embeddings (tenant_id, faq_id, content, embedding, updated_at)
+                VALUES ($1, $2, $3, $4::vector, NOW())
+                ON CONFLICT (faq_id) DO UPDATE SET
+                    content = EXCLUDED.content,
+                    embedding = EXCLUDED.embedding,
+                    updated_at = NOW()
+            """, tenant_id, faq_id, content, embedding_str)
+            logger.debug(f"Upserted FAQ embedding (pgvector): tenant={tenant_id} faq={faq_id}")
+            return True
+        except Exception as e:
+            logger.error(f"Error upserting FAQ embedding (pgvector): {e}")
+            return False
+
+    # Fallback: JSON table (no pgvector needed)
     try:
-        embedding_str = f"[{','.join(str(x) for x in embedding)}]"
+        await _ensure_faq_embeddings_json_table()
+        embedding_json = json.dumps(embedding)
         await db.pool.execute("""
-            INSERT INTO faq_embeddings (tenant_id, faq_id, content, embedding, updated_at)
-            VALUES ($1, $2, $3, $4::vector, NOW())
+            INSERT INTO faq_embeddings_json (tenant_id, faq_id, content, embedding, updated_at)
+            VALUES ($1, $2, $3, $4::jsonb, NOW())
             ON CONFLICT (faq_id) DO UPDATE SET
                 content = EXCLUDED.content,
                 embedding = EXCLUDED.embedding,
                 updated_at = NOW()
-        """, tenant_id, faq_id, content, embedding_str)
-        logger.debug(f"Upserted FAQ embedding: tenant={tenant_id} faq={faq_id}")
+        """, tenant_id, faq_id, content, embedding_json)
+        logger.debug(f"Upserted FAQ embedding (JSON): tenant={tenant_id} faq={faq_id}")
         return True
     except Exception as e:
-        logger.error(f"Error upserting FAQ embedding: {e}")
+        logger.error(f"Error upserting FAQ embedding (JSON fallback): {e}")
         return False
 
 
@@ -127,12 +175,9 @@ async def search_similar_faqs(
 ) -> List[Dict[str, Any]]:
     """
     Search for semantically similar FAQs using vector cosine similarity.
+    Works with pgvector (fast, DB-side) or JSON fallback (Python-side).
     Returns top-K FAQs sorted by relevance.
-    Falls back to empty list if pgvector is not available.
     """
-    if not await check_pgvector_available():
-        return []
-
     query_embedding = await generate_embedding(query)
     if not query_embedding:
         return []
@@ -144,36 +189,73 @@ async def search_similar_faqs(
         thresh_str = await _get_config("RAG_SIMILARITY_THRESHOLD", str(DEFAULT_SIMILARITY_THRESHOLD))
         threshold = float(thresh_str)
 
-    try:
-        embedding_str = f"[{','.join(str(x) for x in query_embedding)}]"
-        results = await db.pool.fetch("""
-            SELECT
-                fe.faq_id,
-                fe.content,
-                cf.question,
-                cf.answer,
-                cf.category,
-                1 - (fe.embedding <=> $1::vector) AS similarity
-            FROM faq_embeddings fe
-            JOIN clinic_faqs cf ON cf.id = fe.faq_id
-            WHERE fe.tenant_id = $2
-            AND 1 - (fe.embedding <=> $1::vector) >= $3
-            ORDER BY fe.embedding <=> $1::vector
-            LIMIT $4
-        """, embedding_str, tenant_id, threshold, top_k)
+    # Try pgvector first (fast, DB-side similarity)
+    if await check_pgvector_available():
+        try:
+            embedding_str = f"[{','.join(str(x) for x in query_embedding)}]"
+            results = await db.pool.fetch("""
+                SELECT
+                    fe.faq_id,
+                    fe.content,
+                    cf.question,
+                    cf.answer,
+                    cf.category,
+                    1 - (fe.embedding <=> $1::vector) AS similarity
+                FROM faq_embeddings fe
+                JOIN clinic_faqs cf ON cf.id = fe.faq_id
+                WHERE fe.tenant_id = $2
+                AND 1 - (fe.embedding <=> $1::vector) >= $3
+                ORDER BY fe.embedding <=> $1::vector
+                LIMIT $4
+            """, embedding_str, tenant_id, threshold, top_k)
 
-        return [
-            {
-                "faq_id": row["faq_id"],
-                "question": row["question"],
-                "answer": row["answer"],
-                "category": row["category"],
-                "similarity": round(float(row["similarity"]), 4),
-            }
-            for row in results
-        ]
+            return [
+                {
+                    "faq_id": row["faq_id"],
+                    "question": row["question"],
+                    "answer": row["answer"],
+                    "category": row["category"],
+                    "similarity": round(float(row["similarity"]), 4),
+                }
+                for row in results
+            ]
+        except Exception as e:
+            logger.error(f"Error searching FAQs (pgvector): {e}")
+            return []
+
+    # Fallback: JSON table + Python cosine similarity
+    try:
+        await _ensure_faq_embeddings_json_table()
+        rows = await db.pool.fetch("""
+            SELECT fej.faq_id, fej.embedding, cf.question, cf.answer, cf.category
+            FROM faq_embeddings_json fej
+            JOIN clinic_faqs cf ON cf.id = fej.faq_id
+            WHERE fej.tenant_id = $1
+        """, tenant_id)
+
+        if not rows:
+            return []
+
+        scored = []
+        for row in rows:
+            stored_embedding = row["embedding"]
+            if isinstance(stored_embedding, str):
+                stored_embedding = json.loads(stored_embedding)
+            sim = _cosine_similarity(query_embedding, stored_embedding)
+            if sim >= threshold:
+                scored.append({
+                    "faq_id": row["faq_id"],
+                    "question": row["question"],
+                    "answer": row["answer"],
+                    "category": row["category"],
+                    "similarity": round(sim, 4),
+                })
+
+        scored.sort(key=lambda x: x["similarity"], reverse=True)
+        return scored[:top_k]
+
     except Exception as e:
-        logger.error(f"Error searching similar FAQs: {e}")
+        logger.error(f"Error searching FAQs (JSON fallback): {e}")
         return []
 
 
