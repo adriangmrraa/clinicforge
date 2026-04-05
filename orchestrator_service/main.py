@@ -7153,10 +7153,18 @@ async def disconnect(sid):
 
 # Helper function to emit appointment events (can be imported by admin_routes)
 async def emit_appointment_event(event_type: str, data: Dict[str, Any]):
-    """Emit appointment-related events to all connected clients. Serializa a JSON-safe para evitar fallos por UUID/datetime."""
+    """Emit appointment-related events to all connected clients + Telegram. Serializa a JSON-safe para evitar fallos por UUID/datetime."""
     payload = to_json_safe(data) if data else data
     await sio.emit(event_type, payload)
     logger.info(f"📡 Socket event emitted: {event_type}")
+
+    # Mirror to Telegram
+    try:
+        from services.telegram_notifier import fire_telegram_notification
+        tenant_id = data.get("tenant_id") if isinstance(data, dict) else None
+        fire_telegram_notification(event_type, data, tenant_id)
+    except Exception:
+        pass
 
 
 # Make the emit function available to other modules

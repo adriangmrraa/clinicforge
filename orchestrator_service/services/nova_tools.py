@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 # Helper: emit Socket.IO events from Nova tools (for real-time UI sync)
 # =============================================================================
 async def _nova_emit(event: str, data: Dict[str, Any]):
-    """Emit a Socket.IO event so the frontend updates in real-time."""
+    """Emit a Socket.IO event so the frontend updates in real-time + notify Telegram."""
     try:
         from main import sio, to_json_safe
 
@@ -38,6 +38,13 @@ async def _nova_emit(event: str, data: Dict[str, Any]):
         logger.info(f"📡 NOVA Socket: {event} → {list(data.keys())}")
     except Exception as e:
         logger.warning(f"📡 NOVA Socket emit failed ({event}): {e}")
+
+    # Mirror to Telegram
+    try:
+        from services.telegram_notifier import fire_telegram_notification
+        fire_telegram_notification(event, data, data.get("tenant_id"))
+    except Exception:
+        pass
 
 
 # =============================================================================
