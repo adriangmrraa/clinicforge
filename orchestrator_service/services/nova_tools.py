@@ -886,7 +886,8 @@ IMPORTANTE — REGLAS QUIRÚRGICAS:
                                 "type": "string",
                                 "enum": [
                                     "healthy",
-                                    "caries",
+                                    "implante",
+                                    "radiografia",
                                     "restauracion_resina",
                                     "restauracion_amalgama",
                                     "restauracion_temporal",
@@ -903,49 +904,29 @@ IMPORTANTE — REGLAS QUIRÚRGICAS:
                                     "perno",
                                     "fibras_ribbond",
                                     "tratamiento_conducto",
-                                    "implante",
-                                    "radiografia",
-                                    "protesis_fija",
                                     "protesis_removible",
-                                    "blanqueamiento",
-                                    "fluorosis",
-                                    "hipoplasia",
-                                    "desgaste",
-                                    "caries_incipiente",
-                                    "caries_recurrente",
-                                    "caries_radicular",
-                                    "fractura",
-                                    "fisura",
-                                    "absceso",
-                                    "fistula",
-                                    "sinus",
-                                    "periodontitis",
-                                    "gingivitis",
-                                    "recesion_gingival",
-                                    "movilidad_dental",
-                                    "necrosis",
-                                    "pulpotomia",
-                                    "apicogenesis",
-                                    "apicificacion",
-                                    "extraction",
-                                    "treatment_planned",
-                                    "crown",
-                                    "missing",
-                                    "prosthesis",
-                                    "root_canal",
+                                    "diente_erupcion",
+                                    "diente_no_erupcionado",
                                     "ausente",
-                                    "indicacion_extraccion",
-                                    "fractura_horizontal",
-                                    "fractura_vertical",
-                                    "caries_penetrante",
+                                    "otra_preexistencia",
+                                    "treatment_planned",
                                     "mancha_blanca",
                                     "surco_profundo",
-                                    "hipomineralizacion_mih",
-                                    "erosion",
+                                    "caries",
+                                    "caries_penetrante",
+                                    "necrosis_pulpar",
+                                    "proceso_apical",
+                                    "fistula",
+                                    "indicacion_extraccion",
                                     "abrasion",
                                     "abfraccion",
                                     "atricion",
+                                    "erosion",
+                                    "fractura_horizontal",
+                                    "fractura_vertical",
                                     "movilidad",
+                                    "hipomineralizacion_mih",
+                                    "otra_lesion",
                                 ],
                                 "description": "Estado de la pieza (42 opciones): healthy=sano, caries=caries, restauracion_resina=resina, restauracion_amalgama=amalgama, restauracion_temporal=restauración temporal, sellador_fisuras=sellador, carilla=carilla, puente=puente, corona_porcelana=corona porcelana, corona_resina=corona resina, corona_metalceramica=corona metalcerámica, corona_temporal=corona temporal, incrustacion=incrustación, onlay=onlay, poste=poste, perno=perno, fibras_ribbond=fibras ribbond, tratamiento_conducto=tratamiento de conducto, implante=implante, radiografia=radiografía, protesis_fija=prótesis fija, protesis_removible=prótesis removible, blanqueamiento=blanqueamiento, fluorosis=fluorosis, hipoplasia=hipoplasia, desgaste=desgaste, caries_incipiente=caries incipiente, caries_recurrente=caries recurrente, caries_radicular=caries radicular, fractura=fractura, fisura=fisura, absceso=absceso, fistula=fístula, sinus=sinus, periodontitis=periodontitis, gingivitis=gingivitis, recesion_gingival=recesión gingival, movilidad_dental=movilidad, necrosis=necrosis, pulpotomia=pulpotomía, apicogenesis=apicogénesis, apicificacion=apicificación, extraction=extracción, treatment_planned=planificado, crown=corona, missing=ausente, prosthesis=prótesis, root_canal=conducto",
                             },
@@ -6737,6 +6718,7 @@ _FDI_NAMES_DECIDUOUS = {
 }
 
 # State translations - 42 states v3.0
+# 42 valid states — EXACT mirror of frontend odontogramStates.ts
 _STATUS_ES = {
     # Preexistente (25)
     "healthy": "sano",
@@ -6758,55 +6740,75 @@ _STATUS_ES = {
     "perno": "perno",
     "fibras_ribbond": "fibras ribbond",
     "tratamiento_conducto": "tratamiento de conducto",
-    "protesis_fija": "prótesis fija",
     "protesis_removible": "prótesis removible",
-    "blanqueamiento": "blanqueamiento",
-    "fluorosis": "fluorosis",
-    "hipoplasia": "hipoplasia",
-    "desgaste": "desgaste",
-    # Lesión (17)
-    "caries": "caries",
-    "caries_incipiente": "caries incipiente",
-    "caries_recurrente": "caries recurrente",
-    "caries_radicular": "caries radicular",
-    "fractura": "fractura",
-    "fisura": "fisura",
-    "absceso": "absceso",
-    "fistula": "fístula",
-    "sinus": "sinus",
-    "periodontitis": "periodontitis",
-    "gingivitis": "gingivitis",
-    "recesion_gingival": "recesión gingival",
-    "movilidad_dental": "movilidad",
-    "necrosis": "necrosis",
-    "pulpotomia": "pulpotomía",
-    "apicogenesis": "apicogénesis",
-    "apicificacion": "apicificación",
-    # English aliases (from schema enum)
-    "extraction": "extracción",
-    "treatment_planned": "planificado",
-    "crown": "corona",
-    "missing": "ausente",
-    "prosthesis": "prótesis",
-    "root_canal": "conducto",
-    # Spanish aliases
+    "diente_erupcion": "diente en erupción",
+    "diente_no_erupcionado": "diente no erupcionado",
     "ausente": "ausente",
-    "indicacion_extraccion": "indicación de extracción",
-    "fractura_horizontal": "fractura horizontal",
-    "fractura_vertical": "fractura vertical",
-    "caries_penetrante": "caries penetrante",
+    "otra_preexistencia": "otra preexistencia",
+    "treatment_planned": "planificado",
+    # Lesión (17)
     "mancha_blanca": "mancha blanca",
     "surco_profundo": "surco profundo",
-    "hipomineralizacion_mih": "hipomineralización MIH",
-    "erosion": "erosión",
+    "caries": "caries",
+    "caries_penetrante": "caries penetrante",
+    "necrosis_pulpar": "necrosis pulpar",
+    "proceso_apical": "proceso apical",
+    "fistula": "fístula",
+    "indicacion_extraccion": "indicación de extracción",
     "abrasion": "abrasión",
     "abfraccion": "abfracción",
     "atricion": "atrición",
+    "erosion": "erosión",
+    "fractura_horizontal": "fractura horizontal",
+    "fractura_vertical": "fractura vertical",
     "movilidad": "movilidad",
+    "hipomineralizacion_mih": "hipomineralización MIH",
+    "otra_lesion": "otra lesión",
 }
 
-# All valid states (42)
+# Alias map: states the LLM might use → correct valid state ID
+_STATE_ALIASES = {
+    # English aliases
+    "extraction": "indicacion_extraccion",
+    "missing": "ausente",
+    "crown": "corona_porcelana",
+    "prosthesis": "protesis_removible",
+    "root_canal": "tratamiento_conducto",
+    # Legacy/old aliases
+    "necrosis": "necrosis_pulpar",
+    "fractura": "fractura_vertical",
+    "movilidad_dental": "movilidad",
+    "protesis_fija": "puente",
+    "caries_incipiente": "mancha_blanca",
+    "caries_recurrente": "caries",
+    "caries_radicular": "caries_penetrante",
+    "absceso": "proceso_apical",
+    "sinus": "proceso_apical",
+    "periodontitis": "otra_lesion",
+    "gingivitis": "otra_lesion",
+    "recesion_gingival": "otra_lesion",
+    "fisura": "surco_profundo",
+    "blanqueamiento": "otra_preexistencia",
+    "fluorosis": "otra_preexistencia",
+    "hipoplasia": "otra_preexistencia",
+    "desgaste": "atricion",
+    "pulpotomia": "tratamiento_conducto",
+    "apicogenesis": "tratamiento_conducto",
+    "apicificacion": "tratamiento_conducto",
+}
+
+# All 42 valid states
 _VALID_STATES = set(_STATUS_ES.keys())
+
+
+def _resolve_state(raw_state: str) -> str:
+    """Resolve a potentially invalid state ID to a valid one via aliases."""
+    if raw_state in _VALID_STATES:
+        return raw_state
+    resolved = _STATE_ALIASES.get(raw_state)
+    if resolved:
+        return resolved
+    return raw_state  # let validation catch it
 
 # Valid FDI for permanent and deciduous
 _VALID_FDI = set(_FDI_NAMES.keys())
@@ -7022,7 +7024,7 @@ async def _modificar_odontograma(
     if not piezas or not isinstance(piezas, list) or len(piezas) == 0:
         return "Necesito saber qué piezas modificar. Decime los números FDI de las piezas y el estado nuevo."
 
-    # Validate all pieces BEFORE writing anything
+    # Resolve aliases and validate all pieces BEFORE writing anything
     errors = []
     for i, pieza in enumerate(piezas):
         num = pieza.get("numero")
@@ -7035,9 +7037,16 @@ async def _modificar_odontograma(
                 f"Pieza {num}: número FDI inválido. Usá nomenclatura FDI (11-48)."
             )
             continue
+        # Auto-resolve aliases (e.g., "necrosis" → "necrosis_pulpar", "missing" → "ausente")
+        if estado:
+            resolved = _resolve_state(estado)
+            if resolved != estado:
+                logger.info(f"Odontogram state alias: '{estado}' → '{resolved}'")
+                pieza["estado"] = resolved
+                estado = resolved
         if estado and estado not in _VALID_STATES:
             errors.append(
-                f"Pieza {num}: estado '{estado}' no válido. Opciones: {', '.join(_VALID_STATES)}"
+                f"Pieza {num}: estado '{estado}' no válido. Opciones: {', '.join(sorted(_VALID_STATES))}"
             )
 
     if errors:
