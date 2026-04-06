@@ -344,3 +344,28 @@ async def format_faqs_with_rag(tenant_id: int, user_message: str, static_faqs: l
         a = faq.get("answer", "")
         lines.append(f"[{cat}] {q}: \"{a}\"")
     return "\n".join(lines)
+
+
+async def format_all_context_with_rag(
+    tenant_id: int,
+    user_message: str,
+    static_faqs: list,
+    insurance_providers: list = None,
+    derivation_rules: list = None,
+) -> dict:
+    """
+    Unified RAG context formatter. Currently only FAQs use semantic search.
+    Insurance and derivation are small catalogs — injected statically by build_system_prompt().
+
+    Returns dict with keys: faqs_section, insurance_section, derivation_section, instructions_section
+    """
+    faqs_section = await format_faqs_with_rag(tenant_id, user_message, static_faqs)
+
+    # Insurance and derivation: return empty — they stay static in build_system_prompt()
+    # because catalogs are small (<30 items) and the agent needs full context for inline recognition.
+    return {
+        "faqs_section": faqs_section,
+        "insurance_section": "",
+        "derivation_section": "",
+        "instructions_section": "",
+    }

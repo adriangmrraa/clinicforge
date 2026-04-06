@@ -382,7 +382,14 @@
     "import_updated": "Mis à jour",
     "import_skipped": "Ignorés",
     "import_error": "Erreur lors du traitement du fichier",
-    "import_invalid_format": "Format non valide. Utilisez des fichiers .csv ou .xlsx"
+    "import_invalid_format": "Format non valide. Utilisez des fichiers .csv ou .xlsx",
+    "assigned_professional": "Professionnel assigné",
+    "no_professional": "Non assigné",
+    "assign_professional": "Assigner un professionnel",
+    "bulk_selected": "patients sélectionnés",
+    "deselect_all": "Tout désélectionner",
+    "bulk_assign_success": "Professionnel assigné avec succès",
+    "bulk_assign_error": "Erreur lors de l'assignation du professionnel"
   },
   "chats": {
     "badge_patient": "Patient",

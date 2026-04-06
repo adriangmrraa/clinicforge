@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, Plus, Edit, Trash2, X, FileText, Brain, Calendar, User, Clock, Stethoscope, Mail, Phone, Upload, CheckCircle, AlertTriangle, XCircle } from 'lucide-react';
+import { Search, Plus, Edit, Trash2, X, FileText, Brain, Calendar, User, Clock, Stethoscope, Mail, Phone, Upload, CheckCircle, AlertTriangle, XCircle, UserCheck } from 'lucide-react';
 import api, { setTenantId } from '../api/axios';
 import { useTranslation } from '../context/LanguageContext';
 import { useAuth } from '../context/AuthContext';
@@ -24,6 +24,8 @@ interface Patient {
   pending_balance?: number;
   has_appointments?: boolean;
   last_treatment?: string;
+  assigned_professional_id?: number | null;
+  assigned_professional_name?: string | null;
 }
 
 interface TreatmentType {
@@ -83,6 +85,11 @@ export default function PatientsView() {
     time: '',
     duration_minutes: 30
   });
+
+  // Bulk assign state
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [showBulkAssignModal, setShowBulkAssignModal] = useState(false);
+  const [bulkProfId, setBulkProfId] = useState('');
 
   // Import state
   const [showImportModal, setShowImportModal] = useState(false);
@@ -265,6 +272,21 @@ export default function PatientsView() {
     } catch (error) {
       console.error('Error deleting patient:', error);
       alert(t('alerts.error_delete_patient'));
+    }
+  };
+
+  const handleBulkAssign = async () => {
+    try {
+      await api.patch('/admin/patients/bulk-assign-professional', {
+        patient_ids: selectedIds,
+        professional_id: bulkProfId ? Number(bulkProfId) : null,
+      });
+      setShowBulkAssignModal(false);
+      setBulkProfId('');
+      setSelectedIds([]);
+      fetchPatients();
+    } catch (err) {
+      console.error('Error bulk assigning professional:', err);
     }
   };
 
@@ -485,6 +507,26 @@ export default function PatientsView() {
         </div>
       </div>
 
+      {/* Bulk action bar */}
+      {selectedIds.length > 0 && (
+        <div className="flex items-center gap-3 px-4 py-2 bg-blue-500/10 border border-blue-500/20 rounded-lg mb-3">
+          <span className="text-blue-400 text-sm">{selectedIds.length} {t('patients.bulk_selected')}</span>
+          <button
+            onClick={() => setShowBulkAssignModal(true)}
+            className="flex items-center gap-1.5 px-3 py-1 bg-white/10 hover:bg-white/20 text-white text-sm rounded transition-colors"
+          >
+            <UserCheck size={14} />
+            {t('patients.assign_professional')}
+          </button>
+          <button
+            onClick={() => setSelectedIds([])}
+            className="text-white/50 hover:text-white text-sm ml-auto transition-colors"
+          >
+            {t('patients.deselect_all')}
+          </button>
+        </div>
+      )}
+
       {/* Table */}
       <GlassCard image={CARD_IMAGES.patients} hoverScale={false}>
       <div className="overflow-hidden">
@@ -503,6 +545,20 @@ export default function PatientsView() {
               <table className="w-full">
                 <thead className="bg-white/[0.04]">
                   <tr>
+                    <th className="px-4 py-3 text-center text-xs font-medium text-white/50 uppercase tracking-wider w-10">
+                      <input
+                        type="checkbox"
+                        checked={filteredPatients.length > 0 && filteredPatients.every(p => selectedIds.includes(p.id))}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedIds(filteredPatients.map(p => p.id));
+                          } else {
+                            setSelectedIds([]);
+                          }
+                        }}
+                        className="accent-blue-500 cursor-pointer"
+                      />
+                    </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-white/50 uppercase tracking-wider">
                       {t('patients.patient')}
                     </th>
@@ -521,6 +577,9 @@ export default function PatientsView() {
                     <th className="px-6 py-3 text-left text-xs font-medium text-white/50 uppercase tracking-wider">
                       {t('patients.date_added')}
                     </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-white/50 uppercase tracking-wider">
+                      {t('patients.assigned_professional')}
+                    </th>
                     <th className="px-6 py-3 text-right text-xs font-medium text-white/50 uppercase tracking-wider">
                       {t('patients.actions')}
                     </th>
@@ -529,6 +588,20 @@ export default function PatientsView() {
                 <tbody className="bg-white/[0.02] divide-y divide-white/[0.06]">
                   {filteredPatients.map((patient) => (
                     <tr key={patient.id} className="hover:bg-white/[0.04] transition-colors">
+                      <td className="px-4 py-4 whitespace-nowrap text-center w-10">
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.includes(patient.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedIds(prev => [...prev, patient.id]);
+                            } else {
+                              setSelectedIds(prev => prev.filter(id => id !== patient.id));
+                            }
+                          }}
+                          className="accent-blue-500 cursor-pointer"
+                        />
+                      </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center">
                           <div className="flex-shrink-0 h-10 w-10 bg-primary-light rounded-full flex items-center justify-center text-white font-medium">
@@ -579,6 +652,16 @@ export default function PatientsView() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-white/50">
                         {new Date(patient.created_at).toLocaleDateString(language)}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        {patient.assigned_professional_name ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-indigo-500/10 text-indigo-400">
+                            <UserCheck size={12} />
+                            {patient.assigned_professional_name}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-white/20">{t('patients.no_professional')}</span>
+                        )}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                         <div className="flex justify-end gap-2">
@@ -782,6 +865,35 @@ export default function PatientsView() {
                       className="w-full px-4 py-2.5 bg-white/[0.04] border border-white/[0.08] rounded-lg focus:bg-white/[0.06] focus:border-blue-500 focus:ring-0 transition-all text-sm text-white placeholder-white/20"
                     />
                   </div>
+                  {editingPatient && (
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-white/50 uppercase tracking-wider flex items-center gap-1.5">
+                        <UserCheck size={14} />
+                        {t('patients.assigned_professional')}
+                      </label>
+                      <select
+                        value={editingPatient.assigned_professional_id ?? ''}
+                        onChange={async (e) => {
+                          const profId = e.target.value ? Number(e.target.value) : null;
+                          try {
+                            await api.patch('/admin/patients/bulk-assign-professional', {
+                              patient_ids: [editingPatient.id],
+                              professional_id: profId,
+                            });
+                            setEditingPatient({ ...editingPatient, assigned_professional_id: profId });
+                          } catch (err) {
+                            console.error('Error assigning professional:', err);
+                          }
+                        }}
+                        className="w-full px-4 py-2.5 bg-white/[0.04] border border-white/[0.08] rounded-lg focus:bg-white/[0.06] focus:border-blue-500 focus:ring-0 transition-all text-sm text-white placeholder-white/20 appearance-none cursor-pointer [&>option]:bg-[#0d1117] [&>option]:text-white"
+                      >
+                        <option value="">{t('patients.no_professional')}</option>
+                        {professionals.map(p => (
+                          <option key={p.id} value={p.id}>{[p.first_name, p.last_name].filter(Boolean).join(' ')}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-1.5">
                       <label className="text-xs font-semibold text-white/50 uppercase tracking-wider">{t('patients.city_neighborhood')}</label>
@@ -904,6 +1016,45 @@ export default function PatientsView() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Assign Professional Modal */}
+      {showBulkAssignModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-[#0d1117] border border-white/[0.06] rounded-xl p-6 w-96 shadow-2xl">
+            <div className="flex items-center gap-2 mb-4">
+              <UserCheck size={18} className="text-indigo-400" />
+              <h3 className="text-white font-semibold">{t('patients.assign_professional')}</h3>
+            </div>
+            <p className="text-xs text-white/40 mb-4">
+              {selectedIds.length} {t('patients.bulk_selected')}
+            </p>
+            <select
+              value={bulkProfId}
+              onChange={(e) => setBulkProfId(e.target.value)}
+              className="w-full bg-white/[0.04] border border-white/[0.08] text-white rounded-lg px-3 py-2 mb-4 text-sm appearance-none [&>option]:bg-[#0d1117] [&>option]:text-white focus:outline-none focus:border-blue-500"
+            >
+              <option value="">{t('patients.no_professional')}</option>
+              {professionals.map(p => (
+                <option key={p.id} value={p.id}>{[p.first_name, p.last_name].filter(Boolean).join(' ')}</option>
+              ))}
+            </select>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => { setShowBulkAssignModal(false); setBulkProfId(''); }}
+                className="px-4 py-2 text-white/50 hover:text-white text-sm transition-colors"
+              >
+                {t('common.cancel')}
+              </button>
+              <button
+                onClick={handleBulkAssign}
+                className="px-4 py-2 bg-white text-[#0a0e1a] rounded-lg font-medium text-sm hover:bg-white/90 transition-colors"
+              >
+                {t('patients.assign_professional')}
+              </button>
+            </div>
           </div>
         </div>
       )}

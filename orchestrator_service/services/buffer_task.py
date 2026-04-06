@@ -29,6 +29,47 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
+def classify_intent(messages: list) -> set:
+    """
+    Classify patient message intent via keyword detection (<1ms, no LLM).
+    Returns a set of tags used to conditionally inject prompt sections.
+
+    Tags: 'implant', 'media', 'payment'
+    If no tags match, returns empty set — caller should inject all sections (safe default).
+    """
+    text = " ".join(messages).lower()
+    tags = set()
+
+    # Implant/prosthetics keywords
+    implant_kw = [
+        "implante", "prótesis", "protesis", "dentadura", "sin hueso",
+        "no tengo hueso", "me rechazaron", "diente postizo", "dientes faltantes",
+        "perdí un diente", "perdi un diente", "perdí varios", "perdi varios",
+        "quiero algo fijo", "no tengo dientes", "se me cayeron",
+    ]
+    if any(kw in text for kw in implant_kw):
+        tags.add("implant")
+
+    # Media/attachment keywords (supplement has_recent_media flag from buffer_task)
+    media_kw = [
+        "foto", "imagen", "adjunto", "archivo", "radiografía", "radiografia",
+        "tomografía", "tomografia", "estudio", "panorámica", "panoramica",
+    ]
+    if any(kw in text for kw in media_kw):
+        tags.add("media")
+
+    # Payment keywords
+    payment_kw = [
+        "pagar", "pago", "seña", "sena", "transferencia", "comprobante",
+        "cuánto debo", "cuanto debo", "saldo", "cuota", "deuda",
+        "factura", "recibo", "abonar",
+    ]
+    if any(kw in text for kw in payment_kw):
+        tags.add("payment")
+
+    return tags
+
+
 async def process_buffer_task(
     tenant_id: int,
     conversation_id: str,
@@ -104,7 +145,7 @@ async def process_buffer_task(
         current_tenant_id.set(tenant_id)
 
         tenant_row = await pool.fetchrow(
-            "SELECT clinic_name, address, google_maps_url, working_hours, consultation_price, bank_cbu, bank_alias, bank_holder_name FROM tenants WHERE id = $1",
+            "SELECT clinic_name, address, google_maps_url, working_hours, consultation_price, bank_cbu, bank_alias, bank_holder_name, system_prompt_template FROM tenants WHERE id = $1",
             tenant_id,
         )
         clinic_name = (
@@ -120,10 +161,25 @@ async def process_buffer_task(
         bank_cbu = (tenant_row["bank_cbu"] or "") if tenant_row else ""
         bank_alias = (tenant_row["bank_alias"] or "") if tenant_row else ""
         bank_holder_name = (tenant_row["bank_holder_name"] or "") if tenant_row else ""
+        system_prompt_template = (
+            tenant_row.get("system_prompt_template") or ""
+        ) if tenant_row else ""
         clinic_working_hours = None
         if tenant_row and tenant_row.get("working_hours"):
             wh = tenant_row["working_hours"]
             clinic_working_hours = json.loads(wh) if isinstance(wh, str) else wh
+
+        # Resolve lead professional name for prompt positioning
+        lead_professional_name = ""
+        try:
+            prof_row = await pool.fetchrow(
+                "SELECT first_name, last_name FROM professionals WHERE tenant_id = $1 AND is_active = true ORDER BY id ASC LIMIT 1",
+                tenant_id,
+            )
+            if prof_row:
+                lead_professional_name = f"{prof_row['first_name']} {prof_row.get('last_name', '') or ''}".strip()
+        except Exception:
+            pass
 
         # Fetch FAQs for this tenant (no limit — RAG will select relevant ones)
         faq_rows = await pool.fetch(
@@ -178,7 +234,7 @@ async def process_buffer_task(
         # Fetch patient data — search by phone (WhatsApp) or PSID (Instagram/Facebook)
         phone_digits = normalize_phone_digits(external_user_id)
         patient_row = await pool.fetchrow(
-            """SELECT id, first_name, last_name, dni, email, phone_number, acquisition_source, anamnesis_token, medical_history FROM patients
+            """SELECT id, first_name, last_name, dni, email, phone_number, acquisition_source, anamnesis_token, medical_history, assigned_professional_id FROM patients
                WHERE tenant_id = $1 AND (
                    REGEXP_REPLACE(phone_number, '[^0-9]', '', 'g') = $2
                    OR instagram_psid = $3
@@ -219,6 +275,24 @@ async def process_buffer_task(
             p_email = patient_row.get("email") or ""
             if p_email:
                 identity_lines.append(f"• Email registrado: {p_email}")
+
+            # Assigned Professional (persistent patient→professional relationship)
+            assigned_prof_id = patient_row.get("assigned_professional_id")
+            if assigned_prof_id:
+                try:
+                    assigned_prof = await pool.fetchrow(
+                        "SELECT first_name, last_name FROM professionals WHERE id = $1 AND tenant_id = $2 AND is_active = true",
+                        assigned_prof_id, tenant_id,
+                    )
+                    if assigned_prof:
+                        assigned_name = f"{assigned_prof['first_name']} {assigned_prof.get('last_name', '') or ''}".strip()
+                        identity_lines.append(
+                            f"• PROFESIONAL ASIGNADO: Dr/a. {assigned_name} — Este paciente es paciente habitual de este profesional. "
+                            f"SIEMPRE ofrecer turnos con este profesional primero. Si no hay disponibilidad, "
+                            f"mencionar que es su profesional habitual pero ofrecer alternativas."
+                        )
+                except Exception:
+                    pass
 
             # 2. Building Ad Context (Spec 06)
             meta_headline = ""  # Already in patient_row if we joined or updated, checking current db state
@@ -515,8 +589,9 @@ async def process_buffer_task(
 
             # --- PATIENT MEMORY: Retrieve persistent memories ---
             try:
+                memory_query = " ".join(messages) if messages else ""
                 memory_text = await format_memories_for_prompt(
-                    pool, external_user_id, tenant_id
+                    pool, external_user_id, tenant_id, query=memory_query
                 )
                 if memory_text:
                     identity_lines.append("")
@@ -580,6 +655,12 @@ async def process_buffer_task(
         except Exception as hol_err:
             logger.debug(f"Holiday fetch fallback (non-fatal): {hol_err}")
 
+        # Classify intent for conditional prompt injection (keyword-based, <1ms)
+        intent_tags = classify_intent(messages)
+        # Supplement with pending payment context from patient data
+        if patient_context and ("payment_status" in patient_context.lower() or "pendiente" in patient_context.lower()):
+            intent_tags.add("payment")
+
         system_prompt = build_system_prompt(
             clinic_name=clinic_name,
             current_time=current_time_str,
@@ -603,6 +684,10 @@ async def process_buffer_task(
             if not rag_insurance_section
             else None,
             derivation_rules=derivation_rules if not rag_derivation_section else None,
+            specialty_pitch=system_prompt_template,
+            professional_name=lead_professional_name,
+            bot_name="TORA",
+            intent_tags=intent_tags,
         )
 
         # Inject RAG context sections if available
@@ -866,6 +951,12 @@ async def process_buffer_task(
 
         except Exception as e:
             logger.warning(f"Error al verificar contexto especial: {e}")
+
+        # Late supplement: if media detected after prompt build, inject adjuntos section
+        if has_recent_media and "media" not in intent_tags:
+            intent_tags.add("media")
+            from main import _get_adjuntos_section
+            system_prompt += "\n\n" + _get_adjuntos_section()
 
         executor = await get_agent_executable_for_tenant(tenant_id)
         logger.info(f"🧠 Invoking Agent for {external_user_id}...")

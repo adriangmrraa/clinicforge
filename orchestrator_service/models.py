@@ -449,6 +449,11 @@ class Patient(Base):
     last_visit = Column(DateTime(timezone=True))
     anamnesis_token = Column(UUID(as_uuid=True), nullable=True)
 
+    # Assigned professional (persistent patient→professional relationship)
+    assigned_professional_id = Column(
+        Integer, ForeignKey("professionals.id", ondelete="SET NULL"), nullable=True
+    )
+
     __table_args__ = (
         UniqueConstraint(
             "tenant_id", "phone_number", name="patients_tenant_id_phone_number_key"

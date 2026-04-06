@@ -389,7 +389,14 @@
     "import_updated": "Updated",
     "import_skipped": "Skipped",
     "import_error": "Error processing the file",
-    "import_invalid_format": "Invalid format. Use .csv or .xlsx files"
+    "import_invalid_format": "Invalid format. Use .csv or .xlsx files",
+    "assigned_professional": "Assigned professional",
+    "no_professional": "Unassigned",
+    "assign_professional": "Assign professional",
+    "bulk_selected": "patients selected",
+    "deselect_all": "Deselect all",
+    "bulk_assign_success": "Professional assigned successfully",
+    "bulk_assign_error": "Error assigning professional"
   },
   "chats": {
     "badge_patient": "Patient",

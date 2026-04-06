@@ -83,9 +83,58 @@ async def get_memories(pool, patient_phone: str, tenant_id: int, limit: int = 30
     return [dict(r) for r in rows] if rows else []
 
 
-async def format_memories_for_prompt(pool, patient_phone: str, tenant_id: int) -> str:
-    """Get memories formatted for injection into system prompt."""
-    memories = await get_memories(pool, patient_phone, tenant_id, limit=25)
+async def get_relevant_memories(
+    pool, patient_phone: str, tenant_id: int, query: str, top_k: int = 8
+) -> List[dict]:
+    """
+    Retrieve the most relevant memories for a patient based on semantic similarity to the query.
+    Falls back to importance-based retrieval if embedding fails.
+    """
+    all_memories = await get_memories(pool, patient_phone, tenant_id, limit=30)
+    if not all_memories or not query or len(all_memories) <= top_k:
+        return all_memories[:top_k] if all_memories else []
+
+    try:
+        from services.embedding_service import generate_embedding
+
+        # Generate embedding for the patient's current message
+        query_embedding = await generate_embedding(query)
+        if not query_embedding:
+            return all_memories[:top_k]
+
+        # Generate embeddings for each memory and compute similarity
+        scored = []
+        for mem in all_memories:
+            mem_embedding = await generate_embedding(mem["memory"])
+            if mem_embedding:
+                # Cosine similarity
+                dot = sum(a * b for a, b in zip(query_embedding, mem_embedding))
+                norm_q = sum(a * a for a in query_embedding) ** 0.5
+                norm_m = sum(a * a for a in mem_embedding) ** 0.5
+                similarity = dot / (norm_q * norm_m) if norm_q and norm_m else 0
+                # Blend: 70% semantic relevance + 30% importance (normalized to 0-1)
+                importance_score = mem.get("importance", 5) / 10.0
+                final_score = 0.7 * similarity + 0.3 * importance_score
+                scored.append((mem, final_score))
+            else:
+                scored.append((mem, mem.get("importance", 5) / 10.0))
+
+        scored.sort(key=lambda x: x[1], reverse=True)
+        return [m for m, _ in scored[:top_k]]
+
+    except Exception as e:
+        logger.warning(f"Memory RAG fallback (non-fatal): {e}")
+        return all_memories[:top_k]
+
+
+async def format_memories_for_prompt(pool, patient_phone: str, tenant_id: int, query: str = "") -> str:
+    """Get memories formatted for injection into system prompt.
+    If query is provided, uses semantic search to select the most relevant memories.
+    """
+    if query:
+        memories = await get_relevant_memories(pool, patient_phone, tenant_id, query, top_k=8)
+    else:
+        memories = await get_memories(pool, patient_phone, tenant_id, limit=25)
     if not memories:
         return ""
 

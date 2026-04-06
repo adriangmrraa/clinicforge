@@ -4035,19 +4035,24 @@ async def list_patients(
     search: str = None,
     limit: int = 200,
     professional_id: Optional[int] = None,
+    assigned_professional_id: Optional[int] = None,
     tenant_id: int = Depends(get_resolved_tenant_id),
 ):
     """
     Listar todos los pacientes del tenant (incluye importados sin turnos).
     Aislado por tenant_id (Regla de Oro).
     Cuando professional_id se proporciona, filtra solo pacientes con al menos un turno con ese profesional (RBAC).
+    Cuando assigned_professional_id se proporciona, filtra por profesional asignado.
     """
     query = """
         SELECT p.id, p.first_name, p.last_name, p.phone_number, p.email,
                p.insurance_provider as obra_social, p.dni, p.city, p.birth_date, p.created_at, p.status,
+               p.assigned_professional_id,
+               ap.first_name as assigned_professional_name,
                EXISTS (SELECT 1 FROM appointments a WHERE a.patient_id = p.id AND a.tenant_id = p.tenant_id) as has_appointments,
                lt.treatment_name as last_treatment
         FROM patients p
+        LEFT JOIN professionals ap ON ap.id = p.assigned_professional_id
         LEFT JOIN LATERAL (
             SELECT tt.name as treatment_name
             FROM appointments a
@@ -4064,6 +4069,11 @@ async def list_patients(
     if professional_id is not None:
         params.append(professional_id)
         query += f" AND EXISTS (SELECT 1 FROM appointments a WHERE a.patient_id = p.id AND a.professional_id = ${len(params)})"
+
+    # Filter by assigned professional
+    if assigned_professional_id is not None:
+        params.append(assigned_professional_id)
+        query += f" AND p.assigned_professional_id = ${len(params)}"
 
     if search:
         params.append(f"%{search}%")
@@ -4119,6 +4129,100 @@ async def list_patients(
             p["pending_balance"] = balance_map.get(p["id"], 0.0)
 
     return patients
+
+
+@router.patch(
+    "/patients/{patient_id}/assign-professional",
+    dependencies=[Depends(verify_admin_token)],
+    tags=["Pacientes"],
+    summary="Asignar profesional a un paciente",
+)
+async def assign_professional_to_patient(
+    patient_id: int,
+    body: dict,
+    tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    """Asignar o desasignar un profesional a un paciente."""
+    professional_id = body.get("professional_id")  # null to unassign
+
+    # Validate patient belongs to tenant
+    patient = await db.pool.fetchrow(
+        "SELECT id FROM patients WHERE id = $1 AND tenant_id = $2",
+        patient_id, tenant_id,
+    )
+    if not patient:
+        raise HTTPException(status_code=404, detail="Paciente no encontrado")
+
+    # Validate professional belongs to tenant (if assigning)
+    if professional_id is not None:
+        prof = await db.pool.fetchrow(
+            "SELECT id, first_name, last_name FROM professionals WHERE id = $1 AND tenant_id = $2 AND is_active = true",
+            professional_id, tenant_id,
+        )
+        if not prof:
+            raise HTTPException(status_code=404, detail="Profesional no encontrado o inactivo")
+
+    await db.pool.execute(
+        "UPDATE patients SET assigned_professional_id = $1 WHERE id = $2 AND tenant_id = $3",
+        professional_id, patient_id, tenant_id,
+    )
+
+    # Return updated info
+    prof_name = None
+    if professional_id is not None:
+        prof_row = await db.pool.fetchrow(
+            "SELECT first_name, last_name FROM professionals WHERE id = $1",
+            professional_id,
+        )
+        if prof_row:
+            prof_name = f"{prof_row['first_name']} {prof_row.get('last_name', '') or ''}".strip()
+
+    return {
+        "patient_id": patient_id,
+        "assigned_professional_id": professional_id,
+        "assigned_professional_name": prof_name,
+    }
+
+
+@router.patch(
+    "/patients/bulk-assign-professional",
+    dependencies=[Depends(verify_admin_token)],
+    tags=["Pacientes"],
+    summary="Asignar profesional a múltiples pacientes",
+)
+async def bulk_assign_professional(
+    body: dict,
+    tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    """Asignar o desasignar un profesional a múltiples pacientes (max 200)."""
+    patient_ids = body.get("patient_ids", [])
+    professional_id = body.get("professional_id")  # null to unassign
+
+    if not patient_ids or len(patient_ids) > 200:
+        raise HTTPException(status_code=400, detail="Se requieren entre 1 y 200 pacientes")
+
+    # Validate professional belongs to tenant (if assigning)
+    if professional_id is not None:
+        prof = await db.pool.fetchrow(
+            "SELECT id FROM professionals WHERE id = $1 AND tenant_id = $2 AND is_active = true",
+            professional_id, tenant_id,
+        )
+        if not prof:
+            raise HTTPException(status_code=404, detail="Profesional no encontrado o inactivo")
+
+    # Bulk update — only patients belonging to this tenant
+    result = await db.pool.execute(
+        "UPDATE patients SET assigned_professional_id = $1 WHERE id = ANY($2::int[]) AND tenant_id = $3",
+        professional_id, patient_ids, tenant_id,
+    )
+
+    # Parse "UPDATE N" to get count
+    updated_count = int(result.split()[-1]) if result else 0
+
+    return {
+        "updated_count": updated_count,
+        "professional_id": professional_id,
+    }
 
 
 @router.post(
