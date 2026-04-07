@@ -3320,7 +3320,7 @@ async def cancel_appointment(date_query: str):
         apt = await db.pool.fetchrow(
             """
             SELECT a.id, a.google_calendar_event_id, a.billing_amount, a.payment_status,
-                   a.appointment_datetime, tt.name as treatment_name
+                   a.appointment_datetime, a.professional_id, tt.name as treatment_name
             FROM appointments a
             JOIN patients p ON a.patient_id = p.id
             LEFT JOIN treatment_types tt ON a.appointment_type = tt.code
@@ -4356,8 +4356,10 @@ async def confirm_slot(
             r = get_redis()
             if r:
                 existing_lock = await r.get(lock_key)
-                if existing_lock and existing_lock.decode() if isinstance(existing_lock, bytes) else existing_lock != phone:
-                    return f"⚠️ El turno de las {time_str} del {date_str} acaba de ser reservado por otro paciente. Consultemos otra opción."
+                if existing_lock:
+                    lock_holder = existing_lock.decode() if isinstance(existing_lock, bytes) else existing_lock
+                    if lock_holder != phone:
+                        return f"⚠️ El turno de las {time_str} del {date_str} acaba de ser reservado por otro paciente. Consultemos otra opción."
                 await r.setex(lock_key, 120, phone)
                 logger.info(f"🔒 Soft lock created: {lock_key} for {phone} (120s)")
         except Exception as e:
