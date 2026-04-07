@@ -7112,21 +7112,37 @@ async def get_professional_conversation_insights(
                     model_name = str(model_row["value"]).strip()
         except Exception:
             pass
-        response = await client.chat.completions.create(
-            model=model_name,
-            messages=[
-                {
-                    "role": "system",
-                    "content": "Sos un analista de experiencia del paciente en una clínica dental. Analizá los fragmentos de conversaciones y generá un resumen conciso en español con: 1) Sentimiento general (positivo/negativo/neutro), 2) Temas positivos recurrentes, 3) Quejas o preocupaciones frecuentes, 4) Puntuación de calidad de atención (1-10), 5) Recomendaciones breves. Respondé en formato estructurado, máximo 300 palabras.",
-                },
-                {
-                    "role": "user",
-                    "content": f"Fragmentos de {len(snippets)} conversaciones recientes:\n\n{all_snippets}",
-                },
-            ],
-            max_tokens=500,
-            temperature=0.3,
-        )
+        messages_payload = [
+            {
+                "role": "system",
+                "content": "Sos un analista de experiencia del paciente en una clínica dental. Analizá los fragmentos de conversaciones y generá un resumen conciso en español con: 1) Sentimiento general (positivo/negativo/neutro), 2) Temas positivos recurrentes, 3) Quejas o preocupaciones frecuentes, 4) Puntuación de calidad de atención (1-10), 5) Recomendaciones breves. Respondé en formato estructurado, máximo 300 palabras.",
+            },
+            {
+                "role": "user",
+                "content": f"Fragmentos de {len(snippets)} conversaciones recientes:\n\n{all_snippets}",
+            },
+        ]
+        # Newer OpenAI models (gpt-5, o-series) require `max_completion_tokens`
+        # while older ones (gpt-4o, gpt-4o-mini) accept `max_tokens`. Try the
+        # modern parameter first and fallback if the model rejects it.
+        try:
+            response = await client.chat.completions.create(
+                model=model_name,
+                messages=messages_payload,
+                max_completion_tokens=500,
+                temperature=0.3,
+            )
+        except Exception as param_err:
+            err_str = str(param_err).lower()
+            if "max_completion_tokens" in err_str or "unsupported" in err_str or "unexpected keyword" in err_str:
+                response = await client.chat.completions.create(
+                    model=model_name,
+                    messages=messages_payload,
+                    max_tokens=500,
+                    temperature=0.3,
+                )
+            else:
+                raise
         insights_text = response.choices[0].message.content
 
         # Track token usage

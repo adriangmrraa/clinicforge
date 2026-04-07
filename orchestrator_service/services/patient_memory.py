@@ -16,6 +16,8 @@ import os
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
+from core.openai_compat import build_openai_chat_kwargs
+
 logger = logging.getLogger(__name__)
 
 # ─────────────────────────────────────────────────────────────
@@ -284,13 +286,13 @@ Solo JSON, sin markdown ni explicaciones."""
             resp = await client.post(
                 "https://api.openai.com/v1/chat/completions",
                 headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-                json={
-                    "model": memory_model,
-                    "messages": [{"role": "user", "content": extraction_prompt}],
-                    "temperature": 0,
-                    "max_tokens": 500,
-                    "response_format": {"type": "json_object"}
-                }
+                json=build_openai_chat_kwargs(
+                    model=memory_model,
+                    max_tokens=500,
+                    temperature=0,
+                    messages=[{"role": "user", "content": extraction_prompt}],
+                    response_format={"type": "json_object"},
+                ),
             )
             result = resp.json()
 
@@ -431,16 +433,29 @@ Solo JSON."""
 
         try:
             async with httpx.AsyncClient(timeout=25) as client:
+                # Compaction also reads the configured memory model so a tenant
+                # using gpt-5-mini for memories gets the same model here.
+                compact_model = "gpt-4o-mini"
+                try:
+                    row = await pool.fetchrow(
+                        "SELECT value FROM system_config WHERE key = 'MODEL_PATIENT_MEMORY' AND tenant_id = $1",
+                        tenant_id,
+                    )
+                    if row and row.get("value"):
+                        compact_model = str(row["value"]).strip()
+                except Exception:
+                    pass
+
                 resp = await client.post(
                     "https://api.openai.com/v1/chat/completions",
                     headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-                    json={
-                        "model": "gpt-4o-mini",
-                        "messages": [{"role": "user", "content": compact_prompt}],
-                        "temperature": 0,
-                        "max_tokens": 500,
-                        "response_format": {"type": "json_object"}
-                    }
+                    json=build_openai_chat_kwargs(
+                        model=compact_model,
+                        max_tokens=500,
+                        temperature=0,
+                        messages=[{"role": "user", "content": compact_prompt}],
+                        response_format={"type": "json_object"},
+                    ),
                 )
                 result = resp.json()
                 content = result.get("choices", [{}])[0].get("message", {}).get("content", "{}")

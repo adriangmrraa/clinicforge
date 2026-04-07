@@ -106,7 +106,7 @@ const UserApprovalView: React.FC = () => {
     const [expandedEditDays, setExpandedEditDays] = useState<string[]>([]);
     const [expandedAccordion, setExpandedAccordion] = useState<'pacientes' | 'uso' | 'mensajes' | null>(null);
     const [accordionData, setAccordionData] = useState<{
-        analytics: Record<string, { metrics: { total_appointments: number; unique_patients: number; completion_rate: number; cancellation_rate: number; revenue: number; retention_rate: number }; tags: string[] }>;
+        analytics: Record<string, { metrics: { total_appointments: number; completed_appointments?: number; unique_patients: number; completion_rate: number; cancellation_rate: number; revenue: number; retention_rate: number }; tags: string[] }>;
         chatCountByTenant: Record<string, number>;
     }>({ analytics: {}, chatCountByTenant: {} });
     const [accordionLoading, setAccordionLoading] = useState<'pacientes' | 'uso' | 'mensajes' | null>(null);
@@ -690,7 +690,7 @@ const UserApprovalView: React.FC = () => {
                                                                     <p className="font-medium text-white/60 mb-1">{clinicName}</p>
                                                                     {m ? (
                                                                         <ul className="text-white/60 space-y-0.5">
-                                                                            <li>{t('approvals.completed_appointments')}: <strong>{m.total_appointments}</strong> ({t('approvals.completion')} {m.completion_rate}%)</li>
+                                                                            <li>{t('approvals.completed_appointments')}: <strong>{m.completed_appointments ?? 0}</strong> / {m.total_appointments} ({t('approvals.completion')} {m.completion_rate}%)</li>
                                                                             <li>{t('approvals.cancellations')}: <strong>{m.cancellation_rate}%</strong></li>
                                                                             <li>{t('approvals.estimated_revenue')}: <strong>${typeof m.revenue === 'number' ? m.revenue.toLocaleString() : m.revenue}</strong></li>
                                                                             {d?.tags?.length ? <li>{t('approvals.tags')}: {d.tags.join(', ')}</li> : null}

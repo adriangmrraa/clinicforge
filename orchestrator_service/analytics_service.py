@@ -65,7 +65,8 @@ class AnalyticsService:
                     (cancelled_apts / total_apts) * 100 if total_apts > 0 else 0
                 )
 
-                # 3. Revenue Estimation — multi-source: billing_amount > treatment base_price > clinical_records
+                # 3. Revenue Estimation — multi-source fallback chain:
+                # billing_amount > treatment base_price > professional.consultation_price > tenant.consultation_price
                 revenue_row = await db.pool.fetchrow(
                     """
                     SELECT
@@ -73,6 +74,8 @@ class AnalyticsService:
                             CASE
                                 WHEN a.billing_amount IS NOT NULL AND a.billing_amount > 0 THEN a.billing_amount
                                 WHEN tt.base_price IS NOT NULL AND tt.base_price > 0 THEN tt.base_price
+                                WHEN p.consultation_price IS NOT NULL AND p.consultation_price > 0 THEN p.consultation_price
+                                WHEN te.consultation_price IS NOT NULL AND te.consultation_price > 0 THEN te.consultation_price
                                 ELSE 0
                             END
                         ), 0) as total_revenue,
@@ -81,6 +84,8 @@ class AnalyticsService:
                         COUNT(*) FILTER (WHERE a.billing_amount > 0) as with_billing
                     FROM appointments a
                     LEFT JOIN treatment_types tt ON a.appointment_type = tt.code AND tt.tenant_id = a.tenant_id
+                    LEFT JOIN professionals p ON a.professional_id = p.id
+                    LEFT JOIN tenants te ON a.tenant_id = te.id
                     WHERE a.professional_id = $1
                     AND a.appointment_datetime BETWEEN $2 AND $3
                     AND a.tenant_id = $4
@@ -191,6 +196,7 @@ class AnalyticsService:
                         "specialty": prof["specialty"] or "General",
                         "metrics": {
                             "total_appointments": total_apts,
+                            "completed_appointments": completed_apts,
                             "unique_patients": stats["unique_patients"] or 0,
                             "completion_rate": round(completion_rate, 1),
                             "cancellation_rate": round(cancellation_rate, 1),
@@ -296,13 +302,28 @@ class AnalyticsService:
                 if unique_patients > 0
                 else 0
             )
+            # Revenue: same fallback chain as get_all_professionals_analytics
+            # billing_amount > treatment base_price > professional.consultation_price > tenant.consultation_price
             revenue_row = await db.pool.fetchrow(
                 """
-                SELECT SUM(COALESCE((treatment->>'cost')::numeric, 0)) as total_revenue
-                FROM clinical_records, jsonb_array_elements(treatments) as treatment
-                WHERE professional_id = $1
-                AND created_at BETWEEN $2 AND $3
-                AND tenant_id = $4
+                SELECT
+                    COALESCE(SUM(
+                        CASE
+                            WHEN a.billing_amount IS NOT NULL AND a.billing_amount > 0 THEN a.billing_amount
+                            WHEN tt.base_price IS NOT NULL AND tt.base_price > 0 THEN tt.base_price
+                            WHEN p.consultation_price IS NOT NULL AND p.consultation_price > 0 THEN p.consultation_price
+                            WHEN te.consultation_price IS NOT NULL AND te.consultation_price > 0 THEN te.consultation_price
+                            ELSE 0
+                        END
+                    ), 0) as total_revenue
+                FROM appointments a
+                LEFT JOIN treatment_types tt ON a.appointment_type = tt.code AND tt.tenant_id = a.tenant_id
+                LEFT JOIN professionals p ON a.professional_id = p.id
+                LEFT JOIN tenants te ON a.tenant_id = te.id
+                WHERE a.professional_id = $1
+                AND a.appointment_datetime BETWEEN $2 AND $3
+                AND a.tenant_id = $4
+                AND a.status IN ('completed', 'confirmed', 'scheduled')
                 """,
                 prof_id,
                 start_date,
@@ -325,6 +346,7 @@ class AnalyticsService:
                 "specialty": prof["specialty"] or "General",
                 "metrics": {
                     "total_appointments": total_apts,
+                    "completed_appointments": completed_apts,
                     "unique_patients": unique_patients,
                     "completion_rate": round(completion_rate, 1),
                     "cancellation_rate": round(cancellation_rate, 1),
