@@ -17,7 +17,9 @@ logger = logging.getLogger(__name__)
 # Embedding configuration defaults
 DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small"
 DEFAULT_TOP_K = 5
-DEFAULT_SIMILARITY_THRESHOLD = 0.7
+# Lowered from 0.7 to 0.55 to capture semantic variations (e.g. "demora" vs "dura",
+# "cuesta" vs "sale"). text-embedding-3-small needs lower threshold for Spanish synonyms.
+DEFAULT_SIMILARITY_THRESHOLD = 0.55
 
 _pgvector_available: Optional[bool] = None
 
@@ -328,21 +330,53 @@ async def format_faqs_with_rag(tenant_id: int, user_message: str, static_faqs: l
     if await check_pgvector_available() and user_message:
         relevant_faqs = await search_similar_faqs(tenant_id, user_message)
         if relevant_faqs:
-            lines = ["FAQs RELEVANTES (responder SIEMPRE con estas respuestas cuando aplique):"]
-            for faq in relevant_faqs:
+            # Log retrieved FAQs for debugging FAQ priority issues
+            logger.info(
+                f"📚 RAG retrieved {len(relevant_faqs)} FAQs for query='{user_message[:80]}': "
+                + ", ".join(f"{f['question'][:40]}({f['similarity']})" for f in relevant_faqs)
+            )
+            lines = [
+                "═══════════════════════════════════════════════",
+                "FAQs RELEVANTES — RESPUESTAS OBLIGATORIAS DE LA DOCTORA",
+                "═══════════════════════════════════════════════",
+                "REGLA BLOQUEANTE: Si la pregunta del paciente trata sobre ALGUNO de los temas",
+                "de abajo, DEBÉS responder con la RESPUESTA OFICIAL — TAL CUAL, sin parafrasear,",
+                "sin mezclar con get_service_details. Aunque el paciente use palabras distintas",
+                "(demora/dura/tarda/cuesta/sale), si el TEMA matchea, usá la FAQ.",
+                "",
+            ]
+            for i, faq in enumerate(relevant_faqs, 1):
                 cat = faq.get("category", "General") or "General"
-                lines.append(f"[{cat}] {faq['question']}: \"{faq['answer']}\" [relevancia: {faq['similarity']}]")
+                lines.append(f"━━━ FAQ #{i} [{cat}] ━━━")
+                lines.append(f"PREGUNTA OFICIAL: {faq['question']}")
+                lines.append(f"RESPUESTA OFICIAL (USAR ESTA TAL CUAL): {faq['answer']}")
+                lines.append("")
+            lines.append("═══════════════════════════════════════════════")
             return "\n".join(lines)
 
     # Fallback: static FAQs (original behavior)
     if not static_faqs:
         return ""
-    lines = ["FAQs OBLIGATORIAS (responder SIEMPRE con estas respuestas cuando aplique):"]
-    for faq in static_faqs[:20]:
+    logger.info(f"📚 RAG fallback: injecting {min(len(static_faqs), 20)} static FAQs (no pgvector or no relevant matches)")
+    lines = [
+        "═══════════════════════════════════════════════",
+        "FAQs OBLIGATORIAS — RESPUESTAS OFICIALES DE LA DOCTORA",
+        "═══════════════════════════════════════════════",
+        "REGLA BLOQUEANTE: Si la pregunta del paciente trata sobre alguno de estos temas,",
+        "DEBÉS responder con la RESPUESTA OFICIAL — TAL CUAL, sin parafrasear, sin mezclar",
+        "con get_service_details. Aunque el paciente use palabras distintas (demora/dura/",
+        "tarda/cuesta/sale), si el TEMA matchea, usá la FAQ.",
+        "",
+    ]
+    for i, faq in enumerate(static_faqs[:20], 1):
         cat = faq.get("category", "General") or "General"
         q = faq.get("question", "")
         a = faq.get("answer", "")
-        lines.append(f"[{cat}] {q}: \"{a}\"")
+        lines.append(f"━━━ FAQ #{i} [{cat}] ━━━")
+        lines.append(f"PREGUNTA OFICIAL: {q}")
+        lines.append(f"RESPUESTA OFICIAL (USAR ESTA TAL CUAL): {a}")
+        lines.append("")
+    lines.append("═══════════════════════════════════════════════")
     return "\n".join(lines)
 
 
