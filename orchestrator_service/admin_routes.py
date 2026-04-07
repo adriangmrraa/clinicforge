@@ -3095,15 +3095,35 @@ async def create_tenant_faq(
         answer,
         sort_order,
     )
-    # Sync FAQ embedding in background (fire-and-forget)
-    try:
-        import asyncio
-        from services.embedding_service import upsert_faq_embedding
 
-        asyncio.create_task(upsert_faq_embedding(tenant_id, new_id, question, answer))
-    except Exception:
-        pass
-    return {"id": new_id, "status": "created"}
+    # Generate embedding SYNCHRONOUSLY so the FAQ is immediately searchable.
+    # If embedding fails, we still return success but include a warning so the
+    # frontend can show it. The FAQ exists, just won't appear in semantic search.
+    embedding_status = "skipped"
+    embedding_error = None
+    try:
+        from services.embedding_service import upsert_faq_embedding, check_pgvector_available
+
+        if await check_pgvector_available():
+            ok = await upsert_faq_embedding(tenant_id, new_id, question, answer)
+            embedding_status = "ok" if ok else "failed"
+            if not ok:
+                embedding_error = "upsert_faq_embedding returned False (check logs)"
+            logger.info(f"📚 FAQ {new_id} created and embedded: status={embedding_status}")
+        else:
+            embedding_status = "no_pgvector"
+            logger.warning(f"📚 FAQ {new_id} created but pgvector not available")
+    except Exception as e:
+        embedding_status = "error"
+        embedding_error = str(e)
+        logger.error(f"📚 FAQ {new_id} embedding failed: {e}", exc_info=True)
+
+    return {
+        "id": new_id,
+        "status": "created",
+        "embedding_status": embedding_status,
+        "embedding_error": embedding_error,
+    }
 
 
 @router.put("/faqs/{faq_id}", tags=["FAQs"], summary="Actualizar una FAQ")
@@ -3139,26 +3159,40 @@ async def update_faq(
     params.append(row["tenant_id"])
     query = f"UPDATE clinic_faqs SET {', '.join(updates)} WHERE id = ${len(params) - 1} AND tenant_id = ${len(params)}"
     await db.pool.execute(query, *params)
-    # Sync FAQ embedding in background
-    try:
-        import asyncio
-        from services.embedding_service import upsert_faq_embedding
 
-        updated_row = await db.pool.fetchrow(
-            "SELECT tenant_id, question, answer FROM clinic_faqs WHERE id = $1", faq_id
-        )
-        if updated_row:
-            asyncio.create_task(
-                upsert_faq_embedding(
+    # Re-generate embedding SYNCHRONOUSLY so the updated FAQ is immediately searchable
+    embedding_status = "skipped"
+    embedding_error = None
+    try:
+        from services.embedding_service import upsert_faq_embedding, check_pgvector_available
+
+        if await check_pgvector_available():
+            updated_row = await db.pool.fetchrow(
+                "SELECT tenant_id, question, answer FROM clinic_faqs WHERE id = $1", faq_id
+            )
+            if updated_row:
+                ok = await upsert_faq_embedding(
                     updated_row["tenant_id"],
                     faq_id,
                     updated_row["question"],
                     updated_row["answer"],
                 )
-            )
-    except Exception:
-        pass
-    return {"status": "updated"}
+                embedding_status = "ok" if ok else "failed"
+                if not ok:
+                    embedding_error = "upsert_faq_embedding returned False (check logs)"
+                logger.info(f"📚 FAQ {faq_id} updated and re-embedded: status={embedding_status}")
+        else:
+            embedding_status = "no_pgvector"
+    except Exception as e:
+        embedding_status = "error"
+        embedding_error = str(e)
+        logger.error(f"📚 FAQ {faq_id} re-embedding failed: {e}", exc_info=True)
+
+    return {
+        "status": "updated",
+        "embedding_status": embedding_status,
+        "embedding_error": embedding_error,
+    }
 
 
 @router.delete("/faqs/{faq_id}", tags=["FAQs"], summary="Eliminar una FAQ")
@@ -3182,8 +3216,9 @@ async def delete_faq(
         from services.embedding_service import delete_faq_embedding
 
         await delete_faq_embedding(faq_id)
-    except Exception:
-        pass
+        logger.info(f"📚 FAQ {faq_id} embedding deleted")
+    except Exception as e:
+        logger.warning(f"📚 FAQ {faq_id} embedding deletion failed (cascade should handle it): {e}")
     await db.pool.execute(
         "DELETE FROM clinic_faqs WHERE id = $1 AND tenant_id = ANY($2::int[])",
         faq_id,
