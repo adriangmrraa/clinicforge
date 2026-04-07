@@ -180,6 +180,23 @@ async def process_buffer_task(
         system_prompt_template = (
             tenant_row.get("system_prompt_template") or ""
         ) if tenant_row else ""
+        # Normalize whitespace in the tenant-configured greeting/specialty pitch.
+        # The UI textarea may save it with hard line-breaks and leading spaces
+        # (Python triple-quoted style), which then leak into the WhatsApp/IG/FB
+        # message as visible indented broken lines. We collapse single newlines
+        # into spaces, preserve intentional double-newlines as paragraph breaks,
+        # and strip per-line leading/trailing whitespace.
+        if system_prompt_template:
+            import re as _re
+            _paragraphs = _re.split(r"\n\s*\n", system_prompt_template)
+            _clean_paragraphs = []
+            for _p in _paragraphs:
+                # Join wrapped lines into a single line, collapse repeated spaces
+                _flat = " ".join(line.strip() for line in _p.splitlines() if line.strip())
+                _flat = _re.sub(r"[ \t]{2,}", " ", _flat).strip()
+                if _flat:
+                    _clean_paragraphs.append(_flat)
+            system_prompt_template = "\n\n".join(_clean_paragraphs)
         clinic_working_hours = None
         if tenant_row and tenant_row.get("working_hours"):
             wh = tenant_row["working_hours"]
