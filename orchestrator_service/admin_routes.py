@@ -4587,19 +4587,28 @@ async def update_professional(
         gcal_id = (payload.google_calendar_id or "").strip() or None
         cp = payload.consultation_price
         is_priority = bool(payload.is_priority_professional)
+
+        # Split full name into first_name + last_name to avoid the "Delgado Delgado Delgado" bug
+        # where assigning the full name to first_name caused last_name to be re-appended on every edit.
+        full_name = (payload.name or "").strip()
+        name_parts = full_name.split(maxsplit=1)
+        first_name_val = name_parts[0] if name_parts else ""
+        last_name_val = name_parts[1] if len(name_parts) > 1 else ""
+
         if current_wh:
             sql_update = """
                 UPDATE professionals SET
-                    first_name = $1, specialty = $2, registration_id = $3,
-                    phone_number = $4, email = $5, is_active = $6,
-                    working_hours = $7::jsonb,
-                    google_calendar_id = $8, consultation_price = $9,
-                    is_priority_professional = $10,
+                    first_name = $1, last_name = $2, specialty = $3, registration_id = $4,
+                    phone_number = $5, email = $6, is_active = $7,
+                    working_hours = $8::jsonb,
+                    google_calendar_id = $9, consultation_price = $10,
+                    is_priority_professional = $11,
                     updated_at = NOW()
-                WHERE id = $11
+                WHERE id = $12
             """
             params = [
-                payload.name,
+                first_name_val,
+                last_name_val,
                 payload.specialty,
                 payload.license_number,
                 payload.phone,
@@ -4614,15 +4623,16 @@ async def update_professional(
         else:
             sql_update = """
                 UPDATE professionals SET
-                    first_name = $1, specialty = $2, registration_id = $3,
-                    phone_number = $4, email = $5, is_active = $6,
-                    google_calendar_id = $7, consultation_price = $8,
-                    is_priority_professional = $9,
+                    first_name = $1, last_name = $2, specialty = $3, registration_id = $4,
+                    phone_number = $5, email = $6, is_active = $7,
+                    google_calendar_id = $8, consultation_price = $9,
+                    is_priority_professional = $10,
                     updated_at = NOW()
-                WHERE id = $10
+                WHERE id = $11
             """
             params = [
-                payload.name,
+                first_name_val,
+                last_name_val,
                 payload.specialty,
                 payload.license_number,
                 payload.phone,
@@ -4644,13 +4654,14 @@ async def update_professional(
                     await db.pool.execute(
                         """
                         UPDATE professionals SET
-                            first_name = $1, specialty = $2, registration_id = $3,
-                            phone_number = $4, email = $5, is_active = $6,
-                            working_hours = $7::jsonb, google_calendar_id = $8,
+                            first_name = $1, last_name = $2, specialty = $3, registration_id = $4,
+                            phone_number = $5, email = $6, is_active = $7,
+                            working_hours = $8::jsonb, google_calendar_id = $9,
                             updated_at = NOW()
-                        WHERE id = $9
+                        WHERE id = $10
                     """,
-                        payload.name,
+                        first_name_val,
+                        last_name_val,
                         payload.specialty,
                         payload.license_number,
                         payload.phone,
@@ -4664,13 +4675,14 @@ async def update_professional(
                     await db.pool.execute(
                         """
                         UPDATE professionals SET
-                            first_name = $1, specialty = $2, registration_id = $3,
-                            phone_number = $4, email = $5, is_active = $6,
-                            google_calendar_id = $7,
+                            first_name = $1, last_name = $2, specialty = $3, registration_id = $4,
+                            phone_number = $5, email = $6, is_active = $7,
+                            google_calendar_id = $8,
                             updated_at = NOW()
-                        WHERE id = $8
+                        WHERE id = $9
                     """,
-                        payload.name,
+                        first_name_val,
+                        last_name_val,
                         payload.specialty,
                         payload.license_number,
                         payload.phone,
@@ -4685,13 +4697,14 @@ async def update_professional(
                     await db.pool.execute(
                         """
                         UPDATE professionals SET
-                            first_name = $1, specialty = $2, registration_id = $3,
-                            phone_number = $4, email = $5, is_active = $6,
-                            working_hours = $7::jsonb,
+                            first_name = $1, last_name = $2, specialty = $3, registration_id = $4,
+                            phone_number = $5, email = $6, is_active = $7,
+                            working_hours = $8::jsonb,
                             updated_at = NOW()
-                        WHERE id = $8
+                        WHERE id = $9
                     """,
-                        payload.name,
+                        first_name_val,
+                        last_name_val,
                         payload.specialty,
                         payload.license_number,
                         payload.phone,
@@ -4704,12 +4717,13 @@ async def update_professional(
                     await db.pool.execute(
                         """
                         UPDATE professionals SET
-                            first_name = $1, specialty = $2, registration_id = $3,
-                            phone_number = $4, email = $5, is_active = $6,
+                            first_name = $1, last_name = $2, specialty = $3, registration_id = $4,
+                            phone_number = $5, email = $6, is_active = $7,
                             updated_at = NOW()
-                        WHERE id = $7
+                        WHERE id = $8
                     """,
-                        payload.name,
+                        first_name_val,
+                        last_name_val,
                         payload.specialty,
                         payload.license_number,
                         payload.phone,
