@@ -10,21 +10,31 @@ class AtomicRedisProcessor:
 
     @staticmethod
     async def atomic_buffer_fetch(redis_client, buffer_key: str):
-        """Fetch atómico de buffer completo."""
-        message_count = await redis_client.llen(buffer_key)
-        if message_count == 0:
+        """Fetch atómico de buffer completo.
+
+        FIX (chatwoot double-reply): el message_count devuelto ahora refleja
+        la cantidad REAL de items recuperados (len(parsed_items)), NO el llen
+        previo. Antes, si dos tasks corrían en paralelo, la primera vaciaba
+        el buffer y la segunda recibía parsed_items=[] pero message_count>0
+        del llen anterior — entonces el caller no detectaba "buffer vacío"
+        y seguía hacia process_buffer_task con texto vacío, generando una
+        respuesta stale del LLM.
+        """
+        initial_count = await redis_client.llen(buffer_key)
+        if initial_count == 0:
             return [], 0
-        
+
         # Pipeline atómico: leer y limpiar en una operación
         pipe = redis_client.pipeline()
-        pipe.lrange(buffer_key, 0, message_count - 1)
-        pipe.ltrim(buffer_key, message_count, -1)
+        pipe.lrange(buffer_key, 0, initial_count - 1)
+        pipe.ltrim(buffer_key, initial_count, -1)
         results = await pipe.execute()
-        
-        raw_items = results[0]
+
+        raw_items = results[0] or []
         parsed_items = [json.loads(item) for item in raw_items]
-        
-        return parsed_items, message_count
+
+        # Devolver el conteo REAL de items recuperados, no el llen pre-pipeline.
+        return parsed_items, len(parsed_items)
 
 class BufferManager:
     """Manager central para buffers multi-canal con Reglas de Negocio Robustas."""
@@ -166,9 +176,14 @@ class BufferManager:
                 
                 # 2. FETCH ATÓMICO: Obtener todos los mensajes encolados de manera segura
                 parsed_items, message_count = await AtomicRedisProcessor.atomic_buffer_fetch(redis_client, buffer_key)
-                if message_count == 0:
+                if message_count == 0 or not parsed_items:
+                    # DEFENSIVE: doble chequeo (parsed_items list explícita) protege
+                    # contra cualquier desincronía entre el llen y el lrange real.
+                    logger.info(
+                        f"⏹️ process_user_buffer: empty fetch for {provider}/{tenant_id}/{external_user_id}, exiting loop"
+                    )
                     break # Buffer vacío, salir del loop maestro
-                
+
                 # 3. UNIR TEXTO
                 joined_text = "\n".join([item.get("text", "") for item in parsed_items if item.get("text")])
                 media_list = []
@@ -179,9 +194,14 @@ class BufferManager:
                             media_list.extend(item["media"])
                         else:
                             media_list.append(item["media"])
-                
+
                 if not joined_text and not media_list:
-                    # Nada válido
+                    # Nada válido en este lote — no invocar LLM con payload vacío
+                    # (evita respuestas stale tipo "doble reply" cuando otro task
+                    # ya consumió el contenido real).
+                    logger.info(
+                        f"⏭️ process_user_buffer: skipping empty batch for {provider}/{tenant_id}/{external_user_id}"
+                    )
                     continue
                 
                 # Re-check human override before processing (might have been toggled during debounce)
