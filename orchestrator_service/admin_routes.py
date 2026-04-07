@@ -6628,12 +6628,10 @@ async def delete_appointment(
             except Exception as ge:
                 logger.error(f"Error borrando de GCal: {ge}")
 
-        # 3. Borrar de la base de datos — con doble verificación de tenant_id
-        await db.pool.execute(
-            "DELETE FROM appointments WHERE id = $1 AND tenant_id = $2", id, tenant_id
-        )
-
-        # Audit log (TIER 3 cap.3 Phase B) — log BEFORE the appointment_id FK becomes orphaned via SET NULL
+        # Audit log (TIER 3 cap.3 Phase B) — MUST run BEFORE the DELETE so the FK to
+        # appointments(id) still resolves at INSERT time. After the DELETE, the FK
+        # constraint ON DELETE SET NULL will null out appointment_id in the audit row,
+        # preserving the historical record without a dangling reference.
         try:
             from services.audit_log import log_appointment_mutation as _audit
             await _audit(
@@ -6653,6 +6651,11 @@ async def delete_appointment(
             )
         except Exception as _audit_err:
             logger.warning(f"audit_log delete_appointment failed (non-blocking): {_audit_err}")
+
+        # 3. Borrar de la base de datos — con doble verificación de tenant_id
+        await db.pool.execute(
+            "DELETE FROM appointments WHERE id = $1 AND tenant_id = $2", id, tenant_id
+        )
 
         # 4. Notificar a la UI
         await emit_appointment_event("APPOINTMENT_DELETED", id, request)
