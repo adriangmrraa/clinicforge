@@ -879,7 +879,7 @@ export default function ClinicsView() {
                                 <div className="space-y-1">
                                     <label className="text-sm font-semibold text-white/60">{t('clinics.bot_phone_label')}</label>
                                     <input required type="text" placeholder={t('clinics.bot_phone_placeholder')}
-                                        className="w-full px-4 py-2 border rounded-lg font-mono focus:ring-2 focus:ring-medical-500 outline-none"
+                                        className="w-full px-4 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white placeholder-white/20 font-mono focus:ring-2 focus:ring-blue-500 outline-none text-sm"
                                         value={formData.bot_phone_number} onChange={(e) => { const v = e.target.value; setFormData(prev => ({ ...prev, bot_phone_number: v })); }} />
                                 </div>
                             </div>
