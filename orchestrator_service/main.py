@@ -275,11 +275,26 @@ def parse_date(date_query: str) -> Optional[date]:
     if re.search(r"\bmañana\b", query_clean) and not re.search(
         r"\b(por la|a la|de la)\s+mañana\b", query
     ):
+        # FIX: strip time tokens (10hs, 10:00, 10am, a las 10, etc.) before checking for digits.
+        # Without this, "mañana a las 10hs" would have digit "10" and skip the tomorrow shortcut,
+        # falling through to dateutil which can return wrong dates.
+        time_pattern = re.compile(
+            r"\b(?:a\s+las?\s+)?\d{1,2}(?::\d{2})?\s*(?:hs?|h|am|pm|hrs|horas?)?\b",
+            re.IGNORECASE,
+        )
+        query_no_time = time_pattern.sub("", query_clean).strip()
         # Solo si no hay otros indicadores de fecha (evitar "mañana 30 de abril")
-        if not re.search(r"\d", query_clean):
+        if not re.search(r"\d", query_no_time):
+            logger.info(f"📅 parse_date: '{date_query}' → tomorrow (mañana keyword)")
             return (get_now_arg() + timedelta(days=1)).date()
-    if "tomorrow" in query_clean and not re.search(r"\d", query_clean):
-        return (get_now_arg() + timedelta(days=1)).date()
+    if "tomorrow" in query_clean:
+        time_pattern = re.compile(
+            r"\b(?:at\s+)?\d{1,2}(?::\d{2})?\s*(?:hs?|h|am|pm|hrs|hours?)?\b",
+            re.IGNORECASE,
+        )
+        query_no_time = time_pattern.sub("", query_clean).strip()
+        if not re.search(r"\d", query_no_time):
+            return (get_now_arg() + timedelta(days=1)).date()
     for key, val in exact_map.items():
         if query_clean == key or query == key:
             return val
@@ -1961,6 +1976,7 @@ async def book_appointment(
     professional_name: Optional[str] = None,
     patient_phone: Optional[str] = None,
     is_minor: Optional[bool] = False,
+    interpreted_date: Optional[str] = None,
 ):
     """
     Registra un turno en la BD.
@@ -1976,7 +1992,10 @@ async def book_appointment(
 
     PROHIBIDO pedir fecha de nacimiento, email o ciudad al paciente. Solo pasá esos campos si el paciente los dio ESPONTÁNEAMENTE.
 
-    date_time: Fecha y hora en un solo string. Soporta términos relativos: 'hoy 17:00', 'mañana a las 10', 'lunes 15:30', 'miércoles 17:00'.
+    date_time: Hora del turno en formato 'HH:MM' o el texto del paciente (ej. '10:00', 'mañana a las 10', 'lunes 15:30').
+    interpreted_date: OBLIGATORIO cuando el paciente eligió una opción que ofreciste con check_availability. Pasá la fecha exacta YYYY-MM-DD de la opción que el paciente eligió. Esto evita que se re-razone la fecha y se cometan errores.
+      - Ejemplo: ofreciste "1️⃣ Martes 07/04 — 10:00 hs" y el paciente dijo "mañana a las 10" → interpreted_date="2026-04-07"
+      - Si NO se ofreció previamente con check_availability, dejá vacío y el sistema parsea date_time.
     treatment_reason: Nombre del tratamiento tal como en list_services (ej. limpieza profunda, consulta).
     first_name, last_name: Nombre y apellido del PACIENTE (no del interlocutor si es un tercero).
     dni: Documento del PACIENTE (solo números).
@@ -2025,8 +2044,43 @@ async def book_appointment(
         # For themselves: current flow
         phone = chat_phone
     try:
-        apt_datetime = parse_datetime(date_time)
-        logger.info(f"📅 BOOK: parsed datetime={apt_datetime} from '{date_time}'")
+        # PRIORIDAD: si el agente pasó interpreted_date (porque el paciente eligió una opción
+        # ya ofrecida por check_availability), usar esa fecha directamente y solo extraer
+        # la HORA del date_time. Esto evita re-razonamiento erróneo de "mañana", "lunes", etc.
+        apt_datetime = None
+        if interpreted_date:
+            try:
+                base_date = dateutil_parse(str(interpreted_date), dayfirst=True).date()
+                # Extraer SOLO la hora del date_time (ignorar la fecha que pueda contener)
+                time_match = re.search(r"(\d{1,2})[:h](\d{2})", date_time)
+                if time_match:
+                    h, m = int(time_match.group(1)), int(time_match.group(2))
+                else:
+                    hour_only = re.search(
+                        r"(?:las?\s+)?(\d{1,2})\s*(?:hs?|horas?)?\b", date_time
+                    )
+                    if hour_only:
+                        h, m = int(hour_only.group(1)), 0
+                    else:
+                        # Sin hora detectable — usar parse_datetime completo como fallback
+                        h, m = None, None
+                if h is not None:
+                    apt_datetime = datetime.combine(
+                        base_date, datetime.min.time()
+                    ).replace(hour=h, minute=m, second=0, microsecond=0, tzinfo=ARG_TZ)
+                    logger.info(
+                        f"📅 BOOK: using interpreted_date={interpreted_date} + extracted time={h:02d}:{m:02d} → {apt_datetime}"
+                    )
+            except Exception as e:
+                logger.warning(
+                    f"📅 BOOK: failed to use interpreted_date='{interpreted_date}': {e}, falling back to parse_datetime"
+                )
+                apt_datetime = None
+
+        if apt_datetime is None:
+            apt_datetime = parse_datetime(date_time)
+            logger.info(f"📅 BOOK: parsed datetime={apt_datetime} from '{date_time}'")
+
         # No agendar en el pasado
         if apt_datetime < get_now_arg():
             return "❌ No se pueden agendar turnos para horarios que ya pasaron. Indicá un día y hora futuros. Formato esperado: date_time como 'día 17:00' (ej. miércoles 17:00)."
@@ -6419,6 +6473,12 @@ PASO 6: AGENDAR — 'book_appointment' con los datos del paciente. Para campos o
   • Para sí mismo: flujo normal (sin patient_phone ni is_minor).
   • Para adulto tercero: pasá patient_phone con el teléfono del tercero.
   • Para menor: pasá is_minor=true.
+  ⚠️ REGLA CRÍTICA DE FECHA — INQUEBRANTABLE:
+  Cuando el paciente eligió una de las opciones que ofreciste con check_availability, DEBÉS pasar 'interpreted_date' con la fecha EXACTA YYYY-MM-DD de esa opción. NO re-razones la fecha desde "mañana", "el lunes", "ese día" — usá la fecha que YA mostraste al paciente.
+  • Ejemplo: ofreciste "1️⃣ Martes 07/04 — 10:00 hs" → paciente dijo "mañana a las 10" → pasá interpreted_date="2026-04-07" + date_time="10:00"
+  • Ejemplo: ofreciste "2️⃣ Jueves 09/04 — 15:00 hs" → paciente dijo "el jueves" → pasá interpreted_date="2026-04-09" + date_time="15:00"
+  • PROHIBIDO inventar una fecha que no fue ofrecida. Si tenés dudas, volvé a llamar check_availability.
+  • PROHIBIDO usar TIME ACTUAL como fecha del turno. {current_time} es solo referencia, NO la fecha del turno.
 PASO 7: CONFIRMACIÓN.
   La tool book_appointment devuelve un resumen estructurado con: tratamiento, profesional, fecha, hora, duración, sede y precio.
   Presentá esa información TAL CUAL al paciente. NO la reformules ni la recortes. El paciente debe ver TODO.
