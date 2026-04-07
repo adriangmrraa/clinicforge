@@ -118,6 +118,53 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
 
     for msg in messages:
         try:
+            # ============================================================
+            # HTTP-LEVEL IDEMPOTENCY (Chatwoot retry fix)
+            # ------------------------------------------------------------
+            # Chatwoot retries the webhook if our handler takes >5s to
+            # respond. The retry comes with the SAME provider message_id.
+            # We use the inbound_messages UNIQUE(provider, provider_message_id)
+            # constraint to atomically reject the duplicate at the very start
+            # of the loop, BEFORE doing any DB writes, normalization, or
+            # buffer enqueuing. This is the FIRST line of defense against
+            # double-replies on IG/FB via Chatwoot.
+            # ============================================================
+            _idem_ext_id = None
+            try:
+                if provider == "ycloud":
+                    _inbound = (msg.raw_payload or {}).get("whatsappInboundMessage", {})
+                    _idem_ext_id = (
+                        _inbound.get("wamid")
+                        or _inbound.get("id")
+                        or (msg.raw_payload or {}).get("id")
+                    )
+                else:
+                    _idem_ext_id = (msg.raw_payload or {}).get("id")
+            except Exception:
+                _idem_ext_id = None
+
+            if _idem_ext_id:
+                try:
+                    inserted = await db.try_insert_inbound(
+                        provider=provider,
+                        provider_message_id=str(_idem_ext_id),
+                        event_id=str((msg.raw_payload or {}).get("event") or ""),
+                        from_number=msg.external_user_id or "",
+                        payload=msg.raw_payload or {},
+                        correlation_id=str(uuid.uuid4()),
+                    )
+                    if not inserted:
+                        logger.info(
+                            f"♻️ Webhook duplicate suppressed at HTTP layer: provider={provider} msg_id={_idem_ext_id} from={msg.external_user_id}"
+                        )
+                        continue
+                except Exception as _idem_err:
+                    # Best-effort: if the dedupe table is unavailable, fall through
+                    # to the rest of the existing dedup logic so we never DROP a real message.
+                    logger.warning(
+                        f"⚠️ try_insert_inbound failed (non-blocking): {_idem_err}"
+                    )
+
             # Spec 34: Intentar extraer IDs si vienen en el crudo (para Chatwoot)
             cw_acc_id = None
             cw_conv_id = None
