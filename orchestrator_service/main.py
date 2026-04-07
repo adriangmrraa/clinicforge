@@ -2079,6 +2079,33 @@ async def check_availability(
             logger.info(
                 f"📅 check_availability OK options={len(options)} total_today={total_today} price={avail_price} for {date_query} auto_advanced={auto_advanced}"
             )
+
+            # Bug #4 Phase B: Set conversation state to OFFERED_SLOTS
+            try:
+                from services.conversation_state import set_state
+
+                phone = current_customer_phone.get()
+                if phone and options:
+                    await set_state(
+                        tenant_id,
+                        phone,
+                        "OFFERED_SLOTS",
+                        last_offered_slots=[
+                            {
+                                "date": opt.get("date"),
+                                "date_display": opt.get("date_display"),
+                                "time": opt.get("time"),
+                                "sede": opt.get("sede"),
+                                "professional": opt.get("professional"),
+                            }
+                            for opt in options
+                        ],
+                    )
+            except Exception as state_err:
+                logger.warning(
+                    f"[conversation_state] set_state in check_availability failed (non-blocking): {state_err}"
+                )
+
             return resp
         else:
             # Sin turnos incluso con multi-day search — informar pero no dejar al paciente colgado
@@ -3089,6 +3116,23 @@ async def book_appointment(
                 f"[INTERNAL_ANAMNESIS_URL:{patient_anamnesis_url}]"
             )
             logger.info(f"📋 BOOK_APPOINTMENT RETURN (third-party): {result[:200]}...")
+
+            # Bug #4 Phase B: Set conversation state to BOOKED or PAYMENT_PENDING
+            try:
+                from services.conversation_state import set_state
+
+                state = "PAYMENT_PENDING" if sena_block else "BOOKED"
+                await set_state(
+                    tenant_id,
+                    phone,
+                    state,
+                    last_booked_appointment_id=apt_id,
+                )
+            except Exception as state_err:
+                logger.warning(
+                    f"[conversation_state] set_state in book_appointment failed (non-blocking): {state_err}"
+                )
+
             return result
         else:
             result = (
@@ -3101,6 +3145,23 @@ async def book_appointment(
                 f"[INTERNAL_ANAMNESIS_URL:{patient_anamnesis_url}]"
             )
             logger.info(f"📋 BOOK_APPOINTMENT RETURN (self): {result[:300]}...")
+
+            # Bug #4 Phase B: Set conversation state to BOOKED or PAYMENT_PENDING
+            try:
+                from services.conversation_state import set_state
+
+                state = "PAYMENT_PENDING" if sena_block else "BOOKED"
+                await set_state(
+                    tenant_id,
+                    phone,
+                    state,
+                    last_booked_appointment_id=apt_id,
+                )
+            except Exception as state_err:
+                logger.warning(
+                    f"[conversation_state] set_state in book_appointment failed (non-blocking): {state_err}"
+                )
+
             return result
 
     except Exception as e:
@@ -3572,6 +3633,17 @@ async def cancel_appointment(date_query: str):
             "billing_amount"
         )
         treatment = apt.get("treatment_name") or "consulta"
+
+        # Bug #4 Phase B: Reset conversation state to IDLE
+        try:
+            from services.conversation_state import reset
+
+            await reset(tenant_id, phone)
+        except Exception as state_err:
+            logger.warning(
+                f"[conversation_state] reset in cancel_appointment failed (non-blocking): {state_err}"
+            )
+
         if has_payment:
             amount = apt["billing_amount"]
             return (
@@ -3784,6 +3856,17 @@ async def reschedule_appointment(original_date: str, new_date_time: str):
             )
         except Exception as _audit_err:
             logger.warning(f"audit_log call failed (non-blocking): {_audit_err}")
+
+        # Bug #4 Phase B: Reset conversation state to IDLE (reschedule starts fresh)
+        try:
+            from services.conversation_state import reset
+
+            await reset(tenant_id, phone)
+        except Exception as state_err:
+            logger.warning(
+                f"[conversation_state] reset in reschedule_appointment failed (non-blocking): {state_err}"
+            )
+
         return f"¡Listo! Tu turno ha sido reprogramado para el {new_date_time}. Te esperamos."
 
     except Exception as e:
@@ -4651,7 +4734,31 @@ async def confirm_slot(
             # No bloquear el flujo si Redis falla
 
         dia_name = DIAS_ES.get(DAYS_EN[apt_datetime.weekday()], "")
-        return f"✅ Reservé temporalmente el turno de las {time_str} del {dia_name} {apt_datetime.strftime('%d/%m')} por 2 minutos. Necesito tus datos para confirmar la reserva."
+        response = f"✅ Reservé temporalmente el turno de las {time_str} del {dia_name} {apt_datetime.strftime('%d/%m')} por 2 minutos. Necesito tus datos para confirmar la reserva."
+
+        # Bug #4 Phase B: Set conversation state to SLOT_LOCKED
+        try:
+            from services.conversation_state import set_state
+
+            if phone:
+                await set_state(
+                    tenant_id,
+                    phone,
+                    "SLOT_LOCKED",
+                    last_locked_slot={
+                        "date_time": date_time,
+                        "date": date_str,
+                        "time": time_str,
+                        "professional": professional_name,
+                        "treatment": treatment_name,
+                    },
+                )
+        except Exception as state_err:
+            logger.warning(
+                f"[conversation_state] set_state in confirm_slot failed (non-blocking): {state_err}"
+            )
+
+        return response
 
     except Exception as e:
         logger.error(f"Error en confirm_slot: {e}")
@@ -5383,12 +5490,33 @@ async def verify_payment_receipt(
                 except Exception as e:
                     logger.error(f"❌ Error sending payment email: {e}")
 
+                # Bug #4 Phase B: Set conversation state to PAYMENT_VERIFIED
+                try:
+                    from services.conversation_state import set_state
+
+                    await set_state(tenant_id, phone, "PAYMENT_VERIFIED")
+                except Exception as state_err:
+                    logger.warning(
+                        f"[conversation_state] set_state in verify_payment_receipt failed (non-blocking): {state_err}"
+                    )
+
                 return f"✅ Comprobante verificado correctamente! Tu turno de {treatment_display} el {fecha} con {apt['prof_name'] or 'el profesional'} queda CONFIRMADO. Te esperamos! 😊{overpaid_msg}"
 
             # No email - return flag for agent to request it
             logger.info(
                 f"⚠️ Patient {patient_name} has no email, returning email_required flag"
             )
+
+            # Bug #4 Phase B: Set conversation state to PAYMENT_VERIFIED
+            try:
+                from services.conversation_state import set_state
+
+                await set_state(tenant_id, phone, "PAYMENT_VERIFIED")
+            except Exception as state_err:
+                logger.warning(
+                    f"[conversation_state] set_state in verify_payment_receipt (no email case) failed (non-blocking): {state_err}"
+                )
+
             return {
                 "message": f"✅ Comprobante verificado correctamente! Tu turno de {treatment_display} el {fecha} con {apt['prof_name'] or 'el profesional'} queda CONFIRMADO. Te esperamos! 😊{overpaid_msg}",
                 "email_required": True,
