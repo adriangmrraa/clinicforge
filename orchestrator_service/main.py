@@ -3554,23 +3554,54 @@ async def reschedule_appointment(original_date: str, new_date_time: str):
                 end_time=(new_dt + timedelta(minutes=60)).isoformat(),
             )
         sync_status = "synced" if new_gcal else "local"
+        # CHAIR CONSTRAINT + UPDATE in a single transaction (TIER 3).
+        # The chair count and the UPDATE must run atomically to avoid TOCTOU races.
         try:
-            await db.pool.execute(
-                """
-                UPDATE appointments SET
-                    appointment_datetime = $1,
-                    google_calendar_event_id = COALESCE($2, google_calendar_event_id),
-                    google_calendar_sync_status = $3,
-                    reminder_sent = false,
-                    reminder_sent_at = NULL,
-                    updated_at = NOW()
-                WHERE id = $4
-            """,
-                new_dt,
-                new_gcal["id"] if new_gcal else None,
-                sync_status,
-                apt["id"],
-            )
+            async with db.pool.acquire() as _conn:
+                async with _conn.transaction():
+                    max_chairs = await _conn.fetchval(
+                        "SELECT COALESCE(max_chairs, 99) FROM tenants WHERE id = $1",
+                        tenant_id,
+                    )
+                    if max_chairs and max_chairs < 99:
+                        new_end_dt = new_dt + timedelta(minutes=apt_dur)
+                        concurrent = await _conn.fetchval(
+                            """
+                            SELECT COUNT(*) FROM appointments
+                            WHERE tenant_id = $1 AND status IN ('scheduled', 'confirmed')
+                              AND id != $2
+                              AND appointment_datetime < $4
+                              AND (appointment_datetime + interval '1 minute' * COALESCE(duration_minutes, 60)) > $3
+                            """,
+                            tenant_id,
+                            apt["id"],
+                            new_dt,
+                            new_end_dt,
+                        )
+                        if concurrent and concurrent >= max_chairs:
+                            logger.info(
+                                f"🪑 reschedule: CHAIRS FULL at {new_dt} (concurrent={concurrent}, max={max_chairs})"
+                            )
+                            return (
+                                f"❌ No puedo reprogramar a las {new_dt.strftime('%H:%M')}: "
+                                f"todos los sillones ({max_chairs}) están ocupados en ese horario. ¿Probamos con otro?"
+                            )
+                    await _conn.execute(
+                        """
+                        UPDATE appointments SET
+                            appointment_datetime = $1,
+                            google_calendar_event_id = COALESCE($2, google_calendar_event_id),
+                            google_calendar_sync_status = $3,
+                            reminder_sent = false,
+                            reminder_sent_at = NULL,
+                            updated_at = NOW()
+                        WHERE id = $4
+                        """,
+                        new_dt,
+                        new_gcal["id"] if new_gcal else None,
+                        sync_status,
+                        apt["id"],
+                    )
         except asyncpg.UniqueViolationError:
             logger.warning(
                 f"🔒 Reschedule blocked by UNIQUE constraint: prof={apt['professional_id']} new_dt={new_dt}"
