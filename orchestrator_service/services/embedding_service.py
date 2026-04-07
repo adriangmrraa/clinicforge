@@ -118,15 +118,20 @@ async def upsert_faq_embedding(tenant_id: int, faq_id: int, question: str, answe
     # Try pgvector first
     if await check_pgvector_available():
         try:
-            embedding_str = f"[{','.join(str(x) for x in embedding)}]"
+            # pgvector codec is registered in db.py:_init_connection
+            try:
+                import numpy as np
+                embedding_param = np.array(embedding, dtype=np.float32)
+            except ImportError:
+                embedding_param = embedding
             await db.pool.execute("""
                 INSERT INTO faq_embeddings (tenant_id, faq_id, content, embedding, updated_at)
-                VALUES ($1, $2, $3, $4::vector, NOW())
+                VALUES ($1, $2, $3, $4, NOW())
                 ON CONFLICT (faq_id) DO UPDATE SET
                     content = EXCLUDED.content,
                     embedding = EXCLUDED.embedding,
                     updated_at = NOW()
-            """, tenant_id, faq_id, content, embedding_str)
+            """, tenant_id, faq_id, content, embedding_param)
             logger.debug(f"Upserted FAQ embedding (pgvector): tenant={tenant_id} faq={faq_id}")
             return True
         except Exception as e:
@@ -194,9 +199,15 @@ async def search_similar_faqs(
     # Try pgvector first (fast, DB-side similarity)
     if await check_pgvector_available():
         try:
-            embedding_str = f"[{','.join(str(x) for x in query_embedding)}]"
-            # FIX: asyncpg doesn't know the pgvector type natively, so it sees fe.embedding
-            # as bytea. We force a cast to vector on BOTH sides of the operator.
+            # pgvector codec is registered in db.py:_init_connection, so we can
+            # pass the embedding as a Python list and asyncpg handles the conversion.
+            # As fallback we also accept the textual representation '[1,2,3]'.
+            try:
+                import numpy as np
+                embedding_param = np.array(query_embedding, dtype=np.float32)
+            except ImportError:
+                embedding_param = query_embedding  # asyncpg handles list[float]
+
             results = await db.pool.fetch("""
                 SELECT
                     fe.faq_id,
@@ -204,14 +215,14 @@ async def search_similar_faqs(
                     cf.question,
                     cf.answer,
                     cf.category,
-                    1 - (fe.embedding::vector <=> $1::vector) AS similarity
+                    1 - (fe.embedding <=> $1) AS similarity
                 FROM faq_embeddings fe
                 JOIN clinic_faqs cf ON cf.id = fe.faq_id
                 WHERE fe.tenant_id = $2
-                AND 1 - (fe.embedding::vector <=> $1::vector) >= $3
-                ORDER BY fe.embedding::vector <=> $1::vector
+                AND 1 - (fe.embedding <=> $1) >= $3
+                ORDER BY fe.embedding <=> $1
                 LIMIT $4
-            """, embedding_str, tenant_id, threshold, top_k)
+            """, embedding_param, tenant_id, threshold, top_k)
 
             logger.info(f"📚 RAG pgvector: found {len(results)} FAQs above threshold {threshold} for tenant {tenant_id}")
 

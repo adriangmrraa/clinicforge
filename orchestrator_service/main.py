@@ -2962,7 +2962,8 @@ async def triage_urgency(symptoms: str):
     # Persistir urgencia en el paciente si lo identificamos
     if phone:
         try:
-            patient_row = await db.ensure_patient_exists(phone)
+            tenant_id = current_tenant_id.get()
+            patient_row = await db.ensure_patient_exists(phone, tenant_id)
 
             # --- Spec 06: Registrar ad_intent_match ---
             ad_intent_match = False

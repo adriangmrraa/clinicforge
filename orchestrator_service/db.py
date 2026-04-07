@@ -22,6 +22,18 @@ class Database:
 
             dsn = POSTGRES_DSN.replace("postgresql+asyncpg://", "postgresql://")
 
+            async def _init_connection(conn):
+                """Register pgvector codec on each new connection so asyncpg
+                understands the 'vector' type natively. Without this, vectors
+                are returned as bytea and queries fail with 'cannot cast bytea to vector'."""
+                try:
+                    from pgvector.asyncpg import register_vector
+                    await register_vector(conn)
+                except Exception as e:
+                    # pgvector extension may not be installed in this DB — that's OK,
+                    # the JSON fallback path in embedding_service will be used instead.
+                    logger.debug(f"pgvector codec registration skipped: {e}")
+
             try:
                 self.pool = await asyncpg.create_pool(
                     dsn,
@@ -29,11 +41,13 @@ class Database:
                     max_size=int(os.getenv("DB_POOL_MAX", "20")),
                     command_timeout=float(os.getenv("DB_COMMAND_TIMEOUT", "30")),
                     max_inactive_connection_lifetime=300.0,
+                    init=_init_connection,
                 )
                 logger.info(
                     f"DB pool initialized: min={os.getenv('DB_POOL_MIN', '5')} "
                     f"max={os.getenv('DB_POOL_MAX', '20')} "
-                    f"command_timeout={os.getenv('DB_COMMAND_TIMEOUT', '30')}s"
+                    f"command_timeout={os.getenv('DB_COMMAND_TIMEOUT', '30')}s "
+                    f"(pgvector codec registration enabled)"
                 )
             except Exception as e:
                 logger.critical(f"Failed to create database pool: {e}")
