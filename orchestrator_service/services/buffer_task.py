@@ -260,6 +260,9 @@ async def process_buffer_task(
             current_tenant_tz,
         )
 
+        # C3: Engine router for dual-engine system (solo/multi)
+        from services.engine_router import get_engine_for_tenant
+
         # ✅ FIX: Establecer ContextVars para que las tools (book_appointment, etc)
         # puedan identificar al paciente en la tarea background
         current_customer_phone.set(external_user_id)
@@ -1203,6 +1206,15 @@ async def process_buffer_task(
 
         executor = await get_agent_executable_for_tenant(tenant_id)
         logger.info(f"🧠 Invoking Agent for {external_user_id}...")
+
+        # C3: Check engine mode and log which engine is being used
+        try:
+            from services.engine_router import get_engine_for_tenant
+
+            engine = await get_engine_for_tenant(tenant_id)
+            logger.info(f"🎛️ Engine mode for tenant {tenant_id}: {engine.name}")
+        except Exception as eng_err:
+            logger.warning(f"⚠️ Engine router check failed, using default: {eng_err}")
 
         # Inyectar contexto especial si es necesario
         special_context = []
