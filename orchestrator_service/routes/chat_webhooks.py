@@ -117,6 +117,12 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
         return {"status": "ignored", "reason": "no_content"}
 
     for msg in messages:
+        # Track whether we acquired the inbound idempotency lock for this message
+        # so we can mark it done on success or release it on failure (avoiding
+        # the silent message-loss bug where a partially-processed inbound row
+        # blocks all future retries).
+        _idem_locked_id: Any = None
+        _idem_processed_ok = False
         try:
             # ============================================================
             # HTTP-LEVEL IDEMPOTENCY (Chatwoot retry fix)
@@ -128,6 +134,10 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
             # of the loop, BEFORE doing any DB writes, normalization, or
             # buffer enqueuing. This is the FIRST line of defense against
             # double-replies on IG/FB via Chatwoot.
+            #
+            # Recovery: if the row is inserted but downstream processing
+            # fails, the except clause at the bottom DELETES the inbound row
+            # so the next retry gets a clean slate (no silent message loss).
             # ============================================================
             _idem_ext_id = None
             try:
@@ -158,6 +168,8 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
                             f"♻️ Webhook duplicate suppressed at HTTP layer: provider={provider} msg_id={_idem_ext_id} from={msg.external_user_id}"
                         )
                         continue
+                    # Lock acquired — track it so the except clause can release it on failure.
+                    _idem_locked_id = str(_idem_ext_id)
                 except Exception as _idem_err:
                     # Best-effort: if the dedupe table is unavailable, fall through
                     # to the rest of the existing dedup logic so we never DROP a real message.
@@ -704,6 +716,12 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
                 f"🔒 Override check: conv={conv_id} override_until={override_row['human_override_until'] if override_row else 'N/A'} utc_now={utc_now} is_locked={is_locked}"
             )
 
+            # If we got here, the message was successfully persisted to chat_messages
+            # and either the buffer task is about to be queued OR human override is active.
+            # Either way, mark the inbound row as 'done' so subsequent retries are
+            # safely deduped (and we don't accidentally process it twice).
+            _idem_processed_ok = True
+
             if not is_locked:
                 # Auto-cleanup: if override expired but status is still human_handling, reset it
                 if override_row and override_row["human_override_until"] is not None:
@@ -758,5 +776,27 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
 
         except Exception as e:
             logger.error(f"Error processing msg: {e}")
+        finally:
+            # Idempotency cleanup (TIER chatwoot fix — verify follow-up):
+            # - On SUCCESS: mark the inbound row as 'done' so future retries are deduped.
+            # - On FAILURE: DELETE the inbound row so the next webhook retry can re-attempt
+            #   processing instead of being silently dropped (lost-message bug).
+            if _idem_locked_id:
+                try:
+                    if _idem_processed_ok:
+                        await db.mark_inbound_done(provider, _idem_locked_id)
+                    else:
+                        await pool.execute(
+                            "DELETE FROM inbound_messages WHERE provider = $1 AND provider_message_id = $2",
+                            provider,
+                            _idem_locked_id,
+                        )
+                        logger.warning(
+                            f"🔄 inbound_messages row released for retry: provider={provider} msg_id={_idem_locked_id}"
+                        )
+                except Exception as _idem_cleanup_err:
+                    logger.warning(
+                        f"⚠️ inbound_messages cleanup failed (non-blocking): {_idem_cleanup_err}"
+                    )
 
     return {"status": "processed", "count": len(saved_ids)}
