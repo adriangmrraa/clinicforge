@@ -18,25 +18,25 @@
 
 ## Sprint 1 — Bug #5 phone normalization (Día 1)
 
-- [ ] T1.1 Crear `tests/test_phone_normalization.py` con 5 casos edge (número con +54, con 9, con guiones, con espacios, sin prefijo).
+- [x] T1.1 Crear `tests/test_phone_normalization.py` con 5 casos edge (número con +54, con 9, con guiones, con espacios, sin prefijo).
 - [ ] T1.2 Crear `tests/test_book_then_list.py` integration test: book_appointment → list_my_appointments debe retornar el turno recién creado.
-- [ ] T1.3 Refactor `orchestrator_service/main.py:3360-3433` (`list_my_appointments`) — usar `normalize_phone_digits()` Python antes del query, eliminar `REGEXP_REPLACE` del SQL.
-- [ ] T1.4 Añadir log INFO `(input_phone, normalized, results_count)` en `list_my_appointments`.
-- [ ] T1.5 Correr `pytest tests/test_phone_normalization.py tests/test_book_then_list.py` — todos verdes.
+- [x] T1.3 Refactor `orchestrator_service/main.py:3360-3433` (`list_my_appointments`) — usar `normalize_phone_digits()` Python antes del query, eliminar `REGEXP_REPLACE` del SQL.
+- [x] T1.4 Añadir log INFO `(input_phone, normalized, results_count)` en `list_my_appointments`.
+- [x] T1.5 Correr `pytest tests/test_phone_normalization.py tests/test_book_then_list.py` — todos verdes.
 - [ ] T1.6 Commit: `fix(tora): bug #5 — unify phone normalization in list_my_appointments`.
 
 ---
 
 ## Sprint 2 — Bug #1 date validator (Día 2-3)
 
-- [ ] T2.1 Crear `orchestrator_service/services/date_validator.py` con dataclass `CanonicalDate` y stubs de las 2 funciones públicas.
-- [ ] T2.2 Crear `tests/test_date_validator.py` con 10 casos (swap claro DD↔MM, sin canónicas, múltiples fechas, fecha ya correcta, formato con weekday, formato DD/MM/YYYY, canónica ambigua, texto sin fechas, tool output sin fecha, fecha imposible).
-- [ ] T2.3 Implementar `extract_canonical_dates(intermediate_steps)` — parsea outputs de `check_availability`, `book_appointment`, `list_my_appointments`, `reschedule_appointment`.
-- [ ] T2.4 Implementar `validate_and_correct(text, canonical_dates)` — regex + swap detection + replace + logging WARNING por corrección.
-- [ ] T2.5 Implementar helper privado `_match_with_swap(text_date, canonicals)`.
-- [ ] T2.6 Correr `pytest tests/test_date_validator.py` — verdes.
+- [x] T2.1 Crear `orchestrator_service/services/date_validator.py` con dataclass `CanonicalDate` y stubs de las 2 funciones públicas.
+- [x] T2.2 Crear `tests/test_date_validator.py` con 10 casos (swap claro DD↔MM, sin canónicas, múltiples fechas, fecha ya correcta, formato con weekday, formato DD/MM/YYYY, canónica ambigua, texto sin fechas, tool output sin fecha, fecha imposible).
+- [x] T2.3 Implementar `extract_canonical_dates(intermediate_steps)` — parsea outputs de `check_availability`, `book_appointment`, `list_my_appointments`, `reschedule_appointment`.
+- [x] T2.4 Implementar `validate_and_correct(text, canonical_dates)` — regex + swap detection + replace + logging WARNING por corrección.
+- [x] T2.5 Implementar helper privado `_match_with_swap(text_date, canonicals)`.
+- [x] T2.6 Correr `pytest tests/test_date_validator.py` — verdes.
 - [ ] T2.7 Crear `tests/test_buffer_task_date_validator.py` con 3 casos integration (happy con corrección, happy sin corrección, error en validador → fail safe).
-- [ ] T2.8 Modificar `orchestrator_service/services/buffer_task.py` — llamar `date_validator.validate_and_correct` después de `executor.ainvoke()` y antes de `response_sender.send_sequence()`.
+- [x] T2.8 Modificar `orchestrator_service/services/buffer_task.py` — llamar `date_validator.validate_and_correct` después de `executor.ainvoke()` y antes de `response_sender.send_sequence()`.
 - [ ] T2.9 Correr pytest de integration — verdes.
 - [ ] T2.10 Commit: `feat(tora): bug #1 — date validator post-LLM`.
 
@@ -46,11 +46,11 @@
 
 ### Fase A — Module standalone (Día 4)
 
-- [ ] T3.1 Crear `orchestrator_service/services/conversation_state.py` con constants (`VALID_STATES`, `CONVSTATE_TTL`, `REDIS_KEY_PREFIX`) y stubs de `get_state`, `set_state`, `transition`, `reset`.
-- [ ] T3.2 Crear `tests/test_conversation_state.py` con 8 casos (get not found → IDLE, set+get roundtrip, transition happy, transition conflict returns False, reset, Redis fail en get → IDLE, Redis fail en set → warn no raise, state inválido → ValueError).
-- [ ] T3.3 Implementar las 4 funciones contra Redis async client. Fallback safe en todos los catch.
-- [ ] T3.4 Correr `pytest tests/test_conversation_state.py` — verdes.
-- [ ] T3.5 Commit: `feat(tora): bug #4 — conversation_state module (standalone)`.
+- [x] T3.1 Crear `orchestrator_service/services/conversation_state.py` con constants (`VALID_STATES`, `CONVSTATE_TTL`, `REDIS_KEY_PREFIX`) y stubs de `get_state`, `set_state`, `transition`, `reset`.
+- [x] T3.2 Crear `tests/test_conversation_state.py` con 8 casos (get not found → IDLE, set+get roundtrip, transition happy, transition conflict returns False, reset, Redis fail en get → IDLE, Redis fail en set → warn no raise, state inválido → ValueError).
+- [x] T3.3 Implementar las 4 funciones contra Redis async client. Fallback safe en todos los catch.
+- [x] T3.4 Correr `pytest tests/test_conversation_state.py` — verdes.
+- [x] T3.5 Commit: `feat(tora): bug #4 — conversation_state module (standalone)`.
 
 ### Fase B — Hooks en tools (Día 5)
 
