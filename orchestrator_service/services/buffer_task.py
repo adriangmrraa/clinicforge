@@ -291,7 +291,7 @@ async def process_buffer_task(
                             f"PRIORIDAD ALTA por ser paciente propio (independientemente de la complejidad del tratamiento). "
                             f"Si menciona DOLOR → prioridad inmediata/urgencia. Sin dolor → prioridad media. "
                             f"SIEMPRE ofrecer turnos con este profesional primero. Si no hay disponibilidad, "
-                            f"mencionar que es su profesional habitual y ofrecer lista de espera."
+                            f"mencionar que es su profesional habitual y ofrecer la próxima fecha disponible."
                         )
                 except Exception:
                     pass

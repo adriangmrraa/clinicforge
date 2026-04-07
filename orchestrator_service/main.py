@@ -11,6 +11,7 @@ from dateutil.parser import parse as dateutil_parse
 import re
 from gcal_service import gcal_service
 import httpx
+import asyncpg
 import mimetypes
 import hmac
 import hashlib
@@ -1318,6 +1319,66 @@ async def check_availability(
             except Exception:
                 tenant_wh_raw = {}
         tenant_wh = tenant_wh_raw if isinstance(tenant_wh_raw, dict) else {}
+
+        # 0. AUTO-ROUTING: si el paciente tiene profesional asignado y no especificó otro,
+        # filtrar a SOLO ese profesional. Pacientes habituales SIEMPRE con su doctora.
+        forced_prof_id: Optional[int] = None
+        if not clean_name:
+            try:
+                phone_for_lookup = current_customer_phone.get()
+                if phone_for_lookup:
+                    phone_digits = re.sub(r"\D", "", phone_for_lookup)
+                    assigned_row = await db.pool.fetchrow(
+                        """
+                        SELECT assigned_professional_id
+                        FROM patients
+                        WHERE tenant_id = $1
+                          AND assigned_professional_id IS NOT NULL
+                          AND (REGEXP_REPLACE(phone_number, '[^0-9]', '', 'g') = $2
+                               OR instagram_psid = $3
+                               OR facebook_psid = $3)
+                        LIMIT 1
+                        """,
+                        tenant_id,
+                        phone_digits,
+                        phone_for_lookup,
+                    )
+                    if assigned_row and assigned_row["assigned_professional_id"]:
+                        forced_prof_id = int(assigned_row["assigned_professional_id"])
+                        logger.info(
+                            f"📅 check_availability: patient has assigned_professional_id={forced_prof_id} → filtering to that professional"
+                        )
+            except Exception as _assign_err:
+                logger.debug(f"assigned_professional_id lookup skipped: {_assign_err}")
+
+        # 0b. DERIVATION RULES: if no professional specified and no forced assignment,
+        # check if treatment matches a derivation rule. Rules are evaluated in priority order.
+        derivation_filter_prof_id: Optional[int] = None
+        if not clean_name and not forced_prof_id and treatment_name:
+            try:
+                rules = await db.pool.fetch(
+                    """
+                    SELECT id, target_professional_id, treatment_categories, patient_condition
+                    FROM professional_derivation_rules
+                    WHERE tenant_id = $1 AND is_active = true
+                    ORDER BY priority_order ASC, id ASC
+                    """,
+                    tenant_id,
+                )
+                tname_lower = (treatment_name or "").lower()
+                for rule in rules:
+                    cats = rule.get("treatment_categories") or ""
+                    cat_list = [c.strip().lower() for c in cats.split(",") if c.strip()]
+                    if cat_list and any(c in tname_lower for c in cat_list):
+                        if rule.get("target_professional_id"):
+                            derivation_filter_prof_id = int(rule["target_professional_id"])
+                            logger.info(
+                                f"📅 check_availability: derivation rule {rule['id']} matched → forcing prof_id={derivation_filter_prof_id}"
+                            )
+                            break
+            except Exception as _der_err:
+                logger.debug(f"derivation rules lookup skipped: {_der_err}")
+
         # Solo profesionales aprobados (users.status = 'active') y activos en la sede
         query = """SELECT p.id, p.first_name, p.last_name, p.google_calendar_id, p.working_hours, p.is_priority_professional
                    FROM professionals p
@@ -1328,10 +1389,28 @@ async def check_availability(
         if clean_name:
             query += " AND (p.first_name ILIKE $2 OR p.last_name ILIKE $2 OR (p.first_name || ' ' || COALESCE(p.last_name, '')) ILIKE $2)"
             params.append(f"%{clean_name}%")
+        elif forced_prof_id:
+            query += f" AND p.id = ${len(params) + 1}"
+            params.append(forced_prof_id)
+        elif derivation_filter_prof_id:
+            query += f" AND p.id = ${len(params) + 1}"
+            params.append(derivation_filter_prof_id)
 
         active_professionals = await db.pool.fetch(query, *params)
         if not active_professionals and professional_name:
             return f"❌ No encontré al profesional '{professional_name}'. ¿Querés consultar disponibilidad general?"
+        if not active_professionals and forced_prof_id:
+            logger.warning(
+                f"📅 check_availability: forced prof {forced_prof_id} returned 0 results — falling back to general search"
+            )
+            # Reintentar sin filtro forzado
+            params = [tenant_id]
+            query = """SELECT p.id, p.first_name, p.last_name, p.google_calendar_id, p.working_hours, p.is_priority_professional
+                       FROM professionals p
+                       LEFT JOIN users u ON p.user_id = u.id
+                       WHERE p.is_active = true AND p.tenant_id = $1
+                       AND (p.user_id IS NULL OR (u.status = 'active' AND u.role IN ('professional', 'ceo')))"""
+            active_professionals = await db.pool.fetch(query, *params)
         if not active_professionals:
             return "❌ No hay profesionales activos en esta sede para consultar disponibilidad. Por favor contactá a la clínica."
 
@@ -1945,7 +2024,7 @@ async def check_availability(
             else:
                 no_slots_msg += f" para {date_query} ni en los días cercanos"
             no_slots_msg += (
-                ". ¿Querés que busque en otra semana o te anoto en lista de espera?"
+                ". ¿Querés que busque en otra semana?"
             )
             return no_slots_msg
 
@@ -2567,19 +2646,54 @@ async def book_appointment(
             patient_id = row["id"]
 
         apt_id = str(uuid.uuid4())
-        await db.pool.execute(
-            """
-            INSERT INTO appointments (id, tenant_id, patient_id, professional_id, appointment_datetime, duration_minutes, appointment_type, status, source, created_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, 'scheduled', 'ai', NOW())
-        """,
-            apt_id,
-            tenant_id,
-            patient_id,
-            target_prof["id"],
-            apt_datetime,
-            final_duration,
-            treatment_code,
-        )
+
+        # SAFETY: Verify soft-lock is still valid before INSERT (prevents bypass after expiration)
+        try:
+            from services.relay import get_redis as _get_redis_check
+            _r_check = _get_redis_check()
+            if _r_check:
+                _date_str = apt_datetime.strftime("%Y-%m-%d")
+                _time_str = apt_datetime.strftime("%H:%M")
+                _lock_key = f"slot_lock:{tenant_id}:{target_prof['id']}:{_date_str}:{_time_str}"
+                _lock_holder = await _r_check.get(_lock_key)
+                if _lock_holder:
+                    _lock_holder_str = _lock_holder.decode() if isinstance(_lock_holder, bytes) else _lock_holder
+                    if _lock_holder_str and _lock_holder_str != phone:
+                        logger.warning(
+                            f"❌ Soft-lock conflict: slot reserved by {_lock_holder_str}, requester is {phone}"
+                        )
+                        return "❌ Ese turno acaba de ser reservado por otro paciente. Volvamos a buscar disponibilidad."
+        except Exception as _lock_check_err:
+            logger.warning(f"Soft-lock pre-check failed (non-blocking): {_lock_check_err}")
+
+        # Wrap patient + appointment in a single transaction (atomicity)
+        # The UNIQUE index idx_appointments_no_double_booking will reject duplicates
+        # at the database level even if soft-locks fail
+        try:
+            async with db.pool.acquire() as _conn:
+                async with _conn.transaction():
+                    await _conn.execute(
+                        """
+                        INSERT INTO appointments (id, tenant_id, patient_id, professional_id, appointment_datetime, duration_minutes, appointment_type, status, source, created_at)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, 'scheduled', 'ai', NOW())
+                    """,
+                        apt_id,
+                        tenant_id,
+                        patient_id,
+                        target_prof["id"],
+                        apt_datetime,
+                        final_duration,
+                        treatment_code,
+                    )
+        except asyncpg.UniqueViolationError as _uniq_err:
+            # Database-level double-booking protection triggered (race condition won by another booking)
+            logger.warning(
+                f"🔒 UNIQUE constraint blocked double-booking: prof={target_prof['id']} datetime={apt_datetime} err={_uniq_err}"
+            )
+            return (
+                "❌ Ese horario fue tomado por otro paciente justo ahora. "
+                "Te ofrezco otra opción cercana, ¿te parece?"
+            )
         logger.info(
             f"✅ book_appointment OK phone={phone} tenant={tenant_id} apt_id={apt_id} patient_id={patient_id} prof={target_prof['first_name']} datetime={apt_datetime}"
         )
@@ -3241,6 +3355,24 @@ async def cancel_appointment(date_query: str):
             apt["id"],
         )
 
+        # 2b. Liberar soft-lock del slot recién cancelado (si existe)
+        try:
+            from services.relay import get_redis as _get_redis_cancel
+            _r_c = _get_redis_cancel()
+            if _r_c and apt.get("appointment_datetime"):
+                _apt_dt = apt["appointment_datetime"]
+                if hasattr(_apt_dt, "astimezone"):
+                    _apt_dt = _apt_dt.astimezone(ARG_TZ)
+                _date_str = _apt_dt.strftime("%Y-%m-%d")
+                _time_str = _apt_dt.strftime("%H:%M")
+                _prof_id = apt.get("professional_id") or 0
+                for _lp in [_prof_id, 0]:
+                    _lk = f"slot_lock:{tenant_id}:{_lp}:{_date_str}:{_time_str}"
+                    await _r_c.delete(_lk)
+                logger.info(f"🔓 Soft-locks released for cancelled appointment {apt['id']}")
+        except Exception as _cancel_lock_err:
+            logger.warning(f"Cancel soft-lock cleanup failed (non-blocking): {_cancel_lock_err}")
+
         # 3. Notificar a la UI (Borrado visual)
         try:
             from main import sio
@@ -3289,7 +3421,7 @@ async def reschedule_appointment(original_date: str, new_date_time: str):
         new_dt = parse_datetime(new_date_time)
         apt = await db.pool.fetchrow(
             """
-            SELECT a.id, a.google_calendar_event_id, a.professional_id, a.duration_minutes
+            SELECT a.id, a.google_calendar_event_id, a.professional_id, a.duration_minutes, a.appointment_datetime
             FROM appointments a
             JOIN patients p ON a.patient_id = p.id
             WHERE p.tenant_id = $1 AND REGEXP_REPLACE(p.phone_number, '[^0-9]', '', 'g') = $2 AND DATE(a.appointment_datetime) = $3
@@ -3343,22 +3475,48 @@ async def reschedule_appointment(original_date: str, new_date_time: str):
                 end_time=(new_dt + timedelta(minutes=60)).isoformat(),
             )
         sync_status = "synced" if new_gcal else "local"
-        await db.pool.execute(
-            """
-            UPDATE appointments SET
-                appointment_datetime = $1,
-                google_calendar_event_id = COALESCE($2, google_calendar_event_id),
-                google_calendar_sync_status = $3,
-                reminder_sent = false,
-                reminder_sent_at = NULL,
-                updated_at = NOW()
-            WHERE id = $4
-        """,
-            new_dt,
-            new_gcal["id"] if new_gcal else None,
-            sync_status,
-            apt["id"],
-        )
+        try:
+            await db.pool.execute(
+                """
+                UPDATE appointments SET
+                    appointment_datetime = $1,
+                    google_calendar_event_id = COALESCE($2, google_calendar_event_id),
+                    google_calendar_sync_status = $3,
+                    reminder_sent = false,
+                    reminder_sent_at = NULL,
+                    updated_at = NOW()
+                WHERE id = $4
+            """,
+                new_dt,
+                new_gcal["id"] if new_gcal else None,
+                sync_status,
+                apt["id"],
+            )
+        except asyncpg.UniqueViolationError:
+            logger.warning(
+                f"🔒 Reschedule blocked by UNIQUE constraint: prof={apt['professional_id']} new_dt={new_dt}"
+            )
+            return "❌ Ese horario ya fue tomado por otro paciente. ¿Probamos con otro?"
+
+        # Liberar soft-locks del slot ORIGINAL y del NUEVO (post-booking cleanup)
+        try:
+            from services.relay import get_redis as _get_redis_resched
+            _r_re = _get_redis_resched()
+            if _r_re:
+                old_apt_dt = apt["appointment_datetime"]
+                if hasattr(old_apt_dt, "astimezone"):
+                    old_apt_dt = old_apt_dt.astimezone(ARG_TZ)
+                _old_date = old_apt_dt.strftime("%Y-%m-%d")
+                _old_time = old_apt_dt.strftime("%H:%M")
+                _new_date = new_dt.strftime("%Y-%m-%d")
+                _new_time = new_dt.strftime("%H:%M")
+                _prof_id = apt["professional_id"] or 0
+                for _lp in [_prof_id, 0]:
+                    await _r_re.delete(f"slot_lock:{tenant_id}:{_lp}:{_old_date}:{_old_time}")
+                    await _r_re.delete(f"slot_lock:{tenant_id}:{_lp}:{_new_date}:{_new_time}")
+                logger.info(f"🔓 Soft-locks released after reschedule {apt['id']}")
+        except Exception as _resched_lock_err:
+            logger.warning(f"Reschedule soft-lock cleanup failed (non-blocking): {_resched_lock_err}")
 
         # 5. Emitir evento Socket.IO (Actualizar UI)
         try:
@@ -4145,7 +4303,7 @@ async def confirm_slot(
     treatment_name: Optional[str] = None,
 ):
     """
-    Confirma y reserva temporalmente un turno por 30 segundos mientras se recopilan datos del paciente.
+    Confirma y reserva temporalmente un turno por 120 segundos mientras se recopilan datos del paciente.
     Llamar SIEMPRE cuando el paciente elige una de las opciones de check_availability, ANTES de pedir datos de admisión.
     date_time: Fecha y hora elegida (ej. "lunes 09:00", "2026-03-25 15:00", "hoy 14:00").
     professional_name: (Opcional) Profesional elegido.
@@ -4187,7 +4345,7 @@ async def confirm_slot(
             if prof_row:
                 prof_id = prof_row["id"]
 
-        # Crear soft lock en Redis
+        # Crear soft lock en Redis (120s para dar tiempo a que el paciente complete admisión)
         date_str = apt_datetime.strftime("%Y-%m-%d")
         time_str = apt_datetime.strftime("%H:%M")
         lock_key = f"slot_lock:{tenant_id}:{prof_id}:{date_str}:{time_str}"
@@ -4198,16 +4356,16 @@ async def confirm_slot(
             r = get_redis()
             if r:
                 existing_lock = await r.get(lock_key)
-                if existing_lock and existing_lock != phone:
+                if existing_lock and existing_lock.decode() if isinstance(existing_lock, bytes) else existing_lock != phone:
                     return f"⚠️ El turno de las {time_str} del {date_str} acaba de ser reservado por otro paciente. Consultemos otra opción."
-                await r.setex(lock_key, 30, phone)
-                logger.info(f"🔒 Soft lock created: {lock_key} for {phone} (30s)")
+                await r.setex(lock_key, 120, phone)
+                logger.info(f"🔒 Soft lock created: {lock_key} for {phone} (120s)")
         except Exception as e:
             logger.warning(f"Redis soft lock failed (non-blocking): {e}")
             # No bloquear el flujo si Redis falla
 
         dia_name = DIAS_ES.get(DAYS_EN[apt_datetime.weekday()], "")
-        return f"✅ Reservé temporalmente el turno de las {time_str} del {dia_name} {apt_datetime.strftime('%d/%m')} por 30 segundos. Necesito tus datos para confirmar la reserva."
+        return f"✅ Reservé temporalmente el turno de las {time_str} del {dia_name} {apt_datetime.strftime('%d/%m')} por 2 minutos. Necesito tus datos para confirmar la reserva."
 
     except Exception as e:
         logger.error(f"Error en confirm_slot: {e}")
@@ -6556,11 +6714,11 @@ DETECCIÓN DE LEADS DE ALTO VALOR (CRÍTICO — REGLA SUPREMA):
 • PROHIBIDO derivar al equipo general en estos casos. SIEMPRE derivar a {prof_display} (la doctora especialista en implantes/prótesis).
 • Aunque el paciente pregunte por "limpieza" o "control", si en algún momento menciona dientes faltantes → priorizá implantes sobre el motivo original.
 
-LISTA DE ESPERA:
-• Si check_availability no encuentra turnos → ofrecé: "¿Querés que te anote en lista de espera para ese día? Si se libera un turno te avisamos."
-• Para tratamientos de IMPLANTES/PRÓTESIS sin disponibilidad cercana: SIEMPRE ofrecer primer turno disponible + lista de espera. PROHIBIDO derivar a otro profesional (los implantes son siempre con la doctora).
-• Respuesta: "Perfecto 😊 Estos tratamientos los realiza la doctora de forma personalizada. Actualmente el primer turno disponible es en [fecha]. Si querés, podemos agendarte y también dejarte en lista de espera por si se libera un turno antes."
-• Esta funcionalidad es informativa — el paciente queda registrado en la memoria del sistema para follow-up manual.
+SIN DISPONIBILIDAD CERCANA:
+• Si check_availability no encuentra turnos en la fecha pedida → ofrecé buscar en otra semana o el siguiente día disponible.
+• Para tratamientos de IMPLANTES/PRÓTESIS: PROHIBIDO derivar a otro profesional (los implantes son siempre con la doctora). SIEMPRE ofrecer el primer turno disponible con la doctora aunque sea más lejano.
+• Respuesta sugerida: "Perfecto 😊 Estos tratamientos los realiza la doctora de forma personalizada. Actualmente el primer turno disponible es en [fecha]. ¿Te lo agendo?"
+• PROHIBIDO ofrecer "lista de espera" — esa funcionalidad NO existe en el sistema.
 
 PROFESIONAL AUTO-ASIGNADO:
 • Cuando el sistema asigna automáticamente un profesional (paciente dijo "cualquiera" o no eligió):
