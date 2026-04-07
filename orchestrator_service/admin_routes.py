@@ -8004,13 +8004,13 @@ async def create_derivation_rule(
             tenant_id, rule_name, patient_condition, treatment_categories,
             target_type, target_professional_id, priority_order, is_active,
             description, created_at, updated_at
-        ) VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8, $9, NOW(), NOW())
+        ) VALUES ($1, $2, $3, $4::text[], $5, $6, $7, $8, $9, NOW(), NOW())
         RETURNING id
         """,
         tenant_id,
         data.rule_name,
         data.patient_condition,
-        json.dumps(data.treatment_categories),
+        list(data.treatment_categories or []),
         data.target_type,
         data.target_professional_id,
         data.priority_order,
@@ -8064,14 +8064,14 @@ async def update_derivation_rule(
     result = await db.pool.execute(
         """
         UPDATE professional_derivation_rules SET
-            rule_name = $1, patient_condition = $2, treatment_categories = $3::jsonb,
+            rule_name = $1, patient_condition = $2, treatment_categories = $3::text[],
             target_type = $4, target_professional_id = $5, priority_order = $6,
             is_active = $7, description = $8, updated_at = NOW()
         WHERE id = $9 AND tenant_id = $10
         """,
         data.rule_name,
         data.patient_condition,
-        json.dumps(data.treatment_categories),
+        list(data.treatment_categories or []),
         data.target_type,
         data.target_professional_id,
         data.priority_order,
