@@ -283,48 +283,71 @@ async def sync_tenant_faq_embeddings(tenant_id: int) -> int:
     Returns count of embeddings created.
     """
     if not await check_pgvector_available():
+        logger.warning(f"📚 sync_tenant_faq_embeddings({tenant_id}): pgvector NOT available, skipping")
         return 0
 
     try:
+        # First check total FAQs vs total embeddings to see status
+        total_faqs = await db.pool.fetchval(
+            "SELECT COUNT(*) FROM clinic_faqs WHERE tenant_id = $1", tenant_id
+        )
+        total_embeddings = await db.pool.fetchval(
+            "SELECT COUNT(*) FROM faq_embeddings WHERE tenant_id = $1", tenant_id
+        )
+        logger.info(
+            f"📚 sync_tenant_faq_embeddings(tenant={tenant_id}): "
+            f"FAQs={total_faqs}, existing embeddings={total_embeddings}"
+        )
+
         faqs = await db.pool.fetch("""
             SELECT cf.id, cf.question, cf.answer
             FROM clinic_faqs cf
-            LEFT JOIN faq_embeddings fe ON cf.id = fe.faq_id
+            LEFT JOIN faq_embeddings fe ON cf.id = fe.faq_id AND fe.tenant_id = cf.tenant_id
             WHERE cf.tenant_id = $1 AND fe.id IS NULL
         """, tenant_id)
 
+        logger.info(f"📚 sync_tenant_faq_embeddings(tenant={tenant_id}): {len(faqs)} FAQs need embedding")
+
         count = 0
+        failures = 0
         for faq in faqs:
             ok = await upsert_faq_embedding(tenant_id, faq["id"], faq["question"], faq["answer"])
             if ok:
                 count += 1
+            else:
+                failures += 1
             # Small delay to avoid rate limiting
             if count % 10 == 0 and count > 0:
                 await asyncio.sleep(0.5)
 
-        if count > 0:
-            logger.info(f"Synced {count} FAQ embeddings for tenant {tenant_id}")
+        logger.info(
+            f"📚 sync_tenant_faq_embeddings(tenant={tenant_id}): "
+            f"created {count}, failed {failures}"
+        )
         return count
     except Exception as e:
-        logger.error(f"Error syncing FAQ embeddings for tenant {tenant_id}: {e}")
+        logger.error(f"📚 Error syncing FAQ embeddings for tenant {tenant_id}: {e}", exc_info=True)
         return 0
 
 
 async def sync_all_tenants_faq_embeddings() -> int:
     """Sync FAQ embeddings for all active tenants. Called on startup."""
+    logger.info("📚 sync_all_tenants_faq_embeddings: starting...")
+
     if not await check_pgvector_available():
+        logger.warning("📚 sync_all_tenants_faq_embeddings: pgvector NOT available, aborting")
         return 0
 
     try:
         tenants = await db.pool.fetch("SELECT id FROM tenants WHERE status = 'active'")
+        logger.info(f"📚 sync_all_tenants_faq_embeddings: processing {len(tenants)} active tenants")
         total = 0
         for t in tenants:
             total += await sync_tenant_faq_embeddings(t["id"])
-        if total > 0:
-            logger.info(f"Startup FAQ embedding sync complete: {total} embeddings created")
+        logger.info(f"📚 sync_all_tenants_faq_embeddings: COMPLETE — {total} embeddings created total")
         return total
     except Exception as e:
-        logger.error(f"Error syncing all tenant FAQ embeddings: {e}")
+        logger.error(f"📚 Error syncing all tenant FAQ embeddings: {e}", exc_info=True)
         return 0
 
 

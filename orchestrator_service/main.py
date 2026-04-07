@@ -6779,10 +6779,16 @@ async def lifespan(app: FastAPI):
         logger.error(f"nova_daily_analysis_start_failed: {e}")
 
     # RAG: Sync ALL embeddings for all tenants (FAQs, insurance, derivation, instructions)
-    try:
-        from services.embedding_service import sync_all_tenants_faq_embeddings
+    async def _rag_sync_with_logging():
+        try:
+            from services.embedding_service import sync_all_tenants_faq_embeddings
+            count = await sync_all_tenants_faq_embeddings()
+            logger.info(f"rag_all_embedding_sync_complete: {count} embeddings created")
+        except Exception as e:
+            logger.error(f"rag_all_embedding_sync_failed: {e}", exc_info=True)
 
-        asyncio.create_task(sync_all_tenants_faq_embeddings())
+    try:
+        asyncio.create_task(_rag_sync_with_logging())
         logger.info("rag_all_embedding_sync_started")
     except Exception as e:
         logger.warning(f"rag_embedding_sync_skipped: {e}")
