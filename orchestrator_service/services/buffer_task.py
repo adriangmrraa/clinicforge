@@ -1973,18 +1973,15 @@ async def process_buffer_task(
             ).strip()
 
         # --- DATE VALIDATOR (Bug #1) ---
-        # TODO: Enable when intermediate_steps are captured from executor
-        # For now, this is a placeholder. To enable full date validation:
-        # 1. Configure agent with return_intermediate_steps=True
-        # 2. Capture intermediate_steps from response["intermediate_steps"]
-        # 3. Uncomment below:
-        # if validate_dates_in_response and response.get("intermediate_steps"):
-        #     try:
-        #         response_text = validate_dates_in_response(
-        #             response_text, response.get("intermediate_steps", [])
-        #         )
-        #     except Exception as dv_err:
-        #         logger.warning(f"⚠️ Date validator error (non-fatal): {dv_err}")
+        # Validate dates in response against canonical dates from tool outputs
+        # Fixes DD↔MM swap issue in LLM response text
+        if validate_dates_in_response and response.get("intermediate_steps"):
+            try:
+                response_text = validate_dates_in_response(
+                    response_text, response.get("intermediate_steps", [])
+                )
+            except Exception as dv_err:
+                logger.warning(f"⚠️ Date validator error (non-fatal): {dv_err}")
 
     except Exception as e:
         logger.exception("process_buffer_task_fatal_error", exc_info=e)
