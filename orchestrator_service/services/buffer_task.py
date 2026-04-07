@@ -138,6 +138,7 @@ async def process_buffer_task(
             current_tenant_id,
             current_patient_id,
             current_source_channel,
+            current_tenant_tz,
         )
 
         # ✅ FIX: Establecer ContextVars para que las tools (book_appointment, etc)
@@ -145,6 +146,19 @@ async def process_buffer_task(
         current_customer_phone.set(external_user_id)
         current_tenant_id.set(tenant_id)
         current_source_channel.set(channel or "whatsapp")
+
+        # TIER 3 cap.1 — resolve tenant timezone once per request and bind it.
+        # All datetime constructors via get_active_tz() / get_now_arg() will honor it.
+        try:
+            from services.tz_resolver import get_tenant_tz as _get_tz
+            _resolved_tz = await _get_tz(tenant_id)
+            current_tenant_tz.set(_resolved_tz)
+        except Exception as _tz_err:
+            # Never block the booking flow on tz resolution failure — fallback to ARG_TZ.
+            import logging as _lg
+            _lg.getLogger("buffer_task").warning(
+                f"tz_resolver: failed for tenant {tenant_id}, falling back to ARG_TZ: {_tz_err}"
+            )
 
         tenant_row = await pool.fetchrow(
             "SELECT clinic_name, address, google_maps_url, working_hours, consultation_price, bank_cbu, bank_alias, bank_holder_name, system_prompt_template FROM tenants WHERE id = $1",

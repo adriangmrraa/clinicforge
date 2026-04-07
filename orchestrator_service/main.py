@@ -83,12 +83,32 @@ CLINIC_NAME = os.getenv("CLINIC_NAME", "Consultorio Dental")
 CLINIC_LOCATION = os.getenv("CLINIC_LOCATION", "Buenos Aires, Argentina")
 CLINIC_HOURS_START = os.getenv("CLINIC_HOURS_START", "08:00")
 CLINIC_HOURS_END = os.getenv("CLINIC_HOURS_END", "19:00")
+# Legacy fixed-offset timezone kept as a SAFE FALLBACK for code paths that don't yet
+# resolve the tenant timezone. Argentina has no DST since 2009 so UTC-3 stays correct
+# for Dra. Laura (the only production tenant today). All NEW code MUST use
+# `get_active_tz()` (which reads `current_tenant_tz` set by buffer_task) so that
+# clinics in DST-observing countries (CL, BR, MX, ES, US…) work correctly.
 ARG_TZ = timezone(timedelta(hours=-3))
 
 
+def get_active_tz():
+    """Return the timezone bound to the current request via ContextVar.
+
+    Falls back to ARG_TZ when no tenant tz is set (offline jobs, scripts, tests).
+    Preferred entry point for any datetime construction inside an AI tool.
+    """
+    try:
+        tz = current_tenant_tz.get()
+        if tz is not None:
+            return tz
+    except Exception:
+        pass
+    return ARG_TZ
+
+
 def get_now_arg():
-    """Obtiene la fecha y hora actual garantizando zona horaria de Argentina."""
-    return datetime.now(ARG_TZ)
+    """Obtiene la fecha y hora actual en la TZ activa del tenant (fallback ARG_TZ)."""
+    return datetime.now(get_active_tz())
 
 
 # download_media moved to services.media_downloader
@@ -149,6 +169,11 @@ current_patient_id: ContextVar[Optional[int]] = ContextVar(
 current_tenant_id: ContextVar[int] = ContextVar("current_tenant_id", default=1)
 current_source_channel: ContextVar[Optional[str]] = ContextVar(
     "current_source_channel", default=None
+)
+# Active tenant timezone for the current request. Set by buffer_task / FastAPI deps.
+# `get_active_tz()` reads this with ARG_TZ fallback.
+current_tenant_tz: ContextVar[Optional[Any]] = ContextVar(
+    "current_tenant_tz", default=None
 )
 
 # --- DATABASE SETUP ---
@@ -563,7 +588,7 @@ def parse_datetime(datetime_query: str) -> datetime:
         minute=target_time[1],
         second=0,
         microsecond=0,
-        tzinfo=ARG_TZ,
+        tzinfo=get_active_tz(),
     )
 
 
@@ -628,10 +653,10 @@ def generate_free_slots(
         eh, em = 18, 0
 
     current = datetime.combine(target_date, datetime.min.time()).replace(
-        hour=sh, minute=sm, tzinfo=ARG_TZ
+        hour=sh, minute=sm, tzinfo=get_active_tz()
     )
     end_limit = datetime.combine(target_date, datetime.min.time()).replace(
-        hour=eh, minute=em, tzinfo=ARG_TZ
+        hour=eh, minute=em, tzinfo=get_active_tz()
     )
 
     now = get_now_arg()
@@ -933,8 +958,8 @@ async def _get_slots_for_extra_day(
 
     # Construir busy_map (simplificado: solo appointments, sin GCal sync)
     prof_ids = [p["id"] for p in active_professionals]
-    start_day = datetime.combine(target_date, datetime.min.time(), tzinfo=ARG_TZ)
-    end_day = datetime.combine(target_date, datetime.max.time(), tzinfo=ARG_TZ)
+    start_day = datetime.combine(target_date, datetime.min.time(), tzinfo=get_active_tz())
+    end_day = datetime.combine(target_date, datetime.max.time(), tzinfo=get_active_tz())
 
     appointments = await db.pool.fetch(
         """
@@ -989,8 +1014,8 @@ async def _get_slots_for_extra_day(
 
     global_busy = set()
     for b in gcal_blocks:
-        it = b["start"].astimezone(ARG_TZ)
-        while it < b["end"].astimezone(ARG_TZ):
+        it = b["start"].astimezone(get_active_tz())
+        while it < b["end"].astimezone(get_active_tz()):
             h_m = it.strftime("%H:%M")
             if b["professional_id"]:
                 if b["professional_id"] in busy_map:
@@ -1000,7 +1025,7 @@ async def _get_slots_for_extra_day(
             it += timedelta(minutes=30)
 
     for appt in appointments:
-        it = appt["start"].astimezone(ARG_TZ)
+        it = appt["start"].astimezone(get_active_tz())
         end_it = it + timedelta(minutes=appt["duration_minutes"])
         while it < end_it:
             if appt["professional_id"] in busy_map:
@@ -1682,10 +1707,10 @@ async def check_availability(
                         calendar_id=cal_id, date_obj=target_date
                     )
                     start_day = datetime.combine(
-                        target_date, datetime.min.time(), tzinfo=ARG_TZ
+                        target_date, datetime.min.time(), tzinfo=get_active_tz()
                     )
                     end_day = datetime.combine(
-                        target_date, datetime.max.time(), tzinfo=ARG_TZ
+                        target_date, datetime.max.time(), tzinfo=get_active_tz()
                     )
                     await db.pool.execute(
                         """
@@ -1739,8 +1764,8 @@ async def check_availability(
 
         # 2. Ocupación: siempre appointments (tenant_id); bloques solo si provider google
         prof_ids = [p["id"] for p in active_professionals]
-        start_day = datetime.combine(target_date, datetime.min.time(), tzinfo=ARG_TZ)
-        end_day = datetime.combine(target_date, datetime.max.time(), tzinfo=ARG_TZ)
+        start_day = datetime.combine(target_date, datetime.min.time(), tzinfo=get_active_tz())
+        end_day = datetime.combine(target_date, datetime.max.time(), tzinfo=get_active_tz())
 
         appointments = await db.pool.fetch(
             """
@@ -1802,8 +1827,8 @@ async def check_availability(
         # Agregar bloqueos de GCal (granularidad 15 min)
         global_busy = set()
         for b in gcal_blocks:
-            it = b["start"].astimezone(ARG_TZ)
-            b_end = b["end"].astimezone(ARG_TZ)
+            it = b["start"].astimezone(get_active_tz())
+            b_end = b["end"].astimezone(get_active_tz())
             while it < b_end:
                 h_m = it.strftime("%H:%M")
                 if b["professional_id"]:
@@ -1814,7 +1839,7 @@ async def check_availability(
                 it += timedelta(minutes=15)
 
         for appt in appointments:
-            it = appt["start"].astimezone(ARG_TZ)
+            it = appt["start"].astimezone(get_active_tz())
             appt_duration = (
                 appt["duration_minutes"] if appt["duration_minutes"] is not None else 60
             )
@@ -1897,7 +1922,7 @@ async def check_availability(
             # Build a counter per 15-min slot
             chair_usage: dict[str, int] = {}
             for apt in all_day_apts:
-                apt_start = apt["start"].astimezone(ARG_TZ)
+                apt_start = apt["start"].astimezone(get_active_tz())
                 apt_end = apt_start + timedelta(minutes=apt["duration"])
                 t = apt_start.replace(second=0, microsecond=0)
                 while t < apt_end:
@@ -2178,7 +2203,7 @@ async def book_appointment(
                 if h is not None:
                     apt_datetime = datetime.combine(
                         base_date, datetime.min.time()
-                    ).replace(hour=h, minute=m, second=0, microsecond=0, tzinfo=ARG_TZ)
+                    ).replace(hour=h, minute=m, second=0, microsecond=0, tzinfo=get_active_tz())
                     logger.info(
                         f"📅 BOOK: using interpreted_date={interpreted_date} + extracted time={h:02d}:{m:02d} → {apt_datetime}"
                     )
@@ -2513,10 +2538,10 @@ async def book_appointment(
                         date_obj=apt_datetime.date(),
                     )
                     day_start = datetime.combine(
-                        apt_datetime.date(), datetime.min.time(), tzinfo=ARG_TZ
+                        apt_datetime.date(), datetime.min.time(), tzinfo=get_active_tz()
                     )
                     day_end = datetime.combine(
-                        apt_datetime.date(), datetime.max.time(), tzinfo=ARG_TZ
+                        apt_datetime.date(), datetime.max.time(), tzinfo=get_active_tz()
                     )
                     await db.pool.execute(
                         "DELETE FROM google_calendar_blocks WHERE tenant_id = $1 AND professional_id = $2 AND start_datetime < $4 AND end_datetime > $3",
@@ -3371,7 +3396,7 @@ async def list_my_appointments():
         for r in rows:
             dt = r["appointment_datetime"]
             if hasattr(dt, "astimezone"):
-                dt = dt.astimezone(ARG_TZ)
+                dt = dt.astimezone(get_active_tz())
             fecha = dt.strftime("%d/%m/%y %H:%M")
             prof = (
                 (r["professional_name"] or "").strip().split()[0]
@@ -3469,7 +3494,7 @@ async def cancel_appointment(date_query: str):
             if _r_c and apt.get("appointment_datetime"):
                 _apt_dt = apt["appointment_datetime"]
                 if hasattr(_apt_dt, "astimezone"):
-                    _apt_dt = _apt_dt.astimezone(ARG_TZ)
+                    _apt_dt = _apt_dt.astimezone(get_active_tz())
                 _date_str = _apt_dt.strftime("%Y-%m-%d")
                 _time_str = _apt_dt.strftime("%H:%M")
                 _prof_id = apt.get("professional_id") or 0
@@ -3661,7 +3686,7 @@ async def reschedule_appointment(original_date: str, new_date_time: str):
             if _r_re:
                 old_apt_dt = apt["appointment_datetime"]
                 if hasattr(old_apt_dt, "astimezone"):
-                    old_apt_dt = old_apt_dt.astimezone(ARG_TZ)
+                    old_apt_dt = old_apt_dt.astimezone(get_active_tz())
                 _old_date = old_apt_dt.strftime("%Y-%m-%d")
                 _old_time = old_apt_dt.strftime("%H:%M")
                 _new_date = new_dt.strftime("%Y-%m-%d")
@@ -5220,7 +5245,7 @@ async def verify_payment_receipt(
 
             apt_dt = apt["appointment_datetime"]
             # Convert UTC to Argentina timezone for display
-            apt_dt_arg = apt_dt.astimezone(ARG_TZ) if apt_dt.tzinfo else apt_dt
+            apt_dt_arg = apt_dt.astimezone(get_active_tz()) if apt_dt.tzinfo else apt_dt
             dias = [
                 "Lunes",
                 "Martes",
@@ -5548,7 +5573,7 @@ async def get_patient_payment_status():
             for r in rows:
                 dt = r["appointment_datetime"]
                 if hasattr(dt, "astimezone"):
-                    dt = dt.astimezone(ARG_TZ)
+                    dt = dt.astimezone(get_active_tz())
                 fecha = dt.strftime("%d/%m/%y")
                 pay = r.get("payment_status") or "pending"
                 amt = r.get("billing_amount")

@@ -27,6 +27,7 @@ python-multipart
 pyjwt
 email-validator
 pytz
+tzdata
 jinja2
 alembic
 psycopg2-binary

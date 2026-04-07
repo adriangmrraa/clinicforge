@@ -2707,6 +2707,14 @@ async def update_tenant(
     updates.append("updated_at = NOW()")
     query = f"UPDATE tenants SET {', '.join(updates)} WHERE id = ${len(params)}"
     await db.pool.execute(query, *params)
+    # If country_code was in the payload, drop the cached tz so the new value
+    # is picked up immediately on the next AI tool call.
+    if "country_code" in data and data["country_code"] is not None:
+        try:
+            from services.tz_resolver import invalidate_tenant_tz_cache
+            invalidate_tenant_tz_cache(tenant_id)
+        except Exception:
+            pass
     logger.info(
         f"Tenant {tenant_id} updated: calendar_provider={data.get('calendar_provider')} (persisted)"
     )
