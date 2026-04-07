@@ -898,6 +898,12 @@ async def _get_slots_for_extra_day(
     duration: int = 30,
 ) -> List[str]:
     """Obtiene slots libres para un día extra (para completar opciones multi-día). Versión simplificada."""
+    # Verificar feriado antes de cualquier cálculo — si es feriado retornar vacío
+    from services.holiday_service import is_holiday as check_is_holiday
+    _is_hol, _hol_name, _custom_hours = await check_is_holiday(db.pool, tenant_id, target_date)
+    if _is_hol and not _custom_hours:
+        return []
+
     day_name_en = DAYS_EN[target_date.weekday()]
     tenant_day_cfg = tenant_wh.get(day_name_en, {})
 
