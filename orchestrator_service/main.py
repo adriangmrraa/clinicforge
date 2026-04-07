@@ -147,6 +147,9 @@ current_patient_id: ContextVar[Optional[int]] = ContextVar(
     "current_patient_id", default=None
 )
 current_tenant_id: ContextVar[int] = ContextVar("current_tenant_id", default=1)
+current_source_channel: ContextVar[Optional[str]] = ContextVar(
+    "current_source_channel", default=None
+)
 
 # --- DATABASE SETUP ---
 # Normalize DSN for SQLAlchemy: must be postgresql+asyncpg://
@@ -2727,6 +2730,31 @@ async def book_appointment(
             f"✅ book_appointment OK phone={phone} tenant={tenant_id} apt_id={apt_id} patient_id={patient_id} prof={target_prof['first_name']} datetime={apt_datetime}"
         )
 
+        # Audit log (TIER 3 cap.3) — best-effort
+        try:
+            from services.audit_log import log_appointment_mutation as _audit
+            await _audit(
+                pool=db.pool,
+                tenant_id=tenant_id,
+                appointment_id=apt_id,
+                action="created",
+                actor_type="ai_agent",
+                actor_id="langchain_agent",
+                before_values=None,
+                after_values={
+                    "patient_id": patient_id,
+                    "professional_id": target_prof["id"],
+                    "appointment_datetime": apt_datetime.isoformat(),
+                    "duration_minutes": final_duration,
+                    "appointment_type": treatment_code,
+                    "status": "scheduled",
+                },
+                source_channel=current_source_channel.get() or "whatsapp",
+                reason=treatment_reason,
+            )
+        except Exception as _audit_err:
+            logger.warning(f"audit_log call failed (non-blocking): {_audit_err}")
+
         # Limpiar soft lock si existe (booking exitoso)
         try:
             from services.relay import get_redis
@@ -3462,6 +3490,24 @@ async def cancel_appointment(date_query: str):
 
         logger.info(f"🚫 Turno cancelado por IA: {apt['id']} ({phone})")
 
+        # Audit log (TIER 3 cap.3) — best-effort
+        try:
+            from services.audit_log import log_appointment_mutation as _audit
+            await _audit(
+                pool=db.pool,
+                tenant_id=tenant_id,
+                appointment_id=str(apt["id"]),
+                action="cancelled",
+                actor_type="ai_agent",
+                actor_id="langchain_agent",
+                before_values={"status": "scheduled"},
+                after_values={"status": "cancelled"},
+                source_channel=current_source_channel.get() or "whatsapp",
+                reason=f"Cancelled via AI for date_query={date_query}",
+            )
+        except Exception as _audit_err:
+            logger.warning(f"audit_log call failed (non-blocking): {_audit_err}")
+
         # 4. Build response — warn about non-refundable deposit if applicable
         has_payment = apt.get("payment_status") in ("partial", "paid") and apt.get(
             "billing_amount"
@@ -3647,6 +3693,29 @@ async def reschedule_appointment(original_date: str, new_date_time: str):
             logger.error(f"Error emitiendo APPOINTMENT_UPDATED via Socket: {se}")
 
         logger.info(f"🔄 Turno reprogramado por IA: {apt['id']} para {new_dt}")
+
+        # Audit log (TIER 3 cap.3) — best-effort
+        try:
+            from services.audit_log import log_appointment_mutation as _audit
+            _old_dt_iso = (
+                apt["appointment_datetime"].isoformat()
+                if apt.get("appointment_datetime") and hasattr(apt["appointment_datetime"], "isoformat")
+                else str(apt.get("appointment_datetime"))
+            )
+            await _audit(
+                pool=db.pool,
+                tenant_id=tenant_id,
+                appointment_id=str(apt["id"]),
+                action="rescheduled",
+                actor_type="ai_agent",
+                actor_id="langchain_agent",
+                before_values={"appointment_datetime": _old_dt_iso},
+                after_values={"appointment_datetime": new_dt.isoformat()},
+                source_channel=current_source_channel.get() or "whatsapp",
+                reason=f"Rescheduled via AI from {original_date} to {new_date_time}",
+            )
+        except Exception as _audit_err:
+            logger.warning(f"audit_log call failed (non-blocking): {_audit_err}")
         return f"¡Listo! Tu turno ha sido reprogramado para el {new_date_time}. Te esperamos."
 
     except Exception as e:

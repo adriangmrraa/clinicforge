@@ -5600,6 +5600,71 @@ async def list_appointments(
 
 
 @router.get(
+    "/appointments/{appointment_id}/audit",
+    tags=["Turnos"],
+    summary="Audit log de un turno (TIER 3) — solo CEO/admin",
+)
+async def get_appointment_audit_log(
+    appointment_id: str,
+    user_data=Depends(verify_admin_token),
+    tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    """Return chronological audit history for an appointment.
+
+    Multi-tenant isolation: returns 404 if the appointment is not in the caller's tenant.
+    Role guard: only users with role 'ceo' or 'admin' can read audit logs.
+    """
+    role = (user_data or {}).get("role") or ""
+    if role not in ("ceo", "admin"):
+        raise HTTPException(status_code=403, detail="Solo CEO/admin pueden leer audit logs")
+
+    try:
+        apt_uuid = uuid.UUID(appointment_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="ID de turno inválido")
+
+    # Verify the appointment belongs to caller's tenant (multi-tenant isolation)
+    apt_check = await db.pool.fetchrow(
+        "SELECT id FROM appointments WHERE id = $1 AND tenant_id = $2",
+        apt_uuid,
+        tenant_id,
+    )
+    if not apt_check:
+        raise HTTPException(status_code=404, detail="Turno no encontrado")
+
+    rows = await db.pool.fetch(
+        """
+        SELECT al.id, al.action, al.actor_type, al.actor_id,
+               al.before_values, al.after_values, al.source_channel, al.reason,
+               al.created_at,
+               u.email AS actor_email
+        FROM appointment_audit_log al
+        LEFT JOIN users u ON u.id::text = al.actor_id AND al.actor_type = 'staff_user'
+        WHERE al.tenant_id = $1 AND al.appointment_id = $2
+        ORDER BY al.created_at ASC
+        """,
+        tenant_id,
+        apt_uuid,
+    )
+
+    return [
+        {
+            "id": r["id"],
+            "action": r["action"],
+            "actor_type": r["actor_type"],
+            "actor_id": r["actor_id"],
+            "actor_display": r["actor_email"] or r["actor_id"],
+            "before_values": r["before_values"],
+            "after_values": r["after_values"],
+            "source_channel": r["source_channel"],
+            "reason": r["reason"],
+            "created_at": r["created_at"].isoformat() if r["created_at"] else None,
+        }
+        for r in rows
+    ]
+
+
+@router.get(
     "/appointments/{appointment_id}",
     dependencies=[Depends(verify_admin_token)],
     tags=["Turnos"],

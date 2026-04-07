@@ -137,12 +137,14 @@ async def process_buffer_task(
             current_customer_phone,
             current_tenant_id,
             current_patient_id,
+            current_source_channel,
         )
 
         # ✅ FIX: Establecer ContextVars para que las tools (book_appointment, etc)
         # puedan identificar al paciente en la tarea background
         current_customer_phone.set(external_user_id)
         current_tenant_id.set(tenant_id)
+        current_source_channel.set(channel or "whatsapp")
 
         tenant_row = await pool.fetchrow(
             "SELECT clinic_name, address, google_maps_url, working_hours, consultation_price, bank_cbu, bank_alias, bank_holder_name, system_prompt_template FROM tenants WHERE id = $1",
