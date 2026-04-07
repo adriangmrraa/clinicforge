@@ -18,11 +18,11 @@
 
 ## F0 — Prerequisitos (Día 1)
 
-- [ ] **T0.1** Verificar `alembic heads` confirma que la última migración es `014_add_custom_holiday_hours`.
-- [ ] **T0.2** Confirmar que C1 y C2 están mergeados en `main`.
-- [ ] **T0.3** Crear branch `feat/c3-engine-toggle-multi-agent` desde `main`.
-- [ ] **T0.4** Crear carpetas vacías: `orchestrator_service/agents/`, `orchestrator_service/agents/prompts/`, `tests/agents/`.
-- [ ] **T0.5** Commit: `chore(c3): scaffold folders for multi-agent system`
+- [x] **T0.1** Verificar `alembic heads` confirma que la última migración es `014_add_custom_holiday_hours`.
+- [x] **T0.2** Confirmar que C1 y C2 están mergeados en `main`.
+- [x] **T0.3** Crear branch `feat/c3-engine-mode-toggle` desde `main`.
+- [x] **T0.4** Crear carpetas vacías: `orchestrator_service/agents/`, `orchestrator_service/agents/prompts/`, `tests/agents/`.
+- [x] **T0.5** Commit: `chore(c3): scaffold folders for multi-agent system`
 
 **Go/no-go F0**: C1+C2 mergeados, branch creada, carpetas vacías pusheadas.
 
@@ -31,24 +31,24 @@
 ## F1 — Helper openai_compat + migraciones (Día 2-3)
 
 ### openai_compat
-- [ ] **T1.1** Crear `orchestrator_service/core/openai_compat.py` con `get_chat_model()` y `safe_chat_completion()` — soporte para gpt-4o, gpt-4o-mini, gpt-5, gpt-5-mini, o1-mini (manejo de `max_tokens` vs `max_completion_tokens`, temperature lock para o-series).
-- [ ] **T1.2** Crear `tests/test_openai_compat.py` con 4 casos (gpt-4o, gpt-5, o1-mini, fallback).
-- [ ] **T1.3** Tests verdes.
-- [ ] **T1.4** Commit: `feat(core): openai_compat helper for multi-family model support`
+- [x] **T1.1** Crear `orchestrator_service/core/openai_compat.py` con `get_chat_model()` y `safe_chat_completion()` — soporte para gpt-4o, gpt-4o-mini, gpt-5, gpt-5-mini, o1-mini (manejo de `max_tokens` vs `max_completion_tokens`, temperature lock para o-series).
+- [x] **T1.2** Crear `tests/test_openai_compat.py` con 4 casos (gpt-4o, gpt-5, o1-mini, fallback).
+- [x] **T1.3** Tests verdes.
+- [x] **T1.4** Commit: `feat(core): openai_compat helper for multi-family model support`
 
-### Migración 015
-- [ ] **T1.5** Crear `orchestrator_service/alembic/versions/015_ai_engine_mode_column.py` con upgrade (`ADD COLUMN ai_engine_mode TEXT NOT NULL DEFAULT 'solo' CHECK IN ('solo','multi')`) y downgrade.
+### Migración 031
+- [x] **T1.5** Crear `orchestrator_service/alembic/versions/031_ai_engine_mode_column.py` con upgrade (`ADD COLUMN ai_engine_mode TEXT NOT NULL DEFAULT 'solo' CHECK IN ('solo','multi')`) y downgrade.
 - [ ] **T1.6** Aplicar en staging: `alembic upgrade head`, verificar que la columna existe con default `'solo'` en todos los tenants.
 - [ ] **T1.7** Probar downgrade en staging.
-- [ ] **T1.8** Modificar `orchestrator_service/models.py` Tenant (líneas 159-187) agregando `ai_engine_mode: Mapped[str]`.
-- [ ] **T1.9** Commit: `feat(db): migration 015 — tenants.ai_engine_mode column`
+- [x] **T1.8** Modificar `orchestrator_service/models.py` Tenant (líneas 159-187) agregando `ai_engine_mode: Mapped[str]`.
+- [x] **T1.9** Commit: `feat(db): migration 031 — tenants.ai_engine_mode column`
 
-### Migración 016
-- [ ] **T1.10** Crear `orchestrator_service/alembic/versions/016_multi_agent_tables.py` con `CREATE TABLE patient_context_snapshots` + `CREATE TABLE agent_turn_log` + índices. Downgrade drops ambas.
+### Migración 032
+- [x] **T1.10** Crear `orchestrator_service/alembic/versions/032_multi_agent_tables.py` con `CREATE TABLE patient_context_snapshots` + `CREATE TABLE agent_turn_log` + índices. Downgrade drops ambas.
 - [ ] **T1.11** Aplicar en staging, verificar tablas e índices con `\d` en psql.
 - [ ] **T1.12** Probar downgrade en staging.
-- [ ] **T1.13** Modificar `models.py` agregando ORM classes `PatientContextSnapshot` y `AgentTurnLog`.
-- [ ] **T1.14** Commit: `feat(db): migration 016 — patient_context_snapshots + agent_turn_log`
+- [x] **T1.13** Modificar `models.py` agregando ORM classes `PatientContextSnapshot` y `AgentTurnLog`.
+- [x] **T1.14** Commit: `feat(db): migration 032 — patient_context_snapshots + agent_turn_log`
 
 **Go/no-go F1**: migraciones aplicadas y reversibles en staging, zero impact en TORA-solo.
 
@@ -56,14 +56,14 @@
 
 ## F2 — engine_router skeleton (Día 4-5)
 
-- [ ] **T2.1** Crear `orchestrator_service/services/engine_router.py` con:
+- [x] **T2.1** Crear `orchestrator_service/services/engine_router.py` con:
   - `Engine` Protocol (`process_turn`, `probe`).
   - `SoloEngine` (wrappea `get_agent_executable_for_tenant` actual).
   - `MultiAgentEngine` stub (`process_turn` → `raise NotImplementedError`, `probe` → check módulo importable).
   - `TurnContext`, `TurnResult`, `ProbeResult` dataclasses.
-- [ ] **T2.2** Implementar cache en memoria con TTL 60s (`dict[uuid, tuple[str, float]]`) + función `_load_mode(tenant_id)` que lee DB.
-- [ ] **T2.3** Implementar circuit breaker (contador en memoria, threshold 3, window 60s, recovery 300s).
-- [ ] **T2.4** Suscripción al canal Redis `engine_router_invalidate` para invalidación cross-process.
+- [x] **T2.2** Implementar cache en memoria con TTL 60s (`dict[uuid, tuple[str, float]]`) + función `_load_mode(tenant_id)` que lee DB.
+- [x] **T2.3** Implementar circuit breaker (contador en memoria, threshold 3, window 60s, recovery 300s).
+- [x] **T2.4** Suscripción al canal Redis `engine_router_invalidate` para invalidación cross-process.
 - [ ] **T2.5** Crear `tests/test_engine_router.py` con 6 casos:
   1. Dispatch solo con default.
   2. Dispatch multi cuando `tenants.ai_engine_mode='multi'` (con stub raise).
@@ -79,7 +79,7 @@
 - [ ] **T2.7** Tests verdes.
 - [ ] **T2.8** Modificar `orchestrator_service/services/buffer_task.py:998` — reemplazar llamada directa a `get_agent_executable_for_tenant` por `engine_router.get_engine_for_tenant(tenant_id).process_turn(ctx)`.
 - [ ] **T2.9** Smoke manual en staging: enviar mensaje de prueba, verificar que TORA-solo responde idéntico al comportamiento pre-F2.
-- [ ] **T2.10** Commit: `feat(router): engine_router with SoloEngine + MultiAgentEngine stub + circuit breaker`
+- [x] **T2.10** Commit: `feat(router): engine_router with SoloEngine + MultiAgentEngine stub + circuit breaker`
 
 **Go/no-go F2**: TORA-solo sigue funcionando idéntico, router en su lugar con stub de multi.
 
@@ -158,18 +158,18 @@
 
 ## F4 — Health check endpoint (Día 13)
 
-- [ ] **T4.1** Crear `orchestrator_service/routes/ai_engine_health.py` con endpoint `GET /admin/ai-engine/health` (requiere JWT CEO).
-- [ ] **T4.2** Implementar `_probe_solo(timeout=10)`: instancia `AgentExecutor` con prompt minimal `"Responde pong"` y tools vacías.
-- [ ] **T4.3** Implementar `_probe_multi(timeout=15)`: instancia `StateGraph` con `AgentState` sintético y tools mockeadas (no DB).
-- [ ] **T4.4** Probes en paralelo con `asyncio.gather(..., return_exceptions=True)`.
+- [x] **T4.1** Crear `orchestrator_service/routes/ai_engine_health.py` con endpoint `GET /admin/ai-engine/health` (requiere JWT CEO).
+- [x] **T4.2** Implementar `_probe_solo(timeout=10)`: instancia `AgentExecutor` con prompt minimal `"Responde pong"` y tools vacías.
+- [x] **T4.3** Implementar `_probe_multi(timeout=15)`: instancia `StateGraph` con `AgentState` sintético y tools mockeadas (no DB).
+- [x] **T4.4** Probes en paralelo con `asyncio.gather(..., return_exceptions=True)`.
 - [ ] **T4.5** Crear `tests/test_ai_engine_health.py` con 4 casos:
   1. Ambos OK.
   2. solo OK, multi fail.
   3. Ambos fail.
   4. Timeout de uno.
 - [ ] **T4.6** Tests verdes.
-- [ ] **T4.7** Registrar el router en `orchestrator_service/main.py`.
-- [ ] **T4.8** Commit: `feat(router): /admin/ai-engine/health endpoint with parallel sanity probes`
+- [x] **T4.7** Registrar el router en `orchestrator_service/main.py`.
+- [x] **T4.8** Commit: `feat(router): /admin/ai-engine/health endpoint with parallel sanity probes`
 
 **Go/no-go F4**: endpoint disponible, retorna estado de ambos motores correctamente.
 
@@ -178,10 +178,10 @@
 ## F5 — Frontend selector + PATCH extension (Día 14)
 
 ### F5a — Backend PATCH extension
-- [ ] **T5.1** Modificar `orchestrator_service/admin_routes.py:3392` `ClinicSettingsUpdate` agregando `ai_engine_mode: Optional[Literal['solo','multi']] = None`.
-- [ ] **T5.2** En el handler, si `ai_engine_mode` presente, correr `_probe_solo` o `_probe_multi` según target ANTES del UPDATE.
-- [ ] **T5.3** Si probe falla → `raise HTTPException(422, detail=...)`.
-- [ ] **T5.4** Si probe OK → `UPDATE tenants SET ai_engine_mode=? WHERE id=?` + `engine_router.invalidate_cache(tenant_id)` + publish a canal Redis `engine_router_invalidate`.
+- [x] **T5.1** Modificar `orchestrator_service/admin_routes.py:3392` `ClinicSettingsUpdate` agregando `ai_engine_mode: Optional[Literal['solo','multi']] = None`.
+- [x] **T5.2** En el handler, si `ai_engine_mode` presente, correr `_probe_solo` o `_probe_multi` según target ANTES del UPDATE.
+- [x] **T5.3** Si probe falla → `raise HTTPException(422, detail=...)`.
+- [x] **T5.4** Si probe OK → `UPDATE tenants SET ai_engine_mode=? WHERE id=?` + `engine_router.invalidate_cache(tenant_id)` + publish a canal Redis `engine_router_invalidate`.
 - [ ] **T5.5** Crear `tests/test_settings_clinic_engine.py` con 6 casos:
   1. PATCH a solo sin cambios: no-op.
   2. PATCH a multi con probe OK: update aplicado.
@@ -190,16 +190,16 @@
   5. Non-CEO: 403.
   6. Multi-tenant isolation: PATCH de tenant A no afecta tenant B.
 - [ ] **T5.6** Tests verdes.
-- [ ] **T5.7** Commit: `feat(api): PATCH /admin/settings/clinic accepts ai_engine_mode with inline probe`
+- [x] **T5.7** Commit: `feat(api): PATCH /admin/settings/clinic accepts ai_engine_mode with inline probe`
 
 ### F5b — Frontend selector
-- [ ] **T5.8** Modificar `frontend_react/src/views/ConfigView.tsx` tab General — añadir `<select>` para `ai_engine_mode` dentro del bloque existente `{user?.role === 'ceo' && (...)}` (línea 898).
-- [ ] **T5.9** Handler `onChange`: llama a `GET /admin/ai-engine/health`, abre modal con resultado.
-- [ ] **T5.10** Modal muestra estado de ambos motores (✓/✗ + latencia + error), botón "Confirmar" disabled si target fail.
-- [ ] **T5.11** Al confirmar: `PATCH /admin/settings/clinic` con `{ ai_engine_mode: target }`, toast de éxito/error, reload settings.
-- [ ] **T5.12** Añadir claves i18n en `locales/es.json`, `locales/en.json`, `locales/fr.json` (namespace `config.aiEngine`).
+- [x] **T5.8** Modificar `frontend_react/src/views/ConfigView.tsx` tab General — añadir `<select>` para `ai_engine_mode` dentro del bloque existente `{user?.role === 'ceo' && (...)}` (línea 898).
+- [x] **T5.9** Handler `onChange`: llama a `GET /admin/ai-engine/health`, abre modal con resultado.
+- [x] **T5.10** Modal muestra estado de ambos motores (✓/✗ + latencia + error), botón "Confirmar" disabled si target fail.
+- [x] **T5.11** Al confirmar: `PATCH /admin/settings/clinic` con `{ ai_engine_mode: target }`, toast de éxito/error, reload settings.
+- [x] **T5.12** Añadir claves i18n en `locales/es.json`, `locales/en.json`, `locales/fr.json` (namespace `config.aiEngine`).
 - [ ] **T5.13** Smoke manual: abrir Settings como CEO, ver selector, ejecutar health check, confirmar switch (dado que MultiAgentEngine.probe aún debería funcionar porque el grafo existe; `process_turn` stub no afecta el probe).
-- [ ] **T5.14** Commit: `feat(ui): ai_engine_mode selector in ConfigView with health check modal`
+- [x] **T5.14** Commit: `feat(ui): ai_engine_mode selector in ConfigView with health check modal`
 
 **Go/no-go F5**: selector funcional para CEO, gate por rol correcto, health check responde.
 

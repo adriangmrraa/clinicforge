@@ -185,6 +185,11 @@ class Tenant(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
 
+    # Dual-engine: 'solo' = TORA monolithic, 'multi' = LangGraph multi-agent
+    ai_engine_mode = Column(
+        String(10), nullable=False, default="solo", server_default="solo"
+    )
+
 
 class TenantInsuranceProvider(Base):
     __tablename__ = "tenant_insurance_providers"
@@ -1600,4 +1605,61 @@ class NovaMemory(Base):
         Index("idx_nova_memories_tenant", "tenant_id"),
         Index("idx_nova_memories_type", "tenant_id", "type"),
         Index("idx_nova_memories_topic_key", "tenant_id", "topic_key"),
+    )
+
+
+# =============================================================================
+# MULTI-AGENT SYSTEM (migration 032)
+# =============================================================================
+
+
+class PatientContextSnapshot(Base):
+    """LangGraph checkpoint storage for multi-agent conversations."""
+
+    __tablename__ = "patient_context_snapshots"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    tenant_id = Column(
+        Integer, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    phone_number = Column(Text, nullable=False)
+    thread_id = Column(Text, nullable=False)
+    state = Column(JSONB, nullable=False)
+    active_agent = Column(String(50), nullable=True)
+    hop_count = Column(Integer, default=0)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "phone_number", "thread_id", name="uq_pcs_tenant_phone_thread"
+        ),
+        Index("idx_pcs_tenant_phone", "tenant_id", "phone_number"),
+        Index("idx_pcs_thread", "thread_id"),
+    )
+
+
+class AgentTurnLog(Base):
+    """Audit log for multi-agent system interactions."""
+
+    __tablename__ = "agent_turn_log"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    tenant_id = Column(
+        Integer, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    phone_number = Column(Text, nullable=False)
+    turn_id = Column(Text, nullable=False)
+    agent_name = Column(String(50), nullable=False)
+    tools_called = Column(JSONB, nullable=True)
+    handoff_to = Column(String(50), nullable=True)
+    duration_ms = Column(Integer, nullable=True)
+    model = Column(String(50), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        Index("idx_atl_tenant_phone", "tenant_id", "phone_number"),
+        Index("idx_atl_turn", "turn_id"),
     )

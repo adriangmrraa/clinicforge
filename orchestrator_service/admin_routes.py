@@ -1540,6 +1540,7 @@ async def toggle_human_intervention(
     if payload.activate:
         try:
             from services.tz_resolver import get_tenant_tz
+
             _tz = await get_tenant_tz(payload.tenant_id)
         except Exception:
             _tz = ARG_TZ
@@ -2187,6 +2188,7 @@ async def send_chat_message(
         # tenant tz for consistency with the rest of the booking flow.
         try:
             from services.tz_resolver import get_tenant_tz
+
             _fallback_tz = await get_tenant_tz(payload.tenant_id)
         except Exception:
             _fallback_tz = ARG_TZ
@@ -2728,10 +2730,13 @@ async def update_tenant(
             params.append(None)
         else:
             import re as _re_spt
+
             _paragraphs = _re_spt.split(r"\n\s*\n", str(_raw))
             _clean = []
             for _p in _paragraphs:
-                _flat = " ".join(line.strip() for line in _p.splitlines() if line.strip())
+                _flat = " ".join(
+                    line.strip() for line in _p.splitlines() if line.strip()
+                )
                 _flat = _re_spt.sub(r"[ \t]{2,}", " ", _flat).strip()
                 if _flat:
                     _clean.append(_flat)
@@ -2748,6 +2753,7 @@ async def update_tenant(
     if "country_code" in data and data["country_code"] is not None:
         try:
             from services.tz_resolver import invalidate_tenant_tz_cache
+
             invalidate_tenant_tz_cache(tenant_id)
         except Exception:
             pass
@@ -3146,14 +3152,19 @@ async def create_tenant_faq(
     embedding_status = "skipped"
     embedding_error = None
     try:
-        from services.embedding_service import upsert_faq_embedding, check_pgvector_available
+        from services.embedding_service import (
+            upsert_faq_embedding,
+            check_pgvector_available,
+        )
 
         if await check_pgvector_available():
             ok = await upsert_faq_embedding(tenant_id, new_id, question, answer)
             embedding_status = "ok" if ok else "failed"
             if not ok:
                 embedding_error = "upsert_faq_embedding returned False (check logs)"
-            logger.info(f"📚 FAQ {new_id} created and embedded: status={embedding_status}")
+            logger.info(
+                f"📚 FAQ {new_id} created and embedded: status={embedding_status}"
+            )
         else:
             embedding_status = "no_pgvector"
             logger.warning(f"📚 FAQ {new_id} created but pgvector not available")
@@ -3208,11 +3219,15 @@ async def update_faq(
     embedding_status = "skipped"
     embedding_error = None
     try:
-        from services.embedding_service import upsert_faq_embedding, check_pgvector_available
+        from services.embedding_service import (
+            upsert_faq_embedding,
+            check_pgvector_available,
+        )
 
         if await check_pgvector_available():
             updated_row = await db.pool.fetchrow(
-                "SELECT tenant_id, question, answer FROM clinic_faqs WHERE id = $1", faq_id
+                "SELECT tenant_id, question, answer FROM clinic_faqs WHERE id = $1",
+                faq_id,
             )
             if updated_row:
                 ok = await upsert_faq_embedding(
@@ -3224,7 +3239,9 @@ async def update_faq(
                 embedding_status = "ok" if ok else "failed"
                 if not ok:
                     embedding_error = "upsert_faq_embedding returned False (check logs)"
-                logger.info(f"📚 FAQ {faq_id} updated and re-embedded: status={embedding_status}")
+                logger.info(
+                    f"📚 FAQ {faq_id} updated and re-embedded: status={embedding_status}"
+                )
         else:
             embedding_status = "no_pgvector"
     except Exception as e:
@@ -3262,7 +3279,9 @@ async def delete_faq(
         await delete_faq_embedding(faq_id)
         logger.info(f"📚 FAQ {faq_id} embedding deleted")
     except Exception as e:
-        logger.warning(f"📚 FAQ {faq_id} embedding deletion failed (cascade should handle it): {e}")
+        logger.warning(
+            f"📚 FAQ {faq_id} embedding deletion failed (cascade should handle it): {e}"
+        )
     await db.pool.execute(
         "DELETE FROM clinic_faqs WHERE id = $1 AND tenant_id = ANY($2::int[])",
         faq_id,
@@ -3368,10 +3387,11 @@ async def get_clinic_settings(
             "name": row["clinic_name"] or os.getenv("CLINIC_NAME", "Clínica Dental"),
             "location": os.getenv("CLINIC_LOCATION", ""),
             "hours_start": os.getenv("CLINIC_HOURS_START", "08:00"),
-            "hours_end": os.getenv("CLINIC_HOURS_END", "19:00"),
+            "hours_end": os.getenv("CLINIC_HOURS_END", "19:00),
             "working_days": [0, 1, 2, 3, 4, 5],
             "time_zone": "America/Argentina/Buenos_Aires",
             "ui_language": ui_lang,
+            "ai_engine_mode": row.get("ai_engine_mode") or "solo",
         }
     except Exception as e:
         logger.warning(f"get_clinic_settings failed: {e}")
@@ -3388,11 +3408,13 @@ def _fallback_clinic_settings():
         "working_days": [0, 1, 2, 3, 4, 5],
         "time_zone": "America/Argentina/Buenos_Aires",
         "ui_language": "es",
+        "ai_engine_mode": "solo",
     }
 
 
 class ClinicSettingsUpdate(BaseModel):
     ui_language: Optional[str] = None  # "es" | "en" | "fr"
+    ai_engine_mode: Optional[Literal["solo", "multi"]] = None  # dual-engine system
 
 
 @router.patch(
@@ -3426,6 +3448,60 @@ async def update_clinic_settings(
             raise HTTPException(
                 status_code=500, detail="Error al guardar la configuración."
             )
+
+    # Handle ai_engine_mode (dual-engine system)
+    if payload.ai_engine_mode is not None:
+        if payload.ai_engine_mode not in ("solo", "multi"):
+            raise HTTPException(
+                status_code=422, detail="ai_engine_mode debe ser 'solo' o 'multi'."
+            )
+
+        # If switching to multi, run health check probe first
+        if payload.ai_engine_mode == "multi":
+            try:
+                from services.engine_router import MultiAgentEngine
+
+                probe_result = await MultiAgentEngine().probe()
+                if not probe_result.ok:
+                    raise HTTPException(
+                        status_code=422,
+                        detail=f"Motor multi-agente no disponible: {probe_result.detail}",
+                    )
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.error(f"Multi-agent probe failed: {e}")
+                raise HTTPException(
+                    status_code=422,
+                    detail="No se pudo verificar el motor multi-agente.",
+                )
+
+        # Update the database
+        try:
+            await db.pool.execute(
+                """
+                UPDATE tenants
+                SET ai_engine_mode = $1, updated_at = now()
+                WHERE id = $2
+                """,
+                payload.ai_engine_mode,
+                resolved_tenant_id,
+            )
+
+            # Invalidate cache
+            try:
+                from services.engine_router import invalidate_cache
+
+                invalidate_cache(resolved_tenant_id)
+            except Exception as e:
+                logger.warning(f"Failed to invalidate cache: {e}")
+
+        except Exception as e:
+            logger.error(f"update_clinic_settings ai_engine_mode failed: {e}")
+            raise HTTPException(
+                status_code=500, detail="Error al guardar la configuración del motor."
+            )
+
     return {"status": "ok", "ui_language": getattr(payload, "ui_language", None)}
 
 
@@ -4227,7 +4303,8 @@ async def assign_professional_to_patient(
     # Validate patient belongs to tenant
     patient = await db.pool.fetchrow(
         "SELECT id FROM patients WHERE id = $1 AND tenant_id = $2",
-        patient_id, tenant_id,
+        patient_id,
+        tenant_id,
     )
     if not patient:
         raise HTTPException(status_code=404, detail="Paciente no encontrado")
@@ -4236,14 +4313,19 @@ async def assign_professional_to_patient(
     if professional_id is not None:
         prof = await db.pool.fetchrow(
             "SELECT id, first_name, last_name FROM professionals WHERE id = $1 AND tenant_id = $2 AND is_active = true",
-            professional_id, tenant_id,
+            professional_id,
+            tenant_id,
         )
         if not prof:
-            raise HTTPException(status_code=404, detail="Profesional no encontrado o inactivo")
+            raise HTTPException(
+                status_code=404, detail="Profesional no encontrado o inactivo"
+            )
 
     await db.pool.execute(
         "UPDATE patients SET assigned_professional_id = $1 WHERE id = $2 AND tenant_id = $3",
-        professional_id, patient_id, tenant_id,
+        professional_id,
+        patient_id,
+        tenant_id,
     )
 
     # Return updated info
@@ -4278,21 +4360,28 @@ async def bulk_assign_professional(
     professional_id = body.get("professional_id")  # null to unassign
 
     if not patient_ids or len(patient_ids) > 200:
-        raise HTTPException(status_code=400, detail="Se requieren entre 1 y 200 pacientes")
+        raise HTTPException(
+            status_code=400, detail="Se requieren entre 1 y 200 pacientes"
+        )
 
     # Validate professional belongs to tenant (if assigning)
     if professional_id is not None:
         prof = await db.pool.fetchrow(
             "SELECT id FROM professionals WHERE id = $1 AND tenant_id = $2 AND is_active = true",
-            professional_id, tenant_id,
+            professional_id,
+            tenant_id,
         )
         if not prof:
-            raise HTTPException(status_code=404, detail="Profesional no encontrado o inactivo")
+            raise HTTPException(
+                status_code=404, detail="Profesional no encontrado o inactivo"
+            )
 
     # Bulk update — only patients belonging to this tenant
     result = await db.pool.execute(
         "UPDATE patients SET assigned_professional_id = $1 WHERE id = ANY($2::int[]) AND tenant_id = $3",
-        professional_id, patient_ids, tenant_id,
+        professional_id,
+        patient_ids,
+        tenant_id,
     )
 
     # Parse "UPDATE N" to get count
@@ -5660,7 +5749,9 @@ async def get_appointment_audit_log(
     """
     role = (user_data or {}).get("role") or ""
     if role not in ("ceo", "admin"):
-        raise HTTPException(status_code=403, detail="Solo CEO/admin pueden leer audit logs")
+        raise HTTPException(
+            status_code=403, detail="Solo CEO/admin pueden leer audit logs"
+        )
 
     try:
         apt_uuid = uuid.UUID(appointment_id)
@@ -5919,6 +6010,7 @@ async def create_appointment_manual(
         # Audit log (TIER 3 cap.3 Phase B)
         try:
             from services.audit_log import log_appointment_mutation as _audit
+
             await _audit(
                 pool=db.pool,
                 tenant_id=tenant_id,
@@ -5930,7 +6022,9 @@ async def create_appointment_manual(
                 after_values={
                     "patient_id": pid,
                     "professional_id": apt.professional_id,
-                    "appointment_datetime": apt.appointment_datetime.isoformat() if hasattr(apt.appointment_datetime, "isoformat") else str(apt.appointment_datetime),
+                    "appointment_datetime": apt.appointment_datetime.isoformat()
+                    if hasattr(apt.appointment_datetime, "isoformat")
+                    else str(apt.appointment_datetime),
                     "duration_minutes": duration,
                     "appointment_type": apt.appointment_type,
                     "status": "confirmed",
@@ -5941,7 +6035,9 @@ async def create_appointment_manual(
                 reason=None,
             )
         except Exception as _audit_err:
-            logger.warning(f"audit_log create_appointment_manual failed (non-blocking): {_audit_err}")
+            logger.warning(
+                f"audit_log create_appointment_manual failed (non-blocking): {_audit_err}"
+            )
         # 5. Obtener datos completos del turno para evento y GCal (incluye source y tenant_id para notificación)
         appointment_data = await db.pool.fetchrow(
             """
@@ -6066,6 +6162,7 @@ async def update_appointment_status(
     # Audit log (TIER 3 cap.3 Phase B)
     try:
         from services.audit_log import log_appointment_mutation as _audit
+
         _action = "cancelled" if payload.status == "cancelled" else "status_changed"
         await _audit(
             pool=db.pool,
@@ -6075,12 +6172,16 @@ async def update_appointment_status(
             actor_type="staff_user",
             actor_id=getattr(user_data, "user_id", None),
             before_values={"status": _prev_status} if _prev_status else None,
-            after_values={"status": payload.status, "notes": payload.notes} if payload.notes is not None else {"status": payload.status},
+            after_values={"status": payload.status, "notes": payload.notes}
+            if payload.notes is not None
+            else {"status": payload.status},
             source_channel="web_admin",
             reason=None,
         )
     except Exception as _audit_err:
-        logger.warning(f"audit_log update_appointment_status failed (non-blocking): {_audit_err}")
+        logger.warning(
+            f"audit_log update_appointment_status failed (non-blocking): {_audit_err}"
+        )
 
     # Obtener datos actuales del turno para emitir evento y lógica de feedback
     appointment_data = await db.pool.fetchrow(
@@ -6253,6 +6354,7 @@ async def update_appointment(
         # Audit log (TIER 3 cap.3 Phase B)
         try:
             from services.audit_log import log_appointment_mutation as _audit
+
             _old_dt = old_apt["appointment_datetime"] if old_apt else None
             _date_changed = (
                 _old_dt is not None
@@ -6268,13 +6370,19 @@ async def update_appointment(
                 actor_id=getattr(user_data, "user_id", None),
                 before_values={
                     "professional_id": old_apt["professional_id"] if old_apt else None,
-                    "appointment_datetime": _old_dt.isoformat() if _old_dt and hasattr(_old_dt, "isoformat") else str(_old_dt),
+                    "appointment_datetime": _old_dt.isoformat()
+                    if _old_dt and hasattr(_old_dt, "isoformat")
+                    else str(_old_dt),
                     "status": old_apt["status"] if old_apt else None,
-                } if old_apt else None,
+                }
+                if old_apt
+                else None,
                 after_values={
                     "patient_id": apt.patient_id,
                     "professional_id": apt.professional_id,
-                    "appointment_datetime": apt.appointment_datetime.isoformat() if hasattr(apt.appointment_datetime, "isoformat") else str(apt.appointment_datetime),
+                    "appointment_datetime": apt.appointment_datetime.isoformat()
+                    if hasattr(apt.appointment_datetime, "isoformat")
+                    else str(apt.appointment_datetime),
                     "appointment_type": apt.appointment_type,
                     "notes": apt.notes,
                 },
@@ -6282,7 +6390,9 @@ async def update_appointment(
                 reason=None,
             )
         except Exception as _audit_err:
-            logger.warning(f"audit_log update_appointment failed (non-blocking): {_audit_err}")
+            logger.warning(
+                f"audit_log update_appointment failed (non-blocking): {_audit_err}"
+            )
 
         # 4. Sincronizar con Google Calendar
         try:
@@ -6517,11 +6627,23 @@ async def update_appointment_billing(
     # Audit log (TIER 3 cap.3 Phase B)
     try:
         from services.audit_log import log_appointment_mutation as _audit
+
         _before = {
-            "billing_amount": float(current["billing_amount"]) if current and current.get("billing_amount") is not None else None,
+            "billing_amount": float(current["billing_amount"])
+            if current and current.get("billing_amount") is not None
+            else None,
             "payment_status": current["current_payment_status"] if current else None,
         }
-        _after = {k: data.get(k) for k in ("billing_amount", "billing_installments", "billing_notes", "payment_status") if k in data}
+        _after = {
+            k: data.get(k)
+            for k in (
+                "billing_amount",
+                "billing_installments",
+                "billing_notes",
+                "payment_status",
+            )
+            if k in data
+        }
         await _audit(
             pool=db.pool,
             tenant_id=tenant_id,
@@ -6535,7 +6657,9 @@ async def update_appointment_billing(
             reason=None,
         )
     except Exception as _audit_err:
-        logger.warning(f"audit_log update_appointment_billing failed (non-blocking): {_audit_err}")
+        logger.warning(
+            f"audit_log update_appointment_billing failed (non-blocking): {_audit_err}"
+        )
 
     # Emit update event
     full_data = await db.pool.fetchrow(
@@ -6655,6 +6779,7 @@ async def delete_appointment(
         # preserving the historical record without a dangling reference.
         try:
             from services.audit_log import log_appointment_mutation as _audit
+
             await _audit(
                 pool=db.pool,
                 tenant_id=tenant_id,
@@ -6664,14 +6789,18 @@ async def delete_appointment(
                 actor_id=getattr(user_data, "user_id", None),
                 before_values={
                     "professional_id": apt["professional_id"] if apt else None,
-                    "google_calendar_event_id": apt["google_calendar_event_id"] if apt else None,
+                    "google_calendar_event_id": apt["google_calendar_event_id"]
+                    if apt
+                    else None,
                 },
                 after_values=None,
                 source_channel="web_admin",
                 reason="Hard-deleted from admin UI",
             )
         except Exception as _audit_err:
-            logger.warning(f"audit_log delete_appointment failed (non-blocking): {_audit_err}")
+            logger.warning(
+                f"audit_log delete_appointment failed (non-blocking): {_audit_err}"
+            )
 
         # 3. Borrar de la base de datos — con doble verificación de tenant_id
         await db.pool.execute(
@@ -7136,7 +7265,11 @@ async def get_professional_conversation_insights(
             )
         except Exception as param_err:
             err_str = str(param_err).lower()
-            if "max_completion_tokens" in err_str or "unsupported" in err_str or "unexpected keyword" in err_str:
+            if (
+                "max_completion_tokens" in err_str
+                or "unsupported" in err_str
+                or "unexpected keyword" in err_str
+            ):
                 response = await client.chat.completions.create(
                     model=model_name,
                     messages=messages_payload,
@@ -9822,7 +9955,9 @@ async def list_ycloud_templates(
     # Lee la API key del Vault de credenciales del tenant (Settings → YCloud)
     ycloud_api_key = await get_tenant_credential(tenant_id, "YCLOUD_API_KEY")
     if not ycloud_api_key:
-        logger.warning(f"📋 YCloud templates: API key not configured for tenant {tenant_id}")
+        logger.warning(
+            f"📋 YCloud templates: API key not configured for tenant {tenant_id}"
+        )
         return {
             "templates": [],
             "warning": "YCloud API Key no configurada. Configurala en Configuración → YCloud.",
@@ -9836,14 +9971,22 @@ async def list_ycloud_templates(
                 headers={"X-API-Key": ycloud_api_key},
                 params={"limit": 100},
             )
-        logger.info(f"📋 YCloud templates API: status={response.status_code} for tenant {tenant_id}")
+        logger.info(
+            f"📋 YCloud templates API: status={response.status_code} for tenant {tenant_id}"
+        )
 
         if response.status_code != 200:
-            logger.warning(f"📋 YCloud templates API error {response.status_code}: {response.text[:500]}")
+            logger.warning(
+                f"📋 YCloud templates API error {response.status_code}: {response.text[:500]}"
+            )
             return {
                 "templates": [],
                 "warning": f"YCloud devolvió {response.status_code}: {response.text[:200]}",
-                "diagnostic": {"step": "ycloud_api", "status_code": response.status_code, "body": response.text[:500]},
+                "diagnostic": {
+                    "step": "ycloud_api",
+                    "status_code": response.status_code,
+                    "body": response.text[:500],
+                },
             }
 
         data = response.json()
@@ -9871,14 +10014,21 @@ async def list_ycloud_templates(
         # Meta/YCloud uses uppercase "APPROVED" but we defensively accept variants
         accepted_statuses = {"approved", "active", "enabled"}
         approved = [
-            t for t in templates
+            t
+            for t in templates
             if str(t.get("status", "")).strip().lower() in accepted_statuses
         ]
 
-        logger.info(f"📋 YCloud templates: {len(approved)}/{len(templates)} approved for tenant {tenant_id}")
+        logger.info(
+            f"📋 YCloud templates: {len(approved)}/{len(templates)} approved for tenant {tenant_id}"
+        )
 
         # Diagnostic info if filter excluded everything
-        diagnostic = {"step": "ok", "raw_count": len(templates), "approved_count": len(approved)}
+        diagnostic = {
+            "step": "ok",
+            "raw_count": len(templates),
+            "approved_count": len(approved),
+        }
         if templates and not approved:
             unique_statuses = list({str(t.get("status", "")) for t in templates})
             diagnostic["unmatched_statuses"] = unique_statuses
@@ -9887,7 +10037,11 @@ async def list_ycloud_templates(
                 f"Expected one of: {accepted_statuses}"
             )
 
-        result = {"templates": approved, "total": len(approved), "diagnostic": diagnostic}
+        result = {
+            "templates": approved,
+            "total": len(approved),
+            "diagnostic": diagnostic,
+        }
 
         # If we got templates from YCloud but none approved, give a helpful warning
         if templates and not approved:
@@ -10206,7 +10360,11 @@ async def get_patient_billing_summary(
         patient_id,
         tenant_id,
     )
-    patient_email = patient_email_row["email"] if patient_email_row and patient_email_row["email"] else None
+    patient_email = (
+        patient_email_row["email"]
+        if patient_email_row and patient_email_row["email"]
+        else None
+    )
 
     return {
         "appointments": appointments,
@@ -10224,7 +10382,9 @@ async def get_patient_billing_summary(
 class GeneratePlanFromAppointmentsBody(BaseModel):
     name: Optional[str] = None
     professional_id: Optional[int] = None
-    treatment_codes: Optional[List[str]] = None  # Filter: only include these treatment types
+    treatment_codes: Optional[List[str]] = (
+        None  # Filter: only include these treatment types
+    )
 
 
 @router.post(
@@ -10537,7 +10697,9 @@ async def sync_appointments_to_plan(
     if not plan:
         raise HTTPException(status_code=404, detail="Plan no encontrado")
     if plan["status"] in ("cancelled", "completed"):
-        raise HTTPException(status_code=422, detail="No se puede sincronizar un plan finalizado")
+        raise HTTPException(
+            status_code=422, detail="No se puede sincronizar un plan finalizado"
+        )
 
     patient_id = plan["patient_id"]
 
@@ -10566,7 +10728,10 @@ async def sync_appointments_to_plan(
     )
 
     if not rows:
-        return {"status": "no_changes", "message": "Todos los turnos ya están vinculados al presupuesto"}
+        return {
+            "status": "no_changes",
+            "message": "Todos los turnos ya están vinculados al presupuesto",
+        }
 
     # 3. Parse appointments
     appointments = []
@@ -10577,15 +10742,19 @@ async def sync_appointments_to_plan(
                 receipt = json.loads(receipt)
             except Exception:
                 receipt = None
-        appointments.append({
-            "id": str(row["appointment_id"]),
-            "treatment_code": row["treatment_code"] or row["appointment_type"] or "sin_tipo",
-            "treatment_name": row["treatment_name"],
-            "base_price": float(row["base_price"]) if row["base_price"] else 0.0,
-            "billing_amount": float(row["billing_amount"] or 0),
-            "payment_status": row["payment_status"] or "pending",
-            "payment_receipt": receipt,
-        })
+        appointments.append(
+            {
+                "id": str(row["appointment_id"]),
+                "treatment_code": row["treatment_code"]
+                or row["appointment_type"]
+                or "sin_tipo",
+                "treatment_name": row["treatment_name"],
+                "base_price": float(row["base_price"]) if row["base_price"] else 0.0,
+                "billing_amount": float(row["billing_amount"] or 0),
+                "payment_status": row["payment_status"] or "pending",
+                "payment_receipt": receipt,
+            }
+        )
 
     # 4. Group by treatment_code
     groups_map: Dict[str, Dict] = {}
@@ -10629,7 +10798,11 @@ async def sync_appointments_to_plan(
                     # Create new item
                     max_sort += 1
                     item_id = uuid.uuid4()
-                    estimated_price = group["total_billed"] if group["total_billed"] > 0 else group["base_price"]
+                    estimated_price = (
+                        group["total_billed"]
+                        if group["total_billed"] > 0
+                        else group["base_price"]
+                    )
                     await conn.execute(
                         """
                         INSERT INTO treatment_plan_items
@@ -10675,8 +10848,14 @@ async def sync_appointments_to_plan(
                     if existing_payment:
                         continue
 
-                    amount_detected = receipt.get("amount_detected") or receipt.get("amount")
-                    payment_amount = float(amount_detected) if amount_detected else apt["billing_amount"]
+                    amount_detected = receipt.get("amount_detected") or receipt.get(
+                        "amount"
+                    )
+                    payment_amount = (
+                        float(amount_detected)
+                        if amount_detected
+                        else apt["billing_amount"]
+                    )
                     if payment_amount <= 0:
                         continue
 
@@ -10698,7 +10877,9 @@ async def sync_appointments_to_plan(
                     payments_migrated += 1
 
             # Recalculate estimated_total
-            new_total = await recalculate_plan_estimated_total(conn, plan_uuid, tenant_id)
+            new_total = await recalculate_plan_estimated_total(
+                conn, plan_uuid, tenant_id
+            )
             await conn.execute(
                 "UPDATE treatment_plans SET estimated_total=$1, updated_at=NOW() WHERE id=$2",
                 new_total,
@@ -13527,6 +13708,7 @@ async def send_liquidation_email_endpoint(
 # T1.3 — Telegram Authorized Users CRUD
 # ---------------------------------------------------------------------------
 
+
 class TelegramAuthorizedUserCreate(BaseModel):
     display_name: str
     telegram_chat_id: str
@@ -13572,8 +13754,12 @@ async def list_telegram_authorized_users(
                 "user_role": row["user_role"],
                 "is_active": row["is_active"],
                 "telegram_chat_id": _mask_chat_id(decrypted),
-                "created_at": row["created_at"].isoformat() if row["created_at"] else None,
-                "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None,
+                "created_at": row["created_at"].isoformat()
+                if row["created_at"]
+                else None,
+                "updated_at": row["updated_at"].isoformat()
+                if row["updated_at"]
+                else None,
             }
         )
 
@@ -13653,12 +13839,12 @@ async def update_telegram_authorized_user(
 
     set_clauses.append(f"updated_at = NOW()")
 
-    values.append(user_id)           # $N   → WHERE id
+    values.append(user_id)  # $N   → WHERE id
     values.append(resolved_tenant_id)  # $N+1 → WHERE tenant_id
 
     query = f"""
         UPDATE telegram_authorized_users
-        SET {', '.join(set_clauses)}
+        SET {", ".join(set_clauses)}
         WHERE id = ${param_idx} AND tenant_id = ${param_idx + 1}
         RETURNING id, display_name, user_role, is_active, telegram_chat_id, created_at, updated_at
     """
@@ -13712,6 +13898,7 @@ async def delete_telegram_authorized_user(
 # ---------------------------------------------------------------------------
 # T1.4 — Telegram Integration Config
 # ---------------------------------------------------------------------------
+
 
 class TelegramConfigCreate(BaseModel):
     bot_token: str
@@ -13848,6 +14035,7 @@ async def save_telegram_config(
     # 6. Reload bot polling in background
     try:
         from services.telegram_bot import reload_telegram_bot
+
         asyncio.ensure_future(reload_telegram_bot(resolved_tenant_id))
     except Exception as e:
         logger.warning(f"[Telegram] Bot reload after config: {e}")
@@ -13897,6 +14085,7 @@ async def delete_telegram_config(
     # Stop bot polling
     try:
         from services.telegram_bot import reload_telegram_bot
+
         asyncio.ensure_future(reload_telegram_bot(resolved_tenant_id))
     except Exception:
         pass

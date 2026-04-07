@@ -7747,6 +7747,15 @@ try:
 
     app.include_router(jobs_router)
     logger.info("✅ Rutas de jobs programados incluidas")
+
+# AI Engine Health Check (dual-engine system)
+try:
+    from routes.ai_engine_health import router as ai_engine_router
+
+    app.include_router(ai_engine_router)
+    logger.info("✅ AI Engine health check router registered")
+except ImportError as e:
+    logger.warning(f"AI Engine router not available: {e}")
 except ImportError as e:
     logger.warning(f"⚠️ No se pudieron incluir rutas de jobs: {e}")
 

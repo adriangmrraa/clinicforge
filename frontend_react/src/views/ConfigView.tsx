@@ -16,6 +16,7 @@ type UiLanguage = 'es' | 'en' | 'fr';
 interface ClinicSettings {
     name: string;
     ui_language: UiLanguage;
+    ai_engine_mode?: 'solo' | 'multi';
 }
 
 const LANGUAGE_OPTIONS: { value: UiLanguage; labelKey: string }[] = [
@@ -95,6 +96,12 @@ export default function ConfigView() {
     const [uploadingLogo, setUploadingLogo] = useState(false);
     const [logoError, setLogoError] = useState<string | null>(null);
     const [currentLogoUrl, setCurrentLogoUrl] = useState<string | null>(null);
+
+    // AI Engine Mode State
+    const [engineModalOpen, setEngineModalOpen] = useState(false);
+    const [engineTargetMode, setEngineTargetMode] = useState<'solo' | 'multi' | null>(null);
+    const [engineHealthChecking, setEngineHealthChecking] = useState(false);
+    const [engineHealthResult, setEngineHealthResult] = useState<{ solo: any; multi: any } | null>(null);
 
     useEffect(() => {
         loadGeneralSettings();
@@ -258,6 +265,51 @@ export default function ConfigView() {
         }
     };
 
+    // AI Engine Mode handlers
+    const handleEngineModeSelect = async (mode: 'solo' | 'multi') => {
+        setEngineTargetMode(mode);
+        setEngineHealthChecking(true);
+        setEngineHealthResult(null);
+
+        try {
+            const response = await api.get('/admin/ai-engine/health');
+            setEngineHealthResult(response.data);
+            setEngineModalOpen(true);
+        } catch (err: any) {
+            setError(t('config.engine_health_check_error'));
+        } finally {
+            setEngineHealthChecking(false);
+        }
+    };
+
+    const handleEngineModeConfirm = async () => {
+        if (!engineTargetMode || !engineHealthResult) return;
+
+        const targetEngine = engineTargetMode === 'multi' ? 'multi' : 'solo';
+        const targetStatus = engineTargetMode === 'multi' 
+            ? engineHealthResult.multi?.ok 
+            : engineHealthResult.solo?.ok;
+
+        // Solo can always be enabled; multi needs health check pass
+        if (engineTargetMode === 'multi' && !targetStatus) {
+            setError(t('config.engine_target_unavailable'));
+            return;
+        }
+
+        setSaving(true);
+        try {
+            await api.patch('/admin/settings/clinic', { ai_engine_mode: engineTargetMode });
+            setSettings(prev => (prev ? { ...prev, ai_engine_mode: engineTargetMode } : null));
+            showSuccess(t('config.engine_change_success'));
+            setEngineModalOpen(false);
+            setEngineTargetMode(null);
+        } catch (err: any) {
+            setError(err.response?.data?.detail || t('config.engine_change_error'));
+        } finally {
+            setSaving(false);
+        }
+    };
+
     const handleSaveIntegration = async () => {
         setSaving(true);
         setError(null);
@@ -361,6 +413,31 @@ export default function ConfigView() {
                     </p>
                 )}
             </div>
+
+            {/* AI Engine Mode Selector - CEO only */}
+            {user?.role === 'ceo' && (
+                <div className="bg-white/[0.03] border border-white/[0.06] rounded-2xl p-4 sm:p-6">
+                    <div className="flex items-center gap-2 mb-4">
+                        <Zap size={20} className="text-white/60" />
+                        <h2 className="text-lg font-semibold text-white">{t('config.ai_engine_label')}</h2>
+                    </div>
+                    <p className="text-sm text-white/40 mb-4">{t('config.ai_engine_helper')}</p>
+                    <select
+                        value={settings?.ai_engine_mode || 'solo'}
+                        onChange={(e) => handleEngineModeSelect(e.target.value as 'solo' | 'multi')}
+                        disabled={saving || engineHealthChecking}
+                        className="w-full sm:w-auto px-4 py-2.5 bg-white/[0.04] border border-white/[0.08] rounded-xl text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                    >
+                        <option value="solo">{t('config.engine_solo')}</option>
+                        <option value="multi">{t('config.engine_multi')}</option>
+                    </select>
+                    {engineHealthChecking && (
+                        <p className="text-xs text-white/40 mt-2 flex items-center gap-1">
+                            <Loader2 className="w-3 h-3 animate-spin" /> {t('config.engine_health_checking')}
+                        </p>
+                    )}
+                </div>
+            )}
         </div>
     );
 
@@ -1042,6 +1119,59 @@ export default function ConfigView() {
                         <button type="submit" className="px-6 py-2 bg-indigo-600 text-white rounded-xl">{t('common.save')}</button>
                     </div>
                 </form>
+            </Modal>
+
+            {/* AI Engine Mode Confirmation Modal */}
+            <Modal 
+                isOpen={engineModalOpen} 
+                onClose={() => setEngineModalOpen(false)} 
+                title={t('config.engine_confirm_title')}
+            >
+                <div className="space-y-4">
+                    <p className="text-sm text-white/70">
+                        {t('config.engine_confirm_message', { mode: engineTargetMode === 'multi' ? t('config.engine_multi') : t('config.engine_solo') })}
+                    </p>
+
+                    {engineHealthResult && (
+                        <div className="space-y-2 bg-white/[0.03] rounded-lg p-3">
+                            <div className="flex items-center justify-between">
+                                <span className="text-sm text-white/60">TORA-solo:</span>
+                                <span className={`text-sm font-medium ${engineHealthResult.solo?.ok ? 'text-green-400' : 'text-red-400'}`}>
+                                    {engineHealthResult.solo?.ok ? '✓ OK' : '✗ Fail'}
+                                    {engineHealthResult.solo?.latency_ms && ` (${engineHealthResult.solo.latency_ms}ms)`}
+                                </span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                                <span className="text-sm text-white/60">Multi-Agente:</span>
+                                <span className={`text-sm font-medium ${engineHealthResult.multi?.ok ? 'text-green-400' : 'text-red-400'}`}>
+                                    {engineHealthResult.multi?.ok ? '✓ OK' : '✗ Fail'}
+                                    {engineHealthResult.multi?.latency_ms && ` (${engineHealthResult.multi.latency_ms}ms)`}
+                                </span>
+                            </div>
+                            {engineHealthResult.multi?.detail && (
+                                <p className="text-xs text-white/40 mt-2">{engineHealthResult.multi.detail}</p>
+                            )}
+                        </div>
+                    )}
+
+                    <div className="flex justify-end gap-3 pt-4">
+                        <button 
+                            type="button" 
+                            onClick={() => setEngineModalOpen(false)} 
+                            className="px-4 py-2 text-white/70 bg-white/[0.06] rounded-xl"
+                        >
+                            {t('common.cancel')}
+                        </button>
+                        <button 
+                            type="button"
+                            onClick={handleEngineModeConfirm}
+                            disabled={saving || (engineTargetMode === 'multi' && !engineHealthResult?.multi?.ok)}
+                            className="px-6 py-2 bg-indigo-600 text-white rounded-xl disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : t('config.engine_confirm_button')}
+                        </button>
+                    </div>
+                </div>
             </Modal>
         </div>
     );
