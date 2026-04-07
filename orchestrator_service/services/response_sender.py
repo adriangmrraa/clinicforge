@@ -7,6 +7,18 @@ from buffer_manager import BufferManager
 
 logger = logging.getLogger(__name__)
 
+# Patrón interno: [INTERNAL_NOMBRE:valor] — usado por tools como check_availability
+# para pasar metadata al LLM sin que el paciente la vea.
+# NUNCA tocar el output que va de vuelta al LLM (intermediate_steps).
+# Solo stripear en la salida final al canal de mensajería.
+_INTERNAL_MARKER_RE = re.compile(r'\[INTERNAL_[A-Z_]+:[^\]]*\]')
+
+
+def _strip_internal_markers(text: str) -> str:
+    """Elimina marcadores internos [INTERNAL_*:*] del texto saliente al paciente."""
+    return _INTERNAL_MARKER_RE.sub('', text).strip()
+
+
 class ResponseSender:
     """Clase unificada para enviar respuestas al usuario mediante burbujas (Bubble-by-bubble)."""
     
@@ -20,11 +32,14 @@ class ResponseSender:
         """
         if media_urls is None:
             media_urls = []
-            
+
+        # Eliminar marcadores internos antes de enviar al paciente
+        messages_text = _strip_internal_markers(messages_text)
+
         pool = get_pool()
         delay = await BufferManager.get_config(pool, provider, channel, tenant_id, "bubble_delay", 3)
         typing_enabled = await BufferManager.get_config(pool, provider, channel, tenant_id, "typing_indicator", True)
-        
+
         # Fragmentar el texto en burbujas con un splitter mejorado (por párrafos o puntuación larga)
         max_len = await BufferManager.get_config(pool, provider, channel, tenant_id, "max_message_length", 350)
         bot_bubbles = cls._split_into_bubbles(messages_text, max_len)
