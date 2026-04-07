@@ -288,8 +288,10 @@ async def process_buffer_task(
                         assigned_name = f"{assigned_prof['first_name']} {assigned_prof.get('last_name', '') or ''}".strip()
                         identity_lines.append(
                             f"• PROFESIONAL ASIGNADO: Dr/a. {assigned_name} — Este paciente es paciente habitual de este profesional. "
+                            f"PRIORIDAD ALTA por ser paciente propio (independientemente de la complejidad del tratamiento). "
+                            f"Si menciona DOLOR → prioridad inmediata/urgencia. Sin dolor → prioridad media. "
                             f"SIEMPRE ofrecer turnos con este profesional primero. Si no hay disponibilidad, "
-                            f"mencionar que es su profesional habitual pero ofrecer alternativas."
+                            f"mencionar que es su profesional habitual y ofrecer lista de espera."
                         )
                 except Exception:
                     pass
