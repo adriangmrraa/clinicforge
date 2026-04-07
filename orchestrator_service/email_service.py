@@ -340,6 +340,78 @@ class EmailService:
             logger.error(f"❌ Error enviando email de pago: {e}")
             return False
 
+    def send_professional_booking_notification(
+        self,
+        to_email: str,
+        professional_name: str,
+        patient_name: str,
+        patient_phone: str,
+        clinic_name: str,
+        appointment_date: str,
+        appointment_time: str,
+        treatment: str,
+        notes: str = "",
+    ) -> bool:
+        """
+        Notifica al profesional que se le agendó un nuevo turno desde el agente IA.
+        Best-effort: nunca debe romper el flujo de booking si falla.
+        """
+        if not self.smtp_host or not self.smtp_user:
+            logger.warning("⚠️ SMTP no configurado. Saltando notificación al profesional.")
+            return False
+        if not to_email or not to_email.strip():
+            return False
+
+        to_emails = [to_email.strip()]
+        subject = f"🗓️ Nuevo turno agendado — {patient_name} ({appointment_date} {appointment_time})"
+
+        notes_block = ""
+        if notes:
+            notes_block = f"<p style='margin:8px 0;color:#475569;'><strong>Notas:</strong> {notes}</p>"
+
+        html_content = f"""
+        <html>
+          <body style="font-family: -apple-system, Segoe UI, sans-serif; background:#f8fafc; padding:24px;">
+            <div style="max-width:560px; margin:0 auto; background:#ffffff; border-radius:12px; padding:32px; box-shadow:0 1px 3px rgba(0,0,0,0.08);">
+              <h2 style="margin:0 0 16px 0; color:#0f172a;">Nuevo turno agendado</h2>
+              <p style="margin:0 0 16px 0; color:#475569;">Hola {professional_name}, se agendó un nuevo turno para vos desde el asistente IA.</p>
+              <table style="width:100%; border-collapse:collapse; margin:16px 0;">
+                <tr><td style="padding:8px 0; color:#64748b;">Paciente:</td><td style="padding:8px 0; color:#0f172a;"><strong>{patient_name}</strong></td></tr>
+                <tr><td style="padding:8px 0; color:#64748b;">Teléfono:</td><td style="padding:8px 0; color:#0f172a;">{patient_phone or '—'}</td></tr>
+                <tr><td style="padding:8px 0; color:#64748b;">Tratamiento:</td><td style="padding:8px 0; color:#0f172a;">{treatment}</td></tr>
+                <tr><td style="padding:8px 0; color:#64748b;">Fecha:</td><td style="padding:8px 0; color:#0f172a;"><strong>{appointment_date}</strong></td></tr>
+                <tr><td style="padding:8px 0; color:#64748b;">Hora:</td><td style="padding:8px 0; color:#0f172a;"><strong>{appointment_time}</strong></td></tr>
+              </table>
+              {notes_block}
+              <p style="margin:16px 0 0 0; font-size:13px; color:#94a3b8;">— {clinic_name}</p>
+            </div>
+          </body>
+        </html>
+        """
+
+        try:
+            msg = MIMEMultipart("alternative")
+            msg["Subject"] = subject
+            msg["From"] = self.smtp_sender
+            msg["To"] = ", ".join(to_emails)
+            msg.attach(MIMEText(html_content, "html"))
+
+            if self.smtp_port == 465:
+                server = smtplib.SMTP_SSL(self.smtp_host, self.smtp_port)
+            else:
+                server = smtplib.SMTP(self.smtp_host, self.smtp_port)
+                server.starttls()
+
+            server.login(self.smtp_user, self.smtp_pass)
+            server.sendmail(self.smtp_sender, to_emails, msg.as_string())
+            server.quit()
+
+            logger.info(f"📧 Notificación de booking enviada al profesional {to_email}")
+            return True
+        except Exception as e:
+            logger.error(f"❌ Error enviando notificación al profesional: {e}")
+            return False
+
     def send_payment_verification_failed_email(
         self,
         to_email: str,

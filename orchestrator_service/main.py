@@ -1320,36 +1320,58 @@ async def check_availability(
                 tenant_wh_raw = {}
         tenant_wh = tenant_wh_raw if isinstance(tenant_wh_raw, dict) else {}
 
-        # 0. AUTO-ROUTING: si el paciente tiene profesional asignado y no especificó otro,
-        # filtrar a SOLO ese profesional. Pacientes habituales SIEMPRE con su doctora.
+        # 0. PATIENT LOOKUP — combined query for assigned_professional_id + past unpaid debt.
+        #    Single round-trip to keep check_availability fast.
         forced_prof_id: Optional[int] = None
+        unpaid_count: int = 0
+        unpaid_total: float = 0.0
         if not clean_name:
             try:
                 phone_for_lookup = current_customer_phone.get()
                 if phone_for_lookup:
                     phone_digits = re.sub(r"\D", "", phone_for_lookup)
-                    assigned_row = await db.pool.fetchrow(
+                    patient_row = await db.pool.fetchrow(
                         """
-                        SELECT assigned_professional_id
-                        FROM patients
-                        WHERE tenant_id = $1
-                          AND assigned_professional_id IS NOT NULL
-                          AND (REGEXP_REPLACE(phone_number, '[^0-9]', '', 'g') = $2
-                               OR instagram_psid = $3
-                               OR facebook_psid = $3)
+                        SELECT
+                            p.id,
+                            p.assigned_professional_id,
+                            COUNT(a.id) FILTER (
+                                WHERE a.payment_status IN ('pending', 'partial')
+                                  AND a.appointment_datetime < NOW()
+                                  AND a.status IN ('scheduled', 'confirmed', 'completed')
+                            ) AS unpaid_past_apts,
+                            COALESCE(SUM(a.billing_amount) FILTER (
+                                WHERE a.payment_status IN ('pending', 'partial')
+                                  AND a.appointment_datetime < NOW()
+                                  AND a.status IN ('scheduled', 'confirmed', 'completed')
+                            ), 0) AS unpaid_total
+                        FROM patients p
+                        LEFT JOIN appointments a ON a.patient_id = p.id AND a.tenant_id = p.tenant_id
+                        WHERE p.tenant_id = $1
+                          AND (REGEXP_REPLACE(p.phone_number, '[^0-9]', '', 'g') = $2
+                               OR p.instagram_psid = $3
+                               OR p.facebook_psid = $3)
+                        GROUP BY p.id
                         LIMIT 1
                         """,
                         tenant_id,
                         phone_digits,
                         phone_for_lookup,
                     )
-                    if assigned_row and assigned_row["assigned_professional_id"]:
-                        forced_prof_id = int(assigned_row["assigned_professional_id"])
-                        logger.info(
-                            f"📅 check_availability: patient has assigned_professional_id={forced_prof_id} → filtering to that professional"
-                        )
+                    if patient_row:
+                        if patient_row["assigned_professional_id"]:
+                            forced_prof_id = int(patient_row["assigned_professional_id"])
+                            logger.info(
+                                f"📅 check_availability: patient has assigned_professional_id={forced_prof_id} → filtering to that professional"
+                            )
+                        unpaid_count = int(patient_row["unpaid_past_apts"] or 0)
+                        unpaid_total = float(patient_row["unpaid_total"] or 0)
+                        if unpaid_count > 0:
+                            logger.info(
+                                f"💰 check_availability: patient has {unpaid_count} unpaid past appointment(s) totaling ${unpaid_total:.0f} — will inject INTERNAL_DEBT tag"
+                            )
             except Exception as _assign_err:
-                logger.debug(f"assigned_professional_id lookup skipped: {_assign_err}")
+                logger.debug(f"patient lookup (assignment + debt) skipped: {_assign_err}")
 
         # 0b. DERIVATION RULES: if no professional specified and no forced assignment,
         # check if treatment matches a derivation rule. Rules are evaluated in priority order.
@@ -1996,6 +2018,13 @@ async def check_availability(
                 lines.append(f"\n⏱️ Duración: {duration} min")
                 lines.append(f"[INTERNAL_PRICE:{int(avail_price)}]")
 
+            # Debt info — internal tag (TIER 2). Agent must mention pending debt
+            # cordially before confirming the new booking. NEVER blocks the booking.
+            if unpaid_count > 0:
+                lines.append(
+                    f"[INTERNAL_DEBT:count={unpaid_count};total={int(unpaid_total)}]"
+                )
+
             # Sede info grouped at the end (only once if all same)
             sedes = [opt["sede"] for opt in options if opt.get("sede")]
             unique_sedes = list(dict.fromkeys(sedes))
@@ -2394,7 +2423,7 @@ async def book_appointment(
             (professional_name or ""),
             flags=re.IGNORECASE,
         ).strip()
-        p_query = """SELECT p.id, p.first_name, p.last_name, p.google_calendar_id, p.working_hours, p.is_priority_professional
+        p_query = """SELECT p.id, p.first_name, p.last_name, p.email, p.google_calendar_id, p.working_hours, p.is_priority_professional
                      FROM professionals p
                      LEFT JOIN users u ON p.user_id = u.id
                      WHERE p.tenant_id = $1 AND p.is_active = true
@@ -2747,6 +2776,55 @@ async def book_appointment(
             await sio.emit("NEW_APPOINTMENT", safe_data)
         except:
             pass
+
+        # 6b. Notificación email al profesional (TIER 2)
+        # Best-effort: nunca bloquea ni revierte el booking si falla.
+        try:
+            prof_email = (target_prof.get("email") or "").strip()
+            if prof_email:
+                from email_service import email_service as _email_svc
+
+                _treat_display = treatment_reason or treatment_code or "Consulta"
+                _clinic_name = ""
+                try:
+                    _t_info = await db.pool.fetchrow(
+                        "SELECT name FROM tenants WHERE id = $1", tenant_id
+                    )
+                    if _t_info:
+                        _clinic_name = _t_info.get("name") or ""
+                except Exception:
+                    pass
+
+                _prof_full_name = (
+                    f"Dr/a. {target_prof.get('first_name', '')} {target_prof.get('last_name', '') or ''}".strip()
+                )
+                _email_ok = _email_svc.send_professional_booking_notification(
+                    to_email=prof_email,
+                    professional_name=_prof_full_name,
+                    patient_name=patient_label,
+                    patient_phone=phone or "",
+                    clinic_name=_clinic_name,
+                    appointment_date=apt_datetime.strftime("%d/%m/%Y"),
+                    appointment_time=apt_datetime.strftime("%H:%M"),
+                    treatment=_treat_display,
+                    notes="",
+                )
+                if _email_ok:
+                    logger.info(
+                        f"📧 Booking notification sent to {_prof_full_name} <{prof_email}> for apt {apt_id}"
+                    )
+                else:
+                    logger.warning(
+                        f"📧 Booking notification FAILED for {_prof_full_name} <{prof_email}> apt {apt_id}"
+                    )
+            else:
+                logger.info(
+                    f"📧 Skipping professional notification: prof id={target_prof['id']} has no email"
+                )
+        except Exception as _email_err:
+            logger.warning(
+                f"📧 Professional notification email failed (non-blocking): {_email_err}"
+            )
 
         dias = [
             "Lunes",
@@ -6694,6 +6772,7 @@ INSTRUCCIONES DE TRATAMIENTO (POST-AGENDAMIENTO):
 INTELIGENCIA DE PRECIOS Y PAGOS:
 • check_availability y list_services NO muestran precios al paciente. Si el paciente pregunta "cuánto sale" o "precio" → llamá get_service_details que incluye base_price. NUNCA inventes un precio.
 • check_availability incluye [INTERNAL_PRICE:X] — es un dato interno para vos, NO lo muestres al paciente a menos que pregunte.
+• check_availability puede incluir [INTERNAL_DEBT:count=N;total=$X] — significa que el paciente tiene N turnos PASADOS sin pagar. ACCIÓN OBLIGATORIA: avisale cordialmente ANTES de confirmar el nuevo turno (ejemplo: "Antes de confirmar te recuerdo que figurás con un saldo pendiente de $X de turnos anteriores. ¿Querés que coordinemos también esa regularización?"). PROHIBIDO bloquear el agendamiento por esto — siempre permití que el paciente igual reserve el nuevo turno.
 • La tool book_appointment muestra el precio en la confirmación. Usá ese valor.
 • Si el paciente pregunta "aceptan obra social?" o "tienen convenio?" → {insurance_fallback_rule}
 • MEDIOS DE PAGO: Si el paciente pregunta cómo pagar → "Aceptamos efectivo, transferencia y tarjeta. Si preferís transferencia, te paso los datos después de confirmar el turno."
