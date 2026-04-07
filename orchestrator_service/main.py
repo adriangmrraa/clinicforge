@@ -906,7 +906,10 @@ async def _get_slots_for_extra_day(
     """
     # Verificar feriado antes de cualquier cálculo — si es feriado retornar vacío
     from services.holiday_service import is_holiday as check_is_holiday
-    _is_hol, _hol_name, _custom_hours = await check_is_holiday(db.pool, tenant_id, target_date)
+
+    _is_hol, _hol_name, _custom_hours = await check_is_holiday(
+        db.pool, tenant_id, target_date
+    )
     if _is_hol and not _custom_hours:
         return []
 
@@ -970,7 +973,9 @@ async def _get_slots_for_extra_day(
 
     # Construir busy_map (simplificado: solo appointments, sin GCal sync)
     prof_ids = [p["id"] for p in active_professionals]
-    start_day = datetime.combine(target_date, datetime.min.time(), tzinfo=get_active_tz())
+    start_day = datetime.combine(
+        target_date, datetime.min.time(), tzinfo=get_active_tz()
+    )
     end_day = datetime.combine(target_date, datetime.max.time(), tzinfo=get_active_tz())
 
     appointments = await db.pool.fetch(
@@ -1404,7 +1409,9 @@ async def check_availability(
                     )
                     if patient_row:
                         if patient_row["assigned_professional_id"]:
-                            forced_prof_id = int(patient_row["assigned_professional_id"])
+                            forced_prof_id = int(
+                                patient_row["assigned_professional_id"]
+                            )
                             logger.info(
                                 f"📅 check_availability: patient has assigned_professional_id={forced_prof_id} → filtering to that professional"
                             )
@@ -1415,7 +1422,9 @@ async def check_availability(
                                 f"💰 check_availability: patient has {unpaid_count} unpaid past appointment(s) totaling ${unpaid_total:.0f} — will inject INTERNAL_DEBT tag"
                             )
             except Exception as _assign_err:
-                logger.debug(f"patient lookup (assignment + debt) skipped: {_assign_err}")
+                logger.debug(
+                    f"patient lookup (assignment + debt) skipped: {_assign_err}"
+                )
 
         # 0b. DERIVATION RULES: if no professional specified and no forced assignment,
         # check if treatment matches a derivation rule. Rules are evaluated in priority order.
@@ -1437,7 +1446,9 @@ async def check_availability(
                     cat_list = [c.strip().lower() for c in cats.split(",") if c.strip()]
                     if cat_list and any(c in tname_lower for c in cat_list):
                         if rule.get("target_professional_id"):
-                            derivation_filter_prof_id = int(rule["target_professional_id"])
+                            derivation_filter_prof_id = int(
+                                rule["target_professional_id"]
+                            )
                             logger.info(
                                 f"📅 check_availability: derivation rule {rule['id']} matched → forcing prof_id={derivation_filter_prof_id}"
                             )
@@ -1780,8 +1791,12 @@ async def check_availability(
 
         # 2. Ocupación: siempre appointments (tenant_id); bloques solo si provider google
         prof_ids = [p["id"] for p in active_professionals]
-        start_day = datetime.combine(target_date, datetime.min.time(), tzinfo=get_active_tz())
-        end_day = datetime.combine(target_date, datetime.max.time(), tzinfo=get_active_tz())
+        start_day = datetime.combine(
+            target_date, datetime.min.time(), tzinfo=get_active_tz()
+        )
+        end_day = datetime.combine(
+            target_date, datetime.max.time(), tzinfo=get_active_tz()
+        )
 
         appointments = await db.pool.fetch(
             """
@@ -2097,9 +2112,7 @@ async def check_availability(
                 )
             else:
                 no_slots_msg += f" para {date_query} ni en los días cercanos"
-            no_slots_msg += (
-                ". ¿Querés que busque en otra semana?"
-            )
+            no_slots_msg += ". ¿Querés que busque en otra semana?"
             return no_slots_msg
 
     except Exception as e:
@@ -2220,7 +2233,13 @@ async def book_appointment(
                 if h is not None:
                     apt_datetime = datetime.combine(
                         base_date, datetime.min.time()
-                    ).replace(hour=h, minute=m, second=0, microsecond=0, tzinfo=get_active_tz())
+                    ).replace(
+                        hour=h,
+                        minute=m,
+                        second=0,
+                        microsecond=0,
+                        tzinfo=get_active_tz(),
+                    )
                     logger.info(
                         f"📅 BOOK: using interpreted_date={interpreted_date} + extracted time={h:02d}:{m:02d} → {apt_datetime}"
                     )
@@ -2724,21 +2743,30 @@ async def book_appointment(
         # SAFETY: Verify soft-lock is still valid before INSERT (prevents bypass after expiration)
         try:
             from services.relay import get_redis as _get_redis_check
+
             _r_check = _get_redis_check()
             if _r_check:
                 _date_str = apt_datetime.strftime("%Y-%m-%d")
                 _time_str = apt_datetime.strftime("%H:%M")
-                _lock_key = f"slot_lock:{tenant_id}:{target_prof['id']}:{_date_str}:{_time_str}"
+                _lock_key = (
+                    f"slot_lock:{tenant_id}:{target_prof['id']}:{_date_str}:{_time_str}"
+                )
                 _lock_holder = await _r_check.get(_lock_key)
                 if _lock_holder:
-                    _lock_holder_str = _lock_holder.decode() if isinstance(_lock_holder, bytes) else _lock_holder
+                    _lock_holder_str = (
+                        _lock_holder.decode()
+                        if isinstance(_lock_holder, bytes)
+                        else _lock_holder
+                    )
                     if _lock_holder_str and _lock_holder_str != phone:
                         logger.warning(
                             f"❌ Soft-lock conflict: slot reserved by {_lock_holder_str}, requester is {phone}"
                         )
                         return "❌ Ese turno acaba de ser reservado por otro paciente. Volvamos a buscar disponibilidad."
         except Exception as _lock_check_err:
-            logger.warning(f"Soft-lock pre-check failed (non-blocking): {_lock_check_err}")
+            logger.warning(
+                f"Soft-lock pre-check failed (non-blocking): {_lock_check_err}"
+            )
 
         # Wrap patient + appointment in a single transaction (atomicity)
         # The UNIQUE index idx_appointments_no_double_booking will reject duplicates
@@ -2775,6 +2803,7 @@ async def book_appointment(
         # Audit log (TIER 3 cap.3) — best-effort
         try:
             from services.audit_log import log_appointment_mutation as _audit
+
             await _audit(
                 pool=db.pool,
                 tenant_id=tenant_id,
@@ -2849,7 +2878,9 @@ async def book_appointment(
 
         # 6b. Notificación email al profesional (TIER 2)
         # Best-effort: nunca bloquea ni revierte el booking si falla.
-        _patient_label_for_email = f"{first_name or ''} {last_name or ''}".strip() or "Paciente"
+        _patient_label_for_email = (
+            f"{first_name or ''} {last_name or ''}".strip() or "Paciente"
+        )
         try:
             prof_email = (target_prof.get("email") or "").strip()
             if prof_email:
@@ -2866,9 +2897,7 @@ async def book_appointment(
                 except Exception:
                     pass
 
-                _prof_full_name = (
-                    f"Dr/a. {target_prof.get('first_name', '')} {target_prof.get('last_name', '') or ''}".strip()
-                )
+                _prof_full_name = f"Dr/a. {target_prof.get('first_name', '')} {target_prof.get('last_name', '') or ''}".strip()
                 _email_ok = _email_svc.send_professional_booking_notification(
                     to_email=prof_email,
                     professional_name=_prof_full_name,
@@ -3507,6 +3536,7 @@ async def cancel_appointment(date_query: str):
         # 2b. Liberar soft-lock del slot recién cancelado (si existe)
         try:
             from services.relay import get_redis as _get_redis_cancel
+
             _r_c = _get_redis_cancel()
             if _r_c and apt.get("appointment_datetime"):
                 _apt_dt = apt["appointment_datetime"]
@@ -3518,9 +3548,13 @@ async def cancel_appointment(date_query: str):
                 for _lp in [_prof_id, 0]:
                     _lk = f"slot_lock:{tenant_id}:{_lp}:{_date_str}:{_time_str}"
                     await _r_c.delete(_lk)
-                logger.info(f"🔓 Soft-locks released for cancelled appointment {apt['id']}")
+                logger.info(
+                    f"🔓 Soft-locks released for cancelled appointment {apt['id']}"
+                )
         except Exception as _cancel_lock_err:
-            logger.warning(f"Cancel soft-lock cleanup failed (non-blocking): {_cancel_lock_err}")
+            logger.warning(
+                f"Cancel soft-lock cleanup failed (non-blocking): {_cancel_lock_err}"
+            )
 
         # 3. Notificar a la UI (Borrado visual)
         try:
@@ -3535,6 +3569,7 @@ async def cancel_appointment(date_query: str):
         # Audit log (TIER 3 cap.3) — best-effort
         try:
             from services.audit_log import log_appointment_mutation as _audit
+
             await _audit(
                 pool=db.pool,
                 tenant_id=tenant_id,
@@ -3699,6 +3734,7 @@ async def reschedule_appointment(original_date: str, new_date_time: str):
         # Liberar soft-locks del slot ORIGINAL y del NUEVO (post-booking cleanup)
         try:
             from services.relay import get_redis as _get_redis_resched
+
             _r_re = _get_redis_resched()
             if _r_re:
                 old_apt_dt = apt["appointment_datetime"]
@@ -3710,11 +3746,17 @@ async def reschedule_appointment(original_date: str, new_date_time: str):
                 _new_time = new_dt.strftime("%H:%M")
                 _prof_id = apt["professional_id"] or 0
                 for _lp in [_prof_id, 0]:
-                    await _r_re.delete(f"slot_lock:{tenant_id}:{_lp}:{_old_date}:{_old_time}")
-                    await _r_re.delete(f"slot_lock:{tenant_id}:{_lp}:{_new_date}:{_new_time}")
+                    await _r_re.delete(
+                        f"slot_lock:{tenant_id}:{_lp}:{_old_date}:{_old_time}"
+                    )
+                    await _r_re.delete(
+                        f"slot_lock:{tenant_id}:{_lp}:{_new_date}:{_new_time}"
+                    )
                 logger.info(f"🔓 Soft-locks released after reschedule {apt['id']}")
         except Exception as _resched_lock_err:
-            logger.warning(f"Reschedule soft-lock cleanup failed (non-blocking): {_resched_lock_err}")
+            logger.warning(
+                f"Reschedule soft-lock cleanup failed (non-blocking): {_resched_lock_err}"
+            )
 
         # 5. Emitir evento Socket.IO (Actualizar UI)
         try:
@@ -3739,9 +3781,11 @@ async def reschedule_appointment(original_date: str, new_date_time: str):
         # Audit log (TIER 3 cap.3) — best-effort
         try:
             from services.audit_log import log_appointment_mutation as _audit
+
             _old_dt_iso = (
                 apt["appointment_datetime"].isoformat()
-                if apt.get("appointment_datetime") and hasattr(apt["appointment_datetime"], "isoformat")
+                if apt.get("appointment_datetime")
+                and hasattr(apt["appointment_datetime"], "isoformat")
                 else str(apt.get("appointment_datetime"))
             )
             await _audit(
@@ -3818,21 +3862,48 @@ async def list_services(category: str = None, patient_term: str = ""):
     """
     # Internal synonym map: colloquial terms → canonical treatment names
     _SYNONYM_MAP = {
-        "limpieza": "Limpieza", "profilaxis": "Limpieza", "sarro": "Limpieza",
-        "blanqueamiento": "Blanqueamiento", "blanqueo": "Blanqueamiento",
-        "implante": "Implante", "tornillo": "Implante",
-        "consulta": "Consulta", "evaluación": "Consulta", "evaluacion": "Consulta",
-        "revisión": "Consulta", "revision": "Consulta", "control": "Consulta", "chequeo": "Consulta",
-        "dolor": "Urgencia", "emergencia": "Urgencia", "urgente": "Urgencia",
-        "sacar muela": "Extracción", "extraer": "Extracción", "extraccion": "Extracción",
-        "caries": "Caries", "empaste": "Caries", "arreglar": "Caries",
-        "conducto": "Endodoncia", "matar nervio": "Endodoncia",
-        "prótesis": "Prótesis", "protesis": "Prótesis", "puente": "Prótesis",
-        "corona": "Prótesis", "funda": "Prótesis",
-        "cirugía": "Cirugía", "cirugia": "Cirugía", "operación": "Cirugía", "operacion": "Cirugía",
-        "ortodoncia": "Ortodoncia", "brackets": "Ortodoncia",
-        "encías": "Periodoncia", "encias": "Periodoncia", "gingivitis": "Periodoncia",
-        "carillas": "Estética", "diseño sonrisa": "Estética", "diseño de sonrisa": "Estética",
+        "limpieza": "Limpieza",
+        "profilaxis": "Limpieza",
+        "sarro": "Limpieza",
+        "blanqueamiento": "Blanqueamiento",
+        "blanqueo": "Blanqueamiento",
+        "implante": "Implante",
+        "tornillo": "Implante",
+        "consulta": "Consulta",
+        "evaluación": "Consulta",
+        "evaluacion": "Consulta",
+        "revisión": "Consulta",
+        "revision": "Consulta",
+        "control": "Consulta",
+        "chequeo": "Consulta",
+        "dolor": "Urgencia",
+        "emergencia": "Urgencia",
+        "urgente": "Urgencia",
+        "sacar muela": "Extracción",
+        "extraer": "Extracción",
+        "extraccion": "Extracción",
+        "caries": "Caries",
+        "empaste": "Caries",
+        "arreglar": "Caries",
+        "conducto": "Endodoncia",
+        "matar nervio": "Endodoncia",
+        "prótesis": "Prótesis",
+        "protesis": "Prótesis",
+        "puente": "Prótesis",
+        "corona": "Prótesis",
+        "funda": "Prótesis",
+        "cirugía": "Cirugía",
+        "cirugia": "Cirugía",
+        "operación": "Cirugía",
+        "operacion": "Cirugía",
+        "ortodoncia": "Ortodoncia",
+        "brackets": "Ortodoncia",
+        "encías": "Periodoncia",
+        "encias": "Periodoncia",
+        "gingivitis": "Periodoncia",
+        "carillas": "Estética",
+        "diseño sonrisa": "Estética",
+        "diseño de sonrisa": "Estética",
     }
 
     tenant_id = current_tenant_id.get()
@@ -3851,7 +3922,13 @@ async def list_services(category: str = None, patient_term: str = ""):
         if patient_term and rows:
             canonical = _SYNONYM_MAP.get(patient_term.lower().strip())
             if canonical:
-                matched = [r for r in rows if canonical.lower() in (r["name"] or "").lower() or canonical.lower() in (r.get("patient_display_name") or "").lower()]
+                matched = [
+                    r
+                    for r in rows
+                    if canonical.lower() in (r["name"] or "").lower()
+                    or canonical.lower()
+                    in (r.get("patient_display_name") or "").lower()
+                ]
                 if matched:
                     rows = matched
         if not rows:
@@ -4578,7 +4655,11 @@ async def confirm_slot(
             if r:
                 existing_lock = await r.get(lock_key)
                 if existing_lock:
-                    lock_holder = existing_lock.decode() if isinstance(existing_lock, bytes) else existing_lock
+                    lock_holder = (
+                        existing_lock.decode()
+                        if isinstance(existing_lock, bytes)
+                        else existing_lock
+                    )
                     if lock_holder != phone:
                         return f"⚠️ El turno de las {time_str} del {date_str} acaba de ser reservado por otro paciente. Consultemos otra opción."
                 await r.setex(lock_key, 120, phone)
@@ -5158,6 +5239,7 @@ async def verify_payment_receipt(
                 # Also register in treatment_plan_payments if active plan exists
                 try:
                     import uuid as _uuid_mod2
+
                     active_plan = await db.pool.fetchrow(
                         """
                         SELECT tp.id FROM treatment_plans tp
@@ -5520,7 +5602,9 @@ async def get_patient_payment_status():
             phone_digits,
         )
         if plan_row:
-            approved = float(plan_row["approved_total"] or plan_row["estimated_total"] or 0)
+            approved = float(
+                plan_row["approved_total"] or plan_row["estimated_total"] or 0
+            )
             paid = float(plan_row["total_paid"] or 0)
             pending = round(approved - paid, 2)
 
@@ -5528,17 +5612,29 @@ async def get_patient_payment_status():
             budget_cfg = {}
             if plan_row["notes"]:
                 try:
-                    budget_cfg = json.loads(plan_row["notes"]) if isinstance(plan_row["notes"], str) else plan_row["notes"]
+                    budget_cfg = (
+                        json.loads(plan_row["notes"])
+                        if isinstance(plan_row["notes"], str)
+                        else plan_row["notes"]
+                    )
                 except Exception:
                     budget_cfg = {}
 
             installments = int(budget_cfg.get("installments") or 1)
-            per_installment = round(pending / installments, 2) if installments > 0 and pending > 0 else 0
+            per_installment = (
+                round(pending / installments, 2)
+                if installments > 0 and pending > 0
+                else 0
+            )
 
             lines.append(f"PRESUPUESTO: {plan_row['name']} ({plan_row['status']})")
-            lines.append(f"  Total aprobado: ${int(approved)} | Pagado: ${int(paid)} | Pendiente: ${int(pending)}")
+            lines.append(
+                f"  Total aprobado: ${int(approved)} | Pagado: ${int(paid)} | Pendiente: ${int(pending)}"
+            )
             if installments > 1:
-                lines.append(f"  Cuotas restantes: {installments} de ${int(per_installment)}")
+                lines.append(
+                    f"  Cuotas restantes: {installments} de ${int(per_installment)}"
+                )
             conditions = budget_cfg.get("payment_conditions")
             if conditions:
                 lines.append(f"  Condiciones: {conditions}")
@@ -5558,10 +5654,22 @@ async def get_patient_payment_status():
             if plan_payments:
                 lines.append("  Últimos pagos:")
                 for pp in plan_payments:
-                    pdate = pp["payment_date"].strftime("%d/%m/%y") if pp["payment_date"] else "—"
-                    method_map = {"cash": "Efectivo", "transfer": "Transferencia", "card": "Tarjeta"}
-                    method = method_map.get(pp["payment_method"], pp["payment_method"] or "—")
-                    lines.append(f"    {pdate} | ${int(float(pp['amount'] or 0))} | {method} | {pp['notes'] or ''}")
+                    pdate = (
+                        pp["payment_date"].strftime("%d/%m/%y")
+                        if pp["payment_date"]
+                        else "—"
+                    )
+                    method_map = {
+                        "cash": "Efectivo",
+                        "transfer": "Transferencia",
+                        "card": "Tarjeta",
+                    }
+                    method = method_map.get(
+                        pp["payment_method"], pp["payment_method"] or "—"
+                    )
+                    lines.append(
+                        f"    {pdate} | ${int(float(pp['amount'] or 0))} | {method} | {pp['notes'] or ''}"
+                    )
 
         # 2. Appointment-level payment info (señas)
         rows = await db.pool.fetch(
@@ -6211,6 +6319,7 @@ def build_system_prompt(
     professional_name: str = "",
     bot_name: str = "TORA",
     intent_tags: set = None,
+    is_greeting_pending: bool = True,
 ) -> str:
     """
     Construye el system prompt del agente de forma dinámica.
@@ -6225,7 +6334,9 @@ def build_system_prompt(
     bot_name: nombre del bot (por defecto TORA)
     """
     prof_display = professional_name if professional_name else "la profesional"
-    prof_display_full = f"el/la Dr/a. {professional_name}" if professional_name else "nuestro equipo"
+    prof_display_full = (
+        f"el/la Dr/a. {professional_name}" if professional_name else "nuestro equipo"
+    )
 
     lang_instructions = {
         "es": "RESPONDE ÚNICAMENTE EN ESPAÑOL. Todo tu mensaje debe estar en español. Mantené el voseo rioplatense cuando sea natural.",
@@ -6363,10 +6474,17 @@ REGLA ANTI-MARKDOWN (WHATSAPP):
         holidays_section = "\n\n## FERIADOS PRÓXIMOS\n" + "\n".join(hol_lines)
         holidays_section += "\nREGLA: Si feriado CERRADO → informale al paciente y ofrecé el próximo día hábil. Si HORARIO ESPECIAL → ofrecer turnos en ese rango. La tool check_availability ya auto-avanza pasando feriados cerrados y usa el horario especial en feriados con atención."
 
-    # Greeting diferenciado
-    greeting_specialty = specialty_pitch if specialty_pitch else f"{prof_display_full} se especializa en rehabilitación oral con implantes, prótesis y cirugía guiada."
+    # Greeting diferenciado — Bug #8: only inject if greeting pending
+    greeting_specialty = (
+        specialty_pitch
+        if specialty_pitch
+        else f"{prof_display_full} se especializa en rehabilitación oral con implantes, prótesis y cirugía guiada."
+    )
     greeting_rule = ""
-    if patient_status == "new_lead":
+    if not is_greeting_pending:
+        # Patient was already greeted in this session — skip institutional greeting
+        greeting_rule = "\nNOTA: El paciente ya fue saludado en esta sesión. NO repitas el saludo institucional. Respondé directamente a su consulta.\n"
+    elif patient_status == "new_lead":
         greeting_rule = f"""
 GREETING (PRIMERA INTERACCIÓN CON LEAD NUEVO):
 Usá EXACTAMENTE este mensaje de saludo (respetá el emoji):
@@ -6516,7 +6634,9 @@ SI NO HAY PRECIO CONFIGURADO: No pedir seña. Agendar normalmente y pasar direct
 
     # --- CONDITIONAL SECTIONS based on intent_tags ---
     _tags = intent_tags or set()
-    _inject_all = not _tags  # Empty tags = first message or unknown → inject everything (safe default)
+    _inject_all = (
+        not _tags
+    )  # Empty tags = first message or unknown → inject everything (safe default)
 
     # FLUJO IMPLANTES: only when implant keywords detected or unknown intent
     implant_flow_section = ""
@@ -7224,6 +7344,7 @@ async def lifespan(app: FastAPI):
     async def _rag_sync_with_logging():
         try:
             from services.embedding_service import sync_all_tenants_faq_embeddings
+
             count = await sync_all_tenants_faq_embeddings()
             logger.info(f"rag_all_embedding_sync_complete: {count} embeddings created")
         except Exception as e:
@@ -7647,6 +7768,7 @@ async def emit_appointment_event(event_type: str, data: Dict[str, Any]):
     # Mirror to Telegram
     try:
         from services.telegram_notifier import fire_telegram_notification
+
         tenant_id = data.get("tenant_id") if isinstance(data, dict) else None
         fire_telegram_notification(event_type, data, tenant_id)
     except Exception:
@@ -8366,9 +8488,12 @@ if os.getenv("DEBUG", "").lower() in ("true", "1"):
         }
 
 
-def build_nova_system_prompt(clinic_name: str, page: str, user_role: str, tenant_id: int) -> str:
+def build_nova_system_prompt(
+    clinic_name: str, page: str, user_role: str, tenant_id: int
+) -> str:
     """Build the full Nova system prompt. Delegates to services.nova_prompt."""
     from services.nova_prompt import build_nova_system_prompt as _build
+
     return _build(clinic_name, page, user_role, tenant_id)
 
 
@@ -8720,7 +8845,9 @@ async def nova_voice_direct(websocket: WebSocket):
             except Exception:
                 pass
 
-            system_prompt = build_nova_system_prompt(clinic_name, page, user_role, tenant_id)
+            system_prompt = build_nova_system_prompt(
+                clinic_name, page, user_role, tenant_id
+            )
 
             # Inject Engram persistent memories
             try:
@@ -8732,11 +8859,16 @@ async def nova_voice_direct(websocket: WebSocket):
                 if mem_rows:
                     mem_lines = []
                     for m in mem_rows:
-                        date_str = m["created_at"].strftime("%d/%m") if m.get("created_at") else "?"
-                        mem_lines.append(f"• [{m['type']}] {m['title']}: {m['content'][:150]}")
-                    system_prompt += (
-                        "\n\nMEMORIA PERSISTENTE (Engram):\n"
-                        + "\n".join(mem_lines)
+                        date_str = (
+                            m["created_at"].strftime("%d/%m")
+                            if m.get("created_at")
+                            else "?"
+                        )
+                        mem_lines.append(
+                            f"• [{m['type']}] {m['title']}: {m['content'][:150]}"
+                        )
+                    system_prompt += "\n\nMEMORIA PERSISTENTE (Engram):\n" + "\n".join(
+                        mem_lines
                     )
             except Exception as e:
                 logger.warning(f"Failed to load Engram memories for Realtime: {e}")

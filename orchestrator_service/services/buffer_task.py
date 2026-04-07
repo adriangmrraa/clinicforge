@@ -763,6 +763,15 @@ async def process_buffer_task(
         ):
             intent_tags.add("payment")
 
+        # Bug #8: Check greeting state to avoid repeating institutional greeting
+        is_greeting_pending = True
+        try:
+            from services.greeting_state import has_greeted
+
+            is_greeting_pending = not await has_greeted(tenant_id, external_user_id)
+        except Exception:
+            pass  # Conservative fallback: greet if check fails
+
         system_prompt = build_system_prompt(
             clinic_name=clinic_name,
             current_time=current_time_str,
@@ -790,6 +799,7 @@ async def process_buffer_task(
             professional_name=lead_professional_name,
             bot_name="TORA",
             intent_tags=intent_tags,
+            is_greeting_pending=is_greeting_pending,
         )
 
         # Inject RAG context sections if available
@@ -1841,6 +1851,15 @@ async def process_buffer_task(
             messages_text=response_text,
             media_urls=media_urls,
         )
+
+    # Bug #8: Mark greeting as sent after successful response delivery
+    if is_greeting_pending:
+        try:
+            from services.greeting_state import mark_greeted
+
+            await mark_greeted(tenant_id, external_user_id)
+        except Exception:
+            pass  # Non-critical — worst case greeting repeats next message
 
     # --- Spec 14: Socket.IO Notification (Real-time AI Response) ---
     try:
