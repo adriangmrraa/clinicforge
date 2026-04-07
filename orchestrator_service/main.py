@@ -2779,6 +2779,7 @@ async def book_appointment(
 
         # 6b. Notificación email al profesional (TIER 2)
         # Best-effort: nunca bloquea ni revierte el booking si falla.
+        _patient_label_for_email = f"{first_name or ''} {last_name or ''}".strip() or "Paciente"
         try:
             prof_email = (target_prof.get("email") or "").strip()
             if prof_email:
@@ -2801,7 +2802,7 @@ async def book_appointment(
                 _email_ok = _email_svc.send_professional_booking_notification(
                     to_email=prof_email,
                     professional_name=_prof_full_name,
-                    patient_name=patient_label,
+                    patient_name=_patient_label_for_email,
                     patient_phone=phone or "",
                     clinic_name=_clinic_name,
                     appointment_date=apt_datetime.strftime("%d/%m/%Y"),

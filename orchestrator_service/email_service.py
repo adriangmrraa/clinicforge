@@ -1,5 +1,6 @@
 import os
 import smtplib
+import html as _html
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.application import MIMEApplication
@@ -363,27 +364,38 @@ class EmailService:
             return False
 
         to_emails = [to_email.strip()]
+
+        # HTML-escape all interpolated values to prevent injection from patient input
+        e_patient_name = _html.escape(patient_name or "")
+        e_patient_phone = _html.escape(patient_phone or "—")
+        e_professional_name = _html.escape(professional_name or "")
+        e_clinic_name = _html.escape(clinic_name or "")
+        e_treatment = _html.escape(treatment or "")
+        e_appointment_date = _html.escape(appointment_date or "")
+        e_appointment_time = _html.escape(appointment_time or "")
+        e_notes = _html.escape(notes or "")
+
         subject = f"🗓️ Nuevo turno agendado — {patient_name} ({appointment_date} {appointment_time})"
 
         notes_block = ""
-        if notes:
-            notes_block = f"<p style='margin:8px 0;color:#475569;'><strong>Notas:</strong> {notes}</p>"
+        if e_notes:
+            notes_block = f"<p style='margin:8px 0;color:#475569;'><strong>Notas:</strong> {e_notes}</p>"
 
         html_content = f"""
         <html>
           <body style="font-family: -apple-system, Segoe UI, sans-serif; background:#f8fafc; padding:24px;">
             <div style="max-width:560px; margin:0 auto; background:#ffffff; border-radius:12px; padding:32px; box-shadow:0 1px 3px rgba(0,0,0,0.08);">
               <h2 style="margin:0 0 16px 0; color:#0f172a;">Nuevo turno agendado</h2>
-              <p style="margin:0 0 16px 0; color:#475569;">Hola {professional_name}, se agendó un nuevo turno para vos desde el asistente IA.</p>
+              <p style="margin:0 0 16px 0; color:#475569;">Hola {e_professional_name}, se agendó un nuevo turno para vos desde el asistente IA.</p>
               <table style="width:100%; border-collapse:collapse; margin:16px 0;">
-                <tr><td style="padding:8px 0; color:#64748b;">Paciente:</td><td style="padding:8px 0; color:#0f172a;"><strong>{patient_name}</strong></td></tr>
-                <tr><td style="padding:8px 0; color:#64748b;">Teléfono:</td><td style="padding:8px 0; color:#0f172a;">{patient_phone or '—'}</td></tr>
-                <tr><td style="padding:8px 0; color:#64748b;">Tratamiento:</td><td style="padding:8px 0; color:#0f172a;">{treatment}</td></tr>
-                <tr><td style="padding:8px 0; color:#64748b;">Fecha:</td><td style="padding:8px 0; color:#0f172a;"><strong>{appointment_date}</strong></td></tr>
-                <tr><td style="padding:8px 0; color:#64748b;">Hora:</td><td style="padding:8px 0; color:#0f172a;"><strong>{appointment_time}</strong></td></tr>
+                <tr><td style="padding:8px 0; color:#64748b;">Paciente:</td><td style="padding:8px 0; color:#0f172a;"><strong>{e_patient_name}</strong></td></tr>
+                <tr><td style="padding:8px 0; color:#64748b;">Teléfono:</td><td style="padding:8px 0; color:#0f172a;">{e_patient_phone}</td></tr>
+                <tr><td style="padding:8px 0; color:#64748b;">Tratamiento:</td><td style="padding:8px 0; color:#0f172a;">{e_treatment}</td></tr>
+                <tr><td style="padding:8px 0; color:#64748b;">Fecha:</td><td style="padding:8px 0; color:#0f172a;"><strong>{e_appointment_date}</strong></td></tr>
+                <tr><td style="padding:8px 0; color:#64748b;">Hora:</td><td style="padding:8px 0; color:#0f172a;"><strong>{e_appointment_time}</strong></td></tr>
               </table>
               {notes_block}
-              <p style="margin:16px 0 0 0; font-size:13px; color:#94a3b8;">— {clinic_name}</p>
+              <p style="margin:16px 0 0 0; font-size:13px; color:#94a3b8;">— {e_clinic_name}</p>
             </div>
           </body>
         </html>
