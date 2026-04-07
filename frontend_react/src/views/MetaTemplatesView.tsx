@@ -561,6 +561,7 @@ export default function MetaTemplatesView() {
   const [rules, setRules] = useState<AutomationRule[]>([]);
   const [logs, setLogs] = useState<AutomationLog[]>([]);
   const [templates, setTemplates] = useState<YCloudTemplate[]>([]);
+  const [templatesWarning, setTemplatesWarning] = useState<string>('');
   const [stats, setStats] = useState({ sent: 0, delivery_rate: 0, active_rules: 0 });
   // Carga rápida: solo rules bloquea el render inicial
   const [rulesLoading, setRulesLoading] = useState(true);
@@ -610,7 +611,19 @@ export default function MetaTemplatesView() {
     try {
       const { data } = await api.get('/admin/automations/ycloud-templates');
       setTemplates(data.templates || []);
-    } catch { /* silencioso */ }
+      if (data.warning) {
+        setTemplatesWarning(data.warning);
+        // Log diagnostic info to browser console for debugging
+        if (data.diagnostic) {
+          console.warn('[YCloud templates] diagnostic:', data.diagnostic);
+        }
+      } else {
+        setTemplatesWarning('');
+      }
+    } catch (err: any) {
+      console.error('[YCloud templates] fetch error:', err);
+      setTemplatesWarning(err?.response?.data?.warning || err?.message || 'Error al cargar plantillas');
+    }
   }, []);
 
   // Init: reglas primero (rápido), logs y templates en background
@@ -851,7 +864,13 @@ export default function MetaTemplatesView() {
                 <Inbox size={48} style={{ margin: '0 auto' }} />
               </div>
               <p style={{ margin: '0 0 6px', fontSize: '14px', fontWeight: 500, color: 'rgba(255,255,255,0.5)' }}>{t('meta_templates.templates.no_templates')}</p>
-              <p style={{ margin: 0, fontSize: '12px' }}>{t('meta_templates.templates.verify_api_key')}</p>
+              {templatesWarning ? (
+                <p style={{ margin: '12px auto 0', fontSize: '12px', maxWidth: '600px', color: 'rgba(245,158,11,0.9)', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', padding: '10px 14px', borderRadius: '8px', textAlign: 'left', whiteSpace: 'pre-wrap' }}>
+                  ⚠️ {templatesWarning}
+                </p>
+              ) : (
+                <p style={{ margin: 0, fontSize: '12px' }}>{t('meta_templates.templates.verify_api_key')}</p>
+              )}
             </div>
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '14px' }}>

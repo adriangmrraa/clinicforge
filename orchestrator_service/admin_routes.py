@@ -9406,9 +9406,11 @@ async def list_ycloud_templates(
     # Lee la API key del Vault de credenciales del tenant (Settings → YCloud)
     ycloud_api_key = await get_tenant_credential(tenant_id, "YCLOUD_API_KEY")
     if not ycloud_api_key:
+        logger.warning(f"📋 YCloud templates: API key not configured for tenant {tenant_id}")
         return {
             "templates": [],
             "warning": "YCloud API Key no configurada. Configurala en Configuración → YCloud.",
+            "diagnostic": {"step": "credentials", "found": False},
         }
 
     try:
@@ -9418,21 +9420,80 @@ async def list_ycloud_templates(
                 headers={"X-API-Key": ycloud_api_key},
                 params={"limit": 100},
             )
+        logger.info(f"📋 YCloud templates API: status={response.status_code} for tenant {tenant_id}")
+
         if response.status_code != 200:
-            logger.warning(f"YCloud templates API error: {response.status_code}")
+            logger.warning(f"📋 YCloud templates API error {response.status_code}: {response.text[:500]}")
             return {
                 "templates": [],
-                "warning": f"YCloud devolvió {response.status_code}",
+                "warning": f"YCloud devolvió {response.status_code}: {response.text[:200]}",
+                "diagnostic": {"step": "ycloud_api", "status_code": response.status_code, "body": response.text[:500]},
             }
 
         data = response.json()
-        templates = data.get("items", [])
-        # Filtrar solo las aprobadas
-        approved = [t for t in templates if t.get("status") == "APPROVED"]
-        return {"templates": approved, "total": len(approved)}
+
+        # YCloud may return items in different keys depending on API version
+        templates = (
+            data.get("items")
+            or data.get("data")
+            or data.get("results")
+            or (data if isinstance(data, list) else [])
+        )
+
+        # Log raw response for debugging
+        logger.info(
+            f"📋 YCloud raw response: {len(templates)} total templates, "
+            f"keys={list(data.keys()) if isinstance(data, dict) else 'list'}"
+        )
+        if templates:
+            sample_statuses = [t.get("status") for t in templates[:5]]
+            sample_names = [t.get("name") for t in templates[:5]]
+            logger.info(f"📋 Sample template statuses: {sample_statuses}")
+            logger.info(f"📋 Sample template names: {sample_names}")
+
+        # Filter approved templates — case-insensitive, accept multiple status values
+        # Meta/YCloud uses uppercase "APPROVED" but we defensively accept variants
+        accepted_statuses = {"approved", "active", "enabled"}
+        approved = [
+            t for t in templates
+            if str(t.get("status", "")).strip().lower() in accepted_statuses
+        ]
+
+        logger.info(f"📋 YCloud templates: {len(approved)}/{len(templates)} approved for tenant {tenant_id}")
+
+        # Diagnostic info if filter excluded everything
+        diagnostic = {"step": "ok", "raw_count": len(templates), "approved_count": len(approved)}
+        if templates and not approved:
+            unique_statuses = list({str(t.get("status", "")) for t in templates})
+            diagnostic["unmatched_statuses"] = unique_statuses
+            logger.warning(
+                f"📋 YCloud filter matched 0 templates. Found statuses: {unique_statuses}. "
+                f"Expected one of: {accepted_statuses}"
+            )
+
+        result = {"templates": approved, "total": len(approved), "diagnostic": diagnostic}
+
+        # If we got templates from YCloud but none approved, give a helpful warning
+        if templates and not approved:
+            result["warning"] = (
+                f"YCloud devolvió {len(templates)} plantillas pero ninguna está aprobada. "
+                f"Estados encontrados: {', '.join(diagnostic['unmatched_statuses'])}. "
+                "Si las plantillas fueron creadas directamente en Meta, puede que YCloud aún no las haya sincronizado."
+            )
+        elif not templates:
+            result["warning"] = (
+                "YCloud devolvió una lista vacía. Verificá que la API key corresponda al WABA correcto "
+                "y que las plantillas estén creadas/sincronizadas en YCloud (no solo en Meta)."
+            )
+
+        return result
     except Exception as e:
-        logger.error(f"Error obteniendo templates YCloud: {e}")
-        return {"templates": [], "warning": str(e)}
+        logger.error(f"📋 Error obteniendo templates YCloud: {e}", exc_info=True)
+        return {
+            "templates": [],
+            "warning": str(e),
+            "diagnostic": {"step": "exception", "error": str(e)},
+        }
 
 
 # ============================================
