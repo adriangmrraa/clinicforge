@@ -3716,6 +3716,34 @@ async def _agendar_turno(args: Dict, tenant_id: int) -> str:
         args.get("notes"),
     )
 
+    # Audit log (TIER 3 cap.3 Phase B)
+    try:
+        from services.audit_log import log_appointment_mutation as _audit
+        await _audit(
+            pool=db.pool,
+            tenant_id=tenant_id,
+            appointment_id=str(appt_id),
+            action="created",
+            actor_type="staff_user",
+            actor_id="nova_voice",
+            before_values=None,
+            after_values={
+                "patient_id": int(pid),
+                "professional_id": prof_id,
+                "appointment_datetime": appt_dt.isoformat() if hasattr(appt_dt, "isoformat") else str(appt_dt),
+                "duration_minutes": duration,
+                "appointment_type": treatment_type,
+                "status": "scheduled",
+                "source": "nova",
+                "notes": args.get("notes"),
+            },
+            source_channel="nova_voice",
+            reason=None,
+        )
+    except Exception as _audit_err:
+        import logging as _lg
+        _lg.getLogger("nova_tools").warning(f"audit_log nova agendar failed (non-blocking): {_audit_err}")
+
     patient_name = f"{patient['first_name']} {patient['last_name'] or ''}".strip()
     prof_msg = ""
     if prof_id:
@@ -3778,6 +3806,25 @@ async def _cancelar_turno(args: Dict, tenant_id: int) -> str:
         appt_uuid,
         tenant_id,
     )
+
+    # Audit log (TIER 3 cap.3 Phase B)
+    try:
+        from services.audit_log import log_appointment_mutation as _audit
+        await _audit(
+            pool=db.pool,
+            tenant_id=tenant_id,
+            appointment_id=str(appt_uuid),
+            action="cancelled",
+            actor_type="staff_user",
+            actor_id="nova_voice",
+            before_values={"status": row["status"]},
+            after_values={"status": "cancelled", "cancellation_reason": reason, "cancellation_by": "nova"},
+            source_channel="nova_voice",
+            reason=reason,
+        )
+    except Exception as _audit_err:
+        import logging as _lg
+        _lg.getLogger("nova_tools").warning(f"audit_log nova cancelar failed (non-blocking): {_audit_err}")
 
     await _nova_emit(
         "APPOINTMENT_DELETED",
@@ -5158,6 +5205,12 @@ async def _reprogramar_turno(args: Dict, tenant_id: int) -> str:
     except ValueError:
         return "ID de turno invalido."
     new_dt = _parse_datetime_str(f"{new_date} {new_time}")
+    # Capture old datetime for audit log
+    _old = await db.pool.fetchrow(
+        "SELECT appointment_datetime, status FROM appointments WHERE id = $1 AND tenant_id = $2",
+        appt_uuid,
+        tenant_id,
+    )
     result = await db.pool.execute(
         "UPDATE appointments SET appointment_datetime = $1, status = 'scheduled', updated_at = NOW() WHERE id = $2 AND tenant_id = $3",
         new_dt,
@@ -5166,6 +5219,33 @@ async def _reprogramar_turno(args: Dict, tenant_id: int) -> str:
     )
     if result == "UPDATE 0":
         return "No encontre ese turno."
+
+    # Audit log (TIER 3 cap.3 Phase B)
+    try:
+        from services.audit_log import log_appointment_mutation as _audit
+        _old_dt = _old["appointment_datetime"] if _old else None
+        await _audit(
+            pool=db.pool,
+            tenant_id=tenant_id,
+            appointment_id=str(appt_uuid),
+            action="rescheduled",
+            actor_type="staff_user",
+            actor_id="nova_voice",
+            before_values={
+                "appointment_datetime": _old_dt.isoformat() if _old_dt and hasattr(_old_dt, "isoformat") else str(_old_dt),
+                "status": _old["status"] if _old else None,
+            } if _old else None,
+            after_values={
+                "appointment_datetime": new_dt.isoformat() if hasattr(new_dt, "isoformat") else str(new_dt),
+                "status": "scheduled",
+            },
+            source_channel="nova_voice",
+            reason=None,
+        )
+    except Exception as _audit_err:
+        import logging as _lg
+        _lg.getLogger("nova_tools").warning(f"audit_log nova reprogramar failed (non-blocking): {_audit_err}")
+
     await _nova_emit(
         "APPOINTMENT_UPDATED",
         {"appointment_id": str(appt_uuid), "tenant_id": tenant_id},
@@ -5851,6 +5931,12 @@ async def _cambiar_estado_turno(args: Dict, tenant_id: int) -> str:
     allowed = ["completed", "no-show", "in-progress", "confirmed", "cancelled"]
     if status not in allowed:
         return f"Estado '{status}' no valido. Opciones: {', '.join(allowed)}"
+    # Capture previous status for audit log
+    _prev_status = await db.pool.fetchval(
+        "SELECT status FROM appointments WHERE id = $1 AND tenant_id = $2",
+        appt_uuid,
+        tenant_id,
+    )
     if status == "completed":
         result = await db.pool.execute(
             "UPDATE appointments SET status = $1, completed_at = NOW(), updated_at = NOW() WHERE id = $2 AND tenant_id = $3",
@@ -5867,6 +5953,26 @@ async def _cambiar_estado_turno(args: Dict, tenant_id: int) -> str:
         )
     if result == "UPDATE 0":
         return "No encontre ese turno."
+
+    # Audit log (TIER 3 cap.3 Phase B)
+    try:
+        from services.audit_log import log_appointment_mutation as _audit
+        await _audit(
+            pool=db.pool,
+            tenant_id=tenant_id,
+            appointment_id=str(appt_uuid),
+            action="cancelled" if status == "cancelled" else "status_changed",
+            actor_type="staff_user",
+            actor_id="nova_voice",
+            before_values={"status": _prev_status} if _prev_status else None,
+            after_values={"status": status},
+            source_channel="nova_voice",
+            reason=None,
+        )
+    except Exception as _audit_err:
+        import logging as _lg
+        _lg.getLogger("nova_tools").warning(f"audit_log nova cambiar_estado failed (non-blocking): {_audit_err}")
+
     await _nova_emit(
         "APPOINTMENT_UPDATED",
         {"appointment_id": str(appt_uuid), "tenant_id": tenant_id, "status": status},

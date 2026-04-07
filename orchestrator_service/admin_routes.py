@@ -5789,13 +5789,13 @@ async def check_collisions(
 
 @router.post(
     "/appointments",
-    dependencies=[Depends(verify_admin_token)],
     tags=["Turnos"],
     summary="Agendar un turno manualmente",
 )
 async def create_appointment_manual(
     apt: AppointmentCreate,
     request: Request,
+    user_data=Depends(verify_admin_token),
     tenant_id: int = Depends(get_resolved_tenant_id),
 ):
     """Agendar turno manualmente. Aislado por tenant_id (Regla de Oro)."""
@@ -5867,7 +5867,7 @@ async def create_appointment_manual(
         await db.pool.execute(
             """
             INSERT INTO appointments (
-                id, tenant_id, patient_id, professional_id, appointment_datetime, 
+                id, tenant_id, patient_id, professional_id, appointment_datetime,
                 duration_minutes, appointment_type, status, urgency_level, source, notes, created_at
             ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'confirmed', 'normal', 'manual', $8, NOW())
         """,
@@ -5880,6 +5880,32 @@ async def create_appointment_manual(
             apt.appointment_type,
             apt.notes,
         )
+        # Audit log (TIER 3 cap.3 Phase B)
+        try:
+            from services.audit_log import log_appointment_mutation as _audit
+            await _audit(
+                pool=db.pool,
+                tenant_id=tenant_id,
+                appointment_id=new_id,
+                action="created",
+                actor_type="staff_user",
+                actor_id=getattr(user_data, "user_id", None),
+                before_values=None,
+                after_values={
+                    "patient_id": pid,
+                    "professional_id": apt.professional_id,
+                    "appointment_datetime": apt.appointment_datetime.isoformat() if hasattr(apt.appointment_datetime, "isoformat") else str(apt.appointment_datetime),
+                    "duration_minutes": duration,
+                    "appointment_type": apt.appointment_type,
+                    "status": "confirmed",
+                    "source": "manual",
+                    "notes": apt.notes,
+                },
+                source_channel="web_admin",
+                reason=None,
+            )
+        except Exception as _audit_err:
+            logger.warning(f"audit_log create_appointment_manual failed (non-blocking): {_audit_err}")
         # 5. Obtener datos completos del turno para evento y GCal (incluye source y tenant_id para notificación)
         appointment_data = await db.pool.fetchrow(
             """
@@ -5963,13 +5989,11 @@ async def create_appointment_manual(
 
 @router.put(
     "/appointments/{id}/status",
-    dependencies=[Depends(verify_admin_token)],
     tags=["Turnos"],
     summary="Actualizar el estado de un turno (confirmed, cancelled, etc.)",
 )
 @router.patch(
     "/appointments/{id}/status",
-    dependencies=[Depends(verify_admin_token)],
     tags=["Turnos"],
     summary="Actualizar el estado de un turno (vía PATCH)",
 )
@@ -5978,9 +6002,16 @@ async def update_appointment_status(
     payload: StatusUpdate,
     request: Request,
     background_tasks: BackgroundTasks,
+    user_data=Depends(verify_admin_token),
     tenant_id: int = Depends(get_resolved_tenant_id),
 ):
     """Cambiar estado: confirmed, cancelled, attended, no_show. Aislado por tenant_id (Regla de Oro)."""
+    # Capture previous status for audit log
+    _prev_status = await db.pool.fetchval(
+        "SELECT status FROM appointments WHERE id = $1 AND tenant_id = $2",
+        id,
+        tenant_id,
+    )
     # 2. Actualizar en BD
     update_fields = "status = $1, updated_at = NOW()"
     params = [payload.status, id, tenant_id]
@@ -5995,6 +6026,25 @@ async def update_appointment_status(
     )
     if result == "UPDATE 0":
         raise HTTPException(status_code=404, detail="Turno no encontrado o sin acceso")
+
+    # Audit log (TIER 3 cap.3 Phase B)
+    try:
+        from services.audit_log import log_appointment_mutation as _audit
+        _action = "cancelled" if payload.status == "cancelled" else "status_changed"
+        await _audit(
+            pool=db.pool,
+            tenant_id=tenant_id,
+            appointment_id=id,
+            action=_action,
+            actor_type="staff_user",
+            actor_id=getattr(user_data, "user_id", None),
+            before_values={"status": _prev_status} if _prev_status else None,
+            after_values={"status": payload.status, "notes": payload.notes} if payload.notes is not None else {"status": payload.status},
+            source_channel="web_admin",
+            reason=None,
+        )
+    except Exception as _audit_err:
+        logger.warning(f"audit_log update_appointment_status failed (non-blocking): {_audit_err}")
 
     # Obtener datos actuales del turno para emitir evento y lógica de feedback
     appointment_data = await db.pool.fetchrow(
@@ -6101,7 +6151,6 @@ async def update_appointment_status(
 
 @router.put(
     "/appointments/{id}",
-    dependencies=[Depends(verify_admin_token)],
     tags=["Turnos"],
     summary="Actualizar datos completos de un turno",
 )
@@ -6109,6 +6158,7 @@ async def update_appointment(
     id: str,
     apt: AppointmentCreate,
     request: Request,
+    user_data=Depends(verify_admin_token),
     tenant_id: int = Depends(get_resolved_tenant_id),
 ):
     """Actualizar datos de un turno (fecha, profesional, tipo, notas)."""
@@ -6147,7 +6197,7 @@ async def update_appointment(
         # 3. Actualizar en Base de Datos (solo si pertenece al tenant)
         await db.pool.execute(
             """
-            UPDATE appointments SET 
+            UPDATE appointments SET
                 patient_id = $1,
                 professional_id = $2,
                 appointment_datetime = $3,
@@ -6164,6 +6214,39 @@ async def update_appointment(
             id,
             tenant_id,
         )
+        # Audit log (TIER 3 cap.3 Phase B)
+        try:
+            from services.audit_log import log_appointment_mutation as _audit
+            _old_dt = old_apt["appointment_datetime"] if old_apt else None
+            _date_changed = (
+                _old_dt is not None
+                and apt.appointment_datetime is not None
+                and _old_dt != apt.appointment_datetime
+            )
+            await _audit(
+                pool=db.pool,
+                tenant_id=tenant_id,
+                appointment_id=id,
+                action="rescheduled" if _date_changed else "status_changed",
+                actor_type="staff_user",
+                actor_id=getattr(user_data, "user_id", None),
+                before_values={
+                    "professional_id": old_apt["professional_id"] if old_apt else None,
+                    "appointment_datetime": _old_dt.isoformat() if _old_dt and hasattr(_old_dt, "isoformat") else str(_old_dt),
+                    "status": old_apt["status"] if old_apt else None,
+                } if old_apt else None,
+                after_values={
+                    "patient_id": apt.patient_id,
+                    "professional_id": apt.professional_id,
+                    "appointment_datetime": apt.appointment_datetime.isoformat() if hasattr(apt.appointment_datetime, "isoformat") else str(apt.appointment_datetime),
+                    "appointment_type": apt.appointment_type,
+                    "notes": apt.notes,
+                },
+                source_channel="web_admin",
+                reason=None,
+            )
+        except Exception as _audit_err:
+            logger.warning(f"audit_log update_appointment failed (non-blocking): {_audit_err}")
 
         # 4. Sincronizar con Google Calendar
         try:
@@ -6332,7 +6415,6 @@ async def approve_payment_manually(
 
 @router.put(
     "/appointments/{id}/billing",
-    dependencies=[Depends(verify_admin_token)],
     tags=["Turnos"],
     summary="Actualizar facturación de un turno",
 )
@@ -6341,6 +6423,7 @@ async def update_appointment_billing(
     data: Dict[str, Any],
     request: Request,
     background_tasks: BackgroundTasks,
+    user_data=Depends(verify_admin_token),
     tenant_id: int = Depends(get_resolved_tenant_id),
 ):
     """Actualizar datos de facturación de un turno (monto, cuotas, notas, estado de pago)."""
@@ -6394,6 +6477,29 @@ async def update_appointment_billing(
     result = await db.pool.execute(query, *params)
     if result == "UPDATE 0":
         raise HTTPException(status_code=404, detail="Turno no encontrado")
+
+    # Audit log (TIER 3 cap.3 Phase B)
+    try:
+        from services.audit_log import log_appointment_mutation as _audit
+        _before = {
+            "billing_amount": float(current["billing_amount"]) if current and current.get("billing_amount") is not None else None,
+            "payment_status": current["current_payment_status"] if current else None,
+        }
+        _after = {k: data.get(k) for k in ("billing_amount", "billing_installments", "billing_notes", "payment_status") if k in data}
+        await _audit(
+            pool=db.pool,
+            tenant_id=tenant_id,
+            appointment_id=id,
+            action="payment_updated",
+            actor_type="staff_user",
+            actor_id=getattr(user_data, "user_id", None),
+            before_values=_before,
+            after_values=_after,
+            source_channel="web_admin",
+            reason=None,
+        )
+    except Exception as _audit_err:
+        logger.warning(f"audit_log update_appointment_billing failed (non-blocking): {_audit_err}")
 
     # Emit update event
     full_data = await db.pool.fetchrow(
@@ -6468,12 +6574,14 @@ async def update_appointment_billing(
 
 @router.delete(
     "/appointments/{id}",
-    dependencies=[Depends(verify_admin_token)],
     tags=["Turnos"],
     summary="Eliminar físicamente un turno de la agenda",
 )
 async def delete_appointment(
-    id: str, request: Request, tenant_id: int = Depends(get_resolved_tenant_id)
+    id: str,
+    request: Request,
+    user_data=Depends(verify_admin_token),
+    tenant_id: int = Depends(get_resolved_tenant_id),
 ):
     """Eliminar turno físicamente de la base de datos y de GCal. Aislado por tenant_id (Regla de Oro)."""
     try:
@@ -6509,6 +6617,27 @@ async def delete_appointment(
         await db.pool.execute(
             "DELETE FROM appointments WHERE id = $1 AND tenant_id = $2", id, tenant_id
         )
+
+        # Audit log (TIER 3 cap.3 Phase B) — log BEFORE the appointment_id FK becomes orphaned via SET NULL
+        try:
+            from services.audit_log import log_appointment_mutation as _audit
+            await _audit(
+                pool=db.pool,
+                tenant_id=tenant_id,
+                appointment_id=id,
+                action="cancelled",
+                actor_type="staff_user",
+                actor_id=getattr(user_data, "user_id", None),
+                before_values={
+                    "professional_id": apt["professional_id"] if apt else None,
+                    "google_calendar_event_id": apt["google_calendar_event_id"] if apt else None,
+                },
+                after_values=None,
+                source_channel="web_admin",
+                reason="Hard-deleted from admin UI",
+            )
+        except Exception as _audit_err:
+            logger.warning(f"audit_log delete_appointment failed (non-blocking): {_audit_err}")
 
         # 4. Notificar a la UI
         await emit_appointment_event("APPOINTMENT_DELETED", id, request)
