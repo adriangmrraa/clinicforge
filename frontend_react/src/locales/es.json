@@ -639,7 +639,10 @@
     "derivation_email_label": "Email de derivación humana",
     "derivation_email_help": "Email donde se enviarán las derivaciones cuando la IA necesite intervención humana.",
     "country_code": "País de la clínica",
-    "country_code_help": "Se usa para detectar automáticamente los feriados nacionales. El agente de IA no agendará turnos en días feriados."
+    "country_code_help": "Se usa para detectar automáticamente los feriados nacionales. El agente de IA no agendará turnos en días feriados.",
+    "system_prompt_template": "Presentación de la clínica (texto del agente IA)",
+    "system_prompt_template_placeholder": "Ej: La Dra. Laura Delgado se especializa en rehabilitación oral con implantes y prótesis...",
+    "system_prompt_template_help": "Texto que el agente de IA usa para presentar la clínica al paciente en el primer mensaje. Escribilo en una sola línea o separá párrafos con un Enter doble. Los saltos de línea simples se eliminan automáticamente al guardar."
   },
   "treatments": {
     "title": "Tratamientos",

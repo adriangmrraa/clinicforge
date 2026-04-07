@@ -620,7 +620,10 @@
     "derivation_email_label": "Email de transfert humain",
     "derivation_email_help": "Email pour les notifications de transfert quand l'IA nécessite une intervention humaine.",
     "country_code": "Pays de la clinique",
-    "country_code_help": "Utilisé pour détecter automatiquement les jours fériés nationaux. L'agent IA ne prendra pas de rendez-vous les jours fériés."
+    "country_code_help": "Utilisé pour détecter automatiquement les jours fériés nationaux. L'agent IA ne prendra pas de rendez-vous les jours fériés.",
+    "system_prompt_template": "Présentation de la clinique (texte de l'agent IA)",
+    "system_prompt_template_placeholder": "Ex : Dr Laura Delgado est spécialisée en réhabilitation orale avec implants et prothèses...",
+    "system_prompt_template_help": "Texte utilisé par l'agent IA pour présenter la clinique au patient lors du premier message. Écrivez-le sur une seule ligne ou séparez les paragraphes avec un double Entrée. Les sauts de ligne simples sont supprimés automatiquement à l'enregistrement."
   },
   "treatments": {
     "title": "Traitements",

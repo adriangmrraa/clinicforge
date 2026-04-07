@@ -2590,7 +2590,7 @@ async def get_tenants(
             status_code=403, detail="Solo el CEO puede gestionar clínicas."
         )
     rows = await db.pool.fetch(
-        "SELECT id, clinic_name, bot_phone_number, config, address, google_maps_url, working_hours, consultation_price, bank_cbu, bank_alias, bank_holder_name, derivation_email, logo_url, max_chairs, country_code, created_at, updated_at FROM tenants WHERE id = ANY($1::int[]) ORDER BY id ASC",
+        "SELECT id, clinic_name, bot_phone_number, config, address, google_maps_url, working_hours, consultation_price, bank_cbu, bank_alias, bank_holder_name, derivation_email, logo_url, max_chairs, country_code, system_prompt_template, created_at, updated_at FROM tenants WHERE id = ANY($1::int[]) ORDER BY id ASC",
         allowed_ids,
     )
     result = []
@@ -2716,6 +2716,25 @@ async def update_tenant(
         if len(cc) == 2:
             params.append(cc)
             updates.append(f"country_code = ${len(params)}")
+    if "system_prompt_template" in data:
+        # Normalize whitespace on save: collapse single newlines into spaces,
+        # preserve double-newlines as paragraph separators, kill double spaces.
+        # This mirrors what buffer_task does at runtime, so the value stored
+        # in the DB is already clean and not just clean at render time.
+        _raw = data.get("system_prompt_template")
+        if _raw is None or _raw == "":
+            params.append(None)
+        else:
+            import re as _re_spt
+            _paragraphs = _re_spt.split(r"\n\s*\n", str(_raw))
+            _clean = []
+            for _p in _paragraphs:
+                _flat = " ".join(line.strip() for line in _p.splitlines() if line.strip())
+                _flat = _re_spt.sub(r"[ \t]{2,}", " ", _flat).strip()
+                if _flat:
+                    _clean.append(_flat)
+            params.append("\n\n".join(_clean) if _clean else None)
+        updates.append(f"system_prompt_template = ${len(params)}")
     if not updates:
         return {"status": "updated"}
     params.append(tenant_id)

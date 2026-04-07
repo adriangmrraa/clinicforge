@@ -627,7 +627,10 @@
     "derivation_email_label": "Human Handoff Email",
     "derivation_email_help": "Email where handoff notifications will be sent when the AI needs human intervention.",
     "country_code": "Clinic Country",
-    "country_code_help": "Used to automatically detect national holidays. The AI agent won't schedule appointments on holidays."
+    "country_code_help": "Used to automatically detect national holidays. The AI agent won't schedule appointments on holidays.",
+    "system_prompt_template": "Clinic introduction (AI agent text)",
+    "system_prompt_template_placeholder": "E.g. Dr. Laura Delgado specializes in oral rehabilitation with implants and prosthetics...",
+    "system_prompt_template_help": "The text the AI agent uses to introduce the clinic to the patient on the first message. Write it on a single line or separate paragraphs with a double Enter. Single line breaks are removed automatically on save."
   },
   "treatments": {
     "title": "Treatments",
