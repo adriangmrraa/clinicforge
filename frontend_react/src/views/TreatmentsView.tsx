@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Clock, AlertCircle, CheckCircle, Save, X, Zap, Shield, Heart, Activity, Stethoscope, Edit2, Upload, Trash2, Image as ImageIcon, Users, FileText, CheckCircle2, Plus, Info } from 'lucide-react';
+import { Clock, AlertCircle, CheckCircle, Save, X, Zap, Shield, Heart, Activity, Stethoscope, Edit2, Upload, Trash2, Image as ImageIcon, Users, FileText, CheckCircle2, Plus, Info, Search } from 'lucide-react';
 import api from '../api/axios';
 import { useTranslation } from '../context/LanguageContext';
+import { useAuth } from '../context/AuthContext';
 import PageHeader from '../components/PageHeader';
 import GlassCard, { CARD_IMAGES } from '../components/GlassCard';
 
@@ -162,8 +163,29 @@ const TreatmentImagesList = ({ code }: { code: string }) => {
   );
 };
 
+interface PriceAuditItem {
+  code: string;
+  name: string;
+  base_price: number;
+  ratio: number;
+}
+
+interface PriceAuditResult {
+  tenant_id: number;
+  consultation_price: number | null;
+  threshold: number | null;
+  suspicious: PriceAuditItem[];
+  total_treatments: number;
+  total_suspicious: number;
+  warning?: string;
+}
+
+const formatARS = (value: number) =>
+  new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(value);
+
 export default function TreatmentsView() {
   const { t } = useTranslation();
+  const { user } = useAuth();
   const [treatments, setTreatments] = useState<TreatmentType[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -171,6 +193,14 @@ export default function TreatmentsView() {
   const [saving, setSaving] = useState(false);
   const [professionals, setProfessionals] = useState<Professional[]>([]);
   const [isCreating, setIsCreating] = useState(false);
+
+  // Audit modal state (Bug #3)
+  const [auditOpen, setAuditOpen] = useState(false);
+  const [auditLoading, setAuditLoading] = useState(false);
+  const [auditResult, setAuditResult] = useState<PriceAuditResult | null>(null);
+
+  // Unusual price confirmation state (Bug #3)
+  const [unusualPriceConfirm, setUnusualPriceConfirm] = useState<{ context: 'create' | 'edit'; code?: string } | null>(null);
 
   // Instructions modal state
   const [instructionsModalOpen, setInstructionsModalOpen] = useState(false);
@@ -299,25 +329,30 @@ export default function TreatmentsView() {
     setEditForm({});
   };
 
-  const handleSave = async (code: string) => {
+  const handleSave = async (code: string, confirmUnusual = false) => {
     if (!editForm.code) return;
 
     try {
       setSaving(true);
-      await api.put(`/admin/treatment-types/${code}`, editForm);
+      await api.put(`/admin/treatment-types/${code}`, { ...editForm, confirm_unusual_price: confirmUnusual });
       await api.put(`/admin/treatment-types/${code}/professionals`, { professional_ids: editForm.professional_ids || [] });
       await fetchTreatments();
       setEditingId(null);
       setEditForm({});
-    } catch (error) {
+      setUnusualPriceConfirm(null);
+    } catch (error: any) {
+      if (error.response?.status === 422 && error.response?.data?.detail?.includes('confirm_unusual_price')) {
+        setUnusualPriceConfirm({ context: 'edit', code });
+        return;
+      }
       console.error('Error saving treatment:', error);
-      alert(t('alerts.error_save_treatment'));
+      alert(error.response?.data?.detail || t('alerts.error_save_treatment'));
     } finally {
       setSaving(false);
     }
   };
 
-  const handleCreate = async () => {
+  const handleCreate = async (confirmUnusual = false) => {
     if (!newForm.code || !newForm.name) {
       alert(t('alerts.code_name_required'));
       return;
@@ -325,9 +360,10 @@ export default function TreatmentsView() {
 
     try {
       setSaving(true);
-      await api.post('/admin/treatment-types', newForm);
+      await api.post('/admin/treatment-types', { ...newForm, confirm_unusual_price: confirmUnusual });
       await fetchTreatments();
       setIsCreating(false);
+      setUnusualPriceConfirm(null);
       setNewForm({
         code: '',
         name: '',
@@ -345,6 +381,10 @@ export default function TreatmentsView() {
         professional_ids: []
       });
     } catch (error: any) {
+      if (error.response?.status === 422 && error.response?.data?.detail?.includes('confirm_unusual_price')) {
+        setUnusualPriceConfirm({ context: 'create' });
+        return;
+      }
       console.error('Error creating treatment:', error);
       alert(error.response?.data?.detail || t('alerts.error_create_treatment'));
     } finally {
@@ -364,6 +404,19 @@ export default function TreatmentsView() {
       alert(t('alerts.error_delete_treatment'));
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleOpenAudit = async () => {
+    setAuditOpen(true);
+    setAuditLoading(true);
+    try {
+      const res = await api.get('/admin/treatments/price-audit');
+      setAuditResult(res.data);
+    } catch (err) {
+      console.error('Error fetching price audit:', err);
+    } finally {
+      setAuditLoading(false);
     }
   };
 
@@ -393,13 +446,24 @@ export default function TreatmentsView() {
           subtitle={t('treatments.subtitle')}
           icon={<Stethoscope size={22} />}
           action={
-            <button
-              onClick={() => setIsCreating(true)}
-              className="px-4 sm:px-5 py-2.5 bg-white text-[#0a0e1a] rounded-xl hover:bg-white/90 transition-all flex items-center justify-center gap-2 active:scale-[0.98] font-semibold text-sm"
-            >
-              <Zap size={18} fill="currentColor" />
-              {t('treatments.new_service')}
-            </button>
+            <div className="flex items-center gap-2">
+              {user?.role === 'ceo' && (
+                <button
+                  onClick={handleOpenAudit}
+                  className="px-4 py-2.5 bg-white/[0.06] border border-white/[0.08] text-white/70 rounded-xl hover:bg-white/[0.10] transition-all flex items-center justify-center gap-2 active:scale-[0.98] font-semibold text-sm"
+                >
+                  <Search size={16} />
+                  {t('treatments.auditButton')}
+                </button>
+              )}
+              <button
+                onClick={() => setIsCreating(true)}
+                className="px-4 sm:px-5 py-2.5 bg-white text-[#0a0e1a] rounded-xl hover:bg-white/90 transition-all flex items-center justify-center gap-2 active:scale-[0.98] font-semibold text-sm"
+              >
+                <Zap size={18} fill="currentColor" />
+                {t('treatments.new_service')}
+              </button>
+            </div>
           }
         />
 
@@ -529,7 +593,15 @@ export default function TreatmentsView() {
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <label className="block text-xs font-bold text-white/40 uppercase tracking-wider">{t('treatments.base_price_label') || 'Precio base ($)'}</label>
+                    <label className="block text-xs font-bold text-white/40 uppercase tracking-wider flex items-center gap-1.5">
+                      {t('treatments.base_price_label') || 'Precio base ($)'}
+                      <span className="relative group/tooltip inline-flex">
+                        <Info size={12} className="text-white/30 cursor-help" />
+                        <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-[#1a1f2e] border border-white/[0.08] rounded-lg text-[10px] text-white/70 whitespace-nowrap opacity-0 group-hover/tooltip:opacity-100 transition-opacity pointer-events-none z-50">
+                          {t('treatments.priceTooltip')}
+                        </span>
+                      </span>
+                    </label>
                     <div className="relative">
                       <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30 text-sm font-bold">$</span>
                       <input
@@ -539,6 +611,10 @@ export default function TreatmentsView() {
                         className="w-full pl-8 pr-4 py-3 bg-white/[0.04] border border-white/[0.08] rounded-xl text-white focus:ring-2 focus:ring-blue-500/20 outline-none font-bold text-lg"
                       />
                     </div>
+                    <p className="text-[10px] text-white/30">{t('treatments.priceHint')}</p>
+                    {(newForm.base_price ?? 0) > 0 && (
+                      <p className="text-[11px] text-blue-400 font-semibold">{formatARS(newForm.base_price ?? 0)}</p>
+                    )}
                   </div>
                   <div className="space-y-2">
                     <label className="block text-xs font-bold text-white/40 uppercase tracking-wider">{t('treatments.complexity')}</label>
@@ -751,7 +827,15 @@ export default function TreatmentsView() {
 
                           {/* Precio base */}
                           <div className="space-y-2">
-                            <label className="block text-xs font-bold text-white/40 ml-1 uppercase">{t('treatments.base_price_label') || 'Precio base ($)'}</label>
+                            <label className="block text-xs font-bold text-white/40 ml-1 uppercase flex items-center gap-1.5">
+                              {t('treatments.base_price_label') || 'Precio base ($)'}
+                              <span className="relative group/tooltip inline-flex">
+                                <Info size={12} className="text-white/30 cursor-help" />
+                                <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-[#1a1f2e] border border-white/[0.08] rounded-lg text-[10px] text-white/70 whitespace-nowrap opacity-0 group-hover/tooltip:opacity-100 transition-opacity pointer-events-none z-50">
+                                  {t('treatments.priceTooltip')}
+                                </span>
+                              </span>
+                            </label>
                             <div className="relative">
                               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30 text-sm font-bold">$</span>
                               <input
@@ -764,7 +848,10 @@ export default function TreatmentsView() {
                                 className="w-full pl-8 pr-4 py-3 bg-white/[0.04] border border-white/[0.08] rounded-xl text-white focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none font-bold text-lg"
                               />
                             </div>
-                            <p className="text-[10px] text-white/30 ml-1">Valor del tratamiento. Se usa para calcular el monto a cobrar en los turnos.</p>
+                            <p className="text-[10px] text-white/30 ml-1">{t('treatments.priceHint')}</p>
+                            {(editForm.base_price ?? 0) > 0 && (
+                              <p className="text-[11px] text-blue-400 font-semibold ml-1">{formatARS(editForm.base_price ?? 0)}</p>
+                            )}
                           </div>
 
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -1152,6 +1239,115 @@ export default function TreatmentsView() {
               </button>
               <button type="button" onClick={saveInstructions} className="px-6 py-2.5 bg-white text-[#0a0e1a] rounded-xl font-bold hover:bg-white/90 transition-all active:scale-[0.98] flex items-center gap-2">
                 <Save size={18} /> {t('treatments.instructions.save')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Price Audit Modal (CEO only) ── */}
+      {auditOpen && (
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4"
+          onClick={(e) => e.target === e.currentTarget && setAuditOpen(false)}
+        >
+          <div className="bg-[#0d1117] border border-white/[0.08] rounded-2xl w-full max-w-2xl max-h-[80vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex justify-between items-center gap-3 p-4 sm:p-6 border-b border-white/[0.06] shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-amber-500/10 text-amber-400 rounded-xl">
+                  <Search size={20} />
+                </div>
+                <h3 className="text-lg font-bold text-white">{t('treatments.auditModalTitle')}</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAuditOpen(false)}
+                className="p-2 rounded-xl text-white/30 hover:text-white/60 hover:bg-white/[0.04] transition-all"
+              >
+                <X size={22} />
+              </button>
+            </div>
+            <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6">
+              {auditLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="w-10 h-10 border-4 border-white/[0.06] border-t-amber-400 rounded-full animate-spin" />
+                </div>
+              ) : !auditResult ? (
+                <p className="text-white/40 text-sm text-center py-8">{t('common.error') || 'Error al cargar'}</p>
+              ) : auditResult.warning ? (
+                <p className="text-amber-400/70 text-sm text-center py-8">{auditResult.warning}</p>
+              ) : auditResult.suspicious.length === 0 ? (
+                <div className="flex flex-col items-center gap-3 py-10">
+                  <CheckCircle2 size={40} className="text-emerald-400" />
+                  <p className="text-emerald-400 font-semibold">{t('treatments.auditNoIssues')}</p>
+                  {auditResult.consultation_price && (
+                    <p className="text-white/30 text-xs">
+                      Umbral: {formatARS(auditResult.threshold ?? 0)} (consulta × 100)
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {auditResult.consultation_price && (
+                    <p className="text-white/40 text-xs mb-4">
+                      Precio de consulta: {formatARS(auditResult.consultation_price)} — Umbral: {formatARS(auditResult.threshold ?? 0)}
+                    </p>
+                  )}
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-white/30 text-[10px] uppercase tracking-widest border-b border-white/[0.06]">
+                        <th className="text-left pb-2">{t('treatments.auditTableHeaderName')}</th>
+                        <th className="text-right pb-2">{t('treatments.auditTableHeaderPrice')}</th>
+                        <th className="text-right pb-2">{t('treatments.auditTableHeaderRatio')}</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/[0.04]">
+                      {auditResult.suspicious.map((item) => (
+                        <tr key={item.code} className="text-white">
+                          <td className="py-3 font-semibold">{item.name}<span className="ml-2 text-white/30 font-mono text-[10px]">{item.code}</span></td>
+                          <td className="py-3 text-right text-amber-400 font-bold">{formatARS(item.base_price)}</td>
+                          <td className="py-3 text-right text-red-400 font-bold">{item.ratio}×</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Unusual Price Confirmation Dialog (Bug #3) ── */}
+      {unusualPriceConfirm && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[70] flex items-center justify-center p-4">
+          <div className="bg-[#0d1117] border border-amber-500/20 rounded-2xl w-full max-w-md p-6 animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-start gap-4 mb-5">
+              <div className="p-2.5 bg-amber-500/10 text-amber-400 rounded-xl shrink-0">
+                <AlertCircle size={20} />
+              </div>
+              <p className="text-white font-semibold leading-relaxed">{t('treatments.priceConfirmUnusual')}</p>
+            </div>
+            <div className="flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setUnusualPriceConfirm(null)}
+                className="px-5 py-2.5 text-white/70 font-semibold hover:bg-white/[0.06] rounded-xl transition-all"
+              >
+                {t('common.cancel')}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (unusualPriceConfirm.context === 'create') {
+                    handleCreate(true);
+                  } else if (unusualPriceConfirm.context === 'edit' && unusualPriceConfirm.code) {
+                    handleSave(unusualPriceConfirm.code, true);
+                  }
+                }}
+                className="px-6 py-2.5 bg-amber-500 text-white rounded-xl font-bold hover:bg-amber-400 transition-all active:scale-[0.98]"
+              >
+                {t('common.confirm') || 'Confirmar'}
               </button>
             </div>
           </div>

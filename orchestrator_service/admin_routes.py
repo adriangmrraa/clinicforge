@@ -859,6 +859,7 @@ class TreatmentTypeCreate(BaseModel):
     pre_instructions: Optional[str] = None
     post_instructions: Optional[Any] = None
     followup_template: Optional[Any] = None
+    confirm_unusual_price: bool = False
 
 
 class TreatmentTypeUpdate(BaseModel):
@@ -879,6 +880,7 @@ class TreatmentTypeUpdate(BaseModel):
     pre_instructions: Optional[str] = None
     post_instructions: Optional[Any] = None
     followup_template: Optional[Any] = None
+    confirm_unusual_price: bool = False
 
 
 class ChatSendMessage(BaseModel):
@@ -8270,6 +8272,40 @@ class TreatmentTypeUpdate(BaseModel):
     pre_instructions: Optional[str] = None
     post_instructions: Optional[Any] = None
     followup_template: Optional[Any] = None
+    confirm_unusual_price: bool = False
+
+
+async def _validate_treatment_price_scale(
+    base_price: Optional[float], confirm_unusual_price: bool, tenant_id: int
+) -> None:
+    """Valida que base_price no tenga escala incorrecta respecto al precio de consulta.
+
+    Si base_price > consultation_price * 100 y confirm_unusual_price es False,
+    lanza HTTP 422 para que el frontend muestre confirmación al operador.
+
+    Si consultation_price es NULL o 0, la validación se omite silenciosamente
+    (no hay referencia con qué comparar).
+    """
+    if not base_price or base_price <= 0:
+        return
+    row = await db.pool.fetchrow(
+        "SELECT consultation_price FROM tenants WHERE id = $1", tenant_id
+    )
+    if not row:
+        return
+    consultation_price = row["consultation_price"]
+    # Si no hay precio de consulta configurado, no podemos comparar — skip silencioso
+    if consultation_price is None or consultation_price == 0:
+        return
+    threshold = float(consultation_price) * 100
+    if float(base_price) > threshold and not confirm_unusual_price:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Precio inusualmente alto. ¿Estás seguro? "
+                "Si es correcto, incluí confirm_unusual_price=true en el cuerpo."
+            ),
+        )
 
 
 def _validate_treatment_instruction_fields(treatment) -> None:
@@ -8371,6 +8407,74 @@ async def list_treatment_types(tenant_id: int = Depends(get_resolved_tenant_id))
 
 
 @router.get(
+    "/treatments/price-audit",
+    dependencies=[Depends(verify_admin_token)],
+    tags=["Tratamientos"],
+    summary="Auditar precios con posible escala incorrecta",
+)
+async def price_audit(tenant_id: int = Depends(get_resolved_tenant_id)):
+    """Retorna los tratamientos cuyo base_price excede 100x el consultation_price del tenant.
+
+    Criterio de sospecha: base_price > consultation_price * 100
+    Ejemplo: consultation_price=$15.000, threshold=$1.500.000.
+    Un tratamiento con base_price=$7.000.000 aparecería en la lista (ratio=466x).
+
+    Si consultation_price no está configurado, retorna lista vacía con un aviso.
+    El operador decide manualmente si corregir los precios marcados — el sistema
+    NO auto-corrige datos existentes.
+
+    Tenant_id siempre viene del contexto de autenticación (Regla de Oro).
+    """
+    from decimal import Decimal as _Dec
+
+    tenant_row = await db.pool.fetchrow(
+        "SELECT consultation_price FROM tenants WHERE id = $1", tenant_id
+    )
+    consultation_price = tenant_row["consultation_price"] if tenant_row else None
+
+    treatment_rows = await db.pool.fetch(
+        "SELECT code, name, base_price FROM treatment_types WHERE tenant_id = $1 AND is_active = true",
+        tenant_id,
+    )
+    total_treatments = len(treatment_rows)
+
+    if consultation_price is None or consultation_price == 0:
+        return {
+            "tenant_id": tenant_id,
+            "consultation_price": None,
+            "threshold": None,
+            "suspicious": [],
+            "total_treatments": total_treatments,
+            "total_suspicious": 0,
+            "warning": "consultation_price no configurado — no es posible detectar escala incorrecta",
+        }
+
+    cp = float(consultation_price)
+    threshold = cp * 100
+    suspicious = []
+    for row in treatment_rows:
+        bp = float(row["base_price"]) if row["base_price"] is not None else 0
+        if bp > threshold:
+            suspicious.append(
+                {
+                    "code": row["code"],
+                    "name": row["name"],
+                    "base_price": bp,
+                    "ratio": round(bp / cp, 1),
+                }
+            )
+
+    return {
+        "tenant_id": tenant_id,
+        "consultation_price": cp,
+        "threshold": threshold,
+        "suspicious": suspicious,
+        "total_treatments": total_treatments,
+        "total_suspicious": len(suspicious),
+    }
+
+
+@router.get(
     "/treatment-types/{code}",
     dependencies=[Depends(verify_admin_token)],
     tags=["Tratamientos"],
@@ -8418,6 +8522,10 @@ async def create_treatment_type(
     try:
         # Validate new instruction fields
         _validate_treatment_instruction_fields(treatment)
+        # Validate price scale (Bug #3): prevenir escala incorrecta (e.g. 7000000 en vez de 70000)
+        await _validate_treatment_price_scale(
+            treatment.base_price, treatment.confirm_unusual_price, tenant_id
+        )
 
         row = await db.pool.fetchrow(
             """
@@ -8491,6 +8599,10 @@ async def update_treatment_type(
     """Actualizar tipo de tratamiento. Aislado por tenant_id (Regla de Oro)."""
     # Validate new instruction fields
     _validate_treatment_instruction_fields(treatment)
+    # Validate price scale (Bug #3): prevenir escala incorrecta (e.g. 7000000 en vez de 70000)
+    await _validate_treatment_price_scale(
+        treatment.base_price, treatment.confirm_unusual_price, tenant_id
+    )
 
     result = await db.pool.execute(
         """
