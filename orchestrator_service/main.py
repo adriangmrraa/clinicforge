@@ -896,8 +896,14 @@ async def _get_slots_for_extra_day(
     professional_name: Optional[str],
     treatment_name: Optional[str],
     duration: int = 30,
+    time_preference: Optional[str] = None,
 ) -> List[str]:
-    """Obtiene slots libres para un día extra (para completar opciones multi-día). Versión simplificada."""
+    """Obtiene slots libres para un día extra (para completar opciones multi-día). Versión simplificada.
+
+    Si time_preference filtra todos los slots del día (ej. solo hay disponibilidad a la mañana
+    y el paciente pidió 'tarde'), se retorna lista vacía. Este es el comportamiento correcto:
+    el caller (loop de range expansion) debe avanzar al siguiente día disponible.
+    """
     # Verificar feriado antes de cualquier cálculo — si es feriado retornar vacío
     from services.holiday_service import is_holiday as check_is_holiday
     _is_hol, _hol_name, _custom_hours = await check_is_holiday(db.pool, tenant_id, target_date)
@@ -1076,6 +1082,7 @@ async def _get_slots_for_extra_day(
         end_time_str=day_end,
         interval_minutes=15,
         limit=50,
+        time_preference=time_preference,
     )
 
 
@@ -1090,6 +1097,7 @@ async def pick_representative_slots(
     duration: int = 30,
     max_options: int = 3,
     search_range_days: int = 1,
+    time_preference: Optional[str] = None,
 ) -> tuple:
     """
     Selecciona hasta max_options slots representativos.
@@ -1161,6 +1169,7 @@ async def pick_representative_slots(
                     professional_name,
                     treatment_name,
                     duration,
+                    time_preference=time_preference,
                 )
             except Exception as e:
                 logger.warning(f"Error getting range day slots for {extra_date}: {e}")
@@ -1232,6 +1241,7 @@ async def pick_representative_slots(
                     professional_name,
                     treatment_name,
                     duration,
+                    time_preference=time_preference,
                 )
             except Exception as e:
                 logger.warning(f"Error getting extra day slots for {extra_date}: {e}")
@@ -2022,6 +2032,7 @@ async def check_availability(
             duration=duration,
             max_options=3,
             search_range_days=search_range,
+            time_preference=time_preference,
         )
 
         if options:
