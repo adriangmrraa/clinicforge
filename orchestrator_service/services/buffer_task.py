@@ -26,7 +26,94 @@ try:
 except ImportError:
     generate_attachment_summary = None
 
+# Date validator for Bug #1 - post-LLM date validation
+try:
+    from services.date_validator import validate_dates_in_response
+except ImportError:
+    validate_dates_in_response = None
+
+# Conversation state for Bug #4 - state machine
+try:
+    from services.conversation_state import get_state, set_state, reset, VALID_STATES
+except ImportError:
+    get_state = None
+    set_state = None
+    reset = None
+    VALID_STATES = []
+
+# State guard constants for Bug #4
+MAX_STATE_RETRIES = 1
+
+# Regex patterns for intent detection (Bug #4 Phase C)
+_SELECTION_INTENT_PATTERN = None
+_RESEARCH_INTENT_PATTERN = None
+
 logger = logging.getLogger(__name__)
+
+
+def _detect_selection_intent(msg: str) -> bool:
+    """
+    Detect if user message indicates they want to SELECT one of the offered slots.
+    Used for Bug #4 Phase C - Input-side state guard.
+    """
+    import re
+
+    global _SELECTION_INTENT_PATTERN
+    if _SELECTION_INTENT_PATTERN is None:
+        # Patterns for selecting an offered slot
+        patterns = [
+            r"\bel\s+1\b",  # "el 1", "el 1ro"
+            r"\bel\s+2\b",  # "el 2", "el segundo"
+            r"\bel\s+3\b",  # "el 3", "el tercero"
+            r"\bel\s+primero\b",  # "el primero"
+            r"\bel\s+segundo\b",  # "el segundo"
+            r"\bel\s+tercero\b",  # "el tercero"
+            r"\bel\s+[0-9]+\b",  # "el 1", "el 2", etc.
+            r"\bconfirmo\b",  # "confirmo", "confirmar"
+            r"^si\b",  # "si" at start
+            r"\bsi\b",  # "si" anywhere
+            r"\bs[ií]\s+",  # "si" or "sí" followed by space
+            r"\bquiero\s+ese\b",  # "quiero ese", "ese"
+            r"\bagéndame\s+ese\b",  # "agéndame ese"
+            r"\bRESERVAR\b",  # "reservar" (uppercase)
+            r"\b\d{1,2}\s*(de\s+)?(ene|feb|mar|abr|may|jun|jul|ago|sep|oct|nov|dic)",  # "12 de mayo", "el del 12"
+            r"\bde\s+la\s+tarde\b",  # "el de la tarde"
+            r"\bde\s+la\s+mañana\b",  # "el de la mañana"
+        ]
+        combined = "|".join(patterns)
+        _SELECTION_INTENT_PATTERN = re.compile(combined, re.IGNORECASE)
+
+    text = msg.lower().strip()
+    return _SELECTION_INTENT_PATTERN.search(text) is not None
+
+
+def _detect_research_intent(msg: str) -> bool:
+    """
+    Detect if user wants to SEARCH AGAIN / look for different slots.
+    Used for Bug #4 Phase C - Input-side state guard.
+    """
+    import re
+
+    global _RESEARCH_INTENT_PATTERN
+    if _RESEARCH_INTENT_PATTERN is None:
+        # Patterns for searching for different slots
+        patterns = [
+            r"\botra\s+fecha\b",  # "otra fecha"
+            r"\botro\s+día\b",  # "otro día"
+            r"\botra\s+hora\b",  # "otra hora"
+            r"\botro\s+turno\b",  # "otro turno"
+            r"\bbuscá\s+en\s+otra\b",  # "buscá en otra semana"
+            r"\bno\s+me\s+sirve\b",  # "no me sirve"
+            r"\bOTRO\b",  # "otro" (uppercase)
+            r"\bCAMBIAR\b",  # "cambiar" (uppercase)
+            r"\bOTRA\b",  # "otra" (uppercase)
+            r"\bdiferente\b",  # "diferente"
+        ]
+        combined = "|".join(patterns)
+        _RESEARCH_INTENT_PATTERN = re.compile(combined, re.IGNORECASE)
+
+    text = msg.lower().strip()
+    return _RESEARCH_INTENT_PATTERN.search(text) is not None
 
 
 def classify_intent(messages: list) -> set:
@@ -1002,6 +1089,49 @@ async def process_buffer_task(
                 f"\n\nCONTEXTO DE AUDIO (Transcripciones recientes):{audio_context_str}"
             )
 
+        # --- Bug #4 Phase C: Input-side state guard ---
+        # Check previous conversation state and inject hint if needed
+        state_hint = ""
+        if get_state is not None and current_customer_phone is not None:
+            try:
+                phone = current_customer_phone.get()
+                if phone:
+                    prev_state = await get_state(tenant_id, phone)
+                    prev_state_str = (
+                        prev_state.get("state", "IDLE")
+                        if isinstance(prev_state, dict)
+                        else "IDLE"
+                    )
+
+                    # If previous state was OFFERED_SLOTS and user is selecting a slot
+                    if prev_state_str == "OFFERED_SLOTS":
+                        user_msg = "\n".join(messages)
+                        if _detect_selection_intent(user_msg):
+                            state_hint = (
+                                "\n\n[STATE_HINT: El paciente ya tiene opciones de turnosOFFERED_SLOTS. "
+                                "El paciente está SELECCIONANDO uno de los turnos ofrecidos. "
+                                "DEBES ir a 'confirm_slot' para confirmar la selección, NO a 'check_availability'. "
+                                "Usa 'confirm_slot' con los datos del turno que el paciente seleccionó.]"
+                            )
+                            logger.info(
+                                f"🔒 STATE_GUARD: Injecting hint for slot selection. prev_state={prev_state_str}"
+                            )
+                        elif _detect_research_intent(user_msg):
+                            # User wants to search again - this is OK, no hint needed
+                            logger.info(
+                                f"🔒 STATE_GUARD: Re-search intent detected, no hint needed. prev_state={prev_state_str}"
+                            )
+                        else:
+                            # Neither selection nor research intent - log for debugging
+                            logger.info(
+                                f"🔒 STATE_GUARD: No clear intent detected. prev_state={prev_state_str}, user_msg={user_msg[:50]}..."
+                            )
+            except Exception as state_err:
+                logger.warning(f"[STATE_GUARD] Failed to get state: {state_err}")
+
+        if state_hint:
+            user_input += state_hint
+
         # --- DETECCIÓN DE CONTEXTO ESPECIAL ---
         # Verificar si hay contexto especial (multimedia, seguimientos, etc.)
         has_recent_media = False
@@ -1607,6 +1737,88 @@ async def process_buffer_task(
                     f"🤖 Agent Response: {response_text[:50]}... | cb_tokens={cb_tokens} | tools_called={tool_was_called}"
                 )
 
+                # --- Bug #4 Phase D: Output-side state guard ---
+                # Check if LLM called check_availability when it should have called confirm_slot
+                state_retry_count = 0
+                if get_state is not None and current_customer_phone is not None:
+                    try:
+                        phone = current_customer_phone.get()
+                        if phone:
+                            prev_state = await get_state(tenant_id, phone)
+                            prev_state_str = (
+                                prev_state.get("state", "IDLE")
+                                if isinstance(prev_state, dict)
+                                else "IDLE"
+                            )
+
+                            # If previous state was OFFERED_SLOTS and LLM called check_availability
+                            if prev_state_str == "OFFERED_SLOTS":
+                                intermediate_steps = response.get(
+                                    "intermediate_steps", []
+                                )
+                                tools_called = []
+                                for step in intermediate_steps:
+                                    if isinstance(step, tuple) and len(step) > 0:
+                                        tool_name = (
+                                            step[0].get("name", "")
+                                            if hasattr(step[0], "get")
+                                            else str(step[0])
+                                        )
+                                        tools_called.append(tool_name)
+
+                                user_msg = "\n".join(messages)
+                                has_research_intent = _detect_research_intent(user_msg)
+
+                                # If check_availability was called without research intent, retry
+                                if (
+                                    "check_availability" in tools_called
+                                    and not has_research_intent
+                                    and state_retry_count < MAX_STATE_RETRIES
+                                ):
+                                    logger.warning(
+                                        f"🔒 STATE_GUARD: LLM called check_availability in OFFERED_SLOTS state. "
+                                        f"tenant_id={tenant_id} phone={phone} prev_state={prev_state_str} "
+                                        f"tools_called={tools_called} user_msg={user_msg[:50]}..."
+                                    )
+                                    state_retry_count += 1
+
+                                    # Retry with stronger nudge
+                                    nudge_input = f"{user_input}\n\n[SISTEMA: IMPORTANTE - El paciente YA tiene opciones de turnos ofrecidas. "
+                                    f"Si el paciente quiere SELECCIONAR un turno, usa 'confirm_slot', NO 'check_availability'. "
+                                    f"Ve a 'confirm_slot' directamente.]"
+
+                                    if _get_cb:
+                                        with _get_cb() as cb3:
+                                            response3 = await executor.ainvoke(
+                                                {
+                                                    "input": nudge_input,
+                                                    "chat_history": chat_history,
+                                                    "system_prompt": system_prompt,
+                                                }
+                                            )
+                                    else:
+                                        response3 = await executor.ainvoke(
+                                            {
+                                                "input": nudge_input,
+                                                "chat_history": chat_history,
+                                                "system_prompt": system_prompt,
+                                            }
+                                        )
+                                    retry_text = response3.get("output", "")
+                                    if retry_text and len(retry_text) > len(
+                                        response_text
+                                    ):
+                                        response_text = retry_text
+                                        logger.info(f"🔒 STATE_GUARD: Retry successful")
+                                    else:
+                                        logger.warning(
+                                            f"🔒 STATE_GUARD: Retry failed, degrading gracefully"
+                                        )
+                    except Exception as state_guard_err:
+                        logger.warning(
+                            f"[STATE_GUARD] Output guard failed: {state_guard_err}"
+                        )
+
                 # SAFETY NET: Detect "un momento" / "voy a buscar" dead-end responses
                 # If agent said it will do something but didn't actually execute a tool,
                 # re-invoke with a nudge to actually complete the action.
@@ -1776,6 +1988,17 @@ async def process_buffer_task(
                 "¡IMPORTANTE PARA LA IA! El tratamiento cuenta con imágenes. Agrega obligatoriamente el siguiente texto (invisible para el usuario) en tu respuesta para que el sistema le envíe las imágenes:",
                 "",
             ).strip()
+
+        # --- DATE VALIDATOR (Bug #1) ---
+        # Validate dates in response against canonical dates from tool outputs
+        # Fixes DD↔MM swap issue in LLM response text
+        if validate_dates_in_response and response.get("intermediate_steps"):
+            try:
+                response_text = validate_dates_in_response(
+                    response_text, response.get("intermediate_steps", [])
+                )
+            except Exception as dv_err:
+                logger.warning(f"⚠️ Date validator error (non-fatal): {dv_err}")
 
     except Exception as e:
         logger.exception("process_buffer_task_fatal_error", exc_info=e)
