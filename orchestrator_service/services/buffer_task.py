@@ -26,6 +26,12 @@ try:
 except ImportError:
     generate_attachment_summary = None
 
+# Date validator for Bug #1 - post-LLM date validation
+try:
+    from services.date_validator import validate_dates_in_response
+except ImportError:
+    validate_dates_in_response = None
+
 logger = logging.getLogger(__name__)
 
 
@@ -42,27 +48,59 @@ def classify_intent(messages: list) -> set:
 
     # Implant/prosthetics keywords
     implant_kw = [
-        "implante", "prótesis", "protesis", "dentadura", "sin hueso",
-        "no tengo hueso", "me rechazaron", "diente postizo", "dientes faltantes",
-        "perdí un diente", "perdi un diente", "perdí varios", "perdi varios",
-        "quiero algo fijo", "no tengo dientes", "se me cayeron",
+        "implante",
+        "prótesis",
+        "protesis",
+        "dentadura",
+        "sin hueso",
+        "no tengo hueso",
+        "me rechazaron",
+        "diente postizo",
+        "dientes faltantes",
+        "perdí un diente",
+        "perdi un diente",
+        "perdí varios",
+        "perdi varios",
+        "quiero algo fijo",
+        "no tengo dientes",
+        "se me cayeron",
     ]
     if any(kw in text for kw in implant_kw):
         tags.add("implant")
 
     # Media/attachment keywords (supplement has_recent_media flag from buffer_task)
     media_kw = [
-        "foto", "imagen", "adjunto", "archivo", "radiografía", "radiografia",
-        "tomografía", "tomografia", "estudio", "panorámica", "panoramica",
+        "foto",
+        "imagen",
+        "adjunto",
+        "archivo",
+        "radiografía",
+        "radiografia",
+        "tomografía",
+        "tomografia",
+        "estudio",
+        "panorámica",
+        "panoramica",
     ]
     if any(kw in text for kw in media_kw):
         tags.add("media")
 
     # Payment keywords
     payment_kw = [
-        "pagar", "pago", "seña", "sena", "transferencia", "comprobante",
-        "cuánto debo", "cuanto debo", "saldo", "cuota", "deuda",
-        "factura", "recibo", "abonar",
+        "pagar",
+        "pago",
+        "seña",
+        "sena",
+        "transferencia",
+        "comprobante",
+        "cuánto debo",
+        "cuanto debo",
+        "saldo",
+        "cuota",
+        "deuda",
+        "factura",
+        "recibo",
+        "abonar",
     ]
     if any(kw in text for kw in payment_kw):
         tags.add("payment")
@@ -151,11 +189,13 @@ async def process_buffer_task(
         # All datetime constructors via get_active_tz() / get_now_arg() will honor it.
         try:
             from services.tz_resolver import get_tenant_tz as _get_tz
+
             _resolved_tz = await _get_tz(tenant_id)
             current_tenant_tz.set(_resolved_tz)
         except Exception as _tz_err:
             # Never block the booking flow on tz resolution failure — fallback to ARG_TZ.
             import logging as _lg
+
             _lg.getLogger("buffer_task").warning(
                 f"tz_resolver: failed for tenant {tenant_id}, falling back to ARG_TZ: {_tz_err}"
             )
@@ -178,8 +218,8 @@ async def process_buffer_task(
         bank_alias = (tenant_row["bank_alias"] or "") if tenant_row else ""
         bank_holder_name = (tenant_row["bank_holder_name"] or "") if tenant_row else ""
         system_prompt_template = (
-            tenant_row.get("system_prompt_template") or ""
-        ) if tenant_row else ""
+            (tenant_row.get("system_prompt_template") or "") if tenant_row else ""
+        )
         # Normalize whitespace in the tenant-configured greeting/specialty pitch.
         # The UI textarea may save it with hard line-breaks and leading spaces
         # (Python triple-quoted style), which then leak into the WhatsApp/IG/FB
@@ -188,11 +228,14 @@ async def process_buffer_task(
         # and strip per-line leading/trailing whitespace.
         if system_prompt_template:
             import re as _re
+
             _paragraphs = _re.split(r"\n\s*\n", system_prompt_template)
             _clean_paragraphs = []
             for _p in _paragraphs:
                 # Join wrapped lines into a single line, collapse repeated spaces
-                _flat = " ".join(line.strip() for line in _p.splitlines() if line.strip())
+                _flat = " ".join(
+                    line.strip() for line in _p.splitlines() if line.strip()
+                )
                 _flat = _re.sub(r"[ \t]{2,}", " ", _flat).strip()
                 if _flat:
                     _clean_paragraphs.append(_flat)
@@ -315,7 +358,8 @@ async def process_buffer_task(
                 try:
                     assigned_prof = await pool.fetchrow(
                         "SELECT first_name, last_name FROM professionals WHERE id = $1 AND tenant_id = $2 AND is_active = true",
-                        assigned_prof_id, tenant_id,
+                        assigned_prof_id,
+                        tenant_id,
                     )
                     if assigned_prof:
                         assigned_name = f"{assigned_prof['first_name']} {assigned_prof.get('last_name', '') or ''}".strip()
@@ -416,6 +460,7 @@ async def process_buffer_task(
                 ldt = last_apt["appointment_datetime"]
                 if hasattr(ldt, "astimezone"):
                     from main import get_active_tz as _get_tz
+
                     ldt = ldt.astimezone(_get_tz())
                 ldias = [
                     "Lunes",
@@ -563,6 +608,7 @@ async def process_buffer_task(
                         mdt = minor_apt["appointment_datetime"]
                         if hasattr(mdt, "astimezone"):
                             from main import get_active_tz as _get_tz
+
                             mdt = mdt.astimezone(_get_tz())
                         identity_lines.append(
                             f"    Próximo turno: {minor_apt['treatment_name'] or 'Consulta'} el {dias_semana[mdt.weekday()]} {mdt.strftime('%d/%m')} a las {mdt.strftime('%H:%M')}"
@@ -587,7 +633,9 @@ async def process_buffer_task(
                     p_id,
                 )
                 if plan_row:
-                    approved = float(plan_row["approved_total"] or plan_row["estimated_total"] or 0)
+                    approved = float(
+                        plan_row["approved_total"] or plan_row["estimated_total"] or 0
+                    )
                     paid = float(plan_row["total_paid"] or 0)
                     pending = round(approved - paid, 2)
 
@@ -595,32 +643,52 @@ async def process_buffer_task(
                     budget_cfg = {}
                     if plan_row["notes"]:
                         try:
-                            budget_cfg = json.loads(plan_row["notes"]) if isinstance(plan_row["notes"], str) else plan_row["notes"]
+                            budget_cfg = (
+                                json.loads(plan_row["notes"])
+                                if isinstance(plan_row["notes"], str)
+                                else plan_row["notes"]
+                            )
                         except Exception:
                             budget_cfg = {}
 
                     installments = int(budget_cfg.get("installments") or 1)
-                    per_installment = round(pending / installments, 2) if installments > 0 and pending > 0 else 0
+                    per_installment = (
+                        round(pending / installments, 2)
+                        if installments > 0 and pending > 0
+                        else 0
+                    )
 
                     identity_lines.append("")
                     identity_lines.append("PRESUPUESTO ACTIVO:")
                     identity_lines.append(f"  Plan: {plan_row['name']}")
                     identity_lines.append(f"  Estado: {plan_row['status']}")
-                    identity_lines.append(f"  Total aprobado: ${approved:,.0f}".replace(",", "."))
+                    identity_lines.append(
+                        f"  Total aprobado: ${approved:,.0f}".replace(",", ".")
+                    )
                     identity_lines.append(f"  Pagado: ${paid:,.0f}".replace(",", "."))
-                    identity_lines.append(f"  Pendiente: ${pending:,.0f}".replace(",", "."))
+                    identity_lines.append(
+                        f"  Pendiente: ${pending:,.0f}".replace(",", ".")
+                    )
                     if installments > 1:
-                        identity_lines.append(f"  Cuotas: {installments} (${per_installment:,.0f}/cuota)".replace(",", "."))
+                        identity_lines.append(
+                            f"  Cuotas: {installments} (${per_installment:,.0f}/cuota)".replace(
+                                ",", "."
+                            )
+                        )
                     discount_pct = float(budget_cfg.get("discount_pct") or 0)
                     discount_amt = float(budget_cfg.get("discount_amount") or 0)
                     if discount_pct > 0:
                         identity_lines.append(f"  Descuento: {discount_pct}%")
                     if discount_amt > 0:
-                        identity_lines.append(f"  Descuento fijo: ${discount_amt:,.0f}".replace(",", "."))
+                        identity_lines.append(
+                            f"  Descuento fijo: ${discount_amt:,.0f}".replace(",", ".")
+                        )
                     conditions = budget_cfg.get("payment_conditions")
                     if conditions:
                         identity_lines.append(f"  Condiciones: {conditions}")
-                    logger.info(f"💰 Treatment plan context injected for patient {p_id}")
+                    logger.info(
+                        f"💰 Treatment plan context injected for patient {p_id}"
+                    )
             except Exception as plan_err:
                 logger.warning(f"⚠️ Treatment plan context (non-fatal): {plan_err}")
 
@@ -695,7 +763,10 @@ async def process_buffer_task(
         # Classify intent for conditional prompt injection (keyword-based, <1ms)
         intent_tags = classify_intent(messages)
         # Supplement with pending payment context from patient data
-        if patient_context and ("payment_status" in patient_context.lower() or "pendiente" in patient_context.lower()):
+        if patient_context and (
+            "payment_status" in patient_context.lower()
+            or "pendiente" in patient_context.lower()
+        ):
             intent_tags.add("payment")
 
         system_prompt = build_system_prompt(
@@ -993,6 +1064,7 @@ async def process_buffer_task(
         if has_recent_media and "media" not in intent_tags:
             intent_tags.add("media")
             from main import _get_adjuntos_section
+
             system_prompt += "\n\n" + _get_adjuntos_section()
 
         executor = await get_agent_executable_for_tenant(tenant_id)
@@ -1351,7 +1423,9 @@ async def process_buffer_task(
                                     f"activating payment receipt context (plan_id={pending_plan})"
                                 )
                         except Exception as plan_check_err:
-                            logger.warning(f"Error checking plan pending: {plan_check_err}")
+                            logger.warning(
+                                f"Error checking plan pending: {plan_check_err}"
+                            )
 
                     if has_pending_payment:
                         # Fase 2 - Task 2.3: Override payment context if classified as medical
@@ -1691,6 +1765,20 @@ async def process_buffer_task(
                 "¡IMPORTANTE PARA LA IA! El tratamiento cuenta con imágenes. Agrega obligatoriamente el siguiente texto (invisible para el usuario) en tu respuesta para que el sistema le envíe las imágenes:",
                 "",
             ).strip()
+
+        # --- DATE VALIDATOR (Bug #1) ---
+        # TODO: Enable when intermediate_steps are captured from executor
+        # For now, this is a placeholder. To enable full date validation:
+        # 1. Configure agent with return_intermediate_steps=True
+        # 2. Capture intermediate_steps from response["intermediate_steps"]
+        # 3. Uncomment below:
+        # if validate_dates_in_response and response.get("intermediate_steps"):
+        #     try:
+        #         response_text = validate_dates_in_response(
+        #             response_text, response.get("intermediate_steps", [])
+        #         )
+        #     except Exception as dv_err:
+        #         logger.warning(f"⚠️ Date validator error (non-fatal): {dv_err}")
 
     except Exception as e:
         logger.exception("process_buffer_task_fatal_error", exc_info=e)
