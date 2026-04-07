@@ -100,34 +100,49 @@ class BufferManager:
         return fallback_config.get(key, default)
     
     @classmethod
-    async def enqueue_message(cls, redis_client, db_pool, provider: str, channel: str, tenant_id: int, 
+    async def enqueue_message(cls, redis_client, db_pool, provider: str, channel: str, tenant_id: int,
                             external_user_id: str, message_data: Dict[str, Any]):
-        """Agrega mensaje al buffer y programa procesamiento con Graceful Interruption."""
+        """Agrega mensaje al buffer y programa procesamiento con Graceful Interruption.
+
+        Lock-first atómico (TIER chatwoot fix):
+        - Antes hacíamos rpush → check lock → set lock → spawn task. Esa secuencia
+          NO es atómica: dos webhooks concurrentes podían pasar el `if not get(lock)`
+          ambos antes de que cualquiera lograra setear el lock, y se spawneaban DOS
+          tasks de procesamiento para el mismo usuario → doble respuesta de la IA.
+        - Ahora usamos `SET lock_key value NX EX 300`, que es atómico en Redis:
+          solo el caller que efectivamente adquiere el lock arranca la task. Los
+          demás callers solo encolan al buffer; la task ya activa recogerá los
+          nuevos mensajes en su próximo ciclo de debounce (Graceful Interruption).
+        """
         buffer_key = cls.get_buffer_key(provider, tenant_id, external_user_id)
         timer_key = cls.get_timer_key(provider, tenant_id, external_user_id)
         lock_key = cls.get_lock_key(provider, tenant_id, external_user_id)
-        
-        # 1. Agregar mensaje al buffer
+
+        # 1. Agregar mensaje al buffer (siempre)
         await redis_client.rpush(buffer_key, json.dumps(message_data))
-        
+
         # 2. Reiniciar timer (debounce)
         debounce_seconds = await cls.get_config(db_pool, provider, channel, tenant_id, "debounce_seconds", 10)
         await redis_client.setex(timer_key, debounce_seconds, "1")
-        
-        # 3. Iniciar tarea de procesamiento si no hay una activa
-        # Graceful Interruption: Si existe un lock, NO interrumpimos, el while loop de process_user_buffer
-        # detectará la extensión del timer y el aumento del buffer naturalmente si aún no ha hecho el fetch atómico.
-        # Si ya hizo el fetch atómico, el proceso actual terminará y enviará su respuesta, 
-        # y este IF arrancará UN NUEVO lock para la nueva oleada de mensajes que quedará encolada.
-        if not await redis_client.get(lock_key):
-            # Lock inicial por un tiempo largo (ej. 300s/5min) previendo demoras de LLM + Envíos lerdos burbuja a burbuja
-            await redis_client.setex(lock_key, 300, "1")  
+
+        # 3. Adquisición ATÓMICA del lock — solo el ganador spawnea la task
+        acquired = await redis_client.set(lock_key, "1", nx=True, ex=300)
+        if acquired:
+            logger.info(
+                f"🎯 Buffer task SPAWNED for {provider}/{tenant_id}/{external_user_id} (lock acquired)"
+            )
             asyncio.create_task(
                 cls.process_user_buffer(
                     redis_client, db_pool, provider, channel, tenant_id, external_user_id,
                     message_data.get("business_info", {}),
                     message_data.get("correlation_id", "unknown")
                 )
+            )
+        else:
+            # Una task ya está activa para este usuario. El mensaje queda en el buffer
+            # y será recogido en el próximo ciclo de debounce de la task existente.
+            logger.info(
+                f"⏭️ Buffer task ALREADY ACTIVE for {provider}/{tenant_id}/{external_user_id} — message enqueued, no new task spawned"
             )
     
     @classmethod
