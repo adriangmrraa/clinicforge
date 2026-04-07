@@ -376,26 +376,40 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
             platform_meta = msg.raw_payload
             platform_meta["provider"] = provider
 
-            msg_id = await pool.fetchval(
-                """
-                INSERT INTO chat_messages (
-                    tenant_id, conversation_id, role, content, from_number, 
-                    platform_metadata, content_attributes, created_at
+            try:
+                msg_id = await pool.fetchval(
+                    """
+                    INSERT INTO chat_messages (
+                        tenant_id, conversation_id, role, content, from_number,
+                        platform_metadata, content_attributes, created_at
+                    )
+                    VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, NOW())
+                    RETURNING id
+                    """,
+                    tenant_id,
+                    conv_id,
+                    role,
+                    msg.content
+                    or (f"[{msg.media[0].type.value.upper()}]" if msg.media else "[Media]"),
+                    msg.external_user_id,
+                    json.dumps(platform_meta),
+                    json.dumps(content_attrs),
                 )
-                VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, NOW())
-                RETURNING id
-                """,
-                tenant_id,
-                conv_id,
-                role,
-                msg.content
-                or (f"[{msg.media[0].type.value.upper()}]" if msg.media else "[Media]"),
-                msg.external_user_id,
-                json.dumps(platform_meta),
-                json.dumps(content_attrs),
-            )
-            saved_ids.append(msg_id)
-            logger.info(f"✅ Message saved: {msg_id} (Conv: {conv_id})")
+                saved_ids.append(msg_id)
+                logger.info(f"✅ Message saved: {msg_id} (Conv: {conv_id})")
+            except Exception as _ins_err:
+                # Defensive: catches the partial UNIQUE index on
+                # (conversation_id, platform_metadata->>'provider_message_id')
+                # added by migration 030. If a duplicate slips past the HTTP
+                # idempotency layer, the DB rejects it here and we skip the
+                # rest of the per-message processing.
+                _err_str = str(_ins_err)
+                if "uniq_chat_messages_conv_provider_msg_id" in _err_str or "duplicate key" in _err_str:
+                    logger.info(
+                        f"♻️ chat_messages duplicate suppressed at DB layer: conv={conv_id} ext_id={external_id_check}"
+                    )
+                    continue
+                raise
 
             # Sincronizar conversación para el preview (Spec 14 / Bug Fix)
             try:
