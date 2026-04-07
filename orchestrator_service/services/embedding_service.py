@@ -339,8 +339,9 @@ async def sync_all_tenants_faq_embeddings() -> int:
         return 0
 
     try:
-        tenants = await db.pool.fetch("SELECT id FROM tenants WHERE status = 'active'")
-        logger.info(f"📚 sync_all_tenants_faq_embeddings: processing {len(tenants)} active tenants")
+        # tenants table has no status column — all rows are considered active
+        tenants = await db.pool.fetch("SELECT id FROM tenants")
+        logger.info(f"📚 sync_all_tenants_faq_embeddings: processing {len(tenants)} tenants")
         total = 0
         for t in tenants:
             total += await sync_tenant_faq_embeddings(t["id"])
