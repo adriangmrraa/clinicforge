@@ -12,12 +12,16 @@ from datetime import datetime, timedelta, date
 from typing import List, Dict, Any, Optional
 
 from .scheduler import scheduler
-import pytz
-
 logger = logging.getLogger(__name__)
 
-# Configuración de zona horaria (mismo que main.py)
-ARG_TZ = pytz.timezone('America/Argentina/Buenos_Aires')
+# NOTA TIER 3 cap.1 Phase B:
+# Este job procesa candidatos de TODOS los tenants en cada iteración (global sweep).
+# Por eso no resolvemos la TZ por tenant — solo necesitamos un "now" tz-aware para
+# operar con `timedelta` contra `appointment_datetime` (que es timestamptz/UTC en BD).
+# La aritmética con timedelta es tz-independiente, así que cualquier tz aware funciona.
+# Mantenemos UTC (canónico, sin necesidad de tzdata) para mayor portabilidad.
+from datetime import timezone as _tz_utc
+ARG_TZ = _tz_utc.utc  # alias mantenido por compatibilidad histórica
 
 def get_now_arg():
     return datetime.now(ARG_TZ)

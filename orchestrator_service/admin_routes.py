@@ -63,6 +63,9 @@ WHATSAPP_SERVICE_URL = os.getenv("WHATSAPP_SERVICE_URL", "http://whatsapp:8002")
 
 # Usar encrypt_value y decrypt_value importados de core.credentials
 
+# Legacy fixed-offset fallback. New code paths in this module SHOULD resolve the
+# tenant timezone via services.tz_resolver.get_tenant_tz(tenant_id) — kept here only
+# for safety on jobs/utilities that don't yet have a tenant context.
 ARG_TZ = timezone(timedelta(hours=-3))
 
 from services.whisper_service import transcribe_audio_url
@@ -1533,7 +1536,12 @@ async def toggle_human_intervention(
     if payload.tenant_id not in allowed_ids:
         raise HTTPException(status_code=403, detail="No tienes acceso a esta clínica.")
     if payload.activate:
-        override_until = datetime.now(ARG_TZ) + timedelta(milliseconds=payload.duration)
+        try:
+            from services.tz_resolver import get_tenant_tz
+            _tz = await get_tenant_tz(payload.tenant_id)
+        except Exception:
+            _tz = ARG_TZ
+        override_until = datetime.now(_tz) + timedelta(milliseconds=payload.duration)
         await db.pool.execute(
             """
             UPDATE patients
@@ -2173,8 +2181,15 @@ async def send_chat_message(
                 status_code=403,
                 detail="No se puede enviar un mensaje si el usuario nunca ha escrito.",
             )
+        # 24h delta: timezone choice does not affect the result, but we still use the
+        # tenant tz for consistency with the rest of the booking flow.
+        try:
+            from services.tz_resolver import get_tenant_tz
+            _fallback_tz = await get_tenant_tz(payload.tenant_id)
+        except Exception:
+            _fallback_tz = ARG_TZ
         now_localized = datetime.now(
-            last_user_msg.tzinfo if last_user_msg.tzinfo else ARG_TZ
+            last_user_msg.tzinfo if last_user_msg.tzinfo else _fallback_tz
         )
         if (now_localized - last_user_msg) > timedelta(hours=24):
             raise HTTPException(

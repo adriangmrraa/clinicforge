@@ -18,8 +18,6 @@ from core.auth import verify_admin_token, get_resolved_tenant_id
 
 logger = logging.getLogger(__name__)
 
-ARG_TZ = timezone(timedelta(hours=-3))
-
 router = APIRouter(prefix="/admin/nova", tags=["nova"])
 
 

@@ -340,10 +340,10 @@ async def process_buffer_task(
 
             if next_apt:
                 dt = next_apt["appointment_datetime"]
-                from main import ARG_TZ
+                from main import get_active_tz
 
                 if hasattr(dt, "astimezone"):
-                    dt = dt.astimezone(ARG_TZ)
+                    dt = dt.astimezone(get_active_tz())
                 dias_semana = [
                     "Lunes",
                     "Martes",
@@ -398,7 +398,8 @@ async def process_buffer_task(
             if last_apt:
                 ldt = last_apt["appointment_datetime"]
                 if hasattr(ldt, "astimezone"):
-                    ldt = ldt.astimezone(ARG_TZ)
+                    from main import get_active_tz as _get_tz
+                    ldt = ldt.astimezone(_get_tz())
                 ldias = [
                     "Lunes",
                     "Martes",
@@ -544,7 +545,8 @@ async def process_buffer_task(
                     if minor_apt:
                         mdt = minor_apt["appointment_datetime"]
                         if hasattr(mdt, "astimezone"):
-                            mdt = mdt.astimezone(ARG_TZ)
+                            from main import get_active_tz as _get_tz
+                            mdt = mdt.astimezone(_get_tz())
                         identity_lines.append(
                             f"    Próximo turno: {minor_apt['treatment_name'] or 'Consulta'} el {dias_semana[mdt.weekday()]} {mdt.strftime('%d/%m')} a las {mdt.strftime('%H:%M')}"
                         )
