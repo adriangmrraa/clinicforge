@@ -61,7 +61,6 @@ export interface Clinica {
     max_chairs?: number;
     country_code?: string;
     system_prompt_template?: string;
-    bot_name?: string | null;
     config?: { calendar_provider?: 'local' | 'google' };
     created_at: string;
     updated_at?: string;
@@ -117,7 +116,6 @@ export default function ClinicsView() {
     const [editingClinica, setEditingClinica] = useState<Clinica | null>(null);
     const [formData, setFormData] = useState({
         clinic_name: '',
-        bot_name: '',
         bot_phone_number: '',
         calendar_provider: 'local' as 'local' | 'google',
         address: '',
@@ -205,7 +203,6 @@ export default function ClinicsView() {
             setEditingClinica(clinica);
             setFormData({
                 clinic_name: clinica.clinic_name,
-                bot_name: clinica.bot_name || '',
                 bot_phone_number: clinica.bot_phone_number,
                 calendar_provider: (clinica.config?.calendar_provider === 'google' ? 'google' : 'local'),
                 address: clinica.address || '',
@@ -222,7 +219,7 @@ export default function ClinicsView() {
             });
         } else {
             setEditingClinica(null);
-            setFormData({ clinic_name: '', bot_name: '', bot_phone_number: '', calendar_provider: 'local', address: '', google_maps_url: '', consultation_price: '', bank_cbu: '', bank_alias: '', bank_holder_name: '', derivation_email: '', max_chairs: '2', country_code: 'US', system_prompt_template: '', working_hours: createDefaultWorkingHours() });
+            setFormData({ clinic_name: '', bot_phone_number: '', calendar_provider: 'local', address: '', google_maps_url: '', consultation_price: '', bank_cbu: '', bank_alias: '', bank_holder_name: '', derivation_email: '', max_chairs: '2', country_code: 'US', system_prompt_template: '', working_hours: createDefaultWorkingHours() });
         }
         setExpandedDays([]);
         setError(null);
@@ -236,7 +233,6 @@ export default function ClinicsView() {
         try {
             const payload = {
                 clinic_name: formData.clinic_name,
-                bot_name: formData.bot_name.trim() || null,
                 bot_phone_number: formData.bot_phone_number,
                 calendar_provider: formData.calendar_provider,
                 address: formData.address || null,
@@ -886,15 +882,6 @@ export default function ClinicsView() {
                                         className="w-full px-4 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white placeholder-white/20 font-mono focus:ring-2 focus:ring-blue-500 outline-none text-sm"
                                         value={formData.bot_phone_number} onChange={(e) => { const v = e.target.value; setFormData(prev => ({ ...prev, bot_phone_number: v })); }} />
                                 </div>
-                            </div>
-
-                            {/* Nombre del bot (migration 033) */}
-                            <div className="space-y-1">
-                                <label className="text-sm font-semibold text-white/60">{t('clinics.bot_name_label')}</label>
-                                <input type="text" maxLength={50} placeholder={t('clinics.bot_name_placeholder')}
-                                    className="w-full px-4 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white placeholder-white/20 focus:ring-2 focus:ring-blue-500 outline-none"
-                                    value={formData.bot_name} onChange={(e) => { const v = e.target.value; setFormData(prev => ({ ...prev, bot_name: v })); }} />
-                                <p className="text-xs text-white/40 mt-1">{t('clinics.bot_name_helper')}</p>
                             </div>
 
                             {/* Dirección y Maps */}
