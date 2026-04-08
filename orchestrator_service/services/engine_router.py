@@ -188,35 +188,48 @@ class SoloEngine:
 
 
 class MultiAgentEngine:
-    """Stub implementation for multi-agent engine.
+    """Multi-agent engine backed by LangGraph-style supervisor + 6 specialists.
 
-    Raises NotImplementedError until F6 when the full system is wired.
+    Delegates to `agents.graph.run_turn` which loads PatientContext, routes via
+    the Supervisor (deterministic rules + LLM fallback), dispatches to the
+    specialized agent, and writes an audit row in `agent_turn_log`.
+
+    The import is lazy inside each method to avoid circular imports with
+    `main` (where the DENTAL_TOOLS live).
     """
 
     name: str = "multi"
 
     async def process_turn(self, ctx: TurnContext) -> TurnResult:
-        """Not implemented until F6."""
-        raise NotImplementedError(
-            "MultiAgentEngine.process_turn not implemented yet. "
-            "The multi-agent system will be activated in a future phase."
-        )
+        """Run the turn through the multi-agent graph.
+
+        Raises are caught upstream by the caller (buffer_task) so the circuit
+        breaker can record a failure and fallback to SoloEngine.
+        """
+        from agents.graph import run_turn as graph_run_turn
+
+        return await graph_run_turn(ctx)
 
     async def probe(self) -> ProbeResult:
-        """Health check for Multi engine.
+        """Health check for the multi-agent graph.
 
-        Currently returns fail because the system is not yet implemented.
-        This is expected behavior in phases F0-F5.
+        Calls `agents.graph.probe()` which runs a minimal supervisor routing
+        decision without touching DB or LLM (deterministic path only) to keep
+        the probe fast (<5s) and side-effect-free.
         """
-        start = time.perf_counter()
-        latency_ms = int((time.perf_counter() - start) * 1000)
+        try:
+            from agents.graph import probe as graph_probe
 
-        return ProbeResult(
-            ok=False,
-            latency_ms=latency_ms,
-            error="Not implemented",
-            detail="Multi-agent system not implemented yet. Will be available in future phase.",
-        )
+            return await graph_probe()
+        except Exception as e:
+            latency_ms = 0
+            logger.exception("MultiAgentEngine probe failed during import/call")
+            return ProbeResult(
+                ok=False,
+                latency_ms=latency_ms,
+                error=str(e),
+                detail=f"Multi-agent probe failed: {type(e).__name__}",
+            )
 
 
 # =============================================================================
