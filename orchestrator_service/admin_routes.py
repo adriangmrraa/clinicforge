@@ -3407,7 +3407,7 @@ async def get_clinic_settings(
             "name": row["clinic_name"] or os.getenv("CLINIC_NAME", "Clínica Dental"),
             "location": os.getenv("CLINIC_LOCATION", ""),
             "hours_start": os.getenv("CLINIC_HOURS_START", "08:00"),
-            "hours_end": os.getenv("CLINIC_HOURS_END", "19:00),
+            "hours_end": os.getenv("CLINIC_HOURS_END", "19:00"),
             "working_days": [0, 1, 2, 3, 4, 5],
             "time_zone": "America/Argentina/Buenos_Aires",
             "ui_language": ui_lang,
