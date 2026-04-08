@@ -352,16 +352,52 @@ async def process_buffer_task(
         )
         faqs = [dict(r) for r in faq_rows] if faq_rows else []
 
-        # Fetch insurance providers for this tenant
+        # Fetch insurance providers for this tenant (migration 034 shape)
         insurance_providers = []
         try:
             ins_rows = await pool.fetch(
-                "SELECT id, provider_name, status, restrictions, external_target, requires_copay, copay_notes, ai_response_template FROM tenant_insurance_providers WHERE tenant_id = $1 AND is_active = true ORDER BY sort_order, provider_name",
+                """
+                SELECT id, provider_name, status, coverage_by_treatment, is_prepaid,
+                       employee_discount_percent, default_copay_percent, external_target,
+                       requires_copay, copay_notes, ai_response_template
+                FROM tenant_insurance_providers
+                WHERE tenant_id = $1 AND is_active = true
+                ORDER BY sort_order, provider_name
+                """,
                 tenant_id,
             )
-            insurance_providers = [dict(r) for r in ins_rows] if ins_rows else []
+            insurance_providers = []
+            for r in ins_rows or []:
+                d = dict(r)
+                # asyncpg may return JSONB as a string in some versions
+                if isinstance(d.get("coverage_by_treatment"), str):
+                    try:
+                        import json as _json_cov
+                        d["coverage_by_treatment"] = _json_cov.loads(
+                            d["coverage_by_treatment"]
+                        )
+                    except (ValueError, TypeError):
+                        d["coverage_by_treatment"] = {}
+                insurance_providers.append(d)
         except Exception as ins_err:
             logger.debug(f"Insurance providers fetch (non-fatal): {ins_err}")
+
+        # Fetch active treatment types for treatment_display_map in the prompt
+        # (used by _format_insurance_providers to render human-readable names).
+        treatment_types_list = []
+        try:
+            tt_rows = await pool.fetch(
+                """
+                SELECT code, name, patient_display_name
+                FROM treatment_types
+                WHERE tenant_id = $1 AND is_active = true
+                ORDER BY name
+                """,
+                tenant_id,
+            )
+            treatment_types_list = [dict(r) for r in tt_rows] if tt_rows else []
+        except Exception as tt_err:
+            logger.debug(f"Treatment types fetch (non-fatal): {tt_err}")
 
         # Fetch derivation rules for this tenant
         derivation_rules = []
@@ -894,6 +930,7 @@ async def process_buffer_task(
             bot_name=bot_name,
             intent_tags=intent_tags,
             is_greeting_pending=is_greeting_pending,
+            treatment_types=treatment_types_list,
         )
 
         # Inject RAG context sections if available

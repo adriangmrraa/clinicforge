@@ -2951,7 +2951,8 @@ async def _gestionar_obra_social(args: Dict, tenant_id: int, user_role: str) -> 
     if action == "list":
         rows = await db.pool.fetch(
             """
-            SELECT id, provider_name, status, is_active, restrictions, requires_copay, sort_order
+            SELECT id, provider_name, status, is_active, is_prepaid,
+                   default_copay_percent, requires_copay, sort_order
             FROM tenant_insurance_providers
             WHERE tenant_id = $1
             ORDER BY sort_order, provider_name
@@ -2964,26 +2965,32 @@ async def _gestionar_obra_social(args: Dict, tenant_id: int, user_role: str) -> 
         for r in rows:
             active = "activa" if r["is_active"] else "inactiva"
             copay = " (requiere copago)" if r["requires_copay"] else ""
-            lines.append(f"• [{r['id']}] {r['provider_name']} — {r['status']} [{active}]{copay}")
+            prepaid = " (prepaga)" if r.get("is_prepaid") else ""
+            lines.append(
+                f"• [{r['id']}] {r['provider_name']}{prepaid} — {r['status']} [{active}]{copay}"
+            )
         return "\n".join(lines)
 
     if action == "create":
         if not name:
             return "Necesito name para crear la obra social."
+        # Migration 034: coverage_by_treatment (JSONB) replaces restrictions.
+        # Nova's quick-create path stores no per-treatment detail by default;
+        # the CEO must use the Clinics UI to configure full coverage.
         new_id = await db.pool.fetchval(
             """
             INSERT INTO tenant_insurance_providers
-              (tenant_id, provider_name, status, restrictions, is_active, requires_copay, sort_order, created_at, updated_at)
-            VALUES ($1, $2, 'accepted', $3, true, true, 0, NOW(), NOW())
+              (tenant_id, provider_name, status, coverage_by_treatment, is_active,
+               requires_copay, sort_order, created_at, updated_at)
+            VALUES ($1, $2, 'accepted', '{}'::jsonb, true, true, 0, NOW(), NOW())
             RETURNING id
             """,
             tenant_id,
             name,
-            coverage_details,
         )
         await _nova_emit("RECORD_UPDATED", {"entity": "insurance_provider", "provider_id": new_id, "tenant_id": tenant_id})
         logger.info(f"Nova: gestionar_obra_social create → {new_id}")
-        return f"✅ Obra social '{name}' creada (ID: {new_id})."
+        return f"✅ Obra social '{name}' creada (ID: {new_id}). Configurá la cobertura por tratamiento desde la página de Clínicas."
 
     if not provider_id:
         return f"Necesito provider_id para la acción '{action}'."
@@ -3004,10 +3011,15 @@ async def _gestionar_obra_social(args: Dict, tenant_id: int, user_role: str) -> 
             set_parts.append(f"provider_name = ${idx}")
             values.append(name)
             idx += 1
+        # Nova's quick-update no longer supports per-treatment coverage via a
+        # free-text field (migration 034 requires structured JSONB). The CEO
+        # should edit coverage from the Clinics UI. coverage_details arg is
+        # silently ignored here on purpose to avoid corrupting the JSONB.
         if coverage_details is not None:
-            set_parts.append(f"restrictions = ${idx}")
-            values.append(coverage_details)
-            idx += 1
+            logger.info(
+                "Nova: coverage_details ignorado en update de obra social — "
+                "requiere edición estructurada desde la UI de Clínicas"
+            )
         if not set_parts:
             return "No se especificó ningún campo a actualizar."
         set_parts.append("updated_at = NOW()")
@@ -7555,11 +7567,39 @@ async def _consultar_obra_social(args: Dict, tenant_id: int) -> str:
         if row.get("ai_response_template"):
             return row["ai_response_template"]
 
+        prepaid_note = " (prepaga)" if row.get("is_prepaid") else ""
         if status == "accepted":
             copay = " Requiere coseguro." if row.get("requires_copay") else ""
-            return f"Sí, la clínica trabaja con {name}.{copay}"
+            return f"Sí, la clínica trabaja con {name}{prepaid_note}.{copay}"
         elif status == "restricted":
-            return f"La clínica trabaja con {name} con restricciones: {row.get('restrictions', 'consultar con la clínica')}."
+            # Migration 034: show a summary of covered treatments from
+            # coverage_by_treatment. Full detail lives in the Clinics UI.
+            coverage = row.get("coverage_by_treatment") or {}
+            if isinstance(coverage, str):
+                import json as _json_cov
+                try:
+                    coverage = _json_cov.loads(coverage)
+                except (ValueError, TypeError):
+                    coverage = {}
+            covered_codes = (
+                [
+                    k for k, v in coverage.items()
+                    if isinstance(v, dict) and v.get("covered", False)
+                ]
+                if isinstance(coverage, dict)
+                else []
+            )
+            if covered_codes:
+                summary = ", ".join(covered_codes[:5])
+                suffix = " y otros" if len(covered_codes) > 5 else ""
+                return (
+                    f"La clínica trabaja con {name}{prepaid_note} con cobertura limitada: "
+                    f"{summary}{suffix}. Consultá detalles de coseguro y carencia."
+                )
+            return (
+                f"La clínica trabaja con {name}{prepaid_note} con restricciones. "
+                "Consultá con la clínica para el detalle de cobertura."
+            )
         elif status == "external_derivation":
             target = row.get("external_target") or "un centro asociado"
             return (

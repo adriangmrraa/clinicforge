@@ -6006,11 +6006,38 @@ async def check_insurance_coverage(insurance_provider: str) -> str:
         name = row["provider_name"]
         if row.get("ai_response_template"):
             return row["ai_response_template"]
+        prepaid_note = " (prepaga)" if row.get("is_prepaid") else ""
         if status == "accepted":
             copay = " La consulta tiene coseguro." if row.get("requires_copay") else ""
-            return f"Sí, trabajamos con {name}.{copay} ¿Querés que te pase turnos disponibles?"
+            return f"Sí, trabajamos con {name}{prepaid_note}.{copay} ¿Querés que te pase turnos disponibles?"
         elif status == "restricted":
-            return f"Trabajamos con {name}, pero con restricciones: {row.get('restrictions', '')}. ¿Querés más información?"
+            # Migration 034: read coverage_by_treatment JSONB instead of the
+            # old free-text restrictions field.
+            coverage = row.get("coverage_by_treatment") or {}
+            if isinstance(coverage, str):
+                try:
+                    coverage = json.loads(coverage)
+                except (json.JSONDecodeError, TypeError):
+                    coverage = {}
+            covered_codes = (
+                [
+                    k for k, v in coverage.items()
+                    if isinstance(v, dict) and v.get("covered", False)
+                ]
+                if isinstance(coverage, dict)
+                else []
+            )
+            if covered_codes:
+                summary = ", ".join(covered_codes[:5])
+                suffix = " y otros" if len(covered_codes) > 5 else ""
+                return (
+                    f"Trabajamos con {name}{prepaid_note} con cobertura limitada: "
+                    f"{summary}{suffix}. ¿Querés que te pase el detalle de coseguro y carencia de algún tratamiento?"
+                )
+            return (
+                f"Trabajamos con {name}{prepaid_note}, pero con restricciones. "
+                "¿Querés que consulte qué tratamientos están cubiertos para vos?"
+            )
         elif status == "external_derivation":
             target = row.get("external_target", "")
             return (
@@ -6299,11 +6326,17 @@ def _format_faqs(faqs: list) -> str:
     return "\n".join(lines)
 
 
-def _format_insurance_providers(providers: list) -> str:
-    """Genera sección de obras sociales para el system prompt.
+def _format_insurance_providers(
+    providers: list, treatment_display_map: dict = None
+) -> str:
+    """Genera sección de obras sociales para el system prompt (migración 034).
 
     Args:
         providers: Lista de dicts desde tenant_insurance_providers (is_active=true).
+            Cada provider debe incluir `coverage_by_treatment` (dict o JSON string),
+            `is_prepaid`, `default_copay_percent`, además de los campos legacy.
+        treatment_display_map: {code: display_name} derivado de treatment_types
+            del tenant para mostrar nombres amigables al paciente en vez de códigos.
 
     Returns:
         Bloque de texto listo para inyectar en el prompt, o vacío si no hay datos.
@@ -6311,31 +6344,114 @@ def _format_insurance_providers(providers: list) -> str:
     if not providers:
         return ""
 
-    accepted = [p for p in providers if p.get("status") == "accepted"]
-    restricted = [p for p in providers if p.get("status") == "restricted"]
+    treatment_display_map = treatment_display_map or {}
+
+    # 'accepted' y 'restricted' comparten el bloque de cobertura per-treatment
+    covered_status = [
+        p for p in providers if p.get("status") in ("accepted", "restricted")
+    ]
     derivation = [p for p in providers if p.get("status") == "external_derivation"]
     rejected = [p for p in providers if p.get("status") == "rejected"]
 
     lines = [
         "OBRAS SOCIALES — REGLAS DE RESPUESTA:",
-        'Respuesta por defecto para OS aceptada: "Sí 😊 trabajamos con tu obra social. La consulta tiene un coseguro. ¿Querés que te pase turnos disponibles?"',
-        "NO informar sobre autorizaciones, estudios o coberturas específicas en esta etapa.",
+        "Usá la cobertura configurada por tratamiento. NUNCA inventes cobertura,",
+        "autorizaciones, carencias ni topes que no figuren acá.",
         "",
     ]
 
-    if accepted:
-        lines.append("Aceptadas:")
-        for p in accepted:
-            copay = p.get("copay_notes") or "coseguro estándar"
-            lines.append(f"  • {p['provider_name']} → {copay}")
+    for p in covered_status:
+        prepaga_flag = " (prepaga)" if p.get("is_prepaid") else ""
+        default_copay = p.get("default_copay_percent")
+        # Normalizar a float si viene como Decimal desde asyncpg
+        if default_copay is not None:
+            try:
+                default_copay = float(default_copay)
+            except (TypeError, ValueError):
+                default_copay = None
+        default_copay_str = (
+            f" — coseguro por defecto: {default_copay:g}%"
+            if default_copay is not None
+            else ""
+        )
+        lines.append(f"{p['provider_name']}{prepaga_flag}{default_copay_str}:")
 
-    if restricted:
-        lines.append("Con restricciones:")
-        for p in restricted:
-            restr = p.get("restrictions") or "ver con la clínica"
-            lines.append(f"  • {p['provider_name']} → {restr}")
+        # Parse defensivo de coverage_by_treatment (asyncpg puede devolver JSONB
+        # como string en algunas versiones)
+        coverage = p.get("coverage_by_treatment") or {}
+        if isinstance(coverage, str):
+            try:
+                coverage = json.loads(coverage)
+            except (json.JSONDecodeError, TypeError):
+                coverage = {}
+        if not isinstance(coverage, dict):
+            coverage = {}
+
+        if not coverage:
+            # Fallback: fila legacy o creada sin detalles de cobertura
+            copay_str = p.get("copay_notes") or "coseguro estándar"
+            lines.append(
+                f'  Respuesta: "Sí, trabajamos con {p["provider_name"]}. {copay_str}. ¿Querés que te pase turnos?"'
+            )
+            continue
+
+        covered_entries = [
+            (k, v) for k, v in coverage.items()
+            if isinstance(v, dict) and v.get("covered", False)
+        ]
+        not_covered_entries = [
+            (k, v) for k, v in coverage.items()
+            if isinstance(v, dict) and not v.get("covered", False)
+        ]
+
+        # Cap total entries at 10 to keep prompt size bounded
+        all_entries = covered_entries + not_covered_entries
+        overflow = len(all_entries) > 10
+        capped = all_entries[:10]
+        covered_capped = [(k, v) for k, v in capped if v.get("covered", False)]
+        not_covered_capped = [(k, v) for k, v in capped if not v.get("covered", False)]
+
+        if covered_capped:
+            lines.append("  Cubiertos:")
+            for code, cov in covered_capped:
+                display = treatment_display_map.get(code, code)
+                copay = cov.get("copay_percent", 0) or 0
+                try:
+                    copay_val = float(copay)
+                except (TypeError, ValueError):
+                    copay_val = 0.0
+                copay_str = (
+                    f", coseguro {copay_val:g}%" if copay_val > 0 else ", sin coseguro"
+                )
+                preauth = ""
+                if cov.get("requires_pre_authorization"):
+                    days = cov.get("pre_auth_leadtime_days", 0) or 0
+                    preauth = f", requiere preautorización ({days} días hábiles)"
+                waiting = ""
+                waiting_days = cov.get("waiting_period_days", 0) or 0
+                if waiting_days > 0:
+                    waiting = f", carencia {waiting_days} días"
+                notes_val = cov.get("notes") or ""
+                notes_str = f". Nota: {notes_val}" if notes_val else ""
+                lines.append(
+                    f"    • {display} ({code}): cubierto{copay_str}{preauth}{waiting}{notes_str}"
+                )
+
+        if not_covered_capped:
+            lines.append("  NO cubiertos:")
+            for code, cov in not_covered_capped:
+                display = treatment_display_map.get(code, code)
+                notes_val = cov.get("notes") or ""
+                notes_str = f". Nota: {notes_val}" if notes_val else ""
+                lines.append(f"    • {display} ({code}){notes_str}")
+
+        if overflow:
+            lines.append(
+                "    ... y otros tratamientos — consultá con la clínica para el detalle completo"
+            )
 
     if derivation:
+        lines.append("")
         lines.append("Derivación externa:")
         for p in derivation:
             target = p.get("external_target") or "otro centro"
@@ -6349,17 +6465,13 @@ def _format_insurance_providers(providers: list) -> str:
 
     if rejected:
         names = ", ".join(p["provider_name"] for p in rejected)
+        lines.append("")
         lines.append(f"No aceptadas: {names}")
-    else:
-        lines.append("No aceptadas: ninguna configurada")
 
     lines.append("")
     lines.append(
         "Si el paciente menciona una OS que NO está en esta lista → "
         '"No tengo información sobre esa obra social. ¿Querés que consulte con la clínica?"'
-    )
-    lines.append(
-        "Podés llamar a check_insurance_coverage para buscar una OS específica en el catálogo configurado."
     )
 
     return "\n".join(lines)
@@ -6450,6 +6562,7 @@ def build_system_prompt(
     bot_name: str = "TORA",
     intent_tags: set = None,
     is_greeting_pending: bool = True,
+    treatment_types: list = None,
 ) -> str:
     """
     Construye el system prompt del agente de forma dinámica.
@@ -6462,6 +6575,9 @@ def build_system_prompt(
     specialty_pitch: texto personalizado de posicionamiento desde tenants.system_prompt_template
     professional_name: nombre del profesional principal (para referencias en el prompt)
     bot_name: nombre del bot (por defecto TORA)
+    treatment_types: lista de dicts desde treatment_types del tenant (is_active=true)
+        con al menos {code, name, patient_display_name}. Se usa para mapear códigos
+        internos a nombres amigables al paciente en la sección de obras sociales.
     """
     prof_display = professional_name if professional_name else "la profesional"
     prof_display_full = (
@@ -6533,7 +6649,22 @@ REGLA ANTI-MARKDOWN (WHATSAPP):
         else f"Lunes a Viernes de {hours_start} a {hours_end}. Sábados y Domingos: CERRADO."
     )
     faqs_section = _format_faqs(faqs or [])
-    insurance_section = _format_insurance_providers(insurance_providers or [])
+    # Build treatment display map so the insurance formatter can render
+    # human-readable treatment names next to the internal codes. Prefer
+    # patient_display_name; fall back to name; fall back to code.
+    treatment_display_map = {}
+    for t in treatment_types or []:
+        code = t.get("code") if isinstance(t, dict) else None
+        if code:
+            display = (
+                t.get("patient_display_name") or t.get("name") or code
+                if isinstance(t, dict)
+                else code
+            )
+            treatment_display_map[code] = display
+    insurance_section = _format_insurance_providers(
+        insurance_providers or [], treatment_display_map
+    )
     derivation_section = _format_derivation_rules(derivation_rules or [])
 
     # Dirección dinámica (fallback global)
