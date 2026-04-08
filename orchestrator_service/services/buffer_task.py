@@ -285,11 +285,15 @@ async def process_buffer_task(
             )
 
         tenant_row = await pool.fetchrow(
-            "SELECT clinic_name, address, google_maps_url, working_hours, consultation_price, bank_cbu, bank_alias, bank_holder_name, system_prompt_template FROM tenants WHERE id = $1",
+            "SELECT clinic_name, address, google_maps_url, working_hours, consultation_price, bank_cbu, bank_alias, bank_holder_name, system_prompt_template, bot_name FROM tenants WHERE id = $1",
             tenant_id,
         )
         clinic_name = (
             (tenant_row["clinic_name"] or CLINIC_NAME) if tenant_row else CLINIC_NAME
+        )
+        # Editable bot display name (migration 033). NULL or empty → fallback to "TORA".
+        bot_name = (
+            (tenant_row.get("bot_name") or "TORA") if tenant_row else "TORA"
         )
         clinic_address = (tenant_row["address"] or "") if tenant_row else ""
         clinic_maps_url = (tenant_row["google_maps_url"] or "") if tenant_row else ""
@@ -887,7 +891,7 @@ async def process_buffer_task(
             derivation_rules=derivation_rules if not rag_derivation_section else None,
             specialty_pitch=system_prompt_template,
             professional_name=lead_professional_name,
-            bot_name="TORA",
+            bot_name=bot_name,
             intent_tags=intent_tags,
             is_greeting_pending=is_greeting_pending,
         )
