@@ -2594,7 +2594,7 @@ async def get_tenants(
             status_code=403, detail="Solo el CEO puede gestionar clínicas."
         )
     rows = await db.pool.fetch(
-        "SELECT id, clinic_name, bot_phone_number, config, address, google_maps_url, working_hours, consultation_price, bank_cbu, bank_alias, bank_holder_name, derivation_email, logo_url, max_chairs, country_code, system_prompt_template, bot_name, created_at, updated_at FROM tenants WHERE id = ANY($1::int[]) ORDER BY id ASC",
+        "SELECT id, clinic_name, bot_phone_number, config, address, google_maps_url, working_hours, consultation_price, bank_cbu, bank_alias, bank_holder_name, derivation_email, logo_url, max_chairs, country_code, system_prompt_template, bot_name, payment_methods, financing_available, max_installments, installments_interest_free, financing_provider, financing_notes, cash_discount_percent, accepts_crypto, created_at, updated_at FROM tenants WHERE id = ANY($1::int[]) ORDER BY id ASC",
         allowed_ids,
     )
     result = []
@@ -2762,6 +2762,98 @@ async def update_tenant(
                 )
         params.append(_normalized_bn)
         updates.append(f"bot_name = ${len(params)}")
+    # === Payment & Financing (migration 035) ===
+    if "payment_methods" in data:
+        _raw_pm = data.get("payment_methods")
+        if _raw_pm is None:
+            params.append(None)
+            updates.append(f"payment_methods = ${len(params)}")
+        elif isinstance(_raw_pm, list):
+            ALLOWED_METHODS = {
+                "cash",
+                "credit_card",
+                "debit_card",
+                "transfer",
+                "mercado_pago",
+                "rapipago",
+                "pagofacil",
+                "modo",
+                "uala",
+                "naranja",
+                "crypto",
+                "other",
+            }
+            invalid = [m for m in _raw_pm if m not in ALLOWED_METHODS]
+            if invalid:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"payment_methods contains invalid values: {invalid}",
+                )
+            params.append(json.dumps(_raw_pm))
+            updates.append(f"payment_methods = ${len(params)}::jsonb")
+    if "financing_available" in data:
+        _raw_fa = data.get("financing_available")
+        _val_fa = bool(_raw_fa) if _raw_fa is not None else False
+        params.append(_val_fa)
+        updates.append(f"financing_available = ${len(params)}")
+    if "max_installments" in data:
+        _raw_mi = data.get("max_installments")
+        if _raw_mi is not None:
+            try:
+                _val_mi = int(str(_raw_mi).strip())
+                if not (1 <= _val_mi <= 24):
+                    raise HTTPException(
+                        status_code=422,
+                        detail="max_installments must be between 1 and 24",
+                    )
+                params.append(_val_mi)
+                updates.append(f"max_installments = ${len(params)}")
+            except (ValueError, TypeError):
+                raise HTTPException(
+                    status_code=422,
+                    detail="max_installments must be a valid integer",
+                )
+    if "installments_interest_free" in data:
+        _raw_iif = data.get("installments_interest_free")
+        _val_iif = bool(_raw_iif) if _raw_iif is not None else True
+        params.append(_val_iif)
+        updates.append(f"installments_interest_free = ${len(params)}")
+    if "financing_provider" in data:
+        _raw_fp = data.get("financing_provider")
+        _val_fp = (
+            _raw_fp.strip() if isinstance(_raw_fp, str) and _raw_fp.strip() else None
+        )
+        params.append(_val_fp)
+        updates.append(f"financing_provider = ${len(params)}")
+    if "financing_notes" in data:
+        _raw_fn = data.get("financing_notes")
+        _val_fn = (
+            _raw_fn.strip() if isinstance(_raw_fn, str) and _raw_fn.strip() else None
+        )
+        params.append(_val_fn)
+        updates.append(f"financing_notes = ${len(params)}")
+    if "cash_discount_percent" in data:
+        _raw_cdp = data.get("cash_discount_percent")
+        if _raw_cdp is not None:
+            try:
+                _val_cdp = float(str(_raw_cdp).strip())
+                if not (0 <= _val_cdp <= 100):
+                    raise HTTPException(
+                        status_code=422,
+                        detail="cash_discount_percent must be between 0 and 100",
+                    )
+                params.append(_val_cdp)
+                updates.append(f"cash_discount_percent = ${len(params)}")
+            except (ValueError, TypeError):
+                raise HTTPException(
+                    status_code=422,
+                    detail="cash_discount_percent must be a valid number",
+                )
+    if "accepts_crypto" in data:
+        _raw_ac = data.get("accepts_crypto")
+        _val_ac = bool(_raw_ac) if _raw_ac is not None else False
+        params.append(_val_ac)
+        updates.append(f"accepts_crypto = ${len(params)}")
     if not updates:
         return {"status": "updated"}
     params.append(tenant_id)
