@@ -116,6 +116,33 @@ async def run_turn(ctx: "TurnContext") -> "TurnResult":
         from .model_resolver import get_default_model_config
         model_config = get_default_model_config()
 
+    # Build tenant-configured context blocks ONCE per turn (multi-agent parity
+    # with TORA solo — spec: multi-agent-tenant-context-parity REQ-3).
+    # All specialists in this turn read from the same dict via
+    # select_blocks_for_specialist(). Failure is non-fatal: empty dict falls
+    # through to bare prompts so the multi-agent still runs.
+    tenant_context: dict = {}
+    try:
+        from db import db  # lazy — avoid circular
+        from .tenant_context import build_tenant_context_blocks
+
+        # Defensive intent classification (REQ-3.1) — safe default on failure.
+        try:
+            from services.buffer_task import classify_intent  # type: ignore
+            intent_tags = classify_intent([{"role": "user", "content": ctx.user_message}])
+        except Exception:
+            intent_tags = set()
+
+        tenant_context = await build_tenant_context_blocks(
+            db.pool,
+            ctx.tenant_id,
+            user_message_text=ctx.user_message or "",
+            intent_tags=intent_tags,
+        )
+    except Exception:
+        logger.exception("build_tenant_context_blocks failed — continuing with empty context")
+        tenant_context = {}
+
     state: AgentState = {
         "tenant_id": ctx.tenant_id,
         "phone_number": ctx.phone_number,
@@ -126,6 +153,7 @@ async def run_turn(ctx: "TurnContext") -> "TurnResult":
         "chat_history": chat_history,
         "working_state": {},
         "model_config": model_config,
+        "tenant_context": tenant_context,
         "active_agent": "supervisor",
         "hop_count": 0,
         "max_hops": MAX_HOPS,
