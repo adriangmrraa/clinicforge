@@ -81,13 +81,26 @@ interface InsuranceProvider {
     tenant_id: number;
     provider_name: string;
     status: 'accepted' | 'restricted' | 'external_derivation' | 'rejected';
-    restrictions?: string;
+    coverage_by_treatment?: Record<string, TreatmentCoverageEntry>;
+    is_prepaid?: boolean;
+    employee_discount_percent?: number;
+    default_copay_percent?: number;
     external_target?: string;
     requires_copay: boolean;
     copay_notes?: string;
     ai_response_template?: string;
     sort_order: number;
     is_active: boolean;
+}
+
+interface TreatmentCoverageEntry {
+    covered: boolean;
+    copay_percent: number;
+    requires_pre_authorization: boolean;
+    pre_auth_leadtime_days: number;
+    waiting_period_days: number;
+    max_annual_coverage: number | null;
+    notes: string;
 }
 
 interface DerivationRule {
@@ -148,10 +161,12 @@ export default function ClinicsView() {
     const [editingInsurance, setEditingInsurance] = useState<InsuranceProvider | null>(null);
     const [insuranceForm, setInsuranceForm] = useState<Partial<InsuranceProvider>>({
         provider_name: '', status: 'accepted', requires_copay: true, sort_order: 0, is_active: true,
+        coverage_by_treatment: {}, is_prepaid: false, default_copay_percent: undefined, employee_discount_percent: undefined,
     });
     const [insuranceSaving, setInsuranceSaving] = useState(false);
     const [insuranceTreatments, setInsuranceTreatments] = useState<{code: string; name: string}[]>([]);
     const [insuranceTreatmentSearch, setInsuranceTreatmentSearch] = useState('');
+    const [coverageMatrixExpanded, setCoverageMatrixExpanded] = useState(false);
 
     // Derivation state
     const [derivationRules, setDerivationRules] = useState<DerivationRule[]>([]);
@@ -443,12 +458,26 @@ export default function ClinicsView() {
     const openInsuranceModal = (item: InsuranceProvider | null = null) => {
         if (item) {
             setEditingInsurance(item);
-            setInsuranceForm({ ...item });
+            // Convert legacy restrictions JSON string to coverage_by_treatment if needed
+            let coverage: Record<string, TreatmentCoverageEntry> = {};
+            if (item.coverage_by_treatment) {
+                coverage = item.coverage_by_treatment;
+            } else if (item.restrictions) {
+                // Legacy migration: convert old restrictions array to coverage entries
+                try {
+                    const codes = JSON.parse(item.restrictions);
+                    codes.forEach((code: string) => {
+                        coverage[code] = { covered: true, copay_percent: 0, requires_pre_authorization: false, pre_auth_leadtime_days: 0, waiting_period_days: 0, max_annual_coverage: null, notes: '' };
+                    });
+                } catch { coverage = {}; }
+            }
+            setInsuranceForm({ ...item, coverage_by_treatment: coverage });
         } else {
             setEditingInsurance(null);
-            setInsuranceForm({ provider_name: '', status: 'accepted', requires_copay: true, sort_order: 0, is_active: true, restrictions: '[]' });
+            setInsuranceForm({ provider_name: '', status: 'accepted', requires_copay: true, sort_order: 0, is_active: true, coverage_by_treatment: {}, is_prepaid: false, default_copay_percent: undefined, employee_discount_percent: undefined });
         }
         setInsuranceTreatmentSearch('');
+        setCoverageMatrixExpanded(false);
         setInsuranceModalOpen(true);
     };
 
@@ -1361,84 +1390,108 @@ export default function ClinicsView() {
                                     <option value="rejected">{t('settings.insurance.status.rejected')}</option>
                                 </select>
                             </div>
-                            {insuranceForm.status === 'restricted' && (
+                            {/* New insurance fields: is_prepaid, default_copay, employee_discount */}
+                            {(insuranceForm.status === 'accepted' || insuranceForm.status === 'restricted') && (
+                                <>
+                                    <div className="flex items-center gap-3">
+                                        <label className="flex items-center gap-3 cursor-pointer">
+                                            <input type="checkbox" checked={insuranceForm.is_prepaid ?? false} onChange={e => setInsuranceForm(p => ({ ...p, is_prepaid: e.target.checked }))}
+                                                className="h-5 w-5 rounded border-white/[0.08] text-blue-400 focus:ring-blue-500" />
+                                            <span className="text-sm font-medium text-white/60">{t('settings.insurance.fields.isPrepaid')}</span>
+                                        </label>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div className="space-y-1">
+                                            <label className="text-sm font-semibold text-white/60">{t('settings.insurance.fields.defaultCopay')}</label>
+                                            <input type="number" min="0" max="100" value={insuranceForm.default_copay_percent ?? ''} onChange={e => setInsuranceForm(p => ({ ...p, default_copay_percent: e.target.value ? Number(e.target.value) : undefined }))}
+                                                className="w-full px-4 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white placeholder-white/20 focus:ring-2 focus:ring-blue-500 outline-none" />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-sm font-semibold text-white/60">{t('settings.insurance.fields.employeeDiscount')}</label>
+                                            <input type="number" min="0" max="100" value={insuranceForm.employee_discount_percent ?? ''} onChange={e => setInsuranceForm(p => ({ ...p, employee_discount_percent: e.target.value ? Number(e.target.value) : undefined }))}
+                                                className="w-full px-4 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white placeholder-white/20 focus:ring-2 focus:ring-blue-500 outline-none" />
+                                        </div>
+                                    </div>
+                                </>
+                            )}
+                            {/* Coverage Matrix - shown when status is 'accepted' or 'restricted' */}
+                            {(insuranceForm.status === 'accepted' || insuranceForm.status === 'restricted') && insuranceTreatments.length > 0 && (
                                 <div className="space-y-2">
-                                    <label className="text-sm font-semibold text-white/60">{t('settings.insurance.fields.coveredTreatments')}</label>
-                                    <p className="text-xs text-white/30">{t('settings.insurance.fields.coveredTreatmentsHint')}</p>
-                                    {/* Selected treatments tags */}
-                                    {(() => {
-                                        const selectedCodes = parseRestrictionsAsCodes(insuranceForm.restrictions);
-                                        return selectedCodes.length > 0 && (
-                                            <div className="flex flex-wrap gap-1.5">
-                                                {selectedCodes.map(code => {
-                                                    const treat = insuranceTreatments.find(t => t.code === code);
-                                                    return (
-                                                        <span key={code} className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-500/10 text-emerald-400 rounded-lg text-xs font-semibold border border-emerald-500/20">
-                                                            {treat ? treat.name : code}
-                                                            <button type="button" onClick={() => {
-                                                                const updated = selectedCodes.filter(c => c !== code);
-                                                                setInsuranceForm(p => ({ ...p, restrictions: JSON.stringify(updated) }));
-                                                            }} className="ml-0.5 hover:text-red-400 transition-colors">
-                                                                <X size={12} />
-                                                            </button>
-                                                        </span>
-                                                    );
-                                                })}
-                                            </div>
-                                        );
-                                    })()}
-                                    {/* Search input */}
-                                    <div className="relative">
-                                        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" />
-                                        <input
-                                            type="text"
-                                            value={insuranceTreatmentSearch}
-                                            onChange={e => setInsuranceTreatmentSearch(e.target.value)}
-                                            placeholder={t('settings.insurance.fields.searchTreatments')}
-                                            className="w-full pl-9 pr-4 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white text-sm placeholder-white/20 focus:ring-2 focus:ring-blue-500 outline-none"
-                                        />
+                                    <div className="flex items-center justify-between">
+                                        <label className="text-sm font-semibold text-white/60">{t('settings.insurance.fields.coverageMatrix')}</label>
+                                        <button type="button" onClick={() => setCoverageMatrixExpanded(!coverageMatrixExpanded)} className="text-xs text-blue-400 hover:text-blue-300">
+                                            {coverageMatrixExpanded ? t('settings.insurance.fields.coverageCollapsed') : t('settings.insurance.fields.coverageCollapsed')}
+                                        </button>
                                     </div>
-                                    {/* Treatment list */}
-                                    <div className="max-h-48 overflow-y-auto rounded-lg border border-white/[0.08] bg-white/[0.02] divide-y divide-white/[0.04]">
-                                        {insuranceTreatments.length === 0 ? (
-                                            <p className="text-xs text-white/30 p-3 text-center">{t('settings.insurance.fields.noTreatments')}</p>
-                                        ) : (
-                                            insuranceTreatments
-                                                .filter(t => {
-                                                    if (!insuranceTreatmentSearch) return true;
-                                                    const q = insuranceTreatmentSearch.toLowerCase();
-                                                    return t.name.toLowerCase().includes(q) || t.code.toLowerCase().includes(q);
-                                                })
-                                                .map(treat => {
-                                                    const selectedCodes = parseRestrictionsAsCodes(insuranceForm.restrictions);
-                                                    const isSelected = selectedCodes.includes(treat.code);
-                                                    return (
-                                                        <button
-                                                            key={treat.code}
-                                                            type="button"
-                                                            onClick={() => {
-                                                                const codes = parseRestrictionsAsCodes(insuranceForm.restrictions);
-                                                                const updated = isSelected
-                                                                    ? codes.filter(c => c !== treat.code)
-                                                                    : [...codes, treat.code];
-                                                                setInsuranceForm(p => ({ ...p, restrictions: JSON.stringify(updated) }));
-                                                            }}
-                                                            className={`w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors ${isSelected ? 'bg-emerald-500/10' : 'hover:bg-white/[0.04]'}`}
-                                                        >
-                                                            <div className={`flex-shrink-0 w-5 h-5 rounded border flex items-center justify-center transition-all ${isSelected ? 'bg-emerald-500 border-emerald-500' : 'border-white/20 bg-white/[0.04]'}`}>
-                                                                {isSelected && <Check size={12} className="text-white" />}
-                                                            </div>
-                                                            <div className="flex-1 min-w-0">
+                                    <p className="text-xs text-white/30">{t('settings.insurance.fields.coverageMatrixHint')}</p>
+                                    
+                                    {/* Quick action: Mark all as covered */}
+                                    <button type="button" onClick={() => {
+                                        const allCoverage: Record<string, TreatmentCoverageEntry> = {};
+                                        insuranceTreatments.forEach(t => {
+                                            allCoverage[t.code] = { covered: true, copay_percent: insuranceForm.default_copay_percent || 0, requires_pre_authorization: false, pre_auth_leadtime_days: 0, waiting_period_days: 0, max_annual_coverage: null, notes: '' };
+                                        });
+                                        setInsuranceForm(p => ({ ...p, coverage_by_treatment: allCoverage }));
+                                    }} className="text-xs text-emerald-400 hover:text-emerald-300">
+                                        {t('settings.insurance.fields.configureAllCovered')}
+                                    </button>
+
+                                    {coverageMatrixExpanded && (
+                                        <div className="max-h-64 overflow-y-auto rounded-lg border border-white/[0.08] bg-white/[0.02] divide-y divide-white/[0.04]">
+                                            {insuranceTreatments.map(treat => {
+                                                const coverage = insuranceForm.coverage_by_treatment?.[treat.code] || { covered: false, copay_percent: 0, requires_pre_authorization: false, pre_auth_leadtime_days: 0, waiting_period_days: 0, max_annual_coverage: null, notes: '' };
+                                                return (
+                                                    <div key={treat.code} className="p-3 space-y-2">
+                                                        <div className="flex items-center justify-between">
+                                                            <div className="flex items-center gap-2">
+                                                                <input type="checkbox" checked={coverage.covered} onChange={e => {
+                                                                    const newCoverage = { ...insuranceForm.coverage_by_treatment };
+                                                                    if (e.target.checked) {
+                                                                        newCoverage[treat.code] = { covered: true, copay_percent: insuranceForm.default_copay_percent || 0, requires_pre_authorization: false, pre_auth_leadtime_days: 0, waiting_period_days: 0, max_annual_coverage: null, notes: '' };
+                                                                    } else {
+                                                                        delete newCoverage[treat.code];
+                                                                    }
+                                                                    setInsuranceForm(p => ({ ...p, coverage_by_treatment: newCoverage }));
+                                                                }} className="h-4 w-4 rounded border-white/20 text-emerald-400" />
                                                                 <span className="text-sm text-white font-medium">{treat.name}</span>
-                                                                <span className="text-xs text-white/30 ml-2">{treat.code}</span>
+                                                                <span className="text-xs text-white/30">({treat.code})</span>
                                                             </div>
-                                                        </button>
-                                                    );
-                                                })
-                                        )}
-                                    </div>
+                                                        </div>
+                                                        {coverage.covered && (
+                                                            <div className="pl-6 grid grid-cols-2 gap-2 text-xs">
+                                                                <div>
+                                                                    <label className="text-white/40">{t('settings.insurance.fields.copayPercent')}</label>
+                                                                    <input type="number" min="0" max="100" value={coverage.copay_percent} onChange={e => {
+                                                                        const newCoverage = { ...insuranceForm.coverage_by_treatment };
+                                                                        newCoverage[treat.code] = { ...coverage, copay_percent: Number(e.target.value) };
+                                                                        setInsuranceForm(p => ({ ...p, coverage_by_treatment: newCoverage }));
+                                                                    }} className="w-full px-2 py-1 bg-white/[0.04] border border-white/[0.08] rounded text-white" />
+                                                                </div>
+                                                                <div>
+                                                                    <label className="text-white/40">{t('settings.insurance.fields.waitingDays')}</label>
+                                                                    <input type="number" min="0" value={coverage.waiting_period_days} onChange={e => {
+                                                                        const newCoverage = { ...insuranceForm.coverage_by_treatment };
+                                                                        newCoverage[treat.code] = { ...coverage, waiting_period_days: Number(e.target.value) };
+                                                                        setInsuranceForm(p => ({ ...p, coverage_by_treatment: newCoverage }));
+                                                                    }} className="w-full px-2 py-1 bg-white/[0.04] border border-white/[0.08] rounded text-white" />
+                                                                </div>
+                                                                <div className="col-span-2 flex items-center gap-2">
+                                                                    <input type="checkbox" checked={coverage.requires_pre_authorization} onChange={e => {
+                                                                        const newCoverage = { ...insuranceForm.coverage_by_treatment };
+                                                                        newCoverage[treat.code] = { ...coverage, requires_pre_authorization: e.target.checked };
+                                                                        setInsuranceForm(p => ({ ...p, coverage_by_treatment: newCoverage }));
+                                                                    }} className="h-4 w-4 rounded border-white/20 text-blue-400" />
+                                                                    <span className="text-white/60">{t('settings.insurance.fields.requiresPreAuth')}</span>
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
                                     <p className="text-xs text-white/30">
-                                        {parseRestrictionsAsCodes(insuranceForm.restrictions).length} {t('settings.insurance.fields.treatmentsSelected')}
+                                        {Object.keys(insuranceForm.coverage_by_treatment || {}).filter(code => insuranceForm.coverage_by_treatment?.[code]?.covered).length} {t('settings.insurance.fields.treatmentsSelected')}
                                     </p>
                                 </div>
                             )}

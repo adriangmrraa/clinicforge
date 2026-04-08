@@ -796,13 +796,29 @@
         "requiresCopay": "Requiere coseguro",
         "copayNotes": "Detalle del coseguro",
         "aiTemplate": "Respuesta personalizada del asistente",
-        "aiTemplatePlaceholder": "Dejá vacío para usar la respuesta por defecto"
+        "aiTemplatePlaceholder": "Dejá vacío para usar la respuesta por defecto",
+        "isPrepaid": "Es prepaga",
+        "defaultCopay": "Coseguro por defecto (%)",
+        "employeeDiscount": "Descuento empleados (%)",
+        "coverageMatrix": "Cobertura por tratamiento",
+        "coverageMatrixHint": "Configurá el detalle de cobertura para cada tratamiento",
+        "covered": "Cubre",
+        "copayPercent": "Coseguro (%)",
+        "requiresPreAuth": "Requiere autorización",
+        "preAuthDays": "Días para autorización",
+        "waitingDays": "Carencia (días)",
+        "treatmentNotes": "Notas",
+        "configureAllCovered": "Marcar todos como cubiertos",
+        "coverageCollapsed": "Ver detalle de cobertura"
       },
       "errors": {
         "nameRequired": "El nombre es obligatorio",
         "restrictionsRequired": "Las restricciones son obligatorias para este estado",
         "externalTargetRequired": "El destino de derivación es obligatorio",
-        "duplicateName": "Ya existe una obra social con ese nombre"
+        "duplicateName": "Ya existe una obra social con ese nombre",
+        "percentRange": "Debe estar entre 0 y 100",
+        "nonNegative": "No puede ser negativo",
+        "notesTooLong": "Máximo 500 caracteres"
       }
     },
     "derivation": {

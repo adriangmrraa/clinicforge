@@ -202,7 +202,20 @@ class TenantInsuranceProvider(Base):
     )
     provider_name = Column(String(100), nullable=False)
     status = Column(String(20), nullable=False)
-    restrictions = Column(Text, nullable=True)
+    # Structured coverage per treatment code (migration 034). Keyed by
+    # treatment_types.code. Each entry carries copay_percent, pre-auth
+    # requirements, waiting period, annual cap, and notes. Defaults to {}.
+    coverage_by_treatment = Column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
+    # True for prepagas (OSDE Prepaga, Swiss Medical, etc.) to distinguish
+    # from obras sociales tradicionales at prompt-render time.
+    is_prepaid = Column(Boolean, nullable=False, server_default=text("false"))
+    # Optional discount for employees of affiliated companies (0-100).
+    employee_discount_percent = Column(DECIMAL(5, 2), nullable=True)
+    # Fallback copay percentage applied when a treatment has no entry in
+    # coverage_by_treatment. NULL = no default.
+    default_copay_percent = Column(DECIMAL(5, 2), nullable=True)
     external_target = Column(Text, nullable=True)
     requires_copay = Column(Boolean, nullable=False, server_default="true")
     copay_notes = Column(Text, nullable=True)

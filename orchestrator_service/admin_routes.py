@@ -7715,10 +7715,27 @@ async def sync_environment():
 VALID_INSURANCE_STATUSES = ("accepted", "restricted", "external_derivation", "rejected")
 
 
+class TreatmentCoverage(BaseModel):
+    """Structured coverage entry for a single treatment code under an insurance
+    provider. Migration 034 replaces the flat `restrictions` array with a dict
+    keyed by treatment_types.code where each value is a TreatmentCoverage."""
+
+    covered: bool = True
+    copay_percent: float = 0.0
+    requires_pre_authorization: bool = False
+    pre_auth_leadtime_days: int = 0
+    waiting_period_days: int = 0
+    max_annual_coverage: Optional[float] = None
+    notes: str = ""
+
+
 class InsuranceProviderCreate(BaseModel):
     provider_name: str
     status: str  # 'accepted','restricted','external_derivation','rejected'
-    restrictions: Optional[str] = None
+    coverage_by_treatment: Optional[Dict[str, TreatmentCoverage]] = None
+    is_prepaid: bool = False
+    employee_discount_percent: Optional[float] = None
+    default_copay_percent: Optional[float] = None
     external_target: Optional[str] = None
     requires_copay: bool = True
     copay_notes: Optional[str] = None
@@ -7730,7 +7747,10 @@ class InsuranceProviderCreate(BaseModel):
 class InsuranceProviderUpdate(BaseModel):
     provider_name: str
     status: str
-    restrictions: Optional[str] = None
+    coverage_by_treatment: Optional[Dict[str, TreatmentCoverage]] = None
+    is_prepaid: bool = False
+    employee_discount_percent: Optional[float] = None
+    default_copay_percent: Optional[float] = None
     external_target: Optional[str] = None
     requires_copay: bool = True
     copay_notes: Optional[str] = None
@@ -7740,7 +7760,7 @@ class InsuranceProviderUpdate(BaseModel):
 
 
 def _validate_insurance_provider(data) -> None:
-    """Valida campos de obra social / seguro."""
+    """Valida campos de obra social / seguro (migration 034 shape)."""
     name = data.provider_name.strip() if data.provider_name else ""
     if not name:
         raise HTTPException(status_code=422, detail="provider_name es obligatorio")
@@ -7753,24 +7773,53 @@ def _validate_insurance_provider(data) -> None:
             status_code=422,
             detail=f"status inválido. Debe ser uno de: {', '.join(VALID_INSURANCE_STATUSES)}",
         )
-    if data.status == "restricted":
-        if not data.restrictions:
-            raise HTTPException(
-                status_code=422,
-                detail="restrictions es obligatorio cuando status='restricted'",
-            )
-        # Support JSON array of treatment codes (new format)
-        try:
-            import json
-
-            parsed = json.loads(data.restrictions)
-            if isinstance(parsed, list) and len(parsed) == 0:
+    # Per-treatment coverage validation (migration 034)
+    if data.coverage_by_treatment:
+        for code, cov in data.coverage_by_treatment.items():
+            if not code or not code.strip():
                 raise HTTPException(
                     status_code=422,
-                    detail="Debés seleccionar al menos un tratamiento cubierto",
+                    detail="Los códigos de tratamiento no pueden estar vacíos",
                 )
-        except (json.JSONDecodeError, TypeError):
-            pass  # Legacy free-text format — allow
+            if not (0 <= cov.copay_percent <= 100):
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"copay_percent para '{code}' debe estar entre 0 y 100",
+                )
+            if cov.pre_auth_leadtime_days < 0:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"pre_auth_leadtime_days para '{code}' no puede ser negativo",
+                )
+            if cov.waiting_period_days < 0:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"waiting_period_days para '{code}' no puede ser negativo",
+                )
+            if cov.max_annual_coverage is not None and cov.max_annual_coverage <= 0:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"max_annual_coverage para '{code}' debe ser positivo",
+                )
+            if len(cov.notes) > 500:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"notes para '{code}' no puede superar 500 caracteres",
+                )
+    if data.employee_discount_percent is not None and not (
+        0 <= data.employee_discount_percent <= 100
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="employee_discount_percent debe estar entre 0 y 100",
+        )
+    if data.default_copay_percent is not None and not (
+        0 <= data.default_copay_percent <= 100
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="default_copay_percent debe estar entre 0 y 100",
+        )
     if data.status == "external_derivation" and not data.external_target:
         raise HTTPException(
             status_code=422,
@@ -7787,6 +7836,15 @@ def _validate_insurance_provider(data) -> None:
         )
 
 
+def _serialize_coverage_for_db(coverage: Optional[Dict[str, TreatmentCoverage]]) -> str:
+    """Serialize a coverage_by_treatment dict for asyncpg JSONB binding.
+    Returns '{}' if coverage is None or empty so the column always holds a
+    valid JSON object (DB default is the same)."""
+    if not coverage:
+        return "{}"
+    return json.dumps({k: v.dict() for k, v in coverage.items()})
+
+
 @router.get(
     "/insurance-providers",
     dependencies=[Depends(verify_admin_token)],
@@ -7797,7 +7855,8 @@ async def list_insurance_providers(tenant_id: int = Depends(get_resolved_tenant_
     """Listar obras sociales configuradas. Aislado por tenant_id (Regla de Oro)."""
     rows = await db.pool.fetch(
         """
-        SELECT id, provider_name, status, restrictions, external_target,
+        SELECT id, provider_name, status, coverage_by_treatment, is_prepaid,
+               employee_discount_percent, default_copay_percent, external_target,
                requires_copay, copay_notes, ai_response_template, sort_order, is_active,
                created_at, updated_at
         FROM tenant_insurance_providers
@@ -7806,7 +7865,18 @@ async def list_insurance_providers(tenant_id: int = Depends(get_resolved_tenant_
         """,
         tenant_id,
     )
-    return [dict(r) for r in rows]
+    # asyncpg may return JSONB as a string in some versions — defensively parse
+    # so the API response always carries a dict, not a JSON-encoded string.
+    result = []
+    for row in rows:
+        d = dict(row)
+        if isinstance(d.get("coverage_by_treatment"), str):
+            try:
+                d["coverage_by_treatment"] = json.loads(d["coverage_by_treatment"])
+            except (json.JSONDecodeError, TypeError):
+                d["coverage_by_treatment"] = {}
+        result.append(d)
+    return result
 
 
 @router.post(
@@ -7834,19 +7904,24 @@ async def create_insurance_provider(
             status_code=409, detail="Ya existe una obra social con ese nombre"
         )
 
+    coverage_json = _serialize_coverage_for_db(data.coverage_by_treatment)
     row = await db.pool.fetchrow(
         """
         INSERT INTO tenant_insurance_providers (
-            tenant_id, provider_name, status, restrictions, external_target,
+            tenant_id, provider_name, status, coverage_by_treatment, is_prepaid,
+            employee_discount_percent, default_copay_percent, external_target,
             requires_copay, copay_notes, ai_response_template, sort_order, is_active,
             created_at, updated_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())
+        ) VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW(), NOW())
         RETURNING id
         """,
         tenant_id,
         provider_name,
         data.status,
-        data.restrictions,
+        coverage_json,
+        data.is_prepaid,
+        data.employee_discount_percent,
+        data.default_copay_percent,
         data.external_target,
         data.requires_copay,
         data.copay_notes,
@@ -7854,7 +7929,10 @@ async def create_insurance_provider(
         data.sort_order,
         data.is_active,
     )
-    # Sync embedding (background, non-blocking)
+    # Sync embedding (background, non-blocking). NOTE: upsert_insurance_embedding
+    # does not currently exist in embedding_service — the except below swallows
+    # the ImportError. When implemented, it should receive the coverage JSON so
+    # the RAG index reflects per-treatment details.
     try:
         from services.embedding_service import upsert_insurance_embedding
         import asyncio
@@ -7865,7 +7943,7 @@ async def create_insurance_provider(
                 row["id"],
                 data.provider_name,
                 data.status,
-                data.restrictions or "",
+                coverage_json,
                 data.copay_notes or "",
                 data.ai_response_template or "",
             )
@@ -7890,17 +7968,23 @@ async def update_insurance_provider(
     _validate_insurance_provider(data)
     provider_name = data.provider_name.strip()
 
+    coverage_json = _serialize_coverage_for_db(data.coverage_by_treatment)
     result = await db.pool.execute(
         """
         UPDATE tenant_insurance_providers SET
-            provider_name = $1, status = $2, restrictions = $3, external_target = $4,
-            requires_copay = $5, copay_notes = $6, ai_response_template = $7,
-            sort_order = $8, is_active = $9, updated_at = NOW()
-        WHERE id = $10 AND tenant_id = $11
+            provider_name = $1, status = $2, coverage_by_treatment = $3::jsonb,
+            is_prepaid = $4, employee_discount_percent = $5, default_copay_percent = $6,
+            external_target = $7, requires_copay = $8, copay_notes = $9,
+            ai_response_template = $10, sort_order = $11, is_active = $12,
+            updated_at = NOW()
+        WHERE id = $13 AND tenant_id = $14
         """,
         provider_name,
         data.status,
-        data.restrictions,
+        coverage_json,
+        data.is_prepaid,
+        data.employee_discount_percent,
+        data.default_copay_percent,
         data.external_target,
         data.requires_copay,
         data.copay_notes,
@@ -7912,7 +7996,7 @@ async def update_insurance_provider(
     )
     if result == "UPDATE 0":
         raise HTTPException(status_code=404, detail="Obra social no encontrada")
-    # Sync embedding (background, non-blocking)
+    # Sync embedding (background, non-blocking). See note in create_insurance_provider.
     try:
         from services.embedding_service import upsert_insurance_embedding
         import asyncio
@@ -7923,7 +8007,7 @@ async def update_insurance_provider(
                 provider_id,
                 data.provider_name,
                 data.status,
-                data.restrictions or "",
+                coverage_json,
                 data.copay_notes or "",
                 data.ai_response_template or "",
             )
