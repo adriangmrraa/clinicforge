@@ -29,7 +29,7 @@ from fastapi import (
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from fastapi.responses import JSONResponse, StreamingResponse, FileResponse, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from db import db
 from gcal_service import gcal_service
 from analytics_service import analytics_service
@@ -103,6 +103,44 @@ class AppointmentResponse(BaseModel):
     appointment_name: str
 
 
+class PreInstructions(BaseModel):
+    """Structured pre-treatment instructions (migration 036).
+
+    Stored as JSONB in treatment_types.pre_instructions. Legacy free text
+    rows are wrapped as {"general_notes": "<text>"} by the migration so
+    they remain readable through this shape.
+    """
+
+    preparation_days_before: Optional[int] = None
+    fasting_required: Optional[bool] = None
+    fasting_hours: Optional[int] = None
+    medications_to_avoid: Optional[List[str]] = Field(default_factory=list)
+    medications_to_take: Optional[List[str]] = Field(default_factory=list)
+    what_to_bring: Optional[List[str]] = Field(default_factory=list)
+    general_notes: Optional[str] = None
+
+
+class PostInstructions(BaseModel):
+    """Structured post-treatment recovery protocol (migration 036).
+
+    Stored as JSONB in treatment_types.post_instructions. Coexists with
+    the legacy list-of-timed-entries shape (wrapped by migration 036 as
+    {"general_notes": "<serialized list>"}). The get_treatment_instructions
+    tool reads both shapes via _format_post_instructions_dict and the
+    legacy list renderer.
+    """
+
+    care_duration_days: Optional[int] = None
+    dietary_restrictions: Optional[List[str]] = Field(default_factory=list)
+    activity_restrictions: Optional[List[str]] = Field(default_factory=list)
+    allowed_medications: Optional[List[str]] = Field(default_factory=list)
+    prohibited_medications: Optional[List[str]] = Field(default_factory=list)
+    sutures_removal_day: Optional[int] = None
+    normal_symptoms: Optional[List[str]] = Field(default_factory=list)
+    alarm_symptoms: Optional[List[str]] = Field(default_factory=list)
+    escalation_message: Optional[str] = None
+
+
 class TreatmentTypeResponse(BaseModel):
     id: int
     code: str
@@ -121,7 +159,9 @@ class TreatmentTypeResponse(BaseModel):
     base_price: Optional[float] = 0
     priority: Optional[str] = "medium"
     professional_ids: Optional[List[int]] = []
-    pre_instructions: Optional[str] = None
+    # Migration 036: pre_instructions is JSONB now (was Text). Response shape
+    # is whatever is stored — dict or null. Frontend handles parsing.
+    pre_instructions: Optional[Any] = None
     post_instructions: Optional[Any] = None
     followup_template: Optional[Any] = None
 
@@ -856,8 +896,12 @@ class TreatmentTypeCreate(BaseModel):
     base_price: Optional[float] = 0
     priority: Optional[str] = "medium"
     professional_ids: Optional[List[int]] = None
-    pre_instructions: Optional[str] = None
-    post_instructions: Optional[Any] = None
+    # Migration 036: pre_instructions accepts dict (PreInstructions),
+    # legacy plain string (wrapped on save), or raw dict for flexibility.
+    pre_instructions: Optional[Union[PreInstructions, dict, str]] = None
+    # post_instructions accepts dict (PostInstructions), legacy timed-list,
+    # raw dict, or string (rare).
+    post_instructions: Optional[Union[PostInstructions, list, dict, str]] = None
     followup_template: Optional[Any] = None
     confirm_unusual_price: bool = False
 
@@ -877,8 +921,9 @@ class TreatmentTypeUpdate(BaseModel):
     internal_notes: Optional[str] = ""
     base_price: Optional[float] = 0
     priority: Optional[str] = "medium"
-    pre_instructions: Optional[str] = None
-    post_instructions: Optional[Any] = None
+    # Migration 036: same Union shape as TreatmentTypeCreate.
+    pre_instructions: Optional[Union[PreInstructions, dict, str]] = None
+    post_instructions: Optional[Union[PostInstructions, list, dict, str]] = None
     followup_template: Optional[Any] = None
     confirm_unusual_price: bool = False
 
@@ -931,6 +976,22 @@ class IntegrationConfig(BaseModel):
     ycloud_webhook_secret: Optional[str] = None
 
     tenant_id: Optional[int] = None  # Optional override for multi-tenant setup
+
+
+class HighRiskProtocol(BaseModel):
+    """Validación estricta de cada entrada del dict high_risk_protocols.
+
+    Cada condición (key del dict) tiene una política con estos campos.
+    `extra=forbid` garantiza que keys desconocidas tiren 422 y no se cuelen
+    en el JSONB.
+    """
+
+    requires_medical_clearance: bool = False
+    requires_pre_appointment_call: bool = False
+    restricted_treatments: list[str] = []
+    notes: str = ""
+
+    model_config = {"extra": "forbid"}
 
 
 @router.get("/integrations/{provider}/config", tags=["Integraciones"])
@@ -2594,14 +2655,20 @@ async def get_tenants(
             status_code=403, detail="Solo el CEO puede gestionar clínicas."
         )
     rows = await db.pool.fetch(
-        "SELECT id, clinic_name, bot_phone_number, config, address, google_maps_url, working_hours, consultation_price, bank_cbu, bank_alias, bank_holder_name, derivation_email, logo_url, max_chairs, country_code, system_prompt_template, bot_name, payment_methods, financing_available, max_installments, installments_interest_free, financing_provider, financing_notes, cash_discount_percent, accepts_crypto, created_at, updated_at FROM tenants WHERE id = ANY($1::int[]) ORDER BY id ASC",
+        "SELECT id, clinic_name, bot_phone_number, config, address, google_maps_url, working_hours, consultation_price, bank_cbu, bank_alias, bank_holder_name, derivation_email, logo_url, max_chairs, country_code, system_prompt_template, bot_name, payment_methods, financing_available, max_installments, installments_interest_free, financing_provider, financing_notes, cash_discount_percent, accepts_crypto, accepts_pregnant_patients, pregnancy_restricted_treatments, pregnancy_notes, accepts_pediatric, min_pediatric_age_years, pediatric_notes, high_risk_protocols, requires_anamnesis_before_booking, created_at, updated_at FROM tenants WHERE id = ANY($1::int[]) ORDER BY id ASC",
         allowed_ids,
     )
     result = []
     for r in rows:
         d = dict(r)
         # asyncpg puede devolver JSONB como string; asegurar que sean objetos
-        for jfield in ("config", "working_hours"):
+        for jfield in (
+            "config",
+            "working_hours",
+            "payment_methods",
+            "pregnancy_restricted_treatments",
+            "high_risk_protocols",
+        ):
             if isinstance(d.get(jfield), str):
                 try:
                     d[jfield] = json.loads(d[jfield])
@@ -2854,6 +2921,101 @@ async def update_tenant(
         _val_ac = bool(_raw_ac) if _raw_ac is not None else False
         params.append(_val_ac)
         updates.append(f"accepts_crypto = ${len(params)}")
+
+    # ----- Clinic special conditions (migration 036) -----
+    if "accepts_pregnant_patients" in data and data["accepts_pregnant_patients"] is not None:
+        params.append(bool(data["accepts_pregnant_patients"]))
+        updates.append(f"accepts_pregnant_patients = ${len(params)}")
+
+    if "pregnancy_restricted_treatments" in data:
+        _val_prt = data.get("pregnancy_restricted_treatments")
+        if _val_prt is None:
+            params.append(None)
+        else:
+            if not isinstance(_val_prt, list) or not all(
+                isinstance(c, str) for c in _val_prt
+            ):
+                raise HTTPException(
+                    status_code=422,
+                    detail="pregnancy_restricted_treatments must be a list of strings",
+                )
+            params.append(json.dumps(_val_prt))
+        updates.append(f"pregnancy_restricted_treatments = ${len(params)}::jsonb")
+
+    if "pregnancy_notes" in data:
+        _val_pn = data.get("pregnancy_notes")
+        params.append(_val_pn.strip() if isinstance(_val_pn, str) and _val_pn.strip() else None)
+        updates.append(f"pregnancy_notes = ${len(params)}")
+
+    if "accepts_pediatric" in data and data["accepts_pediatric"] is not None:
+        params.append(bool(data["accepts_pediatric"]))
+        updates.append(f"accepts_pediatric = ${len(params)}")
+
+    if "min_pediatric_age_years" in data:
+        _val_age = data.get("min_pediatric_age_years")
+        if _val_age is None or _val_age == "":
+            params.append(None)
+        else:
+            try:
+                _ival_age = int(_val_age)
+            except (TypeError, ValueError):
+                raise HTTPException(
+                    status_code=422,
+                    detail="min_pediatric_age_years must be an integer",
+                )
+            if _ival_age < 0:
+                raise HTTPException(
+                    status_code=422,
+                    detail="min_pediatric_age_years must be >= 0",
+                )
+            params.append(_ival_age)
+        updates.append(f"min_pediatric_age_years = ${len(params)}")
+
+    if "pediatric_notes" in data:
+        _val_pedn = data.get("pediatric_notes")
+        params.append(_val_pedn.strip() if isinstance(_val_pedn, str) and _val_pedn.strip() else None)
+        updates.append(f"pediatric_notes = ${len(params)}")
+
+    if "high_risk_protocols" in data:
+        _val_hrp = data.get("high_risk_protocols")
+        if _val_hrp is None:
+            params.append(None)
+        else:
+            if not isinstance(_val_hrp, dict):
+                raise HTTPException(
+                    status_code=422,
+                    detail="high_risk_protocols must be an object",
+                )
+            from pydantic import ValidationError
+
+            validated: dict = {}
+            for _cond_key, _cond_val in _val_hrp.items():
+                if not isinstance(_cond_key, str) or not _cond_key.strip():
+                    raise HTTPException(
+                        status_code=422,
+                        detail="high_risk_protocols keys must be non-empty strings",
+                    )
+                if not isinstance(_cond_val, dict):
+                    raise HTTPException(
+                        status_code=422,
+                        detail=f"high_risk_protocols.{_cond_key} must be an object",
+                    )
+                try:
+                    validated[_cond_key] = HighRiskProtocol(
+                        **_cond_val
+                    ).model_dump()
+                except ValidationError as _ve:
+                    raise HTTPException(
+                        status_code=422,
+                        detail=f"high_risk_protocols.{_cond_key}: {_ve.errors()}",
+                    )
+            params.append(json.dumps(validated))
+        updates.append(f"high_risk_protocols = ${len(params)}::jsonb")
+
+    if "requires_anamnesis_before_booking" in data and data["requires_anamnesis_before_booking"] is not None:
+        params.append(bool(data["requires_anamnesis_before_booking"]))
+        updates.append(f"requires_anamnesis_before_booking = ${len(params)}")
+
     if not updates:
         return {"status": "updated"}
     params.append(tenant_id)
@@ -8598,8 +8760,10 @@ class TreatmentTypeUpdate(BaseModel):
     internal_notes: Optional[str] = None
     base_price: Optional[float] = 0
     priority: Optional[str] = "medium"
-    pre_instructions: Optional[str] = None
-    post_instructions: Optional[Any] = None
+    # Migration 036: structured pre/post instructions. See PreInstructions /
+    # PostInstructions Pydantic models near the top of this file.
+    pre_instructions: Optional[Union[PreInstructions, dict, str]] = None
+    post_instructions: Optional[Union[PostInstructions, list, dict, str]] = None
     followup_template: Optional[Any] = None
     confirm_unusual_price: bool = False
 
@@ -8637,34 +8801,172 @@ async def _validate_treatment_price_scale(
         )
 
 
+def _coerce_pre_instructions(value):
+    """Normalize pre_instructions to a JSON-serializable dict (or None).
+
+    Migration 036 stores pre_instructions as JSONB. This helper converts
+    every accepted input shape into the canonical dict form before
+    json.dumps + INSERT/UPDATE.
+    - None → None
+    - PreInstructions (Pydantic) → .dict()
+    - dict → returned as-is (assumed already in the right shape)
+    - str (legacy) → wrapped as {"general_notes": str}
+    - anything else → None (defensive)
+    """
+    if value is None:
+        return None
+    if isinstance(value, PreInstructions):
+        return value.dict(exclude_none=False)
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        return {"general_notes": value}
+    return None
+
+
+def _coerce_post_instructions(value):
+    """Normalize post_instructions to dict, list, or None.
+
+    Migration 036 keeps post_instructions JSONB but allows two shapes:
+    - new structured PostInstructions dict (recovery protocol)
+    - legacy timed-sequence list (preserved as-is)
+    """
+    if value is None:
+        return None
+    if isinstance(value, PostInstructions):
+        return value.dict(exclude_none=False)
+    if isinstance(value, list):
+        return value  # legacy timed sequence — store as-is
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        # Defensive: try to parse JSON; on failure wrap as general_notes
+        try:
+            parsed = json.loads(value)
+            return parsed
+        except (json.JSONDecodeError, TypeError):
+            return {"general_notes": value}
+    return None
+
+
 def _validate_treatment_instruction_fields(treatment) -> None:
-    """Valida los campos de instrucciones de un tipo de tratamiento."""
-    if (
-        treatment.pre_instructions is not None
-        and len(treatment.pre_instructions) > 2000
-    ):
-        raise HTTPException(
-            status_code=422, detail="pre_instructions no puede superar 2000 caracteres"
-        )
-    if treatment.post_instructions is not None:
-        if not isinstance(treatment.post_instructions, list):
+    """Valida los campos de instrucciones de un tipo de tratamiento (migration 036).
+
+    Acepta tanto la forma legacy (string para pre, lista timed para post) como
+    la nueva forma estructurada (PreInstructions / PostInstructions dicts).
+    """
+    # pre_instructions: string ≤ 2000 chars OR dict with general_notes ≤ 2000
+    pre = treatment.pre_instructions
+    if pre is not None:
+        if isinstance(pre, str):
+            if len(pre) > 2000:
+                raise HTTPException(
+                    status_code=422,
+                    detail="pre_instructions no puede superar 2000 caracteres",
+                )
+        elif isinstance(pre, PreInstructions):
+            notes = pre.general_notes or ""
+            if len(notes) > 2000:
+                raise HTTPException(
+                    status_code=422,
+                    detail="pre_instructions.general_notes no puede superar 2000 caracteres",
+                )
+            if pre.fasting_hours is not None and pre.fasting_hours < 0:
+                raise HTTPException(
+                    status_code=422,
+                    detail="fasting_hours no puede ser negativo",
+                )
+            if (
+                pre.preparation_days_before is not None
+                and pre.preparation_days_before < 0
+            ):
+                raise HTTPException(
+                    status_code=422,
+                    detail="preparation_days_before no puede ser negativo",
+                )
+        elif isinstance(pre, dict):
+            notes = pre.get("general_notes") or ""
+            if isinstance(notes, str) and len(notes) > 2000:
+                raise HTTPException(
+                    status_code=422,
+                    detail="pre_instructions.general_notes no puede superar 2000 caracteres",
+                )
+        else:
             raise HTTPException(
                 status_code=422,
-                detail="post_instructions debe ser una lista de objetos",
+                detail="pre_instructions debe ser un objeto o un string",
             )
-        valid_timings = ("before", "after", "day_of", "same_day")
-        for item in treatment.post_instructions:
-            if not isinstance(item, dict):
+
+    # post_instructions: PostInstructions dict OR legacy list of timed entries
+    post = treatment.post_instructions
+    if post is not None:
+        if isinstance(post, PostInstructions):
+            if (
+                post.care_duration_days is not None
+                and post.care_duration_days <= 0
+            ):
                 raise HTTPException(
                     status_code=422,
-                    detail="Cada elemento de post_instructions debe ser un objeto",
+                    detail="care_duration_days debe ser mayor a 0",
                 )
-            timing = item.get("timing")
-            if timing is not None and timing not in valid_timings:
+            if (
+                post.sutures_removal_day is not None
+                and post.sutures_removal_day < 0
+            ):
                 raise HTTPException(
                     status_code=422,
-                    detail=f"Valor de timing inválido: '{timing}'. Debe ser uno de: {', '.join(valid_timings)}",
+                    detail="sutures_removal_day no puede ser negativo",
                 )
+            esc = post.escalation_message or ""
+            if len(esc) > 500:
+                raise HTTPException(
+                    status_code=422,
+                    detail="escalation_message no puede superar 500 caracteres",
+                )
+        elif isinstance(post, list):
+            # Legacy timed-sequence shape — preserved for backwards compat.
+            valid_timings = (
+                "before",
+                "after",
+                "day_of",
+                "same_day",
+                "immediate",
+                "24h",
+                "48h",
+                "72h",
+                "1w",
+                "stitch_removal",
+                "custom",
+            )
+            for item in post:
+                if not isinstance(item, dict):
+                    raise HTTPException(
+                        status_code=422,
+                        detail="Cada elemento de post_instructions debe ser un objeto",
+                    )
+                timing = item.get("timing")
+                if timing is not None and timing not in valid_timings:
+                    raise HTTPException(
+                        status_code=422,
+                        detail=(
+                            f"Valor de timing inválido: '{timing}'. Debe ser uno de: "
+                            f"{', '.join(valid_timings)}"
+                        ),
+                    )
+        elif isinstance(post, dict):
+            # Raw dict (no Pydantic coercion) — accept without strict
+            # validation to keep the API flexible for future keys.
+            cd = post.get("care_duration_days")
+            if cd is not None and isinstance(cd, (int, float)) and cd <= 0:
+                raise HTTPException(
+                    status_code=422,
+                    detail="care_duration_days debe ser mayor a 0",
+                )
+        else:
+            raise HTTPException(
+                status_code=422,
+                detail="post_instructions debe ser un objeto, lista o string",
+            )
     if treatment.followup_template is not None:
         if not isinstance(treatment.followup_template, list):
             raise HTTPException(
@@ -8885,8 +9187,12 @@ async def create_treatment_type(
             treatment.priority
             if treatment.priority in ("high", "medium-high", "medium", "low")
             else "medium",
-            treatment.pre_instructions,
-            json.dumps(treatment.post_instructions)
+            # Migration 036: pre_instructions is now JSONB. Coerce string /
+            # PreInstructions / dict into a canonical dict before serializing.
+            json.dumps(_coerce_pre_instructions(treatment.pre_instructions))
+            if treatment.pre_instructions is not None
+            else None,
+            json.dumps(_coerce_post_instructions(treatment.post_instructions))
             if treatment.post_instructions is not None
             else None,
             json.dumps(treatment.followup_template)
@@ -8961,8 +9267,12 @@ async def update_treatment_type(
         treatment.priority
         if treatment.priority in ("high", "medium-high", "medium", "low")
         else "medium",
-        treatment.pre_instructions,
-        json.dumps(treatment.post_instructions)
+        # Migration 036: pre_instructions is now JSONB. Coerce string /
+        # PreInstructions / dict into a canonical dict before serializing.
+        json.dumps(_coerce_pre_instructions(treatment.pre_instructions))
+        if treatment.pre_instructions is not None
+        else None,
+        json.dumps(_coerce_post_instructions(treatment.post_instructions))
         if treatment.post_instructions is not None
         else None,
         json.dumps(treatment.followup_template)

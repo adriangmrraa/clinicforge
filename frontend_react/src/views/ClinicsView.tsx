@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Building2, Plus, Edit, Trash2, Phone, Loader2, AlertCircle, CheckCircle2, Calendar, Clock, MapPin, HelpCircle, ChevronDown, X, DollarSign, Shield, GitMerge, ToggleLeft, ToggleRight, Info, Search, Check } from 'lucide-react';
+import { Building2, Plus, Edit, Trash2, Phone, Loader2, AlertCircle, CheckCircle2, Calendar, Clock, MapPin, HelpCircle, ChevronDown, X, DollarSign, Shield, ShieldAlert, GitMerge, ToggleLeft, ToggleRight, Info, Search, Check } from 'lucide-react';
 import api from '../api/axios';
 import { useTranslation } from '../context/LanguageContext';
 import PageHeader from '../components/PageHeader';
@@ -71,9 +71,31 @@ export interface Clinica {
     financing_notes?: string | null;
     cash_discount_percent?: number | null;
     accepts_crypto?: boolean | null;
+    // Clinic special conditions (migration 036)
+    accepts_pregnant_patients?: boolean | null;
+    pregnancy_restricted_treatments?: string[] | null;
+    pregnancy_notes?: string | null;
+    accepts_pediatric?: boolean | null;
+    min_pediatric_age_years?: number | null;
+    pediatric_notes?: string | null;
+    high_risk_protocols?: Record<string, HighRiskProtocolEntry> | null;
+    requires_anamnesis_before_booking?: boolean | null;
     config?: { calendar_provider?: 'local' | 'google' };
     created_at: string;
     updated_at?: string;
+}
+
+interface HighRiskProtocolEntry {
+    requires_medical_clearance: boolean;
+    requires_pre_appointment_call: boolean;
+    restricted_treatments: string[];
+    notes: string;
+}
+
+// UI-only flattened shape for the dynamic card editor. Serializa a
+// Record<string, HighRiskProtocolEntry> (la condition es la key) al enviar.
+interface HighRiskProtocolCard extends HighRiskProtocolEntry {
+    condition: string;
 }
 
 const ALLOWED_PAYMENT_METHODS = [
@@ -168,9 +190,19 @@ export default function ClinicsView() {
         financing_notes: '',
         cash_discount_percent: '' as string,
         accepts_crypto: false,
+        // Clinic special conditions (migration 036)
+        accepts_pregnant_patients: true,
+        pregnancy_restricted_treatments: [] as string[],
+        pregnancy_notes: '',
+        accepts_pediatric: true,
+        min_pediatric_age_years: '' as string,
+        pediatric_notes: '',
+        high_risk_protocols: [] as HighRiskProtocolCard[],
+        requires_anamnesis_before_booking: false,
     });
     const [expandedDays, setExpandedDays] = useState<string[]>([]);
     const [paymentSectionExpanded, setPaymentSectionExpanded] = useState(false);
+    const [specialConditionsExpanded, setSpecialConditionsExpanded] = useState(false);
 
     const togglePaymentMethod = (method: string) => {
         setFormData(prev => ({
@@ -178,6 +210,40 @@ export default function ClinicsView() {
             payment_methods: prev.payment_methods.includes(method)
                 ? prev.payment_methods.filter((m: string) => m !== method)
                 : [...prev.payment_methods, method],
+        }));
+    };
+
+    // High-risk protocols card editor helpers
+    const addHighRiskCard = () => {
+        setFormData(prev => ({
+            ...prev,
+            high_risk_protocols: [
+                ...prev.high_risk_protocols,
+                {
+                    condition: '',
+                    requires_medical_clearance: false,
+                    requires_pre_appointment_call: false,
+                    restricted_treatments: [],
+                    notes: '',
+                },
+            ],
+        }));
+    };
+    const updateHighRiskCard = (
+        index: number,
+        patch: Partial<HighRiskProtocolCard>,
+    ) => {
+        setFormData(prev => ({
+            ...prev,
+            high_risk_protocols: prev.high_risk_protocols.map((card, i) =>
+                i === index ? { ...card, ...patch } : card,
+            ),
+        }));
+    };
+    const removeHighRiskCard = (index: number) => {
+        setFormData(prev => ({
+            ...prev,
+            high_risk_protocols: prev.high_risk_protocols.filter((_, i) => i !== index),
         }));
     };
     const [saving, setSaving] = useState(false);
@@ -277,6 +343,33 @@ export default function ClinicsView() {
                 financing_notes: clinica.financing_notes || '',
                 cash_discount_percent: clinica.cash_discount_percent != null ? String(clinica.cash_discount_percent) : '',
                 accepts_crypto: Boolean(clinica.accepts_crypto),
+                // Clinic special conditions (migration 036)
+                accepts_pregnant_patients: clinica.accepts_pregnant_patients != null
+                    ? Boolean(clinica.accepts_pregnant_patients)
+                    : true,
+                pregnancy_restricted_treatments: Array.isArray(clinica.pregnancy_restricted_treatments)
+                    ? clinica.pregnancy_restricted_treatments
+                    : [],
+                pregnancy_notes: clinica.pregnancy_notes || '',
+                accepts_pediatric: clinica.accepts_pediatric != null
+                    ? Boolean(clinica.accepts_pediatric)
+                    : true,
+                min_pediatric_age_years: clinica.min_pediatric_age_years != null
+                    ? String(clinica.min_pediatric_age_years)
+                    : '',
+                pediatric_notes: clinica.pediatric_notes || '',
+                high_risk_protocols: clinica.high_risk_protocols
+                    ? Object.entries(clinica.high_risk_protocols).map(([condition, entry]) => ({
+                        condition,
+                        requires_medical_clearance: Boolean(entry.requires_medical_clearance),
+                        requires_pre_appointment_call: Boolean(entry.requires_pre_appointment_call),
+                        restricted_treatments: Array.isArray(entry.restricted_treatments)
+                            ? entry.restricted_treatments
+                            : [],
+                        notes: entry.notes || '',
+                    }))
+                    : [],
+                requires_anamnesis_before_booking: Boolean(clinica.requires_anamnesis_before_booking),
             });
         } else {
             setEditingClinica(null);
@@ -289,9 +382,19 @@ export default function ClinicsView() {
                 payment_methods: [], financing_available: false, max_installments: '',
                 installments_interest_free: true, financing_provider: '', financing_notes: '',
                 cash_discount_percent: '', accepts_crypto: false,
+                // Clinic special conditions (migration 036)
+                accepts_pregnant_patients: true,
+                pregnancy_restricted_treatments: [],
+                pregnancy_notes: '',
+                accepts_pediatric: true,
+                min_pediatric_age_years: '',
+                pediatric_notes: '',
+                high_risk_protocols: [],
+                requires_anamnesis_before_booking: false,
             });
         }
         setPaymentSectionExpanded(false);
+        setSpecialConditionsExpanded(false);
         setExpandedDays([]);
         setError(null);
         setIsModalOpen(true);
@@ -327,6 +430,32 @@ export default function ClinicsView() {
                 financing_notes: formData.financing_notes || null,
                 cash_discount_percent: formData.cash_discount_percent !== '' ? Number(formData.cash_discount_percent) : null,
                 accepts_crypto: formData.accepts_crypto,
+                // Clinic special conditions (migration 036)
+                accepts_pregnant_patients: formData.accepts_pregnant_patients,
+                pregnancy_restricted_treatments: formData.pregnancy_restricted_treatments,
+                pregnancy_notes: formData.pregnancy_notes || null,
+                accepts_pediatric: formData.accepts_pediatric,
+                min_pediatric_age_years: formData.min_pediatric_age_years !== ''
+                    ? parseInt(formData.min_pediatric_age_years, 10)
+                    : null,
+                pediatric_notes: formData.pediatric_notes || null,
+                // Serializamos el array de cards a Record<string, HighRiskProtocolEntry>.
+                // Las cards sin condition válida se descartan silenciosamente.
+                high_risk_protocols: formData.high_risk_protocols.reduce<Record<string, HighRiskProtocolEntry>>(
+                    (acc, card) => {
+                        const key = card.condition.trim().toLowerCase().replace(/\s+/g, '_');
+                        if (!key) return acc;
+                        acc[key] = {
+                            requires_medical_clearance: card.requires_medical_clearance,
+                            requires_pre_appointment_call: card.requires_pre_appointment_call,
+                            restricted_treatments: card.restricted_treatments,
+                            notes: card.notes,
+                        };
+                        return acc;
+                    },
+                    {},
+                ),
+                requires_anamnesis_before_booking: formData.requires_anamnesis_before_booking,
             };
             if (editingClinica) {
                 await api.put(`/admin/tenants/${editingClinica.id}`, payload);
@@ -1220,6 +1349,222 @@ export default function ClinicsView() {
                                             />
                                             {t('clinics.accepts_crypto_label')}
                                         </label>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Condiciones Especiales (migration 036) */}
+                            <div className="space-y-3 border-t border-white/[0.06] pt-4 mt-4">
+                                <div
+                                    className="flex items-center justify-between cursor-pointer"
+                                    onClick={() => setSpecialConditionsExpanded(v => !v)}
+                                >
+                                    <h3 className="text-sm font-bold text-white/70 flex items-center gap-2">
+                                        <ShieldAlert size={14} className="text-amber-400" /> {t('clinics.special_conditions_section')}
+                                    </h3>
+                                    <ChevronDown
+                                        size={14}
+                                        className={`text-white/40 transition-transform ${specialConditionsExpanded ? 'rotate-180' : ''}`}
+                                    />
+                                </div>
+
+                                {specialConditionsExpanded && (
+                                    <div className="space-y-6">
+                                        {/* Legal disclaimer — always visible when section is expanded */}
+                                        <p className="text-xs text-amber-400/80 bg-amber-500/5 border border-amber-500/20 rounded-lg p-3">
+                                            {t('clinics.special_conditions_disclaimer')}
+                                        </p>
+
+                                        {/* Pregnancy sub-block */}
+                                        <div className="space-y-3">
+                                            <h4 className="text-xs font-bold text-white/50 uppercase tracking-wide">
+                                                {t('clinics.pregnancy_subsection')}
+                                            </h4>
+                                            <label className="flex items-center gap-2 text-sm text-white/70">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={formData.accepts_pregnant_patients}
+                                                    onChange={(e) => setFormData(prev => ({ ...prev, accepts_pregnant_patients: e.target.checked }))}
+                                                    className="accent-blue-500"
+                                                />
+                                                {t('clinics.accepts_pregnant')}
+                                            </label>
+                                            <div className="space-y-1">
+                                                <label className="text-xs font-medium text-blue-400">
+                                                    {t('clinics.pregnancy_restricted_label')}
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    placeholder="xray_panoramic, whitening"
+                                                    className="w-full px-4 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white placeholder-white/20 focus:ring-2 focus:ring-blue-500 outline-none text-sm font-mono"
+                                                    value={formData.pregnancy_restricted_treatments.join(', ')}
+                                                    onChange={(e) => setFormData(prev => ({
+                                                        ...prev,
+                                                        pregnancy_restricted_treatments: e.target.value
+                                                            .split(',')
+                                                            .map(s => s.trim())
+                                                            .filter(Boolean),
+                                                    }))}
+                                                />
+                                                <p className="text-xs text-white/30">{t('clinics.pregnancy_restricted_help')}</p>
+                                            </div>
+                                            <div className="space-y-1">
+                                                <label className="text-xs font-medium text-blue-400">
+                                                    {t('clinics.pregnancy_notes_label')}
+                                                </label>
+                                                <textarea
+                                                    rows={3}
+                                                    placeholder={t('clinics.pregnancy_notes_placeholder')}
+                                                    className="w-full px-4 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white placeholder-white/20 focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                                                    value={formData.pregnancy_notes}
+                                                    onChange={(e) => setFormData(prev => ({ ...prev, pregnancy_notes: e.target.value }))}
+                                                />
+                                                <p className="text-xs text-amber-400/60">{t('clinics.pregnancy_notes_help')}</p>
+                                            </div>
+                                        </div>
+
+                                        {/* Pediatric sub-block */}
+                                        <div className="space-y-3">
+                                            <h4 className="text-xs font-bold text-white/50 uppercase tracking-wide">
+                                                {t('clinics.pediatric_subsection')}
+                                            </h4>
+                                            <label className="flex items-center gap-2 text-sm text-white/70">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={formData.accepts_pediatric}
+                                                    onChange={(e) => setFormData(prev => ({ ...prev, accepts_pediatric: e.target.checked }))}
+                                                    className="accent-blue-500"
+                                                />
+                                                {t('clinics.accepts_pediatric')}
+                                            </label>
+                                            <div className="space-y-1">
+                                                <label className="text-xs font-medium text-blue-400">
+                                                    {t('clinics.min_pediatric_age_label')}
+                                                </label>
+                                                <input
+                                                    type="number"
+                                                    min={0}
+                                                    placeholder="6"
+                                                    className="w-full px-4 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white placeholder-white/20 focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                                                    value={formData.min_pediatric_age_years}
+                                                    onChange={(e) => setFormData(prev => ({ ...prev, min_pediatric_age_years: e.target.value }))}
+                                                />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <label className="text-xs font-medium text-blue-400">
+                                                    {t('clinics.pediatric_notes_label')}
+                                                </label>
+                                                <textarea
+                                                    rows={2}
+                                                    placeholder={t('clinics.pediatric_notes_placeholder')}
+                                                    className="w-full px-4 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white placeholder-white/20 focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                                                    value={formData.pediatric_notes}
+                                                    onChange={(e) => setFormData(prev => ({ ...prev, pediatric_notes: e.target.value }))}
+                                                />
+                                            </div>
+                                        </div>
+
+                                        {/* High-risk protocols dynamic card editor */}
+                                        <div className="space-y-3">
+                                            <div className="flex items-center justify-between">
+                                                <h4 className="text-xs font-bold text-white/50 uppercase tracking-wide">
+                                                    {t('clinics.high_risk_subsection')}
+                                                </h4>
+                                                <button
+                                                    type="button"
+                                                    onClick={addHighRiskCard}
+                                                    className="px-3 py-1 rounded-md bg-white/[0.06] hover:bg-white/[0.10] text-xs text-white/70 flex items-center gap-1"
+                                                >
+                                                    <Plus size={12} /> {t('clinics.high_risk_add_button')}
+                                                </button>
+                                            </div>
+                                            <p className="text-xs text-white/30">{t('clinics.high_risk_help')}</p>
+                                            <div className="space-y-3">
+                                                {formData.high_risk_protocols.length === 0 && (
+                                                    <p className="text-xs text-white/30 italic">{t('clinics.high_risk_empty')}</p>
+                                                )}
+                                                {formData.high_risk_protocols.map((card, idx) => (
+                                                    <div
+                                                        key={idx}
+                                                        className="space-y-2 p-3 rounded-lg border border-white/[0.06] bg-white/[0.02]"
+                                                    >
+                                                        <div className="flex items-center gap-2">
+                                                            <input
+                                                                type="text"
+                                                                placeholder={t('clinics.high_risk_condition_placeholder')}
+                                                                className="flex-1 px-3 py-1.5 bg-white/[0.04] border border-white/[0.08] rounded-md text-white placeholder-white/20 focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                                                                value={card.condition}
+                                                                onChange={(e) => updateHighRiskCard(idx, { condition: e.target.value })}
+                                                            />
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => removeHighRiskCard(idx)}
+                                                                className="p-1.5 rounded-md text-red-400/70 hover:text-red-400 hover:bg-red-500/10"
+                                                                title={t('clinics.high_risk_remove')}
+                                                            >
+                                                                <Trash2 size={14} />
+                                                            </button>
+                                                        </div>
+                                                        <label className="flex items-center gap-2 text-xs text-white/70">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={card.requires_medical_clearance}
+                                                                onChange={(e) => updateHighRiskCard(idx, { requires_medical_clearance: e.target.checked })}
+                                                                className="accent-blue-500"
+                                                            />
+                                                            {t('clinics.high_risk_clearance')}
+                                                        </label>
+                                                        <label className="flex items-center gap-2 text-xs text-white/70">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={card.requires_pre_appointment_call}
+                                                                onChange={(e) => updateHighRiskCard(idx, { requires_pre_appointment_call: e.target.checked })}
+                                                                className="accent-blue-500"
+                                                            />
+                                                            {t('clinics.high_risk_pre_call')}
+                                                        </label>
+                                                        <div className="space-y-1">
+                                                            <label className="text-xs font-medium text-blue-400">
+                                                                {t('clinics.high_risk_restricted_label')}
+                                                            </label>
+                                                            <input
+                                                                type="text"
+                                                                placeholder="surgery_implant"
+                                                                className="w-full px-3 py-1.5 bg-white/[0.04] border border-white/[0.08] rounded-md text-white placeholder-white/20 focus:ring-2 focus:ring-blue-500 outline-none text-xs font-mono"
+                                                                value={card.restricted_treatments.join(', ')}
+                                                                onChange={(e) => updateHighRiskCard(idx, {
+                                                                    restricted_treatments: e.target.value
+                                                                        .split(',')
+                                                                        .map(s => s.trim())
+                                                                        .filter(Boolean),
+                                                                })}
+                                                            />
+                                                        </div>
+                                                        <textarea
+                                                            rows={2}
+                                                            placeholder={t('clinics.high_risk_notes_placeholder')}
+                                                            className="w-full px-3 py-1.5 bg-white/[0.04] border border-white/[0.08] rounded-md text-white placeholder-white/20 focus:ring-2 focus:ring-blue-500 outline-none text-xs"
+                                                            value={card.notes}
+                                                            onChange={(e) => updateHighRiskCard(idx, { notes: e.target.value })}
+                                                        />
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        {/* Anamnesis gate */}
+                                        <div className="space-y-2 border-t border-white/[0.06] pt-4">
+                                            <label className="flex items-center gap-2 text-sm text-white/70">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={formData.requires_anamnesis_before_booking}
+                                                    onChange={(e) => setFormData(prev => ({ ...prev, requires_anamnesis_before_booking: e.target.checked }))}
+                                                    className="accent-blue-500"
+                                                />
+                                                {t('clinics.requires_anamnesis_label')}
+                                            </label>
+                                            <p className="text-xs text-white/30">{t('clinics.requires_anamnesis_help')}</p>
+                                        </div>
                                     </div>
                                 )}
                             </div>

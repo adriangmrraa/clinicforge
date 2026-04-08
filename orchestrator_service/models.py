@@ -202,6 +202,22 @@ class Tenant(Base):
     cash_discount_percent = Column(Numeric(5, 2), nullable=True)
     accepts_crypto = Column(Boolean, nullable=True, server_default="false")
 
+    # Clinic special conditions (migration 036)
+    accepts_pregnant_patients = Column(
+        Boolean, nullable=False, server_default="true", default=True
+    )
+    pregnancy_restricted_treatments = Column(JSONB, nullable=True, default=list)
+    pregnancy_notes = Column(Text, nullable=True)
+    accepts_pediatric = Column(
+        Boolean, nullable=False, server_default="true", default=True
+    )
+    min_pediatric_age_years = Column(Integer, nullable=True)
+    pediatric_notes = Column(Text, nullable=True)
+    high_risk_protocols = Column(JSONB, nullable=True, default=dict)
+    requires_anamnesis_before_booking = Column(
+        Boolean, nullable=False, server_default="false", default=False
+    )
+
 
 class TenantInsuranceProvider(Base):
     __tablename__ = "tenant_insurance_providers"

@@ -290,7 +290,10 @@ async def process_buffer_task(
                       system_prompt_template, bot_name,
                       payment_methods, financing_available, max_installments,
                       installments_interest_free, financing_provider, financing_notes,
-                      cash_discount_percent, accepts_crypto
+                      cash_discount_percent, accepts_crypto,
+                      accepts_pregnant_patients, pregnancy_restricted_treatments,
+                      pregnancy_notes, accepts_pediatric, min_pediatric_age_years,
+                      pediatric_notes, high_risk_protocols, requires_anamnesis_before_booking
                FROM tenants WHERE id = $1""",
             tenant_id,
         )
@@ -345,6 +348,39 @@ async def process_buffer_task(
         accepts_crypto = bool(
             tenant_row.get("accepts_crypto") if tenant_row else False
         )
+
+        # --- Clinic special conditions (migración 036) ---
+        # Computamos el bloque pre-formateado acá para que build_system_prompt
+        # sólo reciba un string (wiring simple, testeable y non-fatal).
+        special_conditions_block = ""
+        try:
+            if tenant_row:
+                # Resolver treatment_name_map para mostrar nombres amigables
+                treatment_name_map: dict = {}
+                try:
+                    _tt_rows = await pool.fetch(
+                        "SELECT code, COALESCE(patient_display_name, name) AS display_name "
+                        "FROM treatment_types WHERE tenant_id = $1 AND is_active = true",
+                        tenant_id,
+                    )
+                    treatment_name_map = {
+                        r["code"]: r["display_name"] for r in _tt_rows
+                    }
+                except Exception:
+                    treatment_name_map = {}
+
+                from main import _format_special_conditions
+
+                special_conditions_block = _format_special_conditions(
+                    dict(tenant_row),
+                    treatment_name_map=treatment_name_map,
+                )
+        except Exception as _sc_err:
+            logger.debug(
+                f"_format_special_conditions skipped (non-fatal): {_sc_err}"
+            )
+            special_conditions_block = ""
+
         system_prompt_template = (
             (tenant_row.get("system_prompt_template") or "") if tenant_row else ""
         )
@@ -980,6 +1016,8 @@ async def process_buffer_task(
             financing_notes=financing_notes,
             cash_discount_percent=cash_discount_percent,
             accepts_crypto=accepts_crypto,
+            # Clinic special conditions (migración 036)
+            special_conditions_block=special_conditions_block,
         )
 
         # Inject RAG context sections if available

@@ -6535,6 +6535,190 @@ def _format_derivation_rules(rules: list) -> str:
     return "\n".join(lines)
 
 
+# --- Clinic Special Conditions (migration 036) ---
+
+
+def _format_special_conditions(
+    tenant_data: dict,
+    treatment_name_map: dict | None = None,
+) -> str:
+    """Genera el bloque CONDICIONES ESPECIALES para el system prompt.
+
+    Reestablece la política de la clínica (embarazo, pediatría, alto riesgo,
+    anamnesis gate) SIN dar consejo médico. Devuelve "" cuando ninguna
+    condición está configurada — backward compat para tenants viejos.
+
+    Args:
+        tenant_data: Dict con los 8 campos de la migración 036.
+        treatment_name_map: {code: display_name} para mostrar nombres
+            amigables en lugar de códigos de tratamiento.
+    """
+    accepts_pregnant = tenant_data.get("accepts_pregnant_patients")
+    pregnancy_restricted = tenant_data.get("pregnancy_restricted_treatments") or []
+    # Defensive JSONB-as-string parse (asyncpg edge case, mismo patrón que insurance)
+    if isinstance(pregnancy_restricted, str):
+        try:
+            pregnancy_restricted = json.loads(pregnancy_restricted)
+        except (json.JSONDecodeError, TypeError):
+            pregnancy_restricted = []
+    if not isinstance(pregnancy_restricted, list):
+        pregnancy_restricted = []
+
+    pregnancy_notes = (tenant_data.get("pregnancy_notes") or "").strip()
+    accepts_pediatric = tenant_data.get("accepts_pediatric")
+    min_age = tenant_data.get("min_pediatric_age_years")
+    pediatric_notes = (tenant_data.get("pediatric_notes") or "").strip()
+
+    high_risk = tenant_data.get("high_risk_protocols") or {}
+    if isinstance(high_risk, str):
+        try:
+            high_risk = json.loads(high_risk)
+        except (json.JSONDecodeError, TypeError):
+            high_risk = {}
+    if not isinstance(high_risk, dict):
+        high_risk = {}
+
+    requires_anamnesis_gate = bool(
+        tenant_data.get("requires_anamnesis_before_booking", False)
+    )
+
+    pregnancy_configured = (
+        accepts_pregnant is False or bool(pregnancy_restricted) or bool(pregnancy_notes)
+    )
+    pediatric_configured = (
+        accepts_pediatric is False or min_age is not None or bool(pediatric_notes)
+    )
+    high_risk_configured = bool(high_risk)
+
+    if not (
+        pregnancy_configured
+        or pediatric_configured
+        or high_risk_configured
+        or requires_anamnesis_gate
+    ):
+        return ""
+
+    name_map = treatment_name_map or {}
+
+    lines: list[str] = [
+        "## CONDICIONES ESPECIALES Y RESTRICCIONES (POLÍTICA DE LA CLÍNICA)",
+        "",
+        "REGLA DE ORO: NUNCA dar consejo médico. NUNCA decir que algo 'es peligroso' o 'está contraindicado médicamente'.",
+        "Solo reestablecé la política de la clínica usando las notas configuradas.",
+        "Ante cualquier condición especial: (1) tranquilizar, (2) reestablecer política, (3) ofrecer evaluación, (4) sugerir ficha médica.",
+        "",
+    ]
+
+    # Pregnancy
+    if pregnancy_configured:
+        lines.append("EMBARAZO:")
+        if accepts_pregnant is False:
+            lines.append(
+                "• Según política de la clínica, actualmente no se atienden pacientes embarazadas."
+            )
+        else:
+            lines.append(
+                "• Según política de la clínica, se atienden pacientes embarazadas."
+            )
+        if pregnancy_restricted:
+            names = [name_map.get(code, code) for code in pregnancy_restricted]
+            lines.append(
+                f"• Tratamientos con restricción durante el embarazo: {', '.join(names)}."
+            )
+        if pregnancy_notes:
+            lines.append(f'• Mensaje para paciente embarazada: "{pregnancy_notes}"')
+        lines.append("")
+
+    # Pediatric
+    if pediatric_configured:
+        lines.append("PEDIATRÍA:")
+        if accepts_pediatric is False:
+            lines.append(
+                "• Según política de la clínica, no se atienden pacientes pediátricos actualmente."
+            )
+        else:
+            lines.append(
+                "• Según política de la clínica, se atienden pacientes pediátricos."
+            )
+            if min_age is not None:
+                try:
+                    min_age_int = int(min_age)
+                    lines.append(
+                        f"• La clínica atiende pacientes desde los {min_age_int} años."
+                    )
+                except (TypeError, ValueError):
+                    pass
+        if pediatric_notes:
+            lines.append(f'• Nota adicional: "{pediatric_notes}"')
+        lines.append("")
+
+    # High-risk protocols
+    if high_risk_configured:
+        lines.append("CONDICIONES DE ALTO RIESGO (protocolos de la clínica):")
+        for condition, protocol in high_risk.items():
+            if not isinstance(protocol, dict):
+                continue
+            clearance = bool(protocol.get("requires_medical_clearance", False))
+            pre_call = bool(protocol.get("requires_pre_appointment_call", False))
+            restricted = protocol.get("restricted_treatments") or []
+            if not isinstance(restricted, list):
+                restricted = []
+            notes_val = (protocol.get("notes") or "").strip()
+
+            extras: list[str] = []
+            if clearance:
+                extras.append("requiere clearance médico previo")
+            if pre_call:
+                extras.append("requiere llamada del equipo antes del turno")
+            if restricted:
+                restricted_names = [name_map.get(c, c) for c in restricted]
+                extras.append(
+                    f"tratamientos restringidos: {', '.join(restricted_names)}"
+                )
+            if notes_val:
+                extras.append(f'Nota: "{notes_val}"')
+            if extras:
+                lines.append(f"  • {condition}: " + " — ".join(extras))
+            else:
+                lines.append(f"  • {condition}")
+        lines.append("")
+        # Cross-reference con triage_urgency (task 3.7)
+        lines.append(
+            "INSTRUCCIÓN POST-TRIAGE: Si triage_urgency identifica síntomas compatibles "
+            "con una condición de alto riesgo listada arriba, reestablecé la política de "
+            "la clínica al comunicar el resultado (no inventes consejo médico)."
+        )
+        lines.append("")
+
+    # Anamnesis gate
+    if requires_anamnesis_gate:
+        lines.append("ANAMNESIS GATE (ACTIVO):")
+        lines.append(
+            "Si el paciente menciona una condición de alto riesgo Y su contexto muestra anamnesis no completada →"
+        )
+        lines.append(
+            "  Enviar link de anamnesis ANTES de llamar a book_appointment."
+        )
+        lines.append(
+            "  Explicar: 'Antes de coordinar el turno, necesitamos que completes tu ficha médica.'"
+        )
+        lines.append(
+            "  EXCEPCIÓN: si triage_urgency retorna 'emergency' o 'high' → omitir gate, ofrecer turno de inmediato."
+        )
+        lines.append("")
+
+    # Fallback rule
+    lines.append("Si el paciente menciona una condición NO listada arriba:")
+    lines.append(
+        "  Responder: 'Gracias por avisarnos. Es importante que el profesional lo sepa. Te recomiendo mencionarlo en la consulta y completar tu ficha médica.'"
+    )
+    lines.append(
+        "  NUNCA decir que la condición impide el tratamiento sin que sea política explícita de la clínica."
+    )
+
+    return "\n".join(lines)
+
+
 # --- Payment & Financing (migration 035) ---
 
 _PAYMENT_METHOD_LABELS = {
@@ -6658,6 +6842,8 @@ def build_system_prompt(
     financing_notes: str = "",
     cash_discount_percent: float = None,
     accepts_crypto: bool = False,
+    # Clinic special conditions (migration 036) — pre-computed by caller
+    special_conditions_block: str = "",
 ) -> str:
     """
     Construye el system prompt del agente de forma dinámica.
@@ -7512,6 +7698,7 @@ TRIAJE Y URGENCIAS: Llamar a 'triage_urgency' si el paciente describe CUALQUIERA
 {anamnesis_section}
 {bank_section}
 {payment_section}
+{special_conditions_block}
 Usá solo las tools proporcionadas. Siempre terminá con una pregunta o frase que invite a seguir la charla.
 """
 
