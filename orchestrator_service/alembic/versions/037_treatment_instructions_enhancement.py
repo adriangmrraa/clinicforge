@@ -1,7 +1,7 @@
-"""036 - Treatment pre/post instructions enhancement (TEXT→JSONB structured)
+"""037 - Treatment pre/post instructions enhancement (TEXT→JSONB structured)
 
-Revision ID: 036
-Revises: 034
+Revision ID: 037
+Revises: 036
 Create Date: 2026-04-08
 
 Enhances the existing `treatment_types.pre_instructions` and
@@ -20,12 +20,13 @@ Changes:
    etc.) going forward.
 3. `followup_template` is NOT touched. `followups.py` reads it as-is.
 
-Merge-order note: `down_revision = "034"` because this migration was
-written while payment-financing (035) is still in progress on a sibling
-branch. If payment-financing merges to main BEFORE this pack, rebase
-the branch and update `down_revision` to `"035"` before pushing. If
-this pack merges first, payment-financing will need to bump its
-revision to `"037"` and set `down_revision = "036"`.
+Merge-order note: this migration chains AFTER 036 (special-conditions),
+which is in progress on a sibling branch and reserves 036 first. Final
+chain after both packs merge: 034 (insurance) → 035 (payment) → 036
+(special-conditions) → 037 (this pack). Treatment-instructions MUST
+merge to main only AFTER special-conditions is merged. If priority
+changes and treatment-instructions must merge first, bump this file
+to 036 and have special-conditions bump its file to 037.
 
 Idempotency: the ALTER step checks the current column type via
 `_column_type()` so a re-run on an already-migrated DB is a no-op.
@@ -41,8 +42,8 @@ import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import JSONB
 
 
-revision = "036"
-down_revision = "034"
+revision = "037"
+down_revision = "036"
 branch_labels = None
 depends_on = None
 
