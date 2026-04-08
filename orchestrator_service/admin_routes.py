@@ -11,7 +11,7 @@ import logging
 import re
 from pathlib import Path
 from datetime import datetime, timedelta, date, time, timezone
-from typing import List, Optional, Dict, Any, Union
+from typing import Any, Dict, List, Literal, Optional, Union
 from decimal import Decimal
 from fastapi import (
     APIRouter,
