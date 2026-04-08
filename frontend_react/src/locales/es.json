@@ -706,7 +706,28 @@
     "country_code_help": "Se usa para detectar automáticamente los feriados nacionales. El agente de IA no agendará turnos en días feriados.",
     "system_prompt_template": "Presentación de la clínica (texto del agente IA)",
     "system_prompt_template_placeholder": "Ej: La Dra. Laura Delgado se especializa en rehabilitación oral con implantes y prótesis...",
-    "system_prompt_template_help": "Texto que el agente de IA usa para presentar la clínica al paciente en el primer mensaje. Escribilo en una sola línea o separá párrafos con un Enter doble. Los saltos de línea simples se eliminan automáticamente al guardar."
+    "system_prompt_template_help": "Texto que el agente de IA usa para presentar la clínica al paciente en el primer mensaje. Escribilo en una sola línea o separá párrafos con un Enter doble. Los saltos de línea simples se eliminan automáticamente al guardar.",
+    "holidays": {
+      "section_title": "Feriados y Días Especiales",
+      "section_subtitle": "El agente de IA no agenda turnos en días cerrados",
+      "empty_message": "No hay feriados configurados para los próximos 90 días",
+      "fetch_error": "Error al cargar feriados",
+      "add_button": "Agregar",
+      "add_form_title": "Agregar feriado o día especial",
+      "date_label": "Fecha",
+      "name_label": "Nombre",
+      "type_label": "Tipo",
+      "type_closure": "Cerrado",
+      "type_override_open": "Con horario especial",
+      "is_recurring_label": "Recurrente (cada año)",
+      "conflict_error": "Ya existe un feriado de ese tipo para esa fecha",
+      "delete_confirm": "¿Eliminar feriado?",
+      "source_national": "Nacional",
+      "source_custom": "Custom",
+      "custom_hours_label": "Horario especial",
+      "add_success": "Feriado agregado",
+      "delete_success": "Feriado eliminado"
+    }
   },
   "treatments": {
     "title": "Tratamientos",
