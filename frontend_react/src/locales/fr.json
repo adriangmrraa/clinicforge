@@ -687,7 +687,28 @@
     "country_code_help": "Utilisé pour détecter automatiquement les jours fériés nationaux. L'agent IA ne prendra pas de rendez-vous les jours fériés.",
     "system_prompt_template": "Présentation de la clinique (texte de l'agent IA)",
     "system_prompt_template_placeholder": "Ex : Dr Laura Delgado est spécialisée en réhabilitation orale avec implants et prothèses...",
-    "system_prompt_template_help": "Texte utilisé par l'agent IA pour présenter la clinique au patient lors du premier message. Écrivez-le sur une seule ligne ou séparez les paragraphes avec un double Entrée. Les sauts de ligne simples sont supprimés automatiquement à l'enregistrement."
+    "system_prompt_template_help": "Texte utilisé par l'agent IA pour présenter la clinique au patient lors du premier message. Écrivez-le sur une seule ligne ou séparez les paragraphes avec un double Entrée. Les sauts de ligne simples sont supprimés automatiquement à l'enregistrement.",
+    "holidays": {
+      "section_title": "Jours fériés et jours spéciaux",
+      "section_subtitle": "L'agent IA ne planifie pas les jours fermés",
+      "empty_message": "Aucun jour férié configuré pour les 90 prochains jours",
+      "fetch_error": "Erreur lors du chargement des jours fériés",
+      "add_button": "Ajouter",
+      "add_form_title": "Ajouter un jour férié ou spécial",
+      "date_label": "Date",
+      "name_label": "Nom",
+      "type_label": "Type",
+      "type_closure": "Fermé",
+      "type_override_open": "Heures spéciales",
+      "is_recurring_label": "Récurrent (chaque année)",
+      "conflict_error": "Un jour férié de ce type existe déjà pour cette date",
+      "delete_confirm": "Supprimer ce jour férié ?",
+      "source_national": "National",
+      "source_custom": "Personnalisé",
+      "custom_hours_label": "Heures spéciales",
+      "add_success": "Jour férié ajouté",
+      "delete_success": "Jour férié supprimé"
+    }
   },
   "treatments": {
     "title": "Traitements",

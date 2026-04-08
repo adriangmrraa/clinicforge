@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Building2, Plus, Edit, Trash2, Phone, Loader2, AlertCircle, CheckCircle2, Calendar, Clock, MapPin, HelpCircle, ChevronDown, X, DollarSign, Shield, ShieldAlert, GitMerge, ToggleLeft, ToggleRight, Info, Search, Check } from 'lucide-react';
+import { Building2, Plus, Edit, Trash2, Phone, Loader2, AlertCircle, CheckCircle2, Calendar, CalendarX, Clock, MapPin, HelpCircle, ChevronDown, ChevronUp, X, DollarSign, Shield, ShieldAlert, GitMerge, ToggleLeft, ToggleRight, Info, Search, Check, Pencil } from 'lucide-react';
 import api from '../api/axios';
 import { useTranslation } from '../context/LanguageContext';
 import PageHeader from '../components/PageHeader';
@@ -159,6 +159,39 @@ const CALENDAR_PROVIDER_OPTIONS = (t: (k: string) => string) => [
     { value: 'google' as const, label: t('clinics.calendar_google') },
 ];
 
+// Holidays integration — surfaces existing tenant_holidays infrastructure
+// (migrations 010 + 014) inside the Edit Clinic modal as a collapsible
+// section. See openspec/changes/clinic-holidays-integration.
+interface HolidayItem {
+    id?: number;
+    date: string;
+    name: string;
+    holiday_type: 'closure' | 'override_open';
+    source: 'library' | 'custom';
+    is_recurring?: boolean;
+    custom_hours?: { start: string; end: string } | null;
+    custom_hours_start?: string | null;
+    custom_hours_end?: string | null;
+}
+
+interface NewHolidayForm {
+    date: string;
+    name: string;
+    holiday_type: 'closure' | 'override_open';
+    custom_hours_start: string;
+    custom_hours_end: string;
+    is_recurring: boolean;
+}
+
+const emptyHolidayForm: NewHolidayForm = {
+    date: '',
+    name: '',
+    holiday_type: 'closure',
+    custom_hours_start: '09:00',
+    custom_hours_end: '13:00',
+    is_recurring: false,
+};
+
 export default function ClinicsView() {
     const { t } = useTranslation();
     const [clinicas, setClinicas] = useState<Clinica[]>([]);
@@ -203,6 +236,157 @@ export default function ClinicsView() {
     const [expandedDays, setExpandedDays] = useState<string[]>([]);
     const [paymentSectionExpanded, setPaymentSectionExpanded] = useState(false);
     const [specialConditionsExpanded, setSpecialConditionsExpanded] = useState(false);
+
+    // Holidays integration state (pack 4)
+    const [holidaysSectionOpen, setHolidaysSectionOpen] = useState(false);
+    const [holidayList, setHolidayList] = useState<HolidayItem[]>([]);
+    const [holidaysLoading, setHolidaysLoading] = useState(false);
+    const [holidaysFetchError, setHolidaysFetchError] = useState<string | null>(null);
+    const [newHoliday, setNewHoliday] = useState<NewHolidayForm>({ ...emptyHolidayForm });
+    const [addingSaving, setAddingSaving] = useState(false);
+    const [addError, setAddError] = useState<string | null>(null);
+    const [addSuccess, setAddSuccess] = useState(false);
+    const [editingHolidayId, setEditingHolidayId] = useState<number | null>(null);
+    const [editHolidayForm, setEditHolidayForm] = useState<NewHolidayForm>({ ...emptyHolidayForm });
+    const [deletingHolidayId, setDeletingHolidayId] = useState<number | null>(null);
+
+    const resetHolidaysState = () => {
+        setHolidaysSectionOpen(false);
+        setHolidayList([]);
+        setHolidaysFetchError(null);
+        setNewHoliday({ ...emptyHolidayForm });
+        setAddError(null);
+        setAddSuccess(false);
+        setEditingHolidayId(null);
+        setDeletingHolidayId(null);
+    };
+
+    const fetchHolidays = async () => {
+        setHolidaysLoading(true);
+        setHolidaysFetchError(null);
+        try {
+            const res = await api.get('/admin/holidays', { params: { days: 90 } });
+            setHolidayList((res.data?.upcoming as HolidayItem[]) || []);
+        } catch (e) {
+            console.error('Error fetching holidays:', e);
+            setHolidaysFetchError(t('clinics.holidays.fetch_error'));
+        } finally {
+            setHolidaysLoading(false);
+        }
+    };
+
+    // Fetch holidays when section expands for an existing clinic
+    useEffect(() => {
+        if (holidaysSectionOpen && editingClinica) {
+            fetchHolidays();
+        }
+    }, [holidaysSectionOpen, editingClinica?.id]);
+
+    // Validate the holiday form per REQ-5.7
+    const validateHolidayForm = (form: NewHolidayForm): string | null => {
+        if (!form.date) return t('clinics.holidays.date_label') + ' ✖';
+        if (!form.name.trim()) return t('clinics.holidays.name_label') + ' ✖';
+        if (form.holiday_type === 'override_open') {
+            if (!form.custom_hours_start || !form.custom_hours_end) {
+                return t('holidays.invalidTimeRange') || 'Horario requerido';
+            }
+            if (form.custom_hours_start >= form.custom_hours_end) {
+                return t('holidays.invalidTimeRange') || 'Horario inválido';
+            }
+        }
+        return null;
+    };
+
+    const handleAddHoliday = async () => {
+        const err = validateHolidayForm(newHoliday);
+        if (err) {
+            setAddError(err);
+            return;
+        }
+        setAddError(null);
+        setAddingSaving(true);
+        try {
+            const payload: Record<string, unknown> = {
+                date: newHoliday.date,
+                name: newHoliday.name.trim(),
+                holiday_type: newHoliday.holiday_type,
+                is_recurring: newHoliday.is_recurring,
+            };
+            if (newHoliday.holiday_type === 'override_open') {
+                payload.custom_hours_start = newHoliday.custom_hours_start;
+                payload.custom_hours_end = newHoliday.custom_hours_end;
+            }
+            await api.post('/admin/holidays', payload);
+            setNewHoliday({ ...emptyHolidayForm });
+            setAddSuccess(true);
+            await fetchHolidays();
+            setTimeout(() => setAddSuccess(false), 2000);
+        } catch (e: unknown) {
+            const err = e as { response?: { status?: number } };
+            if (err?.response?.status === 409) {
+                setAddError(t('clinics.holidays.conflict_error'));
+            } else {
+                setAddError(t('clinics.holidays.fetch_error'));
+            }
+        } finally {
+            setAddingSaving(false);
+        }
+    };
+
+    const handleDeleteHoliday = async (id: number) => {
+        try {
+            await api.delete(`/admin/holidays/${id}`);
+            setDeletingHolidayId(null);
+            await fetchHolidays();
+        } catch (e) {
+            console.error('Error deleting holiday:', e);
+            setHolidaysFetchError(t('clinics.holidays.fetch_error'));
+            setDeletingHolidayId(null);
+        }
+    };
+
+    const startEditHoliday = (h: HolidayItem) => {
+        if (!h.id) return;
+        setEditingHolidayId(h.id);
+        setEditHolidayForm({
+            date: h.date,
+            name: h.name,
+            holiday_type: h.holiday_type,
+            custom_hours_start: h.custom_hours?.start || h.custom_hours_start || '09:00',
+            custom_hours_end: h.custom_hours?.end || h.custom_hours_end || '13:00',
+            is_recurring: h.is_recurring || false,
+        });
+    };
+
+    const handleSaveEditHoliday = async () => {
+        if (!editingHolidayId) return;
+        const err = validateHolidayForm(editHolidayForm);
+        if (err) {
+            setAddError(err);
+            return;
+        }
+        try {
+            const payload: Record<string, unknown> = {
+                date: editHolidayForm.date,
+                name: editHolidayForm.name.trim(),
+                holiday_type: editHolidayForm.holiday_type,
+                is_recurring: editHolidayForm.is_recurring,
+            };
+            if (editHolidayForm.holiday_type === 'override_open') {
+                payload.custom_hours_start = editHolidayForm.custom_hours_start;
+                payload.custom_hours_end = editHolidayForm.custom_hours_end;
+            } else {
+                payload.custom_hours_start = null;
+                payload.custom_hours_end = null;
+            }
+            await api.put(`/admin/holidays/${editingHolidayId}`, payload);
+            setEditingHolidayId(null);
+            await fetchHolidays();
+        } catch (e) {
+            console.error('Error updating holiday:', e);
+            setHolidaysFetchError(t('clinics.holidays.fetch_error'));
+        }
+    };
 
     const togglePaymentMethod = (method: string) => {
         setFormData(prev => ({
@@ -466,6 +650,7 @@ export default function ClinicsView() {
             }
             await fetchClinicas();
             setIsModalOpen(false);
+            resetHolidaysState();
             setTimeout(() => setSuccess(null), 3000);
         } catch (err: any) {
             setError(err.response?.data?.detail || t('clinics.toast_error'));
@@ -1082,7 +1267,7 @@ export default function ClinicsView() {
                                 {editingClinica ? <Edit className="text-blue-400" /> : <Plus className="text-blue-400" />}
                                 {editingClinica ? t('clinics.edit_clinic') : t('clinics.create_clinic')}
                             </h2>
-                            <button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-white/[0.04] rounded-lg text-white/40"><X size={20} /></button>
+                            <button onClick={() => { setIsModalOpen(false); resetHolidaysState(); }} className="p-2 hover:bg-white/[0.04] rounded-lg text-white/40"><X size={20} /></button>
                         </div>
 
                         <form onSubmit={handleSubmit} className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 space-y-5">
@@ -1650,8 +1835,202 @@ export default function ClinicsView() {
                                 </div>
                             </div>
 
+                            {/* ── Holidays section (pack 4, only when editing an existing clinic) ── */}
+                            {editingClinica && (
+                                <div className="space-y-2 border-t border-white/[0.06] pt-5">
+                                    <button
+                                        type="button"
+                                        onClick={() => setHolidaysSectionOpen(s => !s)}
+                                        className="w-full flex items-center justify-between gap-3 text-left group"
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <CalendarX size={18} className="text-amber-400" />
+                                            <div>
+                                                <h3 className="text-sm font-bold text-white">
+                                                    {t('clinics.holidays.section_title')}
+                                                    {holidayList.filter(h => h.source === 'custom').length > 0 && (
+                                                        <span className="ml-2 text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-300">
+                                                            {holidayList.filter(h => h.source === 'custom').length}
+                                                        </span>
+                                                    )}
+                                                </h3>
+                                                <p className="text-xs text-white/40">{t('clinics.holidays.section_subtitle')}</p>
+                                            </div>
+                                        </div>
+                                        {holidaysSectionOpen
+                                            ? <ChevronUp size={18} className="text-white/40 group-hover:text-white/60" />
+                                            : <ChevronDown size={18} className="text-white/40 group-hover:text-white/60" />}
+                                    </button>
+
+                                    {holidaysSectionOpen && (
+                                        <div className="space-y-4 pt-4">
+                                            {/* List */}
+                                            {holidaysLoading ? (
+                                                <div className="flex items-center justify-center py-4">
+                                                    <Loader2 size={18} className="text-amber-400 animate-spin" />
+                                                </div>
+                                            ) : holidaysFetchError ? (
+                                                <div className="text-xs text-red-400 px-3 py-2 bg-red-500/10 border border-red-500/20 rounded-lg">
+                                                    {holidaysFetchError}
+                                                </div>
+                                            ) : holidayList.length === 0 ? (
+                                                <div className="text-xs text-white/40 px-3 py-3 bg-white/[0.02] border border-white/[0.06] rounded-lg text-center">
+                                                    {t('clinics.holidays.empty_message')}
+                                                </div>
+                                            ) : (
+                                                <div className="space-y-1.5 max-h-60 overflow-y-auto pr-1">
+                                                    {holidayList.map((h, idx) => {
+                                                        const isEditing = editingHolidayId === h.id;
+                                                        const isConfirmDelete = deletingHolidayId === h.id;
+                                                        if (isEditing) {
+                                                            return (
+                                                                <div key={`edit-${h.id}`} className="bg-white/[0.04] border border-amber-500/30 rounded-lg p-3 space-y-2">
+                                                                    <div className="grid grid-cols-2 gap-2">
+                                                                        <input type="date" value={editHolidayForm.date}
+                                                                            onChange={e => setEditHolidayForm(prev => ({ ...prev, date: e.target.value }))}
+                                                                            className="px-2 py-1.5 bg-white/[0.04] border border-white/[0.08] rounded text-white text-xs" />
+                                                                        <select value={editHolidayForm.holiday_type}
+                                                                            onChange={e => setEditHolidayForm(prev => ({ ...prev, holiday_type: e.target.value as 'closure' | 'override_open' }))}
+                                                                            className="px-2 py-1.5 bg-[#0d1117] border border-white/[0.08] rounded text-white text-xs [&>option]:bg-[#0d1117]">
+                                                                            <option value="closure">{t('clinics.holidays.type_closure')}</option>
+                                                                            <option value="override_open">{t('clinics.holidays.type_override_open')}</option>
+                                                                        </select>
+                                                                    </div>
+                                                                    <input type="text" placeholder={t('clinics.holidays.name_label')} value={editHolidayForm.name}
+                                                                        onChange={e => setEditHolidayForm(prev => ({ ...prev, name: e.target.value }))}
+                                                                        className="w-full px-2 py-1.5 bg-white/[0.04] border border-white/[0.08] rounded text-white text-xs" />
+                                                                    {editHolidayForm.holiday_type === 'override_open' && (
+                                                                        <div className="grid grid-cols-2 gap-2">
+                                                                            <input type="time" value={editHolidayForm.custom_hours_start}
+                                                                                onChange={e => setEditHolidayForm(prev => ({ ...prev, custom_hours_start: e.target.value }))}
+                                                                                className="px-2 py-1.5 bg-white/[0.04] border border-white/[0.08] rounded text-white text-xs" />
+                                                                            <input type="time" value={editHolidayForm.custom_hours_end}
+                                                                                onChange={e => setEditHolidayForm(prev => ({ ...prev, custom_hours_end: e.target.value }))}
+                                                                                className="px-2 py-1.5 bg-white/[0.04] border border-white/[0.08] rounded text-white text-xs" />
+                                                                        </div>
+                                                                    )}
+                                                                    <div className="flex gap-2">
+                                                                        <button type="button" onClick={handleSaveEditHoliday}
+                                                                            className="flex-1 py-1 text-xs font-semibold bg-amber-500 text-[#0a0e1a] rounded hover:bg-amber-400">
+                                                                            {t('common.save')}
+                                                                        </button>
+                                                                        <button type="button" onClick={() => setEditingHolidayId(null)}
+                                                                            className="flex-1 py-1 text-xs text-white/60 hover:bg-white/[0.04] rounded">
+                                                                            {t('common.cancel')}
+                                                                        </button>
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        }
+                                                        if (isConfirmDelete && h.id) {
+                                                            return (
+                                                                <div key={`del-${h.id}`} className="bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2 flex items-center gap-2">
+                                                                    <span className="text-xs text-red-300 flex-1">{t('clinics.holidays.delete_confirm')}</span>
+                                                                    <button type="button" onClick={() => handleDeleteHoliday(h.id!)}
+                                                                        className="px-2 py-1 text-xs font-semibold bg-red-500 text-white rounded hover:bg-red-400">
+                                                                        {t('common.confirm') || 'Confirmar'}
+                                                                    </button>
+                                                                    <button type="button" onClick={() => setDeletingHolidayId(null)}
+                                                                        className="px-2 py-1 text-xs text-white/60 hover:bg-white/[0.04] rounded">
+                                                                        {t('common.cancel')}
+                                                                    </button>
+                                                                </div>
+                                                            );
+                                                        }
+                                                        return (
+                                                            <div key={`h-${h.id || idx}-${h.date}`} className="bg-white/[0.02] border border-white/[0.06] rounded-lg px-3 py-2 flex items-center gap-2">
+                                                                <div className="flex-1 min-w-0">
+                                                                    <div className="flex items-center gap-2 flex-wrap">
+                                                                        <span className="text-xs font-mono text-white/50 shrink-0">{h.date}</span>
+                                                                        <span className="text-sm text-white font-medium truncate">{h.name}</span>
+                                                                    </div>
+                                                                    <div className="flex items-center gap-1.5 mt-1">
+                                                                        <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${h.holiday_type === 'closure' ? 'bg-red-500/10 text-red-400' : 'bg-blue-500/10 text-blue-400'}`}>
+                                                                            {h.holiday_type === 'closure' ? t('clinics.holidays.type_closure') : t('clinics.holidays.type_override_open')}
+                                                                        </span>
+                                                                        <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${h.source === 'custom' ? 'bg-amber-500/10 text-amber-400' : 'bg-white/[0.05] text-white/40'}`}>
+                                                                            {h.source === 'custom' ? t('clinics.holidays.source_custom') : t('clinics.holidays.source_national')}
+                                                                        </span>
+                                                                        {h.custom_hours && (
+                                                                            <span className="text-[10px] text-white/40">
+                                                                                {h.custom_hours.start}–{h.custom_hours.end}
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                                {h.source === 'custom' && h.id && (
+                                                                    <div className="flex gap-1 shrink-0">
+                                                                        <button type="button" onClick={() => startEditHoliday(h)}
+                                                                            className="p-1.5 text-white/30 hover:text-amber-400 hover:bg-amber-500/10 rounded" title={t('common.edit') || 'Editar'}>
+                                                                            <Pencil size={13} />
+                                                                        </button>
+                                                                        <button type="button" onClick={() => setDeletingHolidayId(h.id!)}
+                                                                            className="p-1.5 text-white/30 hover:text-red-400 hover:bg-red-500/10 rounded" title={t('common.delete') || 'Eliminar'}>
+                                                                            <X size={13} />
+                                                                        </button>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            )}
+
+                                            {/* Add form */}
+                                            <div className="bg-white/[0.02] border border-white/[0.06] rounded-lg p-3 space-y-2">
+                                                <h4 className="text-xs font-semibold text-white/60 uppercase tracking-wider">
+                                                    {t('clinics.holidays.add_form_title')}
+                                                </h4>
+                                                <div className="grid grid-cols-2 gap-2">
+                                                    <input type="date" value={newHoliday.date}
+                                                        onChange={e => setNewHoliday(prev => ({ ...prev, date: e.target.value }))}
+                                                        min={new Date().toISOString().split('T')[0]}
+                                                        className="px-2 py-1.5 bg-white/[0.04] border border-white/[0.08] rounded text-white text-xs outline-none focus:ring-1 focus:ring-amber-400/40" />
+                                                    <select value={newHoliday.holiday_type}
+                                                        onChange={e => setNewHoliday(prev => ({ ...prev, holiday_type: e.target.value as 'closure' | 'override_open' }))}
+                                                        className="px-2 py-1.5 bg-[#0d1117] border border-white/[0.08] rounded text-white text-xs [&>option]:bg-[#0d1117] outline-none focus:ring-1 focus:ring-amber-400/40">
+                                                        <option value="closure">{t('clinics.holidays.type_closure')}</option>
+                                                        <option value="override_open">{t('clinics.holidays.type_override_open')}</option>
+                                                    </select>
+                                                </div>
+                                                <input type="text" placeholder={t('clinics.holidays.name_label')} value={newHoliday.name}
+                                                    onChange={e => setNewHoliday(prev => ({ ...prev, name: e.target.value }))}
+                                                    className="w-full px-2 py-1.5 bg-white/[0.04] border border-white/[0.08] rounded text-white text-xs outline-none focus:ring-1 focus:ring-amber-400/40" />
+                                                {newHoliday.holiday_type === 'override_open' && (
+                                                    <div className="grid grid-cols-2 gap-2">
+                                                        <input type="time" value={newHoliday.custom_hours_start}
+                                                            onChange={e => setNewHoliday(prev => ({ ...prev, custom_hours_start: e.target.value }))}
+                                                            className="px-2 py-1.5 bg-white/[0.04] border border-white/[0.08] rounded text-white text-xs" />
+                                                        <input type="time" value={newHoliday.custom_hours_end}
+                                                            onChange={e => setNewHoliday(prev => ({ ...prev, custom_hours_end: e.target.value }))}
+                                                            className="px-2 py-1.5 bg-white/[0.04] border border-white/[0.08] rounded text-white text-xs" />
+                                                    </div>
+                                                )}
+                                                <label className="flex items-center gap-2 cursor-pointer">
+                                                    <input type="checkbox" checked={newHoliday.is_recurring}
+                                                        onChange={e => setNewHoliday(prev => ({ ...prev, is_recurring: e.target.checked }))}
+                                                        className="h-3.5 w-3.5 rounded border-white/[0.08] text-amber-400 focus:ring-amber-500" />
+                                                    <span className="text-xs text-white/60">{t('clinics.holidays.is_recurring_label')}</span>
+                                                </label>
+                                                {addError && (
+                                                    <p className="text-xs text-red-400">{addError}</p>
+                                                )}
+                                                {addSuccess && (
+                                                    <p className="text-xs text-emerald-400">{t('clinics.holidays.add_success')}</p>
+                                                )}
+                                                <button type="button" onClick={handleAddHoliday} disabled={addingSaving}
+                                                    className="w-full py-1.5 text-xs font-semibold bg-amber-500 text-[#0a0e1a] rounded hover:bg-amber-400 disabled:opacity-50 flex items-center justify-center gap-1">
+                                                    {addingSaving ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />}
+                                                    {t('clinics.holidays.add_button')}
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
                             <div className="flex gap-3 pt-4 sticky bottom-0 bg-[#0d1117] pb-2">
-                                <button type="button" onClick={() => setIsModalOpen(false)}
+                                <button type="button" onClick={() => { setIsModalOpen(false); resetHolidaysState(); }}
                                     className="flex-1 py-2 text-white/70 font-medium hover:bg-white/[0.04] rounded-lg transition-all">
                                     {t('common.cancel')}
                                 </button>
