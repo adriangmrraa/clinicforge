@@ -936,7 +936,17 @@
         "categoriesHelper": "Ej: cirugia, implantes, limpieza. Usá * para todas.",
         "targetType": "Derivar a",
         "professional": "Profesional",
-        "description": "Descripción (opcional)"
+        "description": "Descripción (opcional)",
+        "enableEscalation": "Habilitar escalación a fallback",
+        "enableEscalationHelp": "Si el profesional principal no tiene turnos en el período configurado, derivar automáticamente a un profesional alternativo o al equipo.",
+        "maxWaitDays": "Días de espera antes de escalar",
+        "maxWaitDaysHelp": "Entre 1 y 30 días. Si el primario no tiene capacidad en este período, se gatilla la escalación.",
+        "fallbackTarget": "Destino del fallback",
+        "fallbackTeamMode": "Cualquier profesional activo del equipo",
+        "fallbackSpecific": "Profesional específico",
+        "escalationMessage": "Mensaje al paciente cuando se escala (opcional)",
+        "escalationMessagePlaceholder": "Hoy {primary} no tiene turnos disponibles en los próximos días, pero podemos coordinar con {fallback}…",
+        "escalationMessageHelp": "Usá {primary} y {fallback} como placeholders. Si lo dejás vacío, se usa el mensaje por defecto."
       }
     }
   },

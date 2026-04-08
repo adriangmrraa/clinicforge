@@ -152,6 +152,14 @@ interface DerivationRule {
     priority_order: number;
     is_active: boolean;
     description?: string;
+    // Migration 038 — escalation fallback fields
+    enable_escalation?: boolean;
+    fallback_professional_id?: number | null;
+    fallback_professional_name?: string | null;
+    fallback_team_mode?: boolean;
+    max_wait_days_before_escalation?: number;
+    escalation_message_template?: string | null;
+    criteria_custom?: Record<string, unknown> | null;
 }
 
 const CALENDAR_PROVIDER_OPTIONS = (t: (k: string) => string) => [
@@ -916,10 +924,27 @@ export default function ClinicsView() {
     const openDerivationModal = (item: DerivationRule | null = null) => {
         if (item) {
             setEditingDerivation(item);
-            setDerivationForm({ ...item });
+            // Spread + ensure migration 038 escalation fields have defaults
+            setDerivationForm({
+                ...item,
+                enable_escalation: !!item.enable_escalation,
+                max_wait_days_before_escalation: item.max_wait_days_before_escalation ?? 7,
+                fallback_team_mode: !!item.fallback_team_mode,
+            });
         } else {
             setEditingDerivation(null);
-            setDerivationForm({ rule_name: '', patient_condition: 'any', treatment_categories: [], target_type: 'team', is_active: true });
+            setDerivationForm({
+                rule_name: '',
+                patient_condition: 'any',
+                treatment_categories: [],
+                target_type: 'team',
+                is_active: true,
+                // Migration 038 defaults
+                enable_escalation: false,
+                fallback_team_mode: false,
+                max_wait_days_before_escalation: 7,
+                escalation_message_template: null,
+            });
         }
         setDerivationModalOpen(true);
     };
@@ -2529,6 +2554,80 @@ export default function ClinicsView() {
                                 <textarea value={derivationForm.description || ''} onChange={e => setDerivationForm(p => ({ ...p, description: e.target.value }))} rows={2}
                                     className="w-full px-4 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white placeholder-white/20 focus:ring-2 focus:ring-blue-500 outline-none resize-none text-sm" />
                             </div>
+
+                            {/* Escalation fallback section (migration 038) */}
+                            <div className="space-y-3 border-t border-white/[0.06] pt-4">
+                                <label className="flex items-center gap-3 cursor-pointer">
+                                    <input type="checkbox"
+                                        checked={!!derivationForm.enable_escalation}
+                                        onChange={e => setDerivationForm(p => ({ ...p, enable_escalation: e.target.checked }))}
+                                        className="h-4 w-4 rounded border-white/[0.08] text-amber-400 focus:ring-amber-500" />
+                                    <div>
+                                        <span className="text-sm font-semibold text-white">{t('settings.derivation.fields.enableEscalation')}</span>
+                                        <p className="text-xs text-white/40">{t('settings.derivation.fields.enableEscalationHelp')}</p>
+                                    </div>
+                                </label>
+
+                                {derivationForm.enable_escalation && (
+                                    <div className="space-y-3 pl-7 border-l-2 border-amber-500/20">
+                                        <div className="space-y-1">
+                                            <label className="text-xs font-semibold uppercase tracking-wider text-white/60">
+                                                {t('settings.derivation.fields.maxWaitDays')}
+                                            </label>
+                                            <input type="number" min={1} max={30}
+                                                value={derivationForm.max_wait_days_before_escalation ?? 7}
+                                                onChange={e => setDerivationForm(p => ({ ...p, max_wait_days_before_escalation: parseInt(e.target.value) || 7 }))}
+                                                className="w-24 px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white text-sm outline-none focus:ring-2 focus:ring-amber-500/20" />
+                                            <p className="text-[10px] text-white/40">{t('settings.derivation.fields.maxWaitDaysHelp')}</p>
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            <label className="text-xs font-semibold uppercase tracking-wider text-white/60">
+                                                {t('settings.derivation.fields.fallbackTarget')}
+                                            </label>
+                                            <label className="flex items-center gap-3 cursor-pointer p-2 rounded hover:bg-white/[0.02]">
+                                                <input type="radio" name="fallback_mode"
+                                                    checked={!!derivationForm.fallback_team_mode}
+                                                    onChange={() => setDerivationForm(p => ({ ...p, fallback_team_mode: true, fallback_professional_id: null }))}
+                                                    className="h-4 w-4 text-amber-400 border-white/[0.08]" />
+                                                <span className="text-sm text-white/70">{t('settings.derivation.fields.fallbackTeamMode')}</span>
+                                            </label>
+                                            <label className="flex items-center gap-3 cursor-pointer p-2 rounded hover:bg-white/[0.02]">
+                                                <input type="radio" name="fallback_mode"
+                                                    checked={!derivationForm.fallback_team_mode && !!derivationForm.fallback_professional_id}
+                                                    onChange={() => setDerivationForm(p => ({ ...p, fallback_team_mode: false }))}
+                                                    className="h-4 w-4 text-amber-400 border-white/[0.08]" />
+                                                <span className="text-sm text-white/70">{t('settings.derivation.fields.fallbackSpecific')}</span>
+                                            </label>
+                                            {!derivationForm.fallback_team_mode && (
+                                                <select value={derivationForm.fallback_professional_id ?? ''}
+                                                    onChange={e => setDerivationForm(p => ({ ...p, fallback_professional_id: e.target.value ? parseInt(e.target.value) : null }))}
+                                                    className="w-full px-3 py-2 bg-[#0d1117] border border-white/[0.08] rounded-lg text-white text-sm outline-none focus:ring-2 focus:ring-amber-500/20 [&>option]:bg-[#0d1117]">
+                                                    <option value="">—</option>
+                                                    {derivationProfessionals
+                                                        .filter(p => p.id !== derivationForm.target_professional_id)
+                                                        .map(p => (
+                                                            <option key={p.id} value={p.id}>{p.first_name} {p.last_name}</option>
+                                                        ))}
+                                                </select>
+                                            )}
+                                        </div>
+
+                                        <div className="space-y-1">
+                                            <label className="text-xs font-semibold uppercase tracking-wider text-white/60">
+                                                {t('settings.derivation.fields.escalationMessage')}
+                                            </label>
+                                            <textarea value={derivationForm.escalation_message_template || ''}
+                                                onChange={e => setDerivationForm(p => ({ ...p, escalation_message_template: e.target.value || null }))}
+                                                placeholder={t('settings.derivation.fields.escalationMessagePlaceholder')}
+                                                rows={3}
+                                                className="w-full px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white text-sm placeholder-white/20 outline-none focus:ring-2 focus:ring-amber-500/20 resize-none" />
+                                            <p className="text-[10px] text-white/40">{t('settings.derivation.fields.escalationMessageHelp')}</p>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
                             <div className="flex gap-3 pt-2">
                                 <button type="button" onClick={() => setDerivationModalOpen(false)} className="flex-1 py-2 text-white/70 font-medium hover:bg-white/[0.04] rounded-lg transition-all">{t('common.cancel')}</button>
                                 <button type="submit" disabled={derivationSaving} className="flex-1 py-2 bg-white text-[#0a0e1a] font-bold rounded-lg hover:bg-white/90 transition-all disabled:opacity-50 flex items-center justify-center gap-2">
