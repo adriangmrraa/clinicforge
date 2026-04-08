@@ -155,7 +155,7 @@ def upgrade() -> None:
         conn.execute(
             sa.text(
                 "UPDATE tenant_insurance_providers "
-                "SET coverage_by_treatment = :cov::jsonb WHERE id = :id"
+                "SET coverage_by_treatment = CAST(:cov AS jsonb) WHERE id = :id"
             ),
             {"cov": json.dumps(coverage), "id": row_id},
         )
