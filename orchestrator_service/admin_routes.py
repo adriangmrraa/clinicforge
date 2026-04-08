@@ -933,6 +933,22 @@ class IntegrationConfig(BaseModel):
     tenant_id: Optional[int] = None  # Optional override for multi-tenant setup
 
 
+class HighRiskProtocol(BaseModel):
+    """Validación estricta de cada entrada del dict high_risk_protocols.
+
+    Cada condición (key del dict) tiene una política con estos campos.
+    `extra=forbid` garantiza que keys desconocidas tiren 422 y no se cuelen
+    en el JSONB.
+    """
+
+    requires_medical_clearance: bool = False
+    requires_pre_appointment_call: bool = False
+    restricted_treatments: list[str] = []
+    notes: str = ""
+
+    model_config = {"extra": "forbid"}
+
+
 @router.get("/integrations/{provider}/config", tags=["Integraciones"])
 async def get_integration_config(
     provider: str,
@@ -2594,14 +2610,20 @@ async def get_tenants(
             status_code=403, detail="Solo el CEO puede gestionar clínicas."
         )
     rows = await db.pool.fetch(
-        "SELECT id, clinic_name, bot_phone_number, config, address, google_maps_url, working_hours, consultation_price, bank_cbu, bank_alias, bank_holder_name, derivation_email, logo_url, max_chairs, country_code, system_prompt_template, bot_name, payment_methods, financing_available, max_installments, installments_interest_free, financing_provider, financing_notes, cash_discount_percent, accepts_crypto, created_at, updated_at FROM tenants WHERE id = ANY($1::int[]) ORDER BY id ASC",
+        "SELECT id, clinic_name, bot_phone_number, config, address, google_maps_url, working_hours, consultation_price, bank_cbu, bank_alias, bank_holder_name, derivation_email, logo_url, max_chairs, country_code, system_prompt_template, bot_name, payment_methods, financing_available, max_installments, installments_interest_free, financing_provider, financing_notes, cash_discount_percent, accepts_crypto, accepts_pregnant_patients, pregnancy_restricted_treatments, pregnancy_notes, accepts_pediatric, min_pediatric_age_years, pediatric_notes, high_risk_protocols, requires_anamnesis_before_booking, created_at, updated_at FROM tenants WHERE id = ANY($1::int[]) ORDER BY id ASC",
         allowed_ids,
     )
     result = []
     for r in rows:
         d = dict(r)
         # asyncpg puede devolver JSONB como string; asegurar que sean objetos
-        for jfield in ("config", "working_hours"):
+        for jfield in (
+            "config",
+            "working_hours",
+            "payment_methods",
+            "pregnancy_restricted_treatments",
+            "high_risk_protocols",
+        ):
             if isinstance(d.get(jfield), str):
                 try:
                     d[jfield] = json.loads(d[jfield])
@@ -2854,6 +2876,101 @@ async def update_tenant(
         _val_ac = bool(_raw_ac) if _raw_ac is not None else False
         params.append(_val_ac)
         updates.append(f"accepts_crypto = ${len(params)}")
+
+    # ----- Clinic special conditions (migration 036) -----
+    if "accepts_pregnant_patients" in data and data["accepts_pregnant_patients"] is not None:
+        params.append(bool(data["accepts_pregnant_patients"]))
+        updates.append(f"accepts_pregnant_patients = ${len(params)}")
+
+    if "pregnancy_restricted_treatments" in data:
+        _val_prt = data.get("pregnancy_restricted_treatments")
+        if _val_prt is None:
+            params.append(None)
+        else:
+            if not isinstance(_val_prt, list) or not all(
+                isinstance(c, str) for c in _val_prt
+            ):
+                raise HTTPException(
+                    status_code=422,
+                    detail="pregnancy_restricted_treatments must be a list of strings",
+                )
+            params.append(json.dumps(_val_prt))
+        updates.append(f"pregnancy_restricted_treatments = ${len(params)}::jsonb")
+
+    if "pregnancy_notes" in data:
+        _val_pn = data.get("pregnancy_notes")
+        params.append(_val_pn.strip() if isinstance(_val_pn, str) and _val_pn.strip() else None)
+        updates.append(f"pregnancy_notes = ${len(params)}")
+
+    if "accepts_pediatric" in data and data["accepts_pediatric"] is not None:
+        params.append(bool(data["accepts_pediatric"]))
+        updates.append(f"accepts_pediatric = ${len(params)}")
+
+    if "min_pediatric_age_years" in data:
+        _val_age = data.get("min_pediatric_age_years")
+        if _val_age is None or _val_age == "":
+            params.append(None)
+        else:
+            try:
+                _ival_age = int(_val_age)
+            except (TypeError, ValueError):
+                raise HTTPException(
+                    status_code=422,
+                    detail="min_pediatric_age_years must be an integer",
+                )
+            if _ival_age < 0:
+                raise HTTPException(
+                    status_code=422,
+                    detail="min_pediatric_age_years must be >= 0",
+                )
+            params.append(_ival_age)
+        updates.append(f"min_pediatric_age_years = ${len(params)}")
+
+    if "pediatric_notes" in data:
+        _val_pedn = data.get("pediatric_notes")
+        params.append(_val_pedn.strip() if isinstance(_val_pedn, str) and _val_pedn.strip() else None)
+        updates.append(f"pediatric_notes = ${len(params)}")
+
+    if "high_risk_protocols" in data:
+        _val_hrp = data.get("high_risk_protocols")
+        if _val_hrp is None:
+            params.append(None)
+        else:
+            if not isinstance(_val_hrp, dict):
+                raise HTTPException(
+                    status_code=422,
+                    detail="high_risk_protocols must be an object",
+                )
+            from pydantic import ValidationError
+
+            validated: dict = {}
+            for _cond_key, _cond_val in _val_hrp.items():
+                if not isinstance(_cond_key, str) or not _cond_key.strip():
+                    raise HTTPException(
+                        status_code=422,
+                        detail="high_risk_protocols keys must be non-empty strings",
+                    )
+                if not isinstance(_cond_val, dict):
+                    raise HTTPException(
+                        status_code=422,
+                        detail=f"high_risk_protocols.{_cond_key} must be an object",
+                    )
+                try:
+                    validated[_cond_key] = HighRiskProtocol(
+                        **_cond_val
+                    ).model_dump()
+                except ValidationError as _ve:
+                    raise HTTPException(
+                        status_code=422,
+                        detail=f"high_risk_protocols.{_cond_key}: {_ve.errors()}",
+                    )
+            params.append(json.dumps(validated))
+        updates.append(f"high_risk_protocols = ${len(params)}::jsonb")
+
+    if "requires_anamnesis_before_booking" in data and data["requires_anamnesis_before_booking"] is not None:
+        params.append(bool(data["requires_anamnesis_before_booking"]))
+        updates.append(f"requires_anamnesis_before_booking = ${len(params)}")
+
     if not updates:
         return {"status": "updated"}
     params.append(tenant_id)
