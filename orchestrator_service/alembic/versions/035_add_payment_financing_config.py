@@ -1,12 +1,19 @@
 """035 - Add payment & financing configuration
 
 Revision ID: 035
-Revises: 033
+Revises: 034
 Create Date: 2026-04-08
 
 Adds 8 columns to the `tenants` table for payment methods, financing options,
 and cash discount configuration. This enables the AI agent to answer the 5 most
 common payment queries without escalating to human.
+
+Note (2026-04-08 fix): originally written with down_revision="033" because
+both 034 (insurance-coverage) and 035 were developed in parallel branches.
+Both were merged to main with the same down_revision, creating a fork in
+the Alembic chain → "Multiple head revisions" error on `alembic upgrade head`.
+Linearized to chain after 034 (the two migrations touch different tables —
+tenant_insurance_providers vs tenants — so order is irrelevant functionally).
 
 Columns added:
 - payment_methods (JSONB): array of payment method tokens
@@ -24,7 +31,7 @@ import sqlalchemy as sa
 
 
 revision = "035"
-down_revision = "033"
+down_revision = "034"
 branch_labels = None
 depends_on = None
 
