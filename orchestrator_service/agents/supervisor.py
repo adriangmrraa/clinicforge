@@ -11,8 +11,11 @@ logger = logging.getLogger(__name__)
 
 
 class SupervisorAgent:
+    """Router agent. NO hardcoded model — uses the tenant's configured model
+    from state["model_config"] when the deterministic rules don't match.
+    """
+
     name = "supervisor"
-    model = "gpt-4o-mini"
 
     EMERGENCY_PATTERNS = [
         r"sangr[ae]",
@@ -77,10 +80,22 @@ class SupervisorAgent:
         return await self._llm_route(state)
 
     async def _llm_route(self, state: AgentState) -> str:
-        """LLM-based routing fallback."""
+        """LLM-based routing fallback.
+
+        Uses the tenant's configured model from state["model_config"] — never
+        hardcoded. If model_config is missing (shouldn't happen in normal flow),
+        falls back to the default model via get_default_model_config().
+        """
         try:
-            from core.openai_compat import get_chat_model
-            llm = get_chat_model(self.model, temperature=0.0)
+            from .specialists import _build_llm_from_config
+
+            cfg = state.get("model_config")
+            if not cfg:
+                from .model_resolver import get_default_model_config
+                cfg = get_default_model_config()
+                logger.warning("Supervisor._llm_route: no model_config in state, using default")
+
+            llm = _build_llm_from_config(cfg, temperature=0.0)
             prompt_path = Path(__file__).parent / "prompts" / "supervisor.md"
             system_prompt = prompt_path.read_text(encoding="utf-8")
 

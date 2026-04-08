@@ -19,6 +19,11 @@ class AgentState(TypedDict, total=False):
     chat_history: list[dict]
     working_state: dict
 
+    # Model config (resolved once per turn from system_config — see model_resolver.py)
+    # Shape: {"model": str, "api_key": str, "base_url": Optional[str], "provider": str}
+    # All agents must read model from here, NEVER hardcode.
+    model_config: dict
+
     # Graph control
     active_agent: str  # supervisor | reception | booking | triage | billing | anamnesis | handoff | END
     hop_count: int

@@ -106,6 +106,16 @@ async def run_turn(ctx: "TurnContext") -> "TurnResult":
         }
         chat_history = []
 
+    # Resolve the tenant's configured model ONCE per turn from system_config.OPENAI_MODEL
+    # (single source of truth — same as SoloEngine / TORA legacy). NEVER hardcoded.
+    try:
+        from .model_resolver import resolve_tenant_model
+        model_config = await resolve_tenant_model(ctx.tenant_id)
+    except Exception:
+        logger.exception("Failed to resolve tenant model, using default")
+        from .model_resolver import get_default_model_config
+        model_config = get_default_model_config()
+
     state: AgentState = {
         "tenant_id": ctx.tenant_id,
         "phone_number": ctx.phone_number,
@@ -115,6 +125,7 @@ async def run_turn(ctx: "TurnContext") -> "TurnResult":
         "patient_profile": profile,
         "chat_history": chat_history,
         "working_state": {},
+        "model_config": model_config,
         "active_agent": "supervisor",
         "hop_count": 0,
         "max_hops": MAX_HOPS,
@@ -157,8 +168,9 @@ async def run_turn(ctx: "TurnContext") -> "TurnResult":
 
     duration_ms = int((time.perf_counter() - start) * 1000)
 
-    # Best-effort audit log
-    model_used = AGENTS[next_agent_name].model if next_agent_name in AGENTS else "unknown"
+    # Best-effort audit log — use the REAL model that was configured for the tenant
+    # (from state["model_config"]), not a hardcoded per-agent default
+    model_used = (state.get("model_config") or {}).get("model") or "unknown"
     await _log_turn(state, next_agent_name, duration_ms, model_used)
 
     return TurnResult(
@@ -183,6 +195,7 @@ async def probe() -> "ProbeResult":
     start = time.perf_counter()
 
     try:
+        from .model_resolver import get_default_model_config
         fake_state: AgentState = {
             "tenant_id": 0,
             "phone_number": "probe",
@@ -192,6 +205,7 @@ async def probe() -> "ProbeResult":
             "patient_profile": {"human_override_until": None, "is_new_lead": True},
             "chat_history": [],
             "working_state": {},
+            "model_config": get_default_model_config(),
             "active_agent": "supervisor",
             "hop_count": 0,
             "max_hops": MAX_HOPS,
