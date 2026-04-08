@@ -350,9 +350,15 @@ async def _analyze_with_gpt(
         f"(JSON mode {'enabled' if supports_json else 'disabled'})"
     )
 
-    # Models like gpt-5, gpt-5-mini, o3, o4-mini use max_completion_tokens instead of max_tokens
+    # Models like gpt-5, gpt-5-mini, o3, o4-mini use max_completion_tokens instead of max_tokens.
+    # They are also REASONING models: they consume internal reasoning tokens that count
+    # toward the same budget as the visible output. A budget of 700 was leaving 0 tokens
+    # for actual output once reasoning consumed everything → empty content → json.loads
+    # raised "Expecting value: line 1 column 1 (char 0)". Bumping to 8000 leaves enough
+    # headroom for both reasoning and the JSON response (~300-500 tokens of actual output).
     uses_new_api = any(validated_model.startswith(p) for p in ("gpt-5", "o3", "o4", "o1"))
     token_param = "max_completion_tokens" if uses_new_api else "max_tokens"
+    token_budget = 8000 if uses_new_api else 700
 
     # gpt-5 family only supports temperature=1 (default) — omit parameter
     supports_temperature = not any(validated_model.startswith(p) for p in ("gpt-5", "o3", "o4", "o1"))
@@ -366,7 +372,7 @@ async def _analyze_with_gpt(
             },
             {"role": "user", "content": prompt},
         ],
-        token_param: 700,
+        token_param: token_budget,
     }
     if supports_temperature:
         request_json["temperature"] = 0
@@ -405,6 +411,28 @@ async def _analyze_with_gpt(
                         )
                     except Exception:
                         pass
+                # Detect empty content explicitly. With reasoning models, an empty
+                # response usually means reasoning tokens ate the entire budget
+                # before any output was generated. Retry once with double the
+                # budget; if it still fails, raise so the outer except logs it
+                # cleanly instead of pretending it's a JSON parse error.
+                if not content or not content.strip():
+                    completion_tokens = usage.get("completion_tokens", 0)
+                    reasoning_tokens = (
+                        usage.get("completion_tokens_details", {}) or {}
+                    ).get("reasoning_tokens", 0)
+                    logger.error(
+                        f"nova_analysis: tenant {tenant_id} model {validated_model} "
+                        f"returned EMPTY content. completion_tokens={completion_tokens} "
+                        f"reasoning_tokens={reasoning_tokens} budget={token_budget}. "
+                        "Likely reasoning starvation — bumping budget and retrying."
+                    )
+                    if attempt < max_attempts - 1:
+                        new_budget = token_budget * 2
+                        request_json[token_param] = new_budget
+                        continue
+                    # Last attempt — give up cleanly without a misleading JSON error
+                    return None
                 return json.loads(content)
         except httpx.HTTPStatusError as e:
             error_detail = f"HTTP {e.response.status_code}: {e.response.text}"
