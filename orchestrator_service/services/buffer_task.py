@@ -293,7 +293,10 @@ async def process_buffer_task(
                       cash_discount_percent, accepts_crypto,
                       accepts_pregnant_patients, pregnancy_restricted_treatments,
                       pregnancy_notes, accepts_pediatric, min_pediatric_age_years,
-                      pediatric_notes, high_risk_protocols, requires_anamnesis_before_booking
+                      pediatric_notes, high_risk_protocols, requires_anamnesis_before_booking,
+                      complaint_escalation_email, complaint_escalation_phone,
+                      expected_wait_time_minutes, revision_policy, review_platforms,
+                      complaint_handling_protocol, auto_send_review_link_after_followup
                FROM tenants WHERE id = $1""",
             tenant_id,
         )
@@ -380,6 +383,19 @@ async def process_buffer_task(
                 f"_format_special_conditions skipped (non-fatal): {_sc_err}"
             )
             special_conditions_block = ""
+
+        # --- Clinic support / complaints / review config (migration 039) ---
+        support_policy_block = ""
+        try:
+            if tenant_row:
+                from main import _format_support_policy
+
+                support_policy_block = _format_support_policy(dict(tenant_row))
+        except Exception as _sp_err:
+            logger.debug(
+                f"_format_support_policy skipped (non-fatal): {_sp_err}"
+            )
+            support_policy_block = ""
 
         system_prompt_template = (
             (tenant_row.get("system_prompt_template") or "") if tenant_row else ""
@@ -1026,6 +1042,7 @@ async def process_buffer_task(
             accepts_crypto=accepts_crypto,
             # Clinic special conditions (migración 036)
             special_conditions_block=special_conditions_block,
+            support_policy_block=support_policy_block,
         )
 
         # Inject RAG context sections if available

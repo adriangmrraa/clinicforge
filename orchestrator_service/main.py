@@ -6927,6 +6927,110 @@ def _format_derivation_rules(rules: list) -> str:
     return "\n".join(lines)
 
 
+# --- Clinic Support / Complaints / Review Config (migration 039) ---
+
+
+def _format_support_policy(tenant_row: dict) -> str:
+    """Genera el bloque PROTOCOLO DE SOPORTE Y QUEJAS para el system prompt.
+
+    Returns "" cuando ninguno de los 7 campos está configurado (backwards
+    compat: tenants legacy no ven el bloque). Cuando hay al menos un campo,
+    inyecta una sección que el agente usa para escalar quejas, manejar
+    expectativas de espera, ofrecer revisión, y compartir links de reseña.
+    """
+    if not tenant_row:
+        return ""
+
+    esc_email = tenant_row.get("complaint_escalation_email")
+    esc_phone = tenant_row.get("complaint_escalation_phone")
+    expected_wait = tenant_row.get("expected_wait_time_minutes")
+    revision = tenant_row.get("revision_policy")
+    platforms = tenant_row.get("review_platforms")
+    protocol = tenant_row.get("complaint_handling_protocol")
+
+    # Defensive json.loads for asyncpg-returns-string edge case
+    if isinstance(platforms, str):
+        try:
+            platforms = json.loads(platforms)
+        except (json.JSONDecodeError, TypeError):
+            platforms = None
+    if isinstance(protocol, str):
+        try:
+            protocol = json.loads(protocol)
+        except (json.JSONDecodeError, TypeError):
+            protocol = None
+
+    # Skip the entire block if everything is empty
+    has_anything = (
+        esc_email
+        or esc_phone
+        or expected_wait
+        or revision
+        or (platforms and isinstance(platforms, list) and len(platforms) > 0)
+        or (protocol and isinstance(protocol, dict) and any(protocol.values()))
+    )
+    if not has_anything:
+        return ""
+
+    lines = ["## PROTOCOLO DE SOPORTE Y QUEJAS"]
+
+    if expected_wait:
+        lines.append(
+            f"• Tiempo de espera promedio en sala: {expected_wait} minutos. "
+            "Si el paciente se queja por la espera, validá esto antes de derivar."
+        )
+
+    if revision:
+        lines.append(f"• Política de revisiones/ajustes: {revision}")
+
+    if protocol and isinstance(protocol, dict):
+        l1 = (protocol.get("level_1") or "").strip()
+        l2 = (protocol.get("level_2") or "").strip()
+        l3 = (protocol.get("level_3") or "").strip()
+        if l1 or l2 or l3:
+            lines.append("• Escalación graduada de quejas (NO saltees niveles):")
+            if l1:
+                lines.append(f"  - Nivel 1 (queja leve): {l1}")
+            if l2:
+                lines.append(f"  - Nivel 2 (queja moderada): {l2}")
+            if l3:
+                lines.append(f"  - Nivel 3 (queja grave): {l3}")
+            lines.append(
+                "  REGLA: empezá SIEMPRE en Nivel 1. Solo escalá si el paciente "
+                "rechaza la solución del nivel actual o describe un problema más serio."
+            )
+
+    if esc_email or esc_phone:
+        contact_parts = []
+        if esc_email:
+            contact_parts.append(f"email {esc_email}")
+        if esc_phone:
+            contact_parts.append(f"teléfono {esc_phone}")
+        lines.append(
+            "• Para quejas que requieren escalación humana → llamá derivhumano "
+            f"con urgency='alta'. Canales internos: {', '.join(contact_parts)}."
+        )
+
+    if platforms and isinstance(platforms, list) and len(platforms) > 0:
+        platform_lines = []
+        for p in platforms:
+            if not isinstance(p, dict):
+                continue
+            name = p.get("name")
+            url = p.get("url")
+            if name and url:
+                platform_lines.append(f"  - {name}: {url}")
+        if platform_lines:
+            lines.append("• Plataformas de reseña disponibles:")
+            lines.extend(platform_lines)
+            lines.append(
+                "  REGLA: Solo compartí estos links si el paciente pidió reseñar "
+                "explícitamente, o si pasaron los días configurados desde su último turno."
+            )
+
+    return "\n".join(lines)
+
+
 # --- Clinic Special Conditions (migration 036) ---
 
 
@@ -7236,6 +7340,8 @@ def build_system_prompt(
     accepts_crypto: bool = False,
     # Clinic special conditions (migration 036) — pre-computed by caller
     special_conditions_block: str = "",
+    # Clinic support / complaints / review config (migration 039)
+    support_policy_block: str = "",
 ) -> str:
     """
     Construye el system prompt del agente de forma dinámica.
@@ -8093,6 +8199,7 @@ TRIAJE Y URGENCIAS: Llamar a 'triage_urgency' si el paciente describe CUALQUIERA
 {bank_section}
 {payment_section}
 {special_conditions_block}
+{support_policy_block}
 Usá solo las tools proporcionadas. Siempre terminá con una pregunta o frase que invite a seguir la charla.
 """
 
