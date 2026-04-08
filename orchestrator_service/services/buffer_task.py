@@ -475,19 +475,27 @@ async def process_buffer_task(
         except Exception as tt_err:
             logger.debug(f"Treatment types fetch (non-fatal): {tt_err}")
 
-        # Fetch derivation rules for this tenant
+        # Fetch derivation rules for this tenant (migration 038: includes
+        # escalation fallback fields and enriches with fallback_professional_name
+        # via a second LEFT JOIN so the prompt formatter can render the
+        # full escalation block).
         derivation_rules = []
         try:
             der_rows = await pool.fetch(
                 """
                 SELECT dr.id, dr.rule_name, dr.patient_condition, dr.treatment_categories,
                        dr.target_type, dr.target_professional_id, dr.priority_order,
-                       p.first_name as target_professional_name
+                       dr.enable_escalation, dr.fallback_professional_id,
+                       dr.fallback_team_mode, dr.max_wait_days_before_escalation,
+                       dr.escalation_message_template,
+                       p.first_name AS target_professional_name,
+                       fp.first_name AS fallback_professional_name
                 FROM professional_derivation_rules dr
                 LEFT JOIN professionals p ON dr.target_professional_id = p.id
+                LEFT JOIN professionals fp ON dr.fallback_professional_id = fp.id
                 WHERE dr.tenant_id = $1 AND dr.is_active = true
                 ORDER BY dr.priority_order ASC, dr.id ASC
-            """,
+                """,
                 tenant_id,
             )
             derivation_rules = [dict(r) for r in der_rows] if der_rows else []

@@ -923,7 +923,17 @@
         "categoriesHelper": "E.g.: surgery, implants, cleaning. Use * for all.",
         "targetType": "Refer to",
         "professional": "Professional",
-        "description": "Description (optional)"
+        "description": "Description (optional)",
+        "enableEscalation": "Enable fallback escalation",
+        "enableEscalationHelp": "If the primary professional has no slots within the configured window, automatically try a secondary professional or the team.",
+        "maxWaitDays": "Wait days before escalation",
+        "maxWaitDaysHelp": "Between 1 and 30 days. If the primary has no capacity in this window, escalation triggers.",
+        "fallbackTarget": "Fallback target",
+        "fallbackTeamMode": "Any active professional in the team",
+        "fallbackSpecific": "Specific professional",
+        "escalationMessage": "Patient message when escalating (optional)",
+        "escalationMessagePlaceholder": "{primary} is not available in the next few days, but we can coordinate with {fallback}…",
+        "escalationMessageHelp": "Use {primary} and {fallback} as placeholders. If empty, the default message is used."
       }
     }
   },

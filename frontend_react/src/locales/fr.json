@@ -900,7 +900,17 @@
         "categoriesHelper": "Ex : chirurgie, implants, nettoyage. Utilisez * pour tout.",
         "targetType": "Orienter vers",
         "professional": "Professionnel",
-        "description": "Description (optionnel)"
+        "description": "Description (optionnel)",
+        "enableEscalation": "Activer l'escalade vers un repli",
+        "enableEscalationHelp": "Si le professionnel principal n'a pas de créneaux dans la fenêtre configurée, basculer automatiquement vers un professionnel secondaire ou l'équipe.",
+        "maxWaitDays": "Jours d'attente avant escalade",
+        "maxWaitDaysHelp": "Entre 1 et 30 jours. Si le principal n'a pas de capacité dans cette fenêtre, l'escalade se déclenche.",
+        "fallbackTarget": "Cible de repli",
+        "fallbackTeamMode": "N'importe quel professionnel actif de l'équipe",
+        "fallbackSpecific": "Professionnel spécifique",
+        "escalationMessage": "Message au patient lors de l'escalade (optionnel)",
+        "escalationMessagePlaceholder": "{primary} n'est pas disponible dans les prochains jours, mais nous pouvons coordonner avec {fallback}…",
+        "escalationMessageHelp": "Utilisez {primary} et {fallback} comme placeholders. Si vide, le message par défaut est utilisé."
       }
     }
   },
