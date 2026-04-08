@@ -493,3 +493,55 @@ Reusable card with background image that fades in on hover/touch:
 
 ### Sidebar
 Uses Lucide icons (no emojis). Each item has a themed background image on hover with scale animation.
+
+---
+
+## Multi-Console Coordination (Claude Code parallel sessions)
+
+The user frequently runs **two Claude Code consoles in parallel** against this repo — one doing active fixes on `main`, another applying long-running SDD packs in batches. Because both consoles share the same working directory by default, `git checkout` / `git commit` in one console can redirect commits from the other to the wrong branch and cause rogue merges, lost work, or production breakage (happened on 2026-04-08 with `bot_name` feature — 2 commits landed on `main` instead of the feature branch and broke prod with `UndefinedColumnError`).
+
+### Rule: when Claude is applying an SDD pack, it MUST use an isolated git worktree
+
+The SDD-applying Claude session works in a **sibling worktree directory** outside the primary repo path. The user's session keeps the primary working directory for unrelated fixes. No branch switching collisions are possible.
+
+| Role | Working directory | Purpose |
+|------|-------------------|---------|
+| **User's primary console** | `C:\Users\Asus\Documents\estabilizacion\Laura Delgado\clinicforge\` | Active development, hotfixes, reviews on `main` |
+| **Claude's SDD worktree** | `C:\Users\Asus\Documents\estabilizacion\Laura Delgado\clinicforge-sdd\` | Applying SDD packs phase-by-phase on feature branches |
+
+### Setup (one-time, when starting a new SDD pack batch)
+
+```bash
+# From the primary repo dir, create the sibling worktree on a new feature branch
+git worktree add ../clinicforge-sdd -b feat/clinic-<pack-name>
+
+# To switch packs (from inside the worktree)
+git -C ../clinicforge-sdd checkout -b feat/clinic-<next-pack-name> main
+
+# To remove the worktree when done
+git worktree remove ../clinicforge-sdd
+```
+
+### Working inside the worktree (Claude rules)
+
+- **ALL file operations MUST use absolute paths** to the worktree directory (`C:\Users\Asus\Documents\estabilizacion\Laura Delgado\clinicforge-sdd\...`). Never use relative paths that could resolve to the primary repo.
+- **ALL git commands MUST be scoped** to the worktree via `git -C ../clinicforge-sdd <cmd>` OR via `cd` in a Bash call. Never assume `git` in an un-scoped Bash call targets the worktree.
+- **Never `git checkout` in the primary directory** from the Claude SDD session.
+- At the end of each pack, merge the feature branch to `main` via cherry-pick, rebase, or PR, then switch the worktree to the next pack's branch.
+
+### Engram synchronization rule (both consoles)
+
+To keep the two parallel Claude sessions aware of each other's progress, **both sessions MUST save to Engram at these checkpoints**:
+
+1. **After each phase** of an SDD pack (migration, backend, formatter, frontend, e2e) — save a phase-completion memory with `topic_key: sdd/<pack-name>/apply-progress` and `type: pattern`
+2. **After completing a full pack** — save a completion memory with `topic_key: sdd/<pack-name>/completed`, `type: decision`, including the list of commits and what was merged to main
+3. **After completing a batch of packs** — save a batch summary with `topic_key: sdd/batch-<date>/summary`, `type: session_summary`
+4. **At the start of any new session** — run `mem_search` with the pack name AND `mem_context` to recover progress of both consoles before acting
+
+This ensures that if either console crashes, restarts, or gets compacted, the other console (or a fresh session) can pick up without losing state.
+
+### Alembic migration numbering under parallel work
+
+Because both consoles may write migrations concurrently, **ALWAYS `ls orchestrator_service/alembic/versions/` to confirm the real head before writing a new migration**. Never trust documentation — stale notes are how the 2026-04-08 bot_name incident happened (assumed head was 030 when it was actually 032).
+
+If two packs need consecutive migrations, coordinate via Engram `sdd/alembic/next-revision` memory to reserve the next number before writing the file.
