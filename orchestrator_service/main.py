@@ -6680,9 +6680,15 @@ REGLAS PARA VOS:
 def _format_derivation_rules(rules: list) -> str:
     """Genera sección de reglas de derivación de pacientes para el system prompt.
 
+    Migration 038: si una regla tiene `enable_escalation=True`, el bloque
+    incluye la acción de escalación (profesional fallback o team mode) y
+    el mensaje al paciente cuando se gatilla.
+
     Args:
         rules: Lista de dicts desde professional_derivation_rules JOIN professionals
-               (is_active=true, ordenadas por priority_order ASC).
+               (is_active=true, ordenadas por priority_order ASC). Cada rule
+               puede traer enriquecidos `target_professional_name` y
+               `fallback_professional_name` desde el caller.
 
     Returns:
         Bloque de texto listo para inyectar en el prompt, o vacío si no hay reglas.
@@ -6697,18 +6703,69 @@ def _format_derivation_rules(rules: list) -> str:
     for i, rule in enumerate(rules, start=1):
         rule_name = rule.get("rule_name") or f"Regla {i}"
         condition = rule.get("patient_condition") or "cualquier paciente"
-        categories = rule.get("categories") or ""
-        prof_name = rule.get("target_professional_name")
+        categories = rule.get("categories") or rule.get("treatment_categories") or ""
+        if isinstance(categories, list):
+            categories = ",".join(categories)
+        prof_name = rule.get("target_professional_name") or rule.get("professional_name")
         prof_id = rule.get("target_professional_id")
+
+        # Migration 038 escalation fields (defensive defaults so legacy
+        # rule dicts without these keys still render correctly).
+        enable_esc = bool(rule.get("enable_escalation", False))
+        fallback_pid = rule.get("fallback_professional_id")
+        fallback_pname = rule.get("fallback_professional_name")
+        fallback_team = bool(rule.get("fallback_team_mode", False))
+        max_days = rule.get("max_wait_days_before_escalation") or 7
+        esc_template = rule.get("escalation_message_template")
 
         lines.append(f"REGLA {i} — {rule_name}:")
         cat_suffix = f" / Categorías: {categories}" if categories else ""
         lines.append(f"  Aplica a: {condition}{cat_suffix}")
 
+        if not enable_esc:
+            # Legacy behavior unchanged for rules without escalation
+            if prof_name and prof_id:
+                lines.append(f"  Acción: agendar con {prof_name} (ID: {prof_id})")
+            else:
+                lines.append("  Acción: sin filtro de profesional (equipo)")
+            continue
+
+        # Escalation-aware block
+        primary_label = prof_name or "el profesional asignado"
         if prof_name and prof_id:
-            lines.append(f"  Acción: agendar con {prof_name} (ID: {prof_id})")
+            lines.append(f"  Acción primaria: agendar con {prof_name} (ID: {prof_id})")
         else:
-            lines.append("  Acción: sin filtro de profesional (equipo)")
+            lines.append("  Acción primaria: sin filtro de profesional (equipo)")
+
+        if fallback_team:
+            fallback_desc = "intentar con cualquier profesional activo del equipo"
+            fallback_label = "el equipo"
+        elif fallback_pid and fallback_pname:
+            fallback_desc = f"intentar con {fallback_pname} (ID: {fallback_pid})"
+            fallback_label = fallback_pname
+        else:
+            # Implicit team mode (validator should have set this, defensive)
+            fallback_desc = "intentar con cualquier profesional activo del equipo"
+            fallback_label = "el equipo"
+
+        lines.append(
+            f"  Escalación activa: si {primary_label} no tiene turnos en {max_days} días → {fallback_desc}"
+        )
+
+        # Resolve template placeholders {primary} and {fallback}; fall back
+        # to the built-in Spanish default when the tenant has no custom message.
+        if esc_template:
+            resolved_msg = (
+                esc_template.replace("{primary}", primary_label)
+                .replace("{fallback}", fallback_label)
+            )
+        else:
+            resolved_msg = (
+                f"Hoy {primary_label} no tiene turnos disponibles en los próximos días, "
+                f"pero podemos coordinar con {fallback_label} que también atiende este tipo de casos. "
+                "¿Te parece bien?"
+            )
+        lines.append(f'  Mensaje para el paciente al escalar: "{resolved_msg}"')
 
     lines.append("")
     lines.append(
