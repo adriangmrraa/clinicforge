@@ -285,7 +285,13 @@ async def process_buffer_task(
             )
 
         tenant_row = await pool.fetchrow(
-            "SELECT clinic_name, address, google_maps_url, working_hours, consultation_price, bank_cbu, bank_alias, bank_holder_name, system_prompt_template, bot_name FROM tenants WHERE id = $1",
+            """SELECT clinic_name, address, google_maps_url, working_hours,
+                      consultation_price, bank_cbu, bank_alias, bank_holder_name,
+                      system_prompt_template, bot_name,
+                      payment_methods, financing_available, max_installments,
+                      installments_interest_free, financing_provider, financing_notes,
+                      cash_discount_percent, accepts_crypto
+               FROM tenants WHERE id = $1""",
             tenant_id,
         )
         clinic_name = (
@@ -305,6 +311,40 @@ async def process_buffer_task(
         bank_cbu = (tenant_row["bank_cbu"] or "") if tenant_row else ""
         bank_alias = (tenant_row["bank_alias"] or "") if tenant_row else ""
         bank_holder_name = (tenant_row["bank_holder_name"] or "") if tenant_row else ""
+
+        # Payment & financing (migración 035). asyncpg puede devolver JSONB como
+        # string en algunas versiones → parse defensivo idéntico al de working_hours.
+        _pm_raw = tenant_row.get("payment_methods") if tenant_row else None
+        if isinstance(_pm_raw, str):
+            try:
+                _pm_raw = json.loads(_pm_raw)
+            except (json.JSONDecodeError, TypeError):
+                _pm_raw = []
+        payment_methods = _pm_raw if isinstance(_pm_raw, list) else []
+        financing_available = bool(
+            tenant_row.get("financing_available") if tenant_row else False
+        )
+        max_installments = (
+            tenant_row.get("max_installments") if tenant_row else None
+        )
+        _iif = (
+            tenant_row.get("installments_interest_free") if tenant_row else None
+        )
+        installments_interest_free = bool(_iif) if _iif is not None else True
+        financing_provider = (
+            (tenant_row.get("financing_provider") or "") if tenant_row else ""
+        )
+        financing_notes = (
+            (tenant_row.get("financing_notes") or "") if tenant_row else ""
+        )
+        _cdp = tenant_row.get("cash_discount_percent") if tenant_row else None
+        try:
+            cash_discount_percent = float(_cdp) if _cdp is not None else None
+        except (TypeError, ValueError):
+            cash_discount_percent = None
+        accepts_crypto = bool(
+            tenant_row.get("accepts_crypto") if tenant_row else False
+        )
         system_prompt_template = (
             (tenant_row.get("system_prompt_template") or "") if tenant_row else ""
         )
@@ -931,6 +971,15 @@ async def process_buffer_task(
             intent_tags=intent_tags,
             is_greeting_pending=is_greeting_pending,
             treatment_types=treatment_types_list,
+            # Payment & financing (migración 035)
+            payment_methods=payment_methods,
+            financing_available=financing_available,
+            max_installments=max_installments,
+            installments_interest_free=installments_interest_free,
+            financing_provider=financing_provider,
+            financing_notes=financing_notes,
+            cash_discount_percent=cash_discount_percent,
+            accepts_crypto=accepts_crypto,
         )
 
         # Inject RAG context sections if available

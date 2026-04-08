@@ -192,6 +192,16 @@ class Tenant(Base):
     # Editable bot display name (migration 033). NULL → fallback to "TORA".
     bot_name = Column(String(50), nullable=True)
 
+    # Payment & financing configuration (migration 035)
+    payment_methods = Column(JSONB, nullable=True)
+    financing_available = Column(Boolean, nullable=True, server_default="false")
+    max_installments = Column(Integer, nullable=True)
+    installments_interest_free = Column(Boolean, nullable=True, server_default="true")
+    financing_provider = Column(Text, nullable=True)
+    financing_notes = Column(Text, nullable=True)
+    cash_discount_percent = Column(Numeric(5, 2), nullable=True)
+    accepts_crypto = Column(Boolean, nullable=True, server_default="false")
+
 
 class TenantInsuranceProvider(Base):
     __tablename__ = "tenant_insurance_providers"

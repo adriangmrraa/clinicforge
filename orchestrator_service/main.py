@@ -6535,6 +6535,92 @@ def _format_derivation_rules(rules: list) -> str:
     return "\n".join(lines)
 
 
+# --- Payment & Financing (migration 035) ---
+
+_PAYMENT_METHOD_LABELS = {
+    "cash": "Efectivo",
+    "credit_card": "Tarjeta de crédito",
+    "debit_card": "Tarjeta de débito",
+    "transfer": "Transferencia bancaria",
+    "mercado_pago": "Mercado Pago",
+    "rapipago": "Rapipago",
+    "pagofacil": "Pago Fácil",
+    "modo": "MODO",
+    "uala": "Ualá",
+    "naranja": "Tarjeta Naranja",
+    "crypto": "Criptomonedas",
+    "other": "Otros medios",
+}
+
+
+def _format_payment_options(
+    payment_methods: list = None,
+    financing_available: bool = False,
+    max_installments: int = None,
+    installments_interest_free: bool = True,
+    financing_provider: str = "",
+    financing_notes: str = "",
+    cash_discount_percent: float = None,
+    accepts_crypto: bool = False,
+) -> str:
+    """Genera el bloque '## MEDIOS DE PAGO Y FINANCIACIÓN' del system prompt.
+
+    Devuelve "" cuando todos los argumentos son valores por defecto — así no se
+    inyecta nada al prompt para tenants que todavía no configuraron pagos
+    (backward compat con instalaciones viejas).
+    """
+    lines: list[str] = []
+
+    # Medios de pago
+    if payment_methods:
+        labels = [_PAYMENT_METHOD_LABELS.get(m, m) for m in payment_methods]
+        lines.append(f"Medios de pago aceptados: {', '.join(labels)}.")
+
+    # Financiación
+    if financing_available:
+        parts: list[str] = []
+        if max_installments:
+            interest_str = "sin interés" if installments_interest_free else "con interés"
+            parts.append(f"hasta {max_installments} cuotas {interest_str}")
+        if financing_provider:
+            parts.append(f"con {financing_provider}")
+        if parts:
+            lines.append(f"Financiación disponible: {', '.join(parts)}.")
+        else:
+            lines.append("Financiación disponible (consultá condiciones con la clínica).")
+        if financing_notes:
+            lines.append(f"Nota sobre financiación: {financing_notes}")
+
+    # Descuento por pago en efectivo
+    if cash_discount_percent is not None:
+        try:
+            pct_val = float(cash_discount_percent)
+        except (TypeError, ValueError):
+            pct_val = 0.0
+        if pct_val > 0:
+            pct_str = (
+                str(int(pct_val)) if pct_val == int(pct_val) else f"{pct_val:g}"
+            )
+            lines.append(f"Descuento por pago en efectivo: {pct_str}%.")
+
+    # Criptomonedas (bloque explícito sólo cuando es True — evita ruido en el
+    # prompt para tenants que no las aceptan)
+    if accepts_crypto:
+        lines.append("Criptomonedas: aceptamos pago en criptomonedas.")
+
+    if not lines:
+        return ""  # backward compat: sin sección para tenants sin config
+
+    disclaimer = (
+        "(Información orientativa — las condiciones pueden variar. "
+        "Para confirmación final, derivar al administrativo de la clínica.)"
+    )
+    block = "## MEDIOS DE PAGO Y FINANCIACIÓN\n"
+    block += "\n".join(lines)
+    block += f"\n{disclaimer}"
+    return block
+
+
 def build_system_prompt(
     clinic_name: str,
     current_time: str,
@@ -6563,6 +6649,15 @@ def build_system_prompt(
     intent_tags: set = None,
     is_greeting_pending: bool = True,
     treatment_types: list = None,
+    # Payment & financing (migration 035)
+    payment_methods: list = None,
+    financing_available: bool = False,
+    max_installments: int = None,
+    installments_interest_free: bool = True,
+    financing_provider: str = "",
+    financing_notes: str = "",
+    cash_discount_percent: float = None,
+    accepts_crypto: bool = False,
 ) -> str:
     """
     Construye el system prompt del agente de forma dinámica.
@@ -6886,6 +6981,19 @@ Presentá el resultado TAL CUAL (✅ o ⚠️). Si ⚠️ tras 2 intentos → de
 NUNCA inventes datos bancarios. Solo compartí los configurados arriba.
 
 SI NO HAY PRECIO CONFIGURADO: No pedir seña. Agendar normalmente y pasar directo a MOMENTO 2."""
+
+    # Payment & financing section (migration 035) — se inyecta después del
+    # bloque bancario. Devuelve "" para tenants sin configuración (backward compat).
+    payment_section = _format_payment_options(
+        payment_methods=payment_methods,
+        financing_available=financing_available,
+        max_installments=max_installments,
+        installments_interest_free=installments_interest_free,
+        financing_provider=financing_provider,
+        financing_notes=financing_notes,
+        cash_discount_percent=cash_discount_percent,
+        accepts_crypto=accepts_crypto,
+    )
 
     price_text = (
         f"${int(consultation_price):,}".replace(",", ".")
@@ -7403,6 +7511,7 @@ SEGUIMIENTO POST-ATENCIÓN (PROTOCOLO ESTRICTO):
 TRIAJE Y URGENCIAS: Llamar a 'triage_urgency' si el paciente describe CUALQUIERA de: dolor, inflamación, sangrado, accidente, traumatismo, rotura de diente, pérdida de diente/pieza, fiebre, "se me cayó", "se me rompió", "se me partió", "se me salió", "urgente", "emergencia", "no puedo comer", "no puedo hablar". NO llamar por consultas de rutina (limpieza, blanqueamiento, control).
 {anamnesis_section}
 {bank_section}
+{payment_section}
 Usá solo las tools proporcionadas. Siempre terminá con una pregunta o frase que invite a seguir la charla.
 """
 
