@@ -192,6 +192,17 @@ class Tenant(Base):
     # Editable bot display name (migration 033). NULL → fallback to "TORA".
     bot_name = Column(String(50), nullable=True)
 
+    # --- Support / complaints / review config (migration 039) ---
+    complaint_escalation_email = Column(Text, nullable=True)
+    complaint_escalation_phone = Column(Text, nullable=True)
+    expected_wait_time_minutes = Column(Integer, nullable=True)
+    revision_policy = Column(Text, nullable=True)
+    review_platforms = Column(JSONB, nullable=True)
+    complaint_handling_protocol = Column(JSONB, nullable=True)
+    auto_send_review_link_after_followup = Column(
+        Boolean, nullable=False, server_default="false"
+    )
+
     # Payment & financing configuration (migration 035)
     payment_methods = Column(JSONB, nullable=True)
     financing_available = Column(Boolean, nullable=True, server_default="false")
