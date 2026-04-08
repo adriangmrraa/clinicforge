@@ -29,7 +29,7 @@ from fastapi import (
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from fastapi.responses import JSONResponse, StreamingResponse, FileResponse, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from db import db
 from gcal_service import gcal_service
 from analytics_service import analytics_service
@@ -103,6 +103,44 @@ class AppointmentResponse(BaseModel):
     appointment_name: str
 
 
+class PreInstructions(BaseModel):
+    """Structured pre-treatment instructions (migration 036).
+
+    Stored as JSONB in treatment_types.pre_instructions. Legacy free text
+    rows are wrapped as {"general_notes": "<text>"} by the migration so
+    they remain readable through this shape.
+    """
+
+    preparation_days_before: Optional[int] = None
+    fasting_required: Optional[bool] = None
+    fasting_hours: Optional[int] = None
+    medications_to_avoid: Optional[List[str]] = Field(default_factory=list)
+    medications_to_take: Optional[List[str]] = Field(default_factory=list)
+    what_to_bring: Optional[List[str]] = Field(default_factory=list)
+    general_notes: Optional[str] = None
+
+
+class PostInstructions(BaseModel):
+    """Structured post-treatment recovery protocol (migration 036).
+
+    Stored as JSONB in treatment_types.post_instructions. Coexists with
+    the legacy list-of-timed-entries shape (wrapped by migration 036 as
+    {"general_notes": "<serialized list>"}). The get_treatment_instructions
+    tool reads both shapes via _format_post_instructions_dict and the
+    legacy list renderer.
+    """
+
+    care_duration_days: Optional[int] = None
+    dietary_restrictions: Optional[List[str]] = Field(default_factory=list)
+    activity_restrictions: Optional[List[str]] = Field(default_factory=list)
+    allowed_medications: Optional[List[str]] = Field(default_factory=list)
+    prohibited_medications: Optional[List[str]] = Field(default_factory=list)
+    sutures_removal_day: Optional[int] = None
+    normal_symptoms: Optional[List[str]] = Field(default_factory=list)
+    alarm_symptoms: Optional[List[str]] = Field(default_factory=list)
+    escalation_message: Optional[str] = None
+
+
 class TreatmentTypeResponse(BaseModel):
     id: int
     code: str
@@ -121,7 +159,9 @@ class TreatmentTypeResponse(BaseModel):
     base_price: Optional[float] = 0
     priority: Optional[str] = "medium"
     professional_ids: Optional[List[int]] = []
-    pre_instructions: Optional[str] = None
+    # Migration 036: pre_instructions is JSONB now (was Text). Response shape
+    # is whatever is stored — dict or null. Frontend handles parsing.
+    pre_instructions: Optional[Any] = None
     post_instructions: Optional[Any] = None
     followup_template: Optional[Any] = None
 
@@ -856,8 +896,12 @@ class TreatmentTypeCreate(BaseModel):
     base_price: Optional[float] = 0
     priority: Optional[str] = "medium"
     professional_ids: Optional[List[int]] = None
-    pre_instructions: Optional[str] = None
-    post_instructions: Optional[Any] = None
+    # Migration 036: pre_instructions accepts dict (PreInstructions),
+    # legacy plain string (wrapped on save), or raw dict for flexibility.
+    pre_instructions: Optional[Union[PreInstructions, dict, str]] = None
+    # post_instructions accepts dict (PostInstructions), legacy timed-list,
+    # raw dict, or string (rare).
+    post_instructions: Optional[Union[PostInstructions, list, dict, str]] = None
     followup_template: Optional[Any] = None
     confirm_unusual_price: bool = False
 
@@ -877,8 +921,9 @@ class TreatmentTypeUpdate(BaseModel):
     internal_notes: Optional[str] = ""
     base_price: Optional[float] = 0
     priority: Optional[str] = "medium"
-    pre_instructions: Optional[str] = None
-    post_instructions: Optional[Any] = None
+    # Migration 036: same Union shape as TreatmentTypeCreate.
+    pre_instructions: Optional[Union[PreInstructions, dict, str]] = None
+    post_instructions: Optional[Union[PostInstructions, list, dict, str]] = None
     followup_template: Optional[Any] = None
     confirm_unusual_price: bool = False
 
@@ -8715,8 +8760,10 @@ class TreatmentTypeUpdate(BaseModel):
     internal_notes: Optional[str] = None
     base_price: Optional[float] = 0
     priority: Optional[str] = "medium"
-    pre_instructions: Optional[str] = None
-    post_instructions: Optional[Any] = None
+    # Migration 036: structured pre/post instructions. See PreInstructions /
+    # PostInstructions Pydantic models near the top of this file.
+    pre_instructions: Optional[Union[PreInstructions, dict, str]] = None
+    post_instructions: Optional[Union[PostInstructions, list, dict, str]] = None
     followup_template: Optional[Any] = None
     confirm_unusual_price: bool = False
 
@@ -8754,34 +8801,172 @@ async def _validate_treatment_price_scale(
         )
 
 
+def _coerce_pre_instructions(value):
+    """Normalize pre_instructions to a JSON-serializable dict (or None).
+
+    Migration 036 stores pre_instructions as JSONB. This helper converts
+    every accepted input shape into the canonical dict form before
+    json.dumps + INSERT/UPDATE.
+    - None → None
+    - PreInstructions (Pydantic) → .dict()
+    - dict → returned as-is (assumed already in the right shape)
+    - str (legacy) → wrapped as {"general_notes": str}
+    - anything else → None (defensive)
+    """
+    if value is None:
+        return None
+    if isinstance(value, PreInstructions):
+        return value.dict(exclude_none=False)
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        return {"general_notes": value}
+    return None
+
+
+def _coerce_post_instructions(value):
+    """Normalize post_instructions to dict, list, or None.
+
+    Migration 036 keeps post_instructions JSONB but allows two shapes:
+    - new structured PostInstructions dict (recovery protocol)
+    - legacy timed-sequence list (preserved as-is)
+    """
+    if value is None:
+        return None
+    if isinstance(value, PostInstructions):
+        return value.dict(exclude_none=False)
+    if isinstance(value, list):
+        return value  # legacy timed sequence — store as-is
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        # Defensive: try to parse JSON; on failure wrap as general_notes
+        try:
+            parsed = json.loads(value)
+            return parsed
+        except (json.JSONDecodeError, TypeError):
+            return {"general_notes": value}
+    return None
+
+
 def _validate_treatment_instruction_fields(treatment) -> None:
-    """Valida los campos de instrucciones de un tipo de tratamiento."""
-    if (
-        treatment.pre_instructions is not None
-        and len(treatment.pre_instructions) > 2000
-    ):
-        raise HTTPException(
-            status_code=422, detail="pre_instructions no puede superar 2000 caracteres"
-        )
-    if treatment.post_instructions is not None:
-        if not isinstance(treatment.post_instructions, list):
+    """Valida los campos de instrucciones de un tipo de tratamiento (migration 036).
+
+    Acepta tanto la forma legacy (string para pre, lista timed para post) como
+    la nueva forma estructurada (PreInstructions / PostInstructions dicts).
+    """
+    # pre_instructions: string ≤ 2000 chars OR dict with general_notes ≤ 2000
+    pre = treatment.pre_instructions
+    if pre is not None:
+        if isinstance(pre, str):
+            if len(pre) > 2000:
+                raise HTTPException(
+                    status_code=422,
+                    detail="pre_instructions no puede superar 2000 caracteres",
+                )
+        elif isinstance(pre, PreInstructions):
+            notes = pre.general_notes or ""
+            if len(notes) > 2000:
+                raise HTTPException(
+                    status_code=422,
+                    detail="pre_instructions.general_notes no puede superar 2000 caracteres",
+                )
+            if pre.fasting_hours is not None and pre.fasting_hours < 0:
+                raise HTTPException(
+                    status_code=422,
+                    detail="fasting_hours no puede ser negativo",
+                )
+            if (
+                pre.preparation_days_before is not None
+                and pre.preparation_days_before < 0
+            ):
+                raise HTTPException(
+                    status_code=422,
+                    detail="preparation_days_before no puede ser negativo",
+                )
+        elif isinstance(pre, dict):
+            notes = pre.get("general_notes") or ""
+            if isinstance(notes, str) and len(notes) > 2000:
+                raise HTTPException(
+                    status_code=422,
+                    detail="pre_instructions.general_notes no puede superar 2000 caracteres",
+                )
+        else:
             raise HTTPException(
                 status_code=422,
-                detail="post_instructions debe ser una lista de objetos",
+                detail="pre_instructions debe ser un objeto o un string",
             )
-        valid_timings = ("before", "after", "day_of", "same_day")
-        for item in treatment.post_instructions:
-            if not isinstance(item, dict):
+
+    # post_instructions: PostInstructions dict OR legacy list of timed entries
+    post = treatment.post_instructions
+    if post is not None:
+        if isinstance(post, PostInstructions):
+            if (
+                post.care_duration_days is not None
+                and post.care_duration_days <= 0
+            ):
                 raise HTTPException(
                     status_code=422,
-                    detail="Cada elemento de post_instructions debe ser un objeto",
+                    detail="care_duration_days debe ser mayor a 0",
                 )
-            timing = item.get("timing")
-            if timing is not None and timing not in valid_timings:
+            if (
+                post.sutures_removal_day is not None
+                and post.sutures_removal_day < 0
+            ):
                 raise HTTPException(
                     status_code=422,
-                    detail=f"Valor de timing inválido: '{timing}'. Debe ser uno de: {', '.join(valid_timings)}",
+                    detail="sutures_removal_day no puede ser negativo",
                 )
+            esc = post.escalation_message or ""
+            if len(esc) > 500:
+                raise HTTPException(
+                    status_code=422,
+                    detail="escalation_message no puede superar 500 caracteres",
+                )
+        elif isinstance(post, list):
+            # Legacy timed-sequence shape — preserved for backwards compat.
+            valid_timings = (
+                "before",
+                "after",
+                "day_of",
+                "same_day",
+                "immediate",
+                "24h",
+                "48h",
+                "72h",
+                "1w",
+                "stitch_removal",
+                "custom",
+            )
+            for item in post:
+                if not isinstance(item, dict):
+                    raise HTTPException(
+                        status_code=422,
+                        detail="Cada elemento de post_instructions debe ser un objeto",
+                    )
+                timing = item.get("timing")
+                if timing is not None and timing not in valid_timings:
+                    raise HTTPException(
+                        status_code=422,
+                        detail=(
+                            f"Valor de timing inválido: '{timing}'. Debe ser uno de: "
+                            f"{', '.join(valid_timings)}"
+                        ),
+                    )
+        elif isinstance(post, dict):
+            # Raw dict (no Pydantic coercion) — accept without strict
+            # validation to keep the API flexible for future keys.
+            cd = post.get("care_duration_days")
+            if cd is not None and isinstance(cd, (int, float)) and cd <= 0:
+                raise HTTPException(
+                    status_code=422,
+                    detail="care_duration_days debe ser mayor a 0",
+                )
+        else:
+            raise HTTPException(
+                status_code=422,
+                detail="post_instructions debe ser un objeto, lista o string",
+            )
     if treatment.followup_template is not None:
         if not isinstance(treatment.followup_template, list):
             raise HTTPException(
@@ -9002,8 +9187,12 @@ async def create_treatment_type(
             treatment.priority
             if treatment.priority in ("high", "medium-high", "medium", "low")
             else "medium",
-            treatment.pre_instructions,
-            json.dumps(treatment.post_instructions)
+            # Migration 036: pre_instructions is now JSONB. Coerce string /
+            # PreInstructions / dict into a canonical dict before serializing.
+            json.dumps(_coerce_pre_instructions(treatment.pre_instructions))
+            if treatment.pre_instructions is not None
+            else None,
+            json.dumps(_coerce_post_instructions(treatment.post_instructions))
             if treatment.post_instructions is not None
             else None,
             json.dumps(treatment.followup_template)
@@ -9078,8 +9267,12 @@ async def update_treatment_type(
         treatment.priority
         if treatment.priority in ("high", "medium-high", "medium", "low")
         else "medium",
-        treatment.pre_instructions,
-        json.dumps(treatment.post_instructions)
+        # Migration 036: pre_instructions is now JSONB. Coerce string /
+        # PreInstructions / dict into a canonical dict before serializing.
+        json.dumps(_coerce_pre_instructions(treatment.pre_instructions))
+        if treatment.pre_instructions is not None
+        else None,
+        json.dumps(_coerce_post_instructions(treatment.post_instructions))
         if treatment.post_instructions is not None
         else None,
         json.dumps(treatment.followup_template)
