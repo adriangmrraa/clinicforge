@@ -189,6 +189,8 @@ class Tenant(Base):
     ai_engine_mode = Column(
         String(10), nullable=False, default="solo", server_default="solo"
     )
+    # Editable bot display name (migration 033). NULL → fallback to "TORA".
+    bot_name = Column(String(50), nullable=True)
 
 
 class TenantInsuranceProvider(Base):
