@@ -787,7 +787,13 @@ class TreatmentType(Base):
     is_active = Column(Boolean, default=True)
     is_available_for_booking = Column(Boolean, default=True)
     internal_notes = Column(Text)
-    pre_instructions = Column(Text, nullable=True)
+    # Migration 036: pre_instructions promoted from TEXT to JSONB.
+    # Legacy text is wrapped as {"general_notes": "<original>"}.
+    # New structured shape: PreInstructions Pydantic model.
+    pre_instructions = Column(JSONB, nullable=True)
+    # Migration 036: post_instructions still JSONB but now accepts both
+    # the legacy list-of-timed-entries shape (wrapped via general_notes)
+    # and the new PostInstructions recovery protocol dict shape.
     post_instructions = Column(JSONB, nullable=True)
     followup_template = Column(JSONB, nullable=True)
     patient_display_name = Column(Text, nullable=True)

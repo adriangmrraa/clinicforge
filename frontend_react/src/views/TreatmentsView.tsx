@@ -49,11 +49,226 @@ interface FollowupMessage {
   message: string;
 }
 
+// Migration 037: structured pre-treatment instructions form. Mirrors the
+// PreInstructions Pydantic model in admin_routes.py.
+interface PreInstructionsForm {
+  preparation_days_before: number | null;
+  fasting_required: boolean | null;
+  fasting_hours: number | null;
+  medications_to_avoid: string[];
+  medications_to_take: string[];
+  what_to_bring: string[];
+  general_notes: string;
+}
+
+// Migration 037: structured post-treatment recovery protocol form.
+// Mirrors the PostInstructions Pydantic model in admin_routes.py.
+interface PostInstructionsForm {
+  care_duration_days: number | null;
+  dietary_restrictions: string[];
+  activity_restrictions: string[];
+  allowed_medications: string[];
+  prohibited_medications: string[];
+  sutures_removal_day: number | null;
+  normal_symptoms: string[];
+  alarm_symptoms: string[];
+  escalation_message: string;
+}
+
+const emptyPreForm: PreInstructionsForm = {
+  preparation_days_before: null,
+  fasting_required: null,
+  fasting_hours: null,
+  medications_to_avoid: [],
+  medications_to_take: [],
+  what_to_bring: [],
+  general_notes: '',
+};
+
+const emptyPostForm: PostInstructionsForm = {
+  care_duration_days: null,
+  dietary_restrictions: [],
+  activity_restrictions: [],
+  allowed_medications: [],
+  prohibited_medications: [],
+  sutures_removal_day: null,
+  normal_symptoms: [],
+  alarm_symptoms: [],
+  escalation_message: '',
+};
+
+// Helper: parse pre_instructions from API response into form state.
+// Accepts: dict (new shape), string (legacy raw), {general_notes: str} wrap.
+function parsePreInstructions(value: unknown): PreInstructionsForm {
+  if (!value) return { ...emptyPreForm };
+  if (typeof value === 'string') {
+    return { ...emptyPreForm, general_notes: value };
+  }
+  if (typeof value === 'object') {
+    const v = value as Record<string, unknown>;
+    return {
+      preparation_days_before: typeof v.preparation_days_before === 'number' ? v.preparation_days_before : null,
+      fasting_required: typeof v.fasting_required === 'boolean' ? v.fasting_required : null,
+      fasting_hours: typeof v.fasting_hours === 'number' ? v.fasting_hours : null,
+      medications_to_avoid: Array.isArray(v.medications_to_avoid) ? (v.medications_to_avoid as string[]) : [],
+      medications_to_take: Array.isArray(v.medications_to_take) ? (v.medications_to_take as string[]) : [],
+      what_to_bring: Array.isArray(v.what_to_bring) ? (v.what_to_bring as string[]) : [],
+      general_notes: typeof v.general_notes === 'string' ? v.general_notes : '',
+    };
+  }
+  return { ...emptyPreForm };
+}
+
+// Helper: parse post_instructions from API response.
+// Returns either the new structured form OR the legacy timed list (not both).
+function parsePostInstructions(value: unknown): { post: PostInstructionsForm; legacy: PostInstruction[] } {
+  if (!value) return { post: { ...emptyPostForm }, legacy: [] };
+  // Legacy timed sequence (bare list)
+  if (Array.isArray(value)) {
+    return { post: { ...emptyPostForm }, legacy: value as PostInstruction[] };
+  }
+  if (typeof value === 'object') {
+    const v = value as Record<string, unknown>;
+    // Check for legacy wrap: {general_notes: "<serialized list>"}
+    if (typeof v.general_notes === 'string') {
+      try {
+        const parsed = JSON.parse(v.general_notes as string);
+        if (Array.isArray(parsed)) {
+          return { post: { ...emptyPostForm }, legacy: parsed as PostInstruction[] };
+        }
+      } catch {
+        // Not a serialized list — fall through to dict path
+      }
+    }
+    // New structured form
+    return {
+      post: {
+        care_duration_days: typeof v.care_duration_days === 'number' ? v.care_duration_days : null,
+        dietary_restrictions: Array.isArray(v.dietary_restrictions) ? (v.dietary_restrictions as string[]) : [],
+        activity_restrictions: Array.isArray(v.activity_restrictions) ? (v.activity_restrictions as string[]) : [],
+        allowed_medications: Array.isArray(v.allowed_medications) ? (v.allowed_medications as string[]) : [],
+        prohibited_medications: Array.isArray(v.prohibited_medications) ? (v.prohibited_medications as string[]) : [],
+        sutures_removal_day: typeof v.sutures_removal_day === 'number' ? v.sutures_removal_day : null,
+        normal_symptoms: Array.isArray(v.normal_symptoms) ? (v.normal_symptoms as string[]) : [],
+        alarm_symptoms: Array.isArray(v.alarm_symptoms) ? (v.alarm_symptoms as string[]) : [],
+        escalation_message: typeof v.escalation_message === 'string' ? v.escalation_message : '',
+      },
+      legacy: [],
+    };
+  }
+  return { post: { ...emptyPostForm }, legacy: [] };
+}
+
+// Helper: drop empty fields from PostInstructionsForm so we don't send a wall
+// of nulls to the backend. Returns null if everything is empty.
+function postFormHasContent(form: PostInstructionsForm): boolean {
+  return (
+    form.care_duration_days !== null ||
+    form.sutures_removal_day !== null ||
+    form.escalation_message.trim().length > 0 ||
+    form.dietary_restrictions.length > 0 ||
+    form.activity_restrictions.length > 0 ||
+    form.allowed_medications.length > 0 ||
+    form.prohibited_medications.length > 0 ||
+    form.normal_symptoms.length > 0 ||
+    form.alarm_symptoms.length > 0
+  );
+}
+
+function preFormHasContent(form: PreInstructionsForm): boolean {
+  return (
+    form.preparation_days_before !== null ||
+    form.fasting_required !== null ||
+    form.fasting_hours !== null ||
+    form.general_notes.trim().length > 0 ||
+    form.medications_to_avoid.length > 0 ||
+    form.medications_to_take.length > 0 ||
+    form.what_to_bring.length > 0
+  );
+}
+
 interface TreatmentInstructions {
-  pre_instructions: string;
-  post_instructions: PostInstruction[];
+  // Migration 037 — instruction state shape now carries 3 separate buckets:
+  // - preForm: structured PreInstructions dict
+  // - postForm: structured PostInstructions dict
+  // - timedSequence: legacy list shape (preserved for backwards compat)
+  // Save handler chooses dict OR list based on which form has content.
+  preForm: PreInstructionsForm;
+  postForm: PostInstructionsForm;
+  timedSequence: PostInstruction[];
   followup_template: FollowupMessage[];
 }
+
+// Reusable inline component for editing a list of free-text strings
+// (medications, restrictions, symptoms, etc.). Each row has an X button.
+const StringListEditor: React.FC<{
+  label: string;
+  items: string[];
+  onChange: (items: string[]) => void;
+  placeholder?: string;
+  accentColor?: 'blue' | 'red' | 'amber';
+}> = ({ label, items, onChange, placeholder, accentColor = 'blue' }) => {
+  const accentText =
+    accentColor === 'red' ? 'text-red-400 hover:text-red-300'
+    : accentColor === 'amber' ? 'text-amber-400 hover:text-amber-300'
+    : 'text-blue-400 hover:text-blue-300';
+  const labelText =
+    accentColor === 'red' ? 'text-red-400'
+    : accentColor === 'amber' ? 'text-amber-400'
+    : 'text-white/60';
+  const updateAt = (idx: number, val: string) => {
+    const next = [...items];
+    next[idx] = val;
+    onChange(next);
+  };
+  const removeAt = (idx: number) => {
+    onChange(items.filter((_, i) => i !== idx));
+  };
+  const add = () => onChange([...items, '']);
+  return (
+    <div className="space-y-2">
+      <label className={`text-xs font-semibold uppercase tracking-wider ${labelText}`}>{label}</label>
+      <div className="space-y-2">
+        {items.length === 0 ? (
+          <input
+            type="text"
+            value=""
+            onChange={e => updateAt(0, e.target.value) || add()}
+            placeholder={placeholder}
+            className="w-full px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-xl text-white text-sm placeholder-white/20 outline-none focus:ring-2 focus:ring-blue-500/20"
+            onFocus={() => items.length === 0 && onChange([''])}
+          />
+        ) : (
+          items.map((item, idx) => (
+            <div key={idx} className="flex items-center gap-2">
+              <input
+                type="text"
+                value={item}
+                onChange={e => updateAt(idx, e.target.value)}
+                placeholder={placeholder}
+                className="flex-1 px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-xl text-white text-sm placeholder-white/20 outline-none focus:ring-2 focus:ring-blue-500/20"
+              />
+              <button
+                type="button"
+                onClick={() => removeAt(idx)}
+                className="p-1.5 text-white/30 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors shrink-0"
+              >
+                <X size={16} />
+              </button>
+            </div>
+          ))
+        )}
+      </div>
+      <button
+        type="button"
+        onClick={add}
+        className={`text-sm font-semibold flex items-center gap-1 ${accentText}`}
+      >
+        <Plus size={14} /> Agregar
+      </button>
+    </div>
+  );
+};
 
 // Category icons mapping
 const categoryIcons: Record<string, React.ReactNode> = {
@@ -202,54 +417,95 @@ export default function TreatmentsView() {
   // Unusual price confirmation state (Bug #3)
   const [unusualPriceConfirm, setUnusualPriceConfirm] = useState<{ context: 'create' | 'edit'; code?: string } | null>(null);
 
-  // Instructions modal state
+  // Instructions modal state — migration 037 splits into 3 buckets
   const [instructionsModalOpen, setInstructionsModalOpen] = useState(false);
   const [instructionsTarget, setInstructionsTarget] = useState<'edit' | 'create'>('edit');
+  // Tab switcher: 'protocol' = new structured PostInstructions form,
+  // 'sequence' = legacy timed list. They are mutually exclusive on save.
+  const [postEditMode, setPostEditMode] = useState<'protocol' | 'sequence'>('protocol');
   const [instructionsLocal, setInstructionsLocal] = useState<TreatmentInstructions>({
-    pre_instructions: '',
-    post_instructions: [],
+    preForm: { ...emptyPreForm },
+    postForm: { ...emptyPostForm },
+    timedSequence: [],
     followup_template: [],
   });
 
   const openInstructionsModal = (target: 'edit' | 'create') => {
     setInstructionsTarget(target);
     const form = target === 'edit' ? editForm : newForm;
+    const preForm = parsePreInstructions(form.pre_instructions);
+    const { post: postForm, legacy } = parsePostInstructions(form.post_instructions);
     setInstructionsLocal({
-      pre_instructions: form.pre_instructions || '',
-      post_instructions: form.post_instructions || [],
+      preForm,
+      postForm,
+      timedSequence: legacy,
       followup_template: form.followup_template || [],
     });
+    // Default to legacy view if there's existing legacy data and no new form data
+    setPostEditMode(legacy.length > 0 && !postFormHasContent(postForm) ? 'sequence' : 'protocol');
     setInstructionsModalOpen(true);
   };
 
   const saveInstructions = () => {
+    // Migration 037 save handler:
+    // - pre_instructions: send the structured PreInstructionsForm dict if
+    //   any field is set; otherwise null
+    // - post_instructions: send the dict if user is in protocol mode and
+    //   there is content; otherwise send the legacy timed list if non-empty;
+    //   otherwise null
+    const preOut = preFormHasContent(instructionsLocal.preForm)
+      ? instructionsLocal.preForm
+      : null;
+
+    let postOut: PostInstructionsForm | PostInstruction[] | null = null;
+    if (postEditMode === 'protocol' && postFormHasContent(instructionsLocal.postForm)) {
+      postOut = instructionsLocal.postForm;
+    } else if (instructionsLocal.timedSequence.length > 0) {
+      postOut = instructionsLocal.timedSequence;
+    }
+
+    const patch = {
+      pre_instructions: preOut as unknown as string | undefined,
+      post_instructions: postOut as unknown as PostInstruction[] | undefined,
+      followup_template: instructionsLocal.followup_template,
+    };
     if (instructionsTarget === 'edit') {
-      setEditForm(prev => ({ ...prev, ...instructionsLocal }));
+      setEditForm(prev => ({ ...prev, ...patch }));
     } else {
-      setNewForm(prev => ({ ...prev, ...instructionsLocal }));
+      setNewForm(prev => ({ ...prev, ...patch }));
     }
     setInstructionsModalOpen(false);
   };
 
+  // Legacy timed-sequence editors (preserved unchanged)
   const addPostInstruction = () => {
     setInstructionsLocal(prev => ({
       ...prev,
-      post_instructions: [...prev.post_instructions, { timing: 'immediate', content: '' }],
+      timedSequence: [...prev.timedSequence, { timing: 'immediate', content: '' }],
     }));
   };
 
   const removePostInstruction = (idx: number) => {
     setInstructionsLocal(prev => ({
       ...prev,
-      post_instructions: prev.post_instructions.filter((_, i) => i !== idx),
+      timedSequence: prev.timedSequence.filter((_, i) => i !== idx),
     }));
   };
 
   const updatePostInstruction = (idx: number, field: keyof PostInstruction, value: unknown) => {
     setInstructionsLocal(prev => ({
       ...prev,
-      post_instructions: prev.post_instructions.map((item, i) => i === idx ? { ...item, [field]: value } : item),
+      timedSequence: prev.timedSequence.map((item, i) => i === idx ? { ...item, [field]: value } : item),
     }));
+  };
+
+  // Helpers for the new structured forms
+  const updatePreField = <K extends keyof PreInstructionsForm>(field: K, value: PreInstructionsForm[K]) => {
+    setInstructionsLocal(prev => ({ ...prev, preForm: { ...prev.preForm, [field]: value } }));
+  };
+
+  const updatePostField = <K extends keyof PostInstructionsForm>(field: K, value: PostInstructionsForm[K]) => {
+    setInstructionsLocal(prev => ({ ...prev, postForm: { ...prev.postForm, [field]: value } }));
   };
 
   const addFollowup = () => {
@@ -1135,68 +1391,253 @@ export default function TreatmentsView() {
             </div>
 
             <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 space-y-8">
-              {/* Section 1: Pre-treatment */}
-              <div className="space-y-3">
+              {/* Legal disclaimer (migration 037) */}
+              <div className="bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xs rounded-xl px-4 py-3 flex items-start gap-2">
+                <AlertCircle size={14} className="shrink-0 mt-0.5" />
+                <p>{t('treatments.instructions.disclaimer')}</p>
+              </div>
+
+              {/* Section 1: Pre-treatment (structured — migration 037) */}
+              <div className="space-y-4">
                 <div className="flex items-center gap-2">
                   <Info size={16} className="text-blue-400 shrink-0" />
                   <h4 className="font-bold text-white">{t('treatments.instructions.pre.title')}</h4>
                 </div>
                 <p className="text-xs text-white/40">{t('treatments.instructions.pre.helper')}</p>
-                <textarea
-                  value={instructionsLocal.pre_instructions}
-                  onChange={e => setInstructionsLocal(prev => ({ ...prev, pre_instructions: e.target.value }))}
-                  placeholder={t('treatments.instructions.pre.placeholder')}
-                  rows={6}
-                  className="w-full px-4 py-3 bg-white/[0.04] border border-white/[0.08] rounded-xl text-white placeholder-white/20 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none resize-none text-sm"
-                />
-              </div>
 
-              {/* Section 2: Post-treatment */}
-              <div className="space-y-3">
-                <h4 className="font-bold text-white">{t('treatments.instructions.post.title')}</h4>
-                <div className="space-y-3">
-                  {instructionsLocal.post_instructions.map((item, idx) => (
-                    <div key={idx} className="bg-white/[0.03] border border-white/[0.06] rounded-xl p-4 space-y-3">
-                      <div className="flex items-center gap-3">
-                        <select
-                          value={item.timing}
-                          onChange={e => updatePostInstruction(idx, 'timing', e.target.value as PostTiming)}
-                          className="flex-1 px-3 py-2 bg-[#0d1117] border border-white/[0.08] rounded-lg text-white text-sm focus:ring-2 focus:ring-blue-500/20 outline-none [&>option]:bg-[#0d1117]"
-                        >
-                          {(['immediate', '24h', '48h', '72h', '1w', 'stitch_removal', 'custom'] as PostTiming[]).map(timing => (
-                            <option key={timing} value={timing}>{t(`treatments.instructions.post.timing.${timing}`)}</option>
-                          ))}
-                        </select>
-                        {(item.timing === 'stitch_removal' || item.timing === 'custom') && (
-                          <div className="flex items-center gap-2">
-                            <input
-                              type="number" min="1" value={item.custom_days || ''} onChange={e => updatePostInstruction(idx, 'custom_days', parseInt(e.target.value) || undefined)}
-                              className="w-20 px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white text-sm outline-none focus:ring-2 focus:ring-blue-500/20"
-                            />
-                            <span className="text-xs text-white/40">{t('treatments.instructions.post.days')}</span>
-                          </div>
-                        )}
-                        <button type="button" onClick={() => removePostInstruction(idx)} className="p-1.5 text-white/30 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors shrink-0">
-                          <X size={16} />
-                        </button>
-                      </div>
-                      {item.timing === 'stitch_removal' && (
-                        <label className="flex items-center gap-2 cursor-pointer">
-                          <input type="checkbox" checked={item.book_followup || false} onChange={e => updatePostInstruction(idx, 'book_followup', e.target.checked)} className="h-4 w-4 rounded border-white/[0.08] text-blue-400 focus:ring-blue-500" />
-                          <span className="text-xs text-white/60">{t('treatments.instructions.post.bookFollowup')}</span>
-                        </label>
-                      )}
-                      <textarea
-                        value={item.content} onChange={e => updatePostInstruction(idx, 'content', e.target.value)}
-                        placeholder={t('treatments.instructions.post.contentPlaceholder')} rows={3}
-                        className="w-full px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white text-sm placeholder-white/20 outline-none focus:ring-2 focus:ring-blue-500/20 resize-none"
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold uppercase tracking-wider text-white/60">
+                      {t('treatments.instructions.pre.preparationDaysBefore')}
+                    </label>
+                    <input
+                      type="number" min="0"
+                      value={instructionsLocal.preForm.preparation_days_before ?? ''}
+                      onChange={e => updatePreField('preparation_days_before', e.target.value === '' ? null : parseInt(e.target.value))}
+                      className="w-full px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-xl text-white text-sm outline-none focus:ring-2 focus:ring-blue-500/20"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold uppercase tracking-wider text-white/60">
+                      {t('treatments.instructions.pre.fastingRequired')}
+                    </label>
+                    <select
+                      value={instructionsLocal.preForm.fasting_required === null ? '' : instructionsLocal.preForm.fasting_required ? 'yes' : 'no'}
+                      onChange={e => {
+                        const val = e.target.value;
+                        updatePreField('fasting_required', val === '' ? null : val === 'yes');
+                      }}
+                      className="w-full px-3 py-2 bg-[#0d1117] border border-white/[0.08] rounded-xl text-white text-sm outline-none focus:ring-2 focus:ring-blue-500/20 [&>option]:bg-[#0d1117]"
+                    >
+                      <option value="">—</option>
+                      <option value="yes">{t('common.yes')}</option>
+                      <option value="no">{t('common.no')}</option>
+                    </select>
+                  </div>
+
+                  {instructionsLocal.preForm.fasting_required === true && (
+                    <div className="space-y-1">
+                      <label className="text-xs font-semibold uppercase tracking-wider text-white/60">
+                        {t('treatments.instructions.pre.fastingHours')}
+                      </label>
+                      <input
+                        type="number" min="0"
+                        value={instructionsLocal.preForm.fasting_hours ?? ''}
+                        onChange={e => updatePreField('fasting_hours', e.target.value === '' ? null : parseInt(e.target.value))}
+                        className="w-full px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-xl text-white text-sm outline-none focus:ring-2 focus:ring-blue-500/20"
                       />
                     </div>
-                  ))}
+                  )}
                 </div>
-                <button type="button" onClick={addPostInstruction} className="flex items-center gap-2 text-sm text-blue-400 hover:text-blue-300 font-semibold transition-colors">
-                  <Plus size={16} /> {t('treatments.instructions.post.addButton')}
-                </button>
+
+                <StringListEditor
+                  label={t('treatments.instructions.pre.medicationsToAvoid')}
+                  items={instructionsLocal.preForm.medications_to_avoid}
+                  onChange={items => updatePreField('medications_to_avoid', items)}
+                  placeholder="Aspirina"
+                  accentColor="amber"
+                />
+                <StringListEditor
+                  label={t('treatments.instructions.pre.medicationsToTake')}
+                  items={instructionsLocal.preForm.medications_to_take}
+                  onChange={items => updatePreField('medications_to_take', items)}
+                  placeholder="Paracetamol 500mg 1h antes"
+                />
+                <StringListEditor
+                  label={t('treatments.instructions.pre.whatToBring')}
+                  items={instructionsLocal.preForm.what_to_bring}
+                  onChange={items => updatePreField('what_to_bring', items)}
+                  placeholder="DNI, estudios previos"
+                />
+
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold uppercase tracking-wider text-white/60">
+                    {t('treatments.instructions.pre.generalNotes')}
+                  </label>
+                  <textarea
+                    value={instructionsLocal.preForm.general_notes}
+                    onChange={e => updatePreField('general_notes', e.target.value)}
+                    placeholder={t('treatments.instructions.pre.placeholder')}
+                    rows={4}
+                    className="w-full px-4 py-3 bg-white/[0.04] border border-white/[0.08] rounded-xl text-white text-sm placeholder-white/20 outline-none focus:ring-2 focus:ring-blue-500/20 resize-none"
+                  />
+                </div>
+              </div>
+
+              {/* Section 2: Post-treatment (tab switcher between structured + legacy) */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between gap-3">
+                  <h4 className="font-bold text-white">{t('treatments.instructions.post.title')}</h4>
+                  <div className="flex gap-1 bg-white/[0.04] rounded-xl p-1">
+                    <button
+                      type="button"
+                      onClick={() => setPostEditMode('protocol')}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${postEditMode === 'protocol' ? 'bg-white text-[#0a0e1a]' : 'text-white/60 hover:text-white'}`}
+                    >
+                      {t('treatments.instructions.post.modeProtocol')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPostEditMode('sequence')}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${postEditMode === 'sequence' ? 'bg-white text-[#0a0e1a]' : 'text-white/60 hover:text-white'}`}
+                    >
+                      {t('treatments.instructions.post.modeSequence')}
+                    </button>
+                  </div>
+                </div>
+
+                {postEditMode === 'protocol' ? (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-xs font-semibold uppercase tracking-wider text-white/60">
+                          {t('treatments.instructions.post.careDurationDays')}
+                        </label>
+                        <input
+                          type="number" min="0"
+                          value={instructionsLocal.postForm.care_duration_days ?? ''}
+                          onChange={e => updatePostField('care_duration_days', e.target.value === '' ? null : parseInt(e.target.value))}
+                          className="w-full px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-xl text-white text-sm outline-none focus:ring-2 focus:ring-blue-500/20"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs font-semibold uppercase tracking-wider text-white/60">
+                          {t('treatments.instructions.post.suturesRemovalDay')}
+                        </label>
+                        <input
+                          type="number" min="0"
+                          value={instructionsLocal.postForm.sutures_removal_day ?? ''}
+                          onChange={e => updatePostField('sutures_removal_day', e.target.value === '' ? null : parseInt(e.target.value))}
+                          className="w-full px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-xl text-white text-sm outline-none focus:ring-2 focus:ring-blue-500/20"
+                        />
+                      </div>
+                    </div>
+
+                    <StringListEditor
+                      label={t('treatments.instructions.post.dietaryRestrictions')}
+                      items={instructionsLocal.postForm.dietary_restrictions}
+                      onChange={items => updatePostField('dietary_restrictions', items)}
+                      placeholder="No comer caliente por 24h"
+                    />
+                    <StringListEditor
+                      label={t('treatments.instructions.post.activityRestrictions')}
+                      items={instructionsLocal.postForm.activity_restrictions}
+                      onChange={items => updatePostField('activity_restrictions', items)}
+                      placeholder="No actividad física intensa por 48h"
+                    />
+                    <StringListEditor
+                      label={t('treatments.instructions.post.allowedMedications')}
+                      items={instructionsLocal.postForm.allowed_medications}
+                      onChange={items => updatePostField('allowed_medications', items)}
+                      placeholder="Ibuprofeno 400mg cada 8h"
+                    />
+                    <StringListEditor
+                      label={t('treatments.instructions.post.prohibitedMedications')}
+                      items={instructionsLocal.postForm.prohibited_medications}
+                      onChange={items => updatePostField('prohibited_medications', items)}
+                      placeholder="Aspirina"
+                      accentColor="amber"
+                    />
+                    <StringListEditor
+                      label={t('treatments.instructions.post.normalSymptoms')}
+                      items={instructionsLocal.postForm.normal_symptoms}
+                      onChange={items => updatePostField('normal_symptoms', items)}
+                      placeholder="Ligero sangrado las primeras 24h"
+                    />
+                    <StringListEditor
+                      label={t('treatments.instructions.post.alarmSymptoms')}
+                      items={instructionsLocal.postForm.alarm_symptoms}
+                      onChange={items => updatePostField('alarm_symptoms', items)}
+                      placeholder="Sangrado abundante que no cede"
+                      accentColor="red"
+                    />
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-semibold uppercase tracking-wider text-red-400">
+                        {t('treatments.instructions.post.escalationMessage')}
+                      </label>
+                      <textarea
+                        value={instructionsLocal.postForm.escalation_message}
+                        onChange={e => updatePostField('escalation_message', e.target.value)}
+                        placeholder="Contactá inmediatamente a la clínica al…"
+                        rows={2}
+                        maxLength={500}
+                        className="w-full px-3 py-2 bg-white/[0.04] border border-red-500/20 rounded-xl text-white text-sm placeholder-white/20 outline-none focus:ring-2 focus:ring-red-500/20 resize-none"
+                      />
+                      <p className="text-[10px] text-white/30">
+                        {t('treatments.instructions.post.escalationHelper')}
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <p className="text-xs text-white/40">{t('treatments.instructions.post.legacyHelper')}</p>
+                    <div className="space-y-3">
+                      {instructionsLocal.timedSequence.map((item, idx) => (
+                        <div key={idx} className="bg-white/[0.03] border border-white/[0.06] rounded-xl p-4 space-y-3">
+                          <div className="flex items-center gap-3">
+                            <select
+                              value={item.timing}
+                              onChange={e => updatePostInstruction(idx, 'timing', e.target.value as PostTiming)}
+                              className="flex-1 px-3 py-2 bg-[#0d1117] border border-white/[0.08] rounded-lg text-white text-sm focus:ring-2 focus:ring-blue-500/20 outline-none [&>option]:bg-[#0d1117]"
+                            >
+                              {(['immediate', '24h', '48h', '72h', '1w', 'stitch_removal', 'custom'] as PostTiming[]).map(timing => (
+                                <option key={timing} value={timing}>{t(`treatments.instructions.post.timing.${timing}`)}</option>
+                              ))}
+                            </select>
+                            {(item.timing === 'stitch_removal' || item.timing === 'custom') && (
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="number" min="1" value={item.custom_days || ''} onChange={e => updatePostInstruction(idx, 'custom_days', parseInt(e.target.value) || undefined)}
+                                  className="w-20 px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white text-sm outline-none focus:ring-2 focus:ring-blue-500/20"
+                                />
+                                <span className="text-xs text-white/40">{t('treatments.instructions.post.days')}</span>
+                              </div>
+                            )}
+                            <button type="button" onClick={() => removePostInstruction(idx)} className="p-1.5 text-white/30 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors shrink-0">
+                              <X size={16} />
+                            </button>
+                          </div>
+                          {item.timing === 'stitch_removal' && (
+                            <label className="flex items-center gap-2 cursor-pointer">
+                              <input type="checkbox" checked={item.book_followup || false} onChange={e => updatePostInstruction(idx, 'book_followup', e.target.checked)} className="h-4 w-4 rounded border-white/[0.08] text-blue-400 focus:ring-blue-500" />
+                              <span className="text-xs text-white/60">{t('treatments.instructions.post.bookFollowup')}</span>
+                            </label>
+                          )}
+                          <textarea
+                            value={item.content} onChange={e => updatePostInstruction(idx, 'content', e.target.value)}
+                            placeholder={t('treatments.instructions.post.contentPlaceholder')} rows={3}
+                            className="w-full px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white text-sm placeholder-white/20 outline-none focus:ring-2 focus:ring-blue-500/20 resize-none"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                    <button type="button" onClick={addPostInstruction} className="flex items-center gap-2 text-sm text-blue-400 hover:text-blue-300 font-semibold transition-colors">
+                      <Plus size={16} /> {t('treatments.instructions.post.addButton')}
+                    </button>
+                  </>
+                )}
               </div>
 
               {/* Section 3: Follow-up messages */}
