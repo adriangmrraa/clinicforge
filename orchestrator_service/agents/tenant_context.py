@@ -407,8 +407,11 @@ async def build_tenant_context_blocks(
     blocks: dict[str, Any] = {k: ("" if k != "sede_info" else {}) for k in ALL_BLOCK_KEYS}
 
     if not _MAIN_FORMATTERS_AVAILABLE:
-        logger.warning("tenant_context: main formatters unavailable, returning empty blocks")
-        return blocks
+        logger.warning(
+            "tenant_context: main formatters unavailable — local blocks "
+            "(clinic_basics/bank_info/sede/holidays) still populate, "
+            "main-derived blocks fall back to empty."
+        )
 
     try:
         # Stage 1: fetch the big tenant row + treatment_display_map in parallel.
