@@ -2594,7 +2594,7 @@ async def get_tenants(
             status_code=403, detail="Solo el CEO puede gestionar clínicas."
         )
     rows = await db.pool.fetch(
-        "SELECT id, clinic_name, bot_phone_number, config, address, google_maps_url, working_hours, consultation_price, bank_cbu, bank_alias, bank_holder_name, derivation_email, logo_url, max_chairs, country_code, system_prompt_template, bot_name, created_at, updated_at FROM tenants WHERE id = ANY($1::int[]) ORDER BY id ASC",
+        "SELECT id, clinic_name, bot_phone_number, config, address, google_maps_url, working_hours, consultation_price, bank_cbu, bank_alias, bank_holder_name, derivation_email, logo_url, max_chairs, country_code, system_prompt_template, created_at, updated_at FROM tenants WHERE id = ANY($1::int[]) ORDER BY id ASC",
         allowed_ids,
     )
     result = []
@@ -2742,26 +2742,6 @@ async def update_tenant(
                     _clean.append(_flat)
             params.append("\n\n".join(_clean) if _clean else None)
         updates.append(f"system_prompt_template = ${len(params)}")
-    if "bot_name" in data:
-        # Editable bot display name (migration 033). NULL → fallback to "TORA"
-        # at injection time in buffer_task. Manual validation since the
-        # endpoint uses Dict[str, Any] instead of a Pydantic schema.
-        _raw_bn = data.get("bot_name")
-        _normalized_bn = (
-            _raw_bn.strip() if isinstance(_raw_bn, str) and _raw_bn.strip() else None
-        )
-        if _normalized_bn is not None:
-            import re as _re_bn
-
-            if len(_normalized_bn) > 50 or not _re_bn.match(
-                r"^[A-Za-z0-9 _-]+$", _normalized_bn
-            ):
-                raise HTTPException(
-                    status_code=422,
-                    detail="bot_name: máximo 50 caracteres, solo letras, números, espacios, guiones y guiones bajos.",
-                )
-        params.append(_normalized_bn)
-        updates.append(f"bot_name = ${len(params)}")
     if not updates:
         return {"status": "updated"}
     params.append(tenant_id)
