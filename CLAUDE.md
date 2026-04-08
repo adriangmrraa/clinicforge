@@ -301,6 +301,70 @@ Dedicated analytics view (`/roi`) with real spend data from Meta API and billing
 
 ---
 
+## Dual-Engine Architecture (TORA Solo + Multi-Agent)
+
+ClinicForge supports **two independent conversational AI engines** per tenant. The CEO selects which one to use from the Settings UI. This was built to coexist with (not replace) the original monolithic TORA and allow experimental migration to a multi-agent architecture.
+
+### The two engines
+
+| Engine | Module | Description |
+|--------|--------|-------------|
+| **SoloEngine** (`solo`) | `orchestrator_service/main.py` | The original monolithic LangChain agent TORA with `DENTAL_TOOLS`. Hardened by changes C1 (quick wins) and C2 (state lock + date validator). Default for all tenants. |
+| **MultiAgentEngine** (`multi`) | `orchestrator_service/agents/` | Supervisor + 6 specialized agents (Reception, Booking, Triage, Billing, Anamnesis, Handoff) with shared `PatientContext`. Opt-in per tenant. |
+
+### How routing works
+
+1. WhatsApp/web message arrives → `services/buffer_task.py:998`
+2. `services/engine_router.py` → `get_engine_for_tenant(tenant_id)` reads `tenants.ai_engine_mode` (cached 60s in-memory, invalidated via Redis pubsub on settings PATCH)
+3. Returns `SoloEngine` or `MultiAgentEngine` based on the value
+4. Circuit breaker: 3 consecutive multi failures within 60s → automatic fallback to solo for 5 minutes for that tenant
+
+### Toggle UI
+
+- **Page:** `frontend_react/src/views/ConfigView.tsx` → general tab
+- **Gate:** `user?.role === 'ceo'` (only the CEO of the tenant sees the selector)
+- **Flow:** select target → `GET /admin/ai-engine/health` runs sanity probes on both engines in parallel → modal shows result → confirm button enabled only if target reports OK → `PATCH /admin/settings/clinic` with `ai_engine_mode` (extends the existing endpoint, re-runs target probe inline, refuses with 422 if it fails)
+
+### Migrations
+
+- `031_ai_engine_mode_column.py` — adds `tenants.ai_engine_mode TEXT NOT NULL DEFAULT 'solo' CHECK (IN ('solo','multi'))`
+- `032_multi_agent_tables.py` — adds `patient_context_snapshots` (LangGraph-style checkpointer keyed by `(tenant_id, phone_number, thread_id)`) and `agent_turn_log` (per-turn audit with `agent_name`, `tools_called JSONB`, `duration_ms`, `model`)
+
+### Model selection (CRITICAL)
+
+**Both engines use the SAME source of truth for model selection:** the `system_config.OPENAI_MODEL` row configured via the **Tokens & Metrics** admin page.
+
+- **SoloEngine**: reads the model in `main.get_agent_executable_for_tenant` (around line 7327).
+- **MultiAgentEngine**: reads the model in `agents/model_resolver.py` → `resolve_tenant_model(tenant_id)` which mirrors the solo logic exactly. Called once per turn in `agents/graph.py:run_turn` and propagated via `AgentState["model_config"]`. Every agent reads the model from the state, never from a class attribute.
+
+**NEVER hardcode a model name in agent code.** Always call the resolver or read from `state["model_config"]`. The default fallback model is `DEFAULT_OPENAI_MODEL = "gpt-5.4-mini"` defined in `main.py` and mirrored in `agents/model_resolver.py`. Both engines also auto-detect DeepSeek models (`deepseek-chat`, `deepseek-reasoner`) and switch API key + base URL accordingly.
+
+### Multi-agent system internals
+
+- **Supervisor** (`agents/supervisor.py`): deterministic regex rules first (emergency/billing/anamnesis/handoff/booking/greeting), LLM fallback using tenant's configured model. Honors `human_override_until` (silent) and `hop_count >= max_hops` (→ handoff).
+- **6 specialists** (`agents/specialists.py`): each wraps a bounded `AgentExecutor` (`max_iterations=4`) with ONLY its subset of `DENTAL_TOOLS` (lazy imported from `main`). All read `state["model_config"]`, all respond in Spanish rioplatense (voseo).
+- **PatientContext** (`services/patient_context.py`): tenant-scoped loader with 2 layers — Profile (PG: patients + medical_history + future_appointments + last 20 chat_messages) and Working (Redis hash `patient_ctx_working:{tenant_id}:{phone}` TTL 30min). Fail-safe: empty profile on error.
+- **Graph entry point** (`agents/graph.py`): `run_turn(ctx)` resolves model, loads context, routes via supervisor, dispatches, writes `agent_turn_log` best-effort, wraps in 45s `asyncio.timeout`. `probe()` runs supervisor routing on a minimal fake state for the health check.
+- **Max hops:** 5. **Turn timeout:** 45s.
+
+### Health check endpoint
+
+`GET /admin/ai-engine/health` (defined in `orchestrator_service/routes/ai_engine_health.py`) runs both probes in parallel and returns:
+```json
+{"solo": {"ok": true, "latency_ms": 123, "detail": "..."},
+ "multi": {"ok": true, "latency_ms": 456, "detail": "..."}}
+```
+
+### Rules
+
+1. Hook point for the router is `services/buffer_task.py:998` — do NOT dispatch to the engine from anywhere else.
+2. Every query in `PatientContext` MUST filter by `tenant_id` (Sovereignty Protocol §1).
+3. Never hardcode a model. Always resolve via `model_resolver.resolve_tenant_model(tenant_id)` or read from `state["model_config"]`.
+4. When adding a new specialized agent: inherit `BaseAgent`, read model from state, register in the `AGENTS` dict, add the routing rule to `SupervisorAgent`.
+5. `ai_engine_mode` default stays `'solo'`. Switching to `'multi'` requires the CEO to pass the health check in the UI.
+
+---
+
 ## Nova — AI Voice Assistant (Jarvis for Dental Clinics)
 
 ### Overview
