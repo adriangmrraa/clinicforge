@@ -7747,6 +7747,8 @@ try:
 
     app.include_router(jobs_router)
     logger.info("✅ Rutas de jobs programados incluidas")
+except ImportError as e:
+    logger.warning(f"⚠️ No se pudieron incluir rutas de jobs: {e}")
 
 # AI Engine Health Check (dual-engine system)
 try:
@@ -7756,8 +7758,6 @@ try:
     logger.info("✅ AI Engine health check router registered")
 except ImportError as e:
     logger.warning(f"AI Engine router not available: {e}")
-except ImportError as e:
-    logger.warning(f"⚠️ No se pudieron incluir rutas de jobs: {e}")
 
 # Import and include Google OAuth and Ads routers
 try:
