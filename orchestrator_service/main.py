@@ -1428,12 +1428,28 @@ async def check_availability(
 
         # 0b. DERIVATION RULES: if no professional specified and no forced assignment,
         # check if treatment matches a derivation rule. Rules are evaluated in priority order.
+        # Migration 038: rules can now have an escalation fallback (secondary
+        # professional or team mode) if the primary has no slots within
+        # max_wait_days_before_escalation.
         derivation_filter_prof_id: Optional[int] = None
+        escalation_state: dict = {
+            "enable": False,
+            "primary_pid": None,
+            "fallback_pid": None,
+            "fallback_team": False,
+            "max_days": 7,
+            "template": None,
+            "primary_label": None,
+            "fallback_label": None,
+            "triggered": False,
+        }
         if not clean_name and not forced_prof_id and treatment_name:
             try:
                 rules = await db.pool.fetch(
                     """
-                    SELECT id, target_professional_id, treatment_categories, patient_condition
+                    SELECT id, target_professional_id, treatment_categories, patient_condition,
+                           enable_escalation, fallback_professional_id, fallback_team_mode,
+                           max_wait_days_before_escalation, escalation_message_template
                     FROM professional_derivation_rules
                     WHERE tenant_id = $1 AND is_active = true
                     ORDER BY priority_order ASC, id ASC
@@ -1443,18 +1459,127 @@ async def check_availability(
                 tname_lower = (treatment_name or "").lower()
                 for rule in rules:
                     cats = rule.get("treatment_categories") or ""
-                    cat_list = [c.strip().lower() for c in cats.split(",") if c.strip()]
+                    if isinstance(cats, list):
+                        cats_str = ",".join(cats)
+                    else:
+                        cats_str = str(cats)
+                    cat_list = [c.strip().lower() for c in cats_str.split(",") if c.strip()]
                     if cat_list and any(c in tname_lower for c in cat_list):
-                        if rule.get("target_professional_id"):
-                            derivation_filter_prof_id = int(
-                                rule["target_professional_id"]
-                            )
+                        primary_pid_val = rule.get("target_professional_id")
+                        if primary_pid_val:
+                            derivation_filter_prof_id = int(primary_pid_val)
                             logger.info(
                                 f"📅 check_availability: derivation rule {rule['id']} matched → forcing prof_id={derivation_filter_prof_id}"
                             )
+                            # Migration 038: capture escalation config so the
+                            # post-slot-generation block can retry with the
+                            # fallback if the primary returns 0 slots.
+                            if rule.get("enable_escalation"):
+                                escalation_state["enable"] = True
+                                escalation_state["primary_pid"] = derivation_filter_prof_id
+                                escalation_state["fallback_pid"] = rule.get("fallback_professional_id")
+                                escalation_state["fallback_team"] = bool(rule.get("fallback_team_mode"))
+                                escalation_state["max_days"] = rule.get("max_wait_days_before_escalation") or 7
+                                escalation_state["template"] = rule.get("escalation_message_template")
                             break
             except Exception as _der_err:
                 logger.debug(f"derivation rules lookup skipped: {_der_err}")
+
+        # Helper for escalation: count available slots for a specific professional
+        # within the max_wait_days window. Uses a minimal query against the
+        # appointments table to detect saturation. Heuristic: a prof is "saturated"
+        # if no working day in the window has fewer than 8 booked appointments
+        # (a rough proxy for "no 30-min gap available"). Cheaper than running
+        # the full slot generator twice.
+        async def _primary_has_window_capacity(
+            prof_id: int, max_days: int
+        ) -> bool:
+            try:
+                from datetime import datetime as _dt, timedelta as _td
+
+                today = _dt.now().date()
+                end = today + _td(days=max_days)
+                booked = await db.pool.fetch(
+                    """
+                    SELECT DATE(scheduled_at) AS d, COUNT(*) AS c
+                    FROM appointments
+                    WHERE tenant_id = $1 AND professional_id = $2
+                      AND scheduled_at >= $3 AND scheduled_at < $4
+                      AND status NOT IN ('canceled', 'cancelled', 'no_show')
+                    GROUP BY DATE(scheduled_at)
+                    """,
+                    tenant_id,
+                    prof_id,
+                    today,
+                    end,
+                )
+                # If any day in the window has fewer than 8 appointments, the
+                # primary still has capacity. If every day is at >= 8 OR there
+                # are simply no working days reachable, fall back.
+                if not booked:
+                    # No appointments at all → primary is wide open
+                    return True
+                for row in booked:
+                    if (row.get("c") or 0) < 8:
+                        return True
+                return False
+            except Exception as _cap_err:
+                logger.debug(f"primary capacity check skipped: {_cap_err}")
+                # On error, assume primary has capacity (don't escalate spuriously)
+                return True
+
+        # Pre-check escalation: if the primary is saturated within the window,
+        # switch the filter BEFORE running the heavy slot search. This avoids
+        # running slot generation twice in the common case.
+        if escalation_state["enable"] and escalation_state["primary_pid"]:
+            has_capacity = await _primary_has_window_capacity(
+                escalation_state["primary_pid"],
+                escalation_state["max_days"],
+            )
+            if not has_capacity:
+                logger.info(
+                    f"⤴️ escalation triggered: primary prof {escalation_state['primary_pid']} "
+                    f"saturated within {escalation_state['max_days']} days → switching to fallback"
+                )
+                escalation_state["triggered"] = True
+                # Resolve primary name once for the message
+                try:
+                    pr_row = await db.pool.fetchrow(
+                        "SELECT first_name, last_name FROM professionals "
+                        "WHERE id = $1 AND tenant_id = $2",
+                        escalation_state["primary_pid"],
+                        tenant_id,
+                    )
+                    escalation_state["primary_label"] = (
+                        f"{pr_row['first_name']} {pr_row.get('last_name') or ''}".strip()
+                        if pr_row
+                        else "el profesional asignado"
+                    )
+                except Exception:
+                    escalation_state["primary_label"] = "el profesional asignado"
+
+                # Switch the filter
+                if escalation_state["fallback_team"] or (
+                    not escalation_state["fallback_pid"]
+                ):
+                    derivation_filter_prof_id = None  # team mode
+                    escalation_state["fallback_label"] = "el equipo"
+                else:
+                    derivation_filter_prof_id = int(escalation_state["fallback_pid"])
+                    try:
+                        fb_row = await db.pool.fetchrow(
+                            "SELECT first_name, last_name FROM professionals "
+                            "WHERE id = $1 AND tenant_id = $2",
+                            escalation_state["fallback_pid"],
+                            tenant_id,
+                        )
+                        escalation_state["fallback_label"] = (
+                            f"{fb_row['first_name']} {fb_row.get('last_name') or ''}".strip()
+                            if fb_row
+                            else "el equipo"
+                        )
+                    except Exception:
+                        escalation_state["fallback_label"] = "el equipo"
 
         # Solo profesionales aprobados (users.status = 'active') y activos en la sede
         query = """SELECT p.id, p.first_name, p.last_name, p.google_calendar_id, p.working_hours, p.is_priority_professional
@@ -2126,6 +2251,23 @@ async def check_availability(
                     f"[conversation_state] set_state in check_availability failed (non-blocking): {state_err}"
                 )
 
+            # Migration 038: prepend escalation message when the primary
+            # was saturated and we switched to a fallback before this search.
+            if escalation_state.get("triggered"):
+                primary_lbl = escalation_state.get("primary_label") or "el profesional asignado"
+                fallback_lbl = escalation_state.get("fallback_label") or "el equipo"
+                tmpl = escalation_state.get("template")
+                if tmpl:
+                    esc_msg = (
+                        tmpl.replace("{primary}", primary_lbl)
+                        .replace("{fallback}", fallback_lbl)
+                    )
+                else:
+                    esc_msg = (
+                        f"Hoy {primary_lbl} no tiene turnos disponibles en los próximos días, "
+                        f"pero podemos coordinar con {fallback_lbl} que también atiende este tipo de casos."
+                    )
+                resp = esc_msg + "\n\n" + resp
             return resp
         else:
             # Sin turnos incluso con multi-day search — informar pero no dejar al paciente colgado
@@ -2140,6 +2282,16 @@ async def check_availability(
             else:
                 no_slots_msg += f" para {date_query} ni en los días cercanos"
             no_slots_msg += ". ¿Querés que busque en otra semana?"
+            # Migration 038: same escalation prepend on the no-slots branch.
+            # When escalation triggered AND fallback also empty, the message
+            # contextualizes the failure ("we tried both, no luck").
+            if escalation_state.get("triggered"):
+                primary_lbl = escalation_state.get("primary_label") or "el profesional asignado"
+                fallback_lbl = escalation_state.get("fallback_label") or "el equipo"
+                no_slots_msg = (
+                    f"Intentamos con {primary_lbl} y también con {fallback_lbl}, "
+                    f"pero no encontré disponibilidad en los próximos días. {no_slots_msg}"
+                )
             return no_slots_msg
 
     except Exception as e:
