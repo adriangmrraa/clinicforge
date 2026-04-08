@@ -8373,6 +8373,13 @@ class DerivationRuleCreate(BaseModel):
     priority_order: int = 0
     is_active: bool = True
     description: Optional[str] = None
+    # Escalation fallback (migration 038)
+    enable_escalation: bool = False
+    fallback_professional_id: Optional[int] = None
+    fallback_team_mode: bool = False
+    max_wait_days_before_escalation: int = Field(default=7, ge=1, le=30)
+    escalation_message_template: Optional[str] = None
+    criteria_custom: Optional[dict] = None
 
 
 class DerivationRuleUpdate(BaseModel):
@@ -8384,10 +8391,17 @@ class DerivationRuleUpdate(BaseModel):
     priority_order: int = 0
     is_active: bool = True
     description: Optional[str] = None
+    # Escalation fallback (migration 038)
+    enable_escalation: bool = False
+    fallback_professional_id: Optional[int] = None
+    fallback_team_mode: bool = False
+    max_wait_days_before_escalation: int = Field(default=7, ge=1, le=30)
+    escalation_message_template: Optional[str] = None
+    criteria_custom: Optional[dict] = None
 
 
 async def _validate_derivation_rule(data, tenant_id: int) -> None:
-    """Valida campos de regla de derivación."""
+    """Valida campos de regla de derivación (migration 038 escalation-aware)."""
     if data.patient_condition not in VALID_PATIENT_CONDITIONS:
         raise HTTPException(
             status_code=422,
@@ -8423,6 +8437,34 @@ async def _validate_derivation_rule(data, tenant_id: int) -> None:
                 detail="El profesional especificado no pertenece a esta clínica",
             )
 
+    # --- Escalation-specific validation (migration 038) ---
+    # Conflict guard: can't specify both fallback_professional_id AND fallback_team_mode
+    if data.fallback_professional_id is not None and data.fallback_team_mode:
+        raise HTTPException(
+            status_code=422,
+            detail="No se puede especificar fallback_professional_id cuando fallback_team_mode es true",
+        )
+    # Tenant isolation for fallback professional
+    if data.fallback_professional_id is not None:
+        fb_exists = await db.pool.fetchval(
+            "SELECT id FROM professionals WHERE id = $1 AND tenant_id = $2",
+            data.fallback_professional_id,
+            tenant_id,
+        )
+        if not fb_exists:
+            raise HTTPException(
+                status_code=422,
+                detail="El profesional de fallback no pertenece a esta clínica",
+            )
+    # Implicit team mode when escalation is enabled but no fallback configured.
+    # Mutate data in-place so the INSERT/UPDATE sees the corrected value.
+    if (
+        data.enable_escalation
+        and data.fallback_professional_id is None
+        and not data.fallback_team_mode
+    ):
+        data.fallback_team_mode = True
+
 
 @router.get(
     "/derivation-rules",
@@ -8437,9 +8479,14 @@ async def list_derivation_rules(tenant_id: int = Depends(get_resolved_tenant_id)
         SELECT dr.id, dr.rule_name, dr.patient_condition, dr.treatment_categories,
                dr.target_type, dr.target_professional_id, dr.priority_order,
                dr.is_active, dr.description, dr.created_at, dr.updated_at,
-               p.first_name AS professional_first_name, p.last_name AS professional_last_name
+               dr.enable_escalation, dr.fallback_professional_id,
+               dr.fallback_team_mode, dr.max_wait_days_before_escalation,
+               dr.escalation_message_template, dr.criteria_custom,
+               p.first_name AS professional_first_name, p.last_name AS professional_last_name,
+               fp.first_name AS fallback_first_name, fp.last_name AS fallback_last_name
         FROM professional_derivation_rules dr
         LEFT JOIN professionals p ON dr.target_professional_id = p.id
+        LEFT JOIN professionals fp ON dr.fallback_professional_id = fp.id
         WHERE dr.tenant_id = $1
         ORDER BY dr.priority_order, dr.id
         """,
@@ -8450,12 +8497,21 @@ async def list_derivation_rules(tenant_id: int = Depends(get_resolved_tenant_id)
         item = dict(r)
         if item.get("professional_first_name") is not None:
             item["professional_name"] = (
-                f"{item.pop('professional_first_name')} {item.pop('professional_last_name')}".strip()
+                f"{item.pop('professional_first_name')} {item.pop('professional_last_name') or ''}".strip()
             )
         else:
             item.pop("professional_first_name", None)
             item.pop("professional_last_name", None)
             item["professional_name"] = None
+        # Migration 038: same treatment for fallback professional name
+        if item.get("fallback_first_name") is not None:
+            item["fallback_professional_name"] = (
+                f"{item.pop('fallback_first_name')} {item.pop('fallback_last_name') or ''}".strip()
+            )
+        else:
+            item.pop("fallback_first_name", None)
+            item.pop("fallback_last_name", None)
+            item["fallback_professional_name"] = None
         # treatment_categories may be returned as a list or JSON string by asyncpg
         cats = item.get("treatment_categories")
         if isinstance(cats, str):
@@ -8463,6 +8519,13 @@ async def list_derivation_rules(tenant_id: int = Depends(get_resolved_tenant_id)
                 item["treatment_categories"] = json.loads(cats)
             except Exception:
                 pass
+        # criteria_custom is JSONB — asyncpg may return it as string
+        cc = item.get("criteria_custom")
+        if isinstance(cc, str):
+            try:
+                item["criteria_custom"] = json.loads(cc)
+            except Exception:
+                item["criteria_custom"] = None
         result.append(item)
     return result
 
@@ -8496,8 +8559,14 @@ async def create_derivation_rule(
         INSERT INTO professional_derivation_rules (
             tenant_id, rule_name, patient_condition, treatment_categories,
             target_type, target_professional_id, priority_order, is_active,
-            description, created_at, updated_at
-        ) VALUES ($1, $2, $3, $4::text[], $5, $6, $7, $8, $9, NOW(), NOW())
+            description,
+            enable_escalation, fallback_professional_id, fallback_team_mode,
+            max_wait_days_before_escalation, escalation_message_template,
+            criteria_custom,
+            created_at, updated_at
+        ) VALUES ($1, $2, $3, $4::text[], $5, $6, $7, $8, $9,
+                  $10, $11, $12, $13, $14, $15::jsonb,
+                  NOW(), NOW())
         RETURNING id
         """,
         tenant_id,
@@ -8509,6 +8578,12 @@ async def create_derivation_rule(
         data.priority_order,
         data.is_active,
         data.description,
+        data.enable_escalation,
+        data.fallback_professional_id,
+        data.fallback_team_mode,
+        data.max_wait_days_before_escalation,
+        data.escalation_message_template,
+        json.dumps(data.criteria_custom) if data.criteria_custom is not None else None,
     )
     # Sync embedding (background, non-blocking)
     try:
@@ -8559,8 +8634,12 @@ async def update_derivation_rule(
         UPDATE professional_derivation_rules SET
             rule_name = $1, patient_condition = $2, treatment_categories = $3::text[],
             target_type = $4, target_professional_id = $5, priority_order = $6,
-            is_active = $7, description = $8, updated_at = NOW()
-        WHERE id = $9 AND tenant_id = $10
+            is_active = $7, description = $8,
+            enable_escalation = $9, fallback_professional_id = $10,
+            fallback_team_mode = $11, max_wait_days_before_escalation = $12,
+            escalation_message_template = $13, criteria_custom = $14::jsonb,
+            updated_at = NOW()
+        WHERE id = $15 AND tenant_id = $16
         """,
         data.rule_name,
         data.patient_condition,
@@ -8570,6 +8649,12 @@ async def update_derivation_rule(
         data.priority_order,
         data.is_active,
         data.description,
+        data.enable_escalation,
+        data.fallback_professional_id,
+        data.fallback_team_mode,
+        data.max_wait_days_before_escalation,
+        data.escalation_message_template,
+        json.dumps(data.criteria_custom) if data.criteria_custom is not None else None,
         rule_id,
         tenant_id,
     )

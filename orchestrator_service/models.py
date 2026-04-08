@@ -390,6 +390,17 @@ class ProfessionalDerivationRule(Base):
     priority_order = Column(Integer, nullable=False, server_default="0")
     is_active = Column(Boolean, nullable=False, server_default="true")
     description = Column(Text, nullable=True)
+    # --- Escalation fallback fields (migration 038) ---
+    enable_escalation = Column(Boolean, nullable=False, server_default="false")
+    fallback_professional_id = Column(
+        Integer, ForeignKey("professionals.id", ondelete="SET NULL"), nullable=True
+    )
+    fallback_team_mode = Column(Boolean, nullable=False, server_default="false")
+    max_wait_days_before_escalation = Column(
+        Integer, nullable=False, server_default="7"
+    )
+    escalation_message_template = Column(Text, nullable=True)
+    criteria_custom = Column(JSONB, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
