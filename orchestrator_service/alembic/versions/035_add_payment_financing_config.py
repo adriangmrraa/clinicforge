@@ -28,6 +28,7 @@ Columns added:
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.dialects.postgresql import JSONB
 
 
 revision = "035"
@@ -40,7 +41,7 @@ def upgrade() -> None:
     # Payment methods as JSONB array
     op.add_column(
         "tenants",
-        sa.Column("payment_methods", sa.JSONB, nullable=True),
+        sa.Column("payment_methods", JSONB(), nullable=True),
     )
 
     # Financing options
