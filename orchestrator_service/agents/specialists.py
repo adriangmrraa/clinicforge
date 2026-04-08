@@ -73,6 +73,28 @@ def _history_to_messages(chat_history: list[dict]) -> list:
     return out
 
 
+def _with_tenant_blocks(base_prompt: str, state: AgentState, specialist_name: str) -> str:
+    """Append the tenant-configured context blocks whitelisted for this specialist.
+
+    Uses select_blocks_for_specialist() which enforces REQ-4.1 — each specialist
+    sees ONLY the blocks relevant to its stage of TORA's flow. Empty blocks are
+    skipped so the prompt stays lean for tenants without that config
+    (zero-regression default).
+    """
+    try:
+        from .tenant_context import select_blocks_for_specialist
+
+        blocks = select_blocks_for_specialist(state, specialist_name)
+    except Exception:
+        logger.exception(f"{specialist_name}: tenant block selection failed")
+        return base_prompt
+
+    extras = [v.strip() for v in blocks.values() if v and str(v).strip()]
+    if not extras:
+        return base_prompt
+    return base_prompt + "\n\n" + "\n\n".join(extras)
+
+
 def _get_model_config(state: AgentState) -> dict[str, Any]:
     """Read model_config from state or fallback to default.
 
@@ -103,6 +125,7 @@ class ReceptionAgent(BaseAgent):
             "Sos cálida, breve y profesional. Respondé en español rioplatense (voseo). "
             "Si el paciente pide agendar un turno, decile que lo estás conectando con el sistema de turnos."
         )
+        prompt = _with_tenant_blocks(prompt, state, "reception")
         executor = _build_executor(tools, cfg, prompt)
         try:
             result = await executor.ainvoke({
@@ -147,6 +170,7 @@ class BookingAgent(BaseAgent):
             "NUNCA re-llames check_availability si el paciente ya eligió un slot. "
             "Respondé en español rioplatense. Sé conciso."
         )
+        prompt = _with_tenant_blocks(prompt, state, "booking")
         executor = _build_executor(tools, cfg, prompt)
         try:
             result = await executor.ainvoke({
@@ -180,6 +204,7 @@ class TriageAgent(BaseAgent):
             "usá derivhumano para escalar al staff. "
             "Sé empático pero profesional. Español rioplatense."
         )
+        prompt = _with_tenant_blocks(prompt, state, "triage")
         executor = _build_executor(tools, cfg, prompt)
         try:
             result = await executor.ainvoke({
@@ -211,6 +236,7 @@ class BillingAgent(BaseAgent):
             "Si el pago está OK, confirmás al paciente. Si hay problemas (monto incorrecto, titular no coincide), "
             "le explicás qué falta. Español rioplatense, tono profesional y amable."
         )
+        prompt = _with_tenant_blocks(prompt, state, "billing")
         executor = _build_executor(tools, cfg, prompt)
         try:
             result = await executor.ainvoke({
@@ -246,6 +272,7 @@ class AnamnesisAgent(BaseAgent):
             "Podés consultar anamnesis guardada con get_patient_anamnesis y guardar con save_patient_anamnesis. "
             "Si el paciente pide actualizar su email, usá save_patient_email. Español rioplatense."
         )
+        prompt = _with_tenant_blocks(prompt, state, "anamnesis")
         executor = _build_executor(tools, cfg, prompt)
         try:
             result = await executor.ainvoke({
@@ -277,6 +304,7 @@ class HandoffAgent(BaseAgent):
             "Confirmás al paciente que un humano se va a contactar pronto. "
             "Español rioplatense, tono tranquilizador."
         )
+        prompt = _with_tenant_blocks(prompt, state, "handoff")
         executor = _build_executor(tools, cfg, prompt)
         try:
             result = await executor.ainvoke({
