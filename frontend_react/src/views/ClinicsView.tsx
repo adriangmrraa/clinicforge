@@ -62,10 +62,25 @@ export interface Clinica {
     country_code?: string;
     system_prompt_template?: string;
     bot_name?: string | null;
+    // Payment & financing (migration 035)
+    payment_methods?: string[] | null;
+    financing_available?: boolean | null;
+    max_installments?: number | null;
+    installments_interest_free?: boolean | null;
+    financing_provider?: string | null;
+    financing_notes?: string | null;
+    cash_discount_percent?: number | null;
+    accepts_crypto?: boolean | null;
     config?: { calendar_provider?: 'local' | 'google' };
     created_at: string;
     updated_at?: string;
 }
+
+const ALLOWED_PAYMENT_METHODS = [
+    'cash', 'credit_card', 'debit_card', 'transfer', 'mercado_pago',
+    'rapipago', 'pagofacil', 'modo', 'uala', 'naranja', 'crypto', 'other',
+] as const;
+type PaymentMethodToken = typeof ALLOWED_PAYMENT_METHODS[number];
 
 interface FAQ {
     id?: number;
@@ -131,8 +146,27 @@ export default function ClinicsView() {
         country_code: 'US',
         system_prompt_template: '',
         working_hours: createDefaultWorkingHours(),
+        // Payment & financing (migration 035)
+        payment_methods: [] as string[],
+        financing_available: false,
+        max_installments: '' as string,
+        installments_interest_free: true,
+        financing_provider: '',
+        financing_notes: '',
+        cash_discount_percent: '' as string,
+        accepts_crypto: false,
     });
     const [expandedDays, setExpandedDays] = useState<string[]>([]);
+    const [paymentSectionExpanded, setPaymentSectionExpanded] = useState(false);
+
+    const togglePaymentMethod = (method: string) => {
+        setFormData(prev => ({
+            ...prev,
+            payment_methods: prev.payment_methods.includes(method)
+                ? prev.payment_methods.filter((m: string) => m !== method)
+                : [...prev.payment_methods, method],
+        }));
+    };
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState<string | null>(null);
@@ -219,11 +253,30 @@ export default function ClinicsView() {
                 country_code: clinica.country_code || 'US',
                 system_prompt_template: clinica.system_prompt_template || '',
                 working_hours: parseWorkingHours(clinica.working_hours),
+                // Payment & financing (migration 035)
+                payment_methods: Array.isArray(clinica.payment_methods) ? clinica.payment_methods : [],
+                financing_available: Boolean(clinica.financing_available),
+                max_installments: clinica.max_installments != null ? String(clinica.max_installments) : '',
+                installments_interest_free: clinica.installments_interest_free != null ? Boolean(clinica.installments_interest_free) : true,
+                financing_provider: clinica.financing_provider || '',
+                financing_notes: clinica.financing_notes || '',
+                cash_discount_percent: clinica.cash_discount_percent != null ? String(clinica.cash_discount_percent) : '',
+                accepts_crypto: Boolean(clinica.accepts_crypto),
             });
         } else {
             setEditingClinica(null);
-            setFormData({ clinic_name: '', bot_name: '', bot_phone_number: '', calendar_provider: 'local', address: '', google_maps_url: '', consultation_price: '', bank_cbu: '', bank_alias: '', bank_holder_name: '', derivation_email: '', max_chairs: '2', country_code: 'US', system_prompt_template: '', working_hours: createDefaultWorkingHours() });
+            setFormData({
+                clinic_name: '', bot_name: '', bot_phone_number: '', calendar_provider: 'local',
+                address: '', google_maps_url: '', consultation_price: '',
+                bank_cbu: '', bank_alias: '', bank_holder_name: '', derivation_email: '',
+                max_chairs: '2', country_code: 'US', system_prompt_template: '',
+                working_hours: createDefaultWorkingHours(),
+                payment_methods: [], financing_available: false, max_installments: '',
+                installments_interest_free: true, financing_provider: '', financing_notes: '',
+                cash_discount_percent: '', accepts_crypto: false,
+            });
         }
+        setPaymentSectionExpanded(false);
         setExpandedDays([]);
         setError(null);
         setIsModalOpen(true);
@@ -250,6 +303,15 @@ export default function ClinicsView() {
                 country_code: formData.country_code || 'US',
                 system_prompt_template: formData.system_prompt_template || null,
                 working_hours: formData.working_hours,
+                // Payment & financing (migration 035)
+                payment_methods: formData.payment_methods.length > 0 ? formData.payment_methods : [],
+                financing_available: formData.financing_available,
+                max_installments: formData.max_installments !== '' ? Number(formData.max_installments) : null,
+                installments_interest_free: formData.installments_interest_free,
+                financing_provider: formData.financing_provider || null,
+                financing_notes: formData.financing_notes || null,
+                cash_discount_percent: formData.cash_discount_percent !== '' ? Number(formData.cash_discount_percent) : null,
+                accepts_crypto: formData.accepts_crypto,
             };
             if (editingClinica) {
                 await api.put(`/admin/tenants/${editingClinica.id}`, payload);
@@ -1006,6 +1068,131 @@ export default function ClinicsView() {
                                             value={formData.bank_holder_name} onChange={(e) => setFormData(prev => ({ ...prev, bank_holder_name: e.target.value }))} />
                                     </div>
                                 </div>
+                            </div>
+
+                            {/* Pagos y Financiación (migration 035) */}
+                            <div className="space-y-3 border-t border-white/[0.06] pt-4 mt-4">
+                                <div
+                                    className="flex items-center justify-between cursor-pointer"
+                                    onClick={() => setPaymentSectionExpanded(v => !v)}
+                                >
+                                    <h3 className="text-sm font-bold text-white/60 flex items-center gap-2">
+                                        <DollarSign size={14} /> {t('clinics.payment_section')}
+                                    </h3>
+                                    <ChevronDown
+                                        size={14}
+                                        className={`text-white/40 transition-transform ${paymentSectionExpanded ? 'rotate-180' : ''}`}
+                                    />
+                                </div>
+                                <p className="text-xs text-white/30">{t('clinics.payment_section_help')}</p>
+
+                                {paymentSectionExpanded && (
+                                    <div className="space-y-4">
+                                        {/* Medios de pago */}
+                                        <div className="space-y-2">
+                                            <label className="text-xs font-medium text-blue-400">{t('clinics.payment_methods_label')}</label>
+                                            <div className="grid grid-cols-2 gap-2 mt-2">
+                                                {ALLOWED_PAYMENT_METHODS.map(method => (
+                                                    <label key={method} className="flex items-center gap-2 text-sm text-white/70">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={formData.payment_methods.includes(method)}
+                                                            onChange={() => togglePaymentMethod(method)}
+                                                            className="accent-blue-500"
+                                                        />
+                                                        {t(`clinics.payment_method_${method}`)}
+                                                    </label>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        {/* Financiación toggle */}
+                                        <div>
+                                            <label className="flex items-center gap-2 text-sm text-white/70">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={formData.financing_available}
+                                                    onChange={(e) => setFormData(prev => ({ ...prev, financing_available: e.target.checked }))}
+                                                    className="accent-blue-500"
+                                                />
+                                                {t('clinics.financing_available_label')}
+                                            </label>
+                                        </div>
+
+                                        {/* Sub-bloque de financiación (condicional) */}
+                                        {formData.financing_available && (
+                                            <div className="space-y-3 pl-4 border-l border-white/[0.06] mt-2">
+                                                <div className="space-y-1">
+                                                    <label className="text-xs font-medium text-blue-400">{t('clinics.max_installments_label')}</label>
+                                                    <input
+                                                        type="number"
+                                                        min={1}
+                                                        max={24}
+                                                        placeholder="6"
+                                                        className="w-full px-4 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white placeholder-white/20 focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                                                        value={formData.max_installments}
+                                                        onChange={(e) => setFormData(prev => ({ ...prev, max_installments: e.target.value }))}
+                                                    />
+                                                </div>
+                                                <label className="flex items-center gap-2 text-sm text-white/70">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={formData.installments_interest_free}
+                                                        onChange={(e) => setFormData(prev => ({ ...prev, installments_interest_free: e.target.checked }))}
+                                                        className="accent-blue-500"
+                                                    />
+                                                    {t('clinics.installments_interest_free_label')}
+                                                </label>
+                                                <div className="space-y-1">
+                                                    <label className="text-xs font-medium text-blue-400">{t('clinics.financing_provider_label')}</label>
+                                                    <input
+                                                        type="text"
+                                                        placeholder="Mercado Pago"
+                                                        className="w-full px-4 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white placeholder-white/20 focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                                                        value={formData.financing_provider}
+                                                        onChange={(e) => setFormData(prev => ({ ...prev, financing_provider: e.target.value }))}
+                                                    />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <label className="text-xs font-medium text-blue-400">{t('clinics.financing_notes_label')}</label>
+                                                    <textarea
+                                                        rows={2}
+                                                        placeholder={t('clinics.financing_notes_placeholder')}
+                                                        className="w-full px-4 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white placeholder-white/20 focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                                                        value={formData.financing_notes}
+                                                        onChange={(e) => setFormData(prev => ({ ...prev, financing_notes: e.target.value }))}
+                                                    />
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Descuento por efectivo */}
+                                        <div className="space-y-1">
+                                            <label className="text-xs font-medium text-blue-400">{t('clinics.cash_discount_label')}</label>
+                                            <input
+                                                type="number"
+                                                min={0}
+                                                max={100}
+                                                step={0.01}
+                                                placeholder="10"
+                                                className="w-full px-4 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white placeholder-white/20 focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                                                value={formData.cash_discount_percent}
+                                                onChange={(e) => setFormData(prev => ({ ...prev, cash_discount_percent: e.target.value }))}
+                                            />
+                                        </div>
+
+                                        {/* Crypto toggle */}
+                                        <label className="flex items-center gap-2 text-sm text-white/70">
+                                            <input
+                                                type="checkbox"
+                                                checked={formData.accepts_crypto}
+                                                onChange={(e) => setFormData(prev => ({ ...prev, accepts_crypto: e.target.checked }))}
+                                                className="accent-blue-500"
+                                            />
+                                            {t('clinics.accepts_crypto_label')}
+                                        </label>
+                                    </div>
+                                )}
                             </div>
 
                             {/* Email de derivación */}
