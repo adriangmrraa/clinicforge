@@ -2655,7 +2655,7 @@ async def get_tenants(
             status_code=403, detail="Solo el CEO puede gestionar clínicas."
         )
     rows = await db.pool.fetch(
-        "SELECT id, clinic_name, bot_phone_number, config, address, google_maps_url, working_hours, consultation_price, bank_cbu, bank_alias, bank_holder_name, derivation_email, logo_url, max_chairs, country_code, system_prompt_template, bot_name, payment_methods, financing_available, max_installments, installments_interest_free, financing_provider, financing_notes, cash_discount_percent, accepts_crypto, accepts_pregnant_patients, pregnancy_restricted_treatments, pregnancy_notes, accepts_pediatric, min_pediatric_age_years, pediatric_notes, high_risk_protocols, requires_anamnesis_before_booking, created_at, updated_at FROM tenants WHERE id = ANY($1::int[]) ORDER BY id ASC",
+        "SELECT id, clinic_name, bot_phone_number, config, address, google_maps_url, working_hours, consultation_price, bank_cbu, bank_alias, bank_holder_name, derivation_email, logo_url, max_chairs, country_code, system_prompt_template, bot_name, payment_methods, financing_available, max_installments, installments_interest_free, financing_provider, financing_notes, cash_discount_percent, accepts_crypto, accepts_pregnant_patients, pregnancy_restricted_treatments, pregnancy_notes, accepts_pediatric, min_pediatric_age_years, pediatric_notes, high_risk_protocols, requires_anamnesis_before_booking, complaint_escalation_email, complaint_escalation_phone, expected_wait_time_minutes, revision_policy, review_platforms, complaint_handling_protocol, auto_send_review_link_after_followup, created_at, updated_at FROM tenants WHERE id = ANY($1::int[]) ORDER BY id ASC",
         allowed_ids,
     )
     result = []
@@ -2668,6 +2668,9 @@ async def get_tenants(
             "payment_methods",
             "pregnancy_restricted_treatments",
             "high_risk_protocols",
+            # Migration 039
+            "review_platforms",
+            "complaint_handling_protocol",
         ):
             if isinstance(d.get(jfield), str):
                 try:
@@ -3015,6 +3018,127 @@ async def update_tenant(
     if "requires_anamnesis_before_booking" in data and data["requires_anamnesis_before_booking"] is not None:
         params.append(bool(data["requires_anamnesis_before_booking"]))
         updates.append(f"requires_anamnesis_before_booking = ${len(params)}")
+
+    # --- Migration 039: support / complaints / review config ---
+    if "complaint_escalation_email" in data:
+        val = data.get("complaint_escalation_email")
+        normalized = val.strip() if isinstance(val, str) and val.strip() else None
+        if normalized is not None and ("@" not in normalized or "." not in normalized):
+            raise HTTPException(
+                status_code=422,
+                detail="complaint_escalation_email: formato inválido",
+            )
+        params.append(normalized)
+        updates.append(f"complaint_escalation_email = ${len(params)}")
+
+    if "complaint_escalation_phone" in data:
+        val = data.get("complaint_escalation_phone")
+        params.append(
+            val.strip() if isinstance(val, str) and val.strip() else None
+        )
+        updates.append(f"complaint_escalation_phone = ${len(params)}")
+
+    if "expected_wait_time_minutes" in data:
+        val = data.get("expected_wait_time_minutes")
+        if val is None or val == "":
+            params.append(None)
+        else:
+            try:
+                int_val = int(val)
+            except (TypeError, ValueError):
+                raise HTTPException(
+                    status_code=422,
+                    detail="expected_wait_time_minutes debe ser un entero positivo",
+                )
+            if int_val <= 0:
+                raise HTTPException(
+                    status_code=422,
+                    detail="expected_wait_time_minutes debe ser positivo",
+                )
+            params.append(int_val)
+        updates.append(f"expected_wait_time_minutes = ${len(params)}")
+
+    if "revision_policy" in data:
+        val = data.get("revision_policy")
+        normalized = val.strip() if isinstance(val, str) and val.strip() else None
+        if normalized is not None and len(normalized) > 2000:
+            raise HTTPException(
+                status_code=422,
+                detail="revision_policy no puede superar 2000 caracteres",
+            )
+        params.append(normalized)
+        updates.append(f"revision_policy = ${len(params)}")
+
+    if "review_platforms" in data:
+        val = data.get("review_platforms")
+        if val is None:
+            params.append(None)
+        elif isinstance(val, list):
+            # Validate each platform item
+            for idx, item in enumerate(val):
+                if not isinstance(item, dict):
+                    raise HTTPException(
+                        status_code=422,
+                        detail=f"review_platforms[{idx}] debe ser un objeto",
+                    )
+                name = item.get("name") or ""
+                url = item.get("url") or ""
+                show_after = item.get("show_after_days", 1)
+                if not name or not isinstance(name, str) or len(name) > 100:
+                    raise HTTPException(
+                        status_code=422,
+                        detail=f"review_platforms[{idx}].name es obligatorio (máx 100)",
+                    )
+                if not isinstance(url, str) or not (
+                    url.startswith("http://") or url.startswith("https://")
+                ):
+                    raise HTTPException(
+                        status_code=422,
+                        detail=f"review_platforms[{idx}].url debe empezar con http:// o https://",
+                    )
+                if not isinstance(show_after, int) or show_after < 1:
+                    raise HTTPException(
+                        status_code=422,
+                        detail=f"review_platforms[{idx}].show_after_days debe ser >= 1",
+                    )
+            params.append(json.dumps(val))
+        else:
+            raise HTTPException(
+                status_code=422,
+                detail="review_platforms debe ser una lista o null",
+            )
+        updates.append(f"review_platforms = ${len(params)}::jsonb")
+
+    if "complaint_handling_protocol" in data:
+        val = data.get("complaint_handling_protocol")
+        if val is None:
+            params.append(None)
+        elif isinstance(val, dict):
+            allowed_keys = {"level_1", "level_2", "level_3"}
+            unknown_keys = set(val.keys()) - allowed_keys
+            if unknown_keys:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"complaint_handling_protocol: claves desconocidas: {sorted(unknown_keys)}",
+                )
+            for k in allowed_keys & set(val.keys()):
+                v = val.get(k) or ""
+                if not isinstance(v, str) or len(v) > 500:
+                    raise HTTPException(
+                        status_code=422,
+                        detail=f"complaint_handling_protocol.{k}: máximo 500 caracteres",
+                    )
+            params.append(json.dumps(val))
+        else:
+            raise HTTPException(
+                status_code=422,
+                detail="complaint_handling_protocol debe ser un objeto o null",
+            )
+        updates.append(f"complaint_handling_protocol = ${len(params)}::jsonb")
+
+    if "auto_send_review_link_after_followup" in data:
+        params.append(bool(data.get("auto_send_review_link_after_followup")))
+        updates.append(f"auto_send_review_link_after_followup = ${len(params)}")
 
     if not updates:
         return {"status": "updated"}

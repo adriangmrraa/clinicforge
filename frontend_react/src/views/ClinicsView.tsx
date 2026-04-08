@@ -80,9 +80,23 @@ export interface Clinica {
     pediatric_notes?: string | null;
     high_risk_protocols?: Record<string, HighRiskProtocolEntry> | null;
     requires_anamnesis_before_booking?: boolean | null;
+    // Support / complaints / review config (migration 039)
+    complaint_escalation_email?: string | null;
+    complaint_escalation_phone?: string | null;
+    expected_wait_time_minutes?: number | null;
+    revision_policy?: string | null;
+    review_platforms?: ReviewPlatformItem[] | null;
+    complaint_handling_protocol?: { level_1?: string; level_2?: string; level_3?: string } | null;
+    auto_send_review_link_after_followup?: boolean;
     config?: { calendar_provider?: 'local' | 'google' };
     created_at: string;
     updated_at?: string;
+}
+
+interface ReviewPlatformItem {
+    name: string;
+    url: string;
+    show_after_days: number;
 }
 
 interface HighRiskProtocolEntry {
@@ -240,10 +254,19 @@ export default function ClinicsView() {
         pediatric_notes: '',
         high_risk_protocols: [] as HighRiskProtocolCard[],
         requires_anamnesis_before_booking: false,
+        // Migration 039 — support / complaints / review config
+        complaint_escalation_email: '',
+        complaint_escalation_phone: '',
+        expected_wait_time_minutes: '' as string,
+        revision_policy: '',
+        review_platforms: [] as ReviewPlatformItem[],
+        complaint_handling_protocol: { level_1: '', level_2: '', level_3: '' },
+        auto_send_review_link_after_followup: false,
     });
     const [expandedDays, setExpandedDays] = useState<string[]>([]);
     const [paymentSectionExpanded, setPaymentSectionExpanded] = useState(false);
     const [specialConditionsExpanded, setSpecialConditionsExpanded] = useState(false);
+    const [supportComplaintsExpanded, setSupportComplaintsExpanded] = useState(false);
 
     // Holidays integration state (pack 4)
     const [holidaysSectionOpen, setHolidaysSectionOpen] = useState(false);
@@ -562,6 +585,14 @@ export default function ClinicsView() {
                     }))
                     : [],
                 requires_anamnesis_before_booking: Boolean(clinica.requires_anamnesis_before_booking),
+                // Migration 039 — support / complaints / review config
+                complaint_escalation_email: clinica.complaint_escalation_email || '',
+                complaint_escalation_phone: clinica.complaint_escalation_phone || '',
+                expected_wait_time_minutes: clinica.expected_wait_time_minutes != null ? String(clinica.expected_wait_time_minutes) : '',
+                revision_policy: clinica.revision_policy || '',
+                review_platforms: Array.isArray(clinica.review_platforms) ? clinica.review_platforms : [],
+                complaint_handling_protocol: clinica.complaint_handling_protocol || { level_1: '', level_2: '', level_3: '' },
+                auto_send_review_link_after_followup: Boolean(clinica.auto_send_review_link_after_followup),
             });
         } else {
             setEditingClinica(null);
@@ -583,10 +614,19 @@ export default function ClinicsView() {
                 pediatric_notes: '',
                 high_risk_protocols: [],
                 requires_anamnesis_before_booking: false,
+                // Migration 039 defaults
+                complaint_escalation_email: '',
+                complaint_escalation_phone: '',
+                expected_wait_time_minutes: '',
+                revision_policy: '',
+                review_platforms: [],
+                complaint_handling_protocol: { level_1: '', level_2: '', level_3: '' },
+                auto_send_review_link_after_followup: false,
             });
         }
         setPaymentSectionExpanded(false);
         setSpecialConditionsExpanded(false);
+        setSupportComplaintsExpanded(false);
         setExpandedDays([]);
         setError(null);
         setIsModalOpen(true);
@@ -648,6 +688,20 @@ export default function ClinicsView() {
                     {},
                 ),
                 requires_anamnesis_before_booking: formData.requires_anamnesis_before_booking,
+                // Migration 039 — support / complaints / review config
+                complaint_escalation_email: formData.complaint_escalation_email.trim() || null,
+                complaint_escalation_phone: formData.complaint_escalation_phone.trim() || null,
+                expected_wait_time_minutes: formData.expected_wait_time_minutes !== ''
+                    ? parseInt(formData.expected_wait_time_minutes, 10)
+                    : null,
+                revision_policy: formData.revision_policy.trim() || null,
+                review_platforms: formData.review_platforms.length > 0 ? formData.review_platforms : null,
+                complaint_handling_protocol: (
+                    formData.complaint_handling_protocol.level_1
+                    || formData.complaint_handling_protocol.level_2
+                    || formData.complaint_handling_protocol.level_3
+                ) ? formData.complaint_handling_protocol : null,
+                auto_send_review_link_after_followup: formData.auto_send_review_link_after_followup,
             };
             if (editingClinica) {
                 await api.put(`/admin/tenants/${editingClinica.id}`, payload);
@@ -2053,6 +2107,148 @@ export default function ClinicsView() {
                                     )}
                                 </div>
                             )}
+
+                            {/* ── Support / Complaints / Reviews section (migration 039) ── */}
+                            <div className="space-y-2 border-t border-white/[0.06] pt-5">
+                                <button
+                                    type="button"
+                                    onClick={() => setSupportComplaintsExpanded(s => !s)}
+                                    className="w-full flex items-center justify-between gap-3 text-left group"
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <ShieldAlert size={18} className="text-orange-400" />
+                                        <div>
+                                            <h3 className="text-sm font-bold text-white">{t('clinics.support.section_title')}</h3>
+                                            <p className="text-xs text-white/40">{t('clinics.support.section_subtitle')}</p>
+                                        </div>
+                                    </div>
+                                    {supportComplaintsExpanded
+                                        ? <ChevronUp size={18} className="text-white/40 group-hover:text-white/60" />
+                                        : <ChevronDown size={18} className="text-white/40 group-hover:text-white/60" />}
+                                </button>
+
+                                {supportComplaintsExpanded && (
+                                    <div className="space-y-4 pt-4">
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                            <div className="space-y-1">
+                                                <label className="text-xs font-semibold uppercase tracking-wider text-white/60">
+                                                    {t('clinics.support.escalation_email')}
+                                                </label>
+                                                <input type="email" value={formData.complaint_escalation_email}
+                                                    onChange={e => setFormData(p => ({ ...p, complaint_escalation_email: e.target.value }))}
+                                                    placeholder="quejas@clinica.com"
+                                                    className="w-full px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white text-sm placeholder-white/20 outline-none focus:ring-2 focus:ring-orange-500/20" />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <label className="text-xs font-semibold uppercase tracking-wider text-white/60">
+                                                    {t('clinics.support.escalation_phone')}
+                                                </label>
+                                                <input type="text" value={formData.complaint_escalation_phone}
+                                                    onChange={e => setFormData(p => ({ ...p, complaint_escalation_phone: e.target.value }))}
+                                                    placeholder="+54 9 11 ..."
+                                                    className="w-full px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white text-sm placeholder-white/20 outline-none focus:ring-2 focus:ring-orange-500/20" />
+                                            </div>
+                                        </div>
+
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                            <div className="space-y-1">
+                                                <label className="text-xs font-semibold uppercase tracking-wider text-white/60">
+                                                    {t('clinics.support.expected_wait')}
+                                                </label>
+                                                <input type="number" min={1} value={formData.expected_wait_time_minutes}
+                                                    onChange={e => setFormData(p => ({ ...p, expected_wait_time_minutes: e.target.value }))}
+                                                    placeholder="15"
+                                                    className="w-full px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white text-sm placeholder-white/20 outline-none focus:ring-2 focus:ring-orange-500/20" />
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-1">
+                                            <label className="text-xs font-semibold uppercase tracking-wider text-white/60">
+                                                {t('clinics.support.revision_policy')}
+                                            </label>
+                                            <textarea value={formData.revision_policy}
+                                                onChange={e => setFormData(p => ({ ...p, revision_policy: e.target.value }))}
+                                                placeholder={t('clinics.support.revision_policy_placeholder')}
+                                                rows={2}
+                                                maxLength={2000}
+                                                className="w-full px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white text-sm placeholder-white/20 outline-none focus:ring-2 focus:ring-orange-500/20 resize-none" />
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            <label className="text-xs font-semibold uppercase tracking-wider text-white/60">
+                                                {t('clinics.support.complaint_protocol')}
+                                            </label>
+                                            <p className="text-[10px] text-white/40">{t('clinics.support.complaint_protocol_help')}</p>
+                                            <input type="text" value={formData.complaint_handling_protocol.level_1}
+                                                onChange={e => setFormData(p => ({ ...p, complaint_handling_protocol: { ...p.complaint_handling_protocol, level_1: e.target.value } }))}
+                                                placeholder={t('clinics.support.level_1_placeholder')}
+                                                maxLength={500}
+                                                className="w-full px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white text-sm placeholder-white/20 outline-none focus:ring-2 focus:ring-orange-500/20" />
+                                            <input type="text" value={formData.complaint_handling_protocol.level_2}
+                                                onChange={e => setFormData(p => ({ ...p, complaint_handling_protocol: { ...p.complaint_handling_protocol, level_2: e.target.value } }))}
+                                                placeholder={t('clinics.support.level_2_placeholder')}
+                                                maxLength={500}
+                                                className="w-full px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white text-sm placeholder-white/20 outline-none focus:ring-2 focus:ring-orange-500/20" />
+                                            <input type="text" value={formData.complaint_handling_protocol.level_3}
+                                                onChange={e => setFormData(p => ({ ...p, complaint_handling_protocol: { ...p.complaint_handling_protocol, level_3: e.target.value } }))}
+                                                placeholder={t('clinics.support.level_3_placeholder')}
+                                                maxLength={500}
+                                                className="w-full px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white text-sm placeholder-white/20 outline-none focus:ring-2 focus:ring-orange-500/20" />
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            <div className="flex items-center justify-between">
+                                                <label className="text-xs font-semibold uppercase tracking-wider text-white/60">
+                                                    {t('clinics.support.review_platforms')}
+                                                </label>
+                                                <button type="button"
+                                                    onClick={() => setFormData(p => ({ ...p, review_platforms: [...p.review_platforms, { name: '', url: '', show_after_days: 1 }] }))}
+                                                    className="text-xs text-orange-400 hover:text-orange-300 font-semibold flex items-center gap-1">
+                                                    <Plus size={12} /> {t('clinics.support.add_platform')}
+                                                </button>
+                                            </div>
+                                            {formData.review_platforms.map((p, idx) => (
+                                                <div key={idx} className="grid grid-cols-12 gap-2 bg-white/[0.02] border border-white/[0.06] rounded-lg p-2">
+                                                    <input type="text" placeholder="Google Maps" value={p.name}
+                                                        onChange={e => setFormData(prev => ({
+                                                            ...prev,
+                                                            review_platforms: prev.review_platforms.map((x, i) => i === idx ? { ...x, name: e.target.value } : x),
+                                                        }))}
+                                                        className="col-span-3 px-2 py-1.5 bg-white/[0.04] border border-white/[0.08] rounded text-white text-xs outline-none" />
+                                                    <input type="url" placeholder="https://..." value={p.url}
+                                                        onChange={e => setFormData(prev => ({
+                                                            ...prev,
+                                                            review_platforms: prev.review_platforms.map((x, i) => i === idx ? { ...x, url: e.target.value } : x),
+                                                        }))}
+                                                        className="col-span-6 px-2 py-1.5 bg-white/[0.04] border border-white/[0.08] rounded text-white text-xs outline-none" />
+                                                    <input type="number" min={1} value={p.show_after_days}
+                                                        onChange={e => setFormData(prev => ({
+                                                            ...prev,
+                                                            review_platforms: prev.review_platforms.map((x, i) => i === idx ? { ...x, show_after_days: parseInt(e.target.value) || 1 } : x),
+                                                        }))}
+                                                        className="col-span-2 px-2 py-1.5 bg-white/[0.04] border border-white/[0.08] rounded text-white text-xs outline-none" />
+                                                    <button type="button"
+                                                        onClick={() => setFormData(prev => ({ ...prev, review_platforms: prev.review_platforms.filter((_, i) => i !== idx) }))}
+                                                        className="col-span-1 text-white/30 hover:text-red-400">
+                                                        <X size={14} />
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+
+                                        <label className="flex items-center gap-3 cursor-pointer">
+                                            <input type="checkbox"
+                                                checked={formData.auto_send_review_link_after_followup}
+                                                onChange={e => setFormData(p => ({ ...p, auto_send_review_link_after_followup: e.target.checked }))}
+                                                className="h-4 w-4 rounded border-white/[0.08] text-orange-400 focus:ring-orange-500" />
+                                            <div>
+                                                <span className="text-sm font-semibold text-white">{t('clinics.support.auto_send_review')}</span>
+                                                <p className="text-xs text-white/40">{t('clinics.support.auto_send_review_help')}</p>
+                                            </div>
+                                        </label>
+                                    </div>
+                                )}
+                            </div>
 
                             <div className="flex gap-3 pt-4 sticky bottom-0 bg-[#0d1117] pb-2">
                                 <button type="button" onClick={() => { setIsModalOpen(false); resetHolidaysState(); }}
