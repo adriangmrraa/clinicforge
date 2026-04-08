@@ -6056,9 +6056,137 @@ async def check_insurance_coverage(insurance_provider: str) -> str:
         )
 
 
+def _format_pre_instructions_dict(pre: dict, treatment_name: str) -> str:
+    """Format the structured pre_instructions dict (migration 037).
+
+    Builds a human-readable section that the LangChain agent feeds to the
+    patient. Skips fields that are None or empty so the output is concise.
+    """
+    lines = [f"📋 PRE-TRATAMIENTO — {treatment_name}:"]
+    if pre.get("preparation_days_before"):
+        lines.append(
+            f"• Preparación: llegar listo con {pre['preparation_days_before']} día(s) de anticipación"
+        )
+    fasting = pre.get("fasting_required")
+    if fasting is True:
+        hours = pre.get("fasting_hours")
+        lines.append(
+            f"• Ayuno: SÍ — {hours} horas" if hours else "• Ayuno: SÍ requerido"
+        )
+    elif fasting is False:
+        lines.append("• Ayuno: NO requerido")
+    for item in pre.get("medications_to_avoid") or []:
+        lines.append(f"• Evitar medicamento: {item}")
+    for item in pre.get("medications_to_take") or []:
+        lines.append(f"• Tomar: {item}")
+    for item in pre.get("what_to_bring") or []:
+        lines.append(f"• Traer: {item}")
+    notes = pre.get("general_notes")
+    if notes:
+        lines.append(f"• Notas: {notes}")
+    return "\n".join(lines)
+
+
+def _format_post_instructions_dict(post: dict, treatment_name: str) -> tuple[str, bool]:
+    """Format the structured post_instructions dict (migration 037).
+
+    Returns (formatted_string, has_alarm_symptoms). The has_alarm flag is
+    used by the caller to inject the [ALARM_ESCALATION:] tag once at the
+    bottom of the tool response.
+    """
+    lines = [f"📋 POST-TRATAMIENTO — {treatment_name}:"]
+    if post.get("care_duration_days"):
+        lines.append(f"Período de cuidado: {post['care_duration_days']} días.")
+    if post.get("dietary_restrictions"):
+        lines.append("DIETA:")
+        for r in post["dietary_restrictions"]:
+            lines.append(f"  • {r}")
+    if post.get("activity_restrictions"):
+        lines.append("ACTIVIDAD FÍSICA:")
+        for r in post["activity_restrictions"]:
+            lines.append(f"  • {r}")
+    if post.get("allowed_medications"):
+        lines.append("MEDICACIÓN PERMITIDA:")
+        for m in post["allowed_medications"]:
+            lines.append(f"  • {m}")
+    if post.get("prohibited_medications"):
+        lines.append("MEDICACIÓN PROHIBIDA:")
+        for m in post["prohibited_medications"]:
+            lines.append(f"  • {m}")
+    if post.get("sutures_removal_day"):
+        lines.append(f"PUNTOS: retiro al día {post['sutures_removal_day']}.")
+    if post.get("normal_symptoms"):
+        lines.append("SÍNTOMAS NORMALES (esperados):")
+        for s in post["normal_symptoms"]:
+            lines.append(f"  • {s}")
+    has_alarms = bool(post.get("alarm_symptoms"))
+    if has_alarms:
+        lines.append("SÍNTOMAS DE ALARMA (requieren atención médica urgente):")
+        for s in post["alarm_symptoms"]:
+            lines.append(f"  ⚠ {s}")
+    if post.get("escalation_message"):
+        lines.append(post["escalation_message"])
+    return "\n".join(lines), has_alarms
+
+
+def _format_post_instructions_legacy_list(post_list: list, timing: str) -> str:
+    """Format the legacy timed-sequence post_instructions list.
+
+    Backwards-compat path for rows that still hold the old shape.
+    Migration 037 wraps these into {"general_notes": "<serialized list>"};
+    the caller unwraps before calling this helper.
+    """
+    if not post_list:
+        return ""
+    lines = ["📋 INSTRUCCIONES POST-TRATAMIENTO:"]
+    timing_labels = {
+        "immediate": "Inmediato",
+        "24h": "A las 24hs",
+        "48h": "A las 48hs",
+        "72h": "A las 72hs",
+        "1w": "A la semana",
+        "stitch_removal": "Retiro de puntos",
+    }
+    for entry in post_list:
+        if not isinstance(entry, dict):
+            continue
+        t = entry.get("timing", "")
+        content = entry.get("content", "")
+        # If a specific timing was requested (not 'post' or 'all'), filter
+        if timing not in ("post", "all") and t != timing:
+            continue
+        label = timing_labels.get(t, t)
+        lines.append(f"  ⏰ {label}: {content}")
+        if entry.get("book_followup"):
+            days = entry.get("days", 7)
+            lines.append(f"    → Sugerir agendar turno de control en {days} días")
+    return "\n".join(lines)
+
+
+# Standardized no-instructions message — DO NOT improvise this text. The
+# system prompt instructs the agent to repeat it verbatim instead of
+# inventing post-op care advice (medical liability mitigation).
+TREATMENT_INSTRUCTIONS_EMPTY = (
+    "Este tratamiento no tiene cuidados configurados. "
+    "Te recomiendo contactar directamente a la clínica para más indicaciones."
+)
+
+
 @tool
 async def get_treatment_instructions(treatment_code: str, timing: str = "all") -> str:
     """Obtener instrucciones pre/post tratamiento para enviar al paciente.
+
+    Migration 037: pre_instructions y post_instructions ahora soportan dos
+    formas:
+    - Estructurada (dict): PreInstructions / PostInstructions con campos
+      explícitos como fasting_required, dietary_restrictions, alarm_symptoms.
+    - Legacy: pre como string libre wrapped en {general_notes}, post como
+      lista timed [{timing, content}, ...] wrapped en {general_notes:
+      "<serialized list>"}.
+
+    Si post tiene `alarm_symptoms` no vacío, la respuesta incluye un tag
+    [ALARM_ESCALATION:] que el system prompt usa para forzar derivhumano
+    cuando el paciente describe esos síntomas.
 
     Args:
         treatment_code: Código del tipo de tratamiento
@@ -6067,55 +6195,110 @@ async def get_treatment_instructions(treatment_code: str, timing: str = "all") -
     tenant_id = current_tenant_id.get()
     try:
         row = await db.pool.fetchrow(
-            "SELECT pre_instructions, post_instructions, followup_template FROM treatment_types WHERE tenant_id = $1 AND code = $2",
+            "SELECT name, patient_display_name, pre_instructions, post_instructions FROM treatment_types WHERE tenant_id = $1 AND code = $2",
             tenant_id,
             treatment_code,
         )
         if not row:
             return "No se encontró el tratamiento."
 
-        result_parts = []
+        treatment_name = (
+            row.get("patient_display_name") or row.get("name") or treatment_code
+        )
 
-        if timing in ("pre", "all") and row.get("pre_instructions"):
-            result_parts.append(
-                f"📋 INSTRUCCIONES PRE-TRATAMIENTO:\n{row['pre_instructions']}"
-            )
+        pre = row.get("pre_instructions")
+        post = row.get("post_instructions")
 
-        if timing in ("post", "all") and row.get("post_instructions"):
-            post = row["post_instructions"]
-            if isinstance(post, str):
-                import json as _json
+        # Defensive parse: asyncpg may return JSONB as a string
+        if isinstance(pre, str):
+            try:
+                pre = json.loads(pre)
+            except (json.JSONDecodeError, TypeError):
+                pre = {"general_notes": pre}
+        if isinstance(post, str):
+            try:
+                post = json.loads(post)
+            except (json.JSONDecodeError, TypeError):
+                post = None
 
-                try:
-                    post = _json.loads(post)
-                except Exception:
-                    post = []
-            if isinstance(post, list) and post:
-                result_parts.append("📋 INSTRUCCIONES POST-TRATAMIENTO:")
-                timing_labels = {
-                    "immediate": "Inmediato",
-                    "24h": "A las 24hs",
-                    "48h": "A las 48hs",
-                    "72h": "A las 72hs",
-                    "1w": "A la semana",
-                    "stitch_removal": "Retiro de puntos",
-                }
-                for entry in post:
-                    t = entry.get("timing", "")
-                    content = entry.get("content", "")
-                    # If a specific timing was requested (not 'post' or 'all'), filter
-                    if timing not in ("post", "all") and t != timing:
-                        continue
-                    label = timing_labels.get(t, t)
-                    result_parts.append(f"  ⏰ {label}: {content}")
-                    if entry.get("book_followup"):
-                        days = entry.get("days", 7)
-                        result_parts.append(
-                            f"    → Sugerir agendar turno de control en {days} días"
+        result_parts: list[str] = []
+        has_alarm = False
+
+        # ----- PRE-TRATAMIENTO -----
+        if timing in ("pre", "all") and pre:
+            if isinstance(pre, dict):
+                # Structured form vs legacy-wrapped string
+                non_notes_keys = [k for k in pre.keys() if k != "general_notes"]
+                has_structured_data = any(pre.get(k) for k in non_notes_keys)
+                if has_structured_data:
+                    result_parts.append(
+                        _format_pre_instructions_dict(pre, treatment_name)
+                    )
+                elif pre.get("general_notes"):
+                    # Legacy wrapped string
+                    result_parts.append(
+                        f"📋 INSTRUCCIONES PRE-TRATAMIENTO:\n{pre['general_notes']}"
+                    )
+            elif pre:
+                # Truly raw string (pre-migration row that hasn't been touched)
+                result_parts.append(f"📋 INSTRUCCIONES PRE-TRATAMIENTO:\n{pre}")
+
+        # ----- POST-TRATAMIENTO -----
+        if timing in ("post", "all") and post:
+            if isinstance(post, dict):
+                # Could be either:
+                # (a) New structured PostInstructions dict
+                # (b) Legacy list wrapped as {"general_notes": "<serialized list>"}
+                non_notes_keys = [k for k in post.keys() if k != "general_notes"]
+                has_structured_data = any(
+                    post.get(k) for k in non_notes_keys
+                )
+                if has_structured_data:
+                    formatted, alarm_flag = _format_post_instructions_dict(
+                        post, treatment_name
+                    )
+                    result_parts.append(formatted)
+                    if alarm_flag:
+                        has_alarm = True
+                elif post.get("general_notes"):
+                    # Legacy list wrapped during migration — try to parse
+                    legacy_notes = post["general_notes"]
+                    parsed_legacy = None
+                    if isinstance(legacy_notes, str):
+                        try:
+                            parsed_legacy = json.loads(legacy_notes)
+                        except (json.JSONDecodeError, TypeError):
+                            parsed_legacy = None
+                    elif isinstance(legacy_notes, list):
+                        parsed_legacy = legacy_notes
+                    if isinstance(parsed_legacy, list) and parsed_legacy:
+                        legacy_block = _format_post_instructions_legacy_list(
+                            parsed_legacy, timing
                         )
+                        if legacy_block:
+                            result_parts.append(legacy_block)
+                    else:
+                        # Plain general_notes text
+                        result_parts.append(
+                            f"📋 INSTRUCCIONES POST-TRATAMIENTO:\n{legacy_notes}"
+                        )
+            elif isinstance(post, list) and post:
+                # Bare legacy list (extremely rare — migration should have wrapped it)
+                legacy_block = _format_post_instructions_legacy_list(post, timing)
+                if legacy_block:
+                    result_parts.append(legacy_block)
 
         if not result_parts:
-            return "Este tratamiento no tiene instrucciones configuradas."
+            return TREATMENT_INSTRUCTIONS_EMPTY
+
+        # Inject alarm escalation tag once at the bottom for the system prompt
+        # to detect. Only emitted on the post path with non-empty alarm_symptoms.
+        if has_alarm:
+            result_parts.append(
+                "[ALARM_ESCALATION: Si el paciente describe alguno de los síntomas "
+                "de alarma de arriba, llamá derivhumano INMEDIATAMENTE con "
+                "urgency='alta'. No preguntes más, actuá.]"
+            )
 
         return "\n".join(result_parts)
     except Exception as e:
@@ -7586,6 +7769,8 @@ INSTRUCCIONES DE TRATAMIENTO (POST-AGENDAMIENTO):
 • Si hay instrucciones pre-tratamiento → incluílas en el mensaje de confirmación.
 • Si el paciente pregunta por cuidados post-operatorios → llamá get_treatment_instructions(treatment_code, 'post').
 • NUNCA inventes instrucciones médicas. Solo usá las del catálogo configurado.
+• Si la respuesta de get_treatment_instructions contiene [ALARM_ESCALATION:...] Y el paciente describió alguno de los síntomas de alarma listados → llamá derivhumano(urgency='alta') ANTES de responder. Usá el escalation_message del protocolo si está disponible. NUNCA descartes un síntoma de alarma como "es normal".
+• Si get_treatment_instructions devuelve EXACTAMENTE "Este tratamiento no tiene cuidados configurados. Te recomiendo contactar directamente a la clínica para más indicaciones." → repetí esa frase TAL CUAL al paciente y ofrecé derivar a la clínica. PROHIBIDO improvisar consejos médicos cuando no hay protocolo configurado.
 
 INTELIGENCIA DE PRECIOS Y PAGOS:
 • check_availability y list_services NO muestran precios al paciente. Si el paciente pregunta "cuánto sale" o "precio" → llamá get_service_details que incluye base_price. NUNCA inventes un precio.
