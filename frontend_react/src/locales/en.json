@@ -783,13 +783,29 @@
         "requiresCopay": "Requires co-payment",
         "copayNotes": "Co-payment details",
         "aiTemplate": "Custom assistant response",
-        "aiTemplatePlaceholder": "Leave empty to use the default response"
+        "aiTemplatePlaceholder": "Leave empty to use the default response",
+        "isPrepaid": "Is prepaid",
+        "defaultCopay": "Default copay (%)",
+        "employeeDiscount": "Employee discount (%)",
+        "coverageMatrix": "Coverage by treatment",
+        "coverageMatrixHint": "Set coverage details per treatment",
+        "covered": "Covered",
+        "copayPercent": "Copay (%)",
+        "requiresPreAuth": "Requires pre-auth",
+        "preAuthDays": "Pre-auth lead time (days)",
+        "waitingDays": "Waiting period (days)",
+        "treatmentNotes": "Notes",
+        "configureAllCovered": "Mark all as covered",
+        "coverageCollapsed": "View coverage details"
       },
       "errors": {
         "nameRequired": "Name is required",
         "restrictionsRequired": "Restrictions are required for this status",
         "externalTargetRequired": "Referral destination is required",
-        "duplicateName": "An insurance provider with that name already exists"
+        "duplicateName": "An insurance provider with that name already exists",
+        "percentRange": "Must be between 0 and 100",
+        "nonNegative": "Cannot be negative",
+        "notesTooLong": "Maximum 500 characters"
       }
     },
     "derivation": {
