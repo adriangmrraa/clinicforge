@@ -531,9 +531,18 @@ def parse_date(date_query: str) -> Optional[date]:
         return next_monday
 
     if any(p in query for p in ["mes que viene", "próximo mes", "proximo mes"]):
-        if today.month == 12:
-            return date(today.year + 1, 1, 1)
-        return date(today.year, today.month + 1, 1)
+        next_month = today.month + 1 if today.month < 12 else 1
+        next_year = today.year if today.month < 12 else today.year + 1
+        # Check for qualifiers: mediados, fines, principios
+        if any(w in query for w in ["mitad", "mediado", "medio", "mediados"]):
+            target_day = 15
+        elif any(w in query for w in ["fin", "final", "fines", "última semana", "ultima semana"]):
+            target_day = 25
+        elif any(w in query for w in ["principio", "inicio", "comienzo", "primera semana"]):
+            target_day = 3
+        else:
+            target_day = 1
+        return date(next_year, next_month, target_day)
 
     # "en una semana", "en 3 días", "en dos semanas", etc.
     _num_words = {"una": 1, "un": 1, "dos": 2, "tres": 3, "cuatro": 4, "cinco": 5, "seis": 6, "siete": 7}
