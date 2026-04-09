@@ -11,13 +11,107 @@ migrated via `alembic upgrade head`.
 
 import asyncio
 import os
+import sys
 import uuid
 from pathlib import Path
+from types import ModuleType
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from tests.fixtures.tenants import make_tenant_row
+
+# ---------------------------------------------------------------------------
+# Stub out optional C-extension or uninstalled packages that main.py imports
+# at module level. These stubs must be injected BEFORE any test imports
+# orchestrator_service.main so the module-level `import socketio` succeeds.
+# ---------------------------------------------------------------------------
+def _make_socketio_stub() -> ModuleType:
+    """Minimal python-socketio stub for test environments without the package.
+
+    We cannot use `MagicMock` as the class value for AsyncServer/ASGIApp because
+    Python 3.13's MagicMock interprets the first positional arg as a spec, which
+    causes InvalidSpecError when a Mock is passed as that arg. Instead we use
+    simple Python classes that behave like no-ops for all socket.io operations.
+    """
+    mod = ModuleType("socketio")
+
+    class _FakeAsyncServer:
+        """Fake socket.io AsyncServer with enough surface to satisfy main.py."""
+
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def on(self, event=None, *args, **kwargs):
+            """Decorator factory for event handlers."""
+            def decorator(f):
+                return f
+            return decorator
+
+        def event(self, f=None, *args, **kwargs):
+            """Alternative event registration decorator."""
+            if callable(f):
+                return f
+            def decorator(fn):
+                return fn
+            return decorator
+
+        async def emit(self, *args, **kwargs):
+            pass
+
+        def attach(self, *args, **kwargs):
+            pass
+
+        def __getattr__(self, name):
+            # Return no-op callable for any other attribute access
+            return MagicMock()
+
+    class _FakeASGIApp:
+        """Fake ASGI app wrapping a fake socketio server."""
+
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __call__(self, scope, receive, send):
+            pass
+
+    mod.AsyncServer = _FakeAsyncServer  # type: ignore[attr-defined]
+    mod.ASGIApp = _FakeASGIApp  # type: ignore[attr-defined]
+    return mod
+
+
+def _make_jwt_stub() -> ModuleType:
+    """Minimal PyJWT stub for test environments without the package."""
+    mod = ModuleType("jwt")
+    mod.encode = MagicMock(return_value="test_token")  # type: ignore[attr-defined]
+    mod.decode = MagicMock(return_value={"sub": "test"})  # type: ignore[attr-defined]
+    mod.ExpiredSignatureError = Exception  # type: ignore[attr-defined]
+    mod.InvalidTokenError = Exception  # type: ignore[attr-defined]
+    mod.PyJWTError = Exception  # type: ignore[attr-defined]
+    return mod
+
+
+def _make_passlib_stubs() -> None:
+    """Minimal passlib stubs for test environments without the package."""
+    # passlib.context — used by auth_service.py
+    ctx_mod = ModuleType("passlib.context")
+    ctx_mock = MagicMock()
+    ctx_mock.return_value = MagicMock()
+    ctx_mod.CryptContext = ctx_mock  # type: ignore[attr-defined]
+    sys.modules.setdefault("passlib", ModuleType("passlib"))
+    sys.modules["passlib.context"] = ctx_mod
+    for sub in ["passlib.handlers", "passlib.handlers.bcrypt", "passlib.handlers.sha2_crypt"]:
+        sys.modules.setdefault(sub, ModuleType(sub))
+
+
+if "socketio" not in sys.modules:
+    sys.modules["socketio"] = _make_socketio_stub()
+
+if "jwt" not in sys.modules:
+    sys.modules["jwt"] = _make_jwt_stub()
+
+if "passlib" not in sys.modules:
+    _make_passlib_stubs()
 
 # --- Load .env file if present (so the real DSN from .env beats hardcoded defaults) ---
 try:
