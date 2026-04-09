@@ -22,6 +22,13 @@ _ORCH = (
 if str(_ORCH) not in sys.path:
     sys.path.insert(0, str(_ORCH))
 
+# Helpers must be importable regardless of pytest working directory
+_TESTS_DIR = Path(__file__).resolve().parent
+if str(_TESTS_DIR.parent) not in sys.path:
+    sys.path.insert(0, str(_TESTS_DIR.parent))
+
+from tests.helpers.medical_guardrails import assert_no_medical_advice  # noqa: E402
+
 from main import _format_special_conditions, build_system_prompt  # noqa: E402
 
 
@@ -111,15 +118,13 @@ class TestE2EPipeline:
 
 
 class TestE2EGuardrails:
-    """Guardrails críticos: el pipeline NO debe filtrar lenguaje de consejo médico."""
+    """Guardrails críticos: el pipeline NO debe generar lenguaje de consejo médico.
 
-    PROHIBITED = [
-        "es peligroso",
-        "contraindicado médicamente",
-        "no debes",
-        "imposible para pacientes con",
-        "la diabetes impide el tratamiento",
-    ]
+    Usamos regex contextuales (assert_no_medical_advice) en vez de substrings
+    simples. La REGLA DE ORO que el formatter emite contiene palabras como
+    "es peligroso" dentro de comillas para instruir al LLM — un substring check
+    daría falso positivo sobre el propio texto de seguridad del sistema.
+    """
 
     def test_no_medical_advice_in_full_pipeline(self):
         prompt = _prompt_with_conditions(
@@ -143,12 +148,9 @@ class TestE2EGuardrails:
             },
             treatment_map={"xray_panoramic": "Radiografía panorámica"},
         )
-        # El prompt completo no debe contener frases médicas prohibidas
-        # generadas por el formatter (las notas verbatim son responsabilidad
+        # El prompt completo no debe contener patrones de consejo médico real
+        # generados por el formatter (las notas verbatim son responsabilidad
         # del clinician — acá pusimos notas neutras a propósito)
-        for phrase in self.PROHIBITED:
-            assert phrase.lower() not in prompt.lower(), (
-                f"prohibited phrase '{phrase}' leaked into prompt"
-            )
+        assert_no_medical_advice(prompt, context="full pipeline")
         # Y debe contener la REGLA DE ORO (anti-consejo médico)
         assert "NUNCA dar consejo médico" in prompt

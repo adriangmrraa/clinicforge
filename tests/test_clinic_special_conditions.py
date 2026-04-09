@@ -21,6 +21,13 @@ _ORCH = (
 if str(_ORCH) not in sys.path:
     sys.path.insert(0, str(_ORCH))
 
+# Helpers must be importable regardless of pytest working directory
+_TESTS_DIR = Path(__file__).resolve().parent
+if str(_TESTS_DIR.parent) not in sys.path:
+    sys.path.insert(0, str(_TESTS_DIR.parent))
+
+from tests.helpers.medical_guardrails import assert_no_medical_advice  # noqa: E402
+
 from main import _format_special_conditions, build_system_prompt  # noqa: E402
 
 
@@ -212,9 +219,10 @@ class TestAcceptanceScenarios:
         )
         assert "Radiografía panorámica" in out
         assert "Se pospone post primer trimestre" in out
-        # Anti-medical-advice: sin frases prohibidas generadas por el formatter
-        assert "peligroso" not in out
-        assert "contraindicado médicamente" not in out
+        # Anti-medical-advice: el formatter no debe generar consejo médico real.
+        # Usamos regex contextuales — "peligroso" puede aparecer legítimamente
+        # dentro de la REGLA DE ORO del formatter ("NUNCA decir... 'es peligroso'").
+        assert_no_medical_advice(out, context="SC-1")
 
     def test_sc2_min_age_6(self):
         """SC-2a: Pediatric minimum age 6."""
@@ -241,9 +249,9 @@ class TestAcceptanceScenarios:
         assert "diabetes" in out
         assert "clearance médico" in out
         assert "Pedimos HbA1c reciente" in out
-        # Anti-medical-advice
-        assert "la diabetes impide el tratamiento" not in out
-        assert "es peligroso" not in out
+        # Anti-medical-advice: usamos regex contextuales para evitar falsos
+        # positivos con la REGLA DE ORO del formatter.
+        assert_no_medical_advice(out, context="SC-3")
 
     def test_sc4_anticoagulants_pre_call(self):
         """SC-4: Anticoagulated patient needs pre-appointment call."""
@@ -291,29 +299,18 @@ class TestAcceptanceScenarios:
 
 
 class TestAntiMedicalAdviceGuardrails:
-    """El texto GENERADO por el formatter NO debe contener frases prohibidas.
+    """El texto GENERADO por el formatter NO debe contener consejo médico real.
 
     IMPORTANTE: las notas del clinician (pregnancy_notes, high_risk notes)
     se pasan verbatim — acá sólo validamos que el formatter no agregue por su
-    cuenta lenguaje peligroso/consejo médico.
+    cuenta lenguaje de consejo médico (dosificaciones, prescripciones,
+    diagnósticos absolutos).
+
+    Usamos regex contextuales en vez de substrings simples porque palabras
+    como "peligroso" aparecen legítimamente dentro de la REGLA DE ORO que el
+    formatter emite ("NUNCA decir que algo 'es peligroso'") — un substring
+    check daría falso positivo sobre el propio texto de seguridad.
     """
-
-    PROHIBITED_PHRASES = [
-        "es peligroso",
-        "no debes",
-        "contraindicado médicamente",
-        "está prohibido para",
-        "no podés",
-        "imposible para pacientes con",
-        "no apto",
-        "apto no",
-    ]
-
-    def _assert_no_prohibited(self, text: str, context: str):
-        for phrase in self.PROHIBITED_PHRASES:
-            assert phrase.lower() not in text.lower(), (
-                f"[{context}] prohibited phrase '{phrase}' found in formatter output"
-            )
 
     def test_no_dangerous_language_pregnancy_restricted(self):
         # Pasamos notas NEUTRAS para aislar el output generado por el formatter
@@ -323,7 +320,7 @@ class TestAntiMedicalAdviceGuardrails:
                 "pregnancy_notes": "Se posterga el procedimiento.",
             }
         )
-        self._assert_no_prohibited(out, "pregnancy restricted")
+        assert_no_medical_advice(out, context="pregnancy restricted")
 
     def test_no_dangerous_language_high_risk(self):
         out = _format_special_conditions(
@@ -336,13 +333,13 @@ class TestAntiMedicalAdviceGuardrails:
                 }
             }
         )
-        self._assert_no_prohibited(out, "high risk diabetes")
+        assert_no_medical_advice(out, context="high risk diabetes")
 
     def test_no_dangerous_language_anamnesis_gate(self):
         out = _format_special_conditions(
             {"requires_anamnesis_before_booking": True}
         )
-        self._assert_no_prohibited(out, "anamnesis gate")
+        assert_no_medical_advice(out, context="anamnesis gate")
 
     def test_no_dangerous_language_pediatric(self):
         out = _format_special_conditions(
@@ -351,4 +348,4 @@ class TestAntiMedicalAdviceGuardrails:
                 "pediatric_notes": "Coordinar derivación a pediatra odontológico.",
             }
         )
-        self._assert_no_prohibited(out, "pediatric")
+        assert_no_medical_advice(out, context="pediatric")
