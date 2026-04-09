@@ -2147,6 +2147,7 @@
     "discount_pct": "Discount %",
     "discount_amount": "Fixed discount $",
     "installments": "Installments",
+    "financed_total": "Financed total",
     "installments_amount": "Amount per installment",
     "verified": "Verified",
     "rejected": "Rejected",

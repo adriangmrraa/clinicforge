@@ -317,7 +317,8 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
     installments: string;
     installments_amount: string;
     currency: string;
-  }>({ payment_conditions: '', discount_pct: '', discount_amount: '', installments: '', installments_amount: '', currency: 'ARS' });
+    financed_total: string;
+  }>({ payment_conditions: '', discount_pct: '', discount_amount: '', installments: '', installments_amount: '', currency: 'ARS', financed_total: '' });
   const [savingBudgetConfig, setSavingBudgetConfig] = useState(false);
 
   // ── Form data
@@ -440,12 +441,13 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
           installments: parsed.installments != null ? String(parsed.installments) : '',
           installments_amount: parsed.installments_amount != null ? String(parsed.installments_amount) : '',
           currency: parsed.currency || 'ARS',
+          financed_total: parsed.financed_total != null ? String(parsed.financed_total) : '',
         });
       } catch {
-        setBudgetConfig({ payment_conditions: '', discount_pct: '', discount_amount: '', installments: '', installments_amount: '', currency: 'ARS' });
+        setBudgetConfig({ payment_conditions: '', discount_pct: '', discount_amount: '', installments: '', installments_amount: '', currency: 'ARS', financed_total: '' });
       }
     } else {
-      setBudgetConfig({ payment_conditions: '', discount_pct: '', discount_amount: '', installments: '', installments_amount: '', currency: 'ARS' });
+      setBudgetConfig({ payment_conditions: '', discount_pct: '', discount_amount: '', installments: '', installments_amount: '', currency: 'ARS', financed_total: '' });
     }
   }, [planDetail?.notes]);
 
@@ -740,6 +742,7 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
         installments: budgetConfig.installments ? parseInt(budgetConfig.installments) : null,
         installments_amount: budgetConfig.installments_amount ? parseFloat(budgetConfig.installments_amount) : null,
         currency: budgetConfig.currency || 'ARS',
+        financed_total: budgetConfig.financed_total ? parseFloat(budgetConfig.financed_total) : null,
       });
       await loadPlanDetail(planDetail.id);
       setSuccess(t('billing.config_saved'));
@@ -1400,6 +1403,18 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
                   value={budgetConfig.installments}
                   onChange={(e) => setBudgetConfig({ ...budgetConfig, installments: e.target.value })}
                   placeholder="1"
+                  className="w-full px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white placeholder-white/30 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-white/40 mb-1">{t('billing.financed_total') || 'Total financiado'}</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="100"
+                  value={budgetConfig.financed_total}
+                  onChange={(e) => setBudgetConfig({ ...budgetConfig, financed_total: e.target.value })}
+                  placeholder="Si hay recargo por cuotas"
                   className="w-full px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white placeholder-white/30 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                 />
               </div>

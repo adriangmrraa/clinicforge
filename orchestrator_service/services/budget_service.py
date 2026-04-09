@@ -168,7 +168,10 @@ async def gather_budget_data(pool, plan_id: str, tenant_id: int) -> Optional[dic
             budget_cfg = {}
 
     installments_count = int(budget_cfg.get("installments") or 0)
-    installment_amount = round(pending / installments_count, 2) if installments_count > 1 and pending > 0 else 0
+    financed_total = float(budget_cfg.get("financed_total") or 0)
+    # If financed_total is set, installments are calculated on that amount (includes surcharge)
+    installment_base = financed_total if financed_total > 0 else pending
+    installment_amount = round(installment_base / installments_count, 2) if installments_count > 1 and installment_base > 0 else 0
     payment_conditions = budget_cfg.get("payment_conditions") or ""
     discount_pct = float(budget_cfg.get("discount_pct") or 0)
     discount_fixed = float(budget_cfg.get("discount_amount") or 0)
@@ -191,6 +194,7 @@ async def gather_budget_data(pool, plan_id: str, tenant_id: int) -> Optional[dic
             "discount_pct": discount_pct,
             "discount_fixed": discount_fixed,
             "currency": currency,
+            "financed_total": financed_total,
         },
         "patient": {
             "name": (plan["patient_name"] or "").strip() or "Paciente",

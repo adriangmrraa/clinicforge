@@ -1919,6 +1919,7 @@
     "discount_pct": "Remise %",
     "discount_amount": "Remise fixe $",
     "installments": "Versements",
+    "financed_total": "Total financé",
     "installments_amount": "Montant par versement",
     "verified": "Vérifié",
     "rejected": "Rejeté",

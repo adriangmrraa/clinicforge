@@ -672,8 +672,8 @@ body {
             </td>
             <td width="33%">
                 <div class="inst-card">
-                    <p class="inst-card-label">Saldo a financiar</p>
-                    <p class="inst-card-value">{{ cs }}{{ totals.pending | ars }}</p>
+                    <p class="inst-card-label">{% if budget_config.financed_total > 0 %}Total financiado{% else %}Saldo a financiar{% endif %}</p>
+                    <p class="inst-card-value">{{ cs }}{% if budget_config.financed_total > 0 %}{{ budget_config.financed_total | ars }}{% else %}{{ totals.pending | ars }}{% endif %}</p>
                 </div>
             </td>
         </tr>

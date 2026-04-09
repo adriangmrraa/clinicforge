@@ -1431,6 +1431,7 @@
     "discount_pct": "Descuento %",
     "discount_amount": "Descuento fijo $",
     "installments": "Cuotas",
+    "financed_total": "Total financiado",
     "installments_amount": "Monto por cuota",
     "verified": "Verificado",
     "rejected": "Rechazado",
