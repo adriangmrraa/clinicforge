@@ -2350,10 +2350,9 @@ async def check_availability(
             # Duration info
             if _is_ht:
                 lines.append(f"\n⏱️ La evaluación dura {duration} min.")
-            # Price info — internal tag only; agent shows price only if patient asks
-            if avail_price:
+            # Duration info (non-high-ticket path)
+            if not _is_ht:
                 lines.append(f"\n⏱️ Duración: {duration} min")
-                lines.append(f"[INTERNAL_PRICE:{int(avail_price)}]")
 
             # Debt info — internal tag (TIER 2). Agent must mention pending debt
             # cordially before confirming the new booking. NEVER blocks the booking.
@@ -3349,10 +3348,9 @@ async def book_appointment(
             f"{frontend_url}/anamnesis/{tenant_id}/{patient_anamnesis_token}"
         )
 
-        # Build price + seña lines
+        # Treatment price is INTERNAL only — never shown to patient.
+        # Final price is discussed during consultation and loaded into treatment plan.
         price_line = ""
-        if treatment_price and treatment_price > 0:
-            price_line = f"\n💰 Valor: ${treatment_price:,.0f}"
 
         # Build seña/bank info to include in response
         sena_block = ""
@@ -3388,11 +3386,6 @@ async def book_appointment(
                     sena_price = float(t_bank["consultation_price"]) / 2
                     logger.info(
                         f"💰 SEÑA: Using tenant price {t_bank['consultation_price']} → seña = {sena_price}"
-                    )
-                elif treatment_price and treatment_price > 0:
-                    sena_price = treatment_price / 2
-                    logger.info(
-                        f"💰 SEÑA: Using treatment price {treatment_price} → seña = {sena_price}"
                     )
                 else:
                     logger.warning(
@@ -3812,12 +3805,10 @@ async def list_my_appointments():
             SELECT a.appointment_datetime, a.status, a.appointment_type,
                    p_prof.first_name || ' ' || COALESCE(p_prof.last_name, '') as professional_name,
                    a.payment_status, a.billing_amount,
-                   tt.base_price as treatment_price,
                    p_prof.consultation_price as prof_consultation_price
             FROM appointments a
             JOIN patients p ON a.patient_id = p.id
             LEFT JOIN professionals p_prof ON a.professional_id = p_prof.id
-            LEFT JOIN treatment_types tt ON a.appointment_type = tt.code AND tt.tenant_id = p.tenant_id
             WHERE p.tenant_id = $1 AND REGEXP_REPLACE(p.phone_number, '[^0-9]', '', 'g') = $2
             ORDER BY a.appointment_datetime DESC
         """,
@@ -3844,11 +3835,9 @@ async def list_my_appointments():
             pay = r.get("payment_status") or "pending"
             amt = r.get("billing_amount")
             seña = f"${int(amt)}" if amt else "—"
-            tprice = r.get("treatment_price")
-            precio_trat = f"${int(tprice)}" if tprice and float(tprice) > 0 else "—"
             prof_cp = r.get("prof_consultation_price")
             consulta = f"${int(prof_cp)}" if prof_cp and float(prof_cp) > 0 else "—"
-            line = f"{fecha}|{tipo}|{prof}|{st}|seña:{pay}({seña})|consulta_prof:{consulta}|tratamiento:{precio_trat}"
+            line = f"{fecha}|{tipo}|{prof}|{st}|seña:{pay}({seña})|consulta_prof:{consulta}"
             if dt >= now:
                 upcoming.append(line)
             else:
@@ -4369,7 +4358,7 @@ async def list_services(category: str = None, patient_term: str = ""):
             priority_val = r.get("priority", "medium") or "medium"
             display_name = r.get("patient_display_name") or r["name"]
             res += f"• {display_name} (código: {r['code']}){prof_str} [prioridad: {priority_val}]\n"
-        res += "\n💡 Para más detalles, precios o fotos de un tratamiento, pedimelo usando su nombre o código."
+        res += "\n💡 Para más detalles o fotos de un tratamiento, pedimelo usando su nombre o código."
         return res
     except Exception as e:
         logger.error(f"Error en list_services: {e}")
@@ -4392,7 +4381,7 @@ async def get_service_details(code: str):
         # 1. Intentar buscar por código exacto
         row = await db.pool.fetchrow(
             """
-            SELECT code, name, patient_display_name, description, default_duration_minutes, complexity_level, base_price
+            SELECT code, name, patient_display_name, description, default_duration_minutes, complexity_level
             FROM treatment_types
             WHERE tenant_id = $1 AND code = $2 AND is_active = true AND is_available_for_booking = true
         """,
@@ -4404,7 +4393,7 @@ async def get_service_details(code: str):
         if not row:
             row = await db.pool.fetchrow(
                 """
-                SELECT code, name, patient_display_name, description, default_duration_minutes, complexity_level, base_price
+                SELECT code, name, patient_display_name, description, default_duration_minutes, complexity_level
                 FROM treatment_types
                 WHERE tenant_id = $1 AND name ILIKE $2 AND is_active = true AND is_available_for_booking = true
                 LIMIT 1
@@ -4449,13 +4438,8 @@ async def get_service_details(code: str):
                 f"{r['first_name']} {r['last_name'] or ''}".strip() for r in prof_rows
             ]
 
-        price_str = (
-            f"${int(row['base_price']):,}".replace(",", ".")
-            if row.get("base_price") and float(row["base_price"]) > 0
-            else "Consultar"
-        )
         display_name = row.get("patient_display_name") or row["name"]
-        res = f"Detalles de {display_name}:\nDescripción: {row['description']}\nDuración: {row['default_duration_minutes']} min\nComplejidad: {row['complexity_level']}\nPrecio: {price_str}\n"
+        res = f"Detalles de {display_name}:\nDescripción: {row['description']}\nDuración: {row['default_duration_minutes']} min\nComplejidad: {row['complexity_level']}\nPrecio: Se coordina en la consulta de evaluación\n"
         if assigned_profs:
             res += f"Profesionales que realizan este tratamiento: {', '.join(assigned_profs)}\n"
 
@@ -6134,12 +6118,10 @@ async def get_patient_payment_status():
             SELECT a.appointment_datetime, a.appointment_type, a.status,
                    a.payment_status, a.billing_amount,
                    p_prof.consultation_price as prof_price,
-                   tt.base_price as treatment_price,
                    p_prof.first_name as prof_name
             FROM appointments a
             JOIN patients p ON a.patient_id = p.id
             LEFT JOIN professionals p_prof ON a.professional_id = p_prof.id
-            LEFT JOIN treatment_types tt ON a.appointment_type = tt.code AND tt.tenant_id = p.tenant_id
             WHERE p.tenant_id = $1 AND REGEXP_REPLACE(p.phone_number, '[^0-9]', '', 'g') = $2
             AND a.appointment_datetime >= NOW()
             AND a.status IN ('scheduled', 'confirmed')
@@ -6160,15 +6142,13 @@ async def get_patient_payment_status():
                 pay = r.get("payment_status") or "pending"
                 amt = r.get("billing_amount")
                 prof_cp = r.get("prof_price")
-                tprice = r.get("treatment_price")
                 sena_base = (
                     float(prof_cp) / 2
                     if prof_cp and float(prof_cp) > 0
                     else (float(amt) if amt else 0)
                 )
-                treat = f"${int(tprice)}" if tprice and float(tprice) > 0 else "—"
                 lines.append(
-                    f"  {fecha}|{r['appointment_type']}|{r.get('prof_name', '—')}|pago:{pay}|seña:${int(sena_base)}|tratamiento:{treat}"
+                    f"  {fecha}|{r['appointment_type']}|{r.get('prof_name', '—')}|pago:{pay}|seña:${int(sena_base)}"
                 )
 
         if not lines:
@@ -7819,13 +7799,13 @@ REGLAS:
    → La seña es importante pero NO bloqueante. El turno existe, el paciente puede pagar después.
 
 PAGO DE TURNOS EXISTENTES (cuando el paciente quiere pagar un turno YA agendado):
-list_my_appointments ahora muestra: seña:ESTADO(MONTO)|consulta_prof:VALOR|tratamiento:PRECIO
+list_my_appointments ahora muestra: seña:ESTADO(MONTO)|consulta_prof:VALOR
 
 CÁLCULO DE LA SEÑA — CADENA DE PRIORIDAD:
   1ro: consulta_prof (consultation_price del profesional asignado al turno) → seña = 50% de ese valor
   2do: valor de consulta general del tenant (si el profesional no tiene precio)
-  3ro: tratamiento (base_price del treatment_type, último recurso)
 SIEMPRE usá el campo consulta_prof si tiene valor. Es el dato que carga la clínica por profesional.
+IMPORTANTE: El base_price del tratamiento es dato INTERNO de gestión. NUNCA se usa para calcular seña ni se muestra al paciente.
 
 Hay 3 escenarios:
 
@@ -7836,15 +7816,12 @@ Si el paciente dice "quiero pagar la seña":
 3. Pedile el comprobante → verificar con verify_payment_receipt.
 
 ESCENARIO B — PAGAR TRATAMIENTO COMPLETO:
-Si el paciente dice "quiero pagar el tratamiento completo" o "pagar todo":
-1. Monto = el campo "tratamiento:" del turno (base_price del treatment_type).
-2. Compartí datos bancarios.
-3. Decile: "El tratamiento completo es de ${{tratamiento}}. Con este pago ya no necesitás la seña."
-4. Pedile el comprobante → verificar con verify_payment_receipt.
-IMPORTANTE: Si paga tratamiento completo, la seña queda cubierta. NO pedir seña adicional.
+El precio final del tratamiento se define en consulta y se carga en el presupuesto.
+Si el paciente pregunta por pagar el tratamiento completo → decile que el monto exacto se confirma en la consulta de evaluación.
+Si ya tiene un PRESUPUESTO ACTIVO con saldo → ahí sí puede pagar cuotas (ver ESCENARIO D).
 
 ESCENARIO C — SI NO QUEDA CLARO:
-Preguntale: "Querés pagar la seña (mitad del valor de consulta del profesional) o el tratamiento completo (base_price)?"
+Preguntale: "Querés pagar la seña para confirmar tu turno? El valor del tratamiento se define en la consulta de evaluación."
 
 ESCENARIO D — PAGAR CUOTA DE PRESUPUESTO:
 Si el paciente tiene un PRESUPUESTO ACTIVO en su contexto (sección "PRESUPUESTO ACTIVO"):
@@ -8299,10 +8276,10 @@ INSTRUCCIONES DE TRATAMIENTO (POST-AGENDAMIENTO):
 • Si get_treatment_instructions devuelve EXACTAMENTE "Este tratamiento no tiene cuidados configurados. Te recomiendo contactar directamente a la clínica para más indicaciones." → repetí esa frase TAL CUAL al paciente y ofrecé derivar a la clínica. PROHIBIDO improvisar consejos médicos cuando no hay protocolo configurado.
 
 INTELIGENCIA DE PRECIOS Y PAGOS:
-• check_availability y list_services NO muestran precios al paciente. Si el paciente pregunta "cuánto sale" o "precio" → llamá get_service_details que incluye base_price. NUNCA inventes un precio.
-• check_availability incluye [INTERNAL_PRICE:X] — es un dato interno para vos, NO lo muestres al paciente a menos que pregunte.
+• PROHIBIDO mostrar precios de tratamientos al paciente. El base_price es un dato INTERNO de gestión para dashboards. El precio final se define en la consulta de evaluación y se carga en el presupuesto.
+• Si el paciente pregunta "cuánto sale" un tratamiento → "El valor exacto se define en la consulta de evaluación, donde se arma un plan personalizado según tu caso." NUNCA des un número de tratamiento.
+• Solo podés informar el precio de la CONSULTA DE EVALUACIÓN (consultation_price del profesional o del tenant).
 • check_availability puede incluir [INTERNAL_DEBT:count=N;total=$X] — significa que el paciente tiene N turnos PASADOS sin pagar. ACCIÓN OBLIGATORIA: avisale cordialmente ANTES de confirmar el nuevo turno (ejemplo: "Antes de confirmar te recuerdo que figurás con un saldo pendiente de $X de turnos anteriores. ¿Querés que coordinemos también esa regularización?"). PROHIBIDO bloquear el agendamiento por esto — siempre permití que el paciente igual reserve el nuevo turno.
-• La tool book_appointment muestra el precio en la confirmación. Usá ese valor.
 • Si el paciente pregunta "aceptan obra social?" o "tienen convenio?" → {insurance_fallback_rule}
 • MEDIOS DE PAGO: Si el paciente pregunta cómo pagar → "Aceptamos efectivo, transferencia y tarjeta. Si preferís transferencia, te paso los datos después de confirmar el turno."
 • SEÑA/DEPÓSITO: Si la clínica tiene bank_cbu configurado, después de confirmar el turno podés ofrecer: "Para confirmar definitivamente tu turno podés abonar una seña por transferencia. ¿Querés los datos?"
