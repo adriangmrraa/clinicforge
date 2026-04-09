@@ -5630,13 +5630,13 @@ async def verify_payment_receipt(
 
             # Send payment confirmation email if patient has email
             # Task 6.3: If no email, return flag so agent can ask for it
+            amount = amount_value or total_paid or expected_amount
+            amount_str = str(int(amount)) if amount else "0"
             patient_email = apt.get("email")
             if patient_email and patient_email.strip():
                 try:
                     appointment_date = apt_dt_arg.strftime("%d/%m/%Y")
                     appointment_time = apt_dt_arg.strftime("%H:%M")
-                    amount = amount_value or total_paid or expected_amount
-                    amount_str = str(int(amount)) if amount else "0"
 
                     email_sent = email_service.send_payment_email(
                         to_email=patient_email.strip(),

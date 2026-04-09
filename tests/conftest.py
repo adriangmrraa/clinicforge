@@ -120,16 +120,17 @@ def app_with_mock_pool(monkeypatch):
         __aexit__=AsyncMock(return_value=False),
     ))
 
-    # Patch db.pool in the orchestrator_service.db module so that any import
-    # of `from db import db as pool` inside endpoints sees the mock.
+    # Patch db.pool in the orchestrator_service.db module.
+    # main.py uses `db.pool.fetchrow(...)` where `db` is the Database() singleton.
+    # We patch db.db.pool (the pool attribute on the Database instance).
     import orchestrator_service.db as db_module
-    monkeypatch.setattr(db_module, "pool", mock_pool)
+    monkeypatch.setattr(db_module.db, "pool", mock_pool)
 
-    # Also patch the top-level `db` attribute (used by tools in main.py as `db.pool`)
+    # Also patch the top-level `db` module exported as `db` (pythonpath-rooted)
     try:
         import db as db_top
-        monkeypatch.setattr(db_top, "pool", mock_pool)
-    except ImportError:
+        monkeypatch.setattr(db_top.db, "pool", mock_pool)
+    except (ImportError, AttributeError):
         pass
 
     from fastapi.testclient import TestClient

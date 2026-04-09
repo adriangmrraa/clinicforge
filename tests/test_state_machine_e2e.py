@@ -9,9 +9,33 @@ Tests 5 core state machine flows:
 (e) Cancel: BOOKED → cancel → IDLE
 """
 
+import json
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
 from datetime import datetime, timedelta
+
+
+class FakeAsyncRedis:
+    """In-memory fake Redis that actually stores values.
+
+    The static AsyncMock pattern doesn't round-trip: setex stores but get
+    always returns the fixed return_value. This fake correctly implements
+    setex/get/delete so state machine tests can verify state transitions.
+    """
+
+    def __init__(self):
+        self._store: dict = {}
+
+    async def get(self, key: str):
+        return self._store.get(key)
+
+    async def setex(self, key: str, ttl: int, value):
+        self._store[key] = value if isinstance(value, bytes) else value.encode() if isinstance(value, str) else value
+        return True
+
+    async def delete(self, key: str):
+        self._store.pop(key, None)
+        return 1
 
 
 class TestStateMachineE2E:
@@ -27,11 +51,8 @@ class TestStateMachineE2E:
             VALID_STATES,
         )
 
-        # Mock Redis
-        mock_redis = MagicMock()
-        mock_redis.get = AsyncMock(return_value=None)  # Start with no state (IDLE)
-        mock_redis.setex = AsyncMock(return_value=True)
-        mock_redis.delete = AsyncMock(return_value=1)
+        # Use FakeAsyncRedis so set_state/get_state actually round-trip
+        mock_redis = FakeAsyncRedis()
 
         with patch("services.relay.get_redis", return_value=mock_redis):
             # Step 1: Initial state should be IDLE
@@ -89,9 +110,7 @@ class TestStateMachineE2E:
             set_state,
         )
 
-        mock_redis = MagicMock()
-        mock_redis.get = AsyncMock(return_value=None)
-        mock_redis.setex = AsyncMock(return_value=True)
+        mock_redis = FakeAsyncRedis()
 
         with patch("services.relay.get_redis", return_value=mock_redis):
             # Initial state: OFFERED_SLOTS (user has options)
@@ -195,10 +214,7 @@ class TestStateMachineE2E:
             reset,
         )
 
-        mock_redis = MagicMock()
-        mock_redis.get = AsyncMock(return_value=None)
-        mock_redis.setex = AsyncMock(return_value=True)
-        mock_redis.delete = AsyncMock(return_value=1)
+        mock_redis = FakeAsyncRedis()
 
         with patch("services.relay.get_redis", return_value=mock_redis):
             # State is BOOKED
@@ -215,8 +231,7 @@ class TestStateMachineE2E:
             # User cancels appointment
             await reset(tenant_id=1, phone_number="+5491112345678")
 
-            # Verify state was deleted (returns IDLE)
-            mock_redis.delete.assert_called_once()
+            # After delete, get_state returns IDLE
             state = await get_state(tenant_id=1, phone_number="+5491112345678")
             assert state["state"] == "IDLE"
 
@@ -228,9 +243,7 @@ class TestStateMachineE2E:
             set_state,
         )
 
-        mock_redis = MagicMock()
-        mock_redis.get = AsyncMock(return_value=None)
-        mock_redis.setex = AsyncMock(return_value=True)
+        mock_redis = FakeAsyncRedis()
 
         with patch("services.relay.get_redis", return_value=mock_redis):
             # Book with seña → PAYMENT_PENDING
@@ -263,10 +276,7 @@ class TestStateMachineE2E:
             reset,
         )
 
-        mock_redis = MagicMock()
-        mock_redis.get = AsyncMock(return_value=None)
-        mock_redis.setex = AsyncMock(return_value=True)
-        mock_redis.delete = AsyncMock(return_value=1)
+        mock_redis = FakeAsyncRedis()
 
         with patch("services.relay.get_redis", return_value=mock_redis):
             # State is BOOKED
