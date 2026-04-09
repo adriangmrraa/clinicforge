@@ -1397,19 +1397,12 @@ async def check_availability(
     """
     Consulta la disponibilidad REAL de turnos para una fecha. Llamar UNA sola vez por pregunta del paciente.
     date_query: OBLIGATORIO. Texto del paciente sobre la fecha, SIEMPRE incluyendo el mes. Si el paciente dijo el mes en un mensaje anterior, incluirlo aquí. Ejemplos: "mitad de mayo", "fines de abril 22 en adelante", "cerca del 15 de mayo". NUNCA pasar solo un número sin mes.
-    interpreted_date: OBLIGATORIO. Tu interpretación de la fecha en formato YYYY-MM-DD. SIEMPRE calculá esto antes de llamar. Razoná combinando TODO el contexto de la conversación:
-      - Paciente dijo "mayo" antes y ahora dice "cerca del 15" → "2026-05-15"
-      - Paciente dice "jueves 30 de abril" → "2026-04-30"
-      - Paciente dice "fines de octubre" → "2026-10-25"
-      - Paciente dice "mañana" y hoy es 2026-03-27 → "2026-03-28"
-      - Paciente dice "lo antes posible" → "2026-03-28" (mañana)
-      - Paciente dice "para julio" → "2026-07-01"
-      NUNCA dejar vacío. SIEMPRE calculá una fecha concreta en YYYY-MM-DD.
-    search_mode: OBLIGATORIO. Cómo buscar turnos. Opciones:
-      - "exact": Día puntual (ej: "el 30 de abril", "mañana"). 2-3 opciones de ese día + comodín de otro día.
-      - "week": Rango ~7 días (ej: "mitad de mayo", "fines de julio", "cerca del 15"). Distribuye opciones en varios días.
-      - "month": Mes completo (ej: "para mayo", "en julio"). Busca en todo el mes.
-      - "open": Lo más cercano posible (ej: "lo antes posible", "cuando haya", "cualquier día").
+    interpreted_date: OBLIGATORIO. Fecha YYYY-MM-DD que vos calculás. Razoná combinando TODA la conversación. NUNCA vacío.
+    search_mode: OBLIGATORIO. Opciones:
+      - "exact": Día puntual ("el 30 de abril", "mañana", "pasado mañana", "hoy mismo").
+      - "week": Rango ~7 días ("mitad de mayo", "fines de julio", "la semana que viene", "dentro de un par de días", "después del 20", "antes de que termine el mes", "esta semana sí o sí").
+      - "month": Mes completo ("para mayo", "el mes que viene").
+      - "open": Sin fecha fija ("lo antes posible", "cuando haya", "cualquier día", "me da igual cuándo").
     professional_name: (Opcional) Nombre del profesional.
     treatment_name: (Opcional) Tratamiento definido (ej. limpieza profunda, consulta).
     time_preference: Si el paciente pide horarios de un momento del día: 'mañana' (horario AM) o 'tarde'. Si no especifica no pasar.
@@ -8235,19 +8228,56 @@ PASO 4: CONSULTAR DISPONIBILIDAD — Llamá 'check_availability' UNA vez con tre
   1. date_query: Texto del paciente SIEMPRE con el mes incluido. Si el paciente mencionó el mes en un mensaje anterior, AGREGARLO. Ej: paciente dijo "mayo" antes y ahora "cerca del 15" → date_query="cerca del 15 de mayo". NUNCA pasar solo un número sin mes.
   2. interpreted_date: OBLIGATORIO. Fecha en YYYY-MM-DD que VOS calculás. Usá TIEMPO ACTUAL ({current_time}) para resolver fechas relativas. NUNCA dejarlo vacío.
   3. search_mode: OBLIGATORIO. "exact" | "week" | "month" | "open".
-  EJEMPLOS (memorizá estos patrones — las fechas son relativas a TIEMPO ACTUAL {current_time}):
-  - "jueves 30 de abril" → date_query="jueves 30 de abril", interpreted_date="2026-04-30", search_mode="exact"
-  - "mitad de mayo" → date_query="mitad de mayo", interpreted_date="2026-05-15", search_mode="week"
-  - "fines de octubre" → date_query="fines de octubre", interpreted_date="2026-10-25", search_mode="week"
-  - "para julio" → date_query="para julio", interpreted_date="2026-07-01", search_mode="month"
-  - "lo antes posible" → date_query="lo antes posible", interpreted_date="{tomorrow_iso}", search_mode="open"
-  - "mañana" → date_query="mañana", interpreted_date="{tomorrow_iso}", search_mode="exact"
-  - "mañana por la mañana" → date_query="mañana", interpreted_date="{tomorrow_iso}", search_mode="exact", time_preference="mañana"
-  - "pasado mañana" → date_query="pasado mañana", interpreted_date="{day_after_iso}", search_mode="exact"
-  - "en una semana" → date_query="en una semana", interpreted_date="{next_week_iso}", search_mode="week"
-  - Paciente dijo "mayo" antes, ahora dice "cerca del 15" → date_query="cerca del 15 de mayo", interpreted_date="2026-05-15", search_mode="week"
-  - Paciente dijo "abril 22 en adelante" → date_query="abril 22 en adelante", interpreted_date="2026-04-22", search_mode="week"
-  REGLA INQUEBRANTABLE: interpreted_date SIEMPRE debe ser una fecha FUTURA respecto a {current_time}. NUNCA pases una fecha que ya pasó.
+  EJEMPLOS (memorizá — fechas relativas a TIEMPO ACTUAL {current_time}):
+
+  EXACTAS (search_mode="exact"):
+  - "jueves 30 de abril" → interpreted_date="2026-04-30"
+  - "mañana" → interpreted_date="{tomorrow_iso}"
+  - "mañana por la mañana" → interpreted_date="{tomorrow_iso}", time_preference="mañana"
+  - "pasado mañana" → interpreted_date="{day_after_iso}"
+  - "el 12 o el 15, lo que haya" → probar el más cercano primero; si no hay, el otro
+  - "hoy mismo si se puede" → interpreted_date=hoy
+
+  RANGO/SEMANA (search_mode="week"):
+  - "mitad de mayo" → interpreted_date="2026-05-15"
+  - "fines de octubre" → interpreted_date="2026-10-25"
+  - "a principios de mes" → interpreted_date=día 3 del mes más cercano
+  - "a mediados de mes" → interpreted_date=día 15
+  - "la semana que viene" → interpreted_date=lunes próximo
+  - "esta misma semana" → interpreted_date=hoy
+  - "dentro de un par de días" → interpreted_date=hoy+2
+  - "en una semana" → interpreted_date="{next_week_iso}"
+  - "antes de que termine el mes" → interpreted_date=hoy+1
+  - "el mes que viene, la segunda quincena" → interpreted_date=día 15 del mes siguiente
+  - "la próxima semana pero no el lunes" → interpreted_date=martes próximo
+  - "después del 20" / "recién después del 20" → interpreted_date=día 21
+  - "necesito algo esta semana sí o sí" → interpreted_date=hoy
+  - Paciente dijo "mayo" antes, ahora "cerca del 15" → date_query="cerca del 15 de mayo", interpreted_date="2026-05-15"
+  - "abril 22 en adelante" → interpreted_date="2026-04-22"
+
+  MES COMPLETO (search_mode="month"):
+  - "para julio" → interpreted_date="2026-07-01"
+  - "el mes que viene" → interpreted_date=día 1 del mes siguiente
+
+  ABIERTAS (search_mode="open"):
+  - "lo antes posible" / "cuando puedan" → interpreted_date="{tomorrow_iso}"
+  - "cualquier martes o jueves por la tarde" → interpreted_date=próximo martes, time_preference="tarde"
+  - "un día de semana, no importa cuál" → interpreted_date="{tomorrow_iso}"
+  - "un día que no sea viernes" → interpreted_date="{tomorrow_iso}"
+  - "me da igual cuándo, que sea de mañana" → interpreted_date="{tomorrow_iso}", time_preference="mañana"
+  - "cuando haya lugar, no me apuro" → interpreted_date="{tomorrow_iso}"
+
+  AMBIGUAS — REPREGUNTÁ antes de llamar check_availability:
+  - "cualquier día está bien" → Preguntar franja (mañana/tarde).
+  - "pronto, pero tampoco tan pronto" → Preguntar: "Preferís esta semana o la que viene?"
+  - "cuando ustedes puedan" / "lo que haya" / "no sé" → Ofrecer 2 opciones del primer hueco.
+  - "después de las vacaciones" → Preguntar: "Cuándo volvés?"
+  - "después que salga del trabajo" → time_preference="tarde", preguntar qué días.
+  - "cuando no tenga que llevar a los chicos" → Preguntar: "Preferís después de las 10 o a la tarde?"
+  - "antes de mi viaje" → Preguntar: "Cuándo es? Así te busco antes."
+
+  REGLA: date_query SIEMPRE debe incluir el mes. Si el paciente lo mencionó antes, AGREGARLO.
+  REGLA INQUEBRANTABLE: interpreted_date SIEMPRE fecha FUTURA respecto a {current_time}. NUNCA una fecha pasada.
   La tool devuelve 2-3 opciones con emojis numerados (1️⃣ 2️⃣ 3️⃣) y la sede al final. Presentá el resultado TAL CUAL lo recibís, sin reformatear. NO agregues la dirección ni sede entre las opciones — ya viene al final del mensaje de la tool.
   REGLA INQUEBRANTABLE DE SELECCIÓN: Cuando el paciente elige una opción (dice "1", "2", "3", "la primera", "la segunda", etc.), \
   usá EXACTAMENTE la fecha y hora de ESA opción tal como la mostraste. NO cambies la fecha ni la hora. \
