@@ -2189,6 +2189,26 @@ async def check_availability(
             limit=50,
         )
 
+        # Fallback: if time_preference filtered ALL slots but there ARE slots without filter,
+        # retry without preference and prepend a note about unavailability in that time range
+        _time_pref_note = ""
+        if not available_slots and time_preference:
+            all_day_slots = generate_free_slots(
+                target_date,
+                busy_map,
+                duration_minutes=duration,
+                start_time_str=day_start,
+                end_time_str=day_end,
+                time_preference=None,
+                interval_minutes=15,
+                limit=50,
+            )
+            if all_day_slots:
+                available_slots = all_day_slots
+                franja = "la mañana" if time_preference == "mañana" else "la tarde"
+                _time_pref_note = f"No hay turnos disponibles por {franja} ese día, pero sí en otros horarios.\n\n"
+                logger.info(f"📅 time_preference={time_preference!r} filtered all slots — retrying without filter, found {len(all_day_slots)} slots")
+
         # Filtrar slots con soft lock activo de otro paciente
         my_phone = current_customer_phone.get()
         try:
@@ -2267,6 +2287,10 @@ async def check_availability(
             if auto_advanced:
                 lines.append(f"{auto_advance_reason}.")
                 lines.append(f"Te busqué los turnos más cercanos:\n")
+
+            # Note if time_preference was relaxed
+            if _time_pref_note:
+                lines.append(_time_pref_note)
 
             # Header with treatment name
             treatment_display = treatment_name or "tu turno"
