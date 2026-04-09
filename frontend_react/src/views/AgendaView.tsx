@@ -987,10 +987,15 @@ export default function AgendaView() {
                   }}
                   events={calendarEvents}
                   datesSet={(dateInfo) => {
-                    // Actualizar estado de vista actual
                     setCurrentView(dateInfo.view.type);
                     localStorage.setItem('agendaView', dateInfo.view.type);
-                    // Mostrar rango visible (para que el usuario sepa dónde buscar)
+                    // Kill sticky on list view after data loads
+                    if (dateInfo.view.type.startsWith('list')) {
+                      requestAnimationFrame(() => {
+                        const table = dateInfo.view.el.querySelector('.fc-list-sticky');
+                        if (table) table.classList.remove('fc-list-sticky');
+                      });
+                    }
                     const fmt = (d: Date) => d.toLocaleDateString(language === 'es' ? 'es-AR' : language === 'fr' ? 'fr-FR' : 'en-US', { day: 'numeric', month: 'short', year: 'numeric' });
                     setVisibleRangeStr(`${fmt(dateInfo.start)} – ${fmt(dateInfo.end)}`);
 
@@ -1018,9 +1023,14 @@ export default function AgendaView() {
                     }, 200);
                   }}
                   viewDidMount={(viewInfo) => {
-                    // Sincronizar estado React con vista actual de FullCalendar
                     setCurrentView(viewInfo.view.type);
                     localStorage.setItem('agendaView', viewInfo.view.type);
+                    // Kill sticky on list view date headers — FullCalendar sets inline
+                    // position:sticky via JS which causes headers to stack on scroll
+                    if (viewInfo.view.type.startsWith('list')) {
+                      const table = viewInfo.el.querySelector('.fc-list-sticky');
+                      if (table) table.classList.remove('fc-list-sticky');
+                    }
                   }}
                   dateClick={handleDateClick}
                   eventClick={handleEventClick}
