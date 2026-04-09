@@ -2553,10 +2553,12 @@ async def book_appointment(
                 """
                 SELECT code, name, default_duration_minutes, base_price FROM treatment_types
                 WHERE tenant_id = $1 AND (name ILIKE $2 OR code ILIKE $2) AND is_active = true AND is_available_for_booking = true
+                ORDER BY (LOWER(name) = LOWER($3) OR LOWER(code) = LOWER($3)) DESC, name ASC
                 LIMIT 1
             """,
                 tenant_id,
                 f"%{treatment_reason}%",
+                treatment_reason,
             )
             if not t_data:
                 return "❌ Ese tratamiento no está disponible en esta clínica. Los únicos que se pueden agendar son los que devuelve la tool 'list_services'. Llamá a list_services y ofrecé solo esos al paciente; si pide otro, decile que en esta sede solo se agendan los de esa lista."
@@ -2574,10 +2576,12 @@ async def book_appointment(
                 """
                 SELECT code, name, base_price FROM treatment_types
                 WHERE tenant_id = $1 AND (name ILIKE $2 OR code ILIKE $2) AND is_active = true AND is_available_for_booking = true
+                ORDER BY (LOWER(name) = LOWER($3) OR LOWER(code) = LOWER($3)) DESC, name ASC
                 LIMIT 1
             """,
                 tenant_id,
                 f"%{treatment_reason}%",
+                treatment_reason,
             )
             if not t_data:
                 return "❌ Ese tratamiento no está disponible en esta clínica. Los únicos que se pueden agendar son los que devuelve la tool 'list_services'. Llamá a list_services y ofrecé solo esos al paciente; si pide otro, decile que en esta sede solo se agendan los de esa lista."
