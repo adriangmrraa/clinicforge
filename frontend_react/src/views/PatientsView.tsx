@@ -542,7 +542,7 @@ export default function PatientsView() {
         ) : (
           <>
             <div className="overflow-x-auto hidden md:block">
-              <table className="w-full">
+              <table className="w-full min-w-[1100px]">
                 <thead className="bg-white/[0.04]">
                   <tr>
                     <th className="px-4 py-3 text-center text-xs font-medium text-white/50 uppercase tracking-wider w-10">
@@ -559,28 +559,28 @@ export default function PatientsView() {
                         className="accent-blue-500 cursor-pointer"
                       />
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-white/50 uppercase tracking-wider">
+                    <th className="px-3 py-3 text-left text-xs font-medium text-white/50 uppercase tracking-wider">
                       {t('patients.patient')}
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-white/50 uppercase tracking-wider">
+                    <th className="px-3 py-3 text-left text-xs font-medium text-white/50 uppercase tracking-wider">
                       {t('patients.contact')}
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-white/50 uppercase tracking-wider">
+                    <th className="px-3 py-3 text-left text-xs font-medium text-white/50 uppercase tracking-wider">
                       {t('patients.dni_obra_social')}
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-white/50 uppercase tracking-wider">
+                    <th className="px-3 py-3 text-left text-xs font-medium text-white/50 uppercase tracking-wider">
                       {t('patients.next_appointment')}
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-white/50 uppercase tracking-wider">
+                    <th className="px-3 py-3 text-left text-xs font-medium text-white/50 uppercase tracking-wider">
                       {t('patients.balance')}
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-white/50 uppercase tracking-wider">
+                    <th className="px-3 py-3 text-left text-xs font-medium text-white/50 uppercase tracking-wider">
                       {t('patients.date_added')}
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-white/50 uppercase tracking-wider">
+                    <th className="px-3 py-3 text-left text-xs font-medium text-white/50 uppercase tracking-wider">
                       {t('patients.assigned_professional')}
                     </th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-white/50 uppercase tracking-wider">
+                    <th className="px-3 py-3 text-right text-xs font-medium text-white/50 uppercase tracking-wider">
                       {t('patients.actions')}
                     </th>
                   </tr>
@@ -602,7 +602,7 @@ export default function PatientsView() {
                           className="accent-blue-500 cursor-pointer"
                         />
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-3 py-4 whitespace-nowrap">
                         <div className="flex items-center">
                           <div className="flex-shrink-0 h-10 w-10 bg-primary-light rounded-full flex items-center justify-center text-white font-medium">
                             {patient.first_name?.charAt(0).toUpperCase()}
@@ -624,16 +624,16 @@ export default function PatientsView() {
                           </div>
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-3 py-4 whitespace-nowrap">
                         <div className="text-sm text-white">{patient.phone_number}</div>
                         <div className="text-sm text-white/50">{patient.email}</div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-3 py-4 whitespace-nowrap">
                         <div className="text-sm text-white">{patient.dni || '-'}</div>
                         <div className="text-sm text-white/50">{patient.obra_social || '-'}</div>
                       </td>
                       {/* Next appointment */}
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-3 py-4 whitespace-nowrap">
                         {patient.next_appointment_date ? (
                           <span className="text-xs text-blue-400">
                             {new Date(patient.next_appointment_date).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
@@ -643,17 +643,17 @@ export default function PatientsView() {
                         )}
                       </td>
                       {/* Pending balance */}
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-3 py-4 whitespace-nowrap">
                         {patient.pending_balance > 0 ? (
                           <span className="text-xs font-semibold text-amber-400">
                             ${Math.round(patient.pending_balance).toLocaleString('es-AR')}
                           </span>
                         ) : null}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-white/50">
+                      <td className="px-3 py-4 whitespace-nowrap text-sm text-white/50">
                         {new Date(patient.created_at).toLocaleDateString(language)}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-3 py-4 whitespace-nowrap">
                         {patient.assigned_professional_name ? (
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-indigo-500/10 text-indigo-400">
                             <UserCheck size={12} />
@@ -663,7 +663,7 @@ export default function PatientsView() {
                           <span className="text-xs text-white/20">{t('patients.no_professional')}</span>
                         )}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                      <td className="px-3 py-4 whitespace-nowrap text-right text-sm font-medium">
                         <div className="flex justify-end gap-2">
                           <button
                             onClick={() => navigate(`/pacientes/${patient.id}`)}
