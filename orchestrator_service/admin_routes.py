@@ -9288,7 +9288,9 @@ async def list_treatment_types(tenant_id: int = Depends(get_resolved_tenant_id))
                min_duration_minutes, max_duration_minutes, complexity_level,
                category, requires_multiple_sessions, session_gap_days,
                is_active, is_available_for_booking, internal_notes, base_price, priority,
-               pre_instructions, post_instructions, followup_template
+               pre_instructions, post_instructions, followup_template,
+               is_high_ticket, consultation_duration_minutes,
+               consultation_requirements, consultation_notes
         FROM treatment_types
         WHERE tenant_id = $1
         ORDER BY category, name
@@ -9400,8 +9402,10 @@ async def get_treatment_type(
         SELECT id, code, name, description, default_duration_minutes,
                min_duration_minutes, max_duration_minutes, complexity_level,
                category, requires_multiple_sessions, session_gap_days,
-               is_active, is_available_for_booking, internal_notes, priority,
-               pre_instructions, post_instructions, followup_template
+               is_active, is_available_for_booking, internal_notes, priority, base_price,
+               pre_instructions, post_instructions, followup_template,
+               is_high_ticket, consultation_duration_minutes,
+               consultation_requirements, consultation_notes
         FROM treatment_types
         WHERE tenant_id = $1 AND code = $2
     """,
@@ -9445,8 +9449,10 @@ async def create_treatment_type(
                 min_duration_minutes, max_duration_minutes, complexity_level,
                 category, requires_multiple_sessions, session_gap_days,
                 is_active, is_available_for_booking, internal_notes, base_price, priority,
-                pre_instructions, post_instructions, followup_template, created_at
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, NOW())
+                pre_instructions, post_instructions, followup_template,
+                is_high_ticket, consultation_duration_minutes,
+                consultation_requirements, consultation_notes, created_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, NOW())
             RETURNING id
         """,
             tenant_id,
@@ -9478,6 +9484,10 @@ async def create_treatment_type(
             json.dumps(treatment.followup_template)
             if treatment.followup_template is not None
             else None,
+            treatment.is_high_ticket,
+            treatment.consultation_duration_minutes,
+            treatment.consultation_requirements,
+            treatment.consultation_notes,
         )
         # Insert professional assignments if provided
         if treatment.professional_ids and row:

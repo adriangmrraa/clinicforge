@@ -2056,23 +2056,39 @@ async def check_availability(
                 wh = {}
             day_config = wh.get(day_name_en, {"enabled": False, "slots": []})
             prof_id = prof["id"]
+            logger.info(
+                f"📅 DIAG prof={prof_id} ({prof.get('first_name')}) day={day_name_en} "
+                f"day_config={day_config} wh_keys={list(wh.keys()) if wh else 'empty'}"
+            )
             # Solo marcar como ocupados los horarios fuera de working_hours cuando el día tiene slots configurados
             if day_config.get("enabled") and day_config.get("slots"):
                 check_time = datetime.combine(target_date, datetime.min.time()).replace(
                     hour=8, minute=0
                 )
+                _non_working = []
                 while check_time.hour < 20:
                     h_m = check_time.strftime("%H:%M")
                     if not is_time_in_working_hours(h_m, day_config):
                         busy_map[prof_id].add(h_m)
+                        _non_working.append(h_m)
                     check_time += timedelta(minutes=15)
+                if _non_working:
+                    logger.info(f"📅 DIAG prof={prof_id} non_working_hours={_non_working}")
+            else:
+                logger.info(f"📅 DIAG prof={prof_id} no working_hours restriction → available full clinic hours")
             # Si enabled=False o slots=[], no añadimos ocupación → profesional disponible en horario clínica
 
         # Agregar bloqueos de GCal (granularidad 15 min)
         global_busy = set()
+        if gcal_blocks:
+            logger.info(f"📅 DIAG gcal_blocks_count={len(gcal_blocks)} for {target_date}")
         for b in gcal_blocks:
             it = b["start"].astimezone(get_active_tz())
             b_end = b["end"].astimezone(get_active_tz())
+            logger.info(
+                f"📅 DIAG gcal_block prof={b['professional_id']} "
+                f"range={it.strftime('%H:%M')}-{b_end.strftime('%H:%M')}"
+            )
             while it < b_end:
                 h_m = it.strftime("%H:%M")
                 if b["professional_id"]:
@@ -2185,6 +2201,17 @@ async def check_availability(
                     f"🪑 Chair constraint: max_chairs={max_chairs}, full_slots={sorted(chairs_full_slots)}"
                 )
 
+        # Diagnóstico: resumen de busy_map antes de generar slots
+        for _dpid in busy_map:
+            _morning_busy = sorted(s for s in busy_map[_dpid] if s < "13:00")
+            _afternoon_busy = sorted(s for s in busy_map[_dpid] if s >= "13:00")
+            logger.info(
+                f"📅 DIAG FINAL busy_map prof={_dpid} "
+                f"morning_busy({len(_morning_busy)})={_morning_busy[:10]} "
+                f"afternoon_busy({len(_afternoon_busy)})={_afternoon_busy[:10]} "
+                f"day_start={day_start} day_end={day_end} time_pref={time_preference}"
+            )
+
         available_slots = generate_free_slots(
             target_date,
             busy_map,
@@ -2195,6 +2222,7 @@ async def check_availability(
             interval_minutes=15,
             limit=50,
         )
+        logger.info(f"📅 DIAG generate_free_slots returned {len(available_slots)} slots: {available_slots[:10]}")
 
         # Fallback: if time_preference filtered ALL slots but there ARE slots without filter,
         # retry without preference and prepend a note about unavailability in that time range
