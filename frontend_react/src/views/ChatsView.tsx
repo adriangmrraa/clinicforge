@@ -447,12 +447,13 @@ export default function ChatsView() {
     setSelectedSession(null);
     setPatientContext(null);
 
-    // Intentar cargar contexto clínico si hay teléfono en el contacto de Chatwoot
-    if (selectedChatwoot.external_user_id && selectedChatwoot.external_user_id.startsWith('+')) {
-      fetchPatientContext(selectedChatwoot.external_user_id);
-    } else if (selectedChatwoot.external_user_id && /^\d+$/.test(selectedChatwoot.external_user_id)) {
-      // Si es solo números sin +, normalizar
-      fetchPatientContext('+' + selectedChatwoot.external_user_id);
+    // Cargar contexto clínico para cualquier canal (WhatsApp, Instagram, Facebook)
+    // El backend resuelve por phone_number O por external_ids JSONB
+    if (selectedChatwoot.external_user_id) {
+      const eid = selectedChatwoot.external_user_id;
+      // Normalizar teléfonos sin '+' prefix
+      const identifier = /^\d+$/.test(eid) ? '+' + eid : eid;
+      fetchPatientContext(identifier);
     }
 
     let isInitial = true;
@@ -555,7 +556,7 @@ export default function ChatsView() {
   const fetchPatientContext = async (phone: string, tenantId?: number) => {
     try {
       const params = tenantId != null ? { tenant_id_override: tenantId } : {};
-      const response = await api.get(`/admin/patients/phone/${phone}/context`, { params });
+      const response = await api.get(`/admin/patients/phone/${encodeURIComponent(phone)}/context`, { params });
       setPatientContext(response.data);
     } catch (error) {
       console.error('Error fetching patient context:', error);
