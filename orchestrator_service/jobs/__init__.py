@@ -44,4 +44,10 @@ try:
 except ImportError as e:
     logger.warning(f"⚠️ No se pudo importar job smart_alerts: {e}")
 
-__all__ = ['reminders', 'followups', 'lead_recovery', 'nova_morning', 'smart_alerts']
+try:
+    from . import expire_unpaid
+    logger.info("✅ Job de expiración de seña importado correctamente")
+except ImportError as e:
+    logger.warning(f"⚠️ No se pudo importar job expire_unpaid: {e}")
+
+__all__ = ['reminders', 'followups', 'lead_recovery', 'nova_morning', 'smart_alerts', 'expire_unpaid']

@@ -2827,6 +2827,47 @@ async def book_appointment(
                 fields_list = ", ".join(missing_fields)
                 return f"❌ Para agendar por primera vez necesito: {fields_list}. Formato esperado: Nombre y Apellido por separado; DNI solo números."
 
+        # G1 GUARDRAIL: Max 1 unpaid appointment per patient
+        # Prevents slot hoarding — patient must pay seña or cancel before booking another
+        if existing_patient:
+            _max_unpaid = await db.pool.fetchval(
+                "SELECT COALESCE(max_unpaid_appointments, 1) FROM tenants WHERE id = $1",
+                tenant_id,
+            ) or 1
+            if _max_unpaid > 0:
+                _unpaid_count = await db.pool.fetchval(
+                    """SELECT COUNT(*) FROM appointments
+                       WHERE tenant_id = $1 AND patient_id = $2
+                       AND status IN ('scheduled', 'confirmed')
+                       AND payment_status = 'pending'
+                       AND appointment_datetime > NOW()""",
+                    tenant_id,
+                    existing_patient["id"],
+                )
+                if _unpaid_count and _unpaid_count >= _max_unpaid:
+                    # Find the pending appointment to reference
+                    _pending_apt = await db.pool.fetchrow(
+                        """SELECT appointment_datetime, appointment_type FROM appointments
+                           WHERE tenant_id = $1 AND patient_id = $2
+                           AND status IN ('scheduled', 'confirmed')
+                           AND payment_status = 'pending'
+                           AND appointment_datetime > NOW()
+                           ORDER BY appointment_datetime ASC LIMIT 1""",
+                        tenant_id,
+                        existing_patient["id"],
+                    )
+                    _pending_date = _pending_apt["appointment_datetime"].strftime("%d/%m a las %H:%M") if _pending_apt else "próximamente"
+                    logger.info(
+                        f"📅 G1 GUARDRAIL: patient {existing_patient['id']} has {_unpaid_count} unpaid appointments (max={_max_unpaid}). Blocking new booking."
+                    )
+                    return (
+                        f"⚠️ Ya tenés un turno agendado para el {_pending_date} con seña pendiente.\n"
+                        f"Para agendar otro turno, primero necesitás:\n"
+                        f"1. Pagar la seña del turno pendiente (enviame el comprobante por acá), o\n"
+                        f"2. Cancelar ese turno si ya no lo necesitás.\n"
+                        f"¿Qué preferís?"
+                    )
+
         # 3. Profesionales del tenant (solo aprobados: u.status = 'active')
         clean_p_name = re.sub(
             r"^(dr|dra|doctor|doctora)\.?\s+",
@@ -3121,6 +3162,12 @@ async def book_appointment(
             logger.warning(f"📅 BOOK REJECTED: apt_datetime={apt_datetime} is in the past (now={now_check})")
             return f"❌ La fecha {apt_datetime.strftime('%d/%m/%Y %H:%M')} ya pasó. Por favor elegí una fecha futura."
 
+        # G2 GUARDRAIL: Calculate seña expiration timestamp
+        _sena_exp_hours = await db.pool.fetchval(
+            "SELECT COALESCE(sena_expiration_hours, 24) FROM tenants WHERE id = $1", tenant_id
+        ) or 24
+        _sena_expires_at = get_now_arg() + timedelta(hours=_sena_exp_hours) if _sena_exp_hours > 0 else None
+
         # Wrap patient + appointment in a single transaction (atomicity)
         # The UNIQUE index idx_appointments_no_double_booking will reject duplicates
         # at the database level even if soft-locks fail
@@ -3129,8 +3176,8 @@ async def book_appointment(
                 async with _conn.transaction():
                     await _conn.execute(
                         """
-                        INSERT INTO appointments (id, tenant_id, patient_id, professional_id, appointment_datetime, duration_minutes, appointment_type, status, source, created_at)
-                        VALUES ($1, $2, $3, $4, $5, $6, $7, 'scheduled', 'ai', NOW())
+                        INSERT INTO appointments (id, tenant_id, patient_id, professional_id, appointment_datetime, duration_minutes, appointment_type, status, source, sena_expires_at, created_at)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, 'scheduled', 'ai', $8, NOW())
                     """,
                         apt_id,
                         tenant_id,
@@ -3139,6 +3186,7 @@ async def book_appointment(
                         apt_datetime,
                         final_duration,
                         treatment_code,
+                        _sena_expires_at,
                     )
         except asyncpg.UniqueViolationError as _uniq_err:
             # Database-level double-booking protection triggered (race condition won by another booking)
@@ -5644,6 +5692,7 @@ async def verify_payment_receipt(
                             WHEN $7 > 0 THEN '[Excedente seña: $' || $7::text || ']'
                             ELSE billing_notes
                         END,
+                        sena_expires_at = NULL,
                         updated_at = NOW()
                     WHERE id = $4 AND tenant_id = $5
                 """,

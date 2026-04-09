@@ -218,6 +218,9 @@ class Tenant(Base):
     social_landings = Column(JSONB, nullable=True)
     instagram_handle = Column(String(100), nullable=True)
     facebook_page_id = Column(String(100), nullable=True)
+    # Migration 042: seña guardrails
+    sena_expiration_hours = Column(Integer, nullable=True, server_default="24")
+    max_unpaid_appointments = Column(Integer, nullable=True, server_default="1")
 
     # Clinic special conditions (migration 036)
     accepts_pregnant_patients = Column(
@@ -644,6 +647,9 @@ class Appointment(Base):
     billing_notes = Column(Text)
     payment_status = Column(String(20), default="pending")
     payment_receipt_data = Column(JSONB, nullable=True)
+    # Migration 042: seña guardrails
+    sena_expires_at = Column(DateTime(timezone=True), nullable=True)
+    sena_amount = Column(DECIMAL(12, 2), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
