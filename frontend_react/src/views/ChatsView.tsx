@@ -450,10 +450,7 @@ export default function ChatsView() {
     // Cargar contexto clínico para cualquier canal (WhatsApp, Instagram, Facebook)
     // El backend resuelve por phone_number O por external_ids JSONB
     if (selectedChatwoot.external_user_id) {
-      const eid = selectedChatwoot.external_user_id;
-      // Normalizar teléfonos sin '+' prefix
-      const identifier = /^\d+$/.test(eid) ? '+' + eid : eid;
-      fetchPatientContext(identifier);
+      fetchPatientContext(selectedChatwoot.external_user_id);
     }
 
     let isInitial = true;
