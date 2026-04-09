@@ -3773,7 +3773,8 @@ async def get_clinic_settings(
     """Retorna la configuración operativa de la clínica (nombre, horarios, ui_language) desde el tenant."""
     try:
         row = await db.pool.fetchrow(
-            "SELECT clinic_name, config FROM tenants WHERE id = $1", resolved_tenant_id
+            "SELECT clinic_name, config, ai_engine_mode, social_ig_active, social_landings, instagram_handle, facebook_page_id FROM tenants WHERE id = $1",
+            resolved_tenant_id,
         )
         if not row:
             return _fallback_clinic_settings()
@@ -3781,6 +3782,14 @@ async def get_clinic_settings(
         ui_lang = (
             (config.get("ui_language") or "es") if isinstance(config, dict) else "es"
         )
+        # social_landings may be returned as a string from asyncpg (JSONB)
+        raw_landings = row["social_landings"]
+        if isinstance(raw_landings, str):
+            import json as _json
+            try:
+                raw_landings = _json.loads(raw_landings)
+            except Exception:
+                raw_landings = None
         return {
             "name": row["clinic_name"] or os.getenv("CLINIC_NAME", "Clínica Dental"),
             "location": os.getenv("CLINIC_LOCATION", ""),
@@ -3790,6 +3799,10 @@ async def get_clinic_settings(
             "time_zone": "America/Argentina/Buenos_Aires",
             "ui_language": ui_lang,
             "ai_engine_mode": row.get("ai_engine_mode") or "solo",
+            "social_ig_active": row.get("social_ig_active") or False,
+            "social_landings": raw_landings,
+            "instagram_handle": row.get("instagram_handle"),
+            "facebook_page_id": row.get("facebook_page_id"),
         }
     except Exception as e:
         logger.warning(f"get_clinic_settings failed: {e}")
@@ -3807,12 +3820,21 @@ def _fallback_clinic_settings():
         "time_zone": "America/Argentina/Buenos_Aires",
         "ui_language": "es",
         "ai_engine_mode": "solo",
+        "social_ig_active": False,
+        "social_landings": None,
+        "instagram_handle": None,
+        "facebook_page_id": None,
     }
 
 
 class ClinicSettingsUpdate(BaseModel):
     ui_language: Optional[str] = None  # "es" | "en" | "fr"
     ai_engine_mode: Optional[Literal["solo", "multi"]] = None  # dual-engine system
+    # Social IG/FB agent fields (migration 040)
+    social_ig_active: Optional[bool] = None
+    social_landings: Optional[dict] = None
+    instagram_handle: Optional[str] = None
+    facebook_page_id: Optional[str] = None
 
 
 @router.patch(
@@ -3898,6 +3920,34 @@ async def update_clinic_settings(
             logger.error(f"update_clinic_settings ai_engine_mode failed: {e}")
             raise HTTPException(
                 status_code=500, detail="Error al guardar la configuración del motor."
+            )
+
+    # Handle social IG/FB agent fields (migration 040)
+    social_updates: dict = {}
+    if payload.social_ig_active is not None:
+        social_updates["social_ig_active"] = bool(payload.social_ig_active)
+    if payload.social_landings is not None:
+        social_updates["social_landings"] = payload.social_landings
+    if payload.instagram_handle is not None:
+        social_updates["instagram_handle"] = payload.instagram_handle
+    if payload.facebook_page_id is not None:
+        social_updates["facebook_page_id"] = payload.facebook_page_id
+
+    if social_updates:
+        import json as _json_mod
+        set_clauses = []
+        params: list = []
+        for col, val in social_updates.items():
+            params.append(val if not isinstance(val, dict) else _json_mod.dumps(val))
+            set_clauses.append(f"{col} = ${len(params)}")
+        params.append(resolved_tenant_id)
+        sql = f"UPDATE tenants SET {', '.join(set_clauses)}, updated_at = now() WHERE id = ${len(params)}"
+        try:
+            await db.pool.execute(sql, *params)
+        except Exception as e:
+            logger.error(f"update_clinic_settings social fields failed: {e}")
+            raise HTTPException(
+                status_code=500, detail="Error al guardar la configuración social."
             )
 
     return {"status": "ok", "ui_language": getattr(payload, "ui_language", None)}
