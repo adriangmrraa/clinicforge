@@ -385,8 +385,27 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
                 )
 
             role = "assistant" if msg.is_agent else "user"
-            platform_meta = msg.raw_payload
+            # Copy raw_payload defensively — we're about to mutate it and we
+            # don't want to touch the canonical message that other code paths
+            # may still reference.
+            platform_meta = dict(msg.raw_payload) if msg.raw_payload else {}
             platform_meta["provider"] = provider
+            # Inject provider_message_id at a stable key so the partial UNIQUE
+            # index `uniq_chat_messages_conv_provider_msg_id` (migration 030)
+            # can dedup across both save paths:
+            #   1) response_sender.py saves outbound messages directly with
+            #      provider_message_id set in platform_metadata.
+            #   2) Chatwoot then echoes the same message as `message_created`
+            #      (message_type=outgoing) to this webhook. Without this
+            #      injection, the echo row had provider_message_id=NULL, the
+            #      partial index skipped it, and both rows coexisted — the
+            #      root cause of the "duplicate message in UI" bug for
+            #      Instagram/Facebook via Chatwoot. The bug was UI-only: the
+            #      patient always received the message exactly once because
+            #      response_sender calls chatwoot_client.send_text_message
+            #      exactly once per bubble.
+            if ext_id_candidate:
+                platform_meta["provider_message_id"] = str(ext_id_candidate)
 
             try:
                 msg_id = await pool.fetchval(
