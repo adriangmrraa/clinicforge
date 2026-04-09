@@ -13,13 +13,13 @@ from unittest.mock import AsyncMock
 async def test_book_rejects_on_national_holiday():
     """book_appointment rejects booking on a national holiday."""
     pool = AsyncMock()
-    pool.fetchrow.return_value = {'country_code': 'AR'}
+    pool.fetchrow.return_value = {'country_code': 'AR', 'language': 'es'}
     pool.fetch.return_value = []
 
     from services.holiday_service import is_holiday
 
     # July 9 is AR Independence Day
-    is_hol, name = await is_holiday(pool, tenant_id=1, check_date=date(2026, 7, 9))
+    is_hol, name, _ = await is_holiday(pool, tenant_id=1, check_date=date(2026, 7, 9))
     assert is_hol is True
 
     # Verify the rejection message format matches what book_appointment produces
@@ -34,14 +34,14 @@ async def test_book_rejects_on_national_holiday():
 async def test_book_allows_on_override_open():
     """book_appointment allows booking when override_open is set."""
     pool = AsyncMock()
-    pool.fetchrow.return_value = {'country_code': 'AR'}
+    pool.fetchrow.return_value = {'country_code': 'AR', 'language': 'es'}
     pool.fetch.return_value = [
-        {'name': 'Trabajamos', 'holiday_type': 'override_open'}
+        {'name': 'Trabajamos', 'holiday_type': 'override_open', 'custom_hours_start': None, 'custom_hours_end': None}
     ]
 
     from services.holiday_service import is_holiday
 
-    is_hol, name = await is_holiday(pool, tenant_id=1, check_date=date(2026, 7, 9))
+    is_hol, name, _ = await is_holiday(pool, tenant_id=1, check_date=date(2026, 7, 9))
     assert is_hol is False  # Should NOT block booking
 
 
@@ -49,14 +49,14 @@ async def test_book_allows_on_override_open():
 async def test_book_rejects_on_custom_closure():
     """book_appointment rejects booking on a custom closure date."""
     pool = AsyncMock()
-    pool.fetchrow.return_value = {'country_code': 'US'}
+    pool.fetchrow.return_value = {'country_code': 'US', 'language': 'en'}
     pool.fetch.return_value = [
         {'name': 'Vacaciones clínica', 'holiday_type': 'closure'}
     ]
 
     from services.holiday_service import is_holiday
 
-    is_hol, name = await is_holiday(pool, tenant_id=1, check_date=date(2026, 1, 20))
+    is_hol, name, _ = await is_holiday(pool, tenant_id=1, check_date=date(2026, 1, 20))
     assert is_hol is True
     assert name == 'Vacaciones clínica'
 
@@ -65,12 +65,12 @@ async def test_book_rejects_on_custom_closure():
 async def test_book_allows_on_regular_day():
     """book_appointment allows booking on a regular working day."""
     pool = AsyncMock()
-    pool.fetchrow.return_value = {'country_code': 'US'}
+    pool.fetchrow.return_value = {'country_code': 'US', 'language': 'en'}
     pool.fetch.return_value = []
 
     from services.holiday_service import is_holiday
 
     # Random Tuesday, not a holiday
-    is_hol, name = await is_holiday(pool, tenant_id=1, check_date=date(2026, 6, 16))
+    is_hol, name, _ = await is_holiday(pool, tenant_id=1, check_date=date(2026, 6, 16))
     assert is_hol is False
     assert name is None

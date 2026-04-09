@@ -13,10 +13,11 @@ import asyncio
 import os
 import uuid
 from pathlib import Path
-from unittest.mock import MagicMock
-
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+
+from tests.fixtures.tenants import make_tenant_row
 
 # --- Load .env file if present (so the real DSN from .env beats hardcoded defaults) ---
 try:
@@ -60,6 +61,86 @@ def mock_redis():
 def mock_db_pool():
     mock = MagicMock()
     return mock
+
+
+# ============================================================================
+# Canonical tenant fixtures (C1 — REQ-TS-2)
+# ============================================================================
+
+
+@pytest.fixture
+def tenant_factory():
+    """Return a callable that builds a tenant dict with all NOT NULL columns.
+
+    Usage::
+
+        def test_something(tenant_factory):
+            row = tenant_factory(country_code="US", language="en")
+            pool.fetchrow.return_value = row
+    """
+    return make_tenant_row
+
+
+# ============================================================================
+# app_with_mock_pool fixture (C2 — REQ-TS-3)
+# ============================================================================
+
+
+@pytest.fixture
+def app_with_mock_pool(monkeypatch):
+    """Mount a FastAPI TestClient with db.pool replaced by an AsyncMock.
+
+    Each test can customise individual method return values, e.g.::
+
+        def test_something(app_with_mock_pool):
+            client, mock_pool = app_with_mock_pool
+            mock_pool.fetchrow.return_value = {"id": 1}
+            response = client.get("/admin/something")
+
+    The mock supports: fetchrow, fetch, fetchval, execute, acquire (context mgr).
+    """
+    from unittest.mock import AsyncMock, MagicMock
+
+    # Build the AsyncMock pool before importing main so the lifespan doesn't
+    # connect to a real Postgres.
+    mock_pool = MagicMock()
+    mock_pool.fetchrow = AsyncMock(return_value=None)
+    mock_pool.fetch = AsyncMock(return_value=[])
+    mock_pool.fetchval = AsyncMock(return_value=None)
+    mock_pool.execute = AsyncMock(return_value=None)
+
+    # acquire() is used as an async context manager: `async with pool.acquire() as conn`
+    mock_conn = MagicMock()
+    mock_conn.fetchrow = AsyncMock(return_value=None)
+    mock_conn.fetch = AsyncMock(return_value=[])
+    mock_conn.fetchval = AsyncMock(return_value=None)
+    mock_conn.execute = AsyncMock(return_value=None)
+    mock_pool.acquire = MagicMock(return_value=AsyncMock(
+        __aenter__=AsyncMock(return_value=mock_conn),
+        __aexit__=AsyncMock(return_value=False),
+    ))
+
+    # Patch db.pool in the orchestrator_service.db module so that any import
+    # of `from db import db as pool` inside endpoints sees the mock.
+    import orchestrator_service.db as db_module
+    monkeypatch.setattr(db_module, "pool", mock_pool)
+
+    # Also patch the top-level `db` attribute (used by tools in main.py as `db.pool`)
+    try:
+        import db as db_top
+        monkeypatch.setattr(db_top, "pool", mock_pool)
+    except ImportError:
+        pass
+
+    from fastapi.testclient import TestClient
+
+    # Import app AFTER patching so it doesn't try to connect on startup.
+    from unittest.mock import patch
+    with patch("redis.from_url"), patch("langchain_openai.ChatOpenAI"):
+        from orchestrator_service.main import app
+        client = TestClient(app, raise_server_exceptions=False)
+
+    return client, mock_pool
 
 
 # ============================================================================

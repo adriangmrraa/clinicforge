@@ -18,11 +18,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 async def test_is_holiday_national_holiday_ar():
     """AR national holiday (July 9 - Independence Day) detected by library."""
     pool = AsyncMock()
-    pool.fetchrow.return_value = {'country_code': 'AR'}
+    pool.fetchrow.return_value = {'country_code': 'AR', 'language': 'es'}
     pool.fetch.return_value = []  # No custom holidays
 
     from services.holiday_service import is_holiday
-    result, name = await is_holiday(pool, tenant_id=1, check_date=date(2026, 7, 9))
+    result, name, _ = await is_holiday(pool, tenant_id=1, check_date=date(2026, 7, 9))
     assert result is True
     assert name is not None
     assert 'independencia' in name.lower() or 'Independence' in name
@@ -32,12 +32,12 @@ async def test_is_holiday_national_holiday_ar():
 async def test_is_holiday_regular_day():
     """A normal working day is NOT a holiday."""
     pool = AsyncMock()
-    pool.fetchrow.return_value = {'country_code': 'AR'}
+    pool.fetchrow.return_value = {'country_code': 'AR', 'language': 'es'}
     pool.fetch.return_value = []
 
     from services.holiday_service import is_holiday
     # July 15 is a regular day in AR (July 10 is also a bridge holiday)
-    result, name = await is_holiday(pool, tenant_id=1, check_date=date(2026, 7, 15))
+    result, name, _ = await is_holiday(pool, tenant_id=1, check_date=date(2026, 7, 15))
     assert result is False
     assert name is None
 
@@ -46,11 +46,11 @@ async def test_is_holiday_regular_day():
 async def test_is_holiday_us_independence_day():
     """US national holiday (July 4) detected."""
     pool = AsyncMock()
-    pool.fetchrow.return_value = {'country_code': 'US'}
+    pool.fetchrow.return_value = {'country_code': 'US', 'language': 'en'}
     pool.fetch.return_value = []
 
     from services.holiday_service import is_holiday
-    result, name = await is_holiday(pool, tenant_id=1, check_date=date(2026, 7, 4))
+    result, name, _ = await is_holiday(pool, tenant_id=1, check_date=date(2026, 7, 4))
     assert result is True
     assert name is not None
 
@@ -59,13 +59,13 @@ async def test_is_holiday_us_independence_day():
 async def test_is_holiday_custom_closure():
     """Custom closure (clinic anniversary) is detected as holiday."""
     pool = AsyncMock()
-    pool.fetchrow.return_value = {'country_code': 'US'}
+    pool.fetchrow.return_value = {'country_code': 'US', 'language': 'en'}
     pool.fetch.return_value = [
-        {'name': 'Aniversario clínica', 'holiday_type': 'closure'}
+        {'name': 'Aniversario clínica', 'holiday_type': 'closure', 'custom_hours_start': None, 'custom_hours_end': None}
     ]
 
     from services.holiday_service import is_holiday
-    result, name = await is_holiday(pool, tenant_id=1, check_date=date(2026, 3, 15))
+    result, name, _ = await is_holiday(pool, tenant_id=1, check_date=date(2026, 3, 15))
     assert result is True
     assert name == 'Aniversario clínica'
 
@@ -74,14 +74,14 @@ async def test_is_holiday_custom_closure():
 async def test_is_holiday_override_open():
     """override_open overrides a national holiday — clinic works that day."""
     pool = AsyncMock()
-    pool.fetchrow.return_value = {'country_code': 'AR'}
+    pool.fetchrow.return_value = {'country_code': 'AR', 'language': 'es'}
     # DB returns an override_open for July 9
     pool.fetch.return_value = [
-        {'name': 'Trabajamos feriado', 'holiday_type': 'override_open'}
+        {'name': 'Trabajamos feriado', 'holiday_type': 'override_open', 'custom_hours_start': None, 'custom_hours_end': None}
     ]
 
     from services.holiday_service import is_holiday
-    result, name = await is_holiday(pool, tenant_id=1, check_date=date(2026, 7, 9))
+    result, name, _ = await is_holiday(pool, tenant_id=1, check_date=date(2026, 7, 9))
     assert result is False
     assert name is None
 
@@ -90,14 +90,14 @@ async def test_is_holiday_override_open():
 async def test_is_holiday_override_beats_closure():
     """override_open takes priority over closure for same date."""
     pool = AsyncMock()
-    pool.fetchrow.return_value = {'country_code': 'US'}
+    pool.fetchrow.return_value = {'country_code': 'US', 'language': 'en'}
     pool.fetch.return_value = [
-        {'name': 'Custom closure', 'holiday_type': 'closure'},
-        {'name': 'Override', 'holiday_type': 'override_open'},
+        {'name': 'Custom closure', 'holiday_type': 'closure', 'custom_hours_start': None, 'custom_hours_end': None},
+        {'name': 'Override', 'holiday_type': 'override_open', 'custom_hours_start': None, 'custom_hours_end': None},
     ]
 
     from services.holiday_service import is_holiday
-    result, name = await is_holiday(pool, tenant_id=1, check_date=date(2026, 6, 15))
+    result, name, _ = await is_holiday(pool, tenant_id=1, check_date=date(2026, 6, 15))
     assert result is False
     assert name is None
 
@@ -106,13 +106,13 @@ async def test_is_holiday_override_beats_closure():
 async def test_is_holiday_unsupported_country():
     """Unsupported country code falls back gracefully (no library holidays, custom still works)."""
     pool = AsyncMock()
-    pool.fetchrow.return_value = {'country_code': 'ZZ'}
+    pool.fetchrow.return_value = {'country_code': 'ZZ', 'language': 'es'}
     pool.fetch.return_value = [
-        {'name': 'Custom day off', 'holiday_type': 'closure'}
+        {'name': 'Custom day off', 'holiday_type': 'closure', 'custom_hours_start': None, 'custom_hours_end': None}
     ]
 
     from services.holiday_service import is_holiday
-    result, name = await is_holiday(pool, tenant_id=1, check_date=date(2026, 5, 1))
+    result, name, _ = await is_holiday(pool, tenant_id=1, check_date=date(2026, 5, 1))
     assert result is True
     assert name == 'Custom day off'
 
@@ -121,11 +121,11 @@ async def test_is_holiday_unsupported_country():
 async def test_is_holiday_unsupported_country_no_custom():
     """Unsupported country with no custom holidays → not a holiday."""
     pool = AsyncMock()
-    pool.fetchrow.return_value = {'country_code': 'ZZ'}
+    pool.fetchrow.return_value = {'country_code': 'ZZ', 'language': 'es'}
     pool.fetch.return_value = []
 
     from services.holiday_service import is_holiday
-    result, name = await is_holiday(pool, tenant_id=1, check_date=date(2026, 5, 1))
+    result, name, _ = await is_holiday(pool, tenant_id=1, check_date=date(2026, 5, 1))
     assert result is False
     assert name is None
 
@@ -134,12 +134,12 @@ async def test_is_holiday_unsupported_country_no_custom():
 async def test_is_holiday_null_country_defaults_us():
     """NULL country_code defaults to US."""
     pool = AsyncMock()
-    pool.fetchrow.return_value = {'country_code': None}
+    pool.fetchrow.return_value = {'country_code': None, 'language': 'es'}
     pool.fetch.return_value = []
 
     from services.holiday_service import is_holiday
     # July 4 is US Independence Day
-    result, name = await is_holiday(pool, tenant_id=1, check_date=date(2026, 7, 4))
+    result, name, _ = await is_holiday(pool, tenant_id=1, check_date=date(2026, 7, 4))
     assert result is True
 
 
@@ -150,7 +150,7 @@ async def test_is_holiday_no_tenant():
     pool.fetchrow.return_value = None
 
     from services.holiday_service import is_holiday
-    result, name = await is_holiday(pool, tenant_id=999, check_date=date(2026, 7, 4))
+    result, name, _ = await is_holiday(pool, tenant_id=999, check_date=date(2026, 7, 4))
     assert result is False
     assert name is None
 
@@ -161,7 +161,7 @@ async def test_is_holiday_no_tenant():
 async def test_upcoming_holidays_returns_library_holidays():
     """get_upcoming_holidays returns library holidays with source='library'."""
     pool = AsyncMock()
-    pool.fetchrow.return_value = {'country_code': 'US'}
+    pool.fetchrow.return_value = {'country_code': 'US', 'language': 'en'}
     pool.fetch.return_value = []  # No custom
 
     from services.holiday_service import get_upcoming_holidays
@@ -175,7 +175,7 @@ async def test_upcoming_holidays_returns_library_holidays():
 async def test_upcoming_holidays_sorted_by_date():
     """Results are sorted by date ascending."""
     pool = AsyncMock()
-    pool.fetchrow.return_value = {'country_code': 'US'}
+    pool.fetchrow.return_value = {'country_code': 'US', 'language': 'en'}
     pool.fetch.return_value = []
 
     from services.holiday_service import get_upcoming_holidays
@@ -188,10 +188,10 @@ async def test_upcoming_holidays_sorted_by_date():
 async def test_upcoming_holidays_excludes_override():
     """Dates with override_open are excluded from upcoming list."""
     pool = AsyncMock()
-    pool.fetchrow.return_value = {'country_code': 'US'}
+    pool.fetchrow.return_value = {'country_code': 'US', 'language': 'en'}
     # Override July 4 (US holiday)
     pool.fetch.return_value = [
-        {'date': date(2026, 7, 4), 'name': 'We work July 4', 'holiday_type': 'override_open', 'is_recurring': False}
+        {'id': 1, 'date': date(2026, 7, 4), 'name': 'We work July 4', 'holiday_type': 'override_open', 'is_recurring': False, 'custom_hours_start': None, 'custom_hours_end': None}
     ]
 
     from services.holiday_service import get_upcoming_holidays
@@ -204,9 +204,9 @@ async def test_upcoming_holidays_excludes_override():
 async def test_upcoming_holidays_includes_custom_closure():
     """Custom closures appear in upcoming list with source='custom'."""
     pool = AsyncMock()
-    pool.fetchrow.return_value = {'country_code': 'US'}
+    pool.fetchrow.return_value = {'country_code': 'US', 'language': 'en'}
     pool.fetch.return_value = [
-        {'date': date(2026, 6, 15), 'name': 'Clinic Anniversary', 'holiday_type': 'closure', 'is_recurring': False}
+        {'id': 2, 'date': date(2026, 6, 15), 'name': 'Clinic Anniversary', 'holiday_type': 'closure', 'is_recurring': False, 'custom_hours_start': None, 'custom_hours_end': None}
     ]
 
     from services.holiday_service import get_upcoming_holidays

@@ -15,9 +15,9 @@ from unittest.mock import AsyncMock
 async def test_list_holidays_returns_library_and_custom():
     """GET /admin/holidays returns both library and custom holidays."""
     pool = AsyncMock()
-    pool.fetchrow.return_value = {'country_code': 'US'}
+    pool.fetchrow.return_value = {'country_code': 'US', 'language': 'en'}
     pool.fetch.return_value = [
-        {'date': date(2026, 8, 10), 'name': 'Custom Day', 'holiday_type': 'closure', 'is_recurring': False}
+        {'id': 1, 'date': date(2026, 8, 10), 'name': 'Custom Day', 'holiday_type': 'closure', 'is_recurring': False, 'custom_hours_start': None, 'custom_hours_end': None}
     ]
 
     from services.holiday_service import get_upcoming_holidays
@@ -34,7 +34,7 @@ async def test_list_holidays_returns_library_and_custom():
 async def test_list_holidays_correct_source_field():
     """Library holidays have source='library', custom have source='custom'."""
     pool = AsyncMock()
-    pool.fetchrow.return_value = {'country_code': 'US'}
+    pool.fetchrow.return_value = {'country_code': 'US', 'language': 'en'}
     pool.fetch.return_value = []
 
     from services.holiday_service import get_upcoming_holidays
@@ -141,7 +141,7 @@ def test_country_code_normalization():
 async def test_upcoming_30_days_limit():
     """GET /admin/holidays/upcoming returns only next 30 days."""
     pool = AsyncMock()
-    pool.fetchrow.return_value = {'country_code': 'US'}
+    pool.fetchrow.return_value = {'country_code': 'US', 'language': 'en'}
     pool.fetch.return_value = []
 
     from services.holiday_service import get_upcoming_holidays
@@ -160,7 +160,7 @@ async def test_upcoming_30_days_limit():
 async def test_upcoming_ordered_by_date():
     """Results from upcoming endpoint are ordered by date."""
     pool = AsyncMock()
-    pool.fetchrow.return_value = {'country_code': 'US'}
+    pool.fetchrow.return_value = {'country_code': 'US', 'language': 'en'}
     pool.fetch.return_value = []
 
     from services.holiday_service import get_upcoming_holidays
