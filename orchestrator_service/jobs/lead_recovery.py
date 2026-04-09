@@ -147,7 +147,7 @@ async def process_candidate_recovery(cand, trigger, db):
 async def analyze_interest_with_llm(history_text: str) -> str:
     """Predice el tratamiento de interés."""
     from langchain_openai import ChatOpenAI
-    from langchain.schema import SystemMessage, HumanMessage
+    from langchain_core.messages import SystemMessage, HumanMessage
     
     try:
         key = os.getenv("OPENAI_API_KEY")

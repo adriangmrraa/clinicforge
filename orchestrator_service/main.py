@@ -42,21 +42,7 @@ from sqlalchemy import text
 
 from langchain_openai import ChatOpenAI
 
-# AgentExecutor was removed from the public langchain API in langchain 1.x.
-# Provide a compatibility shim so module-level imports don't crash on newer installs.
-try:
-    from langchain.agents import AgentExecutor
-    from langchain.agents import create_openai_tools_agent
-except ImportError:
-    try:
-        from langchain_community.agent_toolkits.base import create_agent_executor as _cae  # noqa: F401
-        AgentExecutor = _cae  # type: ignore[assignment]
-    except ImportError:
-        AgentExecutor = None  # type: ignore[assignment,misc]
-    try:
-        from langchain.agents import create_openai_tools_agent
-    except ImportError:
-        create_openai_tools_agent = None  # type: ignore[assignment]
+from langchain_classic.agents import AgentExecutor, create_openai_tools_agent
 from agent.integration import enhanced_system
 from guardrails.injection_detector import process_with_guardrails
 

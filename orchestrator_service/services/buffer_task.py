@@ -1861,21 +1861,16 @@ async def process_buffer_task(
         max_retries = 3
         token_cb = None
 
-        # Try to import callback (non-fatal if unavailable)
+        # Import callback (non-fatal if unavailable)
         _get_cb = None
         try:
             from langchain_community.callbacks import get_openai_callback as _get_cb_fn
 
             _get_cb = _get_cb_fn
         except ImportError:
-            try:
-                from langchain.callbacks import get_openai_callback as _get_cb_fn
-
-                _get_cb = _get_cb_fn
-            except ImportError:
-                logger.warning(
-                    "⚠️ get_openai_callback not available, tokens will be estimated"
-                )
+            logger.warning(
+                "⚠️ get_openai_callback not available, tokens will be estimated"
+            )
 
         for attempt in range(max_retries):
             try:
