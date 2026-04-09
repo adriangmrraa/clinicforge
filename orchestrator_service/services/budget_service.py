@@ -233,10 +233,10 @@ async def gather_budget_data(pool, plan_id: str, tenant_id: int) -> Optional[dic
         ],
         "totals": {
             "estimated": round(estimated, 2),
-            "approved": round(approved, 2),
+            "approved": round(financed_total if financed_total > 0 else approved, 2),
             "paid": round(paid, 2),
-            "pending": pending,
-            "progress_pct": round(paid / approved * 100, 1) if approved > 0 else 0,
+            "pending": round((financed_total if financed_total > 0 else approved) - paid, 2),
+            "progress_pct": round(paid / (financed_total if financed_total > 0 else approved) * 100, 1) if (financed_total or approved) > 0 else 0,
         },
         "generated_at": datetime.now().strftime("%d/%m/%Y a las %H:%M"),
     }
