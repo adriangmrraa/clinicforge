@@ -864,8 +864,11 @@ export default function AgendaView() {
           .fc .fc-list-day-cushion {
             background-color: rgba(255,255,255,0.04) !important;
           }
-          .fc .fc-list-sticky .fc-list-day > th {
+          .fc .fc-list-day > th,
+          .fc .fc-list-sticky .fc-list-day > th,
+          .fc .fc-list-table th {
             position: relative !important;
+            z-index: auto !important;
           }
           .fc .fc-list-day-cushion a {
             color: #fff !important;
@@ -939,6 +942,7 @@ export default function AgendaView() {
                   dayMaxEvents={true}
                   weekends={true}
                   nowIndicator={true}
+                  stickyHeaderDates={false}
                   slotDuration="00:15:00"
                   slotLabelInterval="01:00"
                   initialDate={new Date()}
