@@ -7834,6 +7834,12 @@ Si no tiene → no insistir, continuar normalmente."""
             '¿Querés que te derive con un humano para eso?"'
         )
 
+    # Dynamic date examples for the system prompt (avoid stale hardcoded dates)
+    _now = get_now_arg()
+    tomorrow_iso = (_now + timedelta(days=1)).date().isoformat()
+    day_after_iso = (_now + timedelta(days=2)).date().isoformat()
+    next_week_iso = (_now + timedelta(days=7)).date().isoformat()
+
     _base_prompt = f"""REGLA DE IDIOMA (OBLIGATORIA): {lang_rule}{extra_context}
 {greeting_rule}
 IDENTIDAD Y TONO:
@@ -8080,15 +8086,19 @@ PASO 4: CONSULTAR DISPONIBILIDAD — Llamá 'check_availability' UNA vez con tre
   1. date_query: Texto del paciente SIEMPRE con el mes incluido. Si el paciente mencionó el mes en un mensaje anterior, AGREGARLO. Ej: paciente dijo "mayo" antes y ahora "cerca del 15" → date_query="cerca del 15 de mayo". NUNCA pasar solo un número sin mes.
   2. interpreted_date: OBLIGATORIO. Fecha en YYYY-MM-DD que VOS calculás. Usá TIEMPO ACTUAL ({current_time}) para resolver fechas relativas. NUNCA dejarlo vacío.
   3. search_mode: OBLIGATORIO. "exact" | "week" | "month" | "open".
-  EJEMPLOS (memorizá estos patrones):
+  EJEMPLOS (memorizá estos patrones — las fechas son relativas a TIEMPO ACTUAL {current_time}):
   - "jueves 30 de abril" → date_query="jueves 30 de abril", interpreted_date="2026-04-30", search_mode="exact"
   - "mitad de mayo" → date_query="mitad de mayo", interpreted_date="2026-05-15", search_mode="week"
   - "fines de octubre" → date_query="fines de octubre", interpreted_date="2026-10-25", search_mode="week"
   - "para julio" → date_query="para julio", interpreted_date="2026-07-01", search_mode="month"
-  - "lo antes posible" → date_query="lo antes posible", interpreted_date="2026-03-28", search_mode="open"
-  - "mañana" → date_query="mañana", interpreted_date="2026-03-28", search_mode="exact"
+  - "lo antes posible" → date_query="lo antes posible", interpreted_date="{tomorrow_iso}", search_mode="open"
+  - "mañana" → date_query="mañana", interpreted_date="{tomorrow_iso}", search_mode="exact"
+  - "mañana por la mañana" → date_query="mañana", interpreted_date="{tomorrow_iso}", search_mode="exact", time_preference="mañana"
+  - "pasado mañana" → date_query="pasado mañana", interpreted_date="{day_after_iso}", search_mode="exact"
+  - "en una semana" → date_query="en una semana", interpreted_date="{next_week_iso}", search_mode="week"
   - Paciente dijo "mayo" antes, ahora dice "cerca del 15" → date_query="cerca del 15 de mayo", interpreted_date="2026-05-15", search_mode="week"
   - Paciente dijo "abril 22 en adelante" → date_query="abril 22 en adelante", interpreted_date="2026-04-22", search_mode="week"
+  REGLA INQUEBRANTABLE: interpreted_date SIEMPRE debe ser una fecha FUTURA respecto a {current_time}. NUNCA pases una fecha que ya pasó.
   La tool devuelve 2-3 opciones con emojis numerados (1️⃣ 2️⃣ 3️⃣) y la sede al final. Presentá el resultado TAL CUAL lo recibís, sin reformatear. NO agregues la dirección ni sede entre las opciones — ya viene al final del mensaje de la tool.
   Si el paciente elige una opción → pasar a PASO 4b.
   Si el paciente pide otro horario distinto a las opciones → volver a llamar 'check_availability' para verificar ese horario específico.
