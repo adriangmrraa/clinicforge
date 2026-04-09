@@ -860,15 +860,12 @@ export default function AgendaView() {
             color: rgba(255,255,255,0.7) !important;
           }
 
-          /* List view */
+          /* List view — disable sticky date headers to prevent stacking overlap */
           .fc .fc-list-day-cushion {
-            background-color: #0d1117 !important;
+            background-color: rgba(255,255,255,0.04) !important;
           }
           .fc .fc-list-sticky .fc-list-day > th {
-            position: sticky !important;
-            top: 0 !important;
-            z-index: 1 !important;
-            background: #0d1117 !important;
+            position: relative !important;
           }
           .fc .fc-list-day-cushion a {
             color: #fff !important;
