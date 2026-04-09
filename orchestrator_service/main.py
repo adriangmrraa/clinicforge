@@ -573,11 +573,16 @@ def parse_datetime(datetime_query: str) -> datetime:
     # 3. Fallback a dateutil para formatos estándar (YYYY-MM-DD)
     if target_date is None:
         try:
-            dt = dateutil_parse(query, dayfirst=True)
-            if dt.year > 2000:
-                target_date = dt.date()
-                if not time_match:
-                    target_time = (dt.hour, dt.minute)
+            # ISO format first (unambiguous)
+            iso_match = re.search(r"(\d{4}-\d{2}-\d{2})", query)
+            if iso_match:
+                target_date = date.fromisoformat(iso_match.group(1))
+            else:
+                dt = dateutil_parse(query, dayfirst=True)
+                if dt.year > 2000:
+                    target_date = dt.date()
+                    if not time_match:
+                        target_time = (dt.hour, dt.minute)
         except:
             target_date = (get_now_arg() + timedelta(days=1)).date()
 
@@ -2955,6 +2960,12 @@ async def book_appointment(
             logger.warning(
                 f"Soft-lock pre-check failed (non-blocking): {_lock_check_err}"
             )
+
+        # Guard: never book in the past
+        now_check = get_now_arg()
+        if apt_datetime < now_check:
+            logger.warning(f"📅 BOOK REJECTED: apt_datetime={apt_datetime} is in the past (now={now_check})")
+            return f"❌ La fecha {apt_datetime.strftime('%d/%m/%Y %H:%M')} ya pasó. Por favor elegí una fecha futura."
 
         # Wrap patient + appointment in a single transaction (atomicity)
         # The UNIQUE index idx_appointments_no_double_booking will reject duplicates
