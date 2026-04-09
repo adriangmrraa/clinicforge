@@ -740,7 +740,7 @@ export default function TreatmentsView() {
             {t('treatments.recommended_durations')}
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-sm">
-            <div className="flex items-center gap-4 p-4 bg-white/[0.03] rounded-2xl border border-white/[0.06] hover:border-white/[0.12] transition-colors">
+            <div className="flex items-center gap-4 p-4 bg-white/[0.06] rounded-2xl border border-white/[0.10] hover:border-white/[0.18] transition-colors">
               <div className="p-3 bg-blue-500/10 text-blue-400 rounded-xl">
                 <Clock size={20} />
               </div>
@@ -749,7 +749,7 @@ export default function TreatmentsView() {
                 <span className="text-white font-bold text-lg">15 {t('common.minutes_short')}</span>
               </div>
             </div>
-            <div className="flex items-center gap-4 p-4 bg-white/[0.03] rounded-2xl border border-white/[0.06] hover:border-white/[0.12] transition-colors">
+            <div className="flex items-center gap-4 p-4 bg-white/[0.06] rounded-2xl border border-white/[0.10] hover:border-white/[0.18] transition-colors">
               <div className="p-3 bg-green-500/10 text-green-400 rounded-xl">
                 <Clock size={20} />
               </div>
@@ -758,7 +758,7 @@ export default function TreatmentsView() {
                 <span className="text-white font-bold text-lg">30 {t('common.minutes_short')}</span>
               </div>
             </div>
-            <div className="flex items-center gap-4 p-4 bg-white/[0.03] rounded-2xl border border-white/[0.06] hover:border-white/[0.12] transition-colors">
+            <div className="flex items-center gap-4 p-4 bg-white/[0.06] rounded-2xl border border-white/[0.10] hover:border-white/[0.18] transition-colors">
               <div className="p-3 bg-red-500/10 text-red-400 rounded-xl">
                 <Clock size={20} />
               </div>
@@ -1004,10 +1004,10 @@ export default function TreatmentsView() {
             {Object.entries(groupedTreatments).map(([category, categoryTreatments]) => (
               <GlassCard key={category} image={CARD_IMAGES.dental} hoverScale={false} className="rounded-[2.5rem]">
               <div className="overflow-hidden group">
-                <div className="p-6 border-b border-white/[0.06] bg-white/[0.02] flex justify-between items-center sticky top-0 z-10 backdrop-blur-md transition-colors group-hover:bg-white/[0.04]">
+                <div className="p-6 border-b border-white/[0.10] bg-white/[0.05] flex justify-between items-center sticky top-0 z-10 backdrop-blur-md transition-colors group-hover:bg-white/[0.07]">
                   <div className="flex items-center gap-4">
-                    <div className="p-3 bg-white/[0.06] rounded-2xl border border-white/[0.06]">
-                      {categoryIcons[category] || <Stethoscope size={24} className="text-white/60" />}
+                    <div className="p-3 bg-white/[0.08] rounded-2xl border border-white/[0.12]">
+                      {categoryIcons[category] || <Stethoscope size={24} className="text-white/70" />}
                     </div>
                     <div>
                       <h2 className="font-bold text-white text-xl capitalize tracking-tight">{t('treatments.category_' + category) || category}</h2>
@@ -1016,15 +1016,15 @@ export default function TreatmentsView() {
                   </div>
                 </div>
 
-                <div className="divide-y divide-white/[0.06]">
+                <div className="divide-y divide-white/[0.08]">
                   {categoryTreatments.map((treatment) => (
-                    <div key={treatment.id} className="p-6 hover:bg-white/[0.04] transition-all">
+                    <div key={treatment.id} className="p-6 hover:bg-white/[0.06] transition-all">
                       {editingId === treatment.id ? (
                         // Edit Mode
-                        <div className="space-y-6 bg-white/[0.03] p-6 rounded-3xl border border-white/[0.06] animate-in fade-in zoom-in-95 duration-300">
+                        <div className="space-y-6 bg-white/[0.05] p-6 rounded-3xl border border-white/[0.10] animate-in fade-in zoom-in-95 duration-300">
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div className="space-y-2">
-                              <label className="block text-xs font-bold text-white/40 ml-1 uppercase">{t('treatments.service_name_label')}</label>
+                              <label className="block text-xs font-bold text-white/55 ml-1 uppercase">{t('treatments.service_name_label')}</label>
                               <input
                                 type="text"
                                 value={editForm.name || ''}
@@ -1033,7 +1033,7 @@ export default function TreatmentsView() {
                               />
                             </div>
                             <div className="space-y-2">
-                              <label className="block text-xs font-bold text-white/40 ml-1 uppercase">{t('treatments.code_reference')}</label>
+                              <label className="block text-xs font-bold text-white/55 ml-1 uppercase">{t('treatments.code_reference')}</label>
                               <input
                                 type="text"
                                 value={editForm.code || ''}
@@ -1044,7 +1044,7 @@ export default function TreatmentsView() {
                           </div>
 
                           <div className="space-y-2">
-                            <label className="block text-xs font-bold text-white/40 ml-1 uppercase">{t('treatments.clinical_description')}</label>
+                            <label className="block text-xs font-bold text-white/55 ml-1 uppercase">{t('treatments.clinical_description')}</label>
                             <textarea
                               value={editForm.description || ''}
                               onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
@@ -1092,7 +1092,7 @@ export default function TreatmentsView() {
 
                           {/* Precio base */}
                           <div className="space-y-2">
-                            <label className="block text-xs font-bold text-white/40 ml-1 uppercase flex items-center gap-1.5">
+                            <label className="block text-xs font-bold text-white/55 ml-1 uppercase flex items-center gap-1.5">
                               {t('treatments.base_price_label') || 'Precio base ($)'}
                               <span className="relative group/tooltip inline-flex">
                                 <Info size={12} className="text-white/30 cursor-help" />
@@ -1121,7 +1121,7 @@ export default function TreatmentsView() {
 
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                             <div className="space-y-2">
-                              <label className="block text-xs font-bold text-white/40 ml-1 uppercase">{t('treatments.complexity_level_label')}</label>
+                              <label className="block text-xs font-bold text-white/55 ml-1 uppercase">{t('treatments.complexity_level_label')}</label>
                               <select
                                 value={editForm.complexity_level || 'medium'}
                                 onChange={(e) => setEditForm({ ...editForm, complexity_level: e.target.value })}
@@ -1177,7 +1177,7 @@ export default function TreatmentsView() {
                           </div>
 
                           {/* Consultation (High Ticket) */}
-                          <div className="space-y-3 border border-white/[0.06] rounded-xl p-4">
+                          <div className="space-y-3 border border-amber-500/20 rounded-xl p-4 bg-amber-500/[0.03]">
                             <label className="flex items-center gap-3 cursor-pointer group">
                               <div className="relative flex items-center">
                                 <input
@@ -1193,7 +1193,7 @@ export default function TreatmentsView() {
                             {editForm.is_high_ticket && (
                               <div className="space-y-3 mt-2">
                                 <div>
-                                  <label className="block text-xs font-bold text-white/40 ml-1 uppercase">{t('treatments.consultation_duration')}</label>
+                                  <label className="block text-xs font-bold text-white/55 ml-1 uppercase">{t('treatments.consultation_duration')}</label>
                                   <input
                                     type="number"
                                     min={15}
@@ -1204,7 +1204,7 @@ export default function TreatmentsView() {
                                   />
                                 </div>
                                 <div>
-                                  <label className="block text-xs font-bold text-white/40 ml-1 uppercase">{t('treatments.consultation_requirements')}</label>
+                                  <label className="block text-xs font-bold text-white/55 ml-1 uppercase">{t('treatments.consultation_requirements')}</label>
                                   <textarea
                                     rows={2}
                                     value={editForm.consultation_requirements || ''}
@@ -1214,7 +1214,7 @@ export default function TreatmentsView() {
                                   />
                                 </div>
                                 <div>
-                                  <label className="block text-xs font-bold text-white/40 ml-1 uppercase">{t('treatments.consultation_notes')}</label>
+                                  <label className="block text-xs font-bold text-white/55 ml-1 uppercase">{t('treatments.consultation_notes')}</label>
                                   <textarea
                                     rows={2}
                                     value={editForm.consultation_notes || ''}
@@ -1231,7 +1231,7 @@ export default function TreatmentsView() {
                           {professionals.length > 0 && (
                             <div className="space-y-3">
                               <div>
-                                <label className="block text-xs font-bold text-white/40 ml-1 uppercase flex items-center gap-2">
+                                <label className="block text-xs font-bold text-white/55 ml-1 uppercase flex items-center gap-2">
                                   <Users size={14} className="text-blue-400" />
                                   {t('treatments.assigned_professionals')}
                                 </label>
@@ -1334,22 +1334,22 @@ export default function TreatmentsView() {
                             </div>
 
                             {treatment.description && (
-                              <p className="text-white/40 text-sm leading-relaxed mb-4 max-w-2xl font-medium">{treatment.description}</p>
+                              <p className="text-white/60 text-sm leading-relaxed mb-4 max-w-2xl font-medium">{treatment.description}</p>
                             )}
 
                             <div className="flex flex-wrap items-center gap-y-2 gap-x-8">
                               <div className="flex items-center gap-2.5">
-                                <div className="p-1.5 bg-blue-500/10 text-blue-400 rounded-lg">
+                                <div className="p-1.5 bg-blue-500/15 text-blue-400 rounded-lg">
                                   <Clock size={14} />
                                 </div>
-                                <span className="text-white/60 text-sm font-semibold">
-                                  <strong className="text-white text-base">{treatment.default_duration_minutes}</strong> {t('common.minutes_short')} <span className="text-white/30 font-medium">{t('treatments.min_standard')}</span>
+                                <span className="text-white/70 text-sm font-semibold">
+                                  <strong className="text-white text-base">{treatment.default_duration_minutes}</strong> {t('common.minutes_short')} <span className="text-white/50 font-medium">{t('treatments.min_standard')}</span>
                                 </span>
                               </div>
-                              <div className="h-4 w-px bg-white/[0.06] hidden sm:block"></div>
-                              <div className="flex items-center gap-4 text-xs font-bold text-white/30 uppercase tracking-tight">
-                               <span>{t('treatments.min_short')}: <span className="text-white">{treatment.min_duration_minutes}{t('common.min_short')}</span></span>
-                                <span>{t('treatments.max_short')}: <span className="text-white">{treatment.max_duration_minutes}{t('common.min_short')}</span></span>
+                              <div className="h-4 w-px bg-white/[0.10] hidden sm:block"></div>
+                              <div className="flex items-center gap-4 text-xs font-bold text-white/50 uppercase tracking-tight">
+                               <span>{t('treatments.min_short')}: <span className="text-white/90">{treatment.min_duration_minutes}{t('common.min_short')}</span></span>
+                                <span>{t('treatments.max_short')}: <span className="text-white/90">{treatment.max_duration_minutes}{t('common.min_short')}</span></span>
                               </div>
                               {treatment.session_gap_days > 0 && (
                                 <div className="flex items-center gap-2 text-xs font-bold text-purple-500 uppercase tracking-tight">
@@ -1362,7 +1362,7 @@ export default function TreatmentsView() {
                             {/* Assigned Professionals Badges */}
                             {professionals.length > 0 && (
                               <div className="flex items-center gap-2 mt-3 flex-wrap">
-                                <Users size={14} className="text-white/30 shrink-0" />
+                                <Users size={14} className="text-white/50 shrink-0" />
                                 {(treatment.professional_ids || []).length > 0 ? (
                                   professionals
                                     .filter(p => (treatment.professional_ids || []).includes(p.id))
