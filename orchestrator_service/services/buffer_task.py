@@ -6,6 +6,7 @@ CLINICASV1.0 - integrado con chat_conversations; usa get_agent_executable_for_te
 import logging
 import json
 import os
+import re
 from typing import List
 
 from db import get_pool
