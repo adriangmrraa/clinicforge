@@ -213,6 +213,12 @@ class Tenant(Base):
     cash_discount_percent = Column(Numeric(5, 2), nullable=True)
     accepts_crypto = Column(Boolean, nullable=True, server_default="false")
 
+    # Social agent: Instagram / Facebook channels (migration 040)
+    social_ig_active = Column(Boolean, nullable=False, server_default="false")
+    social_landings = Column(JSONB, nullable=True)
+    instagram_handle = Column(String(100), nullable=True)
+    facebook_page_id = Column(String(100), nullable=True)
+
     # Clinic special conditions (migration 036)
     accepts_pregnant_patients = Column(
         Boolean, nullable=False, server_default="true", default=True
