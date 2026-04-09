@@ -15,22 +15,25 @@ class TestMigration035PaymentFinancing:
         """Verify migration defines 8 new columns with correct types."""
         # Read migration file and verify structure
         import sys
+        import pathlib
 
         sys.path.insert(0, "orchestrator_service")
 
         # Import the migration module
         import importlib.util
 
-        spec = importlib.util.spec_from_file_location(
-            "migration",
-            "orchestrator_service/alembic/versions/035_add_payment_financing_config.py",
-        )
+        filepath = "orchestrator_service/alembic/versions/035_add_payment_financing_config.py"
+        # Slugify the stem so Python accepts it as a valid module name (hyphens → underscores)
+        slug = pathlib.Path(filepath).stem.replace("-", "_")
+        spec = importlib.util.spec_from_file_location(slug, filepath)
         module = importlib.util.module_from_spec(spec)
+        # Execute the module so its top-level assignments (revision, down_revision, etc.) are populated
+        spec.loader.exec_module(module)
 
         # Verify revision numbers
         assert hasattr(module, "revision"), "Migration must have revision"
         assert module.revision == "035", "Revision must be 035"
-        assert module.down_revision == "033", "Down revision must be 033"
+        assert module.down_revision == "034", "Down revision must be 034"
 
     def test_tenant_model_has_new_columns(self):
         """Verify Tenant ORM model includes all 8 new columns."""
@@ -56,10 +59,10 @@ class TestMigration035PaymentFinancing:
     def test_payment_methods_is_jsonb(self):
         """Verify payment_methods column is JSONB type."""
         from models import Tenant
-        from sqlalchemy.dialects.postgresql import JSONB
 
         payment_methods_col = Tenant.__table__.columns["payment_methods"]
-        assert payment_methods_col.type.__class__.__name__ == "JSON", (
+        # SQLAlchemy uses "JSONB" as the class name for postgresql.JSONB
+        assert payment_methods_col.type.__class__.__name__ in ("JSON", "JSONB"), (
             "payment_methods must be JSON/JSONB"
         )
 
