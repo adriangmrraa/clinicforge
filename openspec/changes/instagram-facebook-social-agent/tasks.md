@@ -256,7 +256,7 @@
 
 > **Depends on**: all prior phases complete
 
-- [ ] **P9-1** [TEST] IG webhook → Solo engine → pitch + booking trigger
+- [x] **P9-1** [TEST] IG webhook → Solo engine → pitch + booking trigger
   - File: `tests/test_chatwoot_ig_full_flow.py` (~100 LOC)
   - Simulate Chatwoot IG webhook with body `"BLANQUEAMIENTO"`, tenant with `social_ig_active=True`, `social_landings={"blanqueamiento": "https://landing.com"}`
   - Mock OpenAI client; capture the `messages` list sent to the LLM
@@ -264,28 +264,28 @@
   - Assert: system message contains "AMIGO" (friend detection rules present)
   - Assert: system message does NOT contain "ANTI-MARKDOWN" WhatsApp block
 
-- [ ] **P9-2** [TEST] IG friend detection — casual greeting → no tools
+- [x] **P9-2** [TEST] IG friend detection — casual greeting → no tools
   - File: `tests/test_chatwoot_ig_friend_detection.py` (~60 LOC)
   - Message: "Hola Lau, cómo andás?" on IG channel, `social_ig_active=True`
   - Capture LLM system prompt
   - Assert: friend detection block present in system prompt (prompt-level enforcement verified)
   - Assert: `triage_urgency` prohibition string present in system prompt
 
-- [ ] **P9-3** [TEST] IG "ortodoncia" (no CTA group) → `list_services` tool logic
+- [x] **P9-3** [TEST] IG "ortodoncia" (no CTA group) → `list_services` tool logic
   - File: `tests/test_chatwoot_ig_list_services.py` (~60 LOC)
   - Message: "hola, info sobre ortodoncia?"
   - Assert: system prompt contains social preamble
   - Assert: `list_services` is in the allowed tools section of the preamble
   - Assert: `triage_urgency` is NOT in the allowed tools section
 
-- [ ] **P9-4** [TEST] WhatsApp message on social-enabled tenant → no preamble (regression)
+- [x] **P9-4** [TEST] WhatsApp message on social-enabled tenant → no preamble (regression)
   - File: `tests/test_chatwoot_whatsapp_no_regression.py` (~50 LOC)
   - Tenant has `social_ig_active=True`, but `channel="whatsapp"`
   - Assert: system prompt does NOT contain "AMIGO" / "LEAD" preamble
   - Assert: system prompt DOES contain ANTI-MARKDOWN block
   - Assert: output is byte-identical to `tests/fixtures/golden_prompt_whatsapp.txt`
 
-- [ ] **P9-5** [TEST] IG message on tenant with `social_ig_active=False` → standard prompt (regression)
+- [x] **P9-5** [TEST] IG message on tenant with `social_ig_active=False` → standard prompt (regression)
   - File: `tests/test_social_flag_off_regression.py` (~50 LOC)
   - `channel="instagram"`, `social_ig_active=False`
   - Assert: system prompt does NOT contain social preamble
@@ -341,7 +341,7 @@
 
 ## Phase 11 — Verify + Archive
 
-- [ ] **P11-1** Run `sdd-verify` against spec
+- [x] **P11-1** Run `sdd-verify` against spec
   - Execute `/sdd-verify instagram-facebook-social-agent`
   - Review all CRITICAL and WARNING findings
 
