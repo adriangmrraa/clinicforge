@@ -1883,7 +1883,9 @@ async def check_availability(
         if treatment_name:
             t_data = await db.pool.fetchrow(
                 """
-                SELECT id, default_duration_minutes, base_price, name, priority FROM treatment_types
+                SELECT id, default_duration_minutes, base_price, name, priority,
+                       is_high_ticket, consultation_duration_minutes, consultation_requirements
+                FROM treatment_types
                 WHERE tenant_id = $1 AND (name ILIKE $2 OR code ILIKE $2) AND is_active = true AND is_available_for_booking = true
                 LIMIT 1
             """,
@@ -1892,7 +1894,12 @@ async def check_availability(
             )
             if not t_data:
                 return "❌ Ese tratamiento no está en la lista de servicios de esta clínica. Los horarios solo se pueden consultar para tratamientos que devuelve 'list_services'. Llamá a list_services y usá solo uno de esos nombres para consultar disponibilidad."
-            duration = t_data["default_duration_minutes"]
+            # High-ticket: use consultation duration for slot search
+            if t_data.get("is_high_ticket"):
+                duration = t_data.get("consultation_duration_minutes") or 30
+                logger.info(f"📅 HIGH_TICKET: using consultation duration {duration}min instead of treatment duration {t_data['default_duration_minutes']}min")
+            else:
+                duration = t_data["default_duration_minutes"]
             treatment_priority = t_data.get("priority", "medium") or "medium"
             avail_price = (
                 float(t_data["base_price"])
@@ -2294,7 +2301,15 @@ async def check_availability(
 
             # Header with treatment name
             treatment_display = treatment_name or "tu turno"
-            lines.append(f"🗓️ Opciones disponibles para tu {treatment_display}:\n")
+            # High-ticket: inform this is an evaluation, not the treatment
+            _is_ht = t_data.get("is_high_ticket") if t_data else False
+            if _is_ht:
+                lines.append(f"🗓️ Opciones disponibles para tu evaluación de {treatment_display}:\n")
+                _consult_reqs = t_data.get("consultation_requirements") if t_data else None
+                if _consult_reqs:
+                    lines.append(f"[CONSULTA_PREVIA_REQUISITOS:{_consult_reqs}]")
+            else:
+                lines.append(f"🗓️ Opciones disponibles para tu {treatment_display}:\n")
 
             for i, opt in enumerate(options):
                 lines.append(
@@ -2304,6 +2319,9 @@ async def check_availability(
             if professional_name:
                 lines.append(f"\nConsultando con Dr/a. {professional_name}.")
 
+            # Duration info
+            if _is_ht:
+                lines.append(f"\n⏱️ La evaluación dura {duration} min.")
             # Price info — internal tag only; agent shows price only if patient asks
             if avail_price:
                 lines.append(f"\n⏱️ Duración: {duration} min")
@@ -2663,7 +2681,9 @@ async def book_appointment(
         if treatment_reason and (final_duration is None or final_duration == 30):
             t_data = await db.pool.fetchrow(
                 """
-                SELECT code, name, default_duration_minutes, base_price FROM treatment_types
+                SELECT code, name, default_duration_minutes, base_price,
+                       is_high_ticket, consultation_duration_minutes, consultation_requirements
+                FROM treatment_types
                 WHERE tenant_id = $1 AND (name ILIKE $2 OR code ILIKE $2) AND is_active = true AND is_available_for_booking = true
                 ORDER BY (LOWER(name) = LOWER($3) OR LOWER(code) = LOWER($3)) DESC, name ASC
                 LIMIT 1
@@ -2674,14 +2694,21 @@ async def book_appointment(
             )
             if not t_data:
                 return "❌ Ese tratamiento no está disponible en esta clínica. Los únicos que se pueden agendar son los que devuelve la tool 'list_services'. Llamá a list_services y ofrecé solo esos al paciente; si pide otro, decile que en esta sede solo se agendan los de esa lista."
-            final_duration = t_data["default_duration_minutes"]
+            # High-ticket: book consultation duration, not treatment duration
+            _book_is_ht = t_data.get("is_high_ticket", False)
+            if _book_is_ht:
+                final_duration = t_data.get("consultation_duration_minutes") or 30
+                logger.info(f"📅 BOOK HIGH_TICKET: using consultation duration {final_duration}min for {t_data['name']}")
+            else:
+                final_duration = t_data["default_duration_minutes"]
             treatment_code = t_data["code"]
-            treatment_display_name = t_data["name"] or treatment_reason
+            _base_name = t_data["name"] or treatment_reason
+            treatment_display_name = f"Evaluación para {_base_name}" if _book_is_ht else _base_name
             treatment_price = (
                 float(t_data["base_price"]) if t_data.get("base_price") else None
             )
             logger.info(
-                f"📅 BOOK TREATMENT: code={treatment_code} name={treatment_display_name} duration={final_duration}min price={treatment_price}"
+                f"📅 BOOK TREATMENT: code={treatment_code} name={treatment_display_name} duration={final_duration}min price={treatment_price} high_ticket={_book_is_ht}"
             )
         elif treatment_reason:
             t_data = await db.pool.fetchrow(

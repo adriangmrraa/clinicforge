@@ -33,6 +33,11 @@ interface TreatmentType {
   pre_instructions?: string;
   post_instructions?: PostInstruction[];
   followup_template?: FollowupMessage[];
+  // Migration 041: consultation fields for high-ticket treatments
+  is_high_ticket?: boolean;
+  consultation_duration_minutes?: number;
+  consultation_requirements?: string;
+  consultation_notes?: string;
 }
 
 type PostTiming = 'immediate' | '24h' | '48h' | '72h' | '1w' | 'stitch_removal' | 'custom';
@@ -544,7 +549,11 @@ export default function TreatmentsView() {
     is_available_for_booking: true,
     internal_notes: '',
     base_price: 0,
-    professional_ids: []
+    professional_ids: [],
+    is_high_ticket: false,
+    consultation_duration_minutes: 30,
+    consultation_requirements: '',
+    consultation_notes: '',
   });
 
   const fetchTreatments = async () => {
@@ -1165,6 +1174,57 @@ export default function TreatmentsView() {
                                 <span className="text-sm font-bold text-white/40 group-hover:text-blue-600 transition-colors">{t('treatments.in_catalog')}</span>
                               </label>
                             </div>
+                          </div>
+
+                          {/* Consultation (High Ticket) */}
+                          <div className="space-y-3 border border-white/[0.06] rounded-xl p-4">
+                            <label className="flex items-center gap-3 cursor-pointer group">
+                              <div className="relative flex items-center">
+                                <input
+                                  type="checkbox"
+                                  checked={editForm.is_high_ticket || false}
+                                  onChange={(e) => setEditForm({ ...editForm, is_high_ticket: e.target.checked })}
+                                  className="peer h-6 w-6 cursor-pointer appearance-none rounded-lg border border-white/[0.08] bg-white/[0.04] transition-all checked:bg-amber-600 checked:border-amber-600 shadow-sm"
+                                />
+                                <CheckCircle className="absolute hidden h-4 w-4 text-white peer-checked:block left-1" />
+                              </div>
+                              <span className="text-sm font-bold text-white/40 group-hover:text-amber-500 transition-colors">{t('treatments.requires_consultation')}</span>
+                            </label>
+                            {editForm.is_high_ticket && (
+                              <div className="space-y-3 mt-2">
+                                <div>
+                                  <label className="block text-xs font-bold text-white/40 ml-1 uppercase">{t('treatments.consultation_duration')}</label>
+                                  <input
+                                    type="number"
+                                    min={15}
+                                    max={120}
+                                    value={editForm.consultation_duration_minutes ?? 30}
+                                    onChange={(e) => setEditForm({ ...editForm, consultation_duration_minutes: parseInt(e.target.value) || 30 })}
+                                    className="w-full mt-1 px-4 py-3 border border-white/[0.08] rounded-xl bg-white/[0.04] text-white text-sm focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500/30"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-xs font-bold text-white/40 ml-1 uppercase">{t('treatments.consultation_requirements')}</label>
+                                  <textarea
+                                    rows={2}
+                                    value={editForm.consultation_requirements || ''}
+                                    onChange={(e) => setEditForm({ ...editForm, consultation_requirements: e.target.value })}
+                                    placeholder={t('treatments.consultation_requirements_placeholder')}
+                                    className="w-full mt-1 px-4 py-3 border border-white/[0.08] rounded-xl bg-white/[0.04] text-white text-sm focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500/30 placeholder-white/20 resize-none"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-xs font-bold text-white/40 ml-1 uppercase">{t('treatments.consultation_notes')}</label>
+                                  <textarea
+                                    rows={2}
+                                    value={editForm.consultation_notes || ''}
+                                    onChange={(e) => setEditForm({ ...editForm, consultation_notes: e.target.value })}
+                                    placeholder={t('treatments.consultation_notes_placeholder')}
+                                    className="w-full mt-1 px-4 py-3 border border-white/[0.08] rounded-xl bg-white/[0.04] text-white text-sm focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500/30 placeholder-white/20 resize-none"
+                                  />
+                                </div>
+                              </div>
+                            )}
                           </div>
 
                           {/* Assigned Professionals */}

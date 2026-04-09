@@ -825,6 +825,11 @@ class TreatmentType(Base):
     post_instructions = Column(JSONB, nullable=True)
     followup_template = Column(JSONB, nullable=True)
     patient_display_name = Column(Text, nullable=True)
+    # Migration 041: consultation fields for high-ticket treatments
+    is_high_ticket = Column(Boolean, nullable=False, server_default="false")
+    consultation_duration_minutes = Column(Integer, nullable=True, server_default="30")
+    consultation_requirements = Column(Text, nullable=True)
+    consultation_notes = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

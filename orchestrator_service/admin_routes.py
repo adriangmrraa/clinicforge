@@ -896,14 +896,15 @@ class TreatmentTypeCreate(BaseModel):
     base_price: Optional[float] = 0
     priority: Optional[str] = "medium"
     professional_ids: Optional[List[int]] = None
-    # Migration 036: pre_instructions accepts dict (PreInstructions),
-    # legacy plain string (wrapped on save), or raw dict for flexibility.
     pre_instructions: Optional[Union[PreInstructions, dict, str]] = None
-    # post_instructions accepts dict (PostInstructions), legacy timed-list,
-    # raw dict, or string (rare).
     post_instructions: Optional[Union[PostInstructions, list, dict, str]] = None
     followup_template: Optional[Any] = None
     confirm_unusual_price: bool = False
+    # Migration 041: consultation fields for high-ticket treatments
+    is_high_ticket: bool = False
+    consultation_duration_minutes: Optional[int] = 30
+    consultation_requirements: Optional[str] = None
+    consultation_notes: Optional[str] = None
 
 
 class TreatmentTypeUpdate(BaseModel):
@@ -9040,6 +9041,11 @@ class TreatmentTypeUpdate(BaseModel):
     post_instructions: Optional[Union[PostInstructions, list, dict, str]] = None
     followup_template: Optional[Any] = None
     confirm_unusual_price: bool = False
+    # Migration 041: consultation fields for high-ticket treatments
+    is_high_ticket: bool = False
+    consultation_duration_minutes: Optional[int] = 30
+    consultation_requirements: Optional[str] = None
+    consultation_notes: Optional[str] = None
 
 
 async def _validate_treatment_price_scale(
@@ -9522,8 +9528,10 @@ async def update_treatment_type(
             session_gap_days = $9, is_active = $10, is_available_for_booking = $11,
             internal_notes = $12, base_price = $13, priority = $14,
             pre_instructions = $15, post_instructions = $16, followup_template = $17,
+            is_high_ticket = $18, consultation_duration_minutes = $19,
+            consultation_requirements = $20, consultation_notes = $21,
             updated_at = NOW()
-        WHERE tenant_id = $18 AND code = $19
+        WHERE tenant_id = $22 AND code = $23
     """,
         treatment.name,
         treatment.description,
@@ -9541,8 +9549,6 @@ async def update_treatment_type(
         treatment.priority
         if treatment.priority in ("high", "medium-high", "medium", "low")
         else "medium",
-        # Migration 036: pre_instructions is now JSONB. Coerce string /
-        # PreInstructions / dict into a canonical dict before serializing.
         json.dumps(_coerce_pre_instructions(treatment.pre_instructions))
         if treatment.pre_instructions is not None
         else None,
@@ -9552,6 +9558,10 @@ async def update_treatment_type(
         json.dumps(treatment.followup_template)
         if treatment.followup_template is not None
         else None,
+        treatment.is_high_ticket,
+        treatment.consultation_duration_minutes,
+        treatment.consultation_requirements,
+        treatment.consultation_notes,
         tenant_id,
         code,
     )
