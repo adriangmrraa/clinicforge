@@ -24,31 +24,23 @@ class TestPriceScaleValidator:
     @pytest.mark.asyncio
     async def test_normal_price_passes(self, mock_pool):
         """base_price=70000, consultation_price=15000 → passes (ratio 4.7x, under threshold)."""
+        import sys
+
+        sys.path.insert(0, "orchestrator_service")
+
         mock_pool.fetchrow = AsyncMock(return_value={"consultation_price": 15000})
 
-        with patch("orchestrator_service.admin_routes.db") as mock_db:
+        # Patch admin_routes.db using the module path that matches the actual import
+        with patch("admin_routes.db") as mock_db:
             mock_db.pool = mock_pool
-            # Import after patching
-            import sys
+            from admin_routes import _validate_treatment_price_scale
 
-            sys.path.insert(0, "orchestrator_service")
-            try:
-                from admin_routes import _validate_treatment_price_scale
-
-                # Should NOT raise
-                await _validate_treatment_price_scale(
-                    base_price=70000,
-                    confirm_unusual_price=False,
-                    tenant_id=1,
-                )
-            except ImportError:
-                # If can't import due to dependencies, test the logic directly
-                base_price = 70000
-                consultation_price = 15000
-                threshold = consultation_price * 100  # 1,500,000
-                assert base_price <= threshold, (
-                    "70000 should be under threshold of 1,500,000"
-                )
+            # Should NOT raise — 70000 is well under the 100x threshold (1,500,000)
+            await _validate_treatment_price_scale(
+                base_price=70000,
+                confirm_unusual_price=False,
+                tenant_id=1,
+            )
 
     @pytest.mark.asyncio
     async def test_suspicious_price_blocked(self):
