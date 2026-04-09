@@ -80,19 +80,52 @@ def _with_tenant_blocks(base_prompt: str, state: AgentState, specialist_name: st
     sees ONLY the blocks relevant to its stage of TORA's flow. Empty blocks are
     skipped so the prompt stays lean for tenants without that config
     (zero-regression default).
+
+    Social channel preamble (Instagram/Facebook) is prepended to the final prompt
+    when state["is_social_channel"] is True (set by buffer_task.compute_social_context
+    and wired through graph.run_turn via ctx.extra).
     """
+    # --- Social preamble injection (phase 5) ---
+    # Prepend BEFORE tenant blocks so that social instructions are the first thing
+    # every specialist sees — no tenant block can override or bury the channel rules.
+    social_prefix = ""
+    if state.get("is_social_channel"):
+        try:
+            from services.social_prompt import build_social_preamble
+            from services.social_routes import CTA_ROUTES
+
+            social_prefix = build_social_preamble(
+                tenant_id=state.get("tenant_id", 0),
+                channel=state.get("channel", "instagram"),
+                social_landings=state.get("social_landings"),
+                instagram_handle=state.get("instagram_handle"),
+                facebook_page_id=state.get("facebook_page_id"),
+                cta_routes=CTA_ROUTES,
+            )
+        except Exception:
+            logger.exception(f"{specialist_name}: social preamble build failed — continuing without it")
+
     try:
         from .tenant_context import select_blocks_for_specialist
 
         blocks = select_blocks_for_specialist(state, specialist_name)
     except Exception:
         logger.exception(f"{specialist_name}: tenant block selection failed")
+        if social_prefix:
+            return social_prefix + "\n\n---\n\n" + base_prompt
         return base_prompt
 
     extras = [v.strip() for v in blocks.values() if v and str(v).strip()]
+
+    # Assemble: [social_prefix] + base_prompt + [tenant_blocks]
+    if social_prefix:
+        assembled = social_prefix + "\n\n---\n\n" + base_prompt
+    else:
+        assembled = base_prompt
+
     if not extras:
-        return base_prompt
-    return base_prompt + "\n\n" + "\n\n".join(extras)
+        return assembled
+    return assembled + "\n\n" + "\n\n".join(extras)
 
 
 def _get_model_config(state: AgentState) -> dict[str, Any]:

@@ -39,5 +39,14 @@ class AgentState(TypedDict, total=False):
     # NotRequired: existing callers that build AgentState without it remain valid.
     tenant_context: dict[str, Any]
 
+    # Social channel context (Instagram / Facebook social agent — phase 5)
+    # Populated by graph.run_turn() from ctx.extra (set by buffer_task compute_social_context).
+    # Defaults: channel="whatsapp", is_social_channel=False, others=None.
+    channel: str  # "whatsapp" | "instagram" | "facebook" | "chatwoot"
+    is_social_channel: bool
+    social_landings: Optional[dict]
+    instagram_handle: Optional[str]
+    facebook_page_id: Optional[str]
+
     # Metadata
     start_time: float

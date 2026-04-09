@@ -161,6 +161,14 @@ async def run_turn(ctx: "TurnContext") -> "TurnResult":
         "tools_called": [],
         "handoff_reason": None,
         "start_time": start,
+        # Social channel context (Instagram/Facebook agent — phase 5).
+        # Populated from ctx.extra which is set by buffer_task.compute_social_context.
+        # Safe defaults ensure backward compat with callers that don't set extra.
+        "channel": ctx.extra.get("channel", "whatsapp"),
+        "is_social_channel": ctx.extra.get("is_social_channel", False),
+        "social_landings": ctx.extra.get("social_landings"),
+        "instagram_handle": ctx.extra.get("instagram_handle"),
+        "facebook_page_id": ctx.extra.get("facebook_page_id"),
     }
 
     # Human override silence window → empty output, agent_used=handoff
