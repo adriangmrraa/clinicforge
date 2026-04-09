@@ -1619,9 +1619,12 @@ async def check_availability(
         used_interpreted = False
         if interpreted_date:
             try:
-                target_date = dateutil_parse(
-                    str(interpreted_date), dayfirst=True
-                ).date()
+                id_str = str(interpreted_date).strip()
+                # ISO format YYYY-MM-DD is unambiguous — parse directly
+                if re.match(r"^\d{4}-\d{2}-\d{2}$", id_str):
+                    target_date = date.fromisoformat(id_str)
+                else:
+                    target_date = dateutil_parse(id_str, dayfirst=True).date()
                 used_interpreted = True
                 logger.info(
                     f"📅 Using LLM interpreted_date: {interpreted_date} → {target_date}"
@@ -2393,7 +2396,11 @@ async def book_appointment(
         apt_datetime = None
         if interpreted_date:
             try:
-                base_date = dateutil_parse(str(interpreted_date), dayfirst=True).date()
+                id_str_book = str(interpreted_date).strip()
+                if re.match(r"^\d{4}-\d{2}-\d{2}$", id_str_book):
+                    base_date = date.fromisoformat(id_str_book)
+                else:
+                    base_date = dateutil_parse(id_str_book, dayfirst=True).date()
                 # Extraer SOLO la hora del date_time (ignorar la fecha que pueda contener)
                 time_match = re.search(r"(\d{1,2})[:h](\d{2})", date_time)
                 if time_match:
