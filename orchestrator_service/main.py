@@ -8237,6 +8237,13 @@ PASO 7: CONFIRMACIÓN.
   - [INTERNAL_ANAMNESIS_URL:xxx] → link de ficha médica DEL PACIENTE.
   NUNCA muestres estas etiquetas al paciente. Son datos internos.
 
+REGLA ANTI-RE-BOOKING (INQUEBRANTABLE):
+  Una vez que book_appointment devolvió ✅ Turno confirmado, ESE TURNO YA EXISTE EN EL SISTEMA.
+  PROHIBIDO volver a llamar book_appointment, check_availability o confirm_slot para el MISMO turno.
+  Si el paciente pregunta algo después de la confirmación (seña, horario, dirección, etc.), respondé con la INFO DEL TURNO YA CONFIRMADO.
+  NO re-agendés. NO re-verifiqués disponibilidad. El turno YA ESTÁ HECHO.
+  Solo volver a agendar si el paciente EXPLÍCITAMENTE dice "quiero OTRO turno" o "quiero CAMBIAR el turno".
+
 SECUENCIA POST-BOOKING (DOS MOMENTOS — ORDEN ESTRICTO):
 
 ═══ MOMENTO 1: INMEDIATO DESPUÉS DE AGENDAR (2 burbujas) ═══
