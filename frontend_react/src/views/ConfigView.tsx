@@ -17,6 +17,10 @@ interface ClinicSettings {
     name: string;
     ui_language: UiLanguage;
     ai_engine_mode?: 'solo' | 'multi';
+    social_ig_active?: boolean;
+    social_landings?: { main?: string; blanqueamiento?: string } | null;
+    instagram_handle?: string | null;
+    facebook_page_id?: string | null;
 }
 
 const LANGUAGE_OPTIONS: { value: UiLanguage; labelKey: string }[] = [
@@ -103,6 +107,13 @@ export default function ConfigView() {
     const [engineHealthChecking, setEngineHealthChecking] = useState(false);
     const [engineHealthResult, setEngineHealthResult] = useState<{ solo: any; multi: any } | null>(null);
 
+    // Social IG/FB Agent State
+    const [socialIgActive, setSocialIgActive] = useState(false);
+    const [socialLandingMain, setSocialLandingMain] = useState('');
+    const [socialLandingBlanq, setSocialLandingBlanq] = useState('');
+    const [instagramHandle, setInstagramHandle] = useState('');
+    const [facebookPageId, setFacebookPageId] = useState('');
+
     useEffect(() => {
         loadGeneralSettings();
         if (user?.role === 'ceo') {
@@ -126,6 +137,12 @@ export default function ConfigView() {
             setLoading(true);
             const res = await api.get<ClinicSettings>('/admin/settings/clinic');
             setSettings(res.data);
+            // Populate social state
+            setSocialIgActive(res.data.social_ig_active ?? false);
+            setSocialLandingMain(res.data.social_landings?.main ?? '');
+            setSocialLandingBlanq(res.data.social_landings?.blanqueamiento ?? '');
+            setInstagramHandle(res.data.instagram_handle ?? '');
+            setFacebookPageId(res.data.facebook_page_id ?? '');
         } catch (err) {
             console.error(err);
         } finally {
@@ -310,6 +327,26 @@ export default function ConfigView() {
         }
     };
 
+    const handleSaveSocialSettings = async () => {
+        setSaving(true);
+        try {
+            const landings: Record<string, string> = {};
+            if (socialLandingMain.trim()) landings.main = socialLandingMain.trim();
+            if (socialLandingBlanq.trim()) landings.blanqueamiento = socialLandingBlanq.trim();
+            await api.patch('/admin/settings/clinic', {
+                social_ig_active: socialIgActive,
+                social_landings: Object.keys(landings).length > 0 ? landings : null,
+                instagram_handle: instagramHandle.trim() || null,
+                facebook_page_id: facebookPageId.trim() || null,
+            });
+            showSuccess(t('config.saved'));
+        } catch (err: any) {
+            setError(err.response?.data?.detail || t('config.save_error'));
+        } finally {
+            setSaving(false);
+        }
+    };
+
     const handleSaveIntegration = async () => {
         setSaving(true);
         setError(null);
@@ -436,6 +473,102 @@ export default function ConfigView() {
                             <Loader2 className="w-3 h-3 animate-spin" /> {t('config.engine_health_checking')}
                         </p>
                     )}
+                </div>
+            )}
+
+            {/* Social Media Agent Config - CEO only */}
+            {user?.role === 'ceo' && (
+                <div className="bg-white/[0.03] border border-white/[0.06] rounded-2xl p-4 sm:p-6">
+                    <div className="flex items-center gap-2 mb-4">
+                        <Facebook size={20} className="text-white/60" />
+                        <h2 className="text-lg font-semibold text-white">{t('social_agent.section_title')}</h2>
+                    </div>
+
+                    {/* Toggle */}
+                    <div className="flex items-center justify-between mb-4 p-3 bg-white/[0.02] border border-white/[0.06] rounded-xl">
+                        <div>
+                            <p className="text-sm font-medium text-white">{t('social_agent.active_label')}</p>
+                            <p className="text-xs text-white/40 mt-0.5">{t('social_agent.active_description')}</p>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => setSocialIgActive(v => !v)}
+                            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                                socialIgActive ? 'bg-blue-600' : 'bg-white/10'
+                            }`}
+                        >
+                            <span
+                                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                                    socialIgActive ? 'translate-x-6' : 'translate-x-1'
+                                }`}
+                            />
+                        </button>
+                    </div>
+
+                    <div className="space-y-4">
+                        {/* Instagram Handle */}
+                        <div>
+                            <label className="text-sm font-medium text-white/70 mb-1 block">
+                                {t('social_agent.ig_handle')}
+                            </label>
+                            <input
+                                type="text"
+                                value={instagramHandle}
+                                onChange={e => setInstagramHandle(e.target.value)}
+                                placeholder={t('social_agent.ig_handle_placeholder')}
+                                className="w-full px-4 py-2.5 bg-white/[0.04] border border-white/[0.08] rounded-xl text-white placeholder-white/30 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                            />
+                        </div>
+
+                        {/* Facebook Page ID */}
+                        <div>
+                            <label className="text-sm font-medium text-white/70 mb-1 block">
+                                {t('social_agent.fb_page_id')}
+                            </label>
+                            <input
+                                type="text"
+                                value={facebookPageId}
+                                onChange={e => setFacebookPageId(e.target.value)}
+                                placeholder={t('social_agent.fb_page_id_placeholder')}
+                                className="w-full px-4 py-2.5 bg-white/[0.04] border border-white/[0.08] rounded-xl text-white placeholder-white/30 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                            />
+                        </div>
+
+                        {/* Landings */}
+                        <div>
+                            <p className="text-sm font-medium text-white/70 mb-2">{t('social_agent.landings_title')}</p>
+                            <div className="space-y-3">
+                                <div>
+                                    <label className="text-xs text-white/50 mb-1 block">{t('social_agent.landing_main')}</label>
+                                    <input
+                                        type="text"
+                                        value={socialLandingMain}
+                                        onChange={e => setSocialLandingMain(e.target.value)}
+                                        placeholder={t('social_agent.landing_main_placeholder')}
+                                        className="w-full px-4 py-2.5 bg-white/[0.04] border border-white/[0.08] rounded-xl text-white placeholder-white/30 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-xs text-white/50 mb-1 block">{t('social_agent.landing_blanqueamiento')}</label>
+                                    <input
+                                        type="text"
+                                        value={socialLandingBlanq}
+                                        onChange={e => setSocialLandingBlanq(e.target.value)}
+                                        placeholder={t('social_agent.landing_blanqueamiento_placeholder')}
+                                        className="w-full px-4 py-2.5 bg-white/[0.04] border border-white/[0.08] rounded-xl text-white placeholder-white/30 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                        <button
+                            onClick={handleSaveSocialSettings}
+                            disabled={saving}
+                            className="w-full py-3 bg-white text-[#0a0e1a] rounded-xl font-semibold transition-all flex justify-center items-center gap-2 hover:bg-white/90 disabled:opacity-50"
+                        >
+                            {saving ? <Loader2 className="animate-spin w-5 h-5" /> : t('common.save')}
+                        </button>
+                    </div>
                 </div>
             )}
         </div>

@@ -2254,5 +2254,19 @@
     "instructions_chatid": "To get your Chat ID, message @userinfobot on Telegram",
     "copy_url": "Copy URL",
     "copied": "Copied!"
+  },
+  "social_agent": {
+    "section_title": "Social Media Agent",
+    "active_label": "Enable Instagram/Facebook agent",
+    "active_description": "When active, Instagram and Facebook messages use a specialized prompt with CTA detection, pitches and direct booking.",
+    "ig_handle": "Instagram Handle",
+    "ig_handle_placeholder": "@dralauradelgado",
+    "fb_page_id": "Facebook Page ID",
+    "fb_page_id_placeholder": "123456789",
+    "landings_title": "Landing Pages",
+    "landing_main": "Main landing",
+    "landing_main_placeholder": "https://dralauradelgado.com/",
+    "landing_blanqueamiento": "Whitening landing",
+    "landing_blanqueamiento_placeholder": "https://blanqueamiento.dralauradelgado.com/"
   }
 }

@@ -2321,5 +2321,19 @@
     "select_clinic": "Seleccionar clínica",
     "select_clinic_hint": "Cada clínica tiene su propio bot de Telegram con sus pacientes y datos independientes.",
     "select_clinic_first": "Seleccioná una clínica para configurar Telegram"
+  },
+  "social_agent": {
+    "section_title": "Agente de Redes Sociales",
+    "active_label": "Activar agente de Instagram/Facebook",
+    "active_description": "Cuando está activo, los mensajes de Instagram y Facebook usan un prompt especializado con detección de CTAs, pitches y booking directo.",
+    "ig_handle": "Handle de Instagram",
+    "ig_handle_placeholder": "@dralauradelgado",
+    "fb_page_id": "Facebook Page ID",
+    "fb_page_id_placeholder": "123456789",
+    "landings_title": "Landing Pages",
+    "landing_main": "Landing principal",
+    "landing_main_placeholder": "https://dralauradelgado.com/",
+    "landing_blanqueamiento": "Landing de blanqueamiento",
+    "landing_blanqueamiento_placeholder": "https://blanqueamiento.dralauradelgado.com/"
   }
 }
