@@ -64,7 +64,16 @@ class PatientContext:
                     text("""
                         SELECT id, first_name, last_name, dni, email, human_override_until
                         FROM patients
-                        WHERE tenant_id = :tenant_id AND phone_number = :phone
+                        WHERE tenant_id = :tenant_id AND (
+                            phone_number = :phone
+                            OR REGEXP_REPLACE(phone_number, '[^0-9]', '', 'g') = REGEXP_REPLACE(:phone, '[^0-9]', '', 'g')
+                            OR instagram_psid = :phone
+                            OR facebook_psid = :phone
+                            OR external_ids->>'instagram' = :phone
+                            OR external_ids->>'facebook' = :phone
+                            OR external_ids->>'chatwoot' = :phone
+                        )
+                        ORDER BY updated_at DESC NULLS LAST
                         LIMIT 1
                     """),
                     {"tenant_id": tenant_id, "phone": phone_number},

@@ -497,18 +497,19 @@ async def get_patient_clinical_context(
         )
 
     if not patient:
-        # Buscar por external_ids (IG/FB)
-        # Probamos el ID contra todas las claves del JSONB
+        # Buscar por external_ids (IG/FB), instagram_psid, facebook_psid
         patient = await db.pool.fetchrow(
             """
             SELECT id, first_name, last_name, phone_number, status, urgency_level, urgency_reason, preferred_schedule,
                    acquisition_source, meta_ad_id, meta_ad_headline, meta_ad_body, external_ids, medical_history
-            FROM patients 
-            WHERE tenant_id = $1 
+            FROM patients
+            WHERE tenant_id = $1
             AND (
-                external_ids->>'instagram' = $2 OR 
-                external_ids->>'facebook' = $2 OR 
-                external_ids->>'chatwoot' = $2
+                external_ids->>'instagram' = $2 OR
+                external_ids->>'facebook' = $2 OR
+                external_ids->>'chatwoot' = $2 OR
+                instagram_psid = $2 OR
+                facebook_psid = $2
             )
             AND status != 'deleted'
         """,

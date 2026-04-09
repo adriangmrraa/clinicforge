@@ -587,14 +587,21 @@ async def process_buffer_task(
 
         # Spec 24 / Spec 06 / v7.6: Patient Identity & Appointment Context
         # Fetch patient data — search by phone (WhatsApp) or PSID (Instagram/Facebook)
+        # or by external_ids JSONB (for IG/FB patients linked post-creation)
         phone_digits = normalize_phone_digits(external_user_id)
         patient_row = await pool.fetchrow(
             """SELECT id, first_name, last_name, dni, email, phone_number, acquisition_source, anamnesis_token, medical_history, assigned_professional_id FROM patients
                WHERE tenant_id = $1 AND (
                    REGEXP_REPLACE(phone_number, '[^0-9]', '', 'g') = $2
+                   OR phone_number = $3
                    OR instagram_psid = $3
                    OR facebook_psid = $3
-               )""",
+                   OR external_ids->>'instagram' = $3
+                   OR external_ids->>'facebook' = $3
+                   OR external_ids->>'chatwoot' = $3
+               )
+               ORDER BY updated_at DESC NULLS LAST
+               LIMIT 1""",
             tenant_id,
             phone_digits,
             external_user_id,
