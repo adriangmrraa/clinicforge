@@ -297,23 +297,35 @@ def parse_date(date_query: str) -> Optional[date]:
         "hoy": today,
         "today": today,
     }
-    # "mañana" solo como día (no como "mañana" = morning en contexto de hora)
-    # Solo matchear si query ES "mañana" o empieza/termina con "mañana" como palabra completa
-    if re.search(r"\bmañana\b", query_clean) and not re.search(
-        r"\b(por la|a la|de la)\s+mañana\b", query
-    ):
-        # FIX: strip time tokens (10hs, 10:00, 10am, a las 10, etc.) before checking for digits.
-        # Without this, "mañana a las 10hs" would have digit "10" and skip the tomorrow shortcut,
-        # falling through to dateutil which can return wrong dates.
-        time_pattern = re.compile(
-            r"\b(?:a\s+las?\s+)?\d{1,2}(?::\d{2})?\s*(?:hs?|h|am|pm|hrs|horas?)?\b",
-            re.IGNORECASE,
-        )
-        query_no_time = time_pattern.sub("", query_clean).strip()
-        # Solo si no hay otros indicadores de fecha (evitar "mañana 30 de abril")
-        if not re.search(r"\d", query_no_time):
-            logger.info(f"📅 parse_date: '{date_query}' → tomorrow (mañana keyword)")
-            return (get_now_arg() + timedelta(days=1)).date()
+    # "mañana" como día (tomorrow) vs "por la mañana" (morning time preference)
+    # Detect "mañana" as tomorrow even in "mañana por la mañana" (tomorrow morning)
+    has_manana_word = re.search(r"\bmañana\b", query_clean)
+    morning_ctx = re.search(r"\b(por la|a la|de la)\s+mañana\b", query)
+    if has_manana_word:
+        # "mañana por la mañana" → "mañana" before "por la mañana" = tomorrow + morning
+        # "por la mañana" alone (no leading "mañana") = only time preference, not date
+        is_tomorrow = False
+        if morning_ctx:
+            # Strip the "por la/a la/de la mañana" part and check if standalone "mañana" remains
+            stripped = re.sub(r"\b(por la|a la|de la)\s+mañana\b", "", query_clean).strip()
+            if re.search(r"\bmañana\b", stripped):
+                is_tomorrow = True  # "mañana por la mañana" → date is tomorrow
+        else:
+            is_tomorrow = True  # plain "mañana" without morning context
+
+        if is_tomorrow:
+            # Strip time tokens (10hs, 10:00, etc.) before checking for date digits
+            time_pattern = re.compile(
+                r"\b(?:a\s+las?\s+)?\d{1,2}(?::\d{2})?\s*(?:hs?|h|am|pm|hrs|horas?)?\b",
+                re.IGNORECASE,
+            )
+            query_no_time = time_pattern.sub("", query_clean).strip()
+            # Strip morning context too for digit check
+            query_no_time = re.sub(r"\b(por la|a la|de la)\s+mañana\b", "", query_no_time).strip()
+            # Solo si no hay otros indicadores de fecha (evitar "mañana 30 de abril")
+            if not re.search(r"\d", query_no_time):
+                logger.info(f"📅 parse_date: '{date_query}' → tomorrow (mañana keyword)")
+                return (get_now_arg() + timedelta(days=1)).date()
     if "tomorrow" in query_clean:
         time_pattern = re.compile(
             r"\b(?:at\s+)?\d{1,2}(?::\d{2})?\s*(?:hs?|h|am|pm|hrs|hours?)?\b",
@@ -391,9 +403,19 @@ def parse_date(date_query: str) -> Optional[date]:
         re.search(r"\d{1,2}[/\-]\d{1,2}", query_clean)
     )  # "30/04", "15-05"
     has_explicit_month = has_month_name or has_month_number
-    if re.search(r"\d", query_clean):
+    # Strip time tokens BEFORE dateutil to avoid "el 8 a las 15" → day=8 month=15
+    _time_strip = re.compile(
+        r"\b(?:a\s+las?\s+)?\d{1,2}(?::\d{2})?\s*(?:hs?|h|am|pm|hrs|horas?)\b",
+        re.IGNORECASE,
+    )
+    query_for_dateutil = _time_strip.sub("", query_clean).strip()
+    # Also strip standalone "a las N" patterns (without unit suffix)
+    query_for_dateutil = re.sub(r"\ba\s+las?\s+\d{1,2}\b", "", query_for_dateutil).strip()
+    if not query_for_dateutil:
+        query_for_dateutil = query_clean  # fallback if everything was stripped
+    if re.search(r"\d", query_for_dateutil):
         try:
-            parsed = dateutil_parse(query_clean, dayfirst=True, fuzzy=True).date()
+            parsed = dateutil_parse(query_for_dateutil, dayfirst=True, fuzzy=True).date()
             if not re.search(r"20\d{2}", query):
                 # Si NO hay mes explícito (solo un número como "15" o "cerca del 15"),
                 # dateutil asume mes actual. Si eso resulta en el pasado, avanzar al próximo mes.
