@@ -21,6 +21,8 @@ interface ClinicSettings {
     social_landings?: { main?: string; blanqueamiento?: string } | null;
     instagram_handle?: string | null;
     facebook_page_id?: string | null;
+    sena_expiration_hours?: number | null;
+    max_unpaid_appointments?: number | null;
 }
 
 const LANGUAGE_OPTIONS: { value: UiLanguage; labelKey: string }[] = [
@@ -113,6 +115,9 @@ export default function ConfigView() {
     const [socialLandingBlanq, setSocialLandingBlanq] = useState('');
     const [instagramHandle, setInstagramHandle] = useState('');
     const [facebookPageId, setFacebookPageId] = useState('');
+    // Seña guardrails (migration 042)
+    const [senaExpirationHours, setSenaExpirationHours] = useState(24);
+    const [maxUnpaidAppointments, setMaxUnpaidAppointments] = useState(1);
 
     useEffect(() => {
         loadGeneralSettings();
@@ -143,6 +148,8 @@ export default function ConfigView() {
             setSocialLandingBlanq(res.data.social_landings?.blanqueamiento ?? '');
             setInstagramHandle(res.data.instagram_handle ?? '');
             setFacebookPageId(res.data.facebook_page_id ?? '');
+            setSenaExpirationHours(res.data.sena_expiration_hours ?? 24);
+            setMaxUnpaidAppointments(res.data.max_unpaid_appointments ?? 1);
         } catch (err) {
             console.error(err);
         } finally {
@@ -569,6 +576,65 @@ export default function ConfigView() {
                             {saving ? <Loader2 className="animate-spin w-5 h-5" /> : t('common.save')}
                         </button>
                     </div>
+                </div>
+            )}
+
+            {/* Seña / Appointment Guardrails */}
+            {user?.role === 'ceo' && (
+                <div className="bg-white/[0.04] border border-amber-500/20 rounded-2xl p-4 sm:p-6 space-y-5">
+                    <div className="flex items-center gap-3">
+                        <Clock className="w-5 h-5 text-amber-400" />
+                        <h2 className="text-lg font-semibold text-white">{t('config.sena_guardrails_title')}</h2>
+                    </div>
+                    <p className="text-sm text-white/50">{t('config.sena_guardrails_desc')}</p>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                            <label className="block text-xs font-bold text-white/55 uppercase">{t('config.sena_expiration_hours')}</label>
+                            <input
+                                type="number"
+                                min={0}
+                                max={168}
+                                value={senaExpirationHours}
+                                onChange={(e) => setSenaExpirationHours(parseInt(e.target.value) || 0)}
+                                className="w-full px-4 py-3 bg-white/[0.04] border border-white/[0.10] rounded-xl text-white focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500/30"
+                            />
+                            <p className="text-xs text-white/30">{t('config.sena_expiration_hint')}</p>
+                        </div>
+                        <div className="space-y-2">
+                            <label className="block text-xs font-bold text-white/55 uppercase">{t('config.max_unpaid_label')}</label>
+                            <input
+                                type="number"
+                                min={0}
+                                max={10}
+                                value={maxUnpaidAppointments}
+                                onChange={(e) => setMaxUnpaidAppointments(parseInt(e.target.value) || 0)}
+                                className="w-full px-4 py-3 bg-white/[0.04] border border-white/[0.10] rounded-xl text-white focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500/30"
+                            />
+                            <p className="text-xs text-white/30">{t('config.max_unpaid_hint')}</p>
+                        </div>
+                    </div>
+
+                    <button
+                        onClick={async () => {
+                            setSaving(true);
+                            try {
+                                await api.patch('/admin/settings/clinic', {
+                                    sena_expiration_hours: senaExpirationHours,
+                                    max_unpaid_appointments: maxUnpaidAppointments,
+                                });
+                                showSuccess(t('config.saved'));
+                            } catch (err: any) {
+                                setError(err.response?.data?.detail || t('config.save_error'));
+                            } finally {
+                                setSaving(false);
+                            }
+                        }}
+                        disabled={saving}
+                        className="w-full py-3 bg-amber-600 text-white rounded-xl font-semibold transition-all flex justify-center items-center gap-2 hover:bg-amber-700 disabled:opacity-50"
+                    >
+                        {saving ? <Loader2 className="animate-spin w-5 h-5" /> : t('common.save')}
+                    </button>
                 </div>
             )}
         </div>

@@ -3790,7 +3790,7 @@ async def get_clinic_settings(
     """Retorna la configuración operativa de la clínica (nombre, horarios, ui_language) desde el tenant."""
     try:
         row = await db.pool.fetchrow(
-            "SELECT clinic_name, config, ai_engine_mode, social_ig_active, social_landings, instagram_handle, facebook_page_id FROM tenants WHERE id = $1",
+            "SELECT clinic_name, config, ai_engine_mode, social_ig_active, social_landings, instagram_handle, facebook_page_id, sena_expiration_hours, max_unpaid_appointments FROM tenants WHERE id = $1",
             resolved_tenant_id,
         )
         if not row:
@@ -3820,6 +3820,8 @@ async def get_clinic_settings(
             "social_landings": raw_landings,
             "instagram_handle": row.get("instagram_handle"),
             "facebook_page_id": row.get("facebook_page_id"),
+            "sena_expiration_hours": row.get("sena_expiration_hours") or 24,
+            "max_unpaid_appointments": row.get("max_unpaid_appointments") or 1,
         }
     except Exception as e:
         logger.warning(f"get_clinic_settings failed: {e}")
@@ -3852,6 +3854,9 @@ class ClinicSettingsUpdate(BaseModel):
     social_landings: Optional[dict] = None
     instagram_handle: Optional[str] = None
     facebook_page_id: Optional[str] = None
+    # Seña guardrails (migration 042)
+    sena_expiration_hours: Optional[int] = None
+    max_unpaid_appointments: Optional[int] = None
 
 
 @router.patch(
@@ -3965,6 +3970,29 @@ async def update_clinic_settings(
             logger.error(f"update_clinic_settings social fields failed: {e}")
             raise HTTPException(
                 status_code=500, detail="Error al guardar la configuración social."
+            )
+
+    # Handle seña guardrails (migration 042)
+    sena_updates: dict = {}
+    if payload.sena_expiration_hours is not None:
+        sena_updates["sena_expiration_hours"] = max(0, min(168, payload.sena_expiration_hours))
+    if payload.max_unpaid_appointments is not None:
+        sena_updates["max_unpaid_appointments"] = max(0, min(10, payload.max_unpaid_appointments))
+
+    if sena_updates:
+        set_clauses_s = []
+        params_s: list = []
+        for col, val in sena_updates.items():
+            params_s.append(val)
+            set_clauses_s.append(f"{col} = ${len(params_s)}")
+        params_s.append(resolved_tenant_id)
+        sql_s = f"UPDATE tenants SET {', '.join(set_clauses_s)}, updated_at = now() WHERE id = ${len(params_s)}"
+        try:
+            await db.pool.execute(sql_s, *params_s)
+        except Exception as e:
+            logger.error(f"update_clinic_settings sena guardrails failed: {e}")
+            raise HTTPException(
+                status_code=500, detail="Error al guardar la configuración de seña."
             )
 
     return {"status": "ok", "ui_language": getattr(payload, "ui_language", None)}
