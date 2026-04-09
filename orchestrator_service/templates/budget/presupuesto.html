@@ -576,7 +576,12 @@ body {
     <tbody>
         {% for item in items %}
         <tr>
-            <td>{{ item.treatment_name }}</td>
+            <td>
+                {{ item.treatment_name }}
+                {% if item.custom_description and item.custom_description != item.treatment_name %}
+                <div style="font-size: 8pt; color: #64748b; margin-top: 4px; line-height: 1.4; white-space: pre-wrap;">{{ item.custom_description }}</div>
+                {% endif %}
+            </td>
             <td class="col-price">${{ item.estimated_price | ars }}</td>
             <td class="col-price">
                 {% if item.approved_price is not none %}

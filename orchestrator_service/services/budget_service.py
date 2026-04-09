@@ -204,6 +204,7 @@ async def gather_budget_data(pool, plan_id: str, tenant_id: int) -> Optional[dic
         "items": [
             {
                 "treatment_name": i["treatment_name"] or "Sin nombre",
+                "custom_description": i["custom_description"] or "",
                 "estimated_price": float(i["estimated_price"] or 0),
                 "approved_price": float(i["approved_price"]) if i["approved_price"] is not None else None,
                 "status": i["status"] or "pending",
