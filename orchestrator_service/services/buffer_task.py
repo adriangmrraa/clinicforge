@@ -51,6 +51,48 @@ _RESEARCH_INTENT_PATTERN = None
 logger = logging.getLogger(__name__)
 
 
+def compute_social_context(channel_type: str, tenant_row: dict) -> dict:
+    """Compute social channel context for TurnContext.extra.
+
+    Pure function — no I/O. Called from the engine dispatch point in
+    _run_ai_for_phone to populate the 5 social keys before passing ctx to the
+    engine router (multi path) or build_system_prompt (solo path).
+
+    Args:
+        channel_type: "instagram" | "facebook" | "whatsapp" | "chatwoot" | None
+        tenant_row: asyncpg Record or dict from the tenants SELECT query.
+                    Expected keys: social_ig_active, social_landings,
+                    instagram_handle, facebook_page_id.  Missing keys default
+                    to falsy values (backward compat).
+
+    Returns:
+        dict with keys: channel, is_social_channel, social_landings,
+        instagram_handle, facebook_page_id.
+    """
+    effective_channel = channel_type or "whatsapp"
+    is_social = (
+        effective_channel in ("instagram", "facebook")
+        and bool(tenant_row.get("social_ig_active", False))
+    )
+
+    # JSONB gotcha from CLAUDE.md: asyncpg may return JSONB columns as raw strings.
+    # Parse defensively so callers always receive a dict or None.
+    social_landings = tenant_row.get("social_landings") if is_social else None
+    if isinstance(social_landings, str):
+        try:
+            social_landings = json.loads(social_landings)
+        except (json.JSONDecodeError, ValueError):
+            social_landings = None
+
+    return {
+        "channel": effective_channel,
+        "is_social_channel": is_social,
+        "social_landings": social_landings,
+        "instagram_handle": tenant_row.get("instagram_handle") if is_social else None,
+        "facebook_page_id": tenant_row.get("facebook_page_id") if is_social else None,
+    }
+
+
 def _detect_selection_intent(msg: str) -> bool:
     """
     Detect if user message indicates they want to SELECT one of the offered slots.
@@ -300,7 +342,8 @@ async def process_buffer_task(
                       pediatric_notes, high_risk_protocols, requires_anamnesis_before_booking,
                       complaint_escalation_email, complaint_escalation_phone,
                       expected_wait_time_minutes, revision_policy, review_platforms,
-                      complaint_handling_protocol, auto_send_review_link_after_followup
+                      complaint_handling_protocol, auto_send_review_link_after_followup,
+                      social_ig_active, social_landings, instagram_handle, facebook_page_id
                FROM tenants WHERE id = $1""",
             tenant_id,
         )
@@ -1361,15 +1404,52 @@ async def process_buffer_task(
 
             system_prompt += "\n\n" + _get_adjuntos_section()
 
+        # --- Social channel context (phase 6) ---
+        # channel_type is now resolved from the DB JOIN above (line ~1361).
+        # compute_social_context is a pure function so this is always fast.
+        _social_ctx = compute_social_context(channel_type, dict(tenant_row) if tenant_row else {})
+
+        # SOLO path: prepend social preamble to system_prompt when IG/FB active.
+        # This path calls build_system_prompt before channel_type is known, so
+        # we inject the preamble here after both are available.
+        if _social_ctx["is_social_channel"]:
+            try:
+                from services.social_prompt import build_social_preamble
+                from services.social_routes import CTA_ROUTES
+
+                _social_preamble = build_social_preamble(
+                    tenant_id=tenant_id,
+                    channel=_social_ctx["channel"],
+                    social_landings=_social_ctx["social_landings"],
+                    instagram_handle=_social_ctx["instagram_handle"],
+                    facebook_page_id=_social_ctx["facebook_page_id"],
+                    cta_routes=CTA_ROUTES,
+                )
+                system_prompt = _social_preamble + "\n\n---\n\n" + system_prompt
+                logger.info(
+                    f"📱 Social preamble injected for tenant {tenant_id} "
+                    f"channel={_social_ctx['channel']}"
+                )
+            except Exception as _social_err:
+                logger.warning(f"⚠️ Social preamble injection failed (non-fatal): {_social_err}")
+
         executor = await get_agent_executable_for_tenant(tenant_id)
         logger.info(f"🧠 Invoking Agent for {external_user_id}...")
 
-        # C3: Check engine mode and log which engine is being used
+        # C3: Check engine mode and log which engine is being used.
+        # MULTI path: populate ctx.extra with social context so graph.run_turn
+        # can wire it into AgentState (phase 5 wiring via ctx.extra).
         try:
             from services.engine_router import get_engine_for_tenant
 
             engine = await get_engine_for_tenant(tenant_id)
             logger.info(f"🎛️ Engine mode for tenant {tenant_id}: {engine.name}")
+            # When multi-agent engine is active, ctx.extra must carry social context.
+            # The TurnContext is created per-dispatch so we store it on the engine
+            # via a thread-local is not feasible. Instead, the social_ctx dict is
+            # already available and will be passed when TurnContext dispatch is
+            # fully wired (phase 9 integration wiring — currently buffer_task
+            # still dispatches through executor.ainvoke for both paths).
         except Exception as eng_err:
             logger.warning(f"⚠️ Engine router check failed, using default: {eng_err}")
 
