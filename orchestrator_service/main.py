@@ -903,23 +903,52 @@ def _get_search_range_days(date_query: str, start_date: date) -> int:
     return 1
 
 
-def _pick_from_slots(slots: List[str], max_picks: int = 3) -> List[str]:
-    """Selecciona hasta max_picks slots representativos (mañana, tarde, comodín)."""
+def _pick_from_slots(slots: List[str], max_picks: int = 3, specific_time: Optional[str] = None) -> List[str]:
+    """Selecciona hasta max_picks slots representativos (mañana, tarde, comodín).
+    If specific_time is provided and available, it's placed FIRST in the picks.
+    """
     if not slots:
         return []
     if len(slots) <= max_picks:
         return list(slots)
 
+    picks = []
+
+    # Priority: if patient asked for a specific time, check if it's available
+    if specific_time:
+        # Normalize: "16:30" → find exact or closest match
+        normalized = specific_time.strip()
+        if normalized in slots:
+            picks.append(normalized)
+        else:
+            # Try rounding to nearest available slot (within 30 min)
+            try:
+                sh, sm = int(normalized.split(":")[0]), int(normalized.split(":")[1])
+                target_min = sh * 60 + sm
+                closest = None
+                closest_diff = 999
+                for s in slots:
+                    h, m = int(s.split(":")[0]), int(s.split(":")[1])
+                    diff = abs(h * 60 + m - target_min)
+                    if diff < closest_diff:
+                        closest = s
+                        closest_diff = diff
+                if closest and closest_diff <= 30:
+                    picks.append(closest)
+            except (ValueError, IndexError):
+                pass
+
     morning = [s for s in slots if int(s.split(":")[0]) < 13]
     afternoon = [s for s in slots if int(s.split(":")[0]) >= 13]
 
-    picks = []
     # Opción A: primer slot de mañana
-    if morning:
-        picks.append(morning[0])
+    if morning and len(picks) < max_picks:
+        if morning[0] not in picks:
+            picks.append(morning[0])
     # Opción B: primer slot de tarde
-    if afternoon:
-        picks.append(afternoon[0])
+    if afternoon and len(picks) < max_picks:
+        if afternoon[0] not in picks:
+            picks.append(afternoon[0])
     # Opción C: comodín (slot espaciado del bloque más largo)
     if len(picks) < max_picks:
         larger_block = afternoon if len(afternoon) >= len(morning) else morning
@@ -1149,6 +1178,7 @@ async def pick_representative_slots(
     max_options: int = 3,
     search_range_days: int = 1,
     time_preference: Optional[str] = None,
+    specific_time: Optional[str] = None,
 ) -> tuple:
     """
     Selecciona hasta max_options slots representativos.
@@ -1171,7 +1201,7 @@ async def pick_representative_slots(
         slots_from_today = min(max_options - 1, len(slots)) if len(slots) > 0 else 0
         if slots_from_today < 1:
             slots_from_today = min(max_options, len(slots))
-        picked = _pick_from_slots(slots, slots_from_today)
+        picked = _pick_from_slots(slots, slots_from_today, specific_time=specific_time)
         for time_str in picked:
             hour = int(time_str.split(":")[0])
             options.append(
@@ -1362,6 +1392,7 @@ async def check_availability(
     professional_name: Optional[str] = None,
     treatment_name: Optional[str] = None,
     time_preference: Optional[str] = None,
+    specific_time: Optional[str] = None,
 ):
     """
     Consulta la disponibilidad REAL de turnos para una fecha. Llamar UNA sola vez por pregunta del paciente.
@@ -1382,6 +1413,7 @@ async def check_availability(
     professional_name: (Opcional) Nombre del profesional.
     treatment_name: (Opcional) Tratamiento definido (ej. limpieza profunda, consulta).
     time_preference: Si el paciente pide horarios de un momento del día: 'mañana' (horario AM) o 'tarde'. Si no especifica no pasar.
+    specific_time: (Opcional) Hora EXACTA que el paciente pidió, en formato HH:MM (ej: "16:30", "10:00"). Usar SOLO cuando el paciente pide una hora concreta ("a las 16:30", "quiero a las 10"). Si el paciente solo dice "mañana" o "tarde" sin hora exacta, NO pasar este campo — usar time_preference. Si se pasa, la tool verifica si ESE slot exacto está libre y lo incluye primero en las opciones.
     La tool devuelve 2-3 opciones concretas de horario con sede. Presentá las opciones al paciente tal cual las recibís.
     """
     try:
@@ -2222,6 +2254,7 @@ async def check_availability(
             max_options=3,
             search_range_days=search_range,
             time_preference=time_preference,
+            specific_time=specific_time,
         )
 
         if options:
@@ -8110,7 +8143,7 @@ PASO 4: CONSULTAR DISPONIBILIDAD — Llamá 'check_availability' UNA vez con tre
   REGLA INQUEBRANTABLE: interpreted_date SIEMPRE debe ser una fecha FUTURA respecto a {current_time}. NUNCA pases una fecha que ya pasó.
   La tool devuelve 2-3 opciones con emojis numerados (1️⃣ 2️⃣ 3️⃣) y la sede al final. Presentá el resultado TAL CUAL lo recibís, sin reformatear. NO agregues la dirección ni sede entre las opciones — ya viene al final del mensaje de la tool.
   Si el paciente elige una opción → pasar a PASO 4b.
-  Si el paciente pide otro horario distinto a las opciones → volver a llamar 'check_availability' para verificar ese horario específico.
+  Si el paciente pide un horario ESPECÍFICO (ej: "a las 16:30", "quiero a las 10") → volver a llamar check_availability CON specific_time="16:30" para verificar si ESE slot está libre. La tool lo incluirá primero en las opciones si está disponible, o mostrará el más cercano si no.
     - Si está libre → pasar a PASO 4b con ese horario.
     - Si está ocupado → decir honestamente que está ocupado y ofrecer el más cercano disponible.
   Si NINGUNA opción funciona → ejecutá check_availability para el siguiente día hábil INMEDIATAMENTE. No preguntes "querés que busque otro día?", HACELO.
