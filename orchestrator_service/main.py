@@ -42,9 +42,21 @@ from sqlalchemy import text
 
 from langchain_openai import ChatOpenAI
 
-# Busca la línea que falla y reemplázala por estas:
-from langchain.agents import AgentExecutor
-from langchain.agents import create_openai_tools_agent
+# AgentExecutor was removed from the public langchain API in langchain 1.x.
+# Provide a compatibility shim so module-level imports don't crash on newer installs.
+try:
+    from langchain.agents import AgentExecutor
+    from langchain.agents import create_openai_tools_agent
+except ImportError:
+    try:
+        from langchain_community.agent_toolkits.base import create_agent_executor as _cae  # noqa: F401
+        AgentExecutor = _cae  # type: ignore[assignment]
+    except ImportError:
+        AgentExecutor = None  # type: ignore[assignment,misc]
+    try:
+        from langchain.agents import create_openai_tools_agent
+    except ImportError:
+        create_openai_tools_agent = None  # type: ignore[assignment]
 from agent.integration import enhanced_system
 from guardrails.injection_detector import process_with_guardrails
 
@@ -6709,7 +6721,9 @@ def _format_insurance_providers(
             if default_copay is not None
             else ""
         )
-        lines.append(f"{p['provider_name']}{prepaga_flag}{default_copay_str}:")
+        copay_notes = p.get("copay_notes") or ""
+        copay_notes_str = f" ({copay_notes})" if copay_notes else ""
+        lines.append(f"{p['provider_name']}{prepaga_flag}{default_copay_str}{copay_notes_str}:")
 
         # Parse defensivo de coverage_by_treatment (asyncpg puede devolver JSONB
         # como string en algunas versiones)
@@ -7806,7 +7820,7 @@ PROTOCOLO:
   M1 — Contener: "Entiendo, vamos a ayudarte a resolverlo lo antes posible." (SIN precio, SIN dirección, SIN turnos)
   M2 — Orientar: UNA sola pregunta: "Hace cuánto tiempo estás con dolor y si notás inflamación?"
   M3 — Resolver: Llamar triage_urgency + check_availability. Mostrar 2-3 opciones de turno.
-PROHIBIDO: emojis de calendario en M1, precio antes de M3, dirección antes de confirmar turno, "X turnos más disponibles".
+PROHIBIDO: emojis de calendario en M1, precio antes de M3, dirección antes de confirmar turno, frases del tipo "X turnos disponibles" o contar slots.
 Máximo 2 mensajes antes de ofrecer turno.
 
 === F3: PACIENTE ESTÉTICO (SIN DIAGNÓSTICO CLARO) ===
@@ -8248,6 +8262,9 @@ def get_agent_executable(
             MessagesPlaceholder(variable_name="agent_scratchpad"),
         ]
     )
+    if create_openai_tools_agent is None or AgentExecutor is None:
+        # LangChain AgentExecutor not available (e.g. langchain >=1.x test env)
+        return None  # type: ignore[return-value]
     agent = create_openai_tools_agent(llm, DENTAL_TOOLS, prompt)
     return AgentExecutor(agent=agent, tools=DENTAL_TOOLS, verbose=False)
 

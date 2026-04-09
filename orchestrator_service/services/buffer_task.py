@@ -62,28 +62,32 @@ def _detect_selection_intent(msg: str) -> bool:
     if _SELECTION_INTENT_PATTERN is None:
         # Patterns for selecting an offered slot
         patterns = [
-            r"\bel\s+1\b",  # "el 1", "el 1ro"
-            r"\bel\s+2\b",  # "el 2", "el segundo"
-            r"\bel\s+3\b",  # "el 3", "el tercero"
-            r"\bel\s+primero\b",  # "el primero"
-            r"\bel\s+segundo\b",  # "el segundo"
-            r"\bel\s+tercero\b",  # "el tercero"
-            r"\bel\s+[0-9]+\b",  # "el 1", "el 2", etc.
-            r"\bconfirmo\b",  # "confirmo", "confirmar"
-            r"^si\b",  # "si" at start
-            r"\bsi\b",  # "si" anywhere
-            r"\bs[ií]\s+",  # "si" or "sí" followed by space
-            r"\bquiero\s+ese\b",  # "quiero ese", "ese"
-            r"\bagéndame\s+ese\b",  # "agéndame ese"
-            r"\bRESERVAR\b",  # "reservar" (uppercase)
-            r"\b\d{1,2}\s*(de\s+)?(ene|feb|mar|abr|may|jun|jul|ago|sep|oct|nov|dic)",  # "12 de mayo", "el del 12"
-            r"\bde\s+la\s+tarde\b",  # "el de la tarde"
-            r"\bde\s+la\s+mañana\b",  # "el de la mañana"
+            # Numeric ordinals: "el 1", "el 1ro", "el 1°", "el 2do", "el 3er", etc.
+            r"\bel\s+[0-9]+(?:ro|do|er|°)?\b",
+            # Spanish ordinal words
+            r"\bel\s+primero\b",   # "el primero"
+            r"\bla\s+primera\b",   # "la primera"
+            r"\bel\s+segundo\b",   # "el segundo"
+            r"\bla\s+segunda\b",   # "la segunda"
+            r"\bel\s+tercero\b",   # "el tercero"
+            r"\bla\s+tercera\b",   # "la tercera"
+            r"\bconfirmo\b",       # "confirmo", "confirmar"
+            # "si" / "sí" as standalone affirmation (NOT as conjunction meaning "if")
+            # Only match at start of short messages to avoid "si atienden" false positives
+            r"^s[ií]$",            # exactly "si" or "sí"
+            r"^s[ií]\b",           # "si," or "si!" or "sí," at start
+            r"\bsí\b",             # accented "sí" anywhere (rarer as conjunction)
+            r"\bquiero\s+ese\b",   # "quiero ese"
+            r"\bagéndame\s+ese\b", # "agéndame ese"
+            r"\breservar\b",       # "reservar"
+            r"\b\d{1,2}\s*(de\s+)?(ene|feb|mar|abr|may|jun|jul|ago|sep|oct|nov|dic)",  # "12 de mayo"
+            r"\bde\s+la\s+tarde\b",   # "el de la tarde"
+            r"\bde\s+la\s+ma[ñn]ana\b",  # "el de la mañana"
         ]
         combined = "|".join(patterns)
         _SELECTION_INTENT_PATTERN = re.compile(combined, re.IGNORECASE)
 
-    text = msg.lower().strip()
+    text = msg.strip()
     return _SELECTION_INTENT_PATTERN.search(text) is not None
 
 
