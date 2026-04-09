@@ -1325,6 +1325,12 @@ async def get_chat_sessions(
                 ) urgency ON true
                 WHERE p.tenant_id = $1
                 AND EXISTS (SELECT 1 FROM chat_messages WHERE from_number = p.phone_number)
+                AND NOT EXISTS (
+                    SELECT 1 FROM chat_conversations cw
+                    WHERE cw.tenant_id = $1
+                    AND cw.external_user_id = p.phone_number
+                    AND cw.channel IN ('instagram', 'facebook')
+                )
                 ORDER BY p.phone_number, cm.created_at DESC
             ) sub
             ORDER BY last_message_time DESC NULLS LAST
@@ -1367,6 +1373,15 @@ async def get_chat_sessions(
                 ) urgency ON true
                 WHERE p.tenant_id = $1
                 AND EXISTS (SELECT 1 FROM chat_messages WHERE tenant_id = $1 AND from_number = p.phone_number)
+                -- Exclude patients whose phone_number is actually a Chatwoot external_user_id
+                -- from a non-WhatsApp channel (IG/FB). Those patients are already visible
+                -- in the Chatwoot conversations list and should not appear as WhatsApp sessions.
+                AND NOT EXISTS (
+                    SELECT 1 FROM chat_conversations cw
+                    WHERE cw.tenant_id = $1
+                    AND cw.external_user_id = p.phone_number
+                    AND cw.channel IN ('instagram', 'facebook')
+                )
                 ORDER BY p.phone_number, cm.created_at DESC
             ) sub
             ORDER BY last_message_time DESC NULLS LAST
