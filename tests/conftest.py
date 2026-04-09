@@ -15,6 +15,7 @@ import uuid
 from pathlib import Path
 from unittest.mock import MagicMock
 
+
 import pytest
 
 # --- Load .env file if present (so the real DSN from .env beats hardcoded defaults) ---

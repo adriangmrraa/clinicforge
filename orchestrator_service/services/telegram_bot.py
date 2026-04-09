@@ -409,22 +409,26 @@ async def _process_with_nova(
 # ── Media Processing Helpers ──────────────────────────────────────────────────
 
 async def _transcribe_audio(audio_bytes: bytes, filename: str = "voice.ogg", tenant_id: int = 0) -> str:
-    """Transcribe audio bytes using OpenAI Whisper API. Returns transcribed text."""
-    client = _get_openai_client()
+    """Transcribe audio bytes using OpenAI Whisper API. Returns transcribed text or None on error."""
+    try:
+        client = _get_openai_client()
 
-    audio_file = io.BytesIO(audio_bytes)
-    audio_file.name = filename
+        audio_file = io.BytesIO(audio_bytes)
+        audio_file.name = filename
 
-    transcript = await client.audio.transcriptions.create(
-        model="whisper-1",
-        file=audio_file,
-    )
-    # Whisper doesn't return token counts — track the call symbolically
-    if tenant_id:
-        asyncio.get_running_loop().create_task(_track_telegram_tokens(
-            tenant_id, "whisper-1", 0, 0, source="telegram_whisper"
-        ))
-    return transcript.text
+        transcript = await client.audio.transcriptions.create(
+            model="whisper-1",
+            file=audio_file,
+        )
+        # Whisper doesn't return token counts — track the call symbolically
+        if tenant_id:
+            asyncio.get_running_loop().create_task(_track_telegram_tokens(
+                tenant_id, "whisper-1", 0, 0, source="telegram_whisper"
+            ))
+        return transcript.text
+    except Exception as e:
+        logger.error(f"Whisper transcription failed: {e}")
+        return None
 
 
 async def _analyze_image_bytes(
@@ -482,31 +486,35 @@ async def _analyze_image_bytes(
 async def _analyze_pdf_bytes(pdf_bytes: bytes, filename: str = "document.pdf", tenant_id: int = 0) -> str:
     """
     Analyze PDF bytes with GPT-4o vision using base64 inline encoding.
-    Returns a textual description of the document.
+    Returns a textual description of the document, or None on error.
     """
-    client = _get_openai_client()
+    try:
+        client = _get_openai_client()
 
-    b64 = base64.b64encode(pdf_bytes).decode()
+        b64 = base64.b64encode(pdf_bytes).decode()
 
-    response = await client.chat.completions.create(
-        model="gpt-4o",
-        messages=[{
-            "role": "user",
-            "content": [
-                {"type": "text", "text": PDF_ANALYSIS_PROMPT},
-                {"type": "image_url", "image_url": {"url": f"data:application/pdf;base64,{b64}"}},
-            ],
-        }],
-        max_tokens=500,
-    )
-    if tenant_id and response.usage:
-        asyncio.get_running_loop().create_task(_track_telegram_tokens(
-            tenant_id, "gpt-4o",
-            response.usage.prompt_tokens,
-            response.usage.completion_tokens,
-            source="telegram_vision",
-        ))
-    return response.choices[0].message.content or ""
+        response = await client.chat.completions.create(
+            model="gpt-4o",
+            messages=[{
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": PDF_ANALYSIS_PROMPT},
+                    {"type": "image_url", "image_url": {"url": f"data:application/pdf;base64,{b64}"}},
+                ],
+            }],
+            max_tokens=500,
+        )
+        if tenant_id and response.usage:
+            asyncio.get_running_loop().create_task(_track_telegram_tokens(
+                tenant_id, "gpt-4o",
+                response.usage.prompt_tokens,
+                response.usage.completion_tokens,
+                source="telegram_vision",
+            ))
+        return response.choices[0].message.content or ""
+    except Exception as e:
+        logger.error(f"PDF analysis failed: {e}")
+        return None
 
 
 async def _typing_loop(chat, cancel_event: asyncio.Event) -> None:
@@ -851,6 +859,12 @@ async def _handle_voice(update: Update, context) -> None:
             await typing_task
         except (asyncio.CancelledError, Exception):
             pass
+
+    if not transcribed:
+        await update.message.reply_text(
+            "No pude transcribir el audio. Intentá de nuevo o escribí el mensaje."
+        )
+        return
 
     enriched = f'[AUDIO ({duration}s): "{transcribed}"]'
 
