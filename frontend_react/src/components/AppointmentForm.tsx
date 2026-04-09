@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { X, Calendar, User, Clock, FileText, DollarSign, Activity, AlertTriangle, Trash2, Check, ExternalLink, Info } from 'lucide-react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { X, Calendar, User, Clock, FileText, DollarSign, Activity, AlertTriangle, Trash2, Check, ExternalLink, Info, Search } from 'lucide-react';
 import type { Appointment, Patient, Professional } from '../views/AgendaView';
 import api, { WS_URL } from '../api/axios';
 import { useTranslation } from '../context/LanguageContext';
@@ -51,6 +51,18 @@ export default function AppointmentForm({
     const [treatmentTypes, setTreatmentTypes] = useState<any[]>([]);
     const [anamnesisRefreshKey, setAnamnesisRefreshKey] = useState(0);
     const socketRef = useRef<Socket | null>(null);
+    const [patientSearch, setPatientSearch] = useState('');
+    const [patientDropdownOpen, setPatientDropdownOpen] = useState(false);
+    const patientDropdownRef = useRef<HTMLDivElement>(null);
+    const filteredPatients = useMemo(() => {
+        if (!patientSearch.trim()) return patients.slice(0, 30);
+        const q = patientSearch.toLowerCase();
+        return patients.filter(p =>
+            `${p.first_name} ${p.last_name}`.toLowerCase().includes(q) ||
+            (p.phone_number || '').includes(q) ||
+            (p.dni || '').includes(q)
+        ).slice(0, 30);
+    }, [patients, patientSearch]);
 
     // Billing state
     const [billingData, setBillingData] = useState({
@@ -63,6 +75,26 @@ export default function AppointmentForm({
     const [billingSuccess, setBillingSuccess] = useState<string | null>(null);
 
     // Fetch treatment types
+    // Close patient dropdown on outside click
+    useEffect(() => {
+        const handler = (e: MouseEvent) => {
+            if (patientDropdownRef.current && !patientDropdownRef.current.contains(e.target as Node)) {
+                setPatientDropdownOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, []);
+
+    // Reset search when modal opens with existing patient
+    useEffect(() => {
+        if (isOpen && formData.patient_id) {
+            const p = patients.find(p => p.id.toString() === formData.patient_id);
+            if (p) setPatientSearch(`${p.first_name} ${p.last_name}`);
+        }
+        if (!isOpen) setPatientSearch('');
+    }, [isOpen, formData.patient_id, patients]);
+
     useEffect(() => {
         const fetchTreatmentTypes = async () => {
             try {
@@ -382,19 +414,62 @@ export default function AppointmentForm({
                         <div className="space-y-5">
                             <div className="space-y-1.5">
                                 <label className="text-xs font-semibold text-white/40 uppercase tracking-wider">{t('agenda.patient')}</label>
-                                <div className="relative">
-                                    <User className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" size={18} />
-                                    <select
-                                        className="w-full pl-10 pr-4 py-2.5 bg-white/[0.04] border border-white/[0.08] rounded-lg focus:bg-white/[0.06] focus:border-blue-500 text-white focus:ring-0 transition-all text-sm appearance-none cursor-pointer"
-                                        value={formData.patient_id}
-                                        onChange={(e) => handleChange('patient_id', e.target.value)}
-                                        disabled={isEditing}
-                                    >
-                                        <option value="">{t('agenda.select_patient')}</option>
-                                        {patients.map(p => (
-                                            <option key={p.id} value={p.id}>{p.first_name} {p.last_name}</option>
-                                        ))}
-                                    </select>
+                                <div className="relative" ref={patientDropdownRef}>
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" size={18} />
+                                    {isEditing ? (
+                                        <div className="w-full pl-10 pr-4 py-2.5 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white text-sm opacity-60">
+                                            {patients.find(p => p.id.toString() === formData.patient_id)
+                                                ? `${patients.find(p => p.id.toString() === formData.patient_id)!.first_name} ${patients.find(p => p.id.toString() === formData.patient_id)!.last_name}`
+                                                : t('agenda.select_patient')}
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <input
+                                                type="text"
+                                                className="w-full pl-10 pr-4 py-2.5 bg-white/[0.04] border border-white/[0.08] rounded-lg focus:bg-white/[0.06] focus:border-blue-500 text-white focus:ring-0 transition-all text-sm"
+                                                placeholder={t('agenda.select_patient')}
+                                                value={patientSearch}
+                                                onChange={(e) => {
+                                                    setPatientSearch(e.target.value);
+                                                    setPatientDropdownOpen(true);
+                                                    if (!e.target.value) handleChange('patient_id', '');
+                                                }}
+                                                onFocus={() => setPatientDropdownOpen(true)}
+                                            />
+                                            {formData.patient_id && !patientDropdownOpen && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => { setPatientSearch(''); handleChange('patient_id', ''); }}
+                                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/60"
+                                                >
+                                                    <X size={14} />
+                                                </button>
+                                            )}
+                                            {patientDropdownOpen && (
+                                                <div className="absolute z-50 mt-1 w-full max-h-48 overflow-y-auto bg-[#0d1117] border border-white/[0.08] rounded-lg shadow-xl">
+                                                    {filteredPatients.length === 0 ? (
+                                                        <div className="px-4 py-3 text-sm text-white/30">Sin resultados</div>
+                                                    ) : (
+                                                        filteredPatients.map(p => (
+                                                            <button
+                                                                key={p.id}
+                                                                type="button"
+                                                                className={`w-full px-4 py-2.5 text-left text-sm hover:bg-white/[0.06] transition-colors flex items-center justify-between ${formData.patient_id === p.id.toString() ? 'bg-blue-500/10 text-blue-400' : 'text-white'}`}
+                                                                onClick={() => {
+                                                                    handleChange('patient_id', p.id.toString());
+                                                                    setPatientSearch(`${p.first_name} ${p.last_name}`);
+                                                                    setPatientDropdownOpen(false);
+                                                                }}
+                                                            >
+                                                                <span>{p.first_name} {p.last_name}</span>
+                                                                {p.phone_number && <span className="text-xs text-white/30">{p.phone_number}</span>}
+                                                            </button>
+                                                        ))
+                                                    )}
+                                                </div>
+                                            )}
+                                        </>
+                                    )}
                                 </div>
                             </div>
 
