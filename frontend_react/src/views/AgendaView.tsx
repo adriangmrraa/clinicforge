@@ -862,7 +862,13 @@ export default function AgendaView() {
 
           /* List view */
           .fc .fc-list-day-cushion {
-            background-color: rgba(255,255,255,0.04) !important;
+            background-color: #0d1117 !important;
+          }
+          .fc .fc-list-sticky .fc-list-day > th {
+            position: sticky !important;
+            top: 0 !important;
+            z-index: 1 !important;
+            background: #0d1117 !important;
           }
           .fc .fc-list-day-cushion a {
             color: #fff !important;
