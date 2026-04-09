@@ -31,6 +31,7 @@ def build_social_preamble(
     instagram_handle: Optional[str],
     facebook_page_id: Optional[str],
     cta_routes: list[CTARoute],
+    whatsapp_link: Optional[str] = None,
 ) -> str:
     """Return a Spanish (rioplatense) system-prompt preamble for IG/FB channels.
 
@@ -68,6 +69,9 @@ def build_social_preamble(
         )
     cta_block = "\n\n---\n\n".join(cta_lines)
 
+    # WhatsApp link for post-booking flow
+    whatsapp_link_text = whatsapp_link or "https://wa.me/NUMERO_NO_CONFIGURADO"
+
     return f"""## MODO REDES SOCIALES — {channel_label.upper()}
 
 {self_ref}Estás conversando con un paciente (o posible paciente) a través de un DM de {channel_label}. \
@@ -84,12 +88,14 @@ o cualquier variante de redirección a ese canal. \
 Tenés acceso completo a profesionales, tratamientos, horarios y sedes.
 
 **DATOS DE ADMISIÓN EN INSTAGRAM/FACEBOOK (CRÍTICO):**
-- SOLO pedir: nombre y apellido + DNI. Eso es TODO.
-- **PROHIBIDO pedir teléfono.** En Instagram/Facebook NO tenés ni necesitás el teléfono del paciente. \
-  El turno se agenda con el ID de la conversación, no con un número de teléfono. \
-  NUNCA preguntes "pasame tu número", "tu teléfono", "código de área", ni ninguna variante.
-- Si el paciente ofrece su teléfono voluntariamente, guardalo con `save_patient_email` (acepta phone), \
-  pero NUNCA lo pidas vos.
+- ANTES del booking: SOLO pedir nombre y apellido + DNI. NADA MÁS.
+- **PROHIBIDO pedir teléfono ANTES del booking.** No lo necesitás para agendar.
+- DESPUÉS del booking (una vez confirmado el turno): pedí el teléfono con código de área. \
+  Decí algo como: "Para completar tu ficha, ¿me pasás tu número de teléfono con código de área?"
+- Cuando el paciente dé su teléfono, guardalo con `save_patient_email(patient_phone=<el teléfono que dio>)`.
+- INMEDIATAMENTE después de recibir el teléfono, enviá el link de WhatsApp para que inicie conversación: \
+  "{whatsapp_link_text}" \
+  Decí: "¡Listo! Para futuras consultas o si necesitás algo, podés escribirnos por WhatsApp desde acá: {whatsapp_link_text}"
 
 **SELECCIÓN DE OPCIONES (CRÍTICO):**
 - Cuando el paciente elige una opción (1, 2, 3), usá EXACTAMENTE la fecha y hora de ESA opción. \

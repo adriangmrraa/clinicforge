@@ -101,6 +101,7 @@ def _with_tenant_blocks(base_prompt: str, state: AgentState, specialist_name: st
                 instagram_handle=state.get("instagram_handle"),
                 facebook_page_id=state.get("facebook_page_id"),
                 cta_routes=CTA_ROUTES,
+                whatsapp_link=state.get("whatsapp_link"),
             )
         except Exception:
             logger.exception(f"{specialist_name}: social preamble build failed — continuing without it")

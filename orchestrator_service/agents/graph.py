@@ -169,6 +169,7 @@ async def run_turn(ctx: "TurnContext") -> "TurnResult":
         "social_landings": ctx.extra.get("social_landings"),
         "instagram_handle": ctx.extra.get("instagram_handle"),
         "facebook_page_id": ctx.extra.get("facebook_page_id"),
+        "whatsapp_link": ctx.extra.get("whatsapp_link"),
     }
 
     # Human override silence window → empty output, agent_used=handoff

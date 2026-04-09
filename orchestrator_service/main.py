@@ -7505,6 +7505,7 @@ def build_system_prompt(
     social_landings: dict = None,
     instagram_handle: str = None,
     facebook_page_id: str = None,
+    whatsapp_link: str = None,
 ) -> str:
     """
     Construye el system prompt del agente de forma dinámica.
@@ -7533,6 +7534,7 @@ def build_system_prompt(
             instagram_handle=instagram_handle,
             facebook_page_id=facebook_page_id,
             cta_routes=_CTA_ROUTES,
+            whatsapp_link=whatsapp_link,
         ) + "\n\n---\n\n"
 
     prof_display = professional_name if professional_name else "la profesional"

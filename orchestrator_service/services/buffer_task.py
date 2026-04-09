@@ -84,12 +84,19 @@ def compute_social_context(channel_type: str, tenant_row: dict) -> dict:
         except (json.JSONDecodeError, ValueError):
             social_landings = None
 
+    # Build wa.me link for social channels so the agent can send it post-booking
+    bot_phone = tenant_row.get("bot_phone_number") or ""
+    # Normalize: strip non-digits, ensure no leading +
+    bot_phone_clean = re.sub(r"\D", "", bot_phone)
+    whatsapp_link = f"https://wa.me/{bot_phone_clean}" if bot_phone_clean else None
+
     return {
         "channel": effective_channel,
         "is_social_channel": is_social,
         "social_landings": social_landings,
         "instagram_handle": tenant_row.get("instagram_handle") if is_social else None,
         "facebook_page_id": tenant_row.get("facebook_page_id") if is_social else None,
+        "whatsapp_link": whatsapp_link if is_social else None,
     }
 
 
@@ -343,7 +350,8 @@ async def process_buffer_task(
                       complaint_escalation_email, complaint_escalation_phone,
                       expected_wait_time_minutes, revision_policy, review_platforms,
                       complaint_handling_protocol, auto_send_review_link_after_followup,
-                      social_ig_active, social_landings, instagram_handle, facebook_page_id
+                      social_ig_active, social_landings, instagram_handle, facebook_page_id,
+                      bot_phone_number
                FROM tenants WHERE id = $1""",
             tenant_id,
         )
@@ -1424,6 +1432,7 @@ async def process_buffer_task(
                     instagram_handle=_social_ctx["instagram_handle"],
                     facebook_page_id=_social_ctx["facebook_page_id"],
                     cta_routes=CTA_ROUTES,
+                    whatsapp_link=_social_ctx.get("whatsapp_link"),
                 )
                 system_prompt = _social_preamble + "\n\n---\n\n" + system_prompt
                 logger.info(
