@@ -513,6 +513,18 @@ def parse_date(date_query: str) -> Optional[date]:
             return date(today.year + 1, 1, 1)
         return date(today.year, today.month + 1, 1)
 
+    # "en una semana", "en 3 días", "en dos semanas", etc.
+    _num_words = {"una": 1, "un": 1, "dos": 2, "tres": 3, "cuatro": 4, "cinco": 5, "seis": 6, "siete": 7}
+    en_dias = re.search(r"en\s+(\d+|una?|dos|tres|cuatro|cinco|seis|siete)\s+(d[ií]as?|semanas?)", query)
+    if en_dias:
+        n = int(en_dias.group(1)) if en_dias.group(1).isdigit() else _num_words.get(en_dias.group(1), 1)
+        unit = en_dias.group(2)
+        if "semana" in unit:
+            n *= 7
+        result = today + timedelta(days=n)
+        logger.info(f"📅 parse_date: '{date_query}' → {result} (relative 'en N días/semanas')")
+        return result
+
     # ── CAPA 7: Último intento con dateutil sin restricción de dígitos ──
     try:
         parsed = dateutil_parse(query_clean, dayfirst=True, fuzzy=True).date()
