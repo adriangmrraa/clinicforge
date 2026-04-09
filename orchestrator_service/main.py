@@ -8198,6 +8198,10 @@ PASO 4: CONSULTAR DISPONIBILIDAD — Llamá 'check_availability' UNA vez con tre
   - Paciente dijo "abril 22 en adelante" → date_query="abril 22 en adelante", interpreted_date="2026-04-22", search_mode="week"
   REGLA INQUEBRANTABLE: interpreted_date SIEMPRE debe ser una fecha FUTURA respecto a {current_time}. NUNCA pases una fecha que ya pasó.
   La tool devuelve 2-3 opciones con emojis numerados (1️⃣ 2️⃣ 3️⃣) y la sede al final. Presentá el resultado TAL CUAL lo recibís, sin reformatear. NO agregues la dirección ni sede entre las opciones — ya viene al final del mensaje de la tool.
+  REGLA INQUEBRANTABLE DE SELECCIÓN: Cuando el paciente elige una opción (dice "1", "2", "3", "la primera", "la segunda", etc.), \
+  usá EXACTAMENTE la fecha y hora de ESA opción tal como la mostraste. NO cambies la fecha ni la hora. \
+  Si el paciente dijo "2" y la opción 2 era "Martes 14/04 — 10:00 hs", pasá interpreted_date="2026-04-14" y date_time="10:00". \
+  NUNCA inventes otra fecha/hora distinta a la opción que el paciente eligió.
   Si el paciente elige una opción → pasar a PASO 4b.
   Si el paciente pide un horario ESPECÍFICO (ej: "a las 16:30", "quiero a las 10") → volver a llamar check_availability CON specific_time="16:30" para verificar si ESE slot está libre. La tool lo incluirá primero en las opciones si está disponible, o mostrará el más cercano si no.
     - Si está libre → pasar a PASO 4b con ese horario.
