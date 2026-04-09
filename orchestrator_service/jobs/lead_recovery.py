@@ -151,7 +151,7 @@ async def analyze_interest_with_llm(history_text: str) -> str:
     
     try:
         key = os.getenv("OPENAI_API_KEY")
-        llm = ChatOpenAI(model="gpt-4o-mini", temperature=0, openai_api_key=key)
+        llm = ChatOpenAI(model="gpt-4o-mini", temperature=0, api_key=key)
         
         sys_msg = (
             "Eres un analista de una clínica dental. Identifica el tratamiento de interés del paciente "

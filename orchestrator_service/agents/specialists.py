@@ -37,10 +37,10 @@ def _build_llm_from_config(cfg: dict[str, Any], temperature: float = 0.2) -> Cha
     kwargs: dict[str, Any] = {
         "model": model,
         "temperature": temperature,
-        "openai_api_key": api_key,
+        "api_key": api_key,
     }
     if base_url:
-        kwargs["openai_api_base"] = base_url
+        kwargs["base_url"] = base_url
     return ChatOpenAI(**kwargs)
 
 

@@ -8234,11 +8234,11 @@ def get_agent_executable(
         llm = ChatOpenAI(
             model=model_str,
             temperature=0,
-            openai_api_key=key,
-            openai_api_base=DEEPSEEK_BASE_URL,
+            api_key=key,
+            base_url=DEEPSEEK_BASE_URL,
         )
     else:
-        llm = ChatOpenAI(model=model_str, temperature=0, openai_api_key=key)
+        llm = ChatOpenAI(model=model_str, temperature=0, api_key=key)
 
     prompt = ChatPromptTemplate.from_messages(
         [
