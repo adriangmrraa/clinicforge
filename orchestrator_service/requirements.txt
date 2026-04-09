@@ -8,9 +8,11 @@ asyncpg
 sqlalchemy[asyncio]
 cryptography
 redis
-langchain==0.1.0
-langchain-openai==0.0.5
-langchain-community==0.0.13
+langchain>=1.2.0,<2.0.0
+langchain-openai>=1.1.0,<2.0.0
+langchain-core>=1.2.0,<2.0.0
+langchain-community>=0.4.0,<1.0.0
+langchain-classic>=1.0.0,<2.0.0
 python-dotenv
 requests
 python-dateutil
