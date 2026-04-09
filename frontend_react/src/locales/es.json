@@ -1426,6 +1426,7 @@
     "receipt": "Comprobante",
     "click_to_edit": "Click para editar",
     "budget_config": "Configuración del presupuesto",
+    "currency": "Moneda",
     "payment_conditions": "Condiciones de pago",
     "discount_pct": "Descuento %",
     "discount_amount": "Descuento fijo $",

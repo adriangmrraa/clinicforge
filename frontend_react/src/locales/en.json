@@ -2142,6 +2142,7 @@
     "receipt": "Receipt",
     "click_to_edit": "Click to edit",
     "budget_config": "Budget configuration",
+    "currency": "Currency",
     "payment_conditions": "Payment conditions",
     "discount_pct": "Discount %",
     "discount_amount": "Fixed discount $",

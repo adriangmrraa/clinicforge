@@ -56,6 +56,11 @@ def _ars_format(value) -> str:
 
 _jinja_env.filters["ars"] = _ars_format
 
+CURRENCY_SYMBOLS = {
+    "ARS": "$", "USD": "USD ", "PYG": "₲", "EUR": "€",
+    "BRL": "R$", "CLP": "$", "UYU": "$U ", "MXN": "MX$",
+}
+
 
 # =============================================================================
 # LAYER 1: DATA GATHERING
@@ -167,6 +172,7 @@ async def gather_budget_data(pool, plan_id: str, tenant_id: int) -> Optional[dic
     payment_conditions = budget_cfg.get("payment_conditions") or ""
     discount_pct = float(budget_cfg.get("discount_pct") or 0)
     discount_fixed = float(budget_cfg.get("discount_amount") or 0)
+    currency = budget_cfg.get("currency") or "ARS"
 
     # ── Assemble ─────────────────────────────────────────────────────────────
     return {
@@ -184,6 +190,7 @@ async def gather_budget_data(pool, plan_id: str, tenant_id: int) -> Optional[dic
             "payment_conditions": payment_conditions,
             "discount_pct": discount_pct,
             "discount_fixed": discount_fixed,
+            "currency": currency,
         },
         "patient": {
             "name": (plan["patient_name"] or "").strip() or "Paciente",
@@ -239,6 +246,8 @@ async def gather_budget_data(pool, plan_id: str, tenant_id: int) -> Optional[dic
 def render_budget_html(data: dict) -> str:
     """Render the presupuesto.html template with gathered data."""
     template = _jinja_env.get_template("presupuesto.html")
+    cur = data.get("budget_config", {}).get("currency", "ARS")
+    data["cs"] = CURRENCY_SYMBOLS.get(cur, "$")
     return template.render(**data)
 
 

@@ -1914,6 +1914,7 @@
     "receipt": "Reçu",
     "click_to_edit": "Cliquez pour modifier",
     "budget_config": "Configuration du budget",
+    "currency": "Devise",
     "payment_conditions": "Conditions de paiement",
     "discount_pct": "Remise %",
     "discount_amount": "Remise fixe $",

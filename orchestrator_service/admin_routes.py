@@ -206,6 +206,7 @@ class UpdateTreatmentPlanBody(BaseModel):
     discount_amount: Optional[float] = None  # descuento fijo en $
     installments: Optional[int] = None  # cantidad de cuotas
     installments_amount: Optional[float] = None  # monto por cuota
+    currency: Optional[str] = None  # ARS, USD, PYG, EUR, BRL, CLP, UYU, MXN
 
 
 class TreatmentPlanItemResponse(BaseModel):
@@ -12267,6 +12268,7 @@ async def update_treatment_plan(
             payload.discount_amount is not None,
             payload.installments is not None,
             payload.installments_amount is not None,
+            payload.currency is not None,
         ]
     )
 
@@ -12290,6 +12292,8 @@ async def update_treatment_plan(
             budget_meta["installments"] = payload.installments
         if payload.installments_amount is not None:
             budget_meta["installments_amount"] = payload.installments_amount
+        if payload.currency is not None:
+            budget_meta["currency"] = payload.currency
         # Merge with existing config if notes is already JSON
         existing_notes = plan["notes"] or ""
         try:

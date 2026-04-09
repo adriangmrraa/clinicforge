@@ -582,10 +582,10 @@ body {
                 <div style="font-size: 8pt; color: #64748b; margin-top: 4px; line-height: 1.4; white-space: pre-wrap;">{{ item.custom_description }}</div>
                 {% endif %}
             </td>
-            <td class="col-price">${{ item.estimated_price | ars }}</td>
+            <td class="col-price">{{ cs }}{{ item.estimated_price | ars }}</td>
             <td class="col-price">
                 {% if item.approved_price is not none %}
-                    <span class="price-final">${{ item.approved_price | ars }}</span>
+                    <span class="price-final">{{ cs }}{{ item.approved_price | ars }}</span>
                 {% else %}
                     <span style="color: #94a3b8; font-style: italic; font-size: 8.5pt;">A confirmar</span>
                 {% endif %}
@@ -601,8 +601,8 @@ body {
         {% endfor %}
         <tr class="total-row">
             <td><strong>TOTAL</strong></td>
-            <td class="col-price">${{ totals.estimated | ars }}</td>
-            <td class="col-price">${{ totals.approved | ars }}</td>
+            <td class="col-price">{{ cs }}{{ totals.estimated | ars }}</td>
+            <td class="col-price">{{ cs }}{{ totals.approved | ars }}</td>
             <td></td>
         </tr>
     </tbody>
@@ -612,7 +612,7 @@ body {
 <div style="text-align: right; font-size: 9pt; color: #059669; font-weight: 600; margin-top: 4px;">
     {% if budget_config.discount_pct > 0 %}Descuento: {{ budget_config.discount_pct }}%{% endif %}
     {% if budget_config.discount_pct > 0 and budget_config.discount_fixed > 0 %} + {% endif %}
-    {% if budget_config.discount_fixed > 0 %}Descuento fijo: ${{ budget_config.discount_fixed | ars }}{% endif %}
+    {% if budget_config.discount_fixed > 0 %}Descuento fijo: {{ cs }}{{ budget_config.discount_fixed | ars }}{% endif %}
 </div>
 {% endif %}
 </div>
@@ -626,19 +626,19 @@ body {
         <td width="33%">
             <div class="pay-card pay-card-approved">
                 <p class="pay-card-label">Total aprobado</p>
-                <p class="pay-card-value">${{ totals.approved | ars }}</p>
+                <p class="pay-card-value">{{ cs }}{{ totals.approved | ars }}</p>
             </div>
         </td>
         <td width="33%">
             <div class="pay-card pay-card-paid">
                 <p class="pay-card-label">Abonado</p>
-                <p class="pay-card-value">${{ totals.paid | ars }}</p>
+                <p class="pay-card-value">{{ cs }}{{ totals.paid | ars }}</p>
             </div>
         </td>
         <td width="33%">
             <div class="pay-card pay-card-pending">
                 <p class="pay-card-label">Saldo pendiente</p>
-                <p class="pay-card-value">${{ totals.pending | ars }}</p>
+                <p class="pay-card-value">{{ cs }}{{ totals.pending | ars }}</p>
             </div>
         </td>
     </tr>
@@ -667,13 +667,13 @@ body {
             <td width="33%">
                 <div class="inst-card">
                     <p class="inst-card-label">Monto por cuota</p>
-                    <p class="inst-card-value">${{ budget_config.installment_amount | ars }}</p>
+                    <p class="inst-card-value">{{ cs }}{{ budget_config.installment_amount | ars }}</p>
                 </div>
             </td>
             <td width="33%">
                 <div class="inst-card">
                     <p class="inst-card-label">Saldo a financiar</p>
-                    <p class="inst-card-value">${{ totals.pending | ars }}</p>
+                    <p class="inst-card-value">{{ cs }}{{ totals.pending | ars }}</p>
                 </div>
             </td>
         </tr>
@@ -704,7 +704,7 @@ body {
                 {% elif p.method == 'card' %}Tarjeta
                 {% else %}{{ p.method | title }}{% endif %}
             </td>
-            <td class="col-right">${{ p.amount | ars }}</td>
+            <td class="col-right">{{ cs }}{{ p.amount | ars }}</td>
             <td>{{ p.notes }}</td>
         </tr>
         {% endfor %}
@@ -725,7 +725,7 @@ body {
         <li>Los precios son referenciales y pueden ajustarse segun la evaluacion clinica al momento del tratamiento.</li>
         <li>Metodos de pago aceptados: <strong>Efectivo &middot; Transferencia bancaria &middot; Tarjeta de debito/credito</strong>.</li>
         {% if budget_config.installments > 1 %}
-        <li>Financiacion disponible en <strong>{{ budget_config.installments }} cuotas</strong> de <strong>${{ budget_config.installment_amount | ars }}</strong>.</li>
+        <li>Financiacion disponible en <strong>{{ budget_config.installments }} cuotas</strong> de <strong>{{ cs }}{{ budget_config.installment_amount | ars }}</strong>.</li>
         {% endif %}
         <li>El inicio del tratamiento queda sujeto a la aprobacion formal del presente presupuesto.</li>
     </ul>

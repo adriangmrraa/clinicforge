@@ -145,10 +145,10 @@ const apptStatusColors: Record<string, { bg: string; text: string }> = {
 
 // ─── Utils ───────────────────────────────────────────────────────────────────
 
-const formatCurrency = (amount: number | null | undefined) =>
+const formatCurrency = (amount: number | null | undefined, cur = 'ARS') =>
   new Intl.NumberFormat('es-AR', {
     style: 'currency',
-    currency: 'ARS',
+    currency: cur || 'ARS',
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   }).format(amount || 0);
@@ -316,7 +316,8 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
     discount_amount: string;
     installments: string;
     installments_amount: string;
-  }>({ payment_conditions: '', discount_pct: '', discount_amount: '', installments: '', installments_amount: '' });
+    currency: string;
+  }>({ payment_conditions: '', discount_pct: '', discount_amount: '', installments: '', installments_amount: '', currency: 'ARS' });
   const [savingBudgetConfig, setSavingBudgetConfig] = useState(false);
 
   // ── Form data
@@ -438,13 +439,13 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
           discount_amount: parsed.discount_amount != null ? String(parsed.discount_amount) : '',
           installments: parsed.installments != null ? String(parsed.installments) : '',
           installments_amount: parsed.installments_amount != null ? String(parsed.installments_amount) : '',
+          currency: parsed.currency || 'ARS',
         });
       } catch {
-        // notes is not JSON — reset budget config
-        setBudgetConfig({ payment_conditions: '', discount_pct: '', discount_amount: '', installments: '', installments_amount: '' });
+        setBudgetConfig({ payment_conditions: '', discount_pct: '', discount_amount: '', installments: '', installments_amount: '', currency: 'ARS' });
       }
     } else {
-      setBudgetConfig({ payment_conditions: '', discount_pct: '', discount_amount: '', installments: '', installments_amount: '' });
+      setBudgetConfig({ payment_conditions: '', discount_pct: '', discount_amount: '', installments: '', installments_amount: '', currency: 'ARS' });
     }
   }, [planDetail?.notes]);
 
@@ -738,6 +739,7 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
         discount_amount: budgetConfig.discount_amount ? parseFloat(budgetConfig.discount_amount) : 0,
         installments: budgetConfig.installments ? parseInt(budgetConfig.installments) : null,
         installments_amount: budgetConfig.installments_amount ? parseFloat(budgetConfig.installments_amount) : null,
+        currency: budgetConfig.currency || 'ARS',
       });
       await loadPlanDetail(planDetail.id);
       setSuccess(t('billing.config_saved'));
@@ -1337,7 +1339,24 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
           <div className="bg-white/[0.02] border border-white/[0.06] rounded-xl p-4">
             <h4 className="text-sm font-semibold text-white mb-4">{t('billing.budget_config')}</h4>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              <div className="sm:col-span-2 lg:col-span-3">
+              <div>
+                <label className="block text-xs text-white/40 mb-1">{t('billing.currency') || 'Moneda'}</label>
+                <select
+                  value={budgetConfig.currency}
+                  onChange={(e) => setBudgetConfig({ ...budgetConfig, currency: e.target.value })}
+                  className="w-full px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary appearance-none cursor-pointer"
+                >
+                  <option value="ARS">$ ARS — Peso Argentino</option>
+                  <option value="USD">USD — Dólar</option>
+                  <option value="PYG">₲ PYG — Guaraní</option>
+                  <option value="EUR">€ EUR — Euro</option>
+                  <option value="BRL">R$ BRL — Real</option>
+                  <option value="CLP">$ CLP — Peso Chileno</option>
+                  <option value="UYU">$U UYU — Peso Uruguayo</option>
+                  <option value="MXN">MX$ MXN — Peso Mexicano</option>
+                </select>
+              </div>
+              <div className="sm:col-span-1 lg:col-span-2">
                 <label className="block text-xs text-white/40 mb-1">{t('billing.payment_conditions')}</label>
                 <input
                   type="text"

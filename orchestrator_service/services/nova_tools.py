@@ -1313,6 +1313,11 @@ IMPORTANTE — REGLAS QUIRÚRGICAS:
                     "type": "integer",
                     "description": "ID del profesional asignado (opcional)",
                 },
+                "currency": {
+                    "type": "string",
+                    "description": "Moneda del presupuesto: ARS (default), USD, PYG, EUR, BRL, CLP, UYU, MXN",
+                    "enum": ["ARS", "USD", "PYG", "EUR", "BRL", "CLP", "UYU", "MXN"],
+                },
             },
             "required": [],
         },
@@ -2534,17 +2539,20 @@ async def _crear_presupuesto(args: Dict, tenant_id: int, user_role: str) -> str:
 
     plan_name = name or f"Tratamiento de {patient_name}"
     plan_id = str(uuid.uuid4())
+    currency = args.get("currency", "ARS")
+    notes_json = json.dumps({"currency": currency}) if currency != "ARS" else None
 
     await db.pool.execute(
         """
-        INSERT INTO treatment_plans (id, tenant_id, patient_id, professional_id, name, status, estimated_total, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, 'draft', 0, NOW(), NOW())
+        INSERT INTO treatment_plans (id, tenant_id, patient_id, professional_id, name, status, estimated_total, notes, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, 'draft', 0, $6, NOW(), NOW())
         """,
         plan_id,
         tenant_id,
         int(patient_id),
         int(professional_id) if professional_id else None,
         plan_name,
+        notes_json,
     )
 
     await _nova_emit(
