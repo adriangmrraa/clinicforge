@@ -7342,6 +7342,12 @@ def build_system_prompt(
     special_conditions_block: str = "",
     # Clinic support / complaints / review config (migration 039)
     support_policy_block: str = "",
+    # Social channels (migration 040) — Instagram / Facebook DM mode
+    channel: str = "whatsapp",
+    is_social_channel: bool = False,
+    social_landings: dict = None,
+    instagram_handle: str = None,
+    facebook_page_id: str = None,
 ) -> str:
     """
     Construye el system prompt del agente de forma dinámica.
@@ -7358,6 +7364,20 @@ def build_system_prompt(
         con al menos {code, name, patient_display_name}. Se usa para mapear códigos
         internos a nombres amigables al paciente en la sección de obras sociales.
     """
+    # Social preamble — computed before any other assembly so it can be prepended
+    _social_preamble = ""
+    if is_social_channel:
+        from services.social_prompt import build_social_preamble
+        from services.social_routes import CTA_ROUTES as _CTA_ROUTES
+        _social_preamble = build_social_preamble(
+            tenant_id=0,  # not used inside preamble today
+            channel=channel,
+            social_landings=social_landings,
+            instagram_handle=instagram_handle,
+            facebook_page_id=facebook_page_id,
+            cta_routes=_CTA_ROUTES,
+        ) + "\n\n---\n\n"
+
     prof_display = professional_name if professional_name else "la profesional"
     prof_display_full = (
         f"el/la Dr/a. {professional_name}" if professional_name else "nuestro equipo"
@@ -7411,6 +7431,10 @@ REGLA ANTI-CONFIRMACIÓN-FALSA (CRÍTICO):
 • Si la respuesta de 'book_appointment' contiene [INTERNAL_SEÑA_DATA], DEBÉS presentar los datos bancarios OBLIGATORIAMENTE.
 • Si decís "confirmado" sin haber recibido ✅ de book_appointment, estás MINTIENDO al paciente.
 
+"""
+    # ANTI-MARKDOWN block: only inject for WhatsApp; social channels render markdown natively
+    if channel == "whatsapp":
+        extra_context += """
 REGLA ANTI-MARKDOWN (WHATSAPP):
 • PROHIBIDO usar ** para negritas.
 • PROHIBIDO usar _ o __ para itálicas.
@@ -7754,7 +7778,7 @@ Si no tiene → no insistir, continuar normalmente."""
             '¿Querés que te derive con un humano para eso?"'
         )
 
-    return f"""REGLA DE IDIOMA (OBLIGATORIA): {lang_rule}{extra_context}
+    _base_prompt = f"""REGLA DE IDIOMA (OBLIGATORIA): {lang_rule}{extra_context}
 {greeting_rule}
 IDENTIDAD Y TONO:
 Sos {bot_name}, la asistente virtual de {clinic_name}.
@@ -8202,6 +8226,8 @@ TRIAJE Y URGENCIAS: Llamar a 'triage_urgency' si el paciente describe CUALQUIERA
 {support_policy_block}
 Usá solo las tools proporcionadas. Siempre terminá con una pregunta o frase que invite a seguir la charla.
 """
+
+    return _social_preamble + _base_prompt
 
 
 # --- AGENT SETUP (prompt dinámico: system_prompt se inyecta en cada invocación) ---
