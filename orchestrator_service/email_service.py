@@ -1762,3 +1762,63 @@ def _render_plan_payment_template_fr(
     </body>
     </html>
     """
+
+
+async def send_backup_verification_code(
+    to_email: str,
+    code: str,
+    clinic_name: str,
+) -> bool:
+    """
+    Send a 6-digit verification code for backup download authorization.
+
+    Returns True if sent successfully, False otherwise.
+    """
+    email_svc = EmailService()
+
+    if not email_svc.smtp_host or not email_svc.smtp_user:
+        logger.warning("[backup] SMTP not configured — cannot send verification code")
+        return False
+
+    subject = f"ClinicForge — Código de verificación para Backup"
+    html_body = f"""
+    <html>
+    <body style="font-family: Arial, sans-serif; background: #0d1117; color: #e6edf3; padding: 20px;">
+        <div style="max-width: 500px; margin: 0 auto; background: #161b22; border-radius: 12px; padding: 30px; border: 1px solid rgba(255,255,255,0.1);">
+            <h2 style="color: #ffffff; margin-top: 0;">Código de verificación</h2>
+            <p>Se solicitó un backup completo de <strong>{_html.escape(clinic_name)}</strong>.</p>
+            <p>Tu código de verificación es:</p>
+            <div style="background: #0d1117; border-radius: 8px; padding: 20px; text-align: center; margin: 20px 0;">
+                <span style="font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #58a6ff; font-family: monospace;">{code}</span>
+            </div>
+            <p style="color: #8b949e; font-size: 13px;">Este código expira en <strong>10 minutos</strong>.</p>
+            <p style="color: #8b949e; font-size: 13px;">Si no solicitaste este backup, ignorá este email y verificá la seguridad de tu cuenta.</p>
+            <hr style="border: none; border-top: 1px solid rgba(255,255,255,0.1); margin: 20px 0;">
+            <p style="color: #484f58; font-size: 11px;">ClinicForge — Backup & Restore System</p>
+        </div>
+    </body>
+    </html>
+    """
+
+    try:
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = subject
+        msg["From"] = email_svc.smtp_sender or email_svc.smtp_user
+        msg["To"] = to_email
+        msg.attach(MIMEText(html_body, "html", "utf-8"))
+
+        if email_svc.smtp_port == 465:
+            with smtplib.SMTP_SSL(email_svc.smtp_host, email_svc.smtp_port) as server:
+                server.login(email_svc.smtp_user, email_svc.smtp_pass)
+                server.send_message(msg)
+        else:
+            with smtplib.SMTP(email_svc.smtp_host, email_svc.smtp_port) as server:
+                server.starttls()
+                server.login(email_svc.smtp_user, email_svc.smtp_pass)
+                server.send_message(msg)
+
+        logger.info(f"[backup] Verification code sent to {to_email}")
+        return True
+    except Exception as e:
+        logger.error(f"[backup] Failed to send verification code: {e}")
+        return False

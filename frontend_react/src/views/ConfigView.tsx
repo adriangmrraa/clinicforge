@@ -5,6 +5,7 @@ import { useTranslation } from '../context/LanguageContext';
 import PageHeader from '../components/PageHeader';
 import { useAuth } from '../context/AuthContext';
 import { Modal } from '../components/Modal';
+import BackupRestoreSection from '../components/BackupRestoreSection';
 
 // Lazy load integration tabs
 const LeadsFormsTab = lazy(() => import('../components/integrations/LeadsFormsTab'));
@@ -1004,6 +1005,8 @@ export default function ConfigView() {
                         </div>
                     </div>
                 </div>
+
+                <BackupRestoreSection userRole={user?.role} tenantId={user?.tenant_id} />
             </div>
         </div>
     );

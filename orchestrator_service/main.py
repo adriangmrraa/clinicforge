@@ -9209,6 +9209,14 @@ try:
 except Exception as e:
     logger.error(f"digital_records_router_registration_failed: {e}")
 
+try:
+    from routes.backup_routes import router as backup_router
+
+    app.include_router(backup_router, prefix="/admin/backup", tags=["backup"])
+    logger.info("✅ Backup & Restore router registered")
+except Exception as e:
+    logger.error(f"backup_router_registration_failed: {e}")
+
 # Dashboard CEO: router y middleware se registran aquí (antes de startup)
 try:
     from dashboard import init_dashboard
