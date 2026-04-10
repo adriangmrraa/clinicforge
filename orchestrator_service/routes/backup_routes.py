@@ -108,7 +108,7 @@ async def request_verification_code(
 # --- POST /generate ---
 
 
-@router.post("/generate")
+@router.post("/generate", status_code=202)
 async def generate_backup(
     body: GenerateRequest,
     background_tasks: BackgroundTasks,
@@ -282,8 +282,9 @@ async def download_backup(
 
         zip_path = data.get("zip_path", "")
 
-        # Path traversal guard
-        if not zip_path or f"backup_{tenant_id}_" not in zip_path:
+        # Path traversal guard: must be in temp directory and contain tenant_id
+        import tempfile as _tmpmod
+        if not zip_path or not zip_path.startswith(_tmpmod.gettempdir()) or f"backup_{tenant_id}_" not in zip_path:
             raise HTTPException(500, "Ruta de archivo inválida")
 
         if not os.path.isfile(zip_path):
@@ -340,6 +341,10 @@ async def restore_backup(
     """Upload a backup ZIP and restore it to the current (or target) tenant."""
     import tempfile
 
+    # Password is required for restore (sensitive operation)
+    if not password:
+        raise HTTPException(400, "Se requiere contraseña para restaurar un backup")
+
     # Size check (5GB max)
     max_size = 5 * 1024 * 1024 * 1024
     if file.size and file.size > max_size:
@@ -363,15 +368,16 @@ async def restore_backup(
     ):
         raise HTTPException(401, "Contraseña incorrecta")
 
-    # Save upload to temp file
+    # Stream upload to temp file (avoid loading entire file into memory)
     tmp_path = os.path.join(tempfile.gettempdir(), f"restore_{uuid.uuid4()}.zip")
     try:
-        content = await file.read()
-        if len(content) > max_size:
-            raise HTTPException(413, "El archivo excede el límite de 5GB")
-
+        total_written = 0
         with open(tmp_path, "wb") as f:
-            f.write(content)
+            while chunk := await file.read(1024 * 1024):  # 1MB chunks
+                total_written += len(chunk)
+                if total_written > max_size:
+                    raise HTTPException(413, "El archivo excede el límite de 5GB")
+                f.write(chunk)
 
         # Validate it's a real ZIP
         import zipfile

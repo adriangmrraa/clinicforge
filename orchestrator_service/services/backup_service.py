@@ -140,8 +140,19 @@ async def _query_table(pool, table_name: str, tenant_id: int) -> List[Dict]:
                 table_name,
             )
             if has_tid:
+                # Check if table has 'id' column for ordering
+                has_id = await pool.fetchval(
+                    """
+                    SELECT EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name = $1 AND column_name = 'id'
+                    )
+                    """,
+                    table_name,
+                )
+                order = " ORDER BY id" if has_id else ""
                 rows = await pool.fetch(
-                    f"SELECT * FROM {table_name} WHERE tenant_id = $1 ORDER BY id",
+                    f"SELECT * FROM {table_name} WHERE tenant_id = $1{order}",
                     tenant_id,
                 )
             else:

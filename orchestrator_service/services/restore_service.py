@@ -213,13 +213,27 @@ async def _insert_table(
     skipped = 0
     warnings = []
 
+    # Validate table name against whitelist (prevent SQL injection)
+    if table_name not in set(INSERT_ORDER):
+        warnings.append(f"Table {table_name} not in whitelist — skipped")
+        return 0, len(rows), warnings
+
+    # Column name whitelist regex (prevent SQL injection via crafted ZIP)
+    _SAFE_COL = re.compile(r"^[a-z_][a-z0-9_]*$")
+
     for row in rows:
         try:
             # Decoerce all values
             clean_row = {k: _decoerce_value(v, k) for k, v in row.items()}
 
-            columns = list(clean_row.keys())
-            values = list(clean_row.values())
+            # Validate column names (SQL injection prevention)
+            columns = [c for c in clean_row.keys() if _SAFE_COL.match(c)]
+            if len(columns) != len(clean_row):
+                skipped += 1
+                warnings.append(f"{table_name}: unsafe column names filtered")
+                continue
+
+            values = [clean_row[c] for c in columns]
             placeholders = [f"${i + 1}" for i in range(len(columns))]
             col_str = ", ".join(columns)
             val_str = ", ".join(placeholders)
@@ -230,7 +244,8 @@ async def _insert_table(
             elif "id" in columns:
                 conflict = "ON CONFLICT (id) DO NOTHING"
             else:
-                conflict = "ON CONFLICT DO NOTHING"
+                # Tables without unique constraint: plain INSERT, rely on try/except
+                conflict = ""
 
             sql = f"INSERT INTO {table_name} ({col_str}) VALUES ({val_str}) {conflict}"
 
@@ -257,27 +272,48 @@ async def _restore_files(
     uploads_dir = os.environ.get("UPLOADS_DIR", "/app/uploads")
     file_count = 0
 
+    MAX_FILE_SIZE = 500 * 1024 * 1024  # 500MB per file
+    MAX_ENTRIES = 10000
+    entry_count = 0
+
     for entry in zip_ref.namelist():
         if not entry.startswith(f"{prefix}/files/"):
             continue
         if entry.endswith("/"):
             continue  # Skip directories
 
+        # ZIP bomb: limit entry count
+        entry_count += 1
+        if entry_count > MAX_ENTRIES:
+            logger.warning(f"[restore] Max file entries ({MAX_ENTRIES}) reached — stopping")
+            break
+
+        # ZIP bomb: check decompressed size before reading
+        info = zip_ref.getinfo(entry)
+        if info.file_size > MAX_FILE_SIZE:
+            logger.warning(f"[restore] Skipping oversized file {entry}: {info.file_size} bytes")
+            continue
+
         # Relative path within files/
         rel_path = entry[len(f"{prefix}/files/") :]
 
-        # Sanitize path (prevent traversal)
+        # Sanitize path (prevent traversal — handles ../, ..\, double-encoded)
         rel_path = rel_path.replace("\\", "/")
-        rel_path = re.sub(r"\.\./", "", rel_path)
         rel_path = rel_path.lstrip("/")
-        if not rel_path:
+        if not rel_path or ".." in rel_path:
+            logger.warning(f"[restore] Skipping suspicious path: {entry}")
             continue
 
         # Remap source tenant_id in path to target
         if str(source_tenant_id) in rel_path:
             rel_path = rel_path.replace(str(source_tenant_id), str(target_tenant_id), 1)
 
-        target_path = os.path.join(uploads_dir, rel_path)
+        target_path = os.path.normpath(os.path.join(uploads_dir, rel_path))
+
+        # Final traversal check: must be within uploads_dir
+        if not target_path.startswith(os.path.normpath(uploads_dir)):
+            logger.warning(f"[restore] Path traversal blocked: {target_path}")
+            continue
 
         # Create parent dirs
         os.makedirs(os.path.dirname(target_path), exist_ok=True)
