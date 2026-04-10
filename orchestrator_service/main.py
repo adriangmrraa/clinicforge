@@ -2364,6 +2364,13 @@ async def check_availability(
                     for sede in unique_sedes:
                         lines.append(f"📍 {sede}")
 
+            # BOOK_HINT: tell the LLM exactly what treatment_reason to pass to book_appointment
+            _offered_treatment_name = treatment_name
+            if t_data:
+                _offered_treatment_name = t_data.get("name") or treatment_name
+            if _offered_treatment_name and _offered_treatment_name.lower() not in ("consulta", "consulta general"):
+                lines.append(f"\n[BOOK_HINT: Cuando el paciente elija, llamá book_appointment con treatment_reason=\"{_offered_treatment_name}\"]")
+
             resp = "\n".join(lines)
             logger.info(
                 f"📅 check_availability OK options={len(options)} total_today={total_today} price={avail_price} for {date_query} auto_advanced={auto_advanced}"
@@ -2389,6 +2396,7 @@ async def check_availability(
                             }
                             for opt in options
                         ],
+                        offered_treatment=_offered_treatment_name,
                     )
             except Exception as state_err:
                 logger.warning(
@@ -2485,7 +2493,7 @@ async def book_appointment(
     interpreted_date: OBLIGATORIO cuando el paciente eligió una opción que ofreciste con check_availability. Pasá la fecha exacta YYYY-MM-DD de la opción que el paciente eligió. Esto evita que se re-razone la fecha y se cometan errores.
       - Ejemplo: ofreciste "1️⃣ Martes 07/04 — 10:00 hs" y el paciente dijo "mañana a las 10" → interpreted_date="2026-04-07"
       - Si NO se ofreció previamente con check_availability, dejá vacío y el sistema parsea date_time.
-    treatment_reason: Nombre del tratamiento tal como en list_services (ej. limpieza profunda, consulta).
+    treatment_reason: OBLIGATORIO. Nombre EXACTO del tratamiento que el paciente pidió y que se buscó en check_availability (ej. "Cirugía Maxilofacial", "Limpieza Profunda"). NUNCA usar "consulta general" si el paciente pidió un tratamiento específico. Si check_availability devolvió un [BOOK_HINT], usá ese valor.
     first_name, last_name: Nombre y apellido del PACIENTE (no del interlocutor si es un tercero).
     dni: Documento del PACIENTE (solo números).
     birth_date: (NO PEDIR — solo si el paciente lo dio espontáneamente).
@@ -2501,8 +2509,25 @@ async def book_appointment(
     if not chat_phone:
         return "❌ Error: No pude identificar tu teléfono. Reinicia la conversación."
     tenant_id = current_tenant_id.get()
+
+    # Safety net: if LLM passes generic "consulta"/"consulta general" but conversation
+    # state has a specific treatment from check_availability, use that instead.
+    _original_treatment = treatment_reason
+    if treatment_reason and treatment_reason.strip().lower() in ("consulta", "consulta general"):
+        try:
+            from services.conversation_state import get_state
+            _conv_state = await get_state(tenant_id, chat_phone)
+            _offered = _conv_state.get("offered_treatment")
+            if _offered and _offered.strip().lower() not in ("consulta", "consulta general"):
+                logger.warning(
+                    f"📅 BOOK TREATMENT OVERRIDE: LLM passed '{treatment_reason}' but state has offered_treatment='{_offered}' — using state value"
+                )
+                treatment_reason = _offered
+        except Exception as e:
+            logger.warning(f"📅 BOOK: could not check conversation state for treatment override: {e}")
+
     logger.info(
-        f"📅 BOOK START: phone={chat_phone} tenant={tenant_id} date_time={date_time} treatment={treatment_reason} prof={professional_name} first_name={first_name} last_name={last_name} dni={dni} is_minor={is_minor} patient_phone={patient_phone}"
+        f"📅 BOOK START: phone={chat_phone} tenant={tenant_id} date_time={date_time} treatment={treatment_reason} (original={_original_treatment}) prof={professional_name} first_name={first_name} last_name={last_name} dni={dni} is_minor={is_minor} patient_phone={patient_phone}"
     )
 
     # --- Resolve patient phone based on booking type ---

@@ -84,6 +84,7 @@ async def set_state(
     last_offered_slots: Optional[List[Dict]] = None,
     last_locked_slot: Optional[Dict] = None,
     last_booked_appointment_id: Optional[int] = None,
+    offered_treatment: Optional[str] = None,
 ) -> None:
     """
     Set conversation state in Redis with TTL.
@@ -95,6 +96,7 @@ async def set_state(
         last_offered_slots: List of slots offered (for OFFERED_SLOTS state)
         last_locked_slot: Slot that was locked (for SLOT_LOCKED state)
         last_booked_appointment_id: ID of booked appointment
+        offered_treatment: Treatment name from check_availability (for OFFERED_SLOTS state)
     """
     if state not in VALID_STATES:
         raise ValueError(f"Invalid state: {state}. Must be one of {VALID_STATES}")
@@ -117,6 +119,7 @@ async def set_state(
             "last_offered_slots": last_offered_slots,
             "last_locked_slot": last_locked_slot,
             "last_booked_appointment_id": last_booked_appointment_id,
+            "offered_treatment": offered_treatment,
             "updated_at": __import__("datetime").datetime.now().isoformat(),
         }
 
