@@ -152,6 +152,7 @@
     "saved_integration": "Configuration de {{provider}} enregistrée.",
     "save_integration_error": "Erreur lors de l'enregistrement de l'intégration.",
     "credential_saved": "Identifiant enregistré.",
+    "editing_credentials": "Modification des identifiants — remplissez les champs ci-dessus et enregistrez.",
     "credential_deleted": "Identifiant supprimé.",
     "confirm_delete_credential": "Supprimer cet identifiant ?",
     "confirm_clean_media": "Êtes-vous sûr de vouloir supprimer les fichiers multimédias de plus de {{days}} jours ? Cette action est irréversible.",

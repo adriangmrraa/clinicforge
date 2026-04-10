@@ -154,6 +154,7 @@
     "saved_integration": "{{provider}} configuration saved.",
     "save_integration_error": "Error saving integration.",
     "credential_saved": "Credential saved.",
+    "editing_credentials": "Editing credentials — fill in the fields above and save.",
     "credential_deleted": "Credential deleted.",
     "confirm_delete_credential": "Delete this credential?",
     "confirm_clean_media": "Are you sure you want to delete media files older than {{days}} days? This action is irreversible.",

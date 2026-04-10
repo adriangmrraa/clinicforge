@@ -156,6 +156,7 @@
     "saved_integration": "Configuración de {{provider}} guardada.",
     "save_integration_error": "Error al guardar integración.",
     "credential_saved": "Credencial guardada.",
+    "editing_credentials": "Editando credenciales — completá los campos arriba y guardá.",
     "credential_deleted": "Credencial eliminada.",
     "confirm_delete_credential": "¿Eliminar esta credencial?",
     "confirm_clean_media": "¿Estás seguro de que deseas eliminar los archivos multimedia con más de {{days}} días de antigüedad? Esta acción es irreversible.",

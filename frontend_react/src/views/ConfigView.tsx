@@ -736,7 +736,18 @@ export default function ConfigView() {
                                         <td className="px-4 py-4 text-right">
                                             <div className="flex justify-end gap-2">
                                                 <button
-                                                    onClick={() => setIntConfig({ ...intConfig, tenant_id: c.tenant_id || null })}
+                                                    onClick={() => {
+                                                        const tid = c.tenant_id || null;
+                                                        if (intConfig.tenant_id === tid) {
+                                                            // Same tenant — force reload since useEffect won't trigger
+                                                            loadIntegrationConfig(activeTab as 'ycloud' | 'chatwoot', tid);
+                                                        } else {
+                                                            setIntConfig({ ...intConfig, tenant_id: tid });
+                                                        }
+                                                        // Scroll to form and show feedback
+                                                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                                                        showSuccess(t('config.editing_credentials'));
+                                                    }}
                                                     className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors border border-transparent hover:border-indigo-100"
                                                     title={t('common.edit')}
                                                 >
@@ -871,7 +882,18 @@ export default function ConfigView() {
                                         <td className="px-4 py-4 text-right">
                                             <div className="flex justify-end gap-2">
                                                 <button
-                                                    onClick={() => setIntConfig({ ...intConfig, tenant_id: c.tenant_id || null })}
+                                                    onClick={() => {
+                                                        const tid = c.tenant_id || null;
+                                                        if (intConfig.tenant_id === tid) {
+                                                            // Same tenant — force reload since useEffect won't trigger
+                                                            loadIntegrationConfig(activeTab as 'ycloud' | 'chatwoot', tid);
+                                                        } else {
+                                                            setIntConfig({ ...intConfig, tenant_id: tid });
+                                                        }
+                                                        // Scroll to form and show feedback
+                                                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                                                        showSuccess(t('config.editing_credentials'));
+                                                    }}
                                                     className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors border border-transparent hover:border-indigo-100"
                                                     title={t('common.edit')}
                                                 >
@@ -927,7 +949,7 @@ export default function ConfigView() {
                                 </span>
                             </div>
                             <div className="flex gap-1 group-hover:opacity-100 opacity-0 transition-opacity">
-                                <button onClick={() => { setEditingCred(cred); setCredForm({ ...cred, value: '••••••••' }); setIsCredModalOpen(true); }} className="p-1.5 hover:bg-white/[0.04] rounded-lg text-white/40 hover:text-indigo-400">
+                                <button onClick={() => { setEditingCred(cred); setCredForm({ ...cred, value: '' }); setIsCredModalOpen(true); }} className="p-1.5 hover:bg-white/[0.04] rounded-lg text-white/40 hover:text-indigo-400">
                                     <Edit2 size={16} />
                                 </button>
                                 <button onClick={() => handleDeleteCredential(cred.id!)} className="p-1.5 hover:bg-rose-500/10 rounded-lg text-white/30 hover:text-rose-400">
