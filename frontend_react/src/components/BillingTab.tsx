@@ -454,7 +454,9 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
   // ─── Computed totals (plan_view) ─────────────────────────────────────────
 
   const estimatedTotal = planDetail?.estimated_total || 0;
-  const approvedTotal = planDetail?.approved_total || estimatedTotal;
+  const _baseApproved = planDetail?.approved_total || estimatedTotal;
+  const _financedTotal = budgetConfig.financed_total ? parseFloat(budgetConfig.financed_total) : 0;
+  const approvedTotal = _financedTotal > 0 ? _financedTotal : _baseApproved;
   const paidTotal = planDetail?.payments?.reduce((sum, p) => sum + p.amount, 0) || 0;
   const pendingTotal = Math.max(approvedTotal - paidTotal, 0);
   const progressPercent = approvedTotal > 0 ? Math.min((paidTotal / approvedTotal) * 100, 100) : 0;
