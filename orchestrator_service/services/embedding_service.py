@@ -387,12 +387,13 @@ async def format_faqs_with_rag(tenant_id: int, user_message: str, static_faqs: l
             )
             lines = [
                 "═══════════════════════════════════════════════",
-                "FAQs RELEVANTES — RESPUESTAS OBLIGATORIAS DE LA DOCTORA",
+                "FAQs RELEVANTES — VOZ OFICIAL DE LA DOCTORA",
                 "═══════════════════════════════════════════════",
-                "REGLA BLOQUEANTE: Si la pregunta del paciente trata sobre ALGUNO de los temas",
-                "de abajo, DEBÉS responder con la RESPUESTA OFICIAL — TAL CUAL, sin parafrasear,",
-                "sin mezclar con get_service_details. Aunque el paciente use palabras distintas",
-                "(demora/dura/tarda/cuesta/sale), si el TEMA matchea, usá la FAQ.",
+                "Usá estas FAQs para responder preguntas de seguimiento y temas generales.",
+                "EXCEPCIÓN: Si el paciente menciona un tratamiento por PRIMERA VEZ con interés",
+                "amplio y todavía no recibió la presentación (ai_response_template), usá",
+                "get_service_details PRIMERO — ver REGLA DE PRIMERA MENCIÓN en el prompt.",
+                "Para todo lo demás, respondé con la RESPUESTA OFICIAL tal cual, sin parafrasear.",
                 "",
             ]
             for i, faq in enumerate(relevant_faqs, 1):
@@ -410,12 +411,13 @@ async def format_faqs_with_rag(tenant_id: int, user_message: str, static_faqs: l
     logger.info(f"📚 RAG fallback: injecting {min(len(static_faqs), 20)} static FAQs (no pgvector or no relevant matches)")
     lines = [
         "═══════════════════════════════════════════════",
-        "FAQs OBLIGATORIAS — RESPUESTAS OFICIALES DE LA DOCTORA",
+        "FAQs DISPONIBLES — VOZ OFICIAL DE LA DOCTORA",
         "═══════════════════════════════════════════════",
-        "REGLA BLOQUEANTE: Si la pregunta del paciente trata sobre alguno de estos temas,",
-        "DEBÉS responder con la RESPUESTA OFICIAL — TAL CUAL, sin parafrasear, sin mezclar",
-        "con get_service_details. Aunque el paciente use palabras distintas (demora/dura/",
-        "tarda/cuesta/sale), si el TEMA matchea, usá la FAQ.",
+        "Usá estas FAQs para responder preguntas de seguimiento y temas generales.",
+        "EXCEPCIÓN: Si el paciente menciona un tratamiento por PRIMERA VEZ con interés",
+        "amplio y todavía no recibió la presentación (ai_response_template), usá",
+        "get_service_details PRIMERO — ver REGLA DE PRIMERA MENCIÓN en el prompt.",
+        "Para todo lo demás, respondé con la RESPUESTA OFICIAL tal cual, sin parafrasear.",
         "",
     ]
     for i, faq in enumerate(static_faqs[:20], 1):
