@@ -1058,6 +1058,17 @@ async def process_buffer_task(
         except Exception as hol_err:
             logger.debug(f"Holiday fetch fallback (non-fatal): {hol_err}")
 
+        # Lead context injection: for leads (not yet patients), load accumulated
+        # data from Redis and inject into patient_context so the AI has continuity.
+        if not patient_row and not patient_context:
+            try:
+                from services.lead_context import get as lead_ctx_get, format_for_prompt as lead_ctx_format
+                _lead_data = await lead_ctx_get(tenant_id, external_user_id)
+                if _lead_data:
+                    patient_context = lead_ctx_format(_lead_data)
+            except Exception:
+                pass
+
         # Classify intent for conditional prompt injection (keyword-based, <1ms)
         intent_tags = classify_intent(messages)
         # Supplement with pending payment context from patient data

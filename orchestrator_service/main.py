@@ -2403,6 +2403,22 @@ async def check_availability(
                     f"[conversation_state] set_state in check_availability failed (non-blocking): {state_err}"
                 )
 
+            # Lead context accumulator: persist treatment/professional for leads
+            try:
+                from services.lead_context import merge as lead_ctx_merge
+                _lc_phone = current_customer_phone.get()
+                if _lc_phone:
+                    _lc_fields = {"channel": "whatsapp"}
+                    if _offered_treatment_name:
+                        _lc_fields["treatment_name"] = _offered_treatment_name
+                    if t_data and t_data.get("code"):
+                        _lc_fields["treatment_code"] = t_data["code"]
+                    if professional_name:
+                        _lc_fields["professional_name"] = professional_name
+                    await lead_ctx_merge(tid, _lc_phone, _lc_fields)
+            except Exception:
+                pass
+
             # Migration 038: prepend escalation message when the primary
             # was saturated and we switched to a fallback before this search.
             if escalation_state.get("triggered"):
@@ -2529,6 +2545,27 @@ async def book_appointment(
     logger.info(
         f"📅 BOOK START: phone={chat_phone} tenant={tenant_id} date_time={date_time} treatment={treatment_reason} (original={_original_treatment}) prof={professional_name} first_name={first_name} last_name={last_name} dni={dni} is_minor={is_minor} patient_phone={patient_phone}"
     )
+
+    # Lead context: accumulate name/DNI for self-bookings (skip third-party)
+    if not (bool(patient_phone) or bool(is_minor)):
+        try:
+            from services.lead_context import merge as lead_ctx_merge
+            _lc_book = {}
+            if first_name:
+                _lc_book["first_name"] = first_name
+            if last_name:
+                _lc_book["last_name"] = last_name
+            if dni:
+                _lc_book["dni"] = dni
+            if treatment_reason:
+                _lc_book["treatment_name"] = treatment_reason
+            if _lc_book:
+                await lead_ctx_merge(
+                    tenant_id, chat_phone, _lc_book,
+                    skip_if_exists_fields=["first_name", "last_name", "dni"],
+                )
+        except Exception:
+            pass
 
     # --- Resolve patient phone based on booking type ---
     is_third_party = bool(patient_phone) or bool(is_minor)
@@ -3143,6 +3180,14 @@ async def book_appointment(
                 guardian_phone_value,
             )
             patient_id = row["id"]
+
+        # Lead context: clear now that patient exists in DB (self-bookings only)
+        if not is_third_party:
+            try:
+                from services.lead_context import clear as lead_ctx_clear
+                await lead_ctx_clear(tenant_id, phone)
+            except Exception:
+                pass
 
         apt_id = str(uuid.uuid4())
 
@@ -4937,6 +4982,12 @@ async def save_patient_email(email: str, patient_phone: Optional[str] = None):
                 target_phone,
             )
         if not row:
+            # Patient not in DB yet — save email to lead context for later
+            try:
+                from services.lead_context import merge as lead_ctx_merge
+                await lead_ctx_merge(tenant_id, target_phone, {"email": email_clean})
+            except Exception:
+                pass
             return "No encontré la ficha del paciente. Asegurate de haber agendado primero."
         logger.info(
             f"✅ save_patient_email OK target_phone={target_phone} tenant={tenant_id} patient_id={row['id']}"

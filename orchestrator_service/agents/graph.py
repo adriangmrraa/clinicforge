@@ -170,7 +170,18 @@ async def run_turn(ctx: "TurnContext") -> "TurnResult":
         "instagram_handle": ctx.extra.get("instagram_handle"),
         "facebook_page_id": ctx.extra.get("facebook_page_id"),
         "whatsapp_link": ctx.extra.get("whatsapp_link"),
+        "lead_context": None,
     }
+
+    # Lead context injection: for leads not yet in the DB, load accumulated data
+    if profile.get("is_new_lead"):
+        try:
+            from services.lead_context import get as lead_ctx_get
+            _lead_data = await lead_ctx_get(ctx.tenant_id, ctx.phone_number)
+            if _lead_data:
+                state["lead_context"] = _lead_data
+        except Exception:
+            pass
 
     # No-interest detection — mark lead as not wanting follow-up before routing.
     # Done at graph level (earliest point with tenant_id + phone + user_message)

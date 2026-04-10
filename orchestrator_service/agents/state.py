@@ -48,5 +48,8 @@ class AgentState(TypedDict, total=False):
     instagram_handle: Optional[str]
     facebook_page_id: Optional[str]
 
+    # Lead context (accumulated data for leads not yet patients — from lead_context.py)
+    lead_context: Optional[dict]
+
     # Metadata
     start_time: float
