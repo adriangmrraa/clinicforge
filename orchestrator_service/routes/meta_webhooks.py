@@ -561,8 +561,15 @@ async def get_deployment_config(request: Request):
         if not api_base:
             api_base = os.getenv("BASE_URL", "").rstrip("/")
         if not api_base:
-            # Fallback to request base URL
-            api_base = str(request.base_url).rstrip("/")
+            # Fallback: derive orchestrator URL from BFF URL
+            scheme = (
+                request.headers.get("x-forwarded-proto", request.url.scheme) or "https"
+            )
+            host = request.headers.get("x-forwarded-host", request.url.netloc) or ""
+            if host and "-bff-" in host:
+                api_base = f"{scheme}://{host.replace('-bff-', '-orchestrator-')}"
+            else:
+                api_base = f"{scheme}://{host}" if host else ""
 
         config = {
             "orchestrator_url": api_base,

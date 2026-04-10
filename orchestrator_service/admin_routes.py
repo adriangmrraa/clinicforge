@@ -1073,10 +1073,14 @@ async def get_integration_config(
         if not api_base:
             api_base = os.getenv("BASE_URL", "").rstrip("/")
         if not api_base:
-            # Fallback using request (less ideal but backward compatible)
+            # Fallback: derive orchestrator URL from BFF URL
             scheme = request.headers.get("x-forwarded-proto", request.url.scheme)
             host = request.headers.get("x-forwarded-host", request.url.netloc)
-            api_base = f"{scheme}://{host}"
+            if host and "-bff-" in host:
+                # Transform dentalforge-bff-service.gvdlcu.easypanel.host -> dentalforge-orchestrator.gvdlcu.easypanel.host
+                api_base = f"{scheme}://{host.replace('-bff-', '-orchestrator-')}"
+            else:
+                api_base = f"{scheme}://{host}"
 
         config["api_base"] = api_base
         config["webhook_path"] = "/admin/chatwoot/webhook"
@@ -1137,7 +1141,11 @@ async def get_integration_config(
         if not api_base:
             scheme = request.headers.get("x-forwarded-proto", request.url.scheme)
             host = request.headers.get("x-forwarded-host", request.url.netloc)
-            api_base = f"{scheme}://{host}"
+            # Transform BFF URL to orchestrator URL
+            if host and "-bff-" in host:
+                api_base = f"{scheme}://{host.replace('-bff-', '-orchestrator-')}"
+            else:
+                api_base = f"{scheme}://{host}"
 
         config["api_base"] = api_base
         config["webhook_path"] = "/admin/ycloud/webhook"
