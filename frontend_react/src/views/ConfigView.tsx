@@ -6,6 +6,7 @@ import PageHeader from '../components/PageHeader';
 import { useAuth } from '../context/AuthContext';
 import { Modal } from '../components/Modal';
 import BackupRestoreSection from '../components/BackupRestoreSection';
+import YCloudSyncSection from '../components/YCloudSyncSection';
 
 // Lazy load integration tabs
 const LeadsFormsTab = lazy(() => import('../components/integrations/LeadsFormsTab'));
@@ -759,6 +760,12 @@ export default function ConfigView() {
                         </table>
                     </div>
                 </div>
+
+                {/* YCloud Sync Section (CEO only) */}
+                <YCloudSyncSection 
+                    tenantId={user?.tenant_id || 0} 
+                    className="mt-6"
+                />
             </div>
         </div>
     );

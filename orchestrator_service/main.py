@@ -307,7 +307,9 @@ def parse_date(date_query: str) -> Optional[date]:
         is_tomorrow = False
         if morning_ctx:
             # Strip the "por la/a la/de la mañana" part and check if standalone "mañana" remains
-            stripped = re.sub(r"\b(por la|a la|de la)\s+mañana\b", "", query_clean).strip()
+            stripped = re.sub(
+                r"\b(por la|a la|de la)\s+mañana\b", "", query_clean
+            ).strip()
             if re.search(r"\bmañana\b", stripped):
                 is_tomorrow = True  # "mañana por la mañana" → date is tomorrow
         else:
@@ -321,10 +323,14 @@ def parse_date(date_query: str) -> Optional[date]:
             )
             query_no_time = time_pattern.sub("", query_clean).strip()
             # Strip morning context too for digit check
-            query_no_time = re.sub(r"\b(por la|a la|de la)\s+mañana\b", "", query_no_time).strip()
+            query_no_time = re.sub(
+                r"\b(por la|a la|de la)\s+mañana\b", "", query_no_time
+            ).strip()
             # Solo si no hay otros indicadores de fecha (evitar "mañana 30 de abril")
             if not re.search(r"\d", query_no_time):
-                logger.info(f"📅 parse_date: '{date_query}' → tomorrow (mañana keyword)")
+                logger.info(
+                    f"📅 parse_date: '{date_query}' → tomorrow (mañana keyword)"
+                )
                 return (get_now_arg() + timedelta(days=1)).date()
     if "tomorrow" in query_clean:
         time_pattern = re.compile(
@@ -410,12 +416,16 @@ def parse_date(date_query: str) -> Optional[date]:
     )
     query_for_dateutil = _time_strip.sub("", query_clean).strip()
     # Also strip standalone "a las N" patterns (without unit suffix)
-    query_for_dateutil = re.sub(r"\ba\s+las?\s+\d{1,2}\b", "", query_for_dateutil).strip()
+    query_for_dateutil = re.sub(
+        r"\ba\s+las?\s+\d{1,2}\b", "", query_for_dateutil
+    ).strip()
     if not query_for_dateutil:
         query_for_dateutil = query_clean  # fallback if everything was stripped
     if re.search(r"\d", query_for_dateutil):
         try:
-            parsed = dateutil_parse(query_for_dateutil, dayfirst=True, fuzzy=True).date()
+            parsed = dateutil_parse(
+                query_for_dateutil, dayfirst=True, fuzzy=True
+            ).date()
             if not re.search(r"20\d{2}", query):
                 # Si NO hay mes explícito (solo un número como "15" o "cerca del 15"),
                 # dateutil asume mes actual. Si eso resulta en el pasado, avanzar al próximo mes.
@@ -536,24 +546,46 @@ def parse_date(date_query: str) -> Optional[date]:
         # Check for qualifiers: mediados, fines, principios
         if any(w in query for w in ["mitad", "mediado", "medio", "mediados"]):
             target_day = 15
-        elif any(w in query for w in ["fin", "final", "fines", "última semana", "ultima semana"]):
+        elif any(
+            w in query
+            for w in ["fin", "final", "fines", "última semana", "ultima semana"]
+        ):
             target_day = 25
-        elif any(w in query for w in ["principio", "inicio", "comienzo", "primera semana"]):
+        elif any(
+            w in query for w in ["principio", "inicio", "comienzo", "primera semana"]
+        ):
             target_day = 3
         else:
             target_day = 1
         return date(next_year, next_month, target_day)
 
     # "en una semana", "en 3 días", "en dos semanas", etc.
-    _num_words = {"una": 1, "un": 1, "dos": 2, "tres": 3, "cuatro": 4, "cinco": 5, "seis": 6, "siete": 7}
-    en_dias = re.search(r"en\s+(\d+|una?|dos|tres|cuatro|cinco|seis|siete)\s+(d[ií]as?|semanas?)", query)
+    _num_words = {
+        "una": 1,
+        "un": 1,
+        "dos": 2,
+        "tres": 3,
+        "cuatro": 4,
+        "cinco": 5,
+        "seis": 6,
+        "siete": 7,
+    }
+    en_dias = re.search(
+        r"en\s+(\d+|una?|dos|tres|cuatro|cinco|seis|siete)\s+(d[ií]as?|semanas?)", query
+    )
     if en_dias:
-        n = int(en_dias.group(1)) if en_dias.group(1).isdigit() else _num_words.get(en_dias.group(1), 1)
+        n = (
+            int(en_dias.group(1))
+            if en_dias.group(1).isdigit()
+            else _num_words.get(en_dias.group(1), 1)
+        )
         unit = en_dias.group(2)
         if "semana" in unit:
             n *= 7
         result = today + timedelta(days=n)
-        logger.info(f"📅 parse_date: '{date_query}' → {result} (relative 'en N días/semanas')")
+        logger.info(
+            f"📅 parse_date: '{date_query}' → {result} (relative 'en N días/semanas')"
+        )
         return result
 
     # ── CAPA 7: Último intento con dateutil sin restricción de dígitos ──
@@ -903,7 +935,9 @@ def _get_search_range_days(date_query: str, start_date: date) -> int:
     return 1
 
 
-def _pick_from_slots(slots: List[str], max_picks: int = 3, specific_time: Optional[str] = None) -> List[str]:
+def _pick_from_slots(
+    slots: List[str], max_picks: int = 3, specific_time: Optional[str] = None
+) -> List[str]:
     """Selecciona hasta max_picks slots representativos (mañana, tarde, comodín).
     If specific_time is provided and available, it's placed FIRST in the picks.
     """
@@ -1534,7 +1568,9 @@ async def check_availability(
                         cats_str = ",".join(cats)
                     else:
                         cats_str = str(cats)
-                    cat_list = [c.strip().lower() for c in cats_str.split(",") if c.strip()]
+                    cat_list = [
+                        c.strip().lower() for c in cats_str.split(",") if c.strip()
+                    ]
                     if cat_list and any(c in tname_lower for c in cat_list):
                         primary_pid_val = rule.get("target_professional_id")
                         if primary_pid_val:
@@ -1547,11 +1583,21 @@ async def check_availability(
                             # fallback if the primary returns 0 slots.
                             if rule.get("enable_escalation"):
                                 escalation_state["enable"] = True
-                                escalation_state["primary_pid"] = derivation_filter_prof_id
-                                escalation_state["fallback_pid"] = rule.get("fallback_professional_id")
-                                escalation_state["fallback_team"] = bool(rule.get("fallback_team_mode"))
-                                escalation_state["max_days"] = rule.get("max_wait_days_before_escalation") or 7
-                                escalation_state["template"] = rule.get("escalation_message_template")
+                                escalation_state["primary_pid"] = (
+                                    derivation_filter_prof_id
+                                )
+                                escalation_state["fallback_pid"] = rule.get(
+                                    "fallback_professional_id"
+                                )
+                                escalation_state["fallback_team"] = bool(
+                                    rule.get("fallback_team_mode")
+                                )
+                                escalation_state["max_days"] = (
+                                    rule.get("max_wait_days_before_escalation") or 7
+                                )
+                                escalation_state["template"] = rule.get(
+                                    "escalation_message_template"
+                                )
                             break
             except Exception as _der_err:
                 logger.debug(f"derivation rules lookup skipped: {_der_err}")
@@ -1562,9 +1608,7 @@ async def check_availability(
         # if no working day in the window has fewer than 8 booked appointments
         # (a rough proxy for "no 30-min gap available"). Cheaper than running
         # the full slot generator twice.
-        async def _primary_has_window_capacity(
-            prof_id: int, max_days: int
-        ) -> bool:
+        async def _primary_has_window_capacity(prof_id: int, max_days: int) -> bool:
             try:
                 from datetime import datetime as _dt, timedelta as _td
 
@@ -1890,7 +1934,9 @@ async def check_availability(
             # High-ticket: use consultation duration for slot search
             if t_data.get("is_high_ticket"):
                 duration = t_data.get("consultation_duration_minutes") or 30
-                logger.info(f"📅 HIGH_TICKET: using consultation duration {duration}min instead of treatment duration {t_data['default_duration_minutes']}min")
+                logger.info(
+                    f"📅 HIGH_TICKET: using consultation duration {duration}min instead of treatment duration {t_data['default_duration_minutes']}min"
+                )
             else:
                 duration = t_data["default_duration_minutes"]
             treatment_priority = t_data.get("priority", "medium") or "medium"
@@ -2066,15 +2112,21 @@ async def check_availability(
                         _non_working.append(h_m)
                     check_time += timedelta(minutes=15)
                 if _non_working:
-                    logger.info(f"📅 DIAG prof={prof_id} non_working_hours={_non_working}")
+                    logger.info(
+                        f"📅 DIAG prof={prof_id} non_working_hours={_non_working}"
+                    )
             else:
-                logger.info(f"📅 DIAG prof={prof_id} no working_hours restriction → available full clinic hours")
+                logger.info(
+                    f"📅 DIAG prof={prof_id} no working_hours restriction → available full clinic hours"
+                )
             # Si enabled=False o slots=[], no añadimos ocupación → profesional disponible en horario clínica
 
         # Agregar bloqueos de GCal (granularidad 15 min)
         global_busy = set()
         if gcal_blocks:
-            logger.info(f"📅 DIAG gcal_blocks_count={len(gcal_blocks)} for {target_date}")
+            logger.info(
+                f"📅 DIAG gcal_blocks_count={len(gcal_blocks)} for {target_date}"
+            )
         for b in gcal_blocks:
             it = b["start"].astimezone(get_active_tz())
             b_end = b["end"].astimezone(get_active_tz())
@@ -2215,7 +2267,9 @@ async def check_availability(
             interval_minutes=15,
             limit=50,
         )
-        logger.info(f"📅 DIAG generate_free_slots returned {len(available_slots)} slots: {available_slots[:10]}")
+        logger.info(
+            f"📅 DIAG generate_free_slots returned {len(available_slots)} slots: {available_slots[:10]}"
+        )
 
         # Fallback: if time_preference filtered ALL slots but there ARE slots without filter,
         # retry without preference and prepend a note about unavailability in that time range
@@ -2235,7 +2289,9 @@ async def check_availability(
                 available_slots = all_day_slots
                 franja = "la mañana" if time_preference == "mañana" else "la tarde"
                 _time_pref_note = f"No hay turnos disponibles por {franja} ese día, pero sí en otros horarios.\n\n"
-                logger.info(f"📅 time_preference={time_preference!r} filtered all slots — retrying without filter, found {len(all_day_slots)} slots")
+                logger.info(
+                    f"📅 time_preference={time_preference!r} filtered all slots — retrying without filter, found {len(all_day_slots)} slots"
+                )
 
         # Filtrar slots con soft lock activo de otro paciente
         my_phone = current_customer_phone.get()
@@ -2325,8 +2381,12 @@ async def check_availability(
             # High-ticket: inform this is an evaluation, not the treatment
             _is_ht = t_data.get("is_high_ticket") if t_data else False
             if _is_ht:
-                lines.append(f"🗓️ Opciones disponibles para tu evaluación de {treatment_display}:\n")
-                _consult_reqs = t_data.get("consultation_requirements") if t_data else None
+                lines.append(
+                    f"🗓️ Opciones disponibles para tu evaluación de {treatment_display}:\n"
+                )
+                _consult_reqs = (
+                    t_data.get("consultation_requirements") if t_data else None
+                )
                 if _consult_reqs:
                     lines.append(f"[CONSULTA_PREVIA_REQUISITOS:{_consult_reqs}]")
             else:
@@ -2368,8 +2428,13 @@ async def check_availability(
             _offered_treatment_name = treatment_name
             if t_data:
                 _offered_treatment_name = t_data.get("name") or treatment_name
-            if _offered_treatment_name and _offered_treatment_name.lower() not in ("consulta", "consulta general"):
-                lines.append(f"\n[BOOK_HINT: Cuando el paciente elija, llamá book_appointment con treatment_reason=\"{_offered_treatment_name}\"]")
+            if _offered_treatment_name and _offered_treatment_name.lower() not in (
+                "consulta",
+                "consulta general",
+            ):
+                lines.append(
+                    f'\n[BOOK_HINT: Cuando el paciente elija, llamá book_appointment con treatment_reason="{_offered_treatment_name}"]'
+                )
 
             resp = "\n".join(lines)
             logger.info(
@@ -2406,6 +2471,7 @@ async def check_availability(
             # Lead context accumulator: persist treatment/professional/date for leads
             try:
                 from services.lead_context import merge as lead_ctx_merge
+
                 _lc_phone = current_customer_phone.get()
                 if _lc_phone:
                     _lc_fields = {
@@ -2422,7 +2488,11 @@ async def check_availability(
                         _lc_fields["professional_name"] = professional_name
                     # Resolve professional_id from available sources
                     _lc_prof_id = forced_prof_id or derivation_filter_prof_id
-                    if not _lc_prof_id and active_professionals and len(active_professionals) == 1:
+                    if (
+                        not _lc_prof_id
+                        and active_professionals
+                        and len(active_professionals) == 1
+                    ):
                         _lc_prof_id = active_professionals[0]["id"]
                     if _lc_prof_id:
                         _lc_fields["professional_id"] = str(_lc_prof_id)
@@ -2433,13 +2503,14 @@ async def check_availability(
             # Migration 038: prepend escalation message when the primary
             # was saturated and we switched to a fallback before this search.
             if escalation_state.get("triggered"):
-                primary_lbl = escalation_state.get("primary_label") or "el profesional asignado"
+                primary_lbl = (
+                    escalation_state.get("primary_label") or "el profesional asignado"
+                )
                 fallback_lbl = escalation_state.get("fallback_label") or "el equipo"
                 tmpl = escalation_state.get("template")
                 if tmpl:
-                    esc_msg = (
-                        tmpl.replace("{primary}", primary_lbl)
-                        .replace("{fallback}", fallback_lbl)
+                    esc_msg = tmpl.replace("{primary}", primary_lbl).replace(
+                        "{fallback}", fallback_lbl
                     )
                 else:
                     esc_msg = (
@@ -2465,7 +2536,9 @@ async def check_availability(
             # When escalation triggered AND fallback also empty, the message
             # contextualizes the failure ("we tried both, no luck").
             if escalation_state.get("triggered"):
-                primary_lbl = escalation_state.get("primary_label") or "el profesional asignado"
+                primary_lbl = (
+                    escalation_state.get("primary_label") or "el profesional asignado"
+                )
                 fallback_lbl = escalation_state.get("fallback_label") or "el equipo"
                 no_slots_msg = (
                     f"Intentamos con {primary_lbl} y también con {fallback_lbl}, "
@@ -2540,18 +2613,27 @@ async def book_appointment(
     # Safety net: if LLM passes generic "consulta"/"consulta general" but conversation
     # state has a specific treatment from check_availability, use that instead.
     _original_treatment = treatment_reason
-    if treatment_reason and treatment_reason.strip().lower() in ("consulta", "consulta general"):
+    if treatment_reason and treatment_reason.strip().lower() in (
+        "consulta",
+        "consulta general",
+    ):
         try:
             from services.conversation_state import get_state
+
             _conv_state = await get_state(tenant_id, chat_phone)
             _offered = _conv_state.get("offered_treatment")
-            if _offered and _offered.strip().lower() not in ("consulta", "consulta general"):
+            if _offered and _offered.strip().lower() not in (
+                "consulta",
+                "consulta general",
+            ):
                 logger.warning(
                     f"📅 BOOK TREATMENT OVERRIDE: LLM passed '{treatment_reason}' but state has offered_treatment='{_offered}' — using state value"
                 )
                 treatment_reason = _offered
         except Exception as e:
-            logger.warning(f"📅 BOOK: could not check conversation state for treatment override: {e}")
+            logger.warning(
+                f"📅 BOOK: could not check conversation state for treatment override: {e}"
+            )
 
     logger.info(
         f"📅 BOOK START: phone={chat_phone} tenant={tenant_id} date_time={date_time} treatment={treatment_reason} (original={_original_treatment}) prof={professional_name} first_name={first_name} last_name={last_name} dni={dni} is_minor={is_minor} patient_phone={patient_phone}"
@@ -2561,6 +2643,7 @@ async def book_appointment(
     if not (bool(patient_phone) or bool(is_minor)):
         try:
             from services.lead_context import merge as lead_ctx_merge
+
             _lc_book = {}
             if first_name:
                 _lc_book["first_name"] = first_name
@@ -2572,7 +2655,9 @@ async def book_appointment(
                 _lc_book["treatment_name"] = treatment_reason
             if _lc_book:
                 await lead_ctx_merge(
-                    tenant_id, chat_phone, _lc_book,
+                    tenant_id,
+                    chat_phone,
+                    _lc_book,
                     skip_if_exists_fields=["first_name", "last_name", "dni"],
                 )
         except Exception:
@@ -2791,12 +2876,16 @@ async def book_appointment(
             _book_is_ht = t_data.get("is_high_ticket", False)
             if _book_is_ht:
                 final_duration = t_data.get("consultation_duration_minutes") or 30
-                logger.info(f"📅 BOOK HIGH_TICKET: using consultation duration {final_duration}min for {t_data['name']}")
+                logger.info(
+                    f"📅 BOOK HIGH_TICKET: using consultation duration {final_duration}min for {t_data['name']}"
+                )
             else:
                 final_duration = t_data["default_duration_minutes"]
             treatment_code = t_data["code"]
             _base_name = t_data["name"] or treatment_reason
-            treatment_display_name = f"Evaluación para {_base_name}" if _book_is_ht else _base_name
+            treatment_display_name = (
+                f"Evaluación para {_base_name}" if _book_is_ht else _base_name
+            )
             treatment_price = (
                 float(t_data["base_price"]) if t_data.get("base_price") else None
             )
@@ -2896,10 +2985,13 @@ async def book_appointment(
         # G1 GUARDRAIL: Max 1 unpaid appointment per patient
         # Prevents slot hoarding — patient must pay seña or cancel before booking another
         if existing_patient:
-            _max_unpaid = await db.pool.fetchval(
-                "SELECT COALESCE(max_unpaid_appointments, 1) FROM tenants WHERE id = $1",
-                tenant_id,
-            ) or 1
+            _max_unpaid = (
+                await db.pool.fetchval(
+                    "SELECT COALESCE(max_unpaid_appointments, 1) FROM tenants WHERE id = $1",
+                    tenant_id,
+                )
+                or 1
+            )
             if _max_unpaid > 0:
                 _unpaid_count = await db.pool.fetchval(
                     """SELECT COUNT(*) FROM appointments
@@ -2922,7 +3014,13 @@ async def book_appointment(
                         tenant_id,
                         existing_patient["id"],
                     )
-                    _pending_date = _pending_apt["appointment_datetime"].strftime("%d/%m a las %H:%M") if _pending_apt else "próximamente"
+                    _pending_date = (
+                        _pending_apt["appointment_datetime"].strftime(
+                            "%d/%m a las %H:%M"
+                        )
+                        if _pending_apt
+                        else "próximamente"
+                    )
                     logger.info(
                         f"📅 G1 GUARDRAIL: patient {existing_patient['id']} has {_unpaid_count} unpaid appointments (max={_max_unpaid}). Blocking new booking."
                     )
@@ -3196,6 +3294,7 @@ async def book_appointment(
         if not is_third_party:
             try:
                 from services.lead_context import clear as lead_ctx_clear
+
                 await lead_ctx_clear(tenant_id, phone)
             except Exception:
                 pass
@@ -3233,14 +3332,24 @@ async def book_appointment(
         # Guard: never book in the past
         now_check = get_now_arg()
         if apt_datetime < now_check:
-            logger.warning(f"📅 BOOK REJECTED: apt_datetime={apt_datetime} is in the past (now={now_check})")
+            logger.warning(
+                f"📅 BOOK REJECTED: apt_datetime={apt_datetime} is in the past (now={now_check})"
+            )
             return f"❌ La fecha {apt_datetime.strftime('%d/%m/%Y %H:%M')} ya pasó. Por favor elegí una fecha futura."
 
         # G2 GUARDRAIL: Calculate seña expiration timestamp
-        _sena_exp_hours = await db.pool.fetchval(
-            "SELECT COALESCE(sena_expiration_hours, 24) FROM tenants WHERE id = $1", tenant_id
-        ) or 24
-        _sena_expires_at = get_now_arg() + timedelta(hours=_sena_exp_hours) if _sena_exp_hours > 0 else None
+        _sena_exp_hours = (
+            await db.pool.fetchval(
+                "SELECT COALESCE(sena_expiration_hours, 24) FROM tenants WHERE id = $1",
+                tenant_id,
+            )
+            or 24
+        )
+        _sena_expires_at = (
+            get_now_arg() + timedelta(hours=_sena_exp_hours)
+            if _sena_exp_hours > 0
+            else None
+        )
 
         # Wrap patient + appointment in a single transaction (atomicity)
         # The UNIQUE index idx_appointments_no_double_booking will reject duplicates
@@ -3305,19 +3414,29 @@ async def book_appointment(
         try:
             _recovery_count = await db.pool.fetchval(
                 "SELECT recovery_touch_count FROM chat_conversations WHERE tenant_id = $1 AND external_user_id = $2 AND recovery_touch_count > 0",
-                tenant_id, phone
+                tenant_id,
+                phone,
             )
             if _recovery_count:
                 from services.telegram_notifier import fire_telegram_notification
-                fire_telegram_notification("LEAD_RECOVERY_CONVERSION", {
-                    "tenant_id": tenant_id,
-                    "patient_name": f"{first_name} {last_name or ''}".strip(),
-                    "phone": phone,
-                    "appointment_datetime": apt_datetime.isoformat() if hasattr(apt_datetime, 'isoformat') else str(apt_datetime),
-                    "treatment_type": treatment_code or treatment_reason or "consulta",
-                    "recovery_touch_count": _recovery_count,
-                    "hours_to_convert": "?",
-                }, tenant_id)
+
+                fire_telegram_notification(
+                    "LEAD_RECOVERY_CONVERSION",
+                    {
+                        "tenant_id": tenant_id,
+                        "patient_name": f"{first_name} {last_name or ''}".strip(),
+                        "phone": phone,
+                        "appointment_datetime": apt_datetime.isoformat()
+                        if hasattr(apt_datetime, "isoformat")
+                        else str(apt_datetime),
+                        "treatment_type": treatment_code
+                        or treatment_reason
+                        or "consulta",
+                        "recovery_touch_count": _recovery_count,
+                        "hours_to_convert": "?",
+                    },
+                    tenant_id,
+                )
         except Exception:
             pass  # Non-blocking
 
@@ -3370,6 +3489,7 @@ async def book_appointment(
             await sio.emit("NEW_APPOINTMENT", safe_data)
             # Mirror to Telegram
             from services.telegram_notifier import fire_telegram_notification
+
             fire_telegram_notification("NEW_APPOINTMENT", safe_data, tenant_id)
         except:
             pass
@@ -4996,6 +5116,7 @@ async def save_patient_email(email: str, patient_phone: Optional[str] = None):
             # Patient not in DB yet — save email to lead context for later
             try:
                 from services.lead_context import merge as lead_ctx_merge
+
                 await lead_ctx_merge(tenant_id, target_phone, {"email": email_clean})
             except Exception:
                 pass
@@ -5029,6 +5150,7 @@ async def set_no_followup(reason: str = "patient_request") -> str:
         )
         try:
             from services.telegram_notifier import fire_telegram_notification
+
             fire_telegram_notification(
                 "LEAD_RECOVERY_NOT_INTERESTED",
                 {
@@ -6516,7 +6638,8 @@ async def check_insurance_coverage(insurance_provider: str) -> str:
                     coverage = {}
             covered_codes = (
                 [
-                    k for k, v in coverage.items()
+                    k
+                    for k, v in coverage.items()
                     if isinstance(v, dict) and v.get("covered", False)
                 ]
                 if isinstance(coverage, dict)
@@ -6745,9 +6868,7 @@ async def get_treatment_instructions(treatment_code: str, timing: str = "all") -
                 # (a) New structured PostInstructions dict
                 # (b) Legacy list wrapped as {"general_notes": "<serialized list>"}
                 non_notes_keys = [k for k in post.keys() if k != "general_notes"]
-                has_structured_data = any(
-                    post.get(k) for k in non_notes_keys
-                )
+                has_structured_data = any(post.get(k) for k in non_notes_keys)
                 if has_structured_data:
                     formatted, alarm_flag = _format_post_instructions_dict(
                         post, treatment_name
@@ -7055,7 +7176,9 @@ def _format_insurance_providers(
         )
         copay_notes = p.get("copay_notes") or ""
         copay_notes_str = f" ({copay_notes})" if copay_notes else ""
-        lines.append(f"{p['provider_name']}{prepaga_flag}{default_copay_str}{copay_notes_str}:")
+        lines.append(
+            f"{p['provider_name']}{prepaga_flag}{default_copay_str}{copay_notes_str}:"
+        )
 
         # Parse defensivo de coverage_by_treatment (asyncpg puede devolver JSONB
         # como string en algunas versiones)
@@ -7077,11 +7200,13 @@ def _format_insurance_providers(
             continue
 
         covered_entries = [
-            (k, v) for k, v in coverage.items()
+            (k, v)
+            for k, v in coverage.items()
             if isinstance(v, dict) and v.get("covered", False)
         ]
         not_covered_entries = [
-            (k, v) for k, v in coverage.items()
+            (k, v)
+            for k, v in coverage.items()
             if isinstance(v, dict) and not v.get("covered", False)
         ]
 
@@ -7204,7 +7329,9 @@ def _format_derivation_rules(rules: list) -> str:
         categories = rule.get("categories") or rule.get("treatment_categories") or ""
         if isinstance(categories, list):
             categories = ",".join(categories)
-        prof_name = rule.get("target_professional_name") or rule.get("professional_name")
+        prof_name = rule.get("target_professional_name") or rule.get(
+            "professional_name"
+        )
         prof_id = rule.get("target_professional_id")
 
         # Migration 038 escalation fields (defensive defaults so legacy
@@ -7253,9 +7380,8 @@ def _format_derivation_rules(rules: list) -> str:
         # Resolve template placeholders {primary} and {fallback}; fall back
         # to the built-in Spanish default when the tenant has no custom message.
         if esc_template:
-            resolved_msg = (
-                esc_template.replace("{primary}", primary_label)
-                .replace("{fallback}", fallback_label)
+            resolved_msg = esc_template.replace("{primary}", primary_label).replace(
+                "{fallback}", fallback_label
             )
         else:
             resolved_msg = (
@@ -7538,9 +7664,7 @@ def _format_special_conditions(
         lines.append(
             "Si el paciente menciona una condición de alto riesgo Y su contexto muestra anamnesis no completada →"
         )
-        lines.append(
-            "  Enviar link de anamnesis ANTES de llamar a book_appointment."
-        )
+        lines.append("  Enviar link de anamnesis ANTES de llamar a book_appointment.")
         lines.append(
             "  Explicar: 'Antes de coordinar el turno, necesitamos que completes tu ficha médica.'"
         )
@@ -7606,14 +7730,18 @@ def _format_payment_options(
     if financing_available:
         parts: list[str] = []
         if max_installments:
-            interest_str = "sin interés" if installments_interest_free else "con interés"
+            interest_str = (
+                "sin interés" if installments_interest_free else "con interés"
+            )
             parts.append(f"hasta {max_installments} cuotas {interest_str}")
         if financing_provider:
             parts.append(f"con {financing_provider}")
         if parts:
             lines.append(f"Financiación disponible: {', '.join(parts)}.")
         else:
-            lines.append("Financiación disponible (consultá condiciones con la clínica).")
+            lines.append(
+                "Financiación disponible (consultá condiciones con la clínica)."
+            )
         if financing_notes:
             lines.append(f"Nota sobre financiación: {financing_notes}")
 
@@ -7624,9 +7752,7 @@ def _format_payment_options(
         except (TypeError, ValueError):
             pct_val = 0.0
         if pct_val > 0:
-            pct_str = (
-                str(int(pct_val)) if pct_val == int(pct_val) else f"{pct_val:g}"
-            )
+            pct_str = str(int(pct_val)) if pct_val == int(pct_val) else f"{pct_val:g}"
             lines.append(f"Descuento por pago en efectivo: {pct_str}%.")
 
     # Criptomonedas (bloque explícito sólo cuando es True — evita ruido en el
@@ -7716,15 +7842,19 @@ def build_system_prompt(
     if is_social_channel:
         from services.social_prompt import build_social_preamble
         from services.social_routes import CTA_ROUTES as _CTA_ROUTES
-        _social_preamble = build_social_preamble(
-            tenant_id=0,  # not used inside preamble today
-            channel=channel,
-            social_landings=social_landings,
-            instagram_handle=instagram_handle,
-            facebook_page_id=facebook_page_id,
-            cta_routes=_CTA_ROUTES,
-            whatsapp_link=whatsapp_link,
-        ) + "\n\n---\n\n"
+
+        _social_preamble = (
+            build_social_preamble(
+                tenant_id=0,  # not used inside preamble today
+                channel=channel,
+                social_landings=social_landings,
+                instagram_handle=instagram_handle,
+                facebook_page_id=facebook_page_id,
+                cta_routes=_CTA_ROUTES,
+                whatsapp_link=whatsapp_link,
+            )
+            + "\n\n---\n\n"
+        )
 
     prof_display = professional_name if professional_name else "la profesional"
     prof_display_full = (
@@ -9216,6 +9346,15 @@ try:
     logger.info("✅ Backup & Restore router registered")
 except Exception as e:
     logger.error(f"backup_router_registration_failed: {e}")
+
+# YCloud Sync routes
+try:
+    from routes.ycloud_sync_routes import router as ycloud_sync_router
+
+    app.include_router(ycloud_sync_router, prefix="/admin/ycloud", tags=["ycloud-sync"])
+    logger.info("✅ YCloud Sync router registered")
+except Exception as e:
+    logger.error(f"ycloud_sync_router_registration_failed: {e}")
 
 # Dashboard CEO: router y middleware se registran aquí (antes de startup)
 try:

@@ -212,3 +212,61 @@ El sistema está listo para producción con todas las mejoras arquitectónicas i
 **Estado actual:** ✅ **SISTEMA OPERACIONAL Y COMPATIBLE**
 
 **Próxima revisión:** 1 semana después del deploy
+
+---
+
+## YCLOUD FULL MESSAGE SYNC
+
+### Descripción
+Permite sincronizar el historial completo de mensajes WhatsApp desde la API de YCloud. Útil para clínicas que necesitan migrar historial existente o recuperar mensajes históricos.
+
+### Configuración
+
+#### Variables de entorno
+```bash
+YCLOUD_API_KEY=tu-api-key-de-ycloud
+YCLOUD_SYNC_ENABLED=true  # default: true (global enable/disable)
+```
+
+#### Configuración por clínica (tenants.config)
+Cada clínica puede overridear la configuración global:
+```json
+{
+  "ycloud_api_key": "api-key-de-la-clinica",
+  "ycloud_business_number": "+54911...",
+  "ycloud_sync_enabled": true,
+  "ycloud_max_messages": 10000
+}
+```
+
+### Rate Limiting
+- **Backoff exponencial**: 1s → 2s → 4s → 8s → max 60s
+- **Máximo de retries**: 5 por request
+- **Timeout global**: 30 minutos por sync
+- **Límite por página**: 100 mensajes
+- **Límite máximo**: 10,000 mensajes por sync
+
+### Endpoints API
+| Método | Endpoint | Descripción |
+|--------|----------|-------------|
+| POST | `/admin/ycloud/sync/start` | Iniciar sincronización |
+| GET | `/admin/ycloud/sync/status/{task_id}` | Ver progreso |
+| POST | `/admin/ycloud/sync/cancel/{task_id}` | Cancelar sync |
+| GET | `/admin/ycloud/sync/config/{tenant_id}` | Ver config |
+| PATCH | `/admin/ycloud/sync/config/{tenant_id}` | Actualizar config |
+
+### Solución de problemas
+
+#### Error: "Sync already running for this tenant"
+Ya hay una sincronización en progreso. Espera a que termine o cancélala primero.
+
+#### Error: "YCloud API key not configured"
+La clínica no tiene configurado `ycloud_api_key` en su configuración.
+
+#### Mensajes no aparecen después del sync
+- Verifica que el número de teléfono esté en formato E.164
+- Revisa los errores en la sección de progreso del frontend
+- Verifica que Redis esté disponible para el tracking de progreso
+
+#### Rate limit (429)
+El sistema automáticamente hace backoff y reintenta. Si persiste, esperar unos minutos y reintentar.

@@ -65,6 +65,58 @@ class InboundMessage(Base):
     )
 
 
+# =============================================================================
+# WHATSAPP MESSAGE SYNC (ycloud-sync)
+# =============================================================================
+
+
+class WhatsAppMessage(Base):
+    """WhatsApp messages synced from YCloud API for full message history."""
+
+    __tablename__ = "whatsapp_messages"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    tenant_id = Column(
+        Integer, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    external_id = Column(String(64), nullable=True)  # YCloud message ID
+    wamid = Column(String(64), nullable=True)  # WhatsApp message ID
+    from_number = Column(String(32), nullable=False)
+    to_number = Column(String(32), nullable=False)
+    direction = Column(String(16), nullable=False)
+    message_type = Column(String(32), nullable=False)
+    content = Column(Text, nullable=True)
+    media_url = Column(String(512), nullable=True)
+    media_id = Column(String(128), nullable=True)
+    media_mime_type = Column(String(64), nullable=True)
+    media_filename = Column(String(256), nullable=True)
+    status = Column(String(16), nullable=False, server_default="synced")
+    patient_id = Column(Integer, ForeignKey("patients.id"), nullable=True)
+    conversation_id = Column(
+        UUID(as_uuid=True), ForeignKey("chat_conversations.id"), nullable=True
+    )
+    created_at = Column(DateTime(timezone=True), nullable=False)
+    synced_at = Column(DateTime(timezone=True), server_default=func.now())
+    error_message = Column(String(512), nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint("external_id", name="whatsapp_messages_external_id_key"),
+        Index("idx_whatsapp_messages_wamid", "wamid"),
+        Index("idx_whatsapp_messages_from_number", "from_number"),
+        Index("idx_whatsapp_messages_tenant_created", "tenant_id", "created_at"),
+        Index("idx_whatsapp_messages_direction", "direction"),
+        Index("idx_whatsapp_messages_tenant_sync", "tenant_id", "synced_at"),
+        CheckConstraint(
+            "direction IN ('inbound', 'outbound')",
+            name="whatsapp_messages_direction_check",
+        ),
+        CheckConstraint(
+            "status IN ('pending', 'syncing', 'synced', 'failed')",
+            name="whatsapp_messages_status_check",
+        ),
+    )
+
+
 class ChatMessage(Base):
     __tablename__ = "chat_messages"
 
@@ -129,8 +181,8 @@ class ChatConversation(Base):
     )
     last_user_message_at = Column(DateTime(timezone=True))
     last_derivhumano_at = Column(DateTime(timezone=True))
-    no_followup = Column(Boolean, nullable=False, server_default='false')
-    recovery_touch_count = Column(Integer, nullable=False, server_default='0')
+    no_followup = Column(Boolean, nullable=False, server_default="false")
+    recovery_touch_count = Column(Integer, nullable=False, server_default="0")
     last_recovery_at = Column(DateTime(timezone=True), nullable=True)
     # Meta Direct enrichment
     source_entity_id = Column(Text, nullable=True)
