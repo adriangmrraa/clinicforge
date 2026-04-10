@@ -1067,10 +1067,13 @@ async def get_integration_config(
 
         config["access_token"] = webhook_token
 
-        # 2. Construct URL
-        api_base = os.getenv("BASE_URL", "").rstrip("/")
+        # 2. Construct URL - use ORCHESTRATOR public URL, not request host
+        # The webhook must point to the orchestrator (not BFF) for external calls
+        api_base = os.getenv("ORCHESTRATOR_PUBLIC_URL", "").rstrip("/")
         if not api_base:
-            # Fallback using request
+            api_base = os.getenv("BASE_URL", "").rstrip("/")
+        if not api_base:
+            # Fallback using request (less ideal but backward compatible)
             scheme = request.headers.get("x-forwarded-proto", request.url.scheme)
             host = request.headers.get("x-forwarded-host", request.url.netloc)
             api_base = f"{scheme}://{host}"
@@ -1126,7 +1129,11 @@ async def get_integration_config(
 
         config["access_token"] = webhook_token
 
-        api_base = os.getenv("BASE_URL", "").rstrip("/")
+        # Use ORCHESTRATOR public URL, not request host
+        # The webhook must point to the orchestrator (not BFF) for external calls
+        api_base = os.getenv("ORCHESTRATOR_PUBLIC_URL", "").rstrip("/")
+        if not api_base:
+            api_base = os.getenv("BASE_URL", "").rstrip("/")
         if not api_base:
             scheme = request.headers.get("x-forwarded-proto", request.url.scheme)
             host = request.headers.get("x-forwarded-host", request.url.netloc)
@@ -2945,7 +2952,10 @@ async def update_tenant(
         updates.append(f"accepts_crypto = ${len(params)}")
 
     # ----- Clinic special conditions (migration 036) -----
-    if "accepts_pregnant_patients" in data and data["accepts_pregnant_patients"] is not None:
+    if (
+        "accepts_pregnant_patients" in data
+        and data["accepts_pregnant_patients"] is not None
+    ):
         params.append(bool(data["accepts_pregnant_patients"]))
         updates.append(f"accepts_pregnant_patients = ${len(params)}")
 
@@ -2966,7 +2976,9 @@ async def update_tenant(
 
     if "pregnancy_notes" in data:
         _val_pn = data.get("pregnancy_notes")
-        params.append(_val_pn.strip() if isinstance(_val_pn, str) and _val_pn.strip() else None)
+        params.append(
+            _val_pn.strip() if isinstance(_val_pn, str) and _val_pn.strip() else None
+        )
         updates.append(f"pregnancy_notes = ${len(params)}")
 
     if "accepts_pediatric" in data and data["accepts_pediatric"] is not None:
@@ -2995,7 +3007,11 @@ async def update_tenant(
 
     if "pediatric_notes" in data:
         _val_pedn = data.get("pediatric_notes")
-        params.append(_val_pedn.strip() if isinstance(_val_pedn, str) and _val_pedn.strip() else None)
+        params.append(
+            _val_pedn.strip()
+            if isinstance(_val_pedn, str) and _val_pedn.strip()
+            else None
+        )
         updates.append(f"pediatric_notes = ${len(params)}")
 
     if "high_risk_protocols" in data:
@@ -3023,9 +3039,7 @@ async def update_tenant(
                         detail=f"high_risk_protocols.{_cond_key} must be an object",
                     )
                 try:
-                    validated[_cond_key] = HighRiskProtocol(
-                        **_cond_val
-                    ).model_dump()
+                    validated[_cond_key] = HighRiskProtocol(**_cond_val).model_dump()
                 except ValidationError as _ve:
                     raise HTTPException(
                         status_code=422,
@@ -3034,7 +3048,10 @@ async def update_tenant(
             params.append(json.dumps(validated))
         updates.append(f"high_risk_protocols = ${len(params)}::jsonb")
 
-    if "requires_anamnesis_before_booking" in data and data["requires_anamnesis_before_booking"] is not None:
+    if (
+        "requires_anamnesis_before_booking" in data
+        and data["requires_anamnesis_before_booking"] is not None
+    ):
         params.append(bool(data["requires_anamnesis_before_booking"]))
         updates.append(f"requires_anamnesis_before_booking = ${len(params)}")
 
@@ -3052,9 +3069,7 @@ async def update_tenant(
 
     if "complaint_escalation_phone" in data:
         val = data.get("complaint_escalation_phone")
-        params.append(
-            val.strip() if isinstance(val, str) and val.strip() else None
-        )
+        params.append(val.strip() if isinstance(val, str) and val.strip() else None)
         updates.append(f"complaint_escalation_phone = ${len(params)}")
 
     if "expected_wait_time_minutes" in data:
@@ -3805,6 +3820,7 @@ async def get_clinic_settings(
         raw_landings = row["social_landings"]
         if isinstance(raw_landings, str):
             import json as _json
+
             try:
                 raw_landings = _json.loads(raw_landings)
             except Exception:
@@ -3959,6 +3975,7 @@ async def update_clinic_settings(
 
     if social_updates:
         import json as _json_mod
+
         set_clauses = []
         params: list = []
         for col, val in social_updates.items():
@@ -3977,9 +3994,13 @@ async def update_clinic_settings(
     # Handle seña guardrails (migration 042)
     sena_updates: dict = {}
     if payload.sena_expiration_hours is not None:
-        sena_updates["sena_expiration_hours"] = max(0, min(168, payload.sena_expiration_hours))
+        sena_updates["sena_expiration_hours"] = max(
+            0, min(168, payload.sena_expiration_hours)
+        )
     if payload.max_unpaid_appointments is not None:
-        sena_updates["max_unpaid_appointments"] = max(0, min(10, payload.max_unpaid_appointments))
+        sena_updates["max_unpaid_appointments"] = max(
+            0, min(10, payload.max_unpaid_appointments)
+        )
 
     if sena_updates:
         set_clauses_s = []
@@ -9212,18 +9233,12 @@ def _validate_treatment_instruction_fields(treatment) -> None:
     post = treatment.post_instructions
     if post is not None:
         if isinstance(post, PostInstructions):
-            if (
-                post.care_duration_days is not None
-                and post.care_duration_days <= 0
-            ):
+            if post.care_duration_days is not None and post.care_duration_days <= 0:
                 raise HTTPException(
                     status_code=422,
                     detail="care_duration_days debe ser mayor a 0",
                 )
-            if (
-                post.sutures_removal_day is not None
-                and post.sutures_removal_day < 0
-            ):
+            if post.sutures_removal_day is not None and post.sutures_removal_day < 0:
                 raise HTTPException(
                     status_code=422,
                     detail="sutures_removal_day no puede ser negativo",
@@ -14768,7 +14783,9 @@ async def get_telegram_config(
             detail="No se pudo verificar el bot con Telegram. Revisá el token.",
         )
 
-    api_base = os.getenv("BASE_URL", "").rstrip("/")
+    api_base = os.getenv("ORCHESTRATOR_PUBLIC_URL", "").rstrip("/")
+    if not api_base:
+        api_base = os.getenv("BASE_URL", "").rstrip("/")
     if not api_base:
         scheme = request.headers.get("x-forwarded-proto", request.url.scheme)
         host = request.headers.get("x-forwarded-host", request.url.netloc)
@@ -14833,7 +14850,9 @@ async def save_telegram_config(
     )
 
     # 4. Build webhook URL
-    api_base = os.getenv("BASE_URL", "").rstrip("/")
+    api_base = os.getenv("ORCHESTRATOR_PUBLIC_URL", "").rstrip("/")
+    if not api_base:
+        api_base = os.getenv("BASE_URL", "").rstrip("/")
     if not api_base:
         scheme = request.headers.get("x-forwarded-proto", request.url.scheme)
         host = request.headers.get("x-forwarded-host", request.url.netloc)
