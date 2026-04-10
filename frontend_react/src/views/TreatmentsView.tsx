@@ -38,6 +38,7 @@ interface TreatmentType {
   consultation_duration_minutes?: number;
   consultation_requirements?: string;
   consultation_notes?: string;
+  ai_response_template?: string;
 }
 
 type PostTiming = 'immediate' | '24h' | '48h' | '72h' | '1w' | 'stitch_removal' | 'custom';
@@ -845,6 +846,18 @@ export default function TreatmentsView() {
                       className="w-full px-4 py-3 bg-white/[0.04] border border-white/[0.08] rounded-xl text-white placeholder-white/20 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none resize-none font-medium h-[100px]"
                     />
                   </div>
+                  <div className="space-y-2 sm:col-span-2">
+                    <label className="block text-sm font-semibold text-white/60">{t('treatments.ai_response')}</label>
+                    <p className="text-xs text-white/30">{t('treatments.ai_response_hint')}</p>
+                    <textarea
+                      value={newForm.ai_response_template || ''}
+                      onChange={(e) => setNewForm({ ...newForm, ai_response_template: e.target.value })}
+                      placeholder={t('treatments.placeholder_ai_response')}
+                      className="w-full px-4 py-3 bg-white/[0.04] border border-indigo-500/20 rounded-xl text-white placeholder-white/20 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none resize-none font-medium h-[120px]"
+                      maxLength={1000}
+                    />
+                    <p className="text-xs text-white/20 text-right">{(newForm.ai_response_template || '').length}/1000</p>
+                  </div>
                   <div className="space-y-2">
                     <label className="block text-xs font-bold text-white/40 uppercase tracking-wider">{t('treatments.duration_min')}</label>
                     <div className="relative">
@@ -1051,6 +1064,20 @@ export default function TreatmentsView() {
                               rows={2}
                               className="w-full px-4 py-3 bg-white/[0.04] border border-white/[0.08] rounded-xl text-white focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all resize-none font-medium"
                             />
+                          </div>
+
+                          <div className="space-y-2">
+                            <label className="block text-xs font-bold text-white/55 ml-1 uppercase">{t('treatments.ai_response')}</label>
+                            <p className="text-xs text-white/30 ml-1">{t('treatments.ai_response_hint')}</p>
+                            <textarea
+                              value={editForm.ai_response_template || ''}
+                              onChange={(e) => setEditForm({ ...editForm, ai_response_template: e.target.value })}
+                              placeholder={t('treatments.placeholder_ai_response')}
+                              rows={4}
+                              maxLength={1000}
+                              className="w-full px-4 py-3 bg-white/[0.04] border border-indigo-500/20 rounded-xl text-white placeholder-white/20 focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all resize-none font-medium"
+                            />
+                            <p className="text-xs text-white/20 text-right">{(editForm.ai_response_template || '').length}/1000</p>
                           </div>
 
                           {/* Duration Settings */}

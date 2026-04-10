@@ -4646,7 +4646,7 @@ async def get_service_details(code: str):
         # 1. Intentar buscar por código exacto
         row = await db.pool.fetchrow(
             """
-            SELECT code, name, patient_display_name, description, default_duration_minutes, complexity_level
+            SELECT code, name, patient_display_name, description, default_duration_minutes, complexity_level, ai_response_template
             FROM treatment_types
             WHERE tenant_id = $1 AND code = $2 AND is_active = true AND is_available_for_booking = true
         """,
@@ -4658,7 +4658,7 @@ async def get_service_details(code: str):
         if not row:
             row = await db.pool.fetchrow(
                 """
-                SELECT code, name, patient_display_name, description, default_duration_minutes, complexity_level
+                SELECT code, name, patient_display_name, description, default_duration_minutes, complexity_level, ai_response_template
                 FROM treatment_types
                 WHERE tenant_id = $1 AND name ILIKE $2 AND is_active = true AND is_available_for_booking = true
                 LIMIT 1
@@ -4704,9 +4704,16 @@ async def get_service_details(code: str):
             ]
 
         display_name = row.get("patient_display_name") or row["name"]
-        res = f"Detalles de {display_name}:\nDescripción: {row['description']}\nDuración: {row['default_duration_minutes']} min\nComplejidad: {row['complexity_level']}\nPrecio: Se coordina en la consulta de evaluación\n"
-        if assigned_profs:
-            res += f"Profesionales que realizan este tratamiento: {', '.join(assigned_profs)}\n"
+
+        # If ai_response_template exists, use it as the primary response
+        if row.get("ai_response_template"):
+            res = f"{row['ai_response_template']}\n"
+            if assigned_profs:
+                res += f"\nProfesionales: {', '.join(assigned_profs)}\n"
+        else:
+            res = f"Detalles de {display_name}:\nDescripción: {row['description']}\nDuración: {row['default_duration_minutes']} min\nComplejidad: {row['complexity_level']}\nPrecio: Se coordina en la consulta de evaluación\n"
+            if assigned_profs:
+                res += f"Profesionales que realizan este tratamiento: {', '.join(assigned_profs)}\n"
 
         if images:
             # Add an obscure markdown format for the parser
