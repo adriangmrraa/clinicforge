@@ -11,6 +11,9 @@
 - [Vision & Value Proposition](#-vision--value-proposition)
 - [📈 Meta Ads Analytics — Full-Funnel Traceability](#-meta-ads-analytics--full-funnel-traceability)
 - [📱 True Omnichannel (WhatsApp + Chatwoot)](#-true-omnichannel-whatsapp--chatwoot)
+- [🧠 Dual-Engine AI Architecture](#-dual-engine-ai-architecture)
+- [🎙️ Nova — AI Voice Assistant](#️-nova--ai-voice-assistant)
+- [💰 Payment Verification System](#-payment-verification-system)
 - [Technology Stack & Architecture](#-technology-stack--architecture)
 - [AI Models & Capabilities](#-ai-models--capabilities)
 - [Key Features](#-key-features)
@@ -62,7 +65,7 @@ ClinicForge is the first clinical SaaS that closes the attribution loop between 
 ```
 📱 Patient sees your ad on Instagram/Facebook
     ↓
-💬 Clicks → opens WhatsApp conversation  
+💬 Clicks → opens WhatsApp conversation
     ↓  (referral data captured: ad_id, headline, body)
 🤖 AI assistant greets with ad context ("¡Hola! Vi que te interesó nuestro blanqueamiento...")
     ↓
@@ -169,15 +172,47 @@ Operations Center shows ALL conversations in one unified view
 
 ---
 
+## 🧠 Dual-Engine AI Architecture
+
+ClinicForge supports **two independent conversational AI engines** per tenant. The CEO selects which one to use from the Settings UI.
+
+### Engines
+
+| Engine | Key | Description |
+|--------|-----|-------------|
+| **SoloEngine** | `solo` | Monolithic LangChain agent (TORA) with all `DENTAL_TOOLS`. Hardened with state-lock + date validator. **Default for all tenants.** |
+| **MultiAgentEngine** | `multi` | Supervisor + 6 specialized agents with shared `PatientContext`. Opt-in per tenant. |
+
+### Multi-Agent Specialists
+
+| Agent | Responsibility | Tools Subset |
+|-------|---------------|-------------|
+| **Reception** | Greetings, service info, general queries | `list_services`, `list_professionals` |
+| **Booking** | Availability, slot confirmation, scheduling | `check_availability`, `confirm_slot`, `book_appointment`, `reschedule_appointment`, `cancel_appointment` |
+| **Triage** | Symptom analysis, urgency classification | `triage_urgency` |
+| **Billing** | Payment verification, pricing queries | `verify_payment_receipt` |
+| **Anamnesis** | Medical history collection | `save_patient_anamnesis`, `get_patient_anamnesis` |
+| **Handoff** | Human escalation | `derivhumano` |
+
+### Routing & Safety
+
+- **Engine Router** (`services/engine_router.py`): reads `tenants.ai_engine_mode` (cached 60s, invalidated via Redis pubsub on settings change)
+- **Circuit Breaker**: 3 consecutive multi-agent failures within 60s → automatic fallback to solo engine for 5 minutes
+- **CEO Toggle**: Settings UI → general tab → only visible to `role === 'ceo'`. Requires passing `GET /admin/ai-engine/health` (probes both engines in parallel) before switching
+- **Supervisor**: Deterministic regex rules first (emergency/billing/anamnesis/handoff/booking/greeting), LLM fallback. Max 5 hops per turn, 45s timeout
+- **Dynamic Model**: Both engines read from `system_config.OPENAI_MODEL` — never hardcoded. Supports **DeepSeek** models (`deepseek-chat`, `deepseek-reasoner`) with auto API key/base URL switch
+
+---
+
 ## 🎙️ Nova — AI Voice Assistant (Jarvis for Clinics)
 
 Nova is the voice-powered AI copilot that runs inside ClinicForge. Available as a floating widget on every page, it uses OpenAI Realtime API for bidirectional audio + function calling.
 
-**49 tools** organized in 10 categories:
+**50 tools** organized in 11 categories:
 
 | Category | Tools | Examples |
 |----------|-------|---------|
-| **Patients** | 7 | Search, register, update, clinical history, odontogram |
+| **Patients** | 7 | Search, register, update, clinical history, delete |
 | **Appointments** | 9 | View schedule, book, cancel, reschedule, block agenda |
 | **Billing** | 3 | Register payments, list treatments, pending invoices |
 | **Analytics** | 5 | Weekly summary, professional performance, financial reports |
@@ -186,7 +221,8 @@ Nova is the voice-powered AI copilot that runs inside ClinicForge. Available as 
 | **Staff Operations** | 10 | Manage professionals, config, FAQs, send WhatsApp messages |
 | **Anamnesis** | 2 | Voice-guided medical history intake |
 | **Odontogram** | 2 | View and modify dental chart with surgical safety rules |
-| **Data Access** | 5 | Natural language queries, CRUD on any table |
+| **RAG** | 1 | Search knowledge base semantically |
+| **Data Access (CRUD)** | 5 | Natural language queries, generic CRUD on any table |
 
 **Key capabilities:**
 - Execute tools first, talk after (Jarvis principle)
@@ -249,8 +285,8 @@ ClinicForge uses a **Sovereign Microservices Architecture**, designed to scale w
 | Layer | Technology |
 |-------|------------|
 | **Database** | PostgreSQL 13+ with **pgvector** extension (clinical records, patients, appointments, tenants, professionals, Meta Ads attribution, FAQ embeddings) |
-| **ORM & Migrations** | SQLAlchemy 2.0 (31+ model classes) + **Alembic** (9 versioned schema migrations, auto-run on startup) |
-| **Cache / Locks** | Redis (deduplication, context, Meta Ads enrichment cache) |
+| **ORM & Migrations** | SQLAlchemy 2.0 (**44 model classes**) + **Alembic** (**43 versioned schema migrations**, auto-run on startup) |
+| **Cache / Locks** | Redis (deduplication, context, Meta Ads enrichment cache, lead context accumulator, slot soft-locks) |
 | **Containers** | Docker & Docker Compose |
 | **Deployment** | EasyPanel, Render, AWS ECS compatible |
 
@@ -258,13 +294,14 @@ ClinicForge uses a **Sovereign Microservices Architecture**, designed to scale w
 
 | Layer | Technology |
 |-------|------------|
-| **Orchestration** | LangChain + custom tools |
-| **Primary model** | OpenAI **gpt-4o-mini** (default for agent and triage) |
+| **Orchestration** | LangChain + custom tools (Solo) / LangGraph Supervisor (Multi-Agent) |
+| **Primary model** | Configurable via `system_config` table — default **gpt-4o-mini**; supports **DeepSeek** auto-detection |
 | **Audio** | Whisper (symptom transcription) |
-| **Tools** | `check_availability`, `book_appointment`, `list_services`, `list_professionals`, `list_my_appointments`, `cancel_appointment`, `reschedule_appointment`, `triage_urgency`, `derivhumano` |
+| **Tools** | 16 tools: `check_availability`, `confirm_slot`, `book_appointment`, `list_services`, `list_professionals`, `list_my_appointments`, `cancel_appointment`, `reschedule_appointment`, `triage_urgency`, `save_patient_anamnesis`, `get_patient_anamnesis`, `save_patient_email`, `verify_payment_receipt`, `get_treatment_instructions`, `set_no_followup`, `derivhumano` |
 | **Hybrid calendar** | Per-tenant: local (BD) or Google Calendar; JIT sync and collision checks |
 | **Ad-Aware AI** | System prompt enriched with Meta Ad context; urgency detection cross-referenced with ad intent |
 | **RAG (Semantic Search)** | pgvector + OpenAI `text-embedding-3-small` (1536 dims); semantic FAQ retrieval replaces static injection; fallback to first-20 FAQs if pgvector unavailable |
+| **Token Tracking** | Per-conversation usage tracking via `dashboard/token_tracker.py`; model selection from `system_config` table in admin UI |
 
 ### 🔐 Security & Authentication
 
@@ -284,15 +321,56 @@ ClinicForge uses a **Sovereign Microservices Architecture**, designed to scale w
 | Model | Provider | Use case |
 |-------|----------|----------|
 | **gpt-4o-mini** | OpenAI | Default: agent conversation, triage, availability, booking |
+| **DeepSeek** | DeepSeek | Alternative: `deepseek-chat` / `deepseek-reasoner` (auto-detected, switches API key + base URL) |
 | **Whisper** | OpenAI | Voice message transcription (symptoms) |
+| **gpt-4o-realtime** | OpenAI | Nova voice assistant (configurable: mini or premium) |
 
-### Agent capabilities
+### Agent Capabilities
 
 - **Conversation:** Greeting, clinic identity, service selection (max 3 options when listing), availability check, slot offering, booking with patient data (name, DNI, insurance).
-- **Triage:** Urgency classification from symptoms (text or audio). Ad-intent matching boosts urgency when patient symptoms align with the ad they clicked.
-- **Human handoff:** `derivhumano` + 24h silence window per clinic/phone.
+- **Slot Confirmation:** `confirm_slot` soft-locks a time slot for 30 seconds via Redis before collecting patient data, preventing double-booking.
+- **Triage:** Urgency classification from symptoms (text or audio). Ad-intent matching boosts urgency when patient symptoms align with the ad they clicked. **Implant/prosthesis commercial triage** with 6 emoji options flow for specialized positioning.
+- **Human handoff:** `derivhumano` + 24h silence window per clinic/phone + comprehensive email notification to clinic & professionals.
 - **Multilingual:** Detects message language (es/en/fr) and responds in the same language; clinic name injected from `tenants.clinic_name`.
 - **Ad-Aware:** When the patient came from a Meta Ad, the AI mentions the ad topic naturally and prioritizes clinical triage for urgency ads.
+- **Differentiated Greeting:** 3-tier based on patient status — new lead ("¿En qué tipo de consulta estás interesado?"), patient without appointment ("¿En qué podemos ayudarte hoy?"), patient with upcoming appointment (personalized mention + sede).
+
+### Third-Party & Minor Booking
+
+The AI supports booking appointments for others:
+
+| Scenario | Flow | Phone Handling |
+|----------|------|---------------|
+| **For self** | Standard flow, no extra params | Interlocutor's phone |
+| **For adult third party** | Agent asks for third party's phone | `patient_phone` param creates separate patient record |
+| **For minor (child)** | Agent does NOT ask for phone | Auto-generated as `parent_phone-M{N}` (e.g., `+549111-M1`) |
+
+- `guardian_phone` column links minors to their parent/guardian
+- The interlocutor's patient name is **never overwritten** when booking for someone else
+- AI context includes all linked minors with anamnesis links and next appointments
+
+### Public Anamnesis Form
+
+Unique mobile-optimized checklist form per patient at `/anamnesis/{tenant_id}/{token}`:
+- Token is a UUID in `patients.anamnesis_token`
+- Public endpoints `GET/POST /public/anamnesis/{tenant_id}/{token}` (no auth required)
+- **Smart send behavior**: AI sends the link automatically after booking ONLY if `anamnesis_completed_at` is null. If already completed, only sends when patient explicitly asks
+- Pre-fills existing data so patients can edit without re-entering everything
+
+### Date Parsing System
+
+`parse_date()` uses a 7-layer priority for robust Spanish date interpretation:
+1. Exact shortcuts (`hoy`, `mañana`, `pasado mañana`)
+2. ASAP/no preference (`lo antes posible`, `cualquier día`)
+3. `dateutil` fuzzy parsing (`30 de abril`, `jueves 30 de abril`)
+4. Month expressions (`fines de abril`, `mitad de julio`)
+5. Weekday only (`jueves`, `lunes`)
+6. Relative phrases (`próxima semana`, `mes que viene`)
+7. Fallback: `None` (never invents dates)
+
+### Lead Context Accumulator
+
+Redis HSET (`lead_ctx:{tenant_id}:{phone}`) that persists lead data across conversation turns before they become patients. Captures name fragments, service interest, insurance mentions, and preferred schedule — so the AI doesn't re-ask questions the patient already answered in a previous message.
 
 ---
 
@@ -300,9 +378,9 @@ ClinicForge uses a **Sovereign Microservices Architecture**, designed to scale w
 
 ### 🎯 Agent & Clinical Orchestration
 
-- **Single AI brain** per clinic (or per tenant): books appointments, lists services and professionals, checks real availability (local or Google Calendar).
+- **Dual-engine architecture** per clinic: SoloEngine (monolithic TORA) or MultiAgentEngine (supervisor + 6 specialists) — CEO selects via UI.
+- **16 AI tools** for the WhatsApp/web agent: booking, triage, anamnesis, payment verification, slot soft-lock, human handoff, and more.
 - **Canonical tool format** and retry on booking errors ("never give up a reservation").
-- **Tools:** `check_availability`, `book_appointment`, `list_services`, `list_professionals`, `list_my_appointments`, `cancel_appointment`, `reschedule_appointment`, `triage_urgency`, `derivhumano`.
 
 ### 📅 Smart Calendar (Hybrid by Clinic)
 
@@ -310,11 +388,29 @@ ClinicForge uses a **Sovereign Microservices Architecture**, designed to scale w
 - **JIT sync:** External blocks mirrored to `google_calendar_blocks`; collision checks before create/update.
 - **Real-time UI:** Socket.IO events (`NEW_APPOINTMENT`, `APPOINTMENT_UPDATED`, `APPOINTMENT_DELETED`).
 
+### 🏥 Multi-Sede (Location per Day)
+
+- Each clinic can operate from **different locations depending on the day of the week**, configured in `tenants.working_hours` JSONB with per-day `location`, `address`, and `maps_url`
+- Professionals can optionally override location per day in their own `working_hours`
+- **Resolution chain**: professional.working_hours[day].location → tenant.working_hours[day].location → tenant.address (fallback)
+- AI includes the correct sede + Google Maps link in appointment confirmations
+- `check_availability` reads per-day time slots (not env vars) and returns "clinic closed" for disabled days
+
 ### 👥 Patients & Clinical Records
 
 - List, search, create, edit patients; optional "first appointment" on create.
 - Clinical notes and evolution history; insurance status and context for chat view.
 - **Meta Ads badge**: Visual indicator on patient cards showing which patients came from paid ads, with tooltip showing the ad headline.
+- **Bulk Import (CSV/XLSX)**: Two-step flow via `POST /admin/patients/import/preview` → `POST /admin/patients/import/execute`. Auto-encoding detection (UTF-8 → latin-1 fallback), column alias mapping (Spanish headers → DB fields), max 1000 rows, duplicate detection by phone with skip/update choice. Frontend drag & drop modal with preview.
+
+### 🩺 Treatment-Professional Assignment
+
+- Many-to-many relationship via `treatment_type_professionals` junction table
+- Each treatment can be assigned to specific professionals
+- **Backward compatibility**: if a treatment has no professionals assigned, ALL active professionals can perform it
+- AI tools (`check_availability`, `book_appointment`, `list_services`) all respect this rule
+- Managed via `GET/PUT /admin/treatment-types/{code}/professionals` endpoints
+- **Per-professional price override**: `professionals.consultation_price` takes precedence over `tenants.consultation_price`
 
 ### 💬 Conversations (Chats)
 
@@ -328,7 +424,7 @@ ClinicForge uses a **Sovereign Microservices Architecture**, designed to scale w
 
 ClinicForge cuenta con un motor de tareas en segundo plano (`orchestrator_service/jobs/`) que gestiona procesos proactivos para maximizar la conversión y retención:
 
-- **Lead Recovery (Recuperación Inteligente)**: Re-contacta automáticamente a leads de Meta Ads **2 horas después** de su última interacción si no agendaron. Utiliza IA para analizar el interés y proponer huecos reales de la agenda.
+- **Lead Recovery v2 (3-Touch Intelligent)**: Sistema de 3 contactos progresivos — Touch 1 (2h): mensaje contextual basado en interés detectado. Touch 2 (24h): propuesta de turnos reales de la agenda. Touch 3 (72h): último intento con oferta de valor. Análisis IA del historial completo de la conversación para personalizar cada touch.
 - **Appointment Reminders**: Envía recordatorios vía WhatsApp HSM **24 horas antes** del turno. Soporta reinicio automático si el paciente reprograma.
 - **Post-Treatment Followups**: Seguimiento clínico **45 minutos** o **24 horas** después de tratamientos complejos/cirugías para evaluar síntomas vía Triage IA.
 - **Audit Logs**: Registro completo de cada ejecución visible en el panel de **Automatizaciones & HSM**.
@@ -349,7 +445,7 @@ ClinicForge cuenta con un motor de tareas en segundo plano (`orchestrator_servic
 - **Active Staff** as single source of truth: detail modal, "Link to clinic", gear → Edit profile (sede, contact, availability).
 - Scroll-isolated Staff view (Aprobaciones) for long lists on desktop and mobile.
 
-### 🏢 Multi-Sede (Multi-Tenant)
+### 🏢 Multi-Tenant Isolation
 
 - **Isolation:** Patients, appointments, chats, professionals, configuration, and **marketing data** are separated by `tenant_id`. One clinic never sees another's data or ad performance.
 - **CEO:** Can switch clinic in Chats and other views; manages approvals, clinics, and configuration per sede.
@@ -419,45 +515,61 @@ A dedicated dashboard (`/roi`) that consolidates marketing ROI with real data:
 ClinicForge/
 ├── 📂 frontend_react/            # React 18 + Vite SPA (Operations Center)
 │   ├── src/
-│   │   ├── components/           # Layout, Sidebar, MarketingPerformanceCard, AdContextCard, Vault components, etc.
-│   │   ├── views/                # Dashboard, Agenda, Patients, Chats, ROIDashboard, MarketingHub, Config, Landing, etc.
+│   │   ├── components/           # Layout, Sidebar, GlassCard, NovaWidget, etc.
+│   │   ├── views/                # Dashboard, Agenda, Patients, Chats, ROIDashboard, Config, etc.
 │   │   ├── context/              # AuthContext, LanguageContext
 │   │   ├── locales/              # es.json, en.json, fr.json
 │   │   └── api/                  # axios (JWT + X-Admin-Token)
 │   ├── package.json
 │   └── vite.config.ts
 ├── 📂 orchestrator_service/      # FastAPI Core (Orchestrator)
-│   ├── main.py                   # App, /chat, /health, Socket.IO, LangChain agent & tools
+│   ├── main.py                   # App, /chat, /health, Socket.IO, LangChain agent & 16 tools
 │   ├── admin_routes.py           # /admin/* (patients, appointments, marketing, health, etc.)
+│   ├── public_routes.py          # /public/* (anamnesis form — no auth)
 │   ├── auth_routes.py            # /auth/* (clinics, register, login, me, profile)
 │   ├── db.py                     # Async connection pool (asyncpg)
-│   ├── models.py                 # SQLAlchemy ORM models (30 classes)
-│   ├── alembic.ini               # Alembic configuration
-│   ├── alembic/                  # Database migrations
-│   │   ├── env.py                # DSN normalization (asyncpg → psycopg2)
-│   │   └── versions/             # Migration scripts (baseline + incremental)
-│   ├── start.sh                  # Startup: alembic upgrade head → uvicorn
-│   ├── gcal_service.py           # Google Calendar (hybrid calendar)
-│   ├── analytics_service.py      # Professional metrics
-│   ├── core/
-│   │   └── log_sanitizer.py      # Sensitive data redaction in logs
-│   ├── services/
-│   │   ├── meta_ads_service.py   # Meta Graph API client (ad enrichment)
-│   │   ├── marketing_service.py  # ROI & Performance intelligence
-│   │   ├── metrics_service.py    # Unified attribution metrics (ROI dashboard)
-│   │   ├── embedding_service.py  # RAG: pgvector embeddings, semantic FAQ search
-│   │   └── tasks.py              # Background tasks (Redis cache + enrichment)
-│   ├── jobs/                     # Modular background jobs system (The Scheduler)
-│   │   ├── lead_recovery.py      # Lead recovery AI-driven logic
+│   ├── models.py                 # SQLAlchemy ORM models (44 classes)
+│   ├── agents/                   # Multi-Agent Engine
+│   │   ├── supervisor.py         # Deterministic routing + LLM fallback
+│   │   ├── specialists.py        # 6 specialized agents (Reception, Booking, Triage, etc.)
+│   │   ├── graph.py              # LangGraph entry point, run_turn(), probe()
+│   │   ├── model_resolver.py     # Dynamic model selection per tenant
+│   │   ├── state.py              # AgentState schema
+│   │   └── base.py               # BaseAgent class
+│   ├── routes/                   # Modular route blueprints
+│   │   ├── ai_engine_health.py   # Dual-engine health check
+│   │   ├── metrics.py            # /admin/metrics/* (ROI, attribution, trends)
+│   │   ├── nova_routes.py        # Nova REST endpoints
+│   │   ├── digital_records.py    # Clinical records API
+│   │   ├── leads.py              # Lead management
+│   │   ├── marketing.py          # Marketing routes
+│   │   └── chat_api.py           # Chat API routes
+│   ├── services/                 # Business logic layer
+│   │   ├── engine_router.py      # Solo/Multi engine routing + circuit breaker
+│   │   ├── buffer_task.py        # Message buffer + AI dispatch (hook point)
+│   │   ├── patient_context.py    # PatientContext loader (Profile + Working layers)
+│   │   ├── lead_context.py       # Lead Context Accumulator (Redis HSET)
+│   │   ├── meta_ads_service.py   # Meta Graph API client
+│   │   ├── embedding_service.py  # RAG: pgvector embeddings
+│   │   ├── metrics_service.py    # Unified attribution metrics
+│   │   ├── nova_tools.py         # 50 Nova voice tools
+│   │   ├── nova_daily_analysis.py # Automated daily insights
+│   │   └── ...                   # 30+ service modules
+│   ├── jobs/                     # Modular background jobs system
+│   │   ├── lead_recovery.py      # 3-touch intelligent lead recovery
 │   │   ├── reminders.py          # Proactive appointment reminders
 │   │   └── followups.py          # Clinical post-op followups
-│   ├── scripts/
-│   │   └── check_meta_health.py  # Meta Ads health check (CLI + API)
+│   ├── dashboard/                # Admin dashboard utilities
+│   │   ├── config_manager.py     # Dynamic AI model config (system_config table)
+│   │   └── token_tracker.py      # Token usage tracking per conversation
+│   ├── alembic/                  # Database migrations
+│   │   ├── env.py                # DSN normalization (asyncpg → psycopg2)
+│   │   └── versions/             # 43 migration scripts (001 baseline → 043 lead_recovery_v2)
+│   ├── start.sh                  # Startup: alembic upgrade head → uvicorn
 │   └── requirements.txt
 ├── 📂 bff_service/               # Backend-for-Frontend (Express proxy)
 │   ├── src/index.ts              # Reverse proxy: Frontend → Orchestrator
-│   ├── package.json              # Express, Axios, CORS
-│   ├── tsconfig.json
+│   ├── package.json
 │   └── Dockerfile
 ├── 📂 whatsapp_service/          # YCloud relay & Whisper
 │   ├── main.py
@@ -465,15 +577,9 @@ ClinicForge/
 │   └── chatwoot_client.py        # Meta/Omnichannel messaging client
 ├── 📂 shared/                    # Shared Pydantic models
 ├── 📂 docs/                      # Documentation (30+ files)
-│   ├── meta_ads_backend.md       # Meta Ads backend architecture & data flow
-│   ├── meta_ads_frontend.md      # Meta Ads frontend components & integration
-│   ├── meta_ads_database.md      # Meta Ads DB schema & queries
-│   ├── meta_ads_audit_*.md       # Pre-deployment audit reports
-│   ├── API_REFERENCE.md          # Full API contract
-│   └── ...
 ├── 📂 db/init/                   # Legacy schema (baseline now in Alembic)
 ├── docker-compose.yml            # Local stack (orchestrator + bff + whatsapp + postgres + redis)
-├── .gitignore
+├── .env.production.example       # Environment variables template
 └── README.md                     # This file
 ```
 
@@ -502,7 +608,7 @@ cd clinicforge
 **2. Environment configuration**
 
 ```bash
-cp dental.env.example .env
+cp .env.production.example .env
 # Edit .env (see docs/02_environment_variables.md):
 # - OPENAI_API_KEY
 # - YCloud: YCLOUD_API_KEY, YCLOUD_WEBHOOK_SECRET
@@ -512,6 +618,7 @@ cp dental.env.example .env
 # - META_ADS_TOKEN (for ad enrichment — optional)
 # - GOOGLE_CREDENTIALS or connect-sovereign (optional)
 # - ADMIN_TOKEN (for X-Admin-Token), JWT_SECRET_KEY
+# - FRONTEND_URL (public-facing URL for anamnesis form links)
 ```
 
 **3. Start services**
@@ -561,7 +668,7 @@ Development follows the project's SDD workflows (specify → plan → implement)
 
 ## 📜 Agent Flow (Summary)
 
-The WhatsApp assistant follows this order: **greeting + clinic name** → **define service** (max 3 if listing) → **(optional) professional preference** → **check_availability** with service duration → **offer time slots** → **patient data** → **book_appointment**. Duration is taken from the database per treatment; availability depends on whether the clinic uses local or Google calendar. Full detail in [04. Agent logic](docs/04_agent_logic_and_persona.md).
+The WhatsApp assistant follows this order: **greeting + clinic name** → **define service** (max 3 if listing) → **(optional) professional preference** → **check_availability** with service duration → **offer time slots** → **confirm_slot** (30s soft-lock) → **patient data** → **book_appointment**. Duration is taken from the database per treatment; availability depends on whether the clinic uses local or Google calendar. Full detail in [04. Agent logic](docs/04_agent_logic_and_persona.md).
 
 When the patient comes from a **Meta Ad**, the assistant adapts: for urgency ads, it prioritizes triage over data capture; for general ads, it personalizes the greeting mentioning the ad topic.
 
