@@ -129,6 +129,9 @@ class ChatConversation(Base):
     )
     last_user_message_at = Column(DateTime(timezone=True))
     last_derivhumano_at = Column(DateTime(timezone=True))
+    no_followup = Column(Boolean, nullable=False, server_default='false')
+    recovery_touch_count = Column(Integer, nullable=False, server_default='0')
+    last_recovery_at = Column(DateTime(timezone=True), nullable=True)
     # Meta Direct enrichment
     source_entity_id = Column(Text, nullable=True)
     platform_origin = Column(Text, nullable=True)

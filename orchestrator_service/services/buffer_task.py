@@ -296,6 +296,17 @@ async def process_buffer_task(
             )
             return
 
+    # Reset lead recovery cycle — when the patient replies we stop the recovery
+    # sequence so they aren't bombarded after they've re-engaged.
+    try:
+        await pool.execute(
+            "UPDATE chat_conversations SET recovery_touch_count = 0, last_recovery_at = NULL "
+            "WHERE tenant_id = $1 AND external_user_id = $2 AND recovery_touch_count > 0",
+            tenant_id, external_user_id
+        )
+    except Exception:
+        pass  # Non-blocking — recovery reset is best-effort
+
     # Invocar agente con clave por tenant (Vault)
     try:
         from main import (

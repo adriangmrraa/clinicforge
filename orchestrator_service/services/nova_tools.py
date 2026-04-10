@@ -3668,7 +3668,7 @@ async def _agendar_turno(args: Dict, tenant_id: int) -> str:
 
     # Verify patient
     patient = await db.pool.fetchrow(
-        "SELECT first_name, last_name FROM patients WHERE id = $1 AND tenant_id = $2",
+        "SELECT first_name, last_name, phone_number FROM patients WHERE id = $1 AND tenant_id = $2",
         int(pid),
         tenant_id,
     )
@@ -3765,6 +3765,7 @@ async def _agendar_turno(args: Dict, tenant_id: int) -> str:
         _lg.getLogger("nova_tools").warning(f"audit_log nova agendar failed (non-blocking): {_audit_err}")
 
     patient_name = f"{patient['first_name']} {patient['last_name'] or ''}".strip()
+    patient_phone = patient.get("phone_number") or ""
     prof_msg = ""
     if prof_id:
         prof_name = await db.pool.fetchval(
@@ -3780,8 +3781,34 @@ async def _agendar_turno(args: Dict, tenant_id: int) -> str:
             "patient_id": int(pid),
             "tenant_id": tenant_id,
             "appointment_id": str(appt_id),
+            "patient_name": patient_name,
+            "appointment_datetime": appt_dt.isoformat() if hasattr(appt_dt, "isoformat") else str(appt_dt),
+            "appointment_type": tt_name or treatment_type,
+            "professional_name": prof_name.strip() if prof_id and prof_name else None,
         },
     )
+
+    # Check if this was a recovered lead and fire Telegram notification
+    try:
+        if patient_phone:
+            _recovery_count = await db.pool.fetchval(
+                "SELECT recovery_touch_count FROM chat_conversations WHERE tenant_id = $1 AND external_user_id = $2 AND recovery_touch_count > 0",
+                tenant_id, patient_phone
+            )
+            if _recovery_count:
+                from services.telegram_notifier import fire_telegram_notification
+                fire_telegram_notification("LEAD_RECOVERY_CONVERSION", {
+                    "tenant_id": tenant_id,
+                    "patient_name": patient_name,
+                    "phone": patient_phone,
+                    "appointment_datetime": appt_dt.isoformat() if hasattr(appt_dt, 'isoformat') else str(appt_dt),
+                    "treatment_type": tt_name or treatment_type or "consulta",
+                    "recovery_touch_count": _recovery_count,
+                    "hours_to_convert": "?",
+                }, tenant_id)
+    except Exception:
+        pass  # Non-blocking
+
     return (
         f"Turno agendado: {patient_name} el {_fmt_date(appt_dt.date())} a las {time_str}"
         f" — {tt_name} ({duration}min){prof_msg}."

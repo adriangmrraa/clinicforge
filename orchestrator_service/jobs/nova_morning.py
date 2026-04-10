@@ -14,6 +14,11 @@ import asyncio
 import logging
 from datetime import datetime, date
 
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:
+    from backports.zoneinfo import ZoneInfo
+
 from .scheduler import scheduler
 
 logger = logging.getLogger(__name__)
@@ -48,23 +53,41 @@ async def _maybe_send_tenant_summary(tenant_id: int):
     """
     from db import db
 
-    now = datetime.now()
-
-    # --- Read configured hour for this tenant ---
+    # --- Read tenant timezone + configured hour ---
+    tenant_tz_str = "America/Argentina/Buenos_Aires"  # safe default
+    configured_hour = 7
     try:
         row = await db.fetchrow(
             "SELECT value FROM system_config WHERE key = 'NOVA_MORNING_HOUR' AND tenant_id = $1",
             tenant_id,
         )
-        configured_hour = int(row["value"]) if (row and row.get("value")) else 7
+        if row and row.get("value"):
+            configured_hour = int(row["value"])
     except Exception:
-        configured_hour = 7
+        pass
+
+    try:
+        tz_row = await db.fetchrow(
+            "SELECT timezone FROM tenants WHERE id = $1", tenant_id,
+        )
+        if tz_row and tz_row.get("timezone"):
+            tenant_tz_str = tz_row["timezone"]
+    except Exception:
+        pass
+
+    # Compare current hour in the TENANT's timezone, not server UTC
+    try:
+        tenant_tz = ZoneInfo(tenant_tz_str)
+    except Exception:
+        tenant_tz = ZoneInfo("America/Argentina/Buenos_Aires")
+
+    now = datetime.now(tenant_tz)
 
     if now.hour != configured_hour:
         return  # Not this tenant's time yet
 
-    # --- Redis dedup: one send per day ---
-    today_str = date.today().isoformat()
+    # --- Redis dedup: one send per day (use tenant's local date) ---
+    today_str = now.date().isoformat()
     dedup_key = f"nova_morning:{tenant_id}:{today_str}"
 
     try:

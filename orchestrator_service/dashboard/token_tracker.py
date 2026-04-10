@@ -327,6 +327,7 @@ class TokenTracker:
                             WHEN conversation_id LIKE 'telegram_whisper_%' THEN 'Whisper (Telegram)'
                             WHEN conversation_id LIKE 'telegram_vision_%' THEN 'Vision (Telegram)'
                             WHEN conversation_id LIKE 'digital_records_%' THEN 'Fichas Digitales'
+                            WHEN conversation_id LIKE 'lead_recovery_%' THEN 'Recuperación de Leads'
                             ELSE 'Agente WhatsApp/IG/FB'
                         END as service,
                         model,

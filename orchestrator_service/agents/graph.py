@@ -172,6 +172,45 @@ async def run_turn(ctx: "TurnContext") -> "TurnResult":
         "whatsapp_link": ctx.extra.get("whatsapp_link"),
     }
 
+    # No-interest detection — mark lead as not wanting follow-up before routing.
+    # Done at graph level (earliest point with tenant_id + phone + user_message)
+    # so it fires regardless of which specialist handles the turn.
+    _NO_INTEREST_PATTERNS = [
+        "no me interesa",
+        "no gracias",
+        "ya tengo dentista",
+        "no quiero más mensajes",
+        "paren de escribirme",
+        "no me escriban",
+        "dejen de escribirme",
+    ]
+    _user_text_lower = (ctx.user_message or "").lower()
+    if any(pat in _user_text_lower for pat in _NO_INTEREST_PATTERNS):
+        try:
+            from db import db as _db  # lazy — avoid circular
+            await _db.pool.execute(
+                "UPDATE chat_conversations SET no_followup = true WHERE tenant_id = $1 AND external_user_id = $2",
+                ctx.tenant_id,
+                ctx.phone_number,
+            )
+            try:
+                from services.telegram_notifier import fire_telegram_notification
+                _channel = ctx.extra.get("channel", "whatsapp") if hasattr(ctx, "extra") else "whatsapp"
+                fire_telegram_notification(
+                    "LEAD_RECOVERY_NOT_INTERESTED",
+                    {
+                        "tenant_id": ctx.tenant_id,
+                        "lead_name": ctx.phone_number,
+                        "phone": ctx.phone_number,
+                        "channel": _channel,
+                    },
+                    ctx.tenant_id,
+                )
+            except Exception:
+                pass
+        except Exception:
+            logger.warning("No-interest detection: failed to update chat_conversations")
+
     # Human override silence window → empty output, agent_used=handoff
     if state["patient_profile"].get("human_override_until"):
         duration_ms = int((time.perf_counter() - start) * 1000)

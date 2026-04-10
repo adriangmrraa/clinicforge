@@ -1,9 +1,11 @@
 """
-telegram_notifier.py — Send WebSocket event notifications to Telegram authorized users.
+telegram_notifier.py — Send WHITELISTED event notifications to Telegram authorized users.
 
-Every sio.emit event gets mirrored as a Telegram notification to all
-authorized users of the tenant. This runs fire-and-forget (never blocks
-the main flow).
+Only high-value events (new appointments, cancellations, payments, handoffs)
+reach the doctor's phone. Everything else (treatment plan updates, messages,
+odontograms, etc.) is dropped to avoid notification spam.
+Proactive messages (morning briefing, smart alerts) bypass the whitelist
+via send_proactive_message().
 """
 import asyncio
 import json
@@ -110,19 +112,83 @@ EVENT_FORMATS = {
             f"Estado: {d.get('status', '?')}",
         ],
     },
+    "LEAD_RECOVERY_TOUCH1": {
+        "emoji": "🎯",
+        "title": "Recuperé un lead",
+        "fields": lambda d: [
+            f"👤 {d.get('lead_name', '?')} ({d.get('phone', '?')})",
+            f"📱 Canal: {d.get('channel', '?')}",
+            f"🦷 Interés: {d.get('servicio', 'General')}",
+            f"💬 {d.get('message_preview', '')[:80]}..." if d.get('message_preview') else None,
+            f"🕐 Ventana 24h expira: {d.get('window_end', '?')}",
+            "💎 HIGH TICKET" if d.get('is_high_ticket') else None,
+        ],
+    },
+    "LEAD_RECOVERY_TOUCH2": {
+        "emoji": "📌",
+        "title": "Segundo intento de recuperación",
+        "fields": lambda d: [
+            f"👤 {d.get('lead_name', '?')} ({d.get('phone', '?')})",
+            f"📱 Canal: {d.get('channel', '?')}",
+            f"🦷 Interés: {d.get('servicio', 'General')}",
+            "📍 No respondió al primer mensaje",
+            "💎 HIGH TICKET" if d.get('is_high_ticket') else None,
+        ],
+    },
+    "LEAD_RECOVERY_TOUCH3": {
+        "emoji": "👋",
+        "title": "Último contacto enviado",
+        "fields": lambda d: [
+            f"👤 {d.get('lead_name', '?')} ({d.get('phone', '?')})",
+            f"📱 Canal: {d.get('channel', '?')}",
+            "⏱️ Ciclo completo: 3 intentos sin respuesta",
+        ],
+    },
+    "LEAD_RECOVERY_CONVERSION": {
+        "emoji": "✅",
+        "title": "Lead convertido!",
+        "fields": lambda d: [
+            f"👤 {d.get('patient_name', '?')} ({d.get('phone', '?')})",
+            f"📅 Turno: {d.get('appointment_datetime', '?')}",
+            f"🦷 Tratamiento: {d.get('treatment_type', '?')}",
+            f"📊 {d.get('recovery_touch_count', '?')} mensaje(s) de seguimiento antes de convertir",
+            f"⏱️ Tiempo: {d.get('hours_to_convert', '?')}h desde primer contacto",
+        ],
+    },
+    "LEAD_RECOVERY_NOT_INTERESTED": {
+        "emoji": "🚫",
+        "title": "Lead no interesado",
+        "fields": lambda d: [
+            f"👤 {d.get('lead_name', '?')} ({d.get('phone', '?')})",
+            f"📱 Canal: {d.get('channel', '?')}",
+            "🚫 no_followup activado — sin más seguimientos",
+        ],
+    },
 }
 
-# Events to SKIP sending to Telegram (too noisy / internal)
-SKIP_EVENTS = {
-    "NOVA_TOOL_EXECUTED",  # Internal Nova tool tracking
-    "connect",
-    "disconnect",
+# WHITELIST: Only these high-value events reach the doctor's Telegram.
+# Everything else is silently dropped (no generic fallback).
+ALLOWED_EVENTS = {
+    "NEW_APPOINTMENT",
+    "APPOINTMENT_DELETED",
+    "PAYMENT_CONFIRMED",
+    "HUMAN_HANDOFF",
+    "LEAD_RECOVERY_TOUCH1",
+    "LEAD_RECOVERY_TOUCH2",
+    "LEAD_RECOVERY_TOUCH3",
+    "LEAD_RECOVERY_CONVERSION",
+    "LEAD_RECOVERY_NOT_INTERESTED",
 }
 
 
 def _format_event(event: str, data: Any) -> Optional[str]:
-    """Format a WebSocket event as a human-readable Telegram notification."""
-    if event in SKIP_EVENTS:
+    """Format a WebSocket event as a human-readable Telegram notification.
+
+    Only ALLOWED_EVENTS are formatted. Everything else returns None (dropped).
+    No generic fallback — if it's not explicitly whitelisted, it doesn't reach
+    the doctor's phone.
+    """
+    if event not in ALLOWED_EVENTS:
         return None
 
     # Handle string-only data (e.g., APPOINTMENT_DELETED sends just the ID)
@@ -134,22 +200,15 @@ def _format_event(event: str, data: Any) -> Optional[str]:
         data_dict = {}
 
     fmt = EVENT_FORMATS.get(event)
-    if fmt:
-        emoji = fmt["emoji"]
-        title = fmt["title"]
-        try:
-            fields = [f for f in fmt["fields"](data_dict if isinstance(data, dict) else data) if f]
-        except Exception:
-            fields = [f"Datos: {json.dumps(data_dict, default=str)[:200]}"]
-    else:
-        # Unknown event — generic format
-        emoji = "🔔"
-        title = event.replace("_", " ").title()
-        fields = []
-        if data_dict:
-            for k, v in list(data_dict.items())[:5]:
-                if k not in ("tenant_id",) and v is not None:
-                    fields.append(f"{k}: {str(v)[:100]}")
+    if not fmt:
+        return None  # Allowed but no format defined — skip
+
+    emoji = fmt["emoji"]
+    title = fmt["title"]
+    try:
+        fields = [f for f in fmt["fields"](data_dict if isinstance(data, dict) else data) if f]
+    except Exception:
+        fields = [f"Datos: {json.dumps(data_dict, default=str)[:200]}"]
 
     if not fields:
         fields = ["(sin detalles)"]
@@ -168,8 +227,8 @@ async def notify_telegram(event: str, data: Any, tenant_id: Optional[int] = None
     Runs fire-and-forget — never raises, never blocks.
     """
     try:
-        # Skip noisy events
-        if event in SKIP_EVENTS:
+        # Only allow whitelisted high-value events
+        if event not in ALLOWED_EVENTS:
             return
 
         # Extract tenant_id from data if not provided

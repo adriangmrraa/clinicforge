@@ -211,7 +211,9 @@
     "severity_high": "ALTO",
     "severity_normal": "NORMAL",
     "pending_payments": "Pagos Pendientes",
-    "today_revenue": "Facturación Hoy"
+    "today_revenue": "Facturación Hoy",
+    "lead_recovery_model_label": "Recuperación de Leads",
+    "lead_recovery_model_description": "Modelo usado para analizar y recuperar leads que no agendaron"
   },
   "analytics": {
     "strategic_title": "Analytics Estratégico",

@@ -18,7 +18,8 @@ import {
   MessageSquare,
   Brain,
   Mic,
-  Sparkles
+  Sparkles,
+  Target
 } from 'lucide-react';
 import api from '../api/axios';
 import PageHeader from '../components/PageHeader';
@@ -132,6 +133,7 @@ const MODEL_ACTIONS: ModelAction[] = [
   { key: 'MODEL_INSIGHTS', label: 'Análisis diario', description: 'Genera insights y análisis de conversaciones cada 12 horas', icon: Brain },
   { key: 'MODEL_NOVA_VOICE', label: 'Nova Voz', description: 'Asistente de voz Nova para el dashboard y ficha médica', icon: Mic },
   { key: 'MODEL_PATIENT_MEMORY', label: 'Memoria de pacientes', description: 'Extrae y almacena recuerdos de las conversaciones con pacientes', icon: Sparkles },
+  { key: 'MODEL_LEAD_RECOVERY', label: 'Recuperación de Leads', description: 'Modelo usado para analizar y recuperar leads que no agendaron', icon: Target },
 ];
 
 export default function DashboardStatusView() {

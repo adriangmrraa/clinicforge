@@ -200,7 +200,9 @@
     "responses_generated": "Réponses générées",
     "severity_critical": "CRITIQUE",
     "severity_high": "ÉLEVÉ",
-    "severity_normal": "NORMAL"
+    "severity_normal": "NORMAL",
+    "lead_recovery_model_label": "Récupération de leads",
+    "lead_recovery_model_description": "Modèle pour analyser et récupérer les leads sans rendez-vous"
   },
   "analytics": {
     "strategic_title": "Analytique stratégique",

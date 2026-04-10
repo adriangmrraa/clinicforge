@@ -207,7 +207,9 @@
     "responses_generated": "Responses generated",
     "severity_critical": "CRITICAL",
     "severity_high": "HIGH",
-    "severity_normal": "NORMAL"
+    "severity_normal": "NORMAL",
+    "lead_recovery_model_label": "Lead Recovery",
+    "lead_recovery_model_description": "Model used to analyze and recover leads who didn't schedule"
   },
   "analytics": {
     "strategic_title": "Strategic Analytics",

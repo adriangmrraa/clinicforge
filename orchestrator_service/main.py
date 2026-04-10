@@ -3220,6 +3220,26 @@ async def book_appointment(
         except Exception as _audit_err:
             logger.warning(f"audit_log call failed (non-blocking): {_audit_err}")
 
+        # Check if this was a recovered lead and fire Telegram notification
+        try:
+            _recovery_count = await db.pool.fetchval(
+                "SELECT recovery_touch_count FROM chat_conversations WHERE tenant_id = $1 AND external_user_id = $2 AND recovery_touch_count > 0",
+                tenant_id, phone
+            )
+            if _recovery_count:
+                from services.telegram_notifier import fire_telegram_notification
+                fire_telegram_notification("LEAD_RECOVERY_CONVERSION", {
+                    "tenant_id": tenant_id,
+                    "patient_name": f"{first_name} {last_name or ''}".strip(),
+                    "phone": phone,
+                    "appointment_datetime": apt_datetime.isoformat() if hasattr(apt_datetime, 'isoformat') else str(apt_datetime),
+                    "treatment_type": treatment_code or treatment_reason or "consulta",
+                    "recovery_touch_count": _recovery_count,
+                    "hours_to_convert": "?",
+                }, tenant_id)
+        except Exception:
+            pass  # Non-blocking
+
         # Limpiar soft lock si existe (booking exitoso)
         try:
             from services.relay import get_redis
@@ -3267,6 +3287,9 @@ async def book_appointment(
                 }
             )
             await sio.emit("NEW_APPOINTMENT", safe_data)
+            # Mirror to Telegram
+            from services.telegram_notifier import fire_telegram_notification
+            fire_telegram_notification("NEW_APPOINTMENT", safe_data, tenant_id)
         except:
             pass
 
@@ -4899,6 +4922,42 @@ async def save_patient_email(email: str, patient_phone: Optional[str] = None):
         return (
             "Hubo un problema al guardar el email. Probá de nuevo o avisá a la clínica."
         )
+
+
+@tool
+async def set_no_followup(reason: str = "patient_request") -> str:
+    """Mark this lead as not interested in follow-up. Call this when the patient
+    clearly says they don't want to be contacted, aren't interested, or already
+    have a dentist. Examples: 'no me interesa', 'ya tengo dentista', 'no me escriban más'."""
+    tenant_id = current_tenant_id.get()
+    phone = current_customer_phone.get()
+    if not tenant_id or not phone:
+        return "No se pudo marcar. Contexto faltante."
+
+    try:
+        await db.pool.execute(
+            "UPDATE chat_conversations SET no_followup = true WHERE tenant_id = $1 AND external_user_id = $2",
+            tenant_id,
+            phone,
+        )
+        try:
+            from services.telegram_notifier import fire_telegram_notification
+            fire_telegram_notification(
+                "LEAD_RECOVERY_NOT_INTERESTED",
+                {
+                    "tenant_id": tenant_id,
+                    "lead_name": phone,
+                    "phone": phone,
+                    "channel": "whatsapp",
+                },
+                tenant_id,
+            )
+        except Exception:
+            pass
+        return "Listo, marqué que este contacto no quiere seguimiento."
+    except Exception as e:
+        logger.error(f"set_no_followup error: {e}")
+        return "No se pudo marcar."
 
 
 @tool
@@ -6672,6 +6731,7 @@ DENTAL_TOOLS = [
     triage_urgency,
     save_patient_anamnesis,
     save_patient_email,
+    set_no_followup,
     get_patient_anamnesis,
     get_patient_payment_status,
     get_patient_clinical_history,
@@ -8475,6 +8535,8 @@ SEGUIMIENTO POST-ATENCIÓN (PROTOCOLO ESTRICTO):
 • Evaluar también con 'triage_urgency' si hay síntomas claros de urgencia clínica.
 
 TRIAJE Y URGENCIAS: Llamar a 'triage_urgency' si el paciente describe CUALQUIERA de: dolor, inflamación, sangrado, accidente, traumatismo, rotura de diente, pérdida de diente/pieza, fiebre, "se me cayó", "se me rompió", "se me partió", "se me salió", "urgente", "emergencia", "no puedo comer", "no puedo hablar". NO llamar por consultas de rutina (limpieza, blanqueamiento, control).
+
+CONTACTO NO DESEADO: Si el paciente dice que no le interesa, que ya tiene dentista, o pide que no le escriban más, llamá a set_no_followup antes de responder.
 {anamnesis_section}
 {bank_section}
 {payment_section}
@@ -8626,6 +8688,39 @@ async def recover_orphaned_buffers():
         logger.warning(f"recover_orphaned_buffers error: {e}")
 
 
+async def _seed_lead_recovery_rules():
+    """Seed lead_meta_no_booking system rule for all tenants."""
+    try:
+        if not db.pool:
+            return
+
+        tenants = await db.pool.fetch("SELECT id FROM tenants")
+        for t in tenants:
+            await db.pool.execute(
+                """
+                INSERT INTO automation_rules (
+                    tenant_id, name, trigger_type, is_system, is_active,
+                    condition_json, message_type, channels,
+                    send_hour_min, send_hour_max, created_at, updated_at
+                )
+                SELECT $1, 'Recuperación de Leads (Inteligente)', 'lead_meta_no_booking',
+                       true, true,
+                       '{"delay_touch1_minutes": 120, "delay_touch2_minutes": 480, "delay_touch3_minutes": 480}'::jsonb,
+                       'free_text', ARRAY['whatsapp', 'instagram', 'facebook'],
+                       8, 20, NOW(), NOW()
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM automation_rules
+                    WHERE tenant_id = $1 AND trigger_type = 'lead_meta_no_booking'
+                )
+            """,
+                t["id"],
+            )
+
+        logger.info(f"Lead recovery rules seeded for {len(tenants)} tenants")
+    except Exception as e:
+        logger.warning(f"Seed lead recovery rules failed (non-blocking): {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Manage app lifecycle: startup and shutdown."""
@@ -8671,6 +8766,9 @@ async def lifespan(app: FastAPI):
         logger.warning(f"⚠️ No se pudo importar JobScheduler: {e}")
     except Exception as e:
         logger.error(f"❌ Error al iniciar JobScheduler: {e}")
+
+    # Seed system automation rules for all tenants
+    await _seed_lead_recovery_rules()
 
     # Iniciar Nova daily analysis loop
     try:
