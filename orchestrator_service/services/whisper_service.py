@@ -90,6 +90,17 @@ async def transcribe_audio_url(url: str, tenant_id: int, conversation_id: str, e
 
         logger.info(f"🎙️ Transcription successful: '{transcription[:80]}...'")
 
+        # Track Whisper usage (billed per minute, ~$0.006/min; estimate tokens for dashboard)
+        try:
+            audio_size_kb = len(audio_data) / 1024 if audio_data else 0
+            # Rough estimate: 1 min audio ≈ 500KB OGG ≈ 100 "equivalent tokens" for cost tracking
+            est_tokens = max(int(audio_size_kb / 5), 10)
+            from dashboard.token_tracker import track_service_usage
+            from db import db as _db_ref
+            await track_service_usage(_db_ref.pool, tenant_id, "whisper-1", est_tokens, 0, source="whisper_transcription", phone=external_user_id)
+        except Exception:
+            pass
+
         # 3. Update DB — find the message by conversation + audio type (most recent)
         # Try multiple search strategies since the URL in DB may differ from the original
         msg = None

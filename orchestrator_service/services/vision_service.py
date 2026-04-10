@@ -134,6 +134,16 @@ async def analyze_image_url(image_url: str, tenant_id: int) -> Optional[str]:
         description = response.choices[0].message.content
         logger.info(f"✅ Visión completada: {description[:100]}...")
 
+        # Track token usage
+        try:
+            usage = response.usage
+            if usage:
+                from dashboard.token_tracker import track_service_usage
+                from db import db as _db
+                await track_service_usage(_db.pool, tenant_id, "gpt-4o", usage.prompt_tokens, usage.completion_tokens, source="vision_image", phone="system")
+        except Exception:
+            pass
+
         return description
 
     except Exception as e:
@@ -252,6 +262,15 @@ async def analyze_pdf_url(pdf_url: str, tenant_id: int) -> Optional[str]:
 
         description = response.choices[0].message.content
         logger.info(f"✅ Visión PDF completada: {description[:100]}...")
+
+        try:
+            usage = response.usage
+            if usage:
+                from dashboard.token_tracker import track_service_usage
+                from db import db as _db
+                await track_service_usage(_db.pool, tenant_id, "gpt-4o", usage.prompt_tokens, usage.completion_tokens, source="vision_pdf", phone="system")
+        except Exception:
+            pass
 
         return description
 

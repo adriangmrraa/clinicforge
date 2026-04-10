@@ -38,6 +38,11 @@ MODEL_PRICING = {
     # ============ DEEPSEEK ============
     "deepseek-chat": {"provider": "deepseek", "input": Decimal("0.00028"), "output": Decimal("0.00042"), "context": 128000, "type": "text", "description": "DeepSeek V4 Chat — Muy barato, excelente"},
     "deepseek-reasoner": {"provider": "deepseek", "input": Decimal("0.00028"), "output": Decimal("0.00042"), "context": 128000, "type": "text", "description": "DeepSeek V4 Reasoner — Razonamiento profundo"},
+
+    # ============ EMBEDDINGS & AUDIO ============
+    "text-embedding-3-small": {"provider": "openai", "input": Decimal("0.00002"), "output": Decimal("0"), "context": 8191, "type": "embedding", "description": "Embedding Small — RAG"},
+    "text-embedding-3-large": {"provider": "openai", "input": Decimal("0.00013"), "output": Decimal("0"), "context": 8191, "type": "embedding", "description": "Embedding Large — RAG"},
+    "whisper-1": {"provider": "openai", "input": Decimal("0.00600"), "output": Decimal("0"), "context": 0, "type": "audio", "description": "Whisper — Transcripción de audio ($0.006/min)"},
 }
 
 # Backward compat alias

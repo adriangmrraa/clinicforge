@@ -193,7 +193,34 @@ async def run_turn(ctx: "TurnContext") -> "TurnResult":
             if agent is None:
                 next_agent_name = "reception"
                 agent = AGENTS["reception"]
+
+            # Track tokens via LangChain callback
+            _cb = None
+            try:
+                from langchain_community.callbacks import get_openai_callback
+                _cb = get_openai_callback()
+                _cb.__enter__()
+            except Exception:
+                _cb = None
+
             state = await agent.run(state)
+
+            # Record token usage
+            if _cb:
+                try:
+                    _cb.__exit__(None, None, None)
+                    if _cb.total_tokens > 0:
+                        from dashboard.token_tracker import track_service_usage
+                        from db import db as _db
+                        _m = (state.get("model_config") or {}).get("model", "unknown")
+                        await track_service_usage(
+                            _db.pool, state.get("tenant_id", 0), _m,
+                            _cb.prompt_tokens, _cb.completion_tokens,
+                            source=f"multi_agent/{next_agent_name}",
+                            phone=state.get("phone_number", "system")
+                        )
+                except Exception:
+                    pass
     except asyncio.TimeoutError:
         logger.error(f"Multi-agent turn timed out after {TURN_TIMEOUT_S}s")
         state["agent_output"] = "Disculpá, estoy tardando más de lo esperado. ¿Podés reformular tu mensaje?"

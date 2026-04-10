@@ -121,6 +121,19 @@ Generá un resumen breve (máximo 500 caracteres) en español.
             patient_name,
             len(summary),
         )
+
+        # Track token usage
+        try:
+            usage = response.usage
+            if usage:
+                from dashboard.token_tracker import track_service_usage
+                from db import db as _db
+                from main import current_tenant_id
+                _tid = current_tenant_id.get() or 1
+                await track_service_usage(_db.pool, _tid, "gpt-4o-mini", usage.prompt_tokens, usage.completion_tokens, source="attachment_summary", phone="system")
+        except Exception:
+            pass
+
         return summary[:500]  # Hard limit
     except Exception as e:
         logger.error(

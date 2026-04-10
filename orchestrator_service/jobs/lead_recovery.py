@@ -163,6 +163,18 @@ async def analyze_interest_with_llm(history_text: str) -> str:
             SystemMessage(content=sys_msg),
             HumanMessage(content=f"Conversación:\n{history_text}")
         ])
+
+        # Track token usage
+        try:
+            usage_meta = res.response_metadata.get("token_usage", {})
+            if usage_meta:
+                from dashboard.token_tracker import track_service_usage
+                from db import get_pool
+                pool = get_pool()
+                await track_service_usage(pool, 0, "gpt-4o-mini", usage_meta.get("prompt_tokens", 0), usage_meta.get("completion_tokens", 0), source="lead_recovery", phone="system")
+        except Exception:
+            pass
+
         return res.content.strip()
     except:
         return "General"

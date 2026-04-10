@@ -71,6 +71,17 @@ async def generate_embedding(text: str) -> Optional[List[float]]:
             input=text,
             model=model
         )
+
+        # Track embedding usage
+        try:
+            usage = response.usage
+            if usage:
+                from dashboard.token_tracker import track_service_usage
+                from db import db as _db
+                await track_service_usage(_db.pool, 0, model, usage.total_tokens, 0, source="rag_embedding", phone="system")
+        except Exception:
+            pass
+
         return response.data[0].embedding
     except Exception as e:
         logger.error(f"Error generating embedding: {e}")
