@@ -367,3 +367,5 @@ export const YCloudSyncSection: React.FC<YCloudSyncSectionProps> = ({ tenantId, 
         </div>
     );
 };
+
+export default YCloudSyncSection;
