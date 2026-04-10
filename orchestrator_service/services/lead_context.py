@@ -136,6 +136,8 @@ _FIELD_LABELS = {
     "dni": "DNI",
     "email": "Email",
     "date_query": "Fecha consultada",
+    "interpreted_date": "Fecha interpretada",
+    "search_mode": "Modo de búsqueda",
     "channel": "Canal",
 }
 

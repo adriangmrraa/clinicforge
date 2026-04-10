@@ -269,18 +269,26 @@ async def _process_candidate(pool, cand: Dict, touch_number: int, rule: Dict, no
         await _log_recovery(pool, tenant_id, phone, trigger_type, "skipped", skip_reason="appointment_created")
         return
 
-    # --- Resolve lead name ---
-    lead_name = await _get_lead_name(pool, tenant_id, phone)
+    # --- Pre-fetch lead context from Redis (best-effort) ---
+    lead_ctx = {}
+    try:
+        from services.lead_context import get as lead_ctx_get
+        lead_ctx = await lead_ctx_get(tenant_id, phone)
+    except Exception:
+        pass
+
+    # --- Resolve lead name (lead_ctx first, then DB, then fallback) ---
+    lead_name = await _get_lead_name(pool, tenant_id, phone, lead_ctx)
 
     if touch_number == 1:
-        await _process_touch1(pool, cand, rule, lead_name, clinic_name, now_utc, window_end)
+        await _process_touch1(pool, cand, rule, lead_name, clinic_name, now_utc, window_end, lead_ctx)
     elif touch_number == 2:
-        await _process_touch2(pool, cand, rule, lead_name, clinic_name, now_utc)
+        await _process_touch2(pool, cand, rule, lead_name, clinic_name, now_utc, lead_ctx)
     elif touch_number == 3:
-        await _process_touch3(pool, cand, rule, lead_name, clinic_name, now_utc)
+        await _process_touch3(pool, cand, rule, lead_name, clinic_name, now_utc, lead_ctx)
 
 
-async def _process_touch1(pool, cand, rule, lead_name, clinic_name, now_utc, window_end):
+async def _process_touch1(pool, cand, rule, lead_name, clinic_name, now_utc, window_end, lead_ctx=None):
     """Touch 1: Analyze conversation + generate message with real availability."""
     tenant_id = cand["tenant_id"]
     phone = cand["phone"]
@@ -299,8 +307,18 @@ async def _process_touch1(pool, cand, rule, lead_name, clinic_name, now_utc, win
         await _log_recovery(pool, tenant_id, phone, trigger_type, "skipped", skip_reason="no_messages")
         return
 
-    # OpenAI analysis
-    analysis = await analyze_conversation(pool, tenant_id, phone, messages)
+    # Lead context shortcut: skip LLM analysis when treatment is known
+    analysis = None
+    if lead_ctx and lead_ctx.get("treatment_name"):
+        analysis = {
+            "seguimiento": True,
+            "servicio": lead_ctx["treatment_name"],
+            "resumen": f"Interesado en {lead_ctx['treatment_name']} (from lead_ctx)",
+        }
+        logger.info(f"Lead recovery T1: using lead_ctx treatment={lead_ctx['treatment_name']} for {phone} (skipped LLM)")
+    else:
+        # Fallback: OpenAI analysis
+        analysis = await analyze_conversation(pool, tenant_id, phone, messages)
 
     if not analysis.get("seguimiento"):
         await _log_recovery(pool, tenant_id, phone, trigger_type, "skipped", skip_reason="ai_no_seguimiento")
@@ -360,7 +378,7 @@ async def _process_touch1(pool, cand, rule, lead_name, clinic_name, now_utc, win
     logger.info(f"Lead recovery T1 sent: {phone} ({servicio or 'General'}) via {cand.get('channel', '?')}")
 
 
-async def _process_touch2(pool, cand, rule, lead_name, clinic_name, now_utc):
+async def _process_touch2(pool, cand, rule, lead_name, clinic_name, now_utc, lead_ctx=None):
     """Touch 2: Brief follow-up with humor."""
     tenant_id = cand["tenant_id"]
     phone = cand["phone"]
@@ -368,8 +386,8 @@ async def _process_touch2(pool, cand, rule, lead_name, clinic_name, now_utc):
 
     from services.lead_analysis import generate_recovery_message
 
-    # servicio is hard to extract from message_preview — pass empty; touch 2 prompt handles it
-    servicio = ""
+    # Use lead context treatment if available, otherwise empty
+    servicio = (lead_ctx or {}).get("treatment_name", "")
 
     context = {
         "lead_name": lead_name,
@@ -405,7 +423,7 @@ async def _process_touch2(pool, cand, rule, lead_name, clinic_name, now_utc):
     logger.info(f"Lead recovery T2 sent: {phone} via {cand.get('channel', '?')}")
 
 
-async def _process_touch3(pool, cand, rule, lead_name, clinic_name, now_utc):
+async def _process_touch3(pool, cand, rule, lead_name, clinic_name, now_utc, lead_ctx=None):
     """Touch 3: Soft closing message."""
     tenant_id = cand["tenant_id"]
     phone = cand["phone"]
@@ -413,9 +431,10 @@ async def _process_touch3(pool, cand, rule, lead_name, clinic_name, now_utc):
 
     from services.lead_analysis import generate_recovery_message
 
+    servicio = (lead_ctx or {}).get("treatment_name", "")
     context = {
         "lead_name": lead_name,
-        "servicio": "",
+        "servicio": servicio,
         "clinic_name": clinic_name,
     }
     message = await generate_recovery_message(pool, tenant_id, 3, context)
@@ -477,9 +496,16 @@ async def _send_recovery_message(pool, cand: Dict, message: str, tenant_id: int)
         return False
 
 
-async def _get_lead_name(pool, tenant_id: int, phone: str) -> str:
-    """Try to resolve the lead's name from patients table or chat messages."""
-    # Try patients table first
+async def _get_lead_name(pool, tenant_id: int, phone: str, lead_ctx: dict = None) -> str:
+    """Try to resolve the lead's name from lead context, patients table, or chat messages."""
+    # Priority 0: lead context (accumulated from AI tool calls)
+    if lead_ctx and lead_ctx.get("first_name"):
+        name = lead_ctx["first_name"]
+        if lead_ctx.get("last_name"):
+            name += f" {lead_ctx['last_name']}"
+        return name.strip()
+
+    # Try patients table
     try:
         row = await pool.fetchrow(
             "SELECT first_name, last_name FROM patients WHERE tenant_id = $1 AND phone_number = $2 LIMIT 1",

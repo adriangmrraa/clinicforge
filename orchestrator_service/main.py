@@ -2403,18 +2403,29 @@ async def check_availability(
                     f"[conversation_state] set_state in check_availability failed (non-blocking): {state_err}"
                 )
 
-            # Lead context accumulator: persist treatment/professional for leads
+            # Lead context accumulator: persist treatment/professional/date for leads
             try:
                 from services.lead_context import merge as lead_ctx_merge
                 _lc_phone = current_customer_phone.get()
                 if _lc_phone:
-                    _lc_fields = {"channel": "whatsapp"}
+                    _lc_fields = {
+                        "channel": "whatsapp",
+                        "date_query": date_query or "",
+                        "interpreted_date": interpreted_date or "",
+                        "search_mode": search_mode or "",
+                    }
                     if _offered_treatment_name:
                         _lc_fields["treatment_name"] = _offered_treatment_name
                     if t_data and t_data.get("code"):
                         _lc_fields["treatment_code"] = t_data["code"]
                     if professional_name:
                         _lc_fields["professional_name"] = professional_name
+                    # Resolve professional_id from available sources
+                    _lc_prof_id = forced_prof_id or derivation_filter_prof_id
+                    if not _lc_prof_id and active_professionals and len(active_professionals) == 1:
+                        _lc_prof_id = active_professionals[0]["id"]
+                    if _lc_prof_id:
+                        _lc_fields["professional_id"] = str(_lc_prof_id)
                     await lead_ctx_merge(tid, _lc_phone, _lc_fields)
             except Exception:
                 pass
