@@ -763,7 +763,7 @@ export default function ConfigView() {
 
                 {/* YCloud Sync Section (CEO only) */}
                 <YCloudSyncSection 
-                    tenantId={user?.tenant_id || 0} 
+                    tenantId={intConfig.tenant_id || user?.tenant_id || 0} 
                     className="mt-6"
                 />
             </div>
