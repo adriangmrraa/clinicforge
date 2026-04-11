@@ -343,8 +343,37 @@ function RuleFormModal({
             </div>
           )}
 
-          {/* Tipo de mensaje - siempre editable */}
-          <>
+          {/* Lead Recovery: panel informativo especial (mensajes generados por IA, no configurables) */}
+          {isSystem && triggerType === 'lead_meta_no_booking' ? (
+            <div style={{ marginBottom: '16px' }}>
+              <div style={{ background: 'rgba(99,102,241,0.08)', borderRadius: '12px', padding: '16px', border: '1px solid rgba(99,102,241,0.2)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                  <Zap size={16} style={{ color: '#818cf8' }} />
+                  <span style={{ fontSize: '14px', fontWeight: 700, color: '#818cf8' }}>{t('meta_templates.form.ai_messages_title')}</span>
+                </div>
+                <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)', margin: '0 0 12px', lineHeight: '1.5' }}>
+                  {t('meta_templates.form.ai_messages_desc')}
+                </p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {[
+                    { label: 'Touch 1 (2h)', desc: t('meta_templates.form.touch1_desc'), color: '#6366f1' },
+                    { label: 'Touch 2 (8h)', desc: t('meta_templates.form.touch2_desc'), color: '#8b5cf6' },
+                    { label: 'Touch 3 (18h)', desc: t('meta_templates.form.touch3_desc'), color: '#a78bfa' },
+                  ].map(touch => (
+                    <div key={touch.label} style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '8px 12px', background: 'rgba(255,255,255,0.03)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.04)' }}>
+                      <span style={{ fontSize: '11px', fontWeight: 700, color: touch.color, minWidth: '80px', whiteSpace: 'nowrap' }}>{touch.label}</span>
+                      <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.45)' }}>{touch.desc}</span>
+                    </div>
+                  ))}
+                </div>
+                <p style={{ fontSize: '11px', color: 'rgba(255,255,255,0.3)', margin: '12px 0 0', fontStyle: 'italic' }}>
+                  {t('meta_templates.form.ai_messages_note')}
+                </p>
+              </div>
+            </div>
+          ) : (
+            <>
+              {/* Tipo de mensaje — editable para reglas normales */}
               <div style={{ marginBottom: '16px' }}>
                 <label style={labelStyle}>{t('meta_templates.form.message_type')}</label>
                 <div style={{ display: 'flex', gap: '8px' }}>
@@ -428,6 +457,7 @@ function RuleFormModal({
                 </div>
               )}
             </>
+          )}
 
           {/* Horario - informativo para sistema */}
           {messageOnly ? (

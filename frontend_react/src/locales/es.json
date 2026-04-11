@@ -2047,7 +2047,13 @@
       "saving": "Guardando...",
       "template_required": "La plantilla es obligatoria",
       "create_rule": "Crear Regla",
-      "name_required": "El nombre es obligatorio."
+      "name_required": "El nombre es obligatorio.",
+      "ai_messages_title": "Mensajes generados por IA",
+      "ai_messages_desc": "Esta regla usa inteligencia artificial para analizar la conversación del lead y generar mensajes personalizados automáticamente. No necesitás configurar el contenido — el sistema lo hace por vos.",
+      "touch1_desc": "Análisis de conversación + mensaje cálido con disponibilidad real de turnos",
+      "touch2_desc": "Seguimiento breve con toque de humor si no respondió",
+      "touch3_desc": "Cierre amable dejando la puerta abierta",
+      "ai_messages_note": "Los 3 mensajes se envían dentro de la ventana de 24h de WhatsApp usando texto libre (no HSM). Cada mensaje se adapta al servicio que consultó el lead."
     },
     "trigger_options": {
       "appointment_reminder": "Recordatorio de Cita (24h antes)",
