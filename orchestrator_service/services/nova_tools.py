@@ -3228,7 +3228,7 @@ async def _sincronizar_turnos_presupuesto(args: Dict, tenant_id: int, user_role:
                    a.payment_receipt_data, a.billing_notes,
                    tt.name AS treatment_name, tt.code AS treatment_code
             FROM appointments a
-            LEFT JOIN treatment_types tt ON tt.code = a.treatment_type AND tt.tenant_id = a.tenant_id
+            LEFT JOIN treatment_types tt ON tt.code = a.appointment_type AND tt.tenant_id = a.tenant_id
             WHERE a.patient_id = $1
               AND a.tenant_id = $2
               AND a.billing_amount > 0

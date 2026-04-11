@@ -11004,26 +11004,39 @@ async def trigger_feedback_after_delay(
             rule["free_text_message"] or "Hola! ¿Cómo te sentís después de la consulta?"
         ).replace("{{first_name}}", first_name)
 
-        # 4. Enviar via WhatsApp Service
-        internal_token = os.getenv("INTERNAL_API_TOKEN")
-        whatsapp_url = os.getenv("WHATSAPP_SERVICE_URL", "http://whatsapp_service:8000")
+        # 4. Enviar via ResponseSender (conversation-aware) o YCloud directo
         sent_ok = False
-        ycloud_msg_id = None
-
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                resp = await client.post(
-                    f"{whatsapp_url}/send",
-                    json={"to": phone_number, "text": message, "tenant_id": tenant_id},
-                    headers={
-                        "X-Internal-Token": internal_token,
-                        "Content-Type": "application/json",
-                    },
+            conv = await db.pool.fetchrow(
+                "SELECT id, provider, channel, external_account_id, external_chatwoot_id "
+                "FROM chat_conversations WHERE tenant_id = $1 AND external_user_id = $2 "
+                "ORDER BY updated_at DESC LIMIT 1",
+                tenant_id, phone_number,
+            )
+            if conv:
+                from services.response_sender import ResponseSender
+                await ResponseSender.send_sequence(
+                    tenant_id=tenant_id,
+                    external_user_id=phone_number,
+                    conversation_id=str(conv["id"]),
+                    provider=conv.get("provider") or "ycloud",
+                    channel=conv.get("channel") or "whatsapp",
+                    account_id=str(conv.get("external_account_id") or ""),
+                    cw_conv_id=str(conv.get("external_chatwoot_id") or ""),
+                    messages_text=message,
                 )
-            sent_ok = resp.status_code == 200
-            if sent_ok:
-                result = resp.json()
-                ycloud_msg_id = result.get("messageId")
+                sent_ok = True
+            else:
+                from core.credentials import get_tenant_credential, YCLOUD_API_KEY, YCLOUD_WHATSAPP_NUMBER
+                from ycloud_client import YCloudClient
+                api_key = await get_tenant_credential(tenant_id, YCLOUD_API_KEY)
+                biz_num = await get_tenant_credential(tenant_id, YCLOUD_WHATSAPP_NUMBER)
+                if api_key:
+                    yc = YCloudClient(api_key=api_key, business_number=biz_num)
+                    await yc.send_text_message(to=phone_number, text=message)
+                    sent_ok = True
+                else:
+                    logger.warning(f"⚠️ No YCloud API key for tenant {tenant_id}")
         except Exception as send_err:
             logger.error(f"❌ Error enviando feedback a {phone_number}: {send_err}")
 
@@ -11039,14 +11052,13 @@ async def trigger_feedback_after_delay(
             message_preview=message[:200],
             rule_id=rule["id"],
             rule_name=rule["name"],
-            ycloud_message_id=ycloud_msg_id,
-            error_detail=None if sent_ok else "WhatsApp service error",
+            error_detail=None if sent_ok else "Send error",
         )
 
-        # 6. Marcar followup_sent en el turno
+        # 6. Marcar feedback_sent (NOT followup_sent — that's for treatment completion HSM)
         if sent_ok:
             await db.pool.execute(
-                "UPDATE appointments SET followup_sent=TRUE, followup_sent_at=NOW() WHERE id=$1 AND tenant_id=$2",
+                "UPDATE appointments SET feedback_sent=TRUE WHERE id=$1 AND tenant_id=$2",
                 appointment_id,
                 tenant_id,
             )
