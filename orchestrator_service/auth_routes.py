@@ -461,44 +461,67 @@ async def get_me(request: Request):
 class ProfileUpdate(BaseModel):
     first_name: Optional[str] = None
     last_name: Optional[str] = None
+    email: Optional[str] = None
     google_calendar_id: Optional[str] = None
+    specialty: Optional[str] = None
+    phone_number: Optional[str] = None
+    registration_id: Optional[str] = None
+    consultation_price: Optional[float] = None
+    working_hours: Optional[dict] = None
 
 
 @router.get("/profile")
 async def get_profile(request: Request):
-    """Returns the detailed clinical profile of the current professional/user."""
+    """Returns the detailed profile of the current user, including professional data."""
     user_data = await get_me(request)
     user_id = user_data.user_id
 
-    # Base user data
     user = await db.fetchrow(
-        "SELECT id, email, role, first_name, last_name FROM users WHERE id = $1",
+        "SELECT id, email, role, first_name, last_name, created_at FROM users WHERE id = $1",
         user_id,
     )
     if not user:
         raise HTTPException(status_code=404, detail="Usuario no encontrado.")
 
     profile = dict(user)
+    # Serialize UUID/datetime for JSON
+    profile["id"] = str(profile["id"])
+    if profile.get("created_at"):
+        profile["created_at"] = profile["created_at"].isoformat()
 
-    # Professional specific data
+    # Professional-specific data (all editable fields)
     if user["role"] == "professional":
         prof = await db.fetchrow(
-            "SELECT google_calendar_id, is_active FROM professionals WHERE user_id = $1",
+            """SELECT id as professional_id, specialty, phone_number, registration_id,
+                      google_calendar_id, consultation_price, working_hours,
+                      is_active, is_priority_professional, tenant_id
+               FROM professionals WHERE user_id = $1 AND is_active = true
+               ORDER BY tenant_id ASC LIMIT 1""",
             uuid.UUID(user_id),
         )
         if prof:
-            profile.update(dict(prof))
+            prof_dict = dict(prof)
+            # Parse JSONB working_hours if string
+            if isinstance(prof_dict.get("working_hours"), str):
+                try:
+                    prof_dict["working_hours"] = json.loads(prof_dict["working_hours"])
+                except Exception:
+                    pass
+            # Convert Decimal to float
+            if prof_dict.get("consultation_price") is not None:
+                prof_dict["consultation_price"] = float(prof_dict["consultation_price"])
+            profile.update(prof_dict)
 
     return profile
 
 
 @router.patch("/profile")
 async def update_profile(payload: ProfileUpdate, request: Request):
-    """Updates the clinical profile of the current professional/user."""
+    """Updates the profile of the current user, including professional fields."""
     user_data = await get_me(request)
     user_id = user_data.user_id
 
-    # Update users table
+    # Update users table (name + email)
     update_users_fields = []
     params = []
     if payload.first_name is not None:
@@ -507,22 +530,61 @@ async def update_profile(payload: ProfileUpdate, request: Request):
     if payload.last_name is not None:
         update_users_fields.append(f"last_name = ${len(params) + 1}")
         params.append(payload.last_name)
+    if payload.email is not None:
+        update_users_fields.append(f"email = ${len(params) + 1}")
+        params.append(payload.email)
 
     if update_users_fields:
         params.append(user_id)
-        query = f"UPDATE users SET {', '.join(update_users_fields)} WHERE id = ${len(params)}"
+        query = f"UPDATE users SET {', '.join(update_users_fields)}, updated_at = NOW() WHERE id = ${len(params)}"
         await db.execute(query, *params)
 
-    # Update professionals table if applicable
-    if user_data.role == "professional" and payload.google_calendar_id is not None:
-        await db.execute(
-            """
-            UPDATE professionals 
-            SET google_calendar_id = $1 
-            WHERE user_id = $2
-        """,
-            payload.google_calendar_id,
-            uuid.UUID(user_id),
-        )
+    # Update professionals table (all professional fields)
+    if user_data.role == "professional":
+        prof_fields = []
+        prof_params = []
+
+        for field_name, db_col in [
+            ("google_calendar_id", "google_calendar_id"),
+            ("specialty", "specialty"),
+            ("phone_number", "phone_number"),
+            ("registration_id", "registration_id"),
+        ]:
+            val = getattr(payload, field_name, None)
+            if val is not None:
+                prof_fields.append(f"{db_col} = ${len(prof_params) + 1}")
+                prof_params.append(val)
+
+        if payload.consultation_price is not None:
+            prof_fields.append(f"consultation_price = ${len(prof_params) + 1}")
+            prof_params.append(payload.consultation_price)
+
+        if payload.working_hours is not None:
+            prof_fields.append(f"working_hours = ${len(prof_params) + 1}")
+            prof_params.append(json.dumps(payload.working_hours))
+
+        if prof_fields:
+            prof_params.append(uuid.UUID(user_id))
+            query = f"UPDATE professionals SET {', '.join(prof_fields)}, updated_at = NOW() WHERE user_id = ${len(prof_params)}"
+            await db.execute(query, *prof_params)
+
+        # Sync first_name/last_name to professionals table too
+        name_updates = []
+        name_params = []
+        if payload.first_name is not None:
+            name_updates.append(f"first_name = ${len(name_params) + 1}")
+            name_params.append(payload.first_name)
+        if payload.last_name is not None:
+            name_updates.append(f"last_name = ${len(name_params) + 1}")
+            name_params.append(payload.last_name)
+        if payload.email is not None:
+            name_updates.append(f"email = ${len(name_params) + 1}")
+            name_params.append(payload.email)
+        if name_updates:
+            name_params.append(uuid.UUID(user_id))
+            await db.execute(
+                f"UPDATE professionals SET {', '.join(name_updates)} WHERE user_id = ${len(name_params)}",
+                *name_params,
+            )
 
     return {"message": "Perfil actualizado correctamente."}
