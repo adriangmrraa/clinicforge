@@ -4,7 +4,8 @@ import { Sidebar } from './Sidebar';
 import { useAuth } from '../context/AuthContext';
 import { useTranslation } from '../context/LanguageContext';
 import { io, Socket } from 'socket.io-client';
-import { WS_URL } from '../api/axios';
+import { WS_URL, setTenantId, getCurrentTenantId } from '../api/axios';
+import api from '../api/axios';
 import { X, Wifi, WifiOff, Bell, UserPlus, Calendar, AlertTriangle, HelpCircle } from 'lucide-react';
 import MetaTokenBanner from './MetaTokenBanner';
 import { NovaWidget } from './NovaWidget';
@@ -28,6 +29,34 @@ export const Layout: React.FC<LayoutProps> = ({ children }: LayoutProps) => {
   const [novaTooltip, setNovaTooltip] = useState(false);
   const [guideTooltip, setGuideTooltip] = useState(false);
   const tooltipShownRef = useRef(false);
+
+  // Tenant selector state (CEO multi-clinic)
+  const [tenants, setTenants] = useState<{ id: number; clinic_name: string }[]>([]);
+  const [activeTenantId, setActiveTenantId] = useState<string>(getCurrentTenantId() || '');
+
+  useEffect(() => {
+    if (user?.role === 'ceo') {
+      api.get('/admin/chat/tenants').then(res => {
+        const list = Array.isArray(res.data) ? res.data : [];
+        setTenants(list);
+        // If no tenant selected yet, default to first
+        if (!activeTenantId && list.length > 0) {
+          const defaultId = String(list[0].id);
+          setActiveTenantId(defaultId);
+          setTenantId(defaultId);
+        }
+      }).catch(() => {});
+    }
+  }, [user?.role]);
+
+  const handleTenantChange = (newTenantId: string) => {
+    setActiveTenantId(newTenantId);
+    setTenantId(newTenantId);
+    // Dispatch event so all views can react to tenant change
+    window.dispatchEvent(new CustomEvent('tenant-changed', { detail: { tenantId: newTenantId } }));
+    // Reload current page to refresh data for new tenant
+    window.location.reload();
+  };
 
   // Notification State
   const [notification, setNotification] = useState<{
@@ -283,10 +312,24 @@ export const Layout: React.FC<LayoutProps> = ({ children }: LayoutProps) => {
             </div>
 
             {/* Tenant Selector */}
-            <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-white/[0.04] rounded-lg text-sm border border-white/[0.06]">
-              <span className="text-white/30">{t('layout.branch')}:</span>
-              <span className="font-medium text-white/70">{t('layout.branch_principal')}</span>
-            </div>
+            {user?.role === 'ceo' && tenants.length > 1 ? (
+              <select
+                value={activeTenantId}
+                onChange={(e) => handleTenantChange(e.target.value)}
+                className="hidden sm:block px-3 py-1.5 bg-white/[0.04] rounded-lg text-sm border border-white/[0.06] text-white/70 font-medium outline-none focus:ring-2 focus:ring-indigo-500/30 cursor-pointer"
+              >
+                {tenants.map(t => (
+                  <option key={t.id} value={String(t.id)} className="bg-[#0d1117] text-white">
+                    {t.clinic_name}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-white/[0.04] rounded-lg text-sm border border-white/[0.06]">
+                <span className="text-white/30">{t('layout.branch')}:</span>
+                <span className="font-medium text-white/70">{tenants.length === 1 ? tenants[0].clinic_name : t('layout.branch_principal')}</span>
+              </div>
+            )}
 
             {/* User Menu */}
             <div className="flex items-center gap-2 lg:gap-3">
