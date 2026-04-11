@@ -1,7 +1,7 @@
 """046 - Add external_ids JSONB column to patients table
 
 Revision ID: 046
-Revises: 045
+Revises: 045_treatment_missing_cols
 Create Date: 2026-04-11
 
 Adds external_ids column to patients table for storing external
@@ -14,7 +14,7 @@ from sqlalchemy import text
 
 
 revision = "046"
-down_revision = "045"
+down_revision = "045_treatment_missing_cols"
 branch_labels = None
 depends_on = None
 
