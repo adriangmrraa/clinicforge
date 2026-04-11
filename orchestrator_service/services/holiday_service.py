@@ -31,7 +31,9 @@ logger = logging.getLogger(__name__)
 
 # Module-level cache: {cache_key: holidays_instance}
 # cache_key format: "{country_code}:{language or 'default'}:{year}"
+# Max 200 entries (~30 countries × 3 langs × 2 years); oldest evicted on overflow
 _holidays_cache: Dict[str, Any] = {}
+_HOLIDAYS_CACHE_MAX = 200
 
 # Supported countries (subset of holidays library, most common for ClinicForge)
 SUPPORTED_COUNTRIES = {
@@ -116,6 +118,12 @@ def _get_country_holidays(country_code: str, year: int, language: Optional[str] 
             logger.warning(f"Country {country_code} not supported by holidays library")
             instance = None
 
+    # Evict oldest entries if cache exceeds max size
+    if len(_holidays_cache) >= _HOLIDAYS_CACHE_MAX:
+        # Remove oldest 25% of entries
+        keys_to_remove = list(_holidays_cache.keys())[:_HOLIDAYS_CACHE_MAX // 4]
+        for k in keys_to_remove:
+            del _holidays_cache[k]
     _holidays_cache[cache_key] = instance
     return instance
 

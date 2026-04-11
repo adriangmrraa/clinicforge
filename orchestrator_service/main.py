@@ -9009,13 +9009,20 @@ async def lifespan(app: FastAPI):
     # Seed system automation rules for all tenants
     await _seed_lead_recovery_rules()
 
+    # Store references to background tasks to prevent GC cancellation
+    _bg_tasks: list[asyncio.Task] = []
+
     # Iniciar Nova daily analysis loop
     try:
         from services.nova_daily_analysis import nova_daily_analysis_loop
         from services.relay import get_redis
 
         redis_client = get_redis()
-        asyncio.create_task(nova_daily_analysis_loop(db.pool, redis_client))
+        t = asyncio.create_task(
+            nova_daily_analysis_loop(db.pool, redis_client),
+            name="nova-daily-analysis",
+        )
+        _bg_tasks.append(t)
         logger.info("nova_daily_analysis_started")
     except Exception as e:
         logger.error(f"nova_daily_analysis_start_failed: {e}")
@@ -9031,7 +9038,8 @@ async def lifespan(app: FastAPI):
             logger.error(f"rag_all_embedding_sync_failed: {e}", exc_info=True)
 
     try:
-        asyncio.create_task(_rag_sync_with_logging())
+        t = asyncio.create_task(_rag_sync_with_logging(), name="rag-embedding-sync")
+        _bg_tasks.append(t)
         logger.info("rag_all_embedding_sync_started")
     except Exception as e:
         logger.warning(f"rag_embedding_sync_skipped: {e}")
@@ -9220,6 +9228,7 @@ _admin_rate_limit_store: dict = {}  # {ip: [timestamps]}
 _admin_rate_limit_last_cleanup = _time.time()
 _ADMIN_RATE_LIMIT = int(os.getenv("ADMIN_RATE_LIMIT", "60"))  # requests per minute
 _ADMIN_RATE_WINDOW = 60  # seconds
+_ADMIN_RATE_MAX_IPS = 10000  # max tracked IPs before forced full purge
 
 
 class AdminRateLimitMiddleware(BaseHTTPMiddleware):
@@ -9230,7 +9239,7 @@ class AdminRateLimitMiddleware(BaseHTTPMiddleware):
         client_ip = request.client.host if request.client else "unknown"
         now = _time.time()
         # Periodic cleanup: purge stale IPs every 5 minutes
-        if now - _admin_rate_limit_last_cleanup > 300:
+        if now - _admin_rate_limit_last_cleanup > 300 or len(_admin_rate_limit_store) > _ADMIN_RATE_MAX_IPS:
             stale = [
                 ip
                 for ip, ts in _admin_rate_limit_store.items()
@@ -9238,6 +9247,9 @@ class AdminRateLimitMiddleware(BaseHTTPMiddleware):
             ]
             for ip in stale:
                 del _admin_rate_limit_store[ip]
+            # If still over limit after cleanup, force clear oldest half
+            if len(_admin_rate_limit_store) > _ADMIN_RATE_MAX_IPS:
+                _admin_rate_limit_store.clear()
             _admin_rate_limit_last_cleanup = now
         timestamps = _admin_rate_limit_store.get(client_ip, [])
         timestamps = [t for t in timestamps if now - t < _ADMIN_RATE_WINDOW]

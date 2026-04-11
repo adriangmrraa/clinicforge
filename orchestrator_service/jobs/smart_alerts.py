@@ -15,7 +15,7 @@ with a TTL that matches the desired maximum frequency per alert type.
 """
 
 import logging
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 
 from .scheduler import scheduler
 
@@ -209,7 +209,7 @@ async def _check_imminent_unconfirmed(tenant_id: int):
     from db import db
     from services.telegram_notifier import send_proactive_message
 
-    now = datetime.now()
+    now = datetime.now(timezone.utc)
     window_end = now + timedelta(hours=1)
 
     imminent = await db.fetch(

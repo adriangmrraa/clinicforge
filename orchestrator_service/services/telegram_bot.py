@@ -163,14 +163,20 @@ def chunk_message(text: str, max_len: int = TELEGRAM_MAX_LEN) -> List[str]:
 
 # ── Auth Check ────────────────────────────────────────────────────────────────
 
-_auth_cache: Dict[str, Dict[str, str]] = {}
+_auth_cache: Dict[str, tuple] = {}  # {key: (result, timestamp)}
+_AUTH_CACHE_TTL = 300  # 5 minutes
+_AUTH_CACHE_MAX = 1000
 
 
 async def _verify_user(tenant_id: int, chat_id: int) -> Optional[Dict[str, str]]:
-    """Check if chat_id is authorized for this tenant. Uses in-memory cache."""
+    """Check if chat_id is authorized for this tenant. Uses in-memory cache with TTL."""
+    import time as _time
     cache_key = f"{tenant_id}:{chat_id}"
     if cache_key in _auth_cache:
-        return _auth_cache[cache_key]
+        result, cached_at = _auth_cache[cache_key]
+        if _time.time() - cached_at < _AUTH_CACHE_TTL:
+            return result
+        del _auth_cache[cache_key]
 
     try:
         from db import db as db_pool
@@ -189,7 +195,11 @@ async def _verify_user(tenant_id: int, chat_id: int) -> Optional[Dict[str, str]]
                         "user_role": row["user_role"],
                         "display_name": row["display_name"],
                     }
-                    _auth_cache[cache_key] = result
+                    # Evict oldest entries if over limit
+                    if len(_auth_cache) >= _AUTH_CACHE_MAX:
+                        oldest_key = next(iter(_auth_cache))
+                        del _auth_cache[oldest_key]
+                    _auth_cache[cache_key] = (result, _time.time())
                     return result
             except Exception:
                 continue

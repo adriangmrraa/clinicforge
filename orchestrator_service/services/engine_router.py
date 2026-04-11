@@ -273,6 +273,8 @@ class EngineRouter:
     # Redis channel for invalidation
     INVALIDATE_CHANNEL = "engine_router_invalidate"
 
+    _MAX_TENANTS = 500  # hard cap — evict stale entries beyond this
+
     def __init__(self):
         self._cache: dict[int, tuple[str, float]] = {}  # tenant_id -> (mode, expiry)
         self._circuit_breaker: dict[int, CircuitState] = {}
@@ -282,8 +284,24 @@ class EngineRouter:
     def _get_lock(self, tenant_id: int) -> asyncio.Lock:
         """Get or create a lock for a tenant."""
         if tenant_id not in self._locks:
+            # Evict expired cache/lock entries if over limit
+            if len(self._locks) >= self._MAX_TENANTS:
+                self._evict_stale()
             self._locks[tenant_id] = asyncio.Lock()
         return self._locks[tenant_id]
+
+    def _evict_stale(self):
+        """Remove stale cache, circuit breaker, and lock entries."""
+        import time
+        now = time.time()
+        expired = [tid for tid, (_, exp) in self._cache.items() if exp < now]
+        for tid in expired:
+            self._cache.pop(tid, None)
+            self._circuit_breaker.pop(tid, None)
+            # Only remove lock if not currently held
+            lock = self._locks.get(tid)
+            if lock and not lock.locked():
+                self._locks.pop(tid, None)
 
     async def _init_pubsub(self):
         """Initialize Redis pubsub for cross-process cache invalidation."""
