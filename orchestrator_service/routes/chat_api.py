@@ -703,7 +703,9 @@ async def media_proxy(
     allowed_domains = [
         "lookaside.fbsbx.com",  # Instagram/Facebook CDN
         "scontent",  # Facebook content
-        "cdn.ycloud.com",  # YCloud
+        "api.ycloud.com",  # YCloud primary media domain
+        "cdn.ycloud.com",  # YCloud CDN fallback
+        "ycloud.com",  # YCloud catch-all
         "storage.googleapis.com",  # Google Cloud Storage
     ]
 

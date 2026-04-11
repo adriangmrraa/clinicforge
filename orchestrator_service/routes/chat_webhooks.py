@@ -8,7 +8,7 @@ import logging
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Header, HTTPException, Query, Request
 
 from core.credentials import resolve_tenant_from_webhook_token
 from core.security_utils import generate_signed_url
@@ -74,17 +74,19 @@ async def receive_chatwoot_webhook(
 async def receive_ycloud_webhook(
     request: Request,
     background_tasks: BackgroundTasks,
-    access_token: str = Query(..., alias="access_token"),
+    access_token: str = Query(None, alias="access_token"),
+    x_internal_token: str = Header(None),
 ):
     """
     Endpoint dedicado para YCloud.
+    Accepts token via query param (legacy/external) or X-Internal-Token header (internal services).
     """
-    # Reutiliza la misma lógica, forzando provider='ycloud'
-    # Podríamos refactorizar el body a una función común, pero por ahora llamamos al handler
-    # inyectando el provider si fuese necesario, pero el handler ya tiene detección
-    # Mejor: Copiar la lógica de llamada es más limpio para evitar recursión HTTP
+    # Resolve token: header takes priority, fallback to query param
+    token = x_internal_token or access_token
+    if not token:
+        raise HTTPException(status_code=401, detail="Missing authentication token")
 
-    tenant_id = await resolve_tenant_from_webhook_token(access_token)
+    tenant_id = await resolve_tenant_from_webhook_token(token)
     if not tenant_id:
         raise HTTPException(status_code=403, detail="Invalid Access Token")
 

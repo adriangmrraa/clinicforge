@@ -1786,7 +1786,16 @@ async def get_internal_credential(name: str, x_internal_token: str = Header(None
     if name not in ALLOWED:
         raise HTTPException(status_code=404, detail="Not found")
 
-    val = os.getenv(name)
+    # Resolve with fallbacks for known aliases
+    FALLBACKS = {
+        "YCLOUD_Phone_Number_ID": ["YCLOUD_Phone_Number_ID", "BOT_PHONE_NUMBER"],
+    }
+    val = None
+    for env_name in FALLBACKS.get(name, [name]):
+        val = os.getenv(env_name)
+        if val:
+            break
+
     val_hash = hashlib.sha256(val.encode()).hexdigest()[:8] if val else "null"
     logger.warning(f"CREDENTIALS_ACCESSED: name={name} hash={val_hash}")
 
