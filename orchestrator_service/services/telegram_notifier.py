@@ -10,9 +10,38 @@ via send_proactive_message().
 import asyncio
 import json
 import logging
+from datetime import datetime
 from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
+
+DIAS_SEMANA = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
+
+
+def _format_datetime(raw: Any) -> str:
+    """Parse ISO datetime into a human-readable format like 'Mié 20/04 18:30'."""
+    if not raw or raw == "?":
+        return "?"
+    try:
+        if isinstance(raw, datetime):
+            dt = raw
+        else:
+            dt = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+        dia = DIAS_SEMANA[dt.weekday()]
+        return f"{dia} {dt.strftime('%d/%m %H:%M')}"
+    except Exception:
+        return str(raw)[:16]  # Fallback: truncate ISO
+
+
+def _patient_name(d: dict) -> str:
+    """Extract patient name from various possible keys."""
+    name = d.get("patient_name", "")
+    if not name or name.strip() == "?":
+        first = d.get("patient_first_name", d.get("first_name", ""))
+        last = d.get("patient_last_name", d.get("last_name", ""))
+        name = f"{first} {last}".strip()
+    return name or "Paciente desconocido"
+
 
 # Event → human-readable format mapping
 EVENT_FORMATS = {
@@ -20,50 +49,38 @@ EVENT_FORMATS = {
         "emoji": "📅",
         "title": "Nuevo turno",
         "fields": lambda d: [
-            f"Paciente: {d.get('patient_name', d.get('patient_first_name', '?'))} {d.get('patient_last_name', '')}".strip(),
-            f"Fecha: {d.get('appointment_datetime', d.get('date', '?'))}",
-            f"Tipo: {d.get('appointment_type', d.get('treatment_type', '?'))}",
-            f"Profesional: {d.get('professional_name', '?')}" if d.get('professional_name') else None,
+            f"Paciente: {_patient_name(d)}",
+            f"Fecha: {_format_datetime(d.get('appointment_datetime', d.get('date')))}",
+            f"Tipo: {d.get('appointment_type', d.get('treatment_type', 'Consulta'))}" if d.get('appointment_type') or d.get('treatment_type') else None,
+            f"Profesional: {d.get('professional_name')}" if d.get('professional_name') else None,
+            f"Fuente: {'🤖 Bot IA' if d.get('source') == 'ai' else '👩‍💼 Manual'}" if d.get('source') else None,
         ],
     },
     "APPOINTMENT_UPDATED": {
         "emoji": "🔄",
         "title": "Turno actualizado",
         "fields": lambda d: [
-            f"Paciente: {d.get('patient_name', d.get('patient_first_name', '?'))} {d.get('patient_last_name', '')}".strip(),
-            f"Fecha: {d.get('appointment_datetime', d.get('date', '?'))}",
+            f"Paciente: {_patient_name(d)}",
+            f"Fecha: {_format_datetime(d.get('appointment_datetime', d.get('date')))}",
             f"Estado: {d.get('status', '?')}",
         ],
     },
     "APPOINTMENT_DELETED": {
         "emoji": "❌",
         "title": "Turno cancelado",
-        "fields": lambda d: [f"ID: {d}" if isinstance(d, str) else f"Turno eliminado"],
+        "fields": lambda d: [
+            f"Paciente: {_patient_name(d)}" if isinstance(d, dict) and _patient_name(d) != "Paciente desconocido" else None,
+            f"Fecha: {_format_datetime(d.get('appointment_datetime'))}" if isinstance(d, dict) and d.get('appointment_datetime') else None,
+            f"Tipo: {d.get('appointment_type')}" if isinstance(d, dict) and d.get('appointment_type') else None,
+        ],
     },
     "PAYMENT_CONFIRMED": {
         "emoji": "💰",
         "title": "Pago confirmado",
         "fields": lambda d: [
-            f"Paciente: {d.get('patient_name', '?')}",
+            f"Paciente: {_patient_name(d)}",
             f"Monto: ${d.get('billing_amount', d.get('amount', '?'))}",
             f"Estado: {d.get('payment_status', 'paid')}",
-        ],
-    },
-    "NEW_MESSAGE": {
-        "emoji": "💬",
-        "title": "Nuevo mensaje",
-        "fields": lambda d: [
-            f"De: {d.get('sender_name', d.get('phone', '?'))}",
-            f"Canal: {d.get('channel', '?')}",
-            f"Mensaje: {str(d.get('content', d.get('text', '')))[:100]}",
-        ],
-    },
-    "PATIENT_UPDATED": {
-        "emoji": "👤",
-        "title": "Paciente actualizado",
-        "fields": lambda d: [
-            f"Paciente: {d.get('first_name', '?')} {d.get('last_name', '')}".strip(),
-            f"Campo: {d.get('field', '?')}" if d.get('field') else None,
         ],
     },
     "HUMAN_HANDOFF": {
@@ -72,44 +89,6 @@ EVENT_FORMATS = {
         "fields": lambda d: [
             f"Teléfono: {d.get('phone_number', '?')}",
             f"Motivo: {d.get('reason', '?')}",
-        ],
-    },
-    "DIGITAL_RECORD_CREATED": {
-        "emoji": "📄",
-        "title": "Ficha digital generada",
-        "fields": lambda d: [
-            f"Tipo: {d.get('template_type', '?')}",
-            f"Título: {d.get('title', '?')}",
-        ],
-    },
-    "DIGITAL_RECORD_SENT": {
-        "emoji": "📧",
-        "title": "Ficha enviada por email",
-        "fields": lambda d: [
-            f"Título: {d.get('title', '?')}",
-            f"Email: {d.get('email', '?')}",
-        ],
-    },
-    "ODONTOGRAM_UPDATED": {
-        "emoji": "🦷",
-        "title": "Odontograma actualizado",
-        "fields": lambda d: [
-            f"Paciente ID: {d.get('patient_id', '?')}",
-        ],
-    },
-    "BUDGET_CREATED": {
-        "emoji": "📋",
-        "title": "Presupuesto creado",
-        "fields": lambda d: [
-            f"Paciente: {d.get('patient_name', '?')}",
-            f"Total: ${d.get('total', '?')}" if d.get('total') else None,
-        ],
-    },
-    "BUDGET_UPDATED": {
-        "emoji": "📋",
-        "title": "Presupuesto actualizado",
-        "fields": lambda d: [
-            f"Estado: {d.get('status', '?')}",
         ],
     },
     "LEAD_RECOVERY_TOUCH1": {

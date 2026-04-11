@@ -3479,8 +3479,9 @@ async def book_appointment(
             safe_data = to_json_safe(
                 {
                     "id": apt_id,
-                    "patient_name": f"{first_name} {last_name or ''}",
+                    "patient_name": f"{first_name} {last_name or ''}".strip(),
                     "appointment_datetime": apt_datetime.isoformat(),
+                    "appointment_type": treatment_code or treatment_reason or "Consulta",
                     "professional_name": target_prof["first_name"],
                     "tenant_id": tenant_id,
                     "source": "ai",

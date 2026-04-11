@@ -6800,9 +6800,10 @@ async def update_appointment_status(
                 logger.error(f"Error programando feedback: {e}")
 
         # 2. Emitir evento según el nuevo estado
+        appointment_data_dict = dict(appointment_data) if appointment_data else {"id": id}
         try:
             if payload.status == "cancelled":
-                await emit_appointment_event("APPOINTMENT_DELETED", id, request)
+                await emit_appointment_event("APPOINTMENT_DELETED", appointment_data_dict, request)
             else:
                 await emit_appointment_event(
                     "APPOINTMENT_UPDATED", appointment_data_dict, request
