@@ -1210,31 +1210,27 @@ export default function TreatmentsView() {
                   </div>
                 )}
               </div>
-              {/* Instructions teaser — create form */}
-              <div className={`mx-4 sm:mx-6 mb-2 flex items-center gap-4 p-4 rounded-2xl border transition-all ${(newForm.pre_instructions || (newForm.post_instructions && newForm.post_instructions.length > 0)) ? 'bg-emerald-500/5 border-emerald-500/20' : 'bg-white/[0.02] border-white/[0.06]'}`}>
-                <div className="flex-1 flex items-center gap-3">
+              {/* Footer: instructions teaser (compact) + action buttons */}
+              <div className="border-t border-white/[0.06] shrink-0 bg-white/[0.02]">
+                {/* Instructions teaser — compact on mobile */}
+                <div className={`mx-3 sm:mx-6 mt-3 sm:mt-4 flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2 sm:py-3 rounded-xl border transition-all ${(newForm.pre_instructions || (newForm.post_instructions && newForm.post_instructions.length > 0)) ? 'bg-emerald-500/5 border-emerald-500/20' : 'bg-white/[0.02] border-white/[0.06]'}`}>
                   {(newForm.pre_instructions || (newForm.post_instructions && newForm.post_instructions.length > 0)) ? (
-                    <>
-                      <CheckCircle2 size={20} className="text-emerald-400 shrink-0" />
-                      <span className="text-sm font-semibold text-emerald-400">{t('treatments.instructions.configured')}</span>
-                    </>
+                    <CheckCircle2 size={16} className="text-emerald-400 shrink-0" />
                   ) : (
-                    <>
-                      <FileText size={20} className="text-white/30 shrink-0" />
-                      <div>
-                        <p className="text-sm font-semibold text-white/60">{t('treatments.instructions.configureButton')}</p>
-                        <p className="text-xs text-white/30 mt-0.5">{t('treatments.instructions.explanation')}</p>
-                      </div>
-                    </>
+                    <FileText size={16} className="text-white/30 shrink-0" />
                   )}
+                  <span className="text-xs sm:text-sm font-medium text-white/50 truncate flex-1">
+                    {(newForm.pre_instructions || (newForm.post_instructions && newForm.post_instructions.length > 0))
+                      ? t('treatments.instructions.configured')
+                      : t('treatments.instructions.configureButton')}
+                  </span>
+                  <button type="button" onClick={() => openInstructionsModal('create')}
+                    className="px-3 py-1.5 bg-white/[0.06] hover:bg-white/[0.10] border border-white/[0.08] rounded-lg text-xs font-semibold text-white/70 transition-all shrink-0">
+                    {(newForm.pre_instructions || (newForm.post_instructions && newForm.post_instructions.length > 0)) ? t('treatments.instructions.editButton') : t('treatments.instructions.configureButton')}
+                  </button>
                 </div>
-                <button type="button" onClick={() => openInstructionsModal('create')}
-                  className="px-4 py-2 bg-white/[0.06] hover:bg-white/[0.10] border border-white/[0.08] rounded-xl text-sm font-semibold text-white/70 transition-all shrink-0">
-                  {(newForm.pre_instructions || (newForm.post_instructions && newForm.post_instructions.length > 0)) ? t('treatments.instructions.editButton') : t('treatments.instructions.configureButton')}
-                </button>
-              </div>
-
-              <div className="flex justify-end gap-3 p-4 sm:p-6 border-t border-white/[0.06] shrink-0 bg-white/[0.02]">
+                {/* Action buttons */}
+                <div className="flex justify-end gap-3 p-3 sm:p-6">
                 <button
                   type="button"
                   onClick={() => setIsCreating(false)}
@@ -1253,6 +1249,7 @@ export default function TreatmentsView() {
                   ) : <Save size={20} />}
                   {saving ? t('common.saving') : t('treatments.create_treatment')}
                 </button>
+                </div>
               </div>
             </div>
           </div>
