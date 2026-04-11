@@ -1103,7 +1103,7 @@ export default function TreatmentsView() {
                 </button>
                 <button
                   type="button"
-                  onClick={handleCreate}
+                  onClick={() => handleCreate()}
                   disabled={saving}
                   className="px-6 sm:px-8 py-2.5 bg-white text-[#0a0e1a] rounded-xl font-bold hover:bg-white/90 transition-all disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98] flex items-center gap-2"
                 >
