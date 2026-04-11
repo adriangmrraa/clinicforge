@@ -1,9 +1,9 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ArrowLeft, User, Phone, Mail, AlertTriangle,
   FileText, Plus, Activity, Heart, Pill, Stethoscope, Megaphone,
-  ClipboardList, History, Folder, X, HeartPulse, Link, Check, Copy, Receipt
+  ClipboardList, History, Folder, X, HeartPulse, Link, Check, Copy, Receipt, Send
 } from 'lucide-react';
 import api from '../api/axios';
 import { useTranslation } from '../context/LanguageContext';
@@ -90,6 +90,58 @@ export default function PatientDetail() {
   const { user } = useAuth();
   const idRef = useRef<string | undefined>(id);
   const socketRef = useRef<Socket | null>(null);
+
+  // Treatment completion state
+  interface CompletedTreatment {
+    appointment_id: string;
+    appointment_type: string;
+    treatment_name: string;
+    appointment_date: string;
+    followup_sent: boolean;
+  }
+  const [completedTreatments, setCompletedTreatments] = useState<CompletedTreatment[]>([]);
+  const [treatmentCompleteLoading, setTreatmentCompleteLoading] = useState<string | null>(null);
+  const [treatmentCompleteResult, setTreatmentCompleteResult] = useState<Record<string, string>>({});
+
+  const fetchCompletedTreatments = useCallback(async () => {
+    if (!id) return;
+    try {
+      const { data } = await api.get('/admin/appointments', {
+        params: { patient_id: id, status: 'completed', limit: 20 }
+      });
+      const apts = (data.appointments || data || [])
+        .filter((a: any) => a.appointment_type && a.status === 'completed')
+        .map((a: any) => ({
+          appointment_id: a.id,
+          appointment_type: a.appointment_type,
+          treatment_name: a.treatment_name || a.appointment_type,
+          appointment_date: a.appointment_datetime
+            ? new Date(a.appointment_datetime).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric' })
+            : '',
+          followup_sent: a.followup_sent || false,
+        }));
+      setCompletedTreatments(apts);
+    } catch { /* silent */ }
+  }, [id]);
+
+  const handleCompleteTreatmentFromDetail = async (appointmentId: string) => {
+    setTreatmentCompleteLoading(appointmentId);
+    try {
+      const { data } = await api.post(`/admin/appointments/${appointmentId}/complete-treatment`);
+      setTreatmentCompleteResult(prev => ({
+        ...prev,
+        [appointmentId]: data.ok ? `✅ ${data.message}` : `⚠️ ${data.message}`,
+      }));
+      fetchCompletedTreatments();
+    } catch (e: any) {
+      setTreatmentCompleteResult(prev => ({
+        ...prev,
+        [appointmentId]: `❌ ${e?.response?.data?.detail ?? 'Error'}`,
+      }));
+    } finally {
+      setTreatmentCompleteLoading(null);
+    }
+  };
   const [anamnesisRefreshKey, setAnamnesisRefreshKey] = useState(0);
   const [digitalRecordsRefreshKey, setDigitalRecordsRefreshKey] = useState(0);
   const [billingRefreshKey, setBillingRefreshKey] = useState(0);
@@ -112,6 +164,7 @@ export default function PatientDetail() {
       setRecords([]);
       setCriticalConditionsFound([]);
       fetchPatientData();
+      fetchCompletedTreatments();
     }
   }, [id]);
 
@@ -383,6 +436,48 @@ export default function PatientDetail() {
                 </div>
               );
             })()}
+
+            {/* Tratamientos completados — botón finalizar */}
+            {completedTreatments.length > 0 && (
+              <div className="bg-white/[0.03] border border-white/[0.06] rounded-lg p-4 sm:p-6">
+                <h3 className="text-sm font-semibold text-white mb-3 flex items-center gap-2">
+                  <Send size={16} className="text-purple-400" />
+                  {t('patient_detail.complete_treatment_title') || 'Finalizar Tratamiento'}
+                </h3>
+                <p className="text-xs text-white/40 mb-3">{t('patient_detail.complete_treatment_desc') || 'Marcá el tratamiento como completo para enviar el seguimiento HSM configurado.'}</p>
+                <div className="space-y-2">
+                  {completedTreatments.filter(ct => !ct.followup_sent).map(ct => (
+                    <div key={ct.appointment_id} className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3 bg-white/[0.02] border border-white/[0.04] rounded-xl p-3">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-white truncate">{ct.treatment_name}</p>
+                        <p className="text-[10px] text-white/30">{ct.appointment_date}</p>
+                      </div>
+                      <button
+                        onClick={() => handleCompleteTreatmentFromDetail(ct.appointment_id)}
+                        disabled={treatmentCompleteLoading === ct.appointment_id}
+                        className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-purple-500/15 text-purple-300 border border-purple-500/20 rounded-lg text-xs font-semibold hover:bg-purple-500/25 transition-all disabled:opacity-50"
+                      >
+                        {treatmentCompleteLoading === ct.appointment_id ? (
+                          <div className="w-3 h-3 border-2 border-purple-300/30 border-t-purple-300 rounded-full animate-spin" />
+                        ) : (
+                          <Send size={12} />
+                        )}
+                        {t('patient_detail.send_followup') || 'Enviar Seguimiento'}
+                      </button>
+                      {treatmentCompleteResult[ct.appointment_id] && (
+                        <p className="text-[10px] w-full sm:w-auto">{treatmentCompleteResult[ct.appointment_id]}</p>
+                      )}
+                    </div>
+                  ))}
+                  {completedTreatments.every(ct => ct.followup_sent) && (
+                    <p className="text-xs text-emerald-400/60 flex items-center gap-1.5">
+                      <Check size={12} />
+                      {t('patient_detail.all_followups_sent') || 'Todos los seguimientos fueron enviados'}
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Componente Odontograma */}
             <Odontogram
