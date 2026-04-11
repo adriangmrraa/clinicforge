@@ -384,7 +384,7 @@ export default function AppointmentForm({
 
             {/* Slide-over Panel */}
             <div
-                className={`fixed inset-y-0 right-0 z-[70] w-full md:w-[450px] bg-[#0d1117] backdrop-blur-xl shadow-2xl transform transition-transform duration-300 ease-out border-l border-white/[0.08] flex flex-col ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}
+                className={`fixed inset-y-0 right-0 z-[70] w-full md:w-[520px] lg:w-[640px] bg-[#0d1117] backdrop-blur-xl shadow-2xl transform transition-transform duration-300 ease-out border-l border-white/[0.08] flex flex-col ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}
             >
                 <div className="flex items-center justify-between px-6 py-4 border-b border-white/[0.06] bg-white/[0.02]">
                     <div>

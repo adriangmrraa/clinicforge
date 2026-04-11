@@ -1340,7 +1340,7 @@ export default function ClinicsView() {
             {/* ── Modal Editar/Crear Clínica ── */}
             {isModalOpen && (
                 <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="bg-[#0d1117] border border-white/[0.08] rounded-xl w-full max-w-2xl animate-scale-in max-h-[90vh] flex flex-col">
+                    <div className="bg-[#0d1117] border border-white/[0.08] rounded-xl w-full max-w-2xl lg:max-w-5xl animate-scale-in max-h-[90vh] flex flex-col">
                         <div className="p-4 sm:p-6 border-b border-white/[0.06] shrink-0 flex justify-between items-center">
                             <h2 className="text-xl font-bold text-white flex items-center gap-2">
                                 {editingClinica ? <Edit className="text-blue-400" /> : <Plus className="text-blue-400" />}
@@ -2268,7 +2268,7 @@ export default function ClinicsView() {
             {/* ── Modal FAQs ── */}
             {faqModalOpen && (
                 <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="bg-[#0d1117] border border-white/[0.08] rounded-xl w-full max-w-2xl animate-scale-in max-h-[90vh] flex flex-col">
+                    <div className="bg-[#0d1117] border border-white/[0.08] rounded-xl w-full max-w-2xl lg:max-w-5xl animate-scale-in max-h-[90vh] flex flex-col">
                         <div className="p-4 sm:p-6 border-b border-white/[0.06] shrink-0 flex justify-between items-center">
                             <h2 className="text-xl font-bold text-white flex items-center gap-2">
                                 <HelpCircle className="text-amber-400" />
