@@ -642,7 +642,10 @@ export default function TreatmentsView() {
 
     try {
       setSaving(true);
-      await api.put(`/admin/treatment-types/${code}`, buildPayload(editForm, confirmUnusual));
+      const payload = buildPayload(editForm, confirmUnusual);
+      console.log('[TreatmentsView] PUT payload:', JSON.stringify(payload, null, 2));
+      const res = await api.put(`/admin/treatment-types/${code}`, payload);
+      console.log('[TreatmentsView] PUT response:', res.status, res.data);
       await api.put(`/admin/treatment-types/${code}/professionals`, { professional_ids: editForm.professional_ids || [] });
       await fetchTreatments();
       setEditingId(null);
@@ -653,8 +656,8 @@ export default function TreatmentsView() {
         setUnusualPriceConfirm({ context: 'edit', code });
         return;
       }
-      console.error('Error saving treatment:', error);
-      alert(error.response?.data?.detail || t('alerts.error_save_treatment'));
+      console.error('Error saving treatment:', error?.response?.status, error?.response?.data);
+      alert(error.response?.data?.detail || `Error ${error?.response?.status || '?'}: ${JSON.stringify(error?.response?.data || error.message).slice(0, 200)}`);
     } finally {
       setSaving(false);
     }
@@ -950,7 +953,18 @@ export default function TreatmentsView() {
                   </div>
                 </div>
 
-                <div className="mt-6 flex items-center gap-3">
+                <div className="mt-6 space-y-2">
+                  <label className="block text-sm font-semibold text-white/60">{t('treatments.patient_display_name') || 'Nombre visible al paciente'}</label>
+                  <input
+                    type="text"
+                    value={newForm.patient_display_name || ''}
+                    onChange={(e) => setNewForm({ ...newForm, patient_display_name: e.target.value })}
+                    placeholder={t('treatments.placeholder_patient_display_name') || 'Ej: Evaluación para Implantes'}
+                    className="w-full px-4 py-3 bg-white/[0.04] border border-white/[0.08] rounded-xl text-white placeholder-white/20 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none font-medium"
+                  />
+                </div>
+
+                <div className="mt-6 flex flex-wrap items-center gap-6">
                   <label className="flex items-center gap-3 cursor-pointer">
                     <input
                       type="checkbox"
@@ -960,6 +974,61 @@ export default function TreatmentsView() {
                     />
                     <span className="text-sm font-medium text-white/60">{t('treatments.multiple_sessions')}</span>
                   </label>
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={newForm.is_active ?? true}
+                      onChange={(e) => setNewForm({ ...newForm, is_active: e.target.checked })}
+                      className="h-5 w-5 rounded border-white/[0.08] text-green-400 focus:ring-green-500"
+                    />
+                    <span className="text-sm font-medium text-white/60">{t('treatments.active') || 'Activo'}</span>
+                  </label>
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={newForm.is_available_for_booking ?? true}
+                      onChange={(e) => setNewForm({ ...newForm, is_available_for_booking: e.target.checked })}
+                      className="h-5 w-5 rounded border-white/[0.08] text-green-400 focus:ring-green-500"
+                    />
+                    <span className="text-sm font-medium text-white/60">{t('treatments.in_catalog') || 'En Catálogo'}</span>
+                  </label>
+                </div>
+
+                {/* High Ticket */}
+                <div className={`mt-6 p-4 rounded-2xl border transition-all ${newForm.is_high_ticket ? 'bg-amber-500/5 border-amber-500/20' : 'bg-white/[0.02] border-white/[0.06]'}`}>
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={newForm.is_high_ticket || false}
+                      onChange={(e) => setNewForm({ ...newForm, is_high_ticket: e.target.checked })}
+                      className="h-5 w-5 rounded border-white/[0.08] text-amber-400 focus:ring-amber-500"
+                    />
+                    <span className="text-sm font-semibold text-amber-500">{t('treatments.high_ticket_label') || 'Requiere consulta previa (High Ticket)'}</span>
+                  </label>
+                  {newForm.is_high_ticket && (
+                    <div className="mt-4 space-y-4 pl-8">
+                      <div className="space-y-1">
+                        <label className="block text-xs font-bold text-amber-400/70 uppercase">{t('treatments.consultation_duration') || 'Duración de la consulta (min)'}</label>
+                        <input type="number" value={newForm.consultation_duration_minutes || 30}
+                          onChange={(e) => setNewForm({ ...newForm, consultation_duration_minutes: parseInt(e.target.value) || 30 })}
+                          className="w-32 px-3 py-2 bg-white/[0.04] border border-amber-500/20 rounded-xl text-white outline-none font-bold" />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="block text-xs font-bold text-amber-400/70 uppercase">{t('treatments.consultation_requirements') || 'Requisitos para la consulta'}</label>
+                        <textarea value={newForm.consultation_requirements || ''}
+                          onChange={(e) => setNewForm({ ...newForm, consultation_requirements: e.target.value })}
+                          placeholder={t('treatments.placeholder_consultation_requirements') || 'Ej: Traer radiografía panorámica, estudios previos'}
+                          rows={2} className="w-full px-3 py-2 bg-white/[0.04] border border-amber-500/20 rounded-xl text-white placeholder-white/20 outline-none resize-none" />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="block text-xs font-bold text-amber-400/70 uppercase">{t('treatments.consultation_notes') || 'Notas internas de consulta'}</label>
+                        <textarea value={newForm.consultation_notes || ''}
+                          onChange={(e) => setNewForm({ ...newForm, consultation_notes: e.target.value })}
+                          placeholder={t('treatments.placeholder_consultation_notes') || 'Info adicional para el profesional sobre esta consulta'}
+                          rows={2} className="w-full px-3 py-2 bg-white/[0.04] border border-amber-500/20 rounded-xl text-white placeholder-white/20 outline-none resize-none" />
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Assigned Professionals */}
