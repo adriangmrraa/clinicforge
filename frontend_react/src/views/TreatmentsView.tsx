@@ -481,7 +481,7 @@ export default function TreatmentsView() {
       // Auto-persist to backend immediately (don't require second save click)
       try {
         setSaving(true);
-        await api.put(`/admin/treatment-types/${editForm.code}`, updatedForm);
+        await api.put(`/admin/treatment-types/${editForm.code}`, buildPayload(updatedForm));
         await fetchTreatments();
       } catch (error: any) {
         console.error('Error saving instructions:', error);
@@ -607,12 +607,42 @@ export default function TreatmentsView() {
     setEditForm({});
   };
 
+  const buildPayload = (form: Partial<TreatmentType>, confirmUnusual = false) => {
+    // Send ONLY fields the backend TreatmentTypeUpdate model accepts
+    return {
+      name: form.name,
+      description: form.description ?? '',
+      default_duration_minutes: form.default_duration_minutes,
+      min_duration_minutes: form.min_duration_minutes,
+      max_duration_minutes: form.max_duration_minutes,
+      complexity_level: form.complexity_level,
+      category: form.category,
+      requires_multiple_sessions: form.requires_multiple_sessions ?? false,
+      session_gap_days: form.session_gap_days ?? 0,
+      is_active: form.is_active ?? true,
+      is_available_for_booking: form.is_available_for_booking ?? true,
+      internal_notes: form.internal_notes ?? '',
+      base_price: form.base_price ?? 0,
+      priority: form.priority ?? 'medium',
+      pre_instructions: form.pre_instructions ?? null,
+      post_instructions: form.post_instructions ?? null,
+      followup_template: form.followup_template ?? null,
+      confirm_unusual_price: confirmUnusual,
+      ai_response_template: form.ai_response_template ?? null,
+      patient_display_name: form.patient_display_name ?? null,
+      is_high_ticket: form.is_high_ticket ?? false,
+      consultation_duration_minutes: form.consultation_duration_minutes ?? 30,
+      consultation_requirements: form.consultation_requirements ?? null,
+      consultation_notes: form.consultation_notes ?? null,
+    };
+  };
+
   const handleSave = async (code: string, confirmUnusual = false) => {
     if (!editForm.code) return;
 
     try {
       setSaving(true);
-      await api.put(`/admin/treatment-types/${code}`, { ...editForm, confirm_unusual_price: confirmUnusual });
+      await api.put(`/admin/treatment-types/${code}`, buildPayload(editForm, confirmUnusual));
       await api.put(`/admin/treatment-types/${code}/professionals`, { professional_ids: editForm.professional_ids || [] });
       await fetchTreatments();
       setEditingId(null);
@@ -638,7 +668,7 @@ export default function TreatmentsView() {
 
     try {
       setSaving(true);
-      await api.post('/admin/treatment-types', { ...newForm, confirm_unusual_price: confirmUnusual });
+      await api.post('/admin/treatment-types', { ...buildPayload(newForm, confirmUnusual), code: newForm.code });
       await fetchTreatments();
       setIsCreating(false);
       setUnusualPriceConfirm(null);
