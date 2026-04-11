@@ -418,7 +418,9 @@
     "status_no_show": "No asistió",
     "select_patient_anamnesis": "Seleccioná un paciente para ver su anamnesis",
     "schedule_followup": "Agendar Seguimiento (+6m)",
-    "followup_notes_prefix": "Seguimiento recomendado tras consulta previa. "
+    "followup_notes_prefix": "Seguimiento recomendado tras consulta previa. ",
+    "complete_treatment": "Finalizar Tratamiento (Enviar Seguimiento HSM)",
+    "complete_treatment_hint": "Envía la plantilla de seguimiento post-tratamiento configurada en HSM Automation"
   },
   "patients": {
     "title": "Listado de Pacientes",

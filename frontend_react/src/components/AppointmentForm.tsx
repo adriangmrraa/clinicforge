@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { X, Calendar, User, Clock, FileText, DollarSign, Activity, AlertTriangle, Trash2, Check, ExternalLink, Info, Search } from 'lucide-react';
+import { X, Calendar, User, Clock, FileText, DollarSign, Activity, AlertTriangle, Trash2, Check, ExternalLink, Info, Search, Send } from 'lucide-react';
 import type { Appointment, Patient, Professional } from '../views/AgendaView';
 import api, { WS_URL } from '../api/axios';
 import { useTranslation } from '../context/LanguageContext';
@@ -45,6 +45,8 @@ export default function AppointmentForm({
     const [appointmentStatus, setAppointmentStatus] = useState<string>('scheduled');
     const [statusLoading, setStatusLoading] = useState(false);
     const [statusSuccess, setStatusSuccess] = useState<string | null>(null);
+    const [treatmentCompleteLoading, setTreatmentCompleteLoading] = useState(false);
+    const [treatmentCompleteResult, setTreatmentCompleteResult] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [collisionWarning, setCollisionWarning] = useState<string | null>(null);
@@ -209,6 +211,23 @@ export default function AppointmentForm({
         }
     };
 
+
+    // Finalizar tratamiento — envía HSM followup
+    const handleCompleteTreatment = async () => {
+        if (!initialData.id || !isEditing) return;
+        setTreatmentCompleteLoading(true);
+        setTreatmentCompleteResult(null);
+        try {
+            const { data } = await api.post(`/admin/appointments/${initialData.id}/complete-treatment`);
+            setTreatmentCompleteResult(data.ok ? `✅ ${data.message}` : `⚠️ ${data.message}`);
+            setTimeout(() => setTreatmentCompleteResult(null), 8000);
+        } catch (e: any) {
+            setTreatmentCompleteResult(`❌ ${e?.response?.data?.detail ?? 'Error al finalizar tratamiento'}`);
+            setTimeout(() => setTreatmentCompleteResult(null), 8000);
+        } finally {
+            setTreatmentCompleteLoading(false);
+        }
+    };
 
     // Check collisions
     const checkCollisions = async (profId: string, dateStr: string) => {
@@ -590,6 +609,33 @@ export default function AppointmentForm({
                                     </div>
                                     {statusSuccess && (
                                         <p className="text-xs text-emerald-600 font-medium mt-1">{statusSuccess}</p>
+                                    )}
+
+                                    {/* Finalizar Tratamiento — solo visible cuando el turno está completado */}
+                                    {appointmentStatus === 'completed' && (
+                                        <div className="mt-3 pt-3 border-t border-white/[0.06]">
+                                            <button
+                                                type="button"
+                                                disabled={treatmentCompleteLoading}
+                                                onClick={handleCompleteTreatment}
+                                                className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-xs font-bold transition-all ${
+                                                    treatmentCompleteLoading
+                                                        ? 'bg-purple-500/10 text-purple-300/50 cursor-wait'
+                                                        : 'bg-purple-500/15 text-purple-300 border border-purple-500/20 hover:bg-purple-500/25'
+                                                }`}
+                                            >
+                                                {treatmentCompleteLoading ? (
+                                                    <div className="w-4 h-4 border-2 border-purple-300/30 border-t-purple-300 rounded-full animate-spin" />
+                                                ) : (
+                                                    <Send size={14} />
+                                                )}
+                                                {t('agenda.complete_treatment')}
+                                            </button>
+                                            <p className="text-[10px] text-white/30 mt-1 text-center">{t('agenda.complete_treatment_hint')}</p>
+                                            {treatmentCompleteResult && (
+                                                <p className="text-xs font-medium mt-1 text-center">{treatmentCompleteResult}</p>
+                                            )}
+                                        </div>
                                     )}
                                 </div>
                             )}

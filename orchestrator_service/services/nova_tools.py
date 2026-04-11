@@ -772,6 +772,21 @@ NOVA_TOOLS_SCHEMA: List[Dict[str, Any]] = [
             "required": ["appointment_id", "status"],
         },
     },
+    {
+        "type": "function",
+        "name": "completar_tratamiento",
+        "description": "Marca un tratamiento como completo para un paciente y envía el mensaje HSM de seguimiento post-tratamiento configurado. Usar cuando el profesional indica que finalizó el tratamiento (diferente de completar un turno individual).",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "appointment_id": {
+                    "type": "string",
+                    "description": "ID del último turno del tratamiento",
+                },
+            },
+            "required": ["appointment_id"],
+        },
+    },
     # -------------------------------------------------------------------------
     # H. Anamnesis por voz (NEW)
     # -------------------------------------------------------------------------
@@ -5120,6 +5135,8 @@ async def execute_nova_tool(
             return await _eliminar_faq(args, tenant_id)
         elif name == "cambiar_estado_turno":
             return await _cambiar_estado_turno(args, tenant_id)
+        elif name == "completar_tratamiento":
+            return await _completar_tratamiento(args, tenant_id)
 
         # H. Anamnesis
         elif name == "guardar_anamnesis":
@@ -6025,6 +6042,67 @@ async def _cambiar_estado_turno(args: Dict, tenant_id: int) -> str:
         {"appointment_id": str(appt_uuid), "tenant_id": tenant_id, "status": status},
     )
     return f"Turno actualizado → estado: {status}"
+
+
+async def _completar_tratamiento(args: Dict, tenant_id: int) -> str:
+    """Marca tratamiento como completo y envía HSM de seguimiento."""
+    apt_id = args.get("appointment_id", "")
+    if not apt_id:
+        return "Necesito el ID del turno (appointment_id)."
+
+    try:
+        appt_uuid = uuid.UUID(str(apt_id))
+    except ValueError:
+        return "ID de turno inválido."
+
+    # Obtener datos del turno
+    apt = await db.pool.fetchrow(
+        """
+        SELECT a.id, a.appointment_type, a.followup_sent, a.appointment_datetime,
+               p.first_name, p.last_name, p.phone_number,
+               prof.first_name as prof_first_name, prof.last_name as prof_last_name
+        FROM appointments a
+        JOIN patients p ON a.patient_id = p.id AND p.tenant_id = a.tenant_id
+        LEFT JOIN professionals prof ON a.professional_id = prof.id
+        WHERE a.id = $1 AND a.tenant_id = $2
+        """,
+        appt_uuid,
+        tenant_id,
+    )
+
+    if not apt:
+        return "No encontré ese turno."
+
+    if not apt["appointment_type"]:
+        return "Este turno no tiene tipo de tratamiento asignado."
+
+    if apt["followup_sent"]:
+        return "El seguimiento HSM ya fue enviado para este turno."
+
+    if not apt["phone_number"]:
+        return "El paciente no tiene teléfono registrado."
+
+    patient_name = f"{apt['first_name'] or ''} {apt['last_name'] or ''}".strip() or "paciente"
+    professional_name = f"{apt['prof_first_name'] or ''} {apt['prof_last_name'] or ''}".strip()
+    apt_date = apt["appointment_datetime"].strftime("%d/%m/%Y") if apt["appointment_datetime"] else ""
+
+    # Importar y ejecutar la función de envío
+    from admin_routes import send_treatment_completion_hsm
+
+    sent = await send_treatment_completion_hsm(
+        tenant_id=tenant_id,
+        treatment_code=apt["appointment_type"],
+        patient_name=patient_name,
+        phone_number=apt["phone_number"],
+        appointment_id=appt_uuid,
+        professional_name=professional_name,
+        appointment_date=apt_date,
+    )
+
+    if sent:
+        return f"✅ Tratamiento '{apt['appointment_type']}' marcado como completo. Seguimiento HSM enviado a {patient_name} ({apt['phone_number']})."
+    else:
+        return f"⚠️ Tratamiento marcado como completo, pero no se pudo enviar el HSM. Revisá que haya una regla activa para '{apt['appointment_type']}' en HSM Automation."
 
 
 # =============================================================================

@@ -126,6 +126,57 @@ class YCloudClient:
                 logger.error(f"ycloud_send_image_error: to={to} error={str(e)}")
                 raise
 
+    async def send_template(
+        self,
+        to: str,
+        template_name: str,
+        language_code: str = "es",
+        components: Optional[list] = None,
+        from_number: Optional[str] = None,
+    ) -> dict[str, Any]:
+        """
+        Envía un mensaje HSM (plantilla aprobada) a través de YCloud.
+        components: lista de componentes con variables, e.g.
+        [{"type": "body", "parameters": [{"type": "text", "text": "Juan"}]}]
+        """
+        url = f"{self.base_url}/whatsapp/messages/sendDirectly"
+        sender = from_number or self.business_number
+        payload: dict[str, Any] = {
+            "to": to,
+            "type": "template",
+            "template": {
+                "name": template_name,
+                "language": {"code": language_code},
+            },
+        }
+        if components:
+            payload["template"]["components"] = components
+        if sender:
+            payload["from"] = sender
+
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.post(
+                    url, json=payload, headers=self.headers, timeout=15.0
+                )
+                response.raise_for_status()
+                data = response.json()
+                logger.info(
+                    f"✅ YCloud HSM template '{template_name}' sent to {to}: {data.get('id')}"
+                )
+                return data
+            except httpx.HTTPStatusError as e:
+                logger.error(
+                    f"ycloud_send_template_failed: to={to} template={template_name} "
+                    f"status={e.response.status_code} body={e.response.text[:200]}"
+                )
+                raise
+            except Exception as e:
+                logger.error(
+                    f"ycloud_send_template_error: to={to} template={template_name} error={str(e)}"
+                )
+                raise
+
     async def fetch_messages(
         self,
         cursor: Optional[str] = None,

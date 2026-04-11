@@ -403,7 +403,9 @@
     "status_completed": "Terminé",
     "status_cancelled": "Annulé",
     "status_no_show": "Absent",
-    "select_patient_anamnesis": "Sélectionnez un patient pour voir son anamnèse"
+    "select_patient_anamnesis": "Sélectionnez un patient pour voir son anamnèse",
+    "complete_treatment": "Finaliser le Traitement (Envoyer Suivi HSM)",
+    "complete_treatment_hint": "Envoie le modèle de suivi post-traitement configuré dans HSM Automation"
   },
   "patients": {
     "title": "Liste des Patients",

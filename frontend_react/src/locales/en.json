@@ -410,7 +410,9 @@
     "status_completed": "Completed",
     "status_cancelled": "Cancelled",
     "status_no_show": "No Show",
-    "select_patient_anamnesis": "Select a patient to view their anamnesis"
+    "select_patient_anamnesis": "Select a patient to view their anamnesis",
+    "complete_treatment": "Complete Treatment (Send HSM Follow-up)",
+    "complete_treatment_hint": "Sends the post-treatment follow-up template configured in HSM Automation"
   },
   "patients": {
     "title": "Patient List",
