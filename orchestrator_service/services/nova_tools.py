@@ -319,11 +319,16 @@ NOVA_TOOLS_SCHEMA: List[Dict[str, Any]] = [
                 "category": {
                     "type": "string",
                     "enum": [
-                        "prevention",
-                        "restorative",
-                        "surgical",
-                        "orthodontics",
-                        "emergency",
+                        "consultas",
+                        "prevencion",
+                        "operatoria",
+                        "estetica_facial",
+                        "endolifting",
+                        "cirugia",
+                        "implantes",
+                        "regeneracion_osea",
+                        "rehabilitacion",
+                        "ortodoncia",
                     ],
                     "description": "Filtrar por categoria (opcional)",
                 }
@@ -623,11 +628,16 @@ NOVA_TOOLS_SCHEMA: List[Dict[str, Any]] = [
                 "category": {
                     "type": "string",
                     "enum": [
-                        "prevention",
-                        "restorative",
-                        "surgical",
-                        "orthodontics",
-                        "emergency",
+                        "consultas",
+                        "prevencion",
+                        "operatoria",
+                        "estetica_facial",
+                        "endolifting",
+                        "cirugia",
+                        "implantes",
+                        "regeneracion_osea",
+                        "rehabilitacion",
+                        "ortodoncia",
                     ],
                 },
             },
@@ -5416,7 +5426,7 @@ async def _crear_tratamiento(args: Dict, tenant_id: int, user_role: str) -> str:
     code = args.get("code", "")
     duration = int(args.get("duration_minutes", 30))
     price = Decimal(str(args.get("base_price", 0)))
-    category = args.get("category", "prevention")
+    category = args.get("category", "consultas")
     if not name or not code:
         return "Necesito name y code."
     await db.pool.execute(

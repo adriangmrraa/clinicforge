@@ -4524,7 +4524,7 @@ async def list_services(category: str = None, patient_term: str = ""):
     USAR para consultas generales ("qué servicios tienen", "qué tratamientos hacen", "qué se puede agendar").
     Para detalles o imágenes de UN tratamiento concreto, usar 'get_service_details'.
     NUNCA inventar tratamientos — solo devolver los de esta tool.
-    category: Filtro opcional (prevention, restorative, surgical, orthodontics, emergency)
+    category: Filtro opcional (consultas, prevencion, operatoria, estetica_facial, endolifting, cirugia, implantes, regeneracion_osea, rehabilitacion, ortodoncia)
     patient_term: Término coloquial del paciente (ej: "limpieza", "sacar muela"). Se mapea automáticamente al nombre canónico.
     """
     # Internal synonym map: colloquial terms → canonical treatment names
