@@ -1400,6 +1400,25 @@ export default function TreatmentsView() {
 
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                             <div className="space-y-2">
+                              <label className="block text-xs font-bold text-white/55 ml-1 uppercase">{t('treatments.category')}</label>
+                              <select
+                                value={editForm.category || 'consultas'}
+                                onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}
+                                className="w-full px-4 py-3 bg-white/[0.04] border border-white/[0.08] rounded-xl text-white focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none appearance-none font-bold"
+                              >
+                                <option value="consultas">{t('treatments.category_consultas')}</option>
+                                <option value="prevencion">{t('treatments.category_prevencion')}</option>
+                                <option value="operatoria">{t('treatments.category_operatoria')}</option>
+                                <option value="estetica_facial">{t('treatments.category_estetica_facial')}</option>
+                                <option value="endolifting">{t('treatments.category_endolifting')}</option>
+                                <option value="cirugia">{t('treatments.category_cirugia')}</option>
+                                <option value="implantes">{t('treatments.category_implantes')}</option>
+                                <option value="regeneracion_osea">{t('treatments.category_regeneracion_osea')}</option>
+                                <option value="rehabilitacion">{t('treatments.category_rehabilitacion')}</option>
+                                <option value="ortodoncia">{t('treatments.category_ortodoncia')}</option>
+                              </select>
+                            </div>
+                            <div className="space-y-2">
                               <label className="block text-xs font-bold text-white/55 ml-1 uppercase">{t('treatments.complexity_level_label')}</label>
                               <select
                                 value={editForm.complexity_level || 'medium'}
