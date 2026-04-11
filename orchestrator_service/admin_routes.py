@@ -164,6 +164,12 @@ class TreatmentTypeResponse(BaseModel):
     pre_instructions: Optional[Any] = None
     post_instructions: Optional[Any] = None
     followup_template: Optional[Any] = None
+    is_high_ticket: bool = False
+    consultation_duration_minutes: Optional[int] = None
+    consultation_requirements: Optional[str] = None
+    consultation_notes: Optional[str] = None
+    ai_response_template: Optional[str] = None
+    patient_display_name: Optional[str] = None
 
 
 router = APIRouter(prefix="/admin", tags=["Dental Admin"])
@@ -9338,7 +9344,8 @@ async def list_treatment_types(tenant_id: int = Depends(get_resolved_tenant_id))
                is_active, is_available_for_booking, internal_notes, base_price, priority,
                pre_instructions, post_instructions, followup_template,
                is_high_ticket, consultation_duration_minutes,
-               consultation_requirements, consultation_notes
+               consultation_requirements, consultation_notes,
+               ai_response_template, patient_display_name
         FROM treatment_types
         WHERE tenant_id = $1
         ORDER BY category, name
@@ -9453,7 +9460,8 @@ async def get_treatment_type(
                is_active, is_available_for_booking, internal_notes, priority, base_price,
                pre_instructions, post_instructions, followup_template,
                is_high_ticket, consultation_duration_minutes,
-               consultation_requirements, consultation_notes
+               consultation_requirements, consultation_notes,
+               ai_response_template, patient_display_name
         FROM treatment_types
         WHERE tenant_id = $1 AND code = $2
     """,
