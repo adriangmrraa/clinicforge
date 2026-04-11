@@ -904,11 +904,16 @@ class TreatmentTypeCreate(BaseModel):
     followup_template: Optional[Any] = None
     confirm_unusual_price: bool = False
     ai_response_template: Optional[str] = None
+    patient_display_name: Optional[str] = None
+    sort_order: Optional[int] = 0
     # Migration 041: consultation fields for high-ticket treatments
     is_high_ticket: bool = False
     consultation_duration_minutes: Optional[int] = 30
     consultation_requirements: Optional[str] = None
     consultation_notes: Optional[str] = None
+
+    class Config:
+        extra = "ignore"
 
 
 # NOTE: TreatmentTypeUpdate is defined later in this file (~line 9083)
@@ -9079,6 +9084,7 @@ class TreatmentTypeUpdate(BaseModel):
     internal_notes: Optional[str] = None
     base_price: Optional[float] = 0
     priority: Optional[str] = "medium"
+    professional_ids: Optional[List[int]] = None
     # Migration 036: structured pre/post instructions. See PreInstructions /
     # PostInstructions Pydantic models near the top of this file.
     pre_instructions: Optional[Union[PreInstructions, dict, str]] = None
@@ -9091,6 +9097,12 @@ class TreatmentTypeUpdate(BaseModel):
     consultation_duration_minutes: Optional[int] = 30
     consultation_requirements: Optional[str] = None
     consultation_notes: Optional[str] = None
+    # Fields from SELECT * that frontend sends back (ignored in SQL but must be accepted)
+    patient_display_name: Optional[str] = None
+    sort_order: Optional[int] = 0
+
+    class Config:
+        extra = "ignore"  # Ignore unknown fields from frontend (id, created_at, tenant_id, etc.)
 
 
 async def _validate_treatment_price_scale(
