@@ -1306,18 +1306,17 @@ async def get_chat_sessions(
     if tenant_id not in allowed_ids:
         raise HTTPException(status_code=403, detail="No tienes acceso a esta clínica.")
 
-    # Build professional patient filter subquery
-    prof_filter_clause = ""
+    # Build professional patient filter subquery (safe: both are validated ints)
+    prof_filter_sql = ""
     if professional_id:
-        prof_filter_clause = f"AND p.id IN (SELECT DISTINCT patient_id FROM appointments WHERE tenant_id = {tenant_id} AND professional_id = {professional_id})"
+        prof_filter_sql = f"AND p.id IN (SELECT DISTINCT patient_id FROM appointments WHERE tenant_id = {int(tenant_id)} AND professional_id = {int(professional_id)})"
     # Sesiones = pacientes de esta clínica que tienen al menos un mensaje en esta clínica
     has_tenant_in_cm = await db.pool.fetchval(
         "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='chat_messages' AND column_name='tenant_id')"
     )
     if not has_tenant_in_cm:
         # Fallback: DB sin parche 15, filtrar solo por patients.tenant_id (mensajes sin tenant)
-        rows = await db.pool.fetch(
-            f"""
+        _q1 = """
             SELECT * FROM (
                 SELECT DISTINCT ON (p.phone_number)
                     p.phone_number,
@@ -1353,16 +1352,14 @@ async def get_chat_sessions(
                     AND cw.external_user_id = p.phone_number
                     AND cw.channel IN ('instagram', 'facebook')
                 )
-                {prof_filter_clause}
+                """ + prof_filter_sql + """
                 ORDER BY p.phone_number, cm.created_at DESC
             ) sub
             ORDER BY last_message_time DESC NULLS LAST
-        """,
-            tenant_id,
-        )
+        """
+        rows = await db.pool.fetch(_q1, tenant_id)
     else:
-        rows = await db.pool.fetch(
-            f"""
+        _q2 = """
             SELECT * FROM (
                 SELECT DISTINCT ON (p.phone_number)
                     p.phone_number,
@@ -1402,13 +1399,12 @@ async def get_chat_sessions(
                     AND cw.external_user_id = p.phone_number
                     AND cw.channel IN ('instagram', 'facebook')
                 )
-                {prof_filter_clause}
+                """ + prof_filter_sql + """
                 ORDER BY p.phone_number, cm.created_at DESC
             ) sub
             ORDER BY last_message_time DESC NULLS LAST
-        """,
-            tenant_id,
-        )
+        """
+        rows = await db.pool.fetch(_q2, tenant_id)
     sessions = []
     for row in rows:
         unread_sql = """
