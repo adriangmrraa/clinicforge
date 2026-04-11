@@ -1062,7 +1062,7 @@ export default function PatientsView() {
       {/* Import Modal */}
       {showImportModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={e => e.target === e.currentTarget && setShowImportModal(false)}>
-          <div className="bg-[#0d1117] border border-white/[0.08] rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
+          <div className="bg-[#0d1117] border border-white/[0.08] rounded-2xl shadow-2xl w-full max-w-2xl lg:max-w-5xl max-h-[90vh] flex flex-col overflow-hidden">
             {/* Header */}
             <div className="flex items-center justify-between p-5 border-b border-white/[0.06] shrink-0">
               <div className="flex items-center gap-3">

@@ -191,10 +191,12 @@ export const YCloudSyncSection: React.FC<YCloudSyncSectionProps> = ({ tenantId, 
         );
     }
     
-    // Don't render if not configured
-    if (!config?.ycloud_api_key_configured) {
-        return null;
-    }
+    // Show section even without API key configured (to prompt setup)
+    // if (!config?.ycloud_api_key_configured) {
+    //     return null;
+    // }
+    
+    const isConfigured = config?.ycloud_api_key_configured;
     
     return (
         <div className={`bg-white/[0.03] border border-white/[0.06] rounded-2xl p-4 sm:p-6 ${className}`}>

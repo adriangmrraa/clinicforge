@@ -959,7 +959,7 @@ export default function TreatmentsView() {
             className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
             onClick={(e) => e.target === e.currentTarget && setIsCreating(false)}
           >
-            <div className="bg-[#0d1117] border border-white/[0.08] rounded-2xl sm:rounded-3xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="bg-[#0d1117] border border-white/[0.08] rounded-2xl sm:rounded-3xl w-full max-w-2xl lg:max-w-5xl max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
               <div className="flex justify-between items-center gap-3 p-4 sm:p-6 border-b border-white/[0.06] shrink-0">
                 <div className="flex items-center gap-3 min-w-0">
                   <div className="p-2.5 sm:p-3 bg-blue-500/10 text-blue-400 rounded-xl shrink-0">
@@ -1732,7 +1732,7 @@ export default function TreatmentsView() {
       {/* ── Instructions Modal (higher z-index, overlays treatment modals) ── */}
       {instructionsModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4" onClick={e => e.target === e.currentTarget && setInstructionsModalOpen(false)}>
-          <div className="bg-[#0d1117] border border-white/[0.08] rounded-2xl w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+          <div className="bg-[#0d1117] border border-white/[0.08] rounded-2xl w-full max-w-3xl lg:max-w-5xl max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
             <div className="flex justify-between items-center gap-3 p-4 sm:p-6 border-b border-white/[0.06] shrink-0">
               <div className="flex items-center gap-3">
                 <div className="p-2.5 bg-blue-500/10 text-blue-400 rounded-xl">
@@ -2106,7 +2106,7 @@ export default function TreatmentsView() {
           className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4"
           onClick={(e) => e.target === e.currentTarget && setAuditOpen(false)}
         >
-          <div className="bg-[#0d1117] border border-white/[0.08] rounded-2xl w-full max-w-2xl max-h-[80vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+          <div className="bg-[#0d1117] border border-white/[0.08] rounded-2xl w-full max-w-2xl lg:max-w-4xl max-h-[80vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
             <div className="flex justify-between items-center gap-3 p-4 sm:p-6 border-b border-white/[0.06] shrink-0">
               <div className="flex items-center gap-3">
                 <div className="p-2.5 bg-amber-500/10 text-amber-400 rounded-xl">

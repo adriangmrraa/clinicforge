@@ -888,7 +888,7 @@ export default function PatientDetail() {
       {/* Modal para agregar nota (Adaptación Mobile) */}
       {showNoteForm && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50">
-          <div className="bg-[#0d1117] border border-white/[0.08] w-full sm:max-w-2xl sm:mx-4 sm:rounded-lg rounded-t-xl sm:rounded-t-lg h-[90vh] sm:h-auto sm:max-h-[90vh] flex flex-col">
+          <div className="bg-[#0d1117] border border-white/[0.08] w-full sm:max-w-2xl lg:max-w-5xl sm:mx-4 sm:rounded-lg rounded-t-xl sm:rounded-t-lg h-[90vh] sm:h-auto sm:max-h-[90vh] flex flex-col">
             {/* Header del Modal */}
             <div className="flex justify-between items-center p-4 border-b border-white/[0.06] shrink-0">
               <h2 className="text-xl font-bold text-white">{t('patient_detail.new_evolution')}</h2>
