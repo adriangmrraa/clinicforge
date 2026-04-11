@@ -107,11 +107,30 @@ const emptyPostForm: PostInstructionsForm = {
 // Accepts: dict (new shape), string (legacy raw), {general_notes: str} wrap.
 function parsePreInstructions(value: unknown): PreInstructionsForm {
   if (!value) return { ...emptyPreForm };
+  // If string, try to parse as JSON first (JSONB double-encoding from DB)
   if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      if (typeof parsed === 'object' && parsed !== null) {
+        return parsePreInstructions(parsed); // recurse with parsed object
+      }
+    } catch {
+      // Not valid JSON — treat as legacy free-text
+    }
     return { ...emptyPreForm, general_notes: value };
   }
   if (typeof value === 'object') {
     const v = value as Record<string, unknown>;
+    // If general_notes is a JSON string of the full object (corruption from prior saves), ignore it
+    let notes = '';
+    if (typeof v.general_notes === 'string') {
+      // Check if it's a JSON blob (corrupted nesting) — if so, discard
+      if (v.general_notes.startsWith('{') && v.general_notes.includes('fasting')) {
+        notes = ''; // discard corrupted nested JSON
+      } else {
+        notes = v.general_notes;
+      }
+    }
     return {
       preparation_days_before: typeof v.preparation_days_before === 'number' ? v.preparation_days_before : null,
       fasting_required: typeof v.fasting_required === 'boolean' ? v.fasting_required : null,
@@ -119,7 +138,7 @@ function parsePreInstructions(value: unknown): PreInstructionsForm {
       medications_to_avoid: Array.isArray(v.medications_to_avoid) ? (v.medications_to_avoid as string[]) : [],
       medications_to_take: Array.isArray(v.medications_to_take) ? (v.medications_to_take as string[]) : [],
       what_to_bring: Array.isArray(v.what_to_bring) ? (v.what_to_bring as string[]) : [],
-      general_notes: typeof v.general_notes === 'string' ? v.general_notes : '',
+      general_notes: notes,
     };
   }
   return { ...emptyPreForm };
