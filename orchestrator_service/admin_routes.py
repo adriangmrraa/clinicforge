@@ -9638,22 +9638,8 @@ async def update_treatment_type(
         tenant_id,
         code,
     )
-    logger.info(
-        f"📝 UPDATE treatment_types result={result} tenant_id={tenant_id} code={code} "
-        f"is_high_ticket={treatment.is_high_ticket} ai_response_template={treatment.ai_response_template!r:.80}"
-    )
     if result == "UPDATE 0":
         raise HTTPException(status_code=404, detail="Tipo de tratamiento no encontrado")
-    # DEBUG: verify the UPDATE actually persisted
-    _verify = await db.pool.fetchrow(
-        "SELECT is_high_ticket, ai_response_template FROM treatment_types WHERE tenant_id = $1 AND code = $2",
-        tenant_id, code,
-    )
-    if _verify:
-        logger.info(
-            f"📝 VERIFY after UPDATE: is_high_ticket={_verify['is_high_ticket']} "
-            f"ai_response_template={_verify['ai_response_template']!r:.80}"
-        )
     # Sync treatment instruction embedding if instructions were provided
     if treatment.pre_instructions or treatment.post_instructions:
         try:

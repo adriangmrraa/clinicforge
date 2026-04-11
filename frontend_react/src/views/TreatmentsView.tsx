@@ -495,7 +495,6 @@ export default function TreatmentsView() {
 
     let postOut: PostInstructionsForm | PostInstruction[] | null = null;
     const _postHas = postFormHasContent(instructionsLocal.postForm);
-    console.log('[saveInstructions] postEditMode:', postEditMode, 'postFormHasContent:', _postHas, 'postForm:', instructionsLocal.postForm);
     if (postEditMode === 'protocol' && _postHas) {
       postOut = instructionsLocal.postForm;
     } else if (postEditMode === 'protocol' && !_postHas) {
@@ -505,9 +504,6 @@ export default function TreatmentsView() {
     } else if (instructionsLocal.timedSequence.length > 0) {
       postOut = instructionsLocal.timedSequence;
     }
-    console.log('[saveInstructions] postOut:', postOut);
-    console.log('[saveInstructions] followup_template:', instructionsLocal.followup_template);
-
     // Filter out incomplete followup items (empty templates block the save)
     // TODO: Replace with HSM template selector from YCloud API (same as HSM Automation page)
     const validFollowups = (instructionsLocal.followup_template || []).filter(
@@ -697,9 +693,7 @@ export default function TreatmentsView() {
     try {
       setSaving(true);
       const payload = buildPayload(editForm, confirmUnusual);
-      console.log('[TreatmentsView] PUT payload:', JSON.stringify(payload, null, 2));
-      const res = await api.put(`/admin/treatment-types/${code}`, payload);
-      console.log('[TreatmentsView] PUT response:', res.status, res.data);
+      await api.put(`/admin/treatment-types/${code}`, payload);
       await api.put(`/admin/treatment-types/${code}/professionals`, { professional_ids: editForm.professional_ids || [] });
       await fetchTreatments();
       setEditingId(null);
@@ -711,7 +705,7 @@ export default function TreatmentsView() {
         return;
       }
       console.error('Error saving treatment:', error?.response?.status, error?.response?.data);
-      alert(error.response?.data?.detail || `Error ${error?.response?.status || '?'}: ${JSON.stringify(error?.response?.data || error.message).slice(0, 200)}`);
+      alert(error.response?.data?.detail || t('alerts.error_save_treatment'));
     } finally {
       setSaving(false);
     }
