@@ -452,7 +452,7 @@ export default function TreatmentsView() {
     setInstructionsModalOpen(true);
   };
 
-  const saveInstructions = () => {
+  const saveInstructions = async () => {
     // Migration 037 save handler:
     // - pre_instructions: send the structured PreInstructionsForm dict if
     //   any field is set; otherwise null
@@ -476,7 +476,19 @@ export default function TreatmentsView() {
       followup_template: instructionsLocal.followup_template,
     };
     if (instructionsTarget === 'edit') {
-      setEditForm(prev => ({ ...prev, ...patch }));
+      const updatedForm = { ...editForm, ...patch };
+      setEditForm(updatedForm);
+      // Auto-persist to backend immediately (don't require second save click)
+      try {
+        setSaving(true);
+        await api.put(`/admin/treatment-types/${editForm.code}`, updatedForm);
+        await fetchTreatments();
+      } catch (error: any) {
+        console.error('Error saving instructions:', error);
+        alert(error.response?.data?.detail || t('alerts.error_save_treatment'));
+      } finally {
+        setSaving(false);
+      }
     } else {
       setNewForm(prev => ({ ...prev, ...patch }));
     }
