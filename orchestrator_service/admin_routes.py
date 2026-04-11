@@ -911,27 +911,9 @@ class TreatmentTypeCreate(BaseModel):
     consultation_notes: Optional[str] = None
 
 
-class TreatmentTypeUpdate(BaseModel):
-    name: str
-    description: Optional[str] = ""
-    default_duration_minutes: int
-    min_duration_minutes: int
-    max_duration_minutes: int
-    complexity_level: str
-    category: str
-    requires_multiple_sessions: bool
-    session_gap_days: int
-    is_active: bool
-    is_available_for_booking: bool
-    internal_notes: Optional[str] = ""
-    base_price: Optional[float] = 0
-    priority: Optional[str] = "medium"
-    # Migration 036: same Union shape as TreatmentTypeCreate.
-    pre_instructions: Optional[Union[PreInstructions, dict, str]] = None
-    post_instructions: Optional[Union[PostInstructions, list, dict, str]] = None
-    followup_template: Optional[Any] = None
-    confirm_unusual_price: bool = False
-    ai_response_template: Optional[str] = None
+# NOTE: TreatmentTypeUpdate is defined later in this file (~line 9083)
+# with all fields including is_high_ticket, consultation_*, ai_response_template.
+# Do NOT add a duplicate definition here — Python uses the last one.
 
 
 class ChatSendMessage(BaseModel):
