@@ -445,7 +445,9 @@ export default function TreatmentsView() {
       preForm,
       postForm,
       timedSequence: legacy,
-      followup_template: form.followup_template || [],
+      followup_template: Array.isArray(form.followup_template)
+        ? form.followup_template
+        : (typeof form.followup_template === 'string' ? (() => { try { const p = JSON.parse(form.followup_template); return Array.isArray(p) ? p : []; } catch { return []; } })() : []),
     });
     // Default to legacy view if there's existing legacy data and no new form data
     setPostEditMode(legacy.length > 0 && !postFormHasContent(postForm) ? 'sequence' : 'protocol');
