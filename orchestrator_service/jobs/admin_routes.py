@@ -9,8 +9,8 @@ import logging
 from fastapi import APIRouter, HTTPException, Depends
 from typing import Dict, Any
 
-from .reminders import send_appointment_reminders, test_reminder_for_today
-from .followups import send_post_treatment_followups, test_followup_for_today
+from .reminders import send_appointment_reminders
+from .followups import send_post_treatment_followups
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin/jobs", tags=["Jobs Programados"])
@@ -28,20 +28,12 @@ async def test_reminders_today():
     logger.info("🧪 Solicitado test manual de recordatorios")
     
     try:
-        success = await test_reminder_for_today()
-        
-        if success:
-            return {
-                "status": "success",
-                "message": "Test de recordatorios ejecutado correctamente",
-                "details": "Se envió un mensaje de prueba para turnos de hoy"
-            }
-        else:
-            return {
-                "status": "partial",
-                "message": "Test completado pero con advertencias",
-                "details": "Revisar logs para más información"
-            }
+        await send_appointment_reminders()
+        return {
+            "status": "success",
+            "message": "Test de recordatorios ejecutado correctamente",
+            "details": "Se ejecutó el job de recordatorios. Revisar logs para detalles."
+        }
             
     except Exception as e:
         logger.error(f"❌ Error en test manual: {e}")
@@ -119,20 +111,12 @@ async def test_followups_today():
     logger.info("🧪 Solicitado test manual de seguimiento post-atención")
     
     try:
-        success = await test_followup_for_today()
-        
-        if success:
-            return {
-                "status": "success",
-                "message": "Test de seguimiento post-atención ejecutado correctamente",
-                "details": "Se envió un mensaje de seguimiento para turnos completados hoy"
-            }
-        else:
-            return {
-                "status": "partial",
-                "message": "Test completado pero con advertencias",
-                "details": "Revisar logs para más información"
-            }
+        await send_post_treatment_followups()
+        return {
+            "status": "success",
+            "message": "Test de seguimiento ejecutado correctamente",
+            "details": "Se ejecutó el job de followups. Revisar logs para detalles."
+        }
             
     except Exception as e:
         logger.error(f"❌ Error en test manual de seguimiento: {e}")

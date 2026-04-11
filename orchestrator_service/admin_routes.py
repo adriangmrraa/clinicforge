@@ -1317,7 +1317,7 @@ async def get_chat_sessions(
     if not has_tenant_in_cm:
         # Fallback: DB sin parche 15, filtrar solo por patients.tenant_id (mensajes sin tenant)
         rows = await db.pool.fetch(
-            """
+            f"""
             SELECT * FROM (
                 SELECT DISTINCT ON (p.phone_number)
                     p.phone_number,
@@ -1328,7 +1328,7 @@ async def get_chat_sessions(
                     p.human_handoff_requested,
                     p.human_override_until,
                     p.last_derivhumano_at,
-                    CASE 
+                    CASE
                         WHEN p.human_handoff_requested AND p.human_override_until > NOW() THEN 'human_handling'
                         WHEN p.human_override_until > NOW() THEN 'silenced'
                         ELSE 'active'
@@ -1362,7 +1362,7 @@ async def get_chat_sessions(
         )
     else:
         rows = await db.pool.fetch(
-            """
+            f"""
             SELECT * FROM (
                 SELECT DISTINCT ON (p.phone_number)
                     p.phone_number,
@@ -1373,7 +1373,7 @@ async def get_chat_sessions(
                     p.human_handoff_requested,
                     p.human_override_until,
                     p.last_derivhumano_at,
-                    CASE 
+                    CASE
                         WHEN p.human_handoff_requested AND p.human_override_until > NOW() THEN 'human_handling'
                         WHEN p.human_override_until > NOW() THEN 'silenced'
                         ELSE 'active'
