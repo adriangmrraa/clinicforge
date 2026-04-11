@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import axios from 'axios';
 import path from 'path';
 import { createProxyMiddleware } from 'http-proxy-middleware';
+import rateLimit from 'express-rate-limit';
 
 // Buscar .env en la carpeta actual o en la raíz
 dotenv.config();
@@ -59,6 +60,24 @@ app.use(cors({
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
     allowedHeaders: ['Content-Type', 'Authorization', 'x-tenant-id', 'x-signature']
 }));
+
+// --- Rate Limiting ---
+const globalLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 200,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many requests' }
+});
+
+const authLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 10,
+    message: { error: 'Too many auth requests' }
+});
+
+app.use(globalLimiter);
+app.use('/auth', authLimiter);
 
 // Body parsers: JSON for normal requests, raw buffer for multipart (file uploads)
 app.use((req: Request, res: Response, next: NextFunction) => {
@@ -177,15 +196,11 @@ app.use(async (req: Request, res: Response) => {
 
         res.status(response.status).send(response.data);
     } catch (error: any) {
-        console.error(`[Proxy Error] ${error.message}`);
+        console.error(`[Proxy Error] ${req.method} ${req.path}: ${error.message}`);
         if (error.response) {
             res.status(error.response.status).send(error.response.data);
         } else {
-            res.status(502).json({
-                error: 'Orchestrator unavailable',
-                details: error.message,
-                target: url
-            });
+            res.status(502).json({ error: 'Service temporarily unavailable' });
         }
     }
 });

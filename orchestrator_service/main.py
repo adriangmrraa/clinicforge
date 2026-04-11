@@ -5365,16 +5365,21 @@ async def confirm_slot(
 
             r = get_redis()
             if r:
-                existing_lock = await r.get(lock_key)
-                if existing_lock:
-                    lock_holder = (
-                        existing_lock.decode()
-                        if isinstance(existing_lock, bytes)
-                        else existing_lock
-                    )
-                    if lock_holder != phone:
-                        return f"⚠️ El turno de las {time_str} del {date_str} acaba de ser reservado por otro paciente. Consultemos otra opción."
-                await r.setex(lock_key, 120, phone)
+                # Atomic SET NX — prevents race condition / double-booking
+                result = await r.set(lock_key, phone, ex=120, nx=True)
+                if not result:
+                    # Key already exists — check who holds it
+                    existing = await r.get(lock_key)
+                    if existing:
+                        lock_holder = (
+                            existing.decode()
+                            if isinstance(existing, bytes)
+                            else str(existing)
+                        )
+                        if lock_holder != phone:
+                            return f"⚠️ El turno de las {time_str} del {date_str} acaba de ser reservado por otro paciente. Consultemos otra opción."
+                        else:
+                            return f"✅ Ya tenés reservado el turno para {date_str} a las {time_str}. Continuemos con tus datos."
                 logger.info(f"🔒 Soft lock created: {lock_key} for {phone} (120s)")
         except Exception as e:
             logger.warning(f"Redis soft lock failed (non-blocking): {e}")

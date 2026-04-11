@@ -9,3 +9,4 @@ python-dotenv
 prometheus-client
 requests
 asyncpg
+slowapi

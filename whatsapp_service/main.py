@@ -8,12 +8,23 @@ import redis
 import httpx
 import structlog
 import json
+import re
+from urllib.parse import urlparse
 from typing import List, Optional, Dict, Any
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type, RetryError
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_exponential,
+    retry_if_exception_type,
+    RetryError,
+)
 from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
 
 from ycloud_client import YCloudClient
@@ -26,24 +37,25 @@ load_dotenv()
 # Config handling
 _config_cache = {}
 
+
 async def get_config(name: str, default: str = None) -> str:
     # 1. Check local cache
     if name in _config_cache:
         return _config_cache[name]
-    
+
     # 2. Check local Environment
     val = os.getenv(name)
     if val:
         _config_cache[name] = val
         return val
-        
+
     # 3. Query Orchestrator
     try:
         async with httpx.AsyncClient() as client:
             resp = await client.get(
                 f"{ORCHESTRATOR_URL}/admin/internal/credentials/{name}",
                 headers={"X-Internal-Token": INTERNAL_API_TOKEN},
-                timeout=5.0
+                timeout=5.0,
             )
             if resp.status_code == 200:
                 val = resp.json().get("value")
@@ -52,8 +64,9 @@ async def get_config(name: str, default: str = None) -> str:
                     return val
     except Exception as e:
         logger.warning("config_fetch_failed", name=name, error=str(e))
-        
+
     return default
+
 
 # Initialize startup values (can be overridden later)
 YCLOUD_API_KEY = os.getenv("YCLOUD_API_KEY")
@@ -61,17 +74,23 @@ YCLOUD_WEBHOOK_SECRET = os.getenv("YCLOUD_WEBHOOK_SECRET")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 INTERNAL_API_TOKEN = os.getenv("INTERNAL_API_TOKEN")
 REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379")
-ORCHESTRATOR_URL = os.getenv("ORCHESTRATOR_SERVICE_URL", "http://orchestrator_service:8000")
+ORCHESTRATOR_URL = os.getenv(
+    "ORCHESTRATOR_SERVICE_URL", "http://orchestrator_service:8000"
+)
 
 # Buffer y respuestas (Redis + ventana de acumulación)
-DEBOUNCE_SECONDS = int(os.getenv("WHATSAPP_DEBOUNCE_SECONDS", "11"))  # Ventana sin mensajes nuevos antes de procesar
-BUBBLE_DELAY_SECONDS = float(os.getenv("WHATSAPP_BUBBLE_DELAY_SECONDS", "4"))  # Delay entre cada burbuja de respuesta
+DEBOUNCE_SECONDS = int(
+    os.getenv("WHATSAPP_DEBOUNCE_SECONDS", "11")
+)  # Ventana sin mensajes nuevos antes de procesar
+BUBBLE_DELAY_SECONDS = float(
+    os.getenv("WHATSAPP_BUBBLE_DELAY_SECONDS", "4")
+)  # Delay entre cada burbuja de respuesta
 
 # Initialize structlog
 structlog.configure(
     processors=[
         structlog.processors.TimeStamper(fmt="iso"),
-        structlog.processors.JSONRenderer()
+        structlog.processors.JSONRenderer(),
     ],
     logger_factory=structlog.PrintLoggerFactory(),
 )
@@ -79,6 +98,7 @@ logger = structlog.get_logger()
 
 # Initialize Redis
 redis_client = redis.from_url(REDIS_URL, decode_responses=True)
+
 
 # --- Models ---
 class OrchestratorMessage(BaseModel):
@@ -90,16 +110,59 @@ class OrchestratorMessage(BaseModel):
     handoff: Optional[str] = None
     meta: Dict[str, Any] = Field(default_factory=dict)
 
+
 class OrchestratorResult(BaseModel):
     status: str
     send: bool
     text: Optional[str] = None
     messages: List[OrchestratorMessage] = Field(default_factory=list)
 
+
 class SendMessage(BaseModel):
     to: str
     text: Optional[str] = None
-    message: Optional[str] = None # Support both
+    message: Optional[str] = None  # Support both
+
+
+# --- SSRF Protection ---
+# YCloud media URLs use api.ycloud.com/v2/whatsapp/media/download/{id}
+# See: https://docs.ycloud.com/reference/whatsapp-inbound-message-webhook-examples
+ALLOWED_MEDIA_DOMAINS = frozenset(
+    {
+        "api.ycloud.com",       # Primary — actual domain in webhook payloads
+        "cdn.ycloud.com",       # CDN fallback (referenced in chat_api.py)
+        "ycloud.com",           # Catch-all for any future *.ycloud.com subdomain
+        "storage.googleapis.com",  # GCS buckets (used by some media pipelines)
+    }
+)
+
+
+def is_safe_media_url(url: str) -> bool:
+    """Validate media URL is from trusted CDN — SSRF prevention"""
+    try:
+        parsed = urlparse(url)
+        if parsed.scheme != "https":
+            return False
+        hostname = parsed.hostname or ""
+        return any(
+            hostname == d or hostname.endswith("." + d) for d in ALLOWED_MEDIA_DOMAINS
+        )
+    except Exception:
+        return False
+
+
+# --- Phone Validation ---
+# YCloud sends phones with + prefix (e.g. +5493704868421)
+PHONE_REGEX = re.compile(r"^[1-9]\d{6,14}$")
+
+
+def validate_phone_number(phone: str) -> bool:
+    """Validate WhatsApp phone number format (E.164, with or without +)"""
+    if not phone or not isinstance(phone, str):
+        return False
+    cleaned = phone.strip().lstrip("+")
+    return bool(PHONE_REGEX.match(cleaned))
+
 
 # FastAPI App
 app = FastAPI(
@@ -107,140 +170,222 @@ app = FastAPI(
     description="A service to handle WhatsApp interactions and forward them to the orchestrator.",
 )
 
+# Rate limiting
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+
+
+# Rate limit handler
+@app.exception_handler(RateLimitExceeded)
+async def ratelimit_handler(request: Request, exc: RateLimitExceeded):
+    return JSONResponse(status_code=429, content={"detail": "Rate limit exceeded"})
+
+
 # Metrics
 SERVICE_NAME = "whatsapp_service"
-REQUESTS = Counter("http_requests_total", "Total Request Count", ["service", "endpoint", "method", "status"])
-LATENCY = Histogram("http_request_latency_seconds", "Request Latency", ["service", "endpoint"])
+REQUESTS = Counter(
+    "http_requests_total",
+    "Total Request Count",
+    ["service", "endpoint", "method", "status"],
+)
+LATENCY = Histogram(
+    "http_request_latency_seconds", "Request Latency", ["service", "endpoint"]
+)
+
 
 # --- Middleware ---
 @app.middleware("http")
 async def add_metrics_and_logs(request: Request, call_next):
     start_time = time.time()
-    correlation_id = request.headers.get("X-Correlation-Id") or request.headers.get("traceparent")
+    correlation_id = request.headers.get("X-Correlation-Id") or request.headers.get(
+        "traceparent"
+    )
     response = await call_next(request)
     process_time = time.time() - start_time
     status_code = response.status_code
-    REQUESTS.labels(service=SERVICE_NAME, endpoint=request.url.path, method=request.method, status=status_code).inc()
-    LATENCY.labels(service=SERVICE_NAME, endpoint=request.url.path).observe(process_time)
+    REQUESTS.labels(
+        service=SERVICE_NAME,
+        endpoint=request.url.path,
+        method=request.method,
+        status=status_code,
+    ).inc()
+    LATENCY.labels(service=SERVICE_NAME, endpoint=request.url.path).observe(
+        process_time
+    )
     logger.bind(
-        service=SERVICE_NAME, correlation_id=correlation_id, status_code=status_code,
-        method=request.method, endpoint=request.url.path, latency_ms=round(process_time * 1000, 2)
+        service=SERVICE_NAME,
+        correlation_id=correlation_id,
+        status_code=status_code,
+        method=request.method,
+        endpoint=request.url.path,
+        latency_ms=round(process_time * 1000, 2),
     ).info("request_completed" if status_code < 400 else "request_failed")
     return response
+
 
 # --- Helpers ---
 async def verify_signature(request: Request):
     signature_header = request.headers.get("ycloud-signature")
-    if not signature_header: raise HTTPException(status_code=401, detail="Missing signature header")
+    if not signature_header:
+        raise HTTPException(status_code=401, detail="Missing signature header")
     try:
         parts = {k: v for k, v in [p.split("=") for p in signature_header.split(",")]}
         t, s = parts.get("t"), parts.get("s")
-    except: raise HTTPException(status_code=401, detail="Invalid signature format")
-    if not t or not s: raise HTTPException(status_code=401, detail="Missing timestamp or signature")
-    if abs(time.time() - int(t)) > 300: raise HTTPException(status_code=401, detail="Timestamp out of tolerance")
+    except:
+        raise HTTPException(status_code=401, detail="Invalid signature format")
+    if not t or not s:
+        raise HTTPException(status_code=401, detail="Missing timestamp or signature")
+    if abs(time.time() - int(t)) > 300:
+        raise HTTPException(status_code=401, detail="Timestamp out of tolerance")
     raw_body = await request.body()
-    body_str = raw_body.decode('utf-8') if raw_body else ""
+    body_str = raw_body.decode("utf-8") if raw_body else ""
     signed_payload = f"{t}.{body_str}"
-    
+
     # Fetch secret dynamically to support DB-stored credentials
     v_secret = await get_config("YCLOUD_WEBHOOK_SECRET", YCLOUD_WEBHOOK_SECRET)
     if not v_secret:
-        logger.error("missing_webhook_secret", note="Cannot verify signature without secret")
+        logger.error(
+            "missing_webhook_secret", note="Cannot verify signature without secret"
+        )
         raise HTTPException(status_code=500, detail="Webhook configuration error")
 
-    expected = hmac.new(v_secret.encode("utf-8"), signed_payload.encode("utf-8"), hashlib.sha256).hexdigest()
-    if not hmac.compare_digest(expected, s): raise HTTPException(status_code=401, detail="Invalid signature")
+    expected = hmac.new(
+        v_secret.encode("utf-8"), signed_payload.encode("utf-8"), hashlib.sha256
+    ).hexdigest()
+    if not hmac.compare_digest(expected, s):
+        raise HTTPException(status_code=401, detail="Invalid signature")
 
-@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10),
-       retry=retry_if_exception_type(httpx.HTTPError))
+
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=2, max=10),
+    retry=retry_if_exception_type(httpx.HTTPError),
+)
 async def forward_to_orchestrator(payload: dict, headers: dict):
     async with httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=5.0)) as client:
-        url = f"{ORCHESTRATOR_URL}/admin/ycloud/webhook?access_token={INTERNAL_API_TOKEN}"
-        response = await client.post(url, json=payload, headers=headers)
+        url = f"{ORCHESTRATOR_URL}/admin/ycloud/webhook"
+        # Send token as header instead of query param
+        request_headers = {**headers, "X-Internal-Token": INTERNAL_API_TOKEN}
+        response = await client.post(url, json=payload, headers=request_headers)
         response.raise_for_status()
         return response.json()
 
+
 async def transcribe_audio(audio_url: str, correlation_id: str) -> Optional[str]:
     """Downloads audio from YCloud and transcribes it using OpenAI Whisper."""
-    if not OPENAI_API_KEY:
-        logger.error("missing_openai_api_key", note="Transcription requires OpenAI API key")
+    # SSRF protection
+    if not is_safe_media_url(audio_url):
+        logger.error(
+            "unsafe_media_url_blocked",
+            url=audio_url[:80],
+            correlation_id=correlation_id,
+        )
         return None
-    
+
+    if not OPENAI_API_KEY:
+        logger.error(
+            "missing_openai_api_key", note="Transcription requires OpenAI API key"
+        )
+        return None
+
     try:
         async with httpx.AsyncClient(timeout=httpx.Timeout(60.0)) as client:
             # 1. Download audio
             audio_res = await client.get(audio_url)
             audio_res.raise_for_status()
             audio_data = audio_res.content
-            
+
             # 2. Transcribe with Whisper
             files = {"file": ("audio.ogg", audio_data, "audio/ogg")}
             v_openai = await get_config("OPENAI_API_KEY", OPENAI_API_KEY)
             headers = {"Authorization": f"Bearer {v_openai}"}
             data = {"model": "whisper-1"}
-            
+
             trans_res = await client.post(
                 "https://api.openai.com/v1/audio/transcriptions",
                 headers=headers,
                 files=files,
-                data=data
+                data=data,
             )
             trans_res.raise_for_status()
             return trans_res.json().get("text")
     except Exception as e:
-        logger.error("transcription_failed", error=str(e), correlation_id=correlation_id)
+        logger.error(
+            "transcription_failed", error=str(e), correlation_id=correlation_id
+        )
         return None
 
-async def send_sequence(messages: List[OrchestratorMessage], user_number: str, business_number: str, inbound_id: str, correlation_id: str):
+
+async def send_sequence(
+    messages: List[OrchestratorMessage],
+    user_number: str,
+    business_number: str,
+    inbound_id: str,
+    correlation_id: str,
+):
     v_ycloud = await get_config("YCLOUD_API_KEY", YCLOUD_API_KEY)
     client = YCloudClient(v_ycloud, business_number)
-    
-    try: 
+
+    try:
         await client.mark_as_read(inbound_id, correlation_id)
         await client.typing_indicator(inbound_id, correlation_id)
-    except: pass
+    except:
+        pass
 
     for msg in messages:
         try:
             # 1. Image Bubble
             if msg.imageUrl:
-                try: await client.typing_indicator(inbound_id, correlation_id)
-                except: pass
+                try:
+                    await client.typing_indicator(inbound_id, correlation_id)
+                except:
+                    pass
                 await asyncio.sleep(BUBBLE_DELAY_SECONDS)
                 await client.send_image(user_number, msg.imageUrl, correlation_id)
-                try: await client.mark_as_read(inbound_id, correlation_id)
-                except: pass
+                try:
+                    await client.mark_as_read(inbound_id, correlation_id)
+                except:
+                    pass
 
             # 2. Text Bubble(s) with Safety Splitter — varias burbujas con delay entre cada una
             if msg.text:
                 import re
+
                 if len(msg.text) > 400:
-                    text_parts = re.split(r'(?<=[.!?]) +', msg.text)
+                    text_parts = re.split(r"(?<=[.!?]) +", msg.text)
                     refined_parts = []
                     current = ""
                     for p in text_parts:
                         if len(current) + len(p) < 400:
-                            current += (" " + p if current else p)
+                            current += " " + p if current else p
                         else:
-                            if current: refined_parts.append(current)
+                            if current:
+                                refined_parts.append(current)
                             current = p
-                    if current: refined_parts.append(current)
+                    if current:
+                        refined_parts.append(current)
                 else:
                     refined_parts = [msg.text]
 
                 for part in refined_parts:
-                    try: await client.typing_indicator(inbound_id, correlation_id)
-                    except: pass
+                    try:
+                        await client.typing_indicator(inbound_id, correlation_id)
+                    except:
+                        pass
                     await asyncio.sleep(BUBBLE_DELAY_SECONDS)
                     await client.send_text(user_number, part, correlation_id)
-                    try: await client.mark_as_read(inbound_id, correlation_id)
-                    except: pass
+                    try:
+                        await client.mark_as_read(inbound_id, correlation_id)
+                    except:
+                        pass
 
             # Delay entre cada mensaje/burbuja para evitar desorden
             await asyncio.sleep(BUBBLE_DELAY_SECONDS)
 
         except Exception as e:
-            logger.error("sequence_step_error", error=str(e), correlation_id=correlation_id)
+            logger.error(
+                "sequence_step_error", error=str(e), correlation_id=correlation_id
+            )
 
             for k in [lock_key, timer_key]:
                 try:
@@ -251,124 +396,172 @@ async def send_sequence(messages: List[OrchestratorMessage], user_number: str, b
 
 # --- Endpoints ---
 @app.get("/metrics")
-def metrics(): return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
+def metrics():
+    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
 
 @app.get("/ready")
 def ready():
-    if not YCLOUD_WEBHOOK_SECRET: raise HTTPException(status_code=503, detail="Configuration missing")
+    if not YCLOUD_WEBHOOK_SECRET:
+        raise HTTPException(status_code=503, detail="Configuration missing")
     return {"status": "ok"}
 
+
 @app.get("/health")
-def health(): return {"status": "ok"}
+def health():
+    return {"status": "ok"}
+
 
 @app.post("/webhook")
 @app.post("/webhook/ycloud")
+@limiter.limit("500/minute")
 async def ycloud_webhook(request: Request):
-    logger.info("webhook_hit", headers=str(request.headers))
+    def _sanitize_headers_for_log(headers) -> dict:
+    sensitive = {'authorization', 'x-api-key', 'x-internal-token', 'ycloud-signature', 'x-admin-token'}
+    return {k: ('***' if k.lower() in sensitive else v) for k, v in headers.items()}
+
+    logger.info("webhook_hit", headers=_sanitize_headers_for_log(request.headers))
     await verify_signature(request)
     correlation_id = request.headers.get("traceparent") or str(uuid.uuid4())
-    try: body = await request.json()
-    except: raise HTTPException(status_code=400, detail="Invalid JSON")
-    
+    try:
+        body = await request.json()
+    except:
+        raise HTTPException(status_code=400, detail="Invalid JSON")
+
     event = body[0] if isinstance(body, list) and body else body
     event_type = event.get("type")
-    
+
     # --- 1. Handle Inbound Messages ---
     if event_type == "whatsapp.inbound_message.received":
         msg = event.get("whatsappInboundMessage", {})
-        from_n, to_n, name = msg.get("from"), msg.get("to"), msg.get("customerProfile", {}).get("name")
+        from_n, to_n, name = (
+            msg.get("from"),
+            msg.get("to"),
+            msg.get("customerProfile", {}).get("name"),
+        )
+        # Validate phone format
+        if not validate_phone_number(from_n):
+            logger.warning(
+                "invalid_phone_rejected",
+                phone=from_n[:20] if from_n else "null",
+                correlation_id=correlation_id,
+            )
+            return {"status": "rejected", "reason": "invalid phone format"}
         msg_type = msg.get("type")
-        
+
         # A. Text Messages -> Buffer (Debounce) y mismo flujo para transcripción de audio
         if msg_type == "text":
             text = msg.get("text", {}).get("body")
-            referral = msg.get("referral") # Capture referral object if present
-            
+            referral = msg.get("referral")  # Capture referral object if present
+
             if text:
                 headers = {"X-Correlation-Id": correlation_id}
                 try:
                     await forward_to_orchestrator(event, headers)
-                    return {"status": "forwarded_to_orchestrator", "correlation_id": correlation_id}
+                    return {
+                        "status": "forwarded_to_orchestrator",
+                        "correlation_id": correlation_id,
+                    }
                 except Exception as e:
                     logger.error("forward_failed", error=str(e))
-                    raise HTTPException(status_code=500, detail="Orchestrator unavailable")
-            
-            return {"status": "ignored_no_text", "type": msg_type}
+                    raise HTTPException(
+                        status_code=500, detail="Orchestrator unavailable"
+                    )
 
+            return {"status": "ignored_no_text", "type": msg_type}
 
         # A.2 Audio → Enviar URL del audio + transcripción (FIX CRÍTICO Spec 20)
         if msg_type == "audio":
             node = msg.get("audio", {})
             audio_link = node.get("link")
-            
+
             if audio_link:
-                logger.info("audio_received", correlation_id=correlation_id, voice=node.get("voice"))
-                
+                logger.info(
+                    "audio_received",
+                    correlation_id=correlation_id,
+                    voice=node.get("voice"),
+                )
+
                 # Transcribir audio
                 transcription = await transcribe_audio(audio_link, correlation_id)
-                
+
                 if transcription:
                     msg["audio"] = node
                     msg["audio"]["transcription"] = transcription.strip()
-                
+
                 headers = {"X-Correlation-Id": correlation_id}
                 try:
                     await forward_to_orchestrator(event, headers)
-                    return {"status": "forwarded_audio_to_orchestrator", "correlation_id": correlation_id}
+                    return {
+                        "status": "forwarded_audio_to_orchestrator",
+                        "correlation_id": correlation_id,
+                    }
                 except Exception as e:
                     logger.error("forward_audio_failed", error=str(e))
-                    raise HTTPException(status_code=500, detail="Orchestrator unavailable")
-            
+                    raise HTTPException(
+                        status_code=500, detail="Orchestrator unavailable"
+                    )
+
             return {"status": "ignored_no_link", "type": msg_type}
-        
+
         # B. Media Messages (image, document) -> Immediate Forward (No Buffer)
         media_list = []
         text_content = None
-        
+
         if msg_type == "image":
             node = msg.get("image", {})
             text_content = node.get("caption")
-            media_list.append({
-                "type": "image", 
-                "url": node.get("link"), 
-                "mime_type": node.get("mime_type"),
-                "provider_id": node.get("id")
-            })
-            
+            media_list.append(
+                {
+                    "type": "image",
+                    "url": node.get("link"),
+                    "mime_type": node.get("mime_type"),
+                    "provider_id": node.get("id"),
+                }
+            )
+
         elif msg_type == "document":
             node = msg.get("document", {})
             text_content = node.get("caption")
-            media_list.append({
-                "type": "document", 
-                "url": node.get("link"), 
-                "mime_type": node.get("mime_type"), 
-                "file_name": node.get("filename"),
-                "provider_id": node.get("id")
-            })
-            
+            media_list.append(
+                {
+                    "type": "document",
+                    "url": node.get("link"),
+                    "mime_type": node.get("mime_type"),
+                    "file_name": node.get("filename"),
+                    "provider_id": node.get("id"),
+                }
+            )
+
         # audio ya se maneja arriba: transcribir -> buffer -> mismo flujo que texto
         if media_list:
-             headers = {"X-Correlation-Id": correlation_id}
-             try:
-                 await forward_to_orchestrator(event, headers)
-                 return {"status": "forwarded_media_to_orchestrator", "correlation_id": correlation_id}
-             except Exception as e:
-                 logger.error("forward_media_failed", error=str(e))
-                 raise HTTPException(status_code=500, detail="Orchestrator unavailable")
-             
+            headers = {"X-Correlation-Id": correlation_id}
+            try:
+                await forward_to_orchestrator(event, headers)
+                return {
+                    "status": "forwarded_media_to_orchestrator",
+                    "correlation_id": correlation_id,
+                }
+            except Exception as e:
+                logger.error("forward_media_failed", error=str(e))
+                raise HTTPException(status_code=500, detail="Orchestrator unavailable")
+
         return {"status": "ignored_type_or_empty", "type": msg_type}
 
     # --- 2. Handle Echoes (Manual Messages) ---
-    elif event_type == "whatsapp.message.echo" or event_type == "whatsapp.smb.message.echoes":
+    elif (
+        event_type == "whatsapp.message.echo"
+        or event_type == "whatsapp.smb.message.echoes"
+    ):
         logger.info("echo_received", correlation_id=correlation_id, evt_type=event_type)
         msg = event.get("whatsappMessage", {}) or event.get("message", {})
-        
+
         user_phone = msg.get("to")
         bot_phone = msg.get("from")
-        
+
         text = None
         msg_type = msg.get("type")
-        
+
         if msg_type == "text":
             text = msg.get("text", {}).get("body")
         elif msg_type == "audio":
@@ -378,33 +571,36 @@ async def ycloud_webhook(request: Request):
         elif msg_type == "document":
             text = msg.get("document", {}).get("caption") or "[Documento enviado]"
         elif msg_type == "video":
-             text = msg.get("video", {}).get("caption") or "[Video enviado]"
-        
+            text = msg.get("video", {}).get("caption") or "[Video enviado]"
+
         # If we have text (real or fallback) and a user phone, forward it
         if text and user_phone:
-             payload = {
-                "provider": "ycloud", 
-                "event_id": event.get("id"), 
+            payload = {
+                "provider": "ycloud",
+                "event_id": event.get("id"),
                 "provider_message_id": msg.get("wamid") or event.get("id"),
-                "from_number": user_phone,     # Ensuring this maps to 'external_user_id' in DB
+                "from_number": user_phone,  # Ensuring this maps to 'external_user_id' in DB
                 "to_number": bot_phone,
                 "text": text,
-                "event_type": "whatsapp.message.echo", # Standardize for Orchestrator
-                "correlation_id": correlation_id
-             }
-             headers = {"X-Correlation-Id": correlation_id}
-             if INTERNAL_API_TOKEN: headers["X-Internal-Token"] = INTERNAL_API_TOKEN
-             
-             try:
-                 await forward_to_orchestrator(payload, headers)
-                 return {"status": "echo_forwarded", "type": msg_type}
-             except Exception as e:
-                 logger.error("echo_forward_failed", error=str(e))
-                 return {"status": "error_forwarding_echo"}
-                 
+                "event_type": "whatsapp.message.echo",  # Standardize for Orchestrator
+                "correlation_id": correlation_id,
+            }
+            headers = {"X-Correlation-Id": correlation_id}
+            if INTERNAL_API_TOKEN:
+                headers["X-Internal-Token"] = INTERNAL_API_TOKEN
+
+            try:
+                await forward_to_orchestrator(payload, headers)
+                return {"status": "echo_forwarded", "type": msg_type}
+            except Exception as e:
+                logger.error("echo_forward_failed", error=str(e))
+                return {"status": "error_forwarding_echo"}
+
     return {"status": "ignored_event_type", "type": event_type}
 
+
 @app.post("/send")
+@limiter.limit("100/minute")
 async def send_message(message: SendMessage, request: Request):
     """Internal endpoint for sending manual messages from orchestrator."""
     correlation_id = request.headers.get("X-Correlation-Id") or str(uuid.uuid4())
@@ -412,65 +608,68 @@ async def send_message(message: SendMessage, request: Request):
     token = request.headers.get("X-Internal-Token")
     if token != INTERNAL_API_TOKEN:
         raise HTTPException(status_code=401, detail="Unauthorized")
-    
+
     correlation_id = request.headers.get("X-Correlation-Id") or str(uuid.uuid4())
     # Retrieve config
     v_ycloud = await get_config("YCLOUD_API_KEY", YCLOUD_API_KEY)
     # We need to know which business number to use - for now assume default or pass in body if model updated
     # To keep it simple for now, we use the default env var logic inside YCloudClient via send_sequence or re-instantiate
     # Ideally SendMessage model should include 'from_number' (business number)
-    
+
     # Since SendMessage is simple (to, text), we try to get a business number from config or context
     # But YCloudClient needs it.
     # Hack: We initialize YCloudClient with a dummy if needed, but it really needs the sender ID.
     # Let's check send_sequence usage: client = YCloudClient(v_ycloud, business_number)
-    
+
     # IMPROVEMENT: The request should probably provide the separate business number/ID
     # For this MVP, let's assume global YCloud config unless passed
-    
+
     try:
         # Re-use send_sequence logic but for a single message
         # We need to wrap it as OrchestratorMessage
         orch_msg = OrchestratorMessage(text=message.text)
-        
-        # We need the 'from' number (the bot's number). 
+
+        # We need the 'from' number (the bot's number).
         # Since we don't have it in the simple body, we might need to assume it's the one in ENV or context.
         # However, for multi-tenant, orchestrator MUST tell us.
         # Let's inspect headers or just rely on YCloudClient to default if allowed.
-        # Actually YCloudClient requires `from_phone_number`. 
-        
+        # Actually YCloudClient requires `from_phone_number`.
+
         # Updated Logic: We will parse `from_number` from query param or header if available, or fetch from config
         business_number = request.query_params.get("from_number")
         if not business_number:
             # Fallback to env or fetch
-             business_number = await get_config("YCLOUD_Phone_Number_ID") # Placeholder
-        
+            business_number = await get_config("YCLOUD_Phone_Number_ID")  # Placeholder
+
         if not business_number:
-             # Basic fallback
-             business_number = "default"
-        
-        logger.info("manual_send_config", 
-                    has_api_key=bool(v_ycloud), 
-                    business_number=business_number, 
-                    correlation_id=correlation_id)
+            # Basic fallback
+            business_number = "default"
+
+        logger.info(
+            "manual_send_config",
+            has_api_key=bool(v_ycloud),
+            business_number=business_number,
+            correlation_id=correlation_id,
+        )
 
         # Initialize Client
         client = YCloudClient(v_ycloud, business_number)
-        
+
         # Use either text or message field
         content = message.text or message.message
         if not content:
             raise HTTPException(status_code=400, detail="Missing message content")
-            
+
         # Send
         await client.send_text(message.to, content, correlation_id)
         return {"status": "sent", "correlation_id": correlation_id}
-        
+
     except Exception as e:
         logger.error("manual_send_failed", error=str(e), correlation_id=correlation_id)
         raise HTTPException(status_code=500, detail=str(e))
 
+
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8002)
 
+    uvicorn.run(app, host="0.0.0.0", port=8002)

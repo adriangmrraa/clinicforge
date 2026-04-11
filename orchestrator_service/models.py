@@ -225,6 +225,7 @@ class Tenant(Base):
     timezone = Column(String(100), default="America/Argentina/Buenos_Aires")
     address = Column(Text)
     google_maps_url = Column(Text)
+    logo_url = Column(Text, nullable=True)
     working_hours = Column(JSONB, default={})
     total_tokens_used = Column(BigInteger, default=0)
     total_tool_calls = Column(BigInteger, default=0)
@@ -569,6 +570,9 @@ class Patient(Base):
     # Meta Direct PSIDs (for IG/FB identity linkage)
     instagram_psid = Column(Text, nullable=True)
     facebook_psid = Column(Text, nullable=True)
+
+    # External IDs (Instagram, Facebook, ChatWot, etc.)
+    external_ids = Column(JSONB, nullable=True, server_default=text("'{}'::jsonb"))
 
     # Location
     city = Column(String(100))

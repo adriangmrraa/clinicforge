@@ -52,11 +52,18 @@ async def get_professional_from_jwt(request: Request) -> dict:
         # The token contains user_id (UUID) and role
         import jwt as pyjwt
 
-        # Try multiple possible secrets
-        secrets_to_try = [
-            os.getenv("JWT_SECRET", "dev-secret"),
-            os.getenv("SECRET_KEY", "dev-secret"),
-        ]
+        # Require explicit JWT secret — no fallback to insecure default
+        jwt_secret = (
+            os.getenv("JWT_SECRET_KEY")
+            or os.getenv("JWT_SECRET")
+            or os.getenv("SECRET_KEY")
+        )
+        if not jwt_secret:
+            logger.error(
+                "CRITICAL: No JWT secret configured. Set JWT_SECRET_KEY env var."
+            )
+            raise HTTPException(status_code=500, detail="Server configuration error")
+        secrets_to_try = [jwt_secret]
 
         payload = None
         for secret in secrets_to_try:

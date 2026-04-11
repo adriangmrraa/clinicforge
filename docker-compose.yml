@@ -111,7 +111,7 @@ services:
       - PORT=8000
       - META_APP_ID=${META_APP_ID}
       - META_APP_SECRET=${META_APP_SECRET}
-      - META_VERIFY_TOKEN=${META_VERIFY_TOKEN:-clinicforge_meta_verify}
+      - META_VERIFY_TOKEN=${META_VERIFY_TOKEN}
       - META_GRAPH_API_VERSION=v22.0
       - ORCHESTRATOR_URL=http://orchestrator_service:8000
       - INTERNAL_SECRET_KEY=${INTERNAL_API_TOKEN}

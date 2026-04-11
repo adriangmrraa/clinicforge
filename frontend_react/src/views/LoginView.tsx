@@ -10,8 +10,9 @@ import {
 } from 'lucide-react';
 import ParticleBackground from '../components/public/ParticleBackground';
 
-const DEMO_EMAIL = 'gamarraadrian200@gmail.com';
-const DEMO_PASSWORD = 'Wstg1793.';
+// Demo credentials from env vars — hidden if not configured
+const DEMO_EMAIL = import.meta.env.VITE_DEMO_EMAIL;
+const DEMO_PASSWORD = import.meta.env.VITE_DEMO_PASSWORD;
 
 const SPECIALTIES: { value: string; key: string }[] = [
   { value: 'Odontología General', key: 'specialty_general' },
@@ -300,7 +301,7 @@ const LoginView: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (isDemo) {
+    if (isDemo && DEMO_EMAIL && DEMO_PASSWORD) {
       setEmail(DEMO_EMAIL);
       setPassword(DEMO_PASSWORD);
     }
@@ -331,6 +332,10 @@ const LoginView: React.FC = () => {
 
   const handleDemoLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!DEMO_EMAIL || !DEMO_PASSWORD) {
+      setError('Demo not configured');
+      return;
+    }
     setError(null);
     setLoading(true);
     try {
@@ -577,7 +582,7 @@ const LoginView: React.FC = () => {
 
                   <form onSubmit={isRegistering ? handleRegister : isDemo ? handleDemoLogin : handleLogin} className="space-y-3.5">
                     {/* Demo mode */}
-                    {isDemo && !isRegistering && (
+                    {isDemo && !isRegistering && DEMO_EMAIL && DEMO_PASSWORD && (
                       <div className="space-y-4">
                         <p className="text-sm text-white/50 text-center">{t('login_extra.demo_ready')}</p>
                         <button

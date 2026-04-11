@@ -313,6 +313,10 @@ async def debug_auth_test(request: Request, x_admin_token: str = Header(None)):
     Endpoint de debug para verificar problemas de autenticación 401.
     Público - no requiere auth.
     """
+    ENABLE_DEBUG = os.getenv("ENABLE_DEBUG_ENDPOINTS", "false").lower() == "true"
+    if not ENABLE_DEBUG:
+        raise HTTPException(status_code=404, detail="Not found")
+
     headers = dict(request.headers)
 
     # Obtener X-Admin-Token de headers (case-insensitive)
@@ -324,25 +328,15 @@ async def debug_auth_test(request: Request, x_admin_token: str = Header(None)):
 
     debug_info = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "received_admin_token_present": received_admin_token is not None,
-        "received_admin_token_preview": received_admin_token[:10] + "..."
-        if received_admin_token
-        else None,
-        "expected_admin_token_defined": bool(ADMIN_TOKEN),
-        "expected_admin_token_length": len(ADMIN_TOKEN) if ADMIN_TOKEN else 0,
-        "tokens_match": received_admin_token == ADMIN_TOKEN
-        if received_admin_token and ADMIN_TOKEN
-        else False,
         "client_ip": request.client.host if request.client else "unknown",
-        "user_agent": headers.get("User-Agent", "unknown")[:100],
-        "cors_origin": headers.get("Origin", "none"),
-        "authorization_header_present": "Authorization" in headers,
-        "cookie_header_present": "Cookie" in headers,
     }
 
     logger.info(f"DEBUG_AUTH_TEST: {debug_info}")
 
-    return debug_info
+    return {
+        "status": "authenticated",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
 
 
 @router.get("/debug/health", dependencies=[Depends(verify_admin_token)])
@@ -350,6 +344,10 @@ async def debug_health():
     """
     Health check público.
     """
+    ENABLE_DEBUG = os.getenv("ENABLE_DEBUG_ENDPOINTS", "false").lower() == "true"
+    if not ENABLE_DEBUG:
+        raise HTTPException(status_code=404, detail="Not found")
+
     return {
         "status": "healthy",
         "service": "orchestrator",
@@ -363,6 +361,10 @@ async def debug_env_safe():
     """
     Variables de entorno seguras (sin exponer valores sensibles).
     """
+    ENABLE_DEBUG = os.getenv("ENABLE_DEBUG_ENDPOINTS", "false").lower() == "true"
+    if not ENABLE_DEBUG:
+        raise HTTPException(status_code=404, detail="Not found")
+
     return {
         "ADMIN_TOKEN_defined": bool(ADMIN_TOKEN),
         "ADMIN_TOKEN_length": len(ADMIN_TOKEN) if ADMIN_TOKEN else 0,
@@ -1763,28 +1765,30 @@ async def remove_silence(
 @router.get("/internal/credentials/{name}", tags=["Internal"])
 async def get_internal_credential(name: str, x_internal_token: str = Header(None)):
     """Permite a servicios internos obtener credenciales de forma segura."""
+    import hashlib
+
     if not INTERNAL_API_TOKEN:
         raise HTTPException(
             status_code=503, detail="Internal credentials endpoint disabled"
         )
     if x_internal_token != INTERNAL_API_TOKEN:
-        raise HTTPException(status_code=401, detail="Internal token invalid")
+        logger.warning(f"CREDENTIALS_ACCESS_DENIED: name={name}")
+        raise HTTPException(status_code=401, detail="Unauthorized")
 
     # Mapeo de nombres a variables de entorno o valores de BD
-    creds = {
-        "YCLOUD_API_KEY": os.getenv("YCLOUD_API_KEY"),
-        "YCLOUD_WEBHOOK_SECRET": os.getenv("YCLOUD_WEBHOOK_SECRET"),
-        "OPENAI_API_KEY": os.getenv("OPENAI_API_KEY"),
-        "YCLOUD_Phone_Number_ID": os.getenv("YCLOUD_Phone_Number_ID")
-        or os.getenv("BOT_PHONE_NUMBER"),
+    ALLOWED = {
+        "YCLOUD_API_KEY",
+        "YCLOUD_WEBHOOK_SECRET",
+        "OPENAI_API_KEY",
+        "YCLOUD_Phone_Number_ID",
     }
 
-    val = creds.get(name)
-    if val is None:  # Solo 404 si la clave no existe en nuestro mapeo
-        raise HTTPException(
-            status_code=404,
-            detail=f"Credential '{name}' not supported by this endpoint",
-        )
+    if name not in ALLOWED:
+        raise HTTPException(status_code=404, detail="Not found")
+
+    val = os.getenv(name)
+    val_hash = hashlib.sha256(val.encode()).hexdigest()[:8] if val else "null"
+    logger.warning(f"CREDENTIALS_ACCESSED: name={name} hash={val_hash}")
 
     return {"name": name, "value": val}
 
@@ -11040,6 +11044,271 @@ async def trigger_feedback_after_delay(
 
     except Exception as e:
         logger.error(f"❌ Error en trigger_feedback_after_delay: {e}")
+
+
+# ============================================
+# TREATMENT COMPLETION — HSM FOLLOWUP TRIGGER
+# ============================================
+
+
+async def send_treatment_completion_hsm(
+    tenant_id: int,
+    treatment_code: str,
+    patient_name: str,
+    phone_number: str,
+    appointment_id,
+    professional_name: str = "",
+    appointment_date: str = "",
+):
+    """
+    Busca la automation_rule para post_treatment_followup con el treatment_code dado,
+    y envía la plantilla HSM configurada via YCloud.
+    """
+    try:
+        # 1. Buscar regla activa para este tratamiento
+        rule = await db.pool.fetchrow(
+            """
+            SELECT * FROM automation_rules
+            WHERE tenant_id = $1
+              AND trigger_type = 'post_treatment_followup'
+              AND is_active = TRUE
+              AND condition_json->>'treatment_code' = $2
+            ORDER BY created_at DESC LIMIT 1
+            """,
+            tenant_id,
+            treatment_code,
+        )
+
+        if not rule:
+            logger.info(
+                f"⏭️ No hay regla HSM activa para treatment '{treatment_code}' en tenant {tenant_id}"
+            )
+            return False
+
+        if rule["message_type"] != "hsm" or not rule["ycloud_template_name"]:
+            logger.info(f"⏭️ Regla {rule['id']} no es HSM o no tiene template, skip.")
+            return False
+
+        # 2. Verificar idempotencia — no enviar dos veces el mismo día
+        existing = await db.pool.fetchval(
+            """
+            SELECT id FROM automation_logs
+            WHERE automation_rule_id = $1 AND phone_number = $2
+              AND DATE(triggered_at) = CURRENT_DATE AND status = 'sent'
+            """,
+            rule["id"],
+            phone_number,
+        )
+        if existing:
+            logger.info(f"⏭️ HSM followup ya enviado hoy a {phone_number}")
+            return False
+
+        # 3. Resolver variables de la plantilla
+        first_name = patient_name.split()[0] if patient_name else "paciente"
+        treatment_row = await db.pool.fetchrow(
+            "SELECT name FROM treatment_types WHERE tenant_id = $1 AND code = $2",
+            tenant_id,
+            treatment_code,
+        )
+        treatment_name = treatment_row["name"] if treatment_row else treatment_code
+
+        clinic_name_val = await db.pool.fetchval(
+            "SELECT name FROM tenants WHERE id = $1", tenant_id
+        )
+
+        var_mapping = rule["ycloud_template_vars"] or {}
+        var_values = {
+            "first_name": first_name,
+            "last_name": patient_name.split()[-1]
+            if patient_name and " " in patient_name
+            else "",
+            "appointment_date": appointment_date,
+            "appointment_time": "",
+            "treatment_name": treatment_name,
+            "clinic_name": clinic_name_val or "",
+            "professional_name": professional_name,
+        }
+
+        # Construir componentes para YCloud template API
+        # var_mapping: {"{{1}}": "first_name", "{{2}}": "treatment_name", ...}
+        body_params = []
+        for placeholder in sorted(var_mapping.keys()):
+            var_key = var_mapping[placeholder]
+            body_params.append({"type": "text", "text": var_values.get(var_key, "")})
+
+        components = []
+        if body_params:
+            components.append({"type": "body", "parameters": body_params})
+
+        # 4. Obtener credenciales YCloud del tenant
+        from core.credentials import (
+            get_tenant_credential,
+            YCLOUD_API_KEY,
+            YCLOUD_WHATSAPP_NUMBER,
+        )
+
+        api_key = await get_tenant_credential(tenant_id, YCLOUD_API_KEY)
+        business_number = await get_tenant_credential(tenant_id, YCLOUD_WHATSAPP_NUMBER)
+
+        if not api_key:
+            logger.warning(f"⚠️ YCloud API key no configurada para tenant {tenant_id}")
+            await write_automation_log(
+                tenant_id=tenant_id,
+                trigger_type="post_treatment_followup",
+                status="failed",
+                patient_name=patient_name,
+                phone_number=phone_number,
+                channel="whatsapp",
+                message_type="hsm",
+                rule_id=rule["id"],
+                rule_name=rule["name"],
+                template_name=rule["ycloud_template_name"],
+                error_detail="YCloud API key no configurada",
+            )
+            return False
+
+        # 5. Enviar HSM via YCloud
+        from ycloud_client import YCloudClient
+
+        yc = YCloudClient(api_key=api_key, business_number=business_number)
+        sent_ok = False
+        ycloud_msg_id = None
+
+        try:
+            result = await yc.send_template(
+                to=phone_number,
+                template_name=rule["ycloud_template_name"],
+                language_code=rule["ycloud_template_lang"] or "es",
+                components=components if components else None,
+            )
+            sent_ok = True
+            ycloud_msg_id = result.get("id")
+        except Exception as send_err:
+            logger.error(f"❌ Error enviando HSM followup a {phone_number}: {send_err}")
+
+        # 6. Registrar en automation_logs
+        await write_automation_log(
+            tenant_id=tenant_id,
+            trigger_type="post_treatment_followup",
+            status="sent" if sent_ok else "failed",
+            patient_name=patient_name,
+            phone_number=phone_number,
+            channel="whatsapp",
+            message_type="hsm",
+            message_preview=f"Template: {rule['ycloud_template_name']}",
+            rule_id=rule["id"],
+            rule_name=rule["name"],
+            template_name=rule["ycloud_template_name"],
+            ycloud_message_id=ycloud_msg_id,
+            error_detail=None if sent_ok else "YCloud send error",
+        )
+
+        # 7. Marcar followup_sent en el turno
+        if sent_ok:
+            await db.pool.execute(
+                "UPDATE appointments SET followup_sent = TRUE, followup_sent_at = NOW() WHERE id = $1 AND tenant_id = $2",
+                appointment_id,
+                tenant_id,
+            )
+            logger.info(
+                f"✅ HSM followup '{rule['ycloud_template_name']}' enviado a {phone_number} "
+                f"(treatment: {treatment_code})"
+            )
+
+        return sent_ok
+
+    except Exception as e:
+        logger.error(f"❌ Error en send_treatment_completion_hsm: {e}")
+        return False
+
+
+@router.post(
+    "/appointments/{appointment_id}/complete-treatment",
+    summary="Marcar tratamiento como completo y enviar HSM de seguimiento",
+)
+async def complete_treatment(
+    appointment_id: str,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    user_data=Depends(verify_admin_token),
+    tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    """
+    Marca un tratamiento como completo para un paciente (diferente de completar un turno).
+    Dispara el envío de la plantilla HSM de seguimiento configurada para ese tipo de tratamiento.
+    """
+    # 1. Obtener datos del turno
+    apt = await db.pool.fetchrow(
+        """
+        SELECT a.id, a.appointment_type, a.patient_id, a.professional_id,
+               a.appointment_datetime, a.followup_sent,
+               p.first_name, p.last_name, p.phone_number,
+               prof.first_name as prof_first_name, prof.last_name as prof_last_name
+        FROM appointments a
+        JOIN patients p ON a.patient_id = p.id AND p.tenant_id = a.tenant_id
+        LEFT JOIN professionals prof ON a.professional_id = prof.id
+        WHERE a.id = $1 AND a.tenant_id = $2
+        """,
+        appointment_id,
+        tenant_id,
+    )
+
+    if not apt:
+        raise HTTPException(status_code=404, detail="Turno no encontrado")
+
+    if not apt["appointment_type"]:
+        raise HTTPException(
+            status_code=400,
+            detail="Este turno no tiene un tipo de tratamiento asignado",
+        )
+
+    if not apt["phone_number"]:
+        raise HTTPException(
+            status_code=400,
+            detail="El paciente no tiene teléfono registrado",
+        )
+
+    if apt["followup_sent"]:
+        return {
+            "ok": False,
+            "message": "El seguimiento HSM ya fue enviado para este turno",
+        }
+
+    # 2. Preparar datos
+    patient_name = (
+        f"{apt['first_name'] or ''} {apt['last_name'] or ''}".strip() or "paciente"
+    )
+    professional_name = (
+        f"{apt['prof_first_name'] or ''} {apt['prof_last_name'] or ''}".strip()
+    )
+    apt_date = (
+        apt["appointment_datetime"].strftime("%d/%m/%Y")
+        if apt["appointment_datetime"]
+        else ""
+    )
+
+    # 3. Enviar HSM en background
+    background_tasks.add_task(
+        send_treatment_completion_hsm,
+        tenant_id=tenant_id,
+        treatment_code=apt["appointment_type"],
+        patient_name=patient_name,
+        phone_number=apt["phone_number"],
+        appointment_id=appointment_id,
+        professional_name=professional_name,
+        appointment_date=apt_date,
+    )
+
+    logger.info(
+        f"🚀 Treatment completion triggered for apt={appointment_id} "
+        f"treatment={apt['appointment_type']} patient={patient_name}"
+    )
+
+    return {
+        "ok": True,
+        "message": f"Seguimiento HSM programado para {patient_name}",
+        "treatment_code": apt["appointment_type"],
+    }
 
 
 # ============================================

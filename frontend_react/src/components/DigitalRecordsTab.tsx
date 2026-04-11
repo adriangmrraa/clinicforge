@@ -326,7 +326,7 @@ export default function DigitalRecordsTab({ patientId, patientEmail, refreshKey 
                   />
                 ) : (
                   <div className="text-[13px] sm:text-sm text-white/50 leading-relaxed overflow-x-auto">
-                    <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(section.content, { ADD_TAGS: ['style', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'svg', 'path', 'circle', 'line', 'g', 'text', 'rect'] }) }} />
+                    <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(section.content, { ADD_TAGS: ['table', 'thead', 'tbody', 'tr', 'th', 'td', 'svg', 'path', 'circle', 'line', 'g', 'text', 'rect'] }) }} />
                   </div>
                 )}
               </div>
@@ -399,7 +399,7 @@ export default function DigitalRecordsTab({ patientId, patientEmail, refreshKey 
 
           {/* HTML Preview — responsive padding */}
           <div className="bg-white rounded-lg p-4 sm:p-8 text-black overflow-auto max-h-[60vh] sm:max-h-[70vh] shadow-lg text-[13px] sm:text-base">
-            <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(record.html_content || '', { ADD_TAGS: ['style', 'svg', 'path', 'circle', 'line', 'g', 'text', 'rect'], ADD_ATTR: ['data-section', 'data-editable', 'viewBox', 'fill', 'stroke', 'stroke-width', 'cx', 'cy', 'r', 'd', 'x1', 'y1', 'x2', 'y2', 'opacity', 'transform', 'font-size', 'font-weight', 'text-anchor', 'stroke-linecap', 'stroke-dasharray'] }) }} />
+            <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(record.html_content || '', { ADD_TAGS: ['svg', 'path', 'circle', 'line', 'g', 'text', 'rect'], ADD_ATTR: ['data-section', 'data-editable', 'viewBox', 'fill', 'stroke', 'stroke-width', 'cx', 'cy', 'r', 'd', 'x1', 'y1', 'x2', 'y2', 'opacity', 'transform', 'font-size', 'font-weight', 'text-anchor', 'stroke-linecap', 'stroke-dasharray'] }) }} />
           </div>
 
           {/* Sent info */}
