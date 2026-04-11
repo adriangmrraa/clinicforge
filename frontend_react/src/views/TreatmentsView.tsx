@@ -324,11 +324,22 @@ const StringListEditor: React.FC<{
 
 // Category icons mapping
 const categoryIcons: Record<string, React.ReactNode> = {
-  prevention: <Heart size={16} className="text-green-600" />,
-  restorative: <Activity size={16} className="text-blue-600" />,
-  surgical: <Zap size={16} className="text-red-600" />,
-  orthodontics: <Shield size={16} className="text-purple-600" />,
-  emergency: <AlertCircle size={16} className="text-orange-600" />,
+  consultas: <Stethoscope size={16} className="text-sky-500" />,
+  prevencion: <Heart size={16} className="text-green-500" />,
+  operatoria: <Activity size={16} className="text-blue-500" />,
+  estetica_facial: <Zap size={16} className="text-pink-500" />,
+  endolifting: <Zap size={16} className="text-fuchsia-500" />,
+  cirugia: <Zap size={16} className="text-red-500" />,
+  implantes: <Shield size={16} className="text-indigo-500" />,
+  regeneracion_osea: <Activity size={16} className="text-amber-500" />,
+  rehabilitacion: <Shield size={16} className="text-teal-500" />,
+  ortodoncia: <Shield size={16} className="text-purple-500" />,
+  // Legacy fallbacks
+  prevention: <Heart size={16} className="text-green-500" />,
+  restorative: <Activity size={16} className="text-blue-500" />,
+  surgical: <Zap size={16} className="text-red-500" />,
+  orthodontics: <Shield size={16} className="text-purple-500" />,
+  emergency: <AlertCircle size={16} className="text-orange-500" />,
 };
 
 // Category icons mapping already defined
@@ -672,7 +683,7 @@ export default function TreatmentsView() {
     min_duration_minutes: 15,
     max_duration_minutes: 60,
     complexity_level: 'medium',
-    category: 'restorative',
+    category: 'consultas',
     requires_multiple_sessions: false,
     session_gap_days: 0,
     is_active: true,
@@ -808,7 +819,7 @@ export default function TreatmentsView() {
         min_duration_minutes: 15,
         max_duration_minutes: 60,
         complexity_level: 'medium',
-        category: 'restorative',
+        category: 'consultas',
         requires_multiple_sessions: false,
         session_gap_days: 0,
         is_active: true,
@@ -995,11 +1006,16 @@ export default function TreatmentsView() {
                         onChange={(e) => setNewForm({ ...newForm, category: e.target.value })}
                         className="w-full px-4 py-3 bg-white/[0.04] border border-white/[0.08] rounded-xl text-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none appearance-none cursor-pointer font-medium"
                       >
-                        <option value="prevention">{t('treatments.category_prevention')}</option>
-                        <option value="restorative">{t('treatments.category_restorative')}</option>
-                        <option value="surgical">{t('treatments.category_surgical')}</option>
-                        <option value="orthodontics">{t('treatments.category_orthodontics')}</option>
-                        <option value="emergency">{t('treatments.emergency')}</option>
+                        <option value="consultas">{t('treatments.category_consultas')}</option>
+                        <option value="prevencion">{t('treatments.category_prevencion')}</option>
+                        <option value="operatoria">{t('treatments.category_operatoria')}</option>
+                        <option value="estetica_facial">{t('treatments.category_estetica_facial')}</option>
+                        <option value="endolifting">{t('treatments.category_endolifting')}</option>
+                        <option value="cirugia">{t('treatments.category_cirugia')}</option>
+                        <option value="implantes">{t('treatments.category_implantes')}</option>
+                        <option value="regeneracion_osea">{t('treatments.category_regeneracion_osea')}</option>
+                        <option value="rehabilitacion">{t('treatments.category_rehabilitacion')}</option>
+                        <option value="ortodoncia">{t('treatments.category_ortodoncia')}</option>
                       </select>
                       <Activity size={18} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-white/30" />
                     </div>

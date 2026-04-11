@@ -898,7 +898,7 @@ class TreatmentTypeCreate(BaseModel):
     min_duration_minutes: int = 15
     max_duration_minutes: int = 60
     complexity_level: str = "medium"
-    category: str = "restorative"
+    category: str = "consultas"
     requires_multiple_sessions: bool = False
     session_gap_days: int = 0
     is_active: bool = True
