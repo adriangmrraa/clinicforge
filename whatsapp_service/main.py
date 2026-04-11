@@ -417,8 +417,8 @@ def health():
 @limiter.limit("500/minute")
 async def ycloud_webhook(request: Request):
     def _sanitize_headers_for_log(headers) -> dict:
-    sensitive = {'authorization', 'x-api-key', 'x-internal-token', 'ycloud-signature', 'x-admin-token'}
-    return {k: ('***' if k.lower() in sensitive else v) for k, v in headers.items()}
+        sensitive = {'authorization', 'x-api-key', 'x-internal-token', 'ycloud-signature', 'x-admin-token'}
+        return {k: ('***' if k.lower() in sensitive else v) for k, v in headers.items()}
 
     logger.info("webhook_hit", headers=_sanitize_headers_for_log(request.headers))
     await verify_signature(request)
