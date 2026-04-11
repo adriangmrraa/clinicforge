@@ -215,7 +215,7 @@ export const YCloudSyncSection: React.FC<YCloudSyncSectionProps> = ({ tenantId, 
             <div className="flex items-center gap-2 text-white/60 mb-4">
                 <Clock className="w-4 h-4" />
                 <span className="text-sm">
-                    {t('ycloud_sync.last_sync')}: {formatLastSync(config.last_sync_at)}
+                    {t('ycloud_sync.last_sync')}: {formatLastSync(config?.last_sync_at)}
                 </span>
             </div>
             
@@ -288,7 +288,7 @@ export const YCloudSyncSection: React.FC<YCloudSyncSectionProps> = ({ tenantId, 
                         }`}
                     >
                         <RefreshCw className="w-4 h-4" />
-                        {config.rate_limited 
+                        {config?.rate_limited
                             ? t('ycloud_sync.rate_limited', { minutes: 60 })
                             : t('ycloud_sync.button')
                         }

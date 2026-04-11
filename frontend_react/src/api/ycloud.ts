@@ -66,7 +66,7 @@ export async function cancelSync(taskId: string): Promise<{ cancelled: boolean; 
  * Get sync configuration and status for a tenant.
  */
 export async function getSyncConfig(tenantId: number): Promise<YCloudSyncConfig> {
-    const res = await api.get<YCloudSyncConfig>(`/admin/ycloud/sync/config?tenant_id=${tenantId}`);
+    const res = await api.get<YCloudSyncConfig>(`/admin/ycloud/sync/config/${tenantId}`);
     return res.data;
 }
 
