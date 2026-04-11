@@ -508,10 +508,16 @@ export default function TreatmentsView() {
     console.log('[saveInstructions] postOut:', postOut);
     console.log('[saveInstructions] followup_template:', instructionsLocal.followup_template);
 
+    // Filter out incomplete followup items (empty templates block the save)
+    // TODO: Replace with HSM template selector from YCloud API (same as HSM Automation page)
+    const validFollowups = (instructionsLocal.followup_template || []).filter(
+      (item: any) => item.message_template && item.message_template.trim().length > 0
+    );
+
     const patch = {
       pre_instructions: preOut as unknown as string | undefined,
       post_instructions: postOut as unknown as PostInstruction[] | undefined,
-      followup_template: instructionsLocal.followup_template,
+      followup_template: validFollowups.length > 0 ? validFollowups : null,
     };
     if (instructionsTarget === 'edit') {
       const updatedForm = { ...editForm, ...patch };
