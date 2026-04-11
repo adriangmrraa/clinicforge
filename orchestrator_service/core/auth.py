@@ -131,9 +131,16 @@ async def get_resolved_tenant_id(request: Request, user_data=Depends(verify_admi
     header_tid = request.headers.get("X-Tenant-ID")
     
     if user_data.role == 'ceo':
-        # CEO: Confía en el header si existe, si no usa el de su registro o fallback.
+        # CEO: Validate header tenant_id exists before trusting it.
         if header_tid and header_tid.isdigit():
-            return int(header_tid)
+            requested_tid = int(header_tid)
+            has_access = await db.pool.fetchval(
+                "SELECT EXISTS(SELECT 1 FROM tenants WHERE id = $1)", requested_tid
+            )
+            if not has_access:
+                logger.warning(f"🛡️ CEO_TENANT_ACCESS_DENIED: user={user_data.email} tenant={requested_tid}")
+                raise HTTPException(status_code=403, detail="Tenant access denied")
+            return requested_tid
         return int(real_tenant_id) if real_tenant_id is not None else 1
     else:
         # STAFF/PROF: Aislamiento estricto.

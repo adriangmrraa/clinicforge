@@ -167,7 +167,7 @@ export default function MarketingHubView() {
             const tenantId = getCurrentTenantId();
             const { data } = await api.get(`/admin/auth/google/ads/url?state=tenant_${tenantId}_ads`);
             if (data?.url) {
-                window.open(data.url, '_blank', 'width=600,height=700');
+                window.open(data.url, '_blank', 'noopener,noreferrer,width=600,height=700');
             } else {
                 throw new Error(t('marketing_google.errors.no_auth_url'));
             }

@@ -151,10 +151,21 @@ async def _query_table(pool, table_name: str, tenant_id: int) -> List[Dict]:
                     table_name,
                 )
                 order = " ORDER BY id" if has_id else ""
-                rows = await pool.fetch(
-                    f"SELECT * FROM {table_name} WHERE tenant_id = $1{order}",
-                    tenant_id,
-                )
+                BATCH_SIZE = 5000
+                rows = []
+                offset = 0
+                while True:
+                    batch = await pool.fetch(
+                        f"SELECT * FROM {table_name} WHERE tenant_id = $1{order} LIMIT {BATCH_SIZE} OFFSET $2",
+                        tenant_id,
+                        offset,
+                    )
+                    if not batch:
+                        break
+                    rows.extend(batch)
+                    offset += BATCH_SIZE
+                    if len(batch) < BATCH_SIZE:
+                        break
             else:
                 logger.warning(f"[backup] Table {table_name} has no tenant_id — skipping")
                 return []

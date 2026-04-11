@@ -825,7 +825,7 @@ export default function AppointmentForm({
                                                                 src={imgSrc}
                                                                 alt="Comprobante"
                                                                 className="w-full max-h-48 object-contain cursor-pointer hover:opacity-90 transition-opacity"
-                                                                onClick={() => window.open(imgSrc, '_blank')}
+                                                                onClick={() => window.open(imgSrc, '_blank', 'noopener,noreferrer')}
                                                                 onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
                                                             />
                                                         </div>

@@ -49,7 +49,7 @@ const GoogleConnectionWizard: React.FC<GoogleConnectionWizardProps> = ({
       
       if (data?.url) {
         // Open Google OAuth in new window
-        window.open(data.url, '_blank', 'width=600,height=700');
+        window.open(data.url, '_blank', 'noopener,noreferrer,width=600,height=700');
         
         // Poll for connection status
         pollConnectionStatus();

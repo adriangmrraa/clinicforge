@@ -47,10 +47,25 @@ export async function sendChatMessage(
   return res.data;
 }
 
+const MAX_UPLOAD_SIZE = 25 * 1024 * 1024; // 25MB
+const ALLOWED_UPLOAD_TYPES = [
+  'image/jpeg', 'image/png', 'image/webp', 'image/gif',
+  'audio/mpeg', 'audio/wav', 'audio/ogg', 'audio/webm',
+  'video/mp4', 'video/webm',
+  'application/pdf',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+];
+
 export async function uploadChatMedia(
   file: File,
   tenantId: number
 ): Promise<{ type: string; url: string; file_name: string; size: number }> {
+  if (file.size > MAX_UPLOAD_SIZE) {
+    throw new Error('El archivo excede el tamaño máximo de 25MB');
+  }
+  if (ALLOWED_UPLOAD_TYPES.length > 0 && !ALLOWED_UPLOAD_TYPES.includes(file.type)) {
+    throw new Error(`Tipo de archivo no permitido: ${file.type || 'desconocido'}`);
+  }
   const formData = new FormData();
   formData.append('file', file);
   const res = await api.post<{ type: string; url: string; file_name: string; size: number }>(

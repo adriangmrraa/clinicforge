@@ -91,7 +91,7 @@ export const MessageMedia = ({ attachments, message }: { attachments: any[], mes
                                 src={url}
                                 alt="attachment"
                                 className="max-w-xs rounded-lg cursor-pointer hover:opacity-90 transition-opacity border"
-                                onClick={() => window.open(url, '_blank')}
+                                onClick={() => window.open(url, '_blank', 'noopener,noreferrer')}
                                 loading="lazy"
                                 crossOrigin="anonymous"
                             />
@@ -131,7 +131,7 @@ export const MessageMedia = ({ attachments, message }: { attachments: any[], mes
                     <div
                         key={idx}
                         className={`flex items-center gap-2 p-2 rounded-lg border bg-white hover:bg-gray-50 transition-colors cursor-pointer ${isGrouped ? 'aspect-square justify-center' : ''}`}
-                        onClick={() => window.open(url, '_blank')}
+                        onClick={() => window.open(url, '_blank', 'noopener,noreferrer')}
                     >
                         {renderFileIcon(type)}
                         {!isGrouped && (

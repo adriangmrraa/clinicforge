@@ -84,8 +84,18 @@ app.use((req: Request, res: Response, next: NextFunction) => {
     const ct = req.headers['content-type'] || '';
     if (ct.includes('multipart/')) {
         // Buffer the raw multipart body so we can forward it via axios
+        const MAX_MULTIPART_SIZE = 100 * 1024 * 1024; // 100MB
         const chunks: Buffer[] = [];
-        req.on('data', (chunk: Buffer) => chunks.push(chunk));
+        let totalSize = 0;
+        req.on('data', (chunk: Buffer) => {
+            totalSize += chunk.length;
+            if (totalSize > MAX_MULTIPART_SIZE) {
+                res.status(413).json({ error: 'Payload too large (max 100MB)' });
+                req.destroy();
+                return;
+            }
+            chunks.push(chunk);
+        });
         req.on('end', () => {
             (req as any).rawBody = Buffer.concat(chunks);
             next();

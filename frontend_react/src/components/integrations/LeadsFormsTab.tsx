@@ -62,7 +62,7 @@ export default function LeadsFormsTab() {
   };
 
   const openMetaAdsConfig = () => {
-    window.open('https://business.facebook.com/ads/manager/webhooks/', '_blank');
+    window.open('https://business.facebook.com/ads/manager/webhooks/', '_blank', 'noopener,noreferrer');
   };
 
   if (loading) {
