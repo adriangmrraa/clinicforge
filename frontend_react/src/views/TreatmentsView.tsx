@@ -609,6 +609,16 @@ export default function TreatmentsView() {
     setEditForm({});
   };
 
+  // JSONB fields come from the backend as strings sometimes (double JSON encoding).
+  // Parse them back to objects/arrays before sending to the backend.
+  const parseJsonb = (val: unknown): unknown => {
+    if (val === null || val === undefined) return null;
+    if (typeof val === 'string') {
+      try { return JSON.parse(val); } catch { return val; }
+    }
+    return val;
+  };
+
   const buildPayload = (form: Partial<TreatmentType>, confirmUnusual = false) => {
     // Send ONLY fields the backend TreatmentTypeUpdate model accepts
     return {
@@ -626,9 +636,9 @@ export default function TreatmentsView() {
       internal_notes: form.internal_notes ?? '',
       base_price: form.base_price ?? 0,
       priority: form.priority ?? 'medium',
-      pre_instructions: form.pre_instructions ?? null,
-      post_instructions: form.post_instructions ?? null,
-      followup_template: form.followup_template ?? null,
+      pre_instructions: parseJsonb(form.pre_instructions),
+      post_instructions: parseJsonb(form.post_instructions),
+      followup_template: parseJsonb(form.followup_template),
       confirm_unusual_price: confirmUnusual,
       ai_response_template: form.ai_response_template ?? null,
       patient_display_name: form.patient_display_name ?? null,
