@@ -486,7 +486,11 @@ export default function ChatsView() {
   const fetchSessions = async (tenantId: number, selectPhone?: string, nav?: ReturnType<typeof useNavigate>) => {
     try {
       setLoading(true);
-      const response = await api.get<ChatSession[]>('/admin/chat/sessions', { params: { tenant_id: tenantId } });
+      const params: Record<string, any> = { tenant_id: tenantId };
+      if (user?.role === 'professional' && (user as any)?.professional_id) {
+        params.professional_id = (user as any).professional_id;
+      }
+      const response = await api.get<ChatSession[]>('/admin/chat/sessions', { params });
       // Preserve unread_count=0 for the currently open conversation (already marked as read)
       const currentPhone = selectedSessionRef.current?.phone_number;
       const currentTenant = selectedSessionRef.current?.tenant_id;

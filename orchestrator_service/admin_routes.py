@@ -1293,16 +1293,23 @@ async def get_chat_tenants(allowed_ids: List[int] = Depends(get_allowed_tenant_i
 async def get_chat_sessions(
     tenant_id: int,
     request: Request,
+    professional_id: Optional[int] = None,
     user_data=Depends(verify_admin_token),
     allowed_ids: List[int] = Depends(get_allowed_tenant_ids),
 ):
     """
     Sesiones de chat activas para la clínica indicada.
     El usuario solo ve sesiones cuyo tenant_id coincide con su clínica (o cualquiera si es CEO).
+    Si professional_id es proporcionado, filtra solo pacientes que tuvieron turnos con ese profesional.
     Human Override y ventana de 24h son por (tenant_id, phone): independientes por clínica.
     """
     if tenant_id not in allowed_ids:
         raise HTTPException(status_code=403, detail="No tienes acceso a esta clínica.")
+
+    # Build professional patient filter subquery
+    prof_filter_clause = ""
+    if professional_id:
+        prof_filter_clause = f"AND p.id IN (SELECT DISTINCT patient_id FROM appointments WHERE tenant_id = {tenant_id} AND professional_id = {professional_id})"
     # Sesiones = pacientes de esta clínica que tienen al menos un mensaje en esta clínica
     has_tenant_in_cm = await db.pool.fetchval(
         "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='chat_messages' AND column_name='tenant_id')"
@@ -1346,6 +1353,7 @@ async def get_chat_sessions(
                     AND cw.external_user_id = p.phone_number
                     AND cw.channel IN ('instagram', 'facebook')
                 )
+                {prof_filter_clause}
                 ORDER BY p.phone_number, cm.created_at DESC
             ) sub
             ORDER BY last_message_time DESC NULLS LAST
@@ -1388,15 +1396,13 @@ async def get_chat_sessions(
                 ) urgency ON true
                 WHERE p.tenant_id = $1
                 AND EXISTS (SELECT 1 FROM chat_messages WHERE tenant_id = $1 AND from_number = p.phone_number)
-                -- Exclude patients whose phone_number is actually a Chatwoot external_user_id
-                -- from a non-WhatsApp channel (IG/FB). Those patients are already visible
-                -- in the Chatwoot conversations list and should not appear as WhatsApp sessions.
                 AND NOT EXISTS (
                     SELECT 1 FROM chat_conversations cw
                     WHERE cw.tenant_id = $1
                     AND cw.external_user_id = p.phone_number
                     AND cw.channel IN ('instagram', 'facebook')
                 )
+                {prof_filter_clause}
                 ORDER BY p.phone_number, cm.created_at DESC
             ) sub
             ORDER BY last_message_time DESC NULLS LAST

@@ -12,6 +12,7 @@ import {
 } from 'recharts';
 import api, { WS_URL } from '../api/axios';
 import { useTranslation } from '../context/LanguageContext';
+import { useAuth } from '../context/AuthContext';
 import PageHeader from '../components/PageHeader';
 import MarketingPerformanceCard from '../components/MarketingPerformanceCard';
 import GlassCard, { CARD_IMAGES } from '../components/GlassCard';
@@ -91,6 +92,8 @@ const UrgencyBadge = ({ level, t }: { level: UrgencyRecord['urgency_level'], t: 
 
 export default function DashboardView() {
   const { t } = useTranslation();
+  const { user } = useAuth();
+  const isProfessional = (user as any)?.role === 'professional';
   const [stats, setStats] = useState<AnalyticsStats | null>(null);
   const [urgencies, setUrgencies] = useState<UrgencyRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -238,7 +241,7 @@ export default function DashboardView() {
       {/* MAIN SCROLLABLE CONTENT WITH ISORATION */}
       <main className="flex-1 overflow-y-auto p-4 lg:p-6 space-y-6 scroll-smooth">
 
-        {/* TOP ROW: KPI CARDS */}
+        {/* TOP ROW: KPI CARDS — role-aware */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           <KPICard
             title={t('dashboard.conversations')}
@@ -264,36 +267,49 @@ export default function DashboardView() {
             color="bg-rose-500"
             image={CARD_IMAGES.completion}
           />
-          <KPICard
-            title={t('dashboard.revenue_confirmed')}
-            value={`$${(stats as any)?.total_revenue?.toLocaleString() || 0}`}
-            icon={DollarSign}
-            color="bg-emerald-500"
-            trend={(stats as any)?.total_revenue_trend}
-            image={CARD_IMAGES.revenue}
-          />
-          <KPICard
-            title={t('dashboard.revenue_estimated')}
-            value={`$${(stats as any)?.estimated_revenue?.toLocaleString() || 0}`}
-            icon={TrendingUp}
-            color="bg-amber-500"
-            trend="+15%"
-            image={CARD_IMAGES.revenue}
-          />
-          <KPICard
-            title={t('dashboard.pending_payments')}
-            value={`$${Math.round(stats.pending_payments || 0).toLocaleString('es-AR')}`}
-            icon={AlertCircle}
-            color="bg-amber-500"
-            image={CARD_IMAGES?.pending}
-          />
-          <KPICard
-            title={t('dashboard.today_revenue')}
-            value={`$${Math.round(stats.today_revenue || 0).toLocaleString('es-AR')}`}
-            icon={DollarSign}
-            color="bg-teal-500"
-            image={CARD_IMAGES?.revenue_today}
-          />
+          {!isProfessional && (
+            <>
+              <KPICard
+                title={t('dashboard.revenue_confirmed')}
+                value={`$${(stats as any)?.total_revenue?.toLocaleString() || 0}`}
+                icon={DollarSign}
+                color="bg-emerald-500"
+                trend={(stats as any)?.total_revenue_trend}
+                image={CARD_IMAGES.revenue}
+              />
+              <KPICard
+                title={t('dashboard.revenue_estimated')}
+                value={`$${(stats as any)?.estimated_revenue?.toLocaleString() || 0}`}
+                icon={TrendingUp}
+                color="bg-amber-500"
+                trend="+15%"
+                image={CARD_IMAGES.revenue}
+              />
+              <KPICard
+                title={t('dashboard.pending_payments')}
+                value={`$${Math.round(stats.pending_payments || 0).toLocaleString('es-AR')}`}
+                icon={AlertCircle}
+                color="bg-amber-500"
+                image={CARD_IMAGES?.pending}
+              />
+              <KPICard
+                title={t('dashboard.today_revenue')}
+                value={`$${Math.round(stats.today_revenue || 0).toLocaleString('es-AR')}`}
+                icon={DollarSign}
+                color="bg-teal-500"
+                image={CARD_IMAGES?.revenue_today}
+              />
+            </>
+          )}
+          {isProfessional && (
+            <KPICard
+              title={t('dashboard.my_patients') || 'Mis Pacientes'}
+              value={(stats as any)?.total_patients?.toLocaleString() || '—'}
+              icon={User}
+              color="bg-purple-500"
+              image={CARD_IMAGES.patients}
+            />
+          )}
         </div>
 
         {/* MIDDLE ROW: CHARTS */}

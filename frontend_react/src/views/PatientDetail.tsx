@@ -859,19 +859,21 @@ export default function PatientDetail() {
                 <span className="sm:hidden">Fichas</span>
               </div>
             </button>
-            <button
-              onClick={() => setActiveTab('billing')}
-              className={`flex-shrink-0 py-3 px-3 lg:px-4 text-xs lg:text-sm font-medium transition-colors whitespace-nowrap ${activeTab === 'billing'
-                ? 'text-primary border-b-2 border-primary'
-                : 'text-white/40 hover:text-white/70 hover:bg-white/[0.04]'
-                }`}
-            >
-              <div className="flex items-center justify-center gap-1.5">
-                <Receipt size={16} />
-                <span className="hidden sm:inline">{t('billing.tab')}</span>
-                <span className="sm:hidden">Presupuesto</span>
-              </div>
-            </button>
+            {(user as any)?.role !== 'professional' && (
+              <button
+                onClick={() => setActiveTab('billing')}
+                className={`flex-shrink-0 py-3 px-3 lg:px-4 text-xs lg:text-sm font-medium transition-colors whitespace-nowrap ${activeTab === 'billing'
+                  ? 'text-primary border-b-2 border-primary'
+                  : 'text-white/40 hover:text-white/70 hover:bg-white/[0.04]'
+                  }`}
+              >
+                <div className="flex items-center justify-center gap-1.5">
+                  <Receipt size={16} />
+                  <span className="hidden sm:inline">{t('billing.tab')}</span>
+                  <span className="sm:hidden">Presupuesto</span>
+                </div>
+              </button>
+            )}
           </div>
         </div>
       </div>

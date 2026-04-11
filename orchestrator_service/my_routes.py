@@ -52,11 +52,12 @@ async def get_professional_from_jwt(request: Request) -> dict:
         # The token contains user_id (UUID) and role
         import jwt as pyjwt
 
-        # Require explicit JWT secret — no fallback to insecure default
+        # Require explicit JWT secret — try all known env var names
         jwt_secret = (
             os.getenv("JWT_SECRET_KEY")
             or os.getenv("JWT_SECRET")
             or os.getenv("SECRET_KEY")
+            or os.getenv("INTERNAL_SECRET_KEY")  # Legacy fallback (matches auth_service.py)
         )
         if not jwt_secret:
             logger.error(
