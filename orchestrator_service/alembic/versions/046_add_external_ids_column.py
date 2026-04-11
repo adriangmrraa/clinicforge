@@ -10,7 +10,7 @@ contact IDs (Instagram, Facebook, ChatWot, etc.)
 
 from alembic import op
 import sqlalchemy as sa
-from sqlalchemy import text
+from sqlalchemy import text, inspect
 
 
 revision = "046"
@@ -20,15 +20,19 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "patients",
-        sa.Column(
-            "external_ids",
-            sa.JSON(),
-            nullable=True,
-            server_default=text("'{}'::jsonb"),
-        ),
-    )
+    conn = op.get_bind()
+    inspector = inspect(conn)
+    columns = [c["name"] for c in inspector.get_columns("patients")]
+    if "external_ids" not in columns:
+        op.add_column(
+            "patients",
+            sa.Column(
+                "external_ids",
+                sa.JSON(),
+                nullable=True,
+                server_default=text("'{}'::jsonb"),
+            ),
+        )
 
 
 def downgrade() -> None:
