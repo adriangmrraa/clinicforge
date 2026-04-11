@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { Database, Download, Upload, Lock, Mail, AlertCircle, Loader2, CheckCircle2, XCircle, RefreshCw, X } from 'lucide-react';
 import { useTranslation } from '../context/LanguageContext';
 import api from '../api/axios';
+import { Modal } from './Modal';
 
 interface BackupTask {
   task_id?: string;
@@ -366,7 +367,7 @@ export const BackupRestoreSection: React.FC<BackupRestoreSectionProps> = ({ user
       </div>
 
       {/* === BACKUP MODAL === */}
-      <Modal isOpen={isModalOpen} onClose={closeModal} title={t('backup.modal_title')} maxWidth="max-w-md">
+      <Modal isOpen={isModalOpen} onClose={closeModal} title={t('backup.modal_title')} size="md">
         {modalStep === 'password' && (
           <div className="space-y-4">
             <div className="flex items-center gap-2 text-white/60 text-sm">
@@ -526,7 +527,7 @@ export const BackupRestoreSection: React.FC<BackupRestoreSectionProps> = ({ user
       </Modal>
 
       {/* === RESTORE MODAL === */}
-      <Modal isOpen={isRestoreModalOpen} onClose={closeRestoreModal} title={t('backup.restore_modal_title')} maxWidth="max-w-md">
+      <Modal isOpen={isRestoreModalOpen} onClose={closeRestoreModal} title={t('backup.restore_modal_title')} size="md">
         <div className="space-y-4">
           {!restoreResult ? (
             <>

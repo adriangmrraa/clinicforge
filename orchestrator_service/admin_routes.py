@@ -1306,10 +1306,10 @@ async def get_chat_sessions(
     if tenant_id not in allowed_ids:
         raise HTTPException(status_code=403, detail="No tienes acceso a esta clínica.")
 
-    # Build professional patient filter subquery (safe: both are validated ints)
+    # Build professional patient filter subquery
     prof_filter_sql = ""
     if professional_id:
-        prof_filter_sql = f"AND p.id IN (SELECT DISTINCT patient_id FROM appointments WHERE tenant_id = {int(tenant_id)} AND professional_id = {int(professional_id)})"
+        prof_filter_sql = "AND p.id IN (SELECT DISTINCT patient_id FROM appointments WHERE tenant_id = " + str(int(tenant_id)) + " AND professional_id = " + str(int(professional_id)) + ")"
     # Sesiones = pacientes de esta clínica que tienen al menos un mensaje en esta clínica
     has_tenant_in_cm = await db.pool.fetchval(
         "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='chat_messages' AND column_name='tenant_id')"
