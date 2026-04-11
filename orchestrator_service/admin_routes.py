@@ -903,6 +903,7 @@ class TreatmentTypeCreate(BaseModel):
     post_instructions: Optional[Union[PostInstructions, list, dict, str]] = None
     followup_template: Optional[Any] = None
     confirm_unusual_price: bool = False
+    ai_response_template: Optional[str] = None
     # Migration 041: consultation fields for high-ticket treatments
     is_high_ticket: bool = False
     consultation_duration_minutes: Optional[int] = 30
@@ -930,6 +931,7 @@ class TreatmentTypeUpdate(BaseModel):
     post_instructions: Optional[Union[PostInstructions, list, dict, str]] = None
     followup_template: Optional[Any] = None
     confirm_unusual_price: bool = False
+    ai_response_template: Optional[str] = None
 
 
 class ChatSendMessage(BaseModel):
@@ -9101,6 +9103,7 @@ class TreatmentTypeUpdate(BaseModel):
     post_instructions: Optional[Union[PostInstructions, list, dict, str]] = None
     followup_template: Optional[Any] = None
     confirm_unusual_price: bool = False
+    ai_response_template: Optional[str] = None
     # Migration 041: consultation fields for high-ticket treatments
     is_high_ticket: bool = False
     consultation_duration_minutes: Optional[int] = 30
@@ -9505,8 +9508,8 @@ async def create_treatment_type(
                 is_active, is_available_for_booking, internal_notes, base_price, priority,
                 pre_instructions, post_instructions, followup_template,
                 is_high_ticket, consultation_duration_minutes,
-                consultation_requirements, consultation_notes, created_at
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, NOW())
+                consultation_requirements, consultation_notes, ai_response_template, created_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, NOW())
             RETURNING id
         """,
             tenant_id,
@@ -9542,6 +9545,7 @@ async def create_treatment_type(
             treatment.consultation_duration_minutes,
             treatment.consultation_requirements,
             treatment.consultation_notes,
+            treatment.ai_response_template,
         )
         # Insert professional assignments if provided
         if treatment.professional_ids and row:
@@ -9594,8 +9598,9 @@ async def update_treatment_type(
             pre_instructions = $15, post_instructions = $16, followup_template = $17,
             is_high_ticket = $18, consultation_duration_minutes = $19,
             consultation_requirements = $20, consultation_notes = $21,
+            ai_response_template = $22,
             updated_at = NOW()
-        WHERE tenant_id = $22 AND code = $23
+        WHERE tenant_id = $23 AND code = $24
     """,
         treatment.name,
         treatment.description,
@@ -9626,6 +9631,7 @@ async def update_treatment_type(
         treatment.consultation_duration_minutes,
         treatment.consultation_requirements,
         treatment.consultation_notes,
+        treatment.ai_response_template,
         tenant_id,
         code,
     )
