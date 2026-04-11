@@ -148,6 +148,15 @@ function parsePreInstructions(value: unknown): PreInstructionsForm {
 // Returns either the new structured form OR the legacy timed list (not both).
 function parsePostInstructions(value: unknown): { post: PostInstructionsForm; legacy: PostInstruction[] } {
   if (!value) return { post: { ...emptyPostForm }, legacy: [] };
+  // If string, try to parse as JSON first (JSONB double-encoding from DB)
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      return parsePostInstructions(parsed); // recurse with parsed value
+    } catch {
+      return { post: { ...emptyPostForm }, legacy: [] };
+    }
+  }
   // Legacy timed sequence (bare list)
   if (Array.isArray(value)) {
     return { post: { ...emptyPostForm }, legacy: value as PostInstruction[] };
@@ -485,11 +494,19 @@ export default function TreatmentsView() {
       : null;
 
     let postOut: PostInstructionsForm | PostInstruction[] | null = null;
-    if (postEditMode === 'protocol' && postFormHasContent(instructionsLocal.postForm)) {
+    const _postHas = postFormHasContent(instructionsLocal.postForm);
+    console.log('[saveInstructions] postEditMode:', postEditMode, 'postFormHasContent:', _postHas, 'postForm:', instructionsLocal.postForm);
+    if (postEditMode === 'protocol' && _postHas) {
       postOut = instructionsLocal.postForm;
+    } else if (postEditMode === 'protocol' && !_postHas) {
+      // Protocol mode but no content yet — check if any field was filled
+      // (defensive: send the form anyway if user typed something)
+      postOut = null;
     } else if (instructionsLocal.timedSequence.length > 0) {
       postOut = instructionsLocal.timedSequence;
     }
+    console.log('[saveInstructions] postOut:', postOut);
+    console.log('[saveInstructions] followup_template:', instructionsLocal.followup_template);
 
     const patch = {
       pre_instructions: preOut as unknown as string | undefined,
