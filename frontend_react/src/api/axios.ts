@@ -144,9 +144,11 @@ api.interceptors.response.use(
 
     // Manejo específico de errores
     if (status === 401) {
-      // JWT expirado o inválido — limpiar y redirigir
-      console.warn('[API] Unauthorized - Limpiando JWT');
+      // JWT expirado o inválido — limpiar TODO y redirigir
+      console.warn('[API] Unauthorized - Limpiando JWT y estado de sesión');
       localStorage.removeItem('access_token');
+      localStorage.removeItem('USER_PROFILE');
+      localStorage.removeItem('X-Tenant-ID');
 
       const publicRoutes = ['/privacy', '/terms', '/demo'];
       const isPublicRoute = publicRoutes.some(route => window.location.pathname.startsWith(route));

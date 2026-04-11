@@ -644,7 +644,7 @@ async def get_all_users(
         SELECT DISTINCT u.id, u.email, u.role, u.status, u.created_at, u.updated_at, u.first_name, u.last_name
         FROM users u
         LEFT JOIN professionals p ON p.user_id = u.id
-        WHERE p.tenant_id = ANY($1::int[]) OR p.user_id IS NULL
+        WHERE p.tenant_id = ANY($1::int[])
         ORDER BY u.status ASC, u.created_at DESC
     """,
         allowed_ids,

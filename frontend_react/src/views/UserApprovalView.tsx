@@ -346,13 +346,13 @@ const UserApprovalView: React.FC = () => {
     };
 
     const handleLinkToSedeSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
         if (!selectedStaff) return;
         const tenant_id = linkFormData.tenant_id ?? clinics[0]?.id;
         if (!tenant_id) {
             alert(t('alerts.select_sede'));
             return;
         }
-        e.preventDefault();
         setLinkFormSubmitting(true);
         try {
             const name = `${selectedStaff.first_name || ''} ${selectedStaff.last_name || ''}`.trim() || t('approvals.professional_fallback');
@@ -748,7 +748,7 @@ const UserApprovalView: React.FC = () => {
                                                                 setInsightsResult(null);
                                                                 try {
                                                                     const row = professionalRows[0];
-                                                                    const res = await api.post(`/admin/professionals/${row.id}/conversation-insights?tenant_id=${row.tenant_id}`);
+                                                                    const res = await api.get(`/admin/professionals/${row.id}/conversation-insights?tenant_id=${row.tenant_id}`);
                                                                     setInsightsResult(res.data);
                                                                 } catch (err) {
                                                                     console.error('Error loading insights:', err);

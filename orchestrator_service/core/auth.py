@@ -121,7 +121,7 @@ async def get_resolved_tenant_id(request: Request, user_data=Depends(verify_admi
     real_tenant_id = None
     try:
         real_tenant_id = await db.pool.fetchval(
-            "SELECT tenant_id FROM professionals WHERE user_id = $1",
+            "SELECT tenant_id FROM professionals WHERE user_id = $1 AND is_active = true ORDER BY tenant_id ASC LIMIT 1",
             uuid.UUID(user_data.user_id)
         )
     except Exception as e:
