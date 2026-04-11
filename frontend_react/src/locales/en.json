@@ -949,12 +949,15 @@
         "contentPlaceholder": "Write the instructions for this moment..."
       },
       "followup": {
-        "title": "Automatic Follow-up Messages",
-        "inDevelopment": "Follow-up messages will be sent automatically after the appointment. This feature is under development.",
-        "addButton": "Add follow-up message",
-        "hoursAfter": "hours after",
-        "variables": "Available variables: {patient_name}, {treatment_name}, {appointment_date}, {professional_name}",
-        "messagePlaceholder": "Hi {patient_name}, how are you feeling after your {treatment_name}?"
+        "title": "Automatic Follow-up (WhatsApp HSM)",
+        "hsmHint": "Select an approved WhatsApp template to send as a post-treatment follow-up. An automation rule will be created in HSM Automation automatically.",
+        "loading": "Loading templates...",
+        "noTemplates": "No approved templates in YCloud. Create an HSM template in your YCloud account and wait for Meta approval.",
+        "selectTemplate": "— Select template —",
+        "preview": "Preview",
+        "varMapping": "Variable mapping",
+        "selectVar": "— Select variable —",
+        "ruleLinked": "Automation rule linked (visible in HSM Automation)"
       },
       "save": "Save instructions",
       "cancel": "Cancel"

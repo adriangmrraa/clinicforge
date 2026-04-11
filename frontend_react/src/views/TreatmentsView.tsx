@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Clock, AlertCircle, CheckCircle, Save, X, Zap, Shield, Heart, Activity, Stethoscope, Edit2, Upload, Trash2, Image as ImageIcon, Users, FileText, CheckCircle2, Plus, Info, Search } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Clock, AlertCircle, CheckCircle, Save, X, Zap, Shield, Heart, Activity, Stethoscope, Edit2, Upload, Trash2, Image as ImageIcon, Users, FileText, CheckCircle2, Plus, Info, Search, Files, MessageSquare, Send } from 'lucide-react';
 import api from '../api/axios';
 import { useTranslation } from '../context/LanguageContext';
 import { useAuth } from '../context/AuthContext';
@@ -53,6 +53,24 @@ interface PostInstruction {
 interface FollowupMessage {
   hours_after: number;
   message: string;
+}
+
+interface YCloudTemplate {
+  name: string;
+  language: string;
+  category: string;
+  status: string;
+  components: Array<{
+    type: string;
+    text?: string;
+    example?: { body_text?: string[][] };
+  }>;
+}
+
+interface HsmFollowupState {
+  templateName: string;
+  templateVars: Record<string, string>;
+  existingRuleId: number | null;
 }
 
 // Migration 037: structured pre-treatment instructions form. Mirrors the
@@ -464,6 +482,60 @@ export default function TreatmentsView() {
     followup_template: [],
   });
 
+  // HSM followup template selector state
+  const [ycloudTemplates, setYcloudTemplates] = useState<YCloudTemplate[]>([]);
+  const [templatesLoading, setTemplatesLoading] = useState(false);
+  const [templatesWarning, setTemplatesWarning] = useState('');
+  const [hsmFollowup, setHsmFollowup] = useState<HsmFollowupState>({
+    templateName: '',
+    templateVars: {},
+    existingRuleId: null,
+  });
+
+  const HSM_VARIABLE_OPTIONS = [
+    { key: 'first_name', label: t('meta_templates.variables.first_name') },
+    { key: 'last_name', label: t('meta_templates.variables.last_name') },
+    { key: 'appointment_date', label: t('meta_templates.variables.appointment_date') },
+    { key: 'appointment_time', label: t('meta_templates.variables.appointment_time') },
+    { key: 'treatment_name', label: t('meta_templates.variables.treatment_name') },
+    { key: 'clinic_name', label: t('meta_templates.variables.clinic_name') },
+    { key: 'professional_name', label: t('meta_templates.variables.professional_name') },
+  ];
+
+  const loadYCloudTemplates = useCallback(async () => {
+    setTemplatesLoading(true);
+    try {
+      const { data } = await api.get('/admin/automations/ycloud-templates');
+      setYcloudTemplates(data.templates || []);
+      setTemplatesWarning(data.warning || '');
+    } catch (err: any) {
+      setTemplatesWarning(err?.response?.data?.warning || err?.message || 'Error al cargar plantillas');
+    } finally {
+      setTemplatesLoading(false);
+    }
+  }, []);
+
+  const loadExistingFollowupRule = useCallback(async (treatmentCode: string) => {
+    try {
+      const { data } = await api.get('/admin/automations/rules');
+      const existing = (data.rules || []).find(
+        (r: any) => r.trigger_type === 'post_treatment_followup' &&
+          r.condition_json?.treatment_code === treatmentCode
+      );
+      if (existing) {
+        setHsmFollowup({
+          templateName: existing.ycloud_template_name || '',
+          templateVars: existing.ycloud_template_vars || {},
+          existingRuleId: existing.id,
+        });
+      } else {
+        setHsmFollowup({ templateName: '', templateVars: {}, existingRuleId: null });
+      }
+    } catch {
+      setHsmFollowup({ templateName: '', templateVars: {}, existingRuleId: null });
+    }
+  }, []);
+
   const openInstructionsModal = (target: 'edit' | 'create') => {
     setInstructionsTarget(target);
     const form = target === 'edit' ? editForm : newForm;
@@ -477,18 +549,17 @@ export default function TreatmentsView() {
         ? form.followup_template
         : (typeof form.followup_template === 'string' ? (() => { try { const p = JSON.parse(form.followup_template); return Array.isArray(p) ? p : []; } catch { return []; } })() : []),
     });
+    // Load YCloud templates + existing rule for this treatment
+    loadYCloudTemplates();
+    const code = form.code || '';
+    if (code) loadExistingFollowupRule(code);
+    else setHsmFollowup({ templateName: '', templateVars: {}, existingRuleId: null });
     // Default to legacy view if there's existing legacy data and no new form data
     setPostEditMode(legacy.length > 0 && !postFormHasContent(postForm) ? 'sequence' : 'protocol');
     setInstructionsModalOpen(true);
   };
 
   const saveInstructions = async () => {
-    // Migration 037 save handler:
-    // - pre_instructions: send the structured PreInstructionsForm dict if
-    //   any field is set; otherwise null
-    // - post_instructions: send the dict if user is in protocol mode and
-    //   there is content; otherwise send the legacy timed list if non-empty;
-    //   otherwise null
     const preOut = preFormHasContent(instructionsLocal.preForm)
       ? instructionsLocal.preForm
       : null;
@@ -498,23 +569,48 @@ export default function TreatmentsView() {
     if (postEditMode === 'protocol' && _postHas) {
       postOut = instructionsLocal.postForm;
     } else if (postEditMode === 'protocol' && !_postHas) {
-      // Protocol mode but no content yet — check if any field was filled
-      // (defensive: send the form anyway if user typed something)
       postOut = null;
     } else if (instructionsLocal.timedSequence.length > 0) {
       postOut = instructionsLocal.timedSequence;
     }
-    // Filter out incomplete followup items (empty templates block the save)
-    // TODO: Replace with HSM template selector from YCloud API (same as HSM Automation page)
-    const validFollowups = (instructionsLocal.followup_template || []).filter(
-      (item: any) => item.message_template && item.message_template.trim().length > 0
-    );
 
     const patch = {
       pre_instructions: preOut as unknown as string | undefined,
       post_instructions: postOut as unknown as PostInstruction[] | undefined,
-      followup_template: validFollowups.length > 0 ? validFollowups : null,
+      followup_template: null as any, // HSM templates now managed via automation_rules
     };
+
+    // Save HSM followup automation rule (if template selected)
+    const treatmentCode = (instructionsTarget === 'edit' ? editForm.code : newForm.code) || '';
+    const treatmentName = (instructionsTarget === 'edit' ? editForm.name : newForm.name) || treatmentCode;
+    if (hsmFollowup.templateName && treatmentCode) {
+      try {
+        const rulePayload = {
+          name: `Seguimiento: ${treatmentName}`,
+          trigger_type: 'post_treatment_followup',
+          condition_json: { treatment_code: treatmentCode },
+          message_type: 'hsm',
+          ycloud_template_name: hsmFollowup.templateName,
+          ycloud_template_lang: 'es',
+          ycloud_template_vars: hsmFollowup.templateVars,
+          channels: ['whatsapp'],
+          send_hour_min: 8,
+          send_hour_max: 20,
+        };
+        if (hsmFollowup.existingRuleId) {
+          await api.patch(`/admin/automations/rules/${hsmFollowup.existingRuleId}`, rulePayload);
+        } else {
+          await api.post('/admin/automations/rules', rulePayload);
+        }
+      } catch (err: any) {
+        console.error('Error saving followup HSM rule:', err);
+      }
+    } else if (!hsmFollowup.templateName && hsmFollowup.existingRuleId) {
+      // Template deselected — delete the rule
+      try {
+        await api.delete(`/admin/automations/rules/${hsmFollowup.existingRuleId}`);
+      } catch { /* rule may already be deleted */ }
+    }
     if (instructionsTarget === 'edit') {
       const updatedForm = { ...editForm, ...patch };
       setEditForm(updatedForm);
@@ -566,26 +662,7 @@ export default function TreatmentsView() {
     setInstructionsLocal(prev => ({ ...prev, postForm: { ...prev.postForm, [field]: value } }));
   };
 
-  const addFollowup = () => {
-    setInstructionsLocal(prev => ({
-      ...prev,
-      followup_template: [...prev.followup_template, { hours_after: 24, message: '' }],
-    }));
-  };
-
-  const removeFollowup = (idx: number) => {
-    setInstructionsLocal(prev => ({
-      ...prev,
-      followup_template: prev.followup_template.filter((_, i) => i !== idx),
-    }));
-  };
-
-  const updateFollowup = (idx: number, field: keyof FollowupMessage, value: unknown) => {
-    setInstructionsLocal(prev => ({
-      ...prev,
-      followup_template: prev.followup_template.map((item, i) => i === idx ? { ...item, [field]: value } : item),
-    }));
-  };
+  // Legacy followup helpers removed — followup now uses HSM template selector
 
   const [newForm, setNewForm] = useState<Partial<TreatmentType>>({
     code: '',
@@ -1193,7 +1270,7 @@ export default function TreatmentsView() {
                     <div key={treatment.id} className="p-6 hover:bg-white/[0.06] transition-all">
                       {editingId === treatment.id ? (
                         // Edit Mode
-                        <div className="space-y-6 bg-white/[0.05] p-6 rounded-3xl border border-white/[0.10] animate-in fade-in zoom-in-95 duration-300">
+                        <div className="space-y-5 bg-white/[0.05] p-3 sm:p-6 rounded-2xl sm:rounded-3xl border border-white/[0.10] animate-in fade-in zoom-in-95 duration-300">
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div className="space-y-2">
                               <label className="block text-xs font-bold text-white/55 ml-1 uppercase">{t('treatments.service_name_label')}</label>
@@ -1240,12 +1317,12 @@ export default function TreatmentsView() {
                           </div>
 
                           {/* Duration Settings */}
-                          <div className="p-6 bg-blue-500/5 rounded-2xl border border-blue-500/10">
+                          <div className="p-3 sm:p-6 bg-blue-500/5 rounded-2xl border border-blue-500/10">
                             <h4 className="text-xs font-bold text-blue-400 mb-4 flex items-center gap-2 uppercase tracking-widest">
                               <Clock size={14} />
                               {t('treatments.time_config_minutes')}
                             </h4>
-                            <div className="grid grid-cols-3 gap-6">
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-6">
                               <div className="space-y-1">
                                 <label className="block text-[10px] font-bold text-blue-400 uppercase">{t('treatments.min_label')}</label>
                                 <input
@@ -1320,7 +1397,7 @@ export default function TreatmentsView() {
                               </select>
                             </div>
 
-                            <div className="flex flex-wrap items-center gap-6">
+                            <div className="flex flex-col sm:flex-row flex-wrap items-start sm:items-center gap-3 sm:gap-6">
                               <label className="flex items-center gap-3 cursor-pointer group">
                                 <div className="relative flex items-center">
                                   <input
@@ -1363,7 +1440,7 @@ export default function TreatmentsView() {
                           </div>
 
                           {/* Consultation (High Ticket) */}
-                          <div className="space-y-3 border border-amber-500/20 rounded-xl p-4 bg-amber-500/[0.03]">
+                          <div className="space-y-3 border border-amber-500/20 rounded-xl p-3 sm:p-4 bg-amber-500/[0.03]">
                             <label className="flex items-center gap-3 cursor-pointer group">
                               <div className="relative flex items-center">
                                 <input
@@ -1452,7 +1529,7 @@ export default function TreatmentsView() {
                           )}
 
                           {/* Instructions teaser — edit form */}
-                          <div className={`flex items-center gap-4 p-4 rounded-2xl border transition-all ${(editForm.pre_instructions || (editForm.post_instructions && editForm.post_instructions.length > 0)) ? 'bg-emerald-500/5 border-emerald-500/20' : 'bg-white/[0.02] border-white/[0.06]'}`}>
+                          <div className={`flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4 p-3 sm:p-4 rounded-2xl border transition-all ${(editForm.pre_instructions || (editForm.post_instructions && editForm.post_instructions.length > 0)) ? 'bg-emerald-500/5 border-emerald-500/20' : 'bg-white/[0.02] border-white/[0.06]'}`}>
                             <div className="flex-1 flex items-center gap-3">
                               {(editForm.pre_instructions || (editForm.post_instructions && editForm.post_instructions.length > 0)) ? (
                                 <>
@@ -1475,7 +1552,7 @@ export default function TreatmentsView() {
                             </button>
                           </div>
 
-                          <div className="flex justify-end gap-3 pt-4 border-t border-white/[0.06]">
+                          <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 sm:gap-3 pt-4 border-t border-white/[0.06]">
                             <button
                               onClick={handleCancel}
                               className="px-6 py-2.5 text-white/40 font-bold hover:bg-white/[0.04] rounded-xl transition-all"
@@ -1485,7 +1562,7 @@ export default function TreatmentsView() {
                             <button
                               onClick={() => handleSave(treatment.code)}
                               disabled={saving}
-                              className="px-8 py-2.5 bg-white text-[#0a0e1a] rounded-xl font-bold hover:bg-white/90 transition-all active:scale-95 flex items-center gap-2"
+                              className="px-8 py-2.5 bg-white text-[#0a0e1a] rounded-xl font-bold hover:bg-white/90 transition-all active:scale-95 flex items-center justify-center gap-2"
                             >
                               {saving ? (
                                 <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -1886,37 +1963,96 @@ export default function TreatmentsView() {
                 )}
               </div>
 
-              {/* Section 3: Follow-up messages */}
-              <div className="space-y-3">
-                <h4 className="font-bold text-white">{t('treatments.instructions.followup.title')}</h4>
-                <div className="flex items-start gap-2 bg-blue-500/5 border border-blue-500/20 rounded-lg p-3">
-                  <Info size={14} className="text-blue-400 shrink-0 mt-0.5" />
-                  <p className="text-xs text-blue-300/80">{t('treatments.instructions.followup.inDevelopment')}</p>
+              {/* Section 3: HSM Follow-up Template (YCloud) */}
+              <div className="space-y-4">
+                <div className="flex items-center gap-2">
+                  <Send size={16} className="text-purple-400 shrink-0" />
+                  <h4 className="font-bold text-white">{t('treatments.instructions.followup.title')}</h4>
                 </div>
-                <p className="text-xs text-white/30">{t('treatments.instructions.followup.variables')}</p>
-                <div className="space-y-3">
-                  {instructionsLocal.followup_template.map((item, idx) => (
-                    <div key={idx} className="bg-white/[0.03] border border-white/[0.06] rounded-xl p-4 space-y-3">
-                      <div className="flex items-center gap-3">
-                        <input type="number" min="1" value={item.hours_after} onChange={e => updateFollowup(idx, 'hours_after', parseInt(e.target.value) || 24)}
-                          className="w-20 px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white text-sm outline-none focus:ring-2 focus:ring-blue-500/20" />
-                        <span className="text-xs text-white/40 shrink-0">{t('treatments.instructions.followup.hoursAfter')}</span>
-                        <div className="flex-1" />
-                        <button type="button" onClick={() => removeFollowup(idx)} className="p-1.5 text-white/30 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors">
-                          <X size={16} />
-                        </button>
+                <p className="text-xs text-white/40">{t('treatments.instructions.followup.hsmHint')}</p>
+
+                {templatesLoading ? (
+                  <div className="flex items-center gap-2 py-4 justify-center">
+                    <div className="w-4 h-4 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
+                    <span className="text-xs text-white/40">{t('treatments.instructions.followup.loading')}</span>
+                  </div>
+                ) : templatesWarning ? (
+                  <div className="flex items-start gap-2 bg-amber-500/10 border border-amber-500/20 rounded-xl p-3">
+                    <AlertCircle size={14} className="text-amber-400 shrink-0 mt-0.5" />
+                    <p className="text-xs text-amber-300/80">{templatesWarning}</p>
+                  </div>
+                ) : ycloudTemplates.length === 0 ? (
+                  <div className="flex items-start gap-2 bg-white/[0.03] border border-white/[0.06] rounded-xl p-3">
+                    <Info size={14} className="text-white/30 shrink-0 mt-0.5" />
+                    <p className="text-xs text-white/40">{t('treatments.instructions.followup.noTemplates')}</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {/* Template selector */}
+                    <select
+                      value={hsmFollowup.templateName}
+                      onChange={e => setHsmFollowup(prev => ({ ...prev, templateName: e.target.value, templateVars: {} }))}
+                      className="w-full px-3 py-2.5 bg-[#0d1117] border border-white/[0.08] rounded-xl text-white text-sm outline-none focus:ring-2 focus:ring-purple-500/20 [&>option]:bg-[#0d1117]"
+                    >
+                      <option value="">{t('treatments.instructions.followup.selectTemplate')}</option>
+                      {ycloudTemplates.map(tpl => (
+                        <option key={tpl.name} value={tpl.name}>
+                          {tpl.name} · {tpl.language} · {tpl.category}
+                        </option>
+                      ))}
+                    </select>
+
+                    {/* Template preview */}
+                    {(() => {
+                      const sel = ycloudTemplates.find(t => t.name === hsmFollowup.templateName);
+                      const bodyText = sel?.components?.find(c => c.type === 'BODY')?.text;
+                      const varMatches = bodyText?.match(/\{\{\d+\}\}/g) || [];
+                      return sel ? (
+                        <>
+                          {bodyText && (
+                            <div className="bg-white/[0.04] border border-white/[0.08] rounded-xl p-3">
+                              <p className="text-[10px] font-semibold uppercase tracking-wider text-white/40 mb-1">{t('treatments.instructions.followup.preview')}</p>
+                              <p className="text-xs text-white/60 whitespace-pre-wrap">{bodyText}</p>
+                            </div>
+                          )}
+
+                          {/* Variable mapping */}
+                          {varMatches.length > 0 && (
+                            <div className="bg-purple-500/5 border border-purple-500/15 rounded-xl p-3 space-y-2">
+                              <p className="text-[10px] font-semibold uppercase tracking-wider text-purple-300/60">{t('treatments.instructions.followup.varMapping')}</p>
+                              {varMatches.map(v => (
+                                <div key={v} className="flex items-center gap-2">
+                                  <span className="text-xs text-purple-300 font-semibold min-w-[40px]">{v}:</span>
+                                  <select
+                                    value={hsmFollowup.templateVars[v] || ''}
+                                    onChange={e => setHsmFollowup(prev => ({
+                                      ...prev,
+                                      templateVars: { ...prev.templateVars, [v]: e.target.value },
+                                    }))}
+                                    className="flex-1 px-2 py-1.5 bg-[#0d1117] border border-white/[0.08] rounded-lg text-white text-xs outline-none focus:ring-2 focus:ring-purple-500/20 [&>option]:bg-[#0d1117]"
+                                  >
+                                    <option value="">{t('treatments.instructions.followup.selectVar')}</option>
+                                    {HSM_VARIABLE_OPTIONS.map(opt => (
+                                      <option key={opt.key} value={opt.key}>{opt.label}</option>
+                                    ))}
+                                  </select>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </>
+                      ) : null;
+                    })()}
+
+                    {/* Existing rule indicator */}
+                    {hsmFollowup.existingRuleId && (
+                      <div className="flex items-center gap-2 text-xs text-green-400/70">
+                        <CheckCircle size={12} />
+                        <span>{t('treatments.instructions.followup.ruleLinked')}</span>
                       </div>
-                      <textarea
-                        value={item.message} onChange={e => updateFollowup(idx, 'message', e.target.value)}
-                        placeholder={t('treatments.instructions.followup.messagePlaceholder')} rows={3}
-                        className="w-full px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white text-sm placeholder-white/20 outline-none focus:ring-2 focus:ring-blue-500/20 resize-none"
-                      />
-                    </div>
-                  ))}
-                </div>
-                <button type="button" onClick={addFollowup} className="flex items-center gap-2 text-sm text-blue-400 hover:text-blue-300 font-semibold transition-colors">
-                  <Plus size={16} /> {t('treatments.instructions.followup.addButton')}
-                </button>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
 

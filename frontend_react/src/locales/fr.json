@@ -942,12 +942,15 @@
         "contentPlaceholder": "Rédigez les instructions pour ce moment..."
       },
       "followup": {
-        "title": "Messages de Suivi Automatique",
-        "inDevelopment": "Les messages de suivi seront envoyés automatiquement après le rendez-vous. Cette fonctionnalité est en cours de développement.",
-        "addButton": "Ajouter un message de suivi",
-        "hoursAfter": "heures après",
-        "variables": "Variables disponibles : {patient_name}, {treatment_name}, {appointment_date}, {professional_name}",
-        "messagePlaceholder": "Bonjour {patient_name}, comment vous sentez-vous après votre {treatment_name} ?"
+        "title": "Suivi Automatique (WhatsApp HSM)",
+        "hsmHint": "Sélectionnez un modèle WhatsApp approuvé pour envoyer en suivi post-traitement. Une règle d'automatisation sera créée dans HSM Automation automatiquement.",
+        "loading": "Chargement des modèles...",
+        "noTemplates": "Aucun modèle approuvé dans YCloud. Créez un modèle HSM dans votre compte YCloud et attendez l'approbation de Meta.",
+        "selectTemplate": "— Sélectionner un modèle —",
+        "preview": "Aperçu",
+        "varMapping": "Mappage des variables",
+        "selectVar": "— Sélectionner une variable —",
+        "ruleLinked": "Règle d'automatisation liée (visible dans HSM Automation)"
       },
       "save": "Enregistrer les instructions",
       "cancel": "Annuler"
