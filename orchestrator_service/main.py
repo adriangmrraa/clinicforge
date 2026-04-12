@@ -2399,12 +2399,12 @@ async def check_availability(
 
             for i, opt in enumerate(options):
                 line = f"{emoji_nums[i]}  {opt['date_display']} — {opt['time']} hs"
-                # If multi-sede: show sede inline per option (only location name, not full address)
+                # If multi-sede: show sede inline per option (location + address, no Maps link)
                 if is_multi_sede and opt.get("sede"):
-                    # Extract just the sede name (first part before "Dirección:")
-                    sede_short = opt["sede"].split("Dirección:")[0].strip().rstrip(".")
-                    if sede_short:
-                        line += f"  ({sede_short})"
+                    # Remove Maps link to keep it clean, show location + address
+                    sede_clean = opt["sede"].split("Maps:")[0].strip().rstrip(".")
+                    if sede_clean:
+                        line += f"\n   📍 {sede_clean}"
                 lines.append(line)
 
             if professional_name:
@@ -3609,6 +3609,11 @@ async def book_appointment(
                             booking_sede += f"\nMaps: {b_day_cfg['maps_url']}"
                     elif t_row.get("address"):
                         booking_sede = f"\nDirección: {t_row['address']}"
+                        t_maps = await db.pool.fetchval(
+                            "SELECT google_maps_url FROM tenants WHERE id = $1", tenant_id
+                        )
+                        if t_maps:
+                            booking_sede += f"\nMaps: {t_maps}"
         except Exception:
             pass
         # Generate anamnesis URL for the patient (not the interlocutor)
@@ -3706,15 +3711,27 @@ async def book_appointment(
 
             logger.error(f"💰 SEÑA TRACEBACK: {traceback.format_exc()}")
 
-        # Build sede line with emoji
+        # Build sede line with emoji — preserve Maps URL
         sede_line = ""
         if booking_sede:
-            sede_clean = (
-                booking_sede.strip()
-                .replace("\nSede: ", "")
-                .replace("\nDirección: ", "")
-            )
-            sede_line = f"\n📍 {sede_clean}"
+            parts = booking_sede.strip().split("\n")
+            sede_parts = []
+            maps_part = ""
+            for p in parts:
+                p = p.strip()
+                if not p:
+                    continue
+                if p.startswith("Maps:"):
+                    maps_part = p.replace("Maps: ", "").replace("Maps:", "").strip()
+                elif p.startswith("Sede:"):
+                    sede_parts.append(p.replace("Sede: ", ""))
+                elif p.startswith("Dirección:"):
+                    sede_parts.append(p.replace("Dirección: ", ""))
+                else:
+                    sede_parts.append(p)
+            sede_line = f"\n📍 {' — '.join(sede_parts)}"
+            if maps_part:
+                sede_line += f"\n🗺️ Maps: {maps_part}"
 
         logger.info(
             f"📋 BOOKING RESPONSE DEBUG: treatment={treatment_display_name} price={treatment_price} sena_block_len={len(sena_block)} has_sena={'INTERNAL_SEÑA_DATA' in sena_block}"
