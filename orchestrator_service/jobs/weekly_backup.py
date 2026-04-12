@@ -61,6 +61,16 @@ async def _backup_and_send(tenant_id: int):
     from services.backup_service import generate_backup
     from services.relay import get_redis
 
+    # Check lock — don't run if a manual backup is in progress
+    r = get_redis()
+    if r:
+        lock_key = f"backup:lock:{tenant_id}"
+        if await r.exists(lock_key):
+            logger.info(f"[weekly_backup] Skipping tenant {tenant_id} — manual backup in progress")
+            return
+        # Set lock to prevent concurrent
+        await r.setex(lock_key, 3600, "weekly")
+
     task_id = str(uuid.uuid4())
     logger.info(f"[weekly_backup] Starting backup for tenant {tenant_id} (task: {task_id})")
 
@@ -129,30 +139,14 @@ async def _backup_and_send(tenant_id: int):
         try:
             chat_id = int(decrypt_value(row["telegram_chat_id"]))
 
-            # Telegram limit: 50MB for documents via bot API
-            if zip_size_mb > 50:
-                # Too large for Telegram — send message with info
-                await bot.send_message(
+            with open(zip_path, "rb") as f:
+                await bot.send_document(
                     chat_id=chat_id,
-                    text=(
-                        f"📦 <b>Backup Semanal — {clinic_name}</b>\n\n"
-                        f"📅 Fecha: {date_str}\n"
-                        f"📊 Tamaño: {zip_size_mb:.1f} MB\n\n"
-                        f"⚠️ El archivo es demasiado grande para enviarlo por Telegram (máximo 50 MB). "
-                        f"Descargalo manualmente desde la app: Configuración → Mantenimiento → Generar Backup."
-                    ),
+                    document=f,
+                    filename=f"backup_{clinic_name.replace(' ', '_')}_{datetime.now().strftime('%Y-%m-%d')}.zip",
+                    caption=caption,
                     parse_mode="HTML",
                 )
-            else:
-                # Send as document
-                with open(zip_path, "rb") as f:
-                    await bot.send_document(
-                        chat_id=chat_id,
-                        document=f,
-                        filename=f"backup_{clinic_name.replace(' ', '_')}_{datetime.now().strftime('%Y-%m-%d')}.zip",
-                        caption=caption,
-                        parse_mode="HTML",
-                    )
 
             sent_count += 1
             logger.info(f"[weekly_backup] ZIP sent to chat {chat_id} for tenant {tenant_id}")

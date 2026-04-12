@@ -65,6 +65,10 @@ EXPORT_TABLES = [
     "lead_status_history",
     "lead_notes",
     "patient_attribution_history",
+    "automation_playbooks",
+    "automation_steps",
+    "automation_executions",
+    "automation_events",
 ]
 
 # Tables excluded from backup (sensitive/ephemeral/regenerated)
