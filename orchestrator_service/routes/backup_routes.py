@@ -33,7 +33,11 @@ router = APIRouter()
 
 class GenerateRequest(BaseModel):
     password: str
-    code: str
+    code: str = ""  # Optional — not needed for direct flow
+
+
+class DirectGenerateRequest(BaseModel):
+    password: str
 
 
 # --- POST /request-code ---
@@ -205,6 +209,80 @@ async def generate_backup(
         raise
     except Exception as e:
         logger.exception(f"[backup] generate failed: {e}")
+        raise HTTPException(500, "Error al iniciar el backup")
+
+
+# --- POST /generate-direct (simplified: password only, no email code) ---
+
+
+@router.post("/generate-direct", status_code=202)
+async def generate_backup_direct(
+    body: DirectGenerateRequest,
+    background_tasks: BackgroundTasks,
+    user_data=Depends(verify_ceo_token),
+    tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    """Simplified backup: verify CEO password only, then start generation. No email code needed."""
+    try:
+        from services.relay import get_redis
+
+        r = get_redis()
+        if r is None:
+            raise HTTPException(503, "Redis no disponible")
+
+        # Check concurrent lock
+        lock_key = f"backup:lock:{tenant_id}"
+        if await r.exists(lock_key):
+            raise HTTPException(
+                409, "Ya hay un backup en curso. Esperá a que finalice."
+            )
+
+        # Verify password
+        from db import db
+        import bcrypt
+
+        user_id = getattr(user_data, "id", None) or getattr(user_data, "user_id", None)
+        user_row = await db.pool.fetchrow(
+            "SELECT password_hash FROM users WHERE id = $1", str(user_id)
+        )
+        if not user_row:
+            raise HTTPException(401, "Usuario no encontrado")
+
+        if not bcrypt.checkpw(
+            body.password.encode("utf-8"),
+            user_row["password_hash"].encode("utf-8"),
+        ):
+            raise HTTPException(401, "Contraseña incorrecta")
+
+        # Set lock
+        await r.setex(lock_key, 3600, "1")
+
+        # Create task
+        task_id = str(uuid.uuid4())
+        progress_key = f"backup:progress:{task_id}"
+        await r.hset(
+            progress_key,
+            mapping={
+                "pct": "0",
+                "message": "Backup en cola...",
+                "status": "queued",
+                "tenant_id": str(tenant_id),
+            },
+        )
+        await r.expire(progress_key, 3600)
+
+        # Launch background task
+        from services.backup_service import generate_backup as _do_backup
+
+        background_tasks.add_task(_do_backup, tenant_id, task_id)
+
+        logger.info(f"[backup] Direct backup task {task_id} queued for tenant {tenant_id}")
+        return {"task_id": task_id}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"[backup] generate-direct failed: {e}")
         raise HTTPException(500, "Error al iniciar el backup")
 
 
