@@ -4622,6 +4622,14 @@ async def list_services(category: str = None, patient_term: str = ""):
         "encías": "Consulta",
         "encias": "Consulta",
         "gingivitis": "Consulta",
+        # ATM
+        "atm": "ATM",
+        "mandíbula": "ATM",
+        "mandibula": "ATM",
+        "articulación": "ATM",
+        "articulacion": "ATM",
+        "bruxismo": "ATM",
+        "chasquido": "ATM",
     }
 
     tenant_id = current_tenant_id.get()

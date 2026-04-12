@@ -1068,6 +1068,7 @@ export default function TreatmentsView() {
                         <option value="regeneracion_osea">{t('treatments.category_regeneracion_osea')}</option>
                         <option value="rehabilitacion">{t('treatments.category_rehabilitacion')}</option>
                         <option value="ortodoncia">{t('treatments.category_ortodoncia')}</option>
+                        <option value="atm">{t('treatments.category_atm')}</option>
                       </select>
                       <Activity size={18} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-white/30" />
                     </div>
