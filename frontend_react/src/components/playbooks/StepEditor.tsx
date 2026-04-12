@@ -119,6 +119,13 @@ export default function StepEditor({
 
   const update = (partial: Partial<StepData>) => onChange({ ...step, ...partial });
 
+  // Auto-force HSM when required
+  React.useEffect(() => {
+    if (requiresHSM && step.action_type !== 'send_template' && step.action_type !== 'notify_team' && step.action_type !== 'update_status' && step.action_type !== 'wait' && step.action_type !== 'wait_response') {
+      onChange({ ...step, action_type: 'send_template' });
+    }
+  }, [requiresHSM]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Parse response_rules defensively (DB may return string or object)
   const parseRules = (raw: any): Array<{ name: string; keywords: string[]; action: string }> => {
     if (!raw) return [];
