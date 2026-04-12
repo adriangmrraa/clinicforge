@@ -9415,6 +9415,14 @@ try:
 except Exception as e:
     logger.error(f"backup_router_registration_failed: {e}")
 
+# Playbook Engine V2 routes
+try:
+    from routes.playbook_routes import router as playbook_router
+    app.include_router(playbook_router, tags=["playbooks"])
+    logger.info("✅ Playbook Engine V2 router registered")
+except Exception as e:
+    logger.error(f"playbook_router_registration_failed: {e}")
+
 # YCloud Sync routes
 try:
     from routes.ycloud_sync_routes import router as ycloud_sync_router

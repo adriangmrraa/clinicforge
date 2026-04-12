@@ -50,4 +50,10 @@ try:
 except ImportError as e:
     logger.warning(f"⚠️ No se pudo importar job expire_unpaid: {e}")
 
-__all__ = ['reminders', 'followups', 'lead_recovery', 'nova_morning', 'smart_alerts', 'expire_unpaid']
+try:
+    from . import playbook_executor
+    logger.info("✅ Job de playbook executor importado correctamente")
+except ImportError as e:
+    logger.warning(f"⚠️ No se pudo importar job playbook_executor: {e}")
+
+__all__ = ['reminders', 'followups', 'lead_recovery', 'nova_morning', 'smart_alerts', 'expire_unpaid', 'playbook_executor']

@@ -898,6 +898,17 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
                 # DON'T continue — let it flow to the AI agent so it can handle the reschedule conversation
                 pass
 
+            # --- Playbook V2: Check if patient has active execution waiting for response ---
+            if not msg.is_agent and _btn_text not in _CONFIRM_BUTTONS and _btn_text not in _CANCEL_BUTTONS:
+                try:
+                    from jobs.playbook_executor import handle_patient_response
+                    handled = await handle_patient_response(pool, tenant_id, msg.external_user_id, msg.content or "")
+                    if handled:
+                        logger.info(f"📋 Playbook V2 handled response from {msg.external_user_id}")
+                        continue  # Skip AI agent
+                except Exception as _pb_err:
+                    logger.warning(f"⚠️ Playbook response handler (non-fatal): {_pb_err}")
+
             if not is_locked:
                 # Auto-cleanup: if override expired but status is still human_handling, reset it
                 if override_row and override_row["human_override_until"] is not None:
