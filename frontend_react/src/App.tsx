@@ -14,6 +14,7 @@ import ProfileView from './views/ProfileView';
 import ClinicsView from './views/ClinicsView';
 import ConfigView from './views/ConfigView';
 import MetaTemplatesView from './views/MetaTemplatesView';
+import PlaybooksView from './views/PlaybooksView';
 import MarketingHubView from './views/MarketingHubView';
 import ROIDashboardView from './views/ROIDashboardView';
 import LeadsManagementView from './views/LeadsManagementView';
@@ -100,6 +101,11 @@ function App() {
                     <Route path="templates" element={
                       <ProtectedRoute allowedRoles={['ceo']}>
                         <MetaTemplatesView />
+                      </ProtectedRoute>
+                    } />
+                    <Route path="playbooks" element={
+                      <ProtectedRoute allowedRoles={['ceo']}>
+                        <PlaybooksView />
                       </ProtectedRoute>
                     } />
                     <Route path="leads" element={

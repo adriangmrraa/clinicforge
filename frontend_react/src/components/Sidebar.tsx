@@ -136,6 +136,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle, onCloseMo
     { id: 'marketing', labelKey: 'nav.marketing' as const, icon: <Megaphone size={17} />, path: '/marketing', roles: ['ceo'], hint: 'ROI real de Meta Ads y Google Ads con atribución de pacientes' },
     { id: 'roi', labelKey: 'nav.roi' as const, icon: <TrendingUp size={17} />, path: '/roi', roles: ['ceo'], hint: 'Dashboard de ROI con atribución, tendencias y campañas top' },
     { id: 'leads', labelKey: 'nav.leads' as const, icon: <Users size={17} />, path: '/leads', roles: ['ceo'], hint: 'Leads de formularios de Meta con estado y seguimiento' },
+    { id: 'playbooks', labelKey: 'nav.playbooks' as const, icon: <Zap size={17} />, path: '/playbooks', roles: ['ceo'], hint: 'Estrategias de automatización inteligente para la clínica' },
     { id: 'templates', labelKey: 'nav.hsm' as const, icon: <Layout size={17} />, path: '/templates', roles: ['ceo'], hint: 'Plantillas HSM de WhatsApp y reglas de automatización' },
     { id: 'settings', labelKey: 'nav.settings' as const, icon: <Settings size={17} />, path: '/configuracion', roles: ['ceo'], hint: 'Configuración general, integraciones y credenciales' },
   ];
