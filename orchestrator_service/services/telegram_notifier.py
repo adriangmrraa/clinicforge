@@ -91,6 +91,34 @@ EVENT_FORMATS = {
             f"Motivo: {d.get('reason', '?')}",
         ],
     },
+    "NEW_PATIENT": {
+        "emoji": "👤",
+        "title": "Nuevo paciente",
+        "fields": lambda d: [
+            f"Nombre: {d.get('name', d.get('first_name', '?'))}",
+            f"Teléfono: {d.get('phone_number', d.get('phone', '?'))}",
+            f"Canal: {d.get('channel', 'WhatsApp')}",
+            f"Fuente: {d.get('acquisition_source', 'Orgánico')}" if d.get('acquisition_source') else None,
+        ],
+    },
+    "URGENCY_DETECTED": {
+        "emoji": "🚨",
+        "title": "Urgencia detectada",
+        "fields": lambda d: [
+            f"Paciente: {d.get('patient_name', d.get('phone_number', '?'))}",
+            f"Nivel: {d.get('urgency_level', '?')}",
+            f"Motivo: {d.get('urgency_reason', d.get('reason', '?'))}",
+        ],
+    },
+    "PLAYBOOK_ALERT": {
+        "emoji": "⚠️",
+        "title": "Alerta de automatización",
+        "fields": lambda d: [
+            f"Paciente: {d.get('patient_name', '?')}",
+            f"Teléfono: {d.get('phone', '?')}",
+            f"Mensaje: {d.get('message', '?')}",
+        ],
+    },
     "LEAD_RECOVERY_TOUCH1": {
         "emoji": "🎯",
         "title": "Recuperé un lead",
@@ -149,9 +177,13 @@ EVENT_FORMATS = {
 # Everything else is silently dropped (no generic fallback).
 ALLOWED_EVENTS = {
     "NEW_APPOINTMENT",
+    "APPOINTMENT_UPDATED",
     "APPOINTMENT_DELETED",
     "PAYMENT_CONFIRMED",
     "HUMAN_HANDOFF",
+    "NEW_PATIENT",
+    "URGENCY_DETECTED",
+    "PLAYBOOK_ALERT",
     "LEAD_RECOVERY_TOUCH1",
     "LEAD_RECOVERY_TOUCH2",
     "LEAD_RECOVERY_TOUCH3",

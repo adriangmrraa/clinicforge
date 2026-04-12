@@ -4053,6 +4053,24 @@ async def triage_urgency(symptoms: str):
                 )
             except Exception:
                 pass  # Socket notification is non-critical
+
+            # Notify Telegram for HIGH/CRITICAL urgencies
+            if urgency_level in ("high", "emergency"):
+                try:
+                    from services.telegram_notifier import fire_telegram_notification
+                    patient_name = (
+                        f"{patient_row.get('first_name', '')} {patient_row.get('last_name', '') or ''}".strip()
+                        or phone
+                    )
+                    fire_telegram_notification("URGENCY_DETECTED", {
+                        "patient_name": patient_name,
+                        "phone_number": phone,
+                        "urgency_level": urgency_level,
+                        "urgency_reason": symptoms,
+                        "tenant_id": tenant_id,
+                    }, tenant_id)
+                except Exception:
+                    pass
         except Exception as e:
             logger.error(f"Error persisting triage: {e}")
 

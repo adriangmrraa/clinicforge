@@ -818,6 +818,20 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
                     except Exception:
                         pass
 
+                    # Notify via Telegram
+                    try:
+                        from services.telegram_notifier import fire_telegram_notification
+                        fire_telegram_notification("APPOINTMENT_UPDATED", {
+                            "patient_name": _apt_row.get("patient_name", msg.external_user_id) if _apt_row else msg.external_user_id,
+                            "appointment_datetime": str(_apt_row["appointment_datetime"]) if _apt_row else "",
+                            "status": "confirmed",
+                            "phone_number": msg.external_user_id,
+                            "tenant_id": tenant_id,
+                            "source": "whatsapp_button",
+                        }, tenant_id)
+                    except Exception:
+                        pass
+
                 except Exception as _conf_err:
                     logger.error(f"❌ Appointment confirm button failed: {_conf_err}")
                 continue  # Skip AI agent — already handled
@@ -868,6 +882,18 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
                                 "tenant_id": tenant_id,
                                 "phone_number": msg.external_user_id,
                             })
+                    except Exception:
+                        pass
+
+                    # Notify via Telegram
+                    try:
+                        from services.telegram_notifier import fire_telegram_notification
+                        fire_telegram_notification("APPOINTMENT_DELETED", {
+                            "patient_name": msg.external_user_id,
+                            "appointment_datetime": str(_cancel_row["appointment_datetime"]) if _cancel_row else "",
+                            "tenant_id": tenant_id,
+                            "source": "whatsapp_button",
+                        }, tenant_id)
                     except Exception:
                         pass
 

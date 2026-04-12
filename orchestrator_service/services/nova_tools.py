@@ -4336,8 +4336,8 @@ async def _resumen_semana(tenant_id: int, user_role: str) -> str:
     pending = stats["pendientes"] or 0
     revenue = float(stats["facturado_turnos"] or 0) + float(plan_revenue)
     cancel_rate = (
-        f"{(cancelled / (total + cancelled) * 100):.1f}%"
-        if (total + cancelled) > 0
+        f"{(cancelled / total * 100):.1f}%"
+        if total > 0
         else "0%"
     )
 
@@ -4410,7 +4410,9 @@ async def _rendimiento_profesional(args: Dict, tenant_id: int, user_role: str) -
     cancel_rate = f"{(cancelled / total * 100):.1f}%" if total > 0 else "0%"
 
     period_labels = {"week": "la semana", "month": "el mes", "quarter": "el trimestre"}
-    prof_name = f"Dr. {prof['first_name']} {prof['last_name']}"
+    prof_name = f"Dr. {prof['first_name'] or ''} {prof['last_name'] or ''}".strip()
+    if prof_name == "Dr.":
+        prof_name = "Dr. (sin nombre)"
 
     return (
         f"Rendimiento de {prof_name} ({prof['specialty'] or 'sin especialidad'}) en {period_labels.get(period, period)}:\n"
