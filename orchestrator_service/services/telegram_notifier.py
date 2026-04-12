@@ -251,11 +251,69 @@ async def notify_telegram(event: str, data: Any, tenant_id: Optional[int] = None
                     text=message,
                     parse_mode=ParseMode.HTML,
                 )
+                # Store notification context in Redis for follow-up questions
+                await _store_notification_context(tenant_id, chat_id, event, data)
             except Exception as e:
                 logger.debug(f"Telegram notify skip chat: {e}")
 
     except Exception as e:
         logger.debug(f"Telegram notify error ({event}): {e}")
+
+
+async def _store_notification_context(tenant_id: int, chat_id: int, event: str, data: Any):
+    """Store notification context in Redis so Nova can reference it in follow-up questions."""
+    try:
+        import json
+        import os
+        import redis.asyncio as aioredis
+
+        redis_url = os.getenv("REDIS_URL", "redis://redis:6379")
+        redis = aioredis.from_url(redis_url, decode_responses=True)
+
+        context = {"event": event, "tenant_id": tenant_id}
+
+        if isinstance(data, dict):
+            # Extract patient/appointment info from notification data
+            for key in ("patient_name", "patient_id", "phone_number",
+                        "appointment_id", "appointment_type", "treatment",
+                        "professional_name", "amount", "billing_amount",
+                        "payment_status", "first_name", "last_name"):
+                if key in data and data[key]:
+                    context[key] = str(data[key])
+
+            # Build patient name from parts if not directly available
+            if "patient_name" not in context:
+                fn = data.get("first_name", "")
+                ln = data.get("last_name", "")
+                if fn or ln:
+                    context["patient_name"] = f"{fn} {ln}".strip()
+
+        key = f"last_tg_notification:{tenant_id}:{chat_id}"
+        await redis.setex(key, 1800, json.dumps(context))  # 30 min TTL
+        await redis.aclose()
+    except Exception as e:
+        logger.debug(f"Store notification context failed (non-fatal): {e}")
+
+
+async def get_notification_context(tenant_id: int, chat_id: int) -> dict:
+    """Retrieve recent notification context from Redis (if any, <30min)."""
+    try:
+        import json
+        import os
+        import redis.asyncio as aioredis
+
+        redis_url = os.getenv("REDIS_URL", "redis://redis:6379")
+        redis = aioredis.from_url(redis_url, decode_responses=True)
+
+        key = f"last_tg_notification:{tenant_id}:{chat_id}"
+        raw = await redis.get(key)
+        await redis.aclose()
+
+        if raw:
+            return json.loads(raw)
+    except Exception:
+        pass
+    return {}
 
 
 def fire_telegram_notification(event: str, data: Any, tenant_id: Optional[int] = None):

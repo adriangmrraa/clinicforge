@@ -402,8 +402,10 @@ NOVA_TOOLS_SCHEMA: List[Dict[str, Any]] = [
     {
         "type": "function",
         "name": "facturacion_pendiente",
-        "description": "Lista turnos completados sin pago registrado + presupuestos de tratamiento con saldo pendiente.",
-        "parameters": {"type": "object", "properties": {}},
+        "description": "Lista turnos con pago pendiente (seña, saldo). Si se proporciona un nombre de paciente, filtra solo ese paciente. Si no, devuelve todos los pendientes de la clínica.",
+        "parameters": {"type": "object", "properties": {
+            "paciente": {"type": "string", "description": "Nombre del paciente para filtrar (opcional). Si el usuario pregunta por un paciente específico, pasar su nombre acá."}
+        }},
     },
     # -------------------------------------------------------------------------
     # D. Analytics y Configuracion (3)
@@ -4188,29 +4190,47 @@ async def _registrar_pago_plan(args: Dict, tenant_id: int, user_role: str) -> st
     return f"Pago de {_fmt_money(amount)} registrado en el plan '{plan['name']}' para {plan['patient_name']} ({method_labels.get(method, method)})."
 
 
-async def _facturacion_pendiente(tenant_id: int) -> str:
-    # Turnos con facturación pendiente (excluye turnos vinculados a planes)
+async def _facturacion_pendiente(tenant_id: int, paciente: str = None) -> str:
+    # Build patient filter
+    patient_filter = ""
+    params = [tenant_id]
+    if paciente and paciente.strip():
+        patient_filter = " AND (p.first_name || ' ' || COALESCE(p.last_name, '')) ILIKE $2"
+        params.append(f"%{paciente.strip()}%")
+
+    # Turnos con facturación pendiente (seña pendiente o sin pago)
+    # Include both 'completed' AND 'scheduled'/'confirmed' with pending payment
     rows = await db.pool.fetch(
-        """
-        SELECT a.id, a.appointment_datetime, a.appointment_type,
+        f"""
+        SELECT a.id, a.appointment_datetime, a.appointment_type, a.status as apt_status,
+               a.payment_status, a.billing_amount,
                p.first_name || ' ' || COALESCE(p.last_name, '') AS patient_name,
                tt.base_price
         FROM appointments a
         JOIN patients p ON p.id = a.patient_id
         LEFT JOIN treatment_types tt ON tt.code = a.appointment_type AND tt.tenant_id = a.tenant_id
         WHERE a.tenant_id = $1
-          AND a.status = 'completed'
-          AND (a.payment_status = 'pending' OR a.payment_status IS NULL)
+          AND (
+              (a.status = 'completed' AND (a.payment_status = 'pending' OR a.payment_status IS NULL))
+              OR (a.status IN ('scheduled', 'confirmed') AND a.payment_status IN ('pending', 'partial'))
+          )
           AND a.plan_item_id IS NULL
+          {patient_filter}
         ORDER BY a.appointment_datetime DESC
         LIMIT 20
         """,
-        tenant_id,
+        *params,
     )
 
     # Planes con saldo pendiente
+    plan_params = [tenant_id]
+    plan_filter = ""
+    if paciente and paciente.strip():
+        plan_filter = " AND (pat.first_name || ' ' || COALESCE(pat.last_name, '')) ILIKE $2"
+        plan_params.append(f"%{paciente.strip()}%")
+
     plans = await db.pool.fetch(
-        """
+        f"""
         SELECT tp.id, tp.name, tp.approved_total,
                COALESCE(payments.total_paid, 0) as total_paid,
                pat.first_name || ' ' || COALESCE(pat.last_name, '') AS patient_name
@@ -4226,28 +4246,34 @@ async def _facturacion_pendiente(tenant_id: int) -> str:
           AND tp.status IN ('approved', 'in_progress')
           AND tp.approved_total IS NOT NULL
           AND (payments.total_paid IS NULL OR payments.total_paid < tp.approved_total)
+          {plan_filter}
         ORDER BY tp.approved_total - COALESCE(payments.total_paid, 0) DESC
         LIMIT 20
         """,
-        tenant_id,
+        *plan_params,
     )
 
+    patient_label = f" de {paciente}" if paciente else ""
+
     if not rows and not plans:
-        return "No hay facturacion pendiente. Todo al dia."
+        return f"No hay facturación pendiente{patient_label}. Todo al día."
 
     lines = []
     if rows:
-        lines.append(f"Facturacion pendiente ({len(rows)} turnos):")
+        lines.append(f"Facturación pendiente{patient_label} ({len(rows)} turnos):")
         for r in rows:
             dt = _fmt_date(r["appointment_datetime"])
-            price = _fmt_money(r["base_price"]) if r["base_price"] else "sin precio"
+            amount = r.get("billing_amount") or r.get("base_price")
+            price = _fmt_money(amount) if amount else "sin precio"
+            status = r.get("payment_status") or "sin pago"
+            apt_st = r.get("apt_status") or ""
             lines.append(
-                f"• {r['patient_name']} — {r['appointment_type']} ({dt}) — {price}"
+                f"• {r['patient_name']} — {r['appointment_type']} ({dt}) — {price} — estado pago: {status} — turno: {apt_st}"
             )
     if plans:
         if lines:
-            lines.append("")  # separator
-        lines.append(f"Planes con saldo pendiente ({len(plans)} planes):")
+            lines.append("")
+        lines.append(f"Planes con saldo pendiente{patient_label} ({len(plans)} planes):")
         for p in plans:
             pending = float(p["approved_total"]) - float(p["total_paid"])
             lines.append(
@@ -5090,7 +5116,7 @@ async def execute_nova_tool(
         elif name == "registrar_pago_plan":
             return await _registrar_pago_plan(args, tenant_id, user_role)
         elif name == "facturacion_pendiente":
-            return await _facturacion_pendiente(tenant_id)
+            return await _facturacion_pendiente(tenant_id, args.get("paciente"))
 
         # D. Analytics y Configuracion
         elif name == "resumen_semana":

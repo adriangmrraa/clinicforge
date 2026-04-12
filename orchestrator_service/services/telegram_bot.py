@@ -307,6 +307,34 @@ async def _process_with_nova(
         except Exception as e:
             logger.warning(f"Failed to load Engram memories: {e}")
 
+        # Inject recent notification context (if CEO asks about a patient right after notification)
+        try:
+            from services.telegram_notifier import get_notification_context
+            notif_ctx = await get_notification_context(tenant_id, chat_id)
+            if notif_ctx and notif_ctx.get("patient_name"):
+                ctx_lines = [
+                    "\n\nCONTEXTO RECIENTE — Se acaba de enviar una notificación sobre este paciente:",
+                    f"• Paciente: {notif_ctx.get('patient_name', '?')}",
+                ]
+                if notif_ctx.get("patient_id"):
+                    ctx_lines.append(f"• Patient ID: {notif_ctx['patient_id']}")
+                if notif_ctx.get("phone_number"):
+                    ctx_lines.append(f"• Teléfono: {notif_ctx['phone_number']}")
+                if notif_ctx.get("appointment_type"):
+                    ctx_lines.append(f"• Tratamiento: {notif_ctx['appointment_type']}")
+                if notif_ctx.get("appointment_id"):
+                    ctx_lines.append(f"• Turno ID: {notif_ctx['appointment_id']}")
+                if notif_ctx.get("event"):
+                    ctx_lines.append(f"• Evento: {notif_ctx['event']}")
+                ctx_lines.append(
+                    "Si el usuario pregunta sobre 'el paciente', 'la seña', 'el turno', 'ese turno', "
+                    "'pagó?', o cualquier referencia implícita, REFERIRSE A ESTE PACIENTE. "
+                    "Usá buscar_paciente con su nombre o ID para obtener datos actualizados."
+                )
+                system_prompt += "\n".join(ctx_lines)
+        except Exception as e:
+            logger.debug(f"Notification context injection failed (non-fatal): {e}")
+
         # Convert tool schemas — filtered for Telegram context (no UI navigation tools)
         cc_tools = nova_tools_for_page("telegram")
 
