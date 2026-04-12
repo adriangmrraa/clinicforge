@@ -44,13 +44,13 @@ interface StepEditorProps {
 }
 
 const ACTION_OPTIONS = [
-  { value: 'send_template', label: 'Enviar plantilla HSM', icon: <Send size={14} /> },
-  { value: 'send_text', label: 'Enviar mensaje de texto', icon: <MessageSquare size={14} /> },
-  { value: 'send_instructions', label: 'Enviar instrucciones del tratamiento', icon: <FileText size={14} /> },
-  { value: 'wait', label: 'Esperar (delay)', icon: <Clock size={14} /> },
-  { value: 'wait_response', label: 'Esperar respuesta del paciente', icon: <RefreshCw size={14} /> },
-  { value: 'notify_team', label: 'Notificar al equipo', icon: <Bell size={14} /> },
-  { value: 'update_status', label: 'Actualizar estado', icon: <Settings size={14} /> },
+  { value: 'send_template', label: 'Enviar plantilla HSM', icon: <Send size={14} />, hint: 'Usa una plantilla aprobada de WhatsApp (con botones interactivos). Ideal para recordatorios y reseñas.' },
+  { value: 'send_text', label: 'Enviar mensaje de texto', icon: <MessageSquare size={14} />, hint: 'Mensaje libre con variables. Úsalo para seguimientos personalizados como "¿Cómo te sentís?".' },
+  { value: 'send_instructions', label: 'Enviar instrucciones del tratamiento', icon: <FileText size={14} />, hint: 'Envía automáticamente las instrucciones post-operatorias configuradas en el tratamiento.' },
+  { value: 'wait', label: 'Esperar (delay)', icon: <Clock size={14} />, hint: 'Pausa la secuencia por un tiempo antes de ejecutar el siguiente paso.' },
+  { value: 'wait_response', label: 'Esperar respuesta del paciente', icon: <RefreshCw size={14} />, hint: 'Pausa hasta que el paciente responda. Si no responde en el tiempo configurado, continúa o aborta.' },
+  { value: 'notify_team', label: 'Notificar al equipo', icon: <Bell size={14} />, hint: 'Envía una alerta al equipo por Telegram o el dashboard. Útil si el paciente reporta dolor o urgencia.' },
+  { value: 'update_status', label: 'Actualizar estado', icon: <Settings size={14} />, hint: 'Cambia automáticamente el estado de un turno (ej: marcar como confirmado).' },
 ];
 
 const DELAY_PRESETS = [
@@ -171,6 +171,9 @@ export default function StepEditor({
                 <option key={opt.value} value={opt.value}>{opt.label}</option>
               ))}
             </select>
+            <p className="text-[11px] text-white/30 mt-1 leading-relaxed">
+              {ACTION_OPTIONS.find(o => o.value === action)?.hint}
+            </p>
           </div>
 
           {/* Delay */}
@@ -192,6 +195,7 @@ export default function StepEditor({
             <div className="space-y-3">
               <div>
                 <label className="text-xs font-medium text-white/40">{t('playbooks.select_template')}</label>
+                <p className="text-[11px] text-white/25">Seleccioná una plantilla aprobada en Meta. Las variables (nombre, fecha, hora) se completan automáticamente con los datos del paciente y su turno.</p>
                 <select
                   value={step.template_name || ''}
                   onChange={e => update({ template_name: e.target.value })}
@@ -211,6 +215,9 @@ export default function StepEditor({
           {action === 'send_text' && (
             <div className="space-y-2">
               <label className="text-xs font-medium text-white/40">{t('playbooks.message_text')}</label>
+              <p className="text-[11px] text-white/25 leading-relaxed">
+                Escribí el mensaje que recibirá el paciente. Tocá las variables de abajo para insertarlas. Se reemplazan automáticamente con los datos reales del paciente.
+              </p>
               <textarea
                 value={step.message_text || ''}
                 onChange={e => update({ message_text: e.target.value })}
@@ -274,6 +281,7 @@ export default function StepEditor({
           {action === 'notify_team' && (
             <div className="space-y-2">
               <label className="text-xs font-medium text-white/40">{t('playbooks.notify_channel')}</label>
+              <p className="text-[11px] text-white/25">El equipo recibirá esta alerta cuando se ejecute este paso. Podés usar variables como {{nombre_paciente}} en el mensaje.</p>
               <select
                 value={step.notify_channel || 'telegram'}
                 onChange={e => update({ notify_channel: e.target.value })}
@@ -324,6 +332,7 @@ export default function StepEditor({
             <div className="space-y-3">
               <div>
                 <label className="text-xs font-medium text-white/40">{t('playbooks.wait_timeout')}</label>
+                <p className="text-[11px] text-white/25">La secuencia se pausa hasta que el paciente responda. Si no responde en el tiempo configurado, se ejecuta la acción de "si no responde" definida abajo.</p>
                 <select
                   value={step.wait_timeout_minutes || 120}
                   onChange={e => update({ wait_timeout_minutes: Number(e.target.value) })}
@@ -347,6 +356,9 @@ export default function StepEditor({
               {/* Keyword rules */}
               <div className="space-y-2">
                 <label className="text-xs font-medium text-white/40">{t('playbooks.keyword_rules')}</label>
+                <p className="text-[11px] text-white/25 leading-relaxed">
+                  Definí grupos de palabras clave para clasificar respuestas automáticamente. Incluí conjugaciones: "dolor", "duele", "me duele". Separalas con coma. El sistema busca coincidencia exacta de cada palabra en el mensaje.
+                </p>
                 {(step.response_rules || []).map((rule, idx) => (
                   <div key={idx} className="flex gap-2 items-start bg-white/[0.02] rounded-lg p-2">
                     <input
@@ -385,6 +397,7 @@ export default function StepEditor({
               {/* On no response */}
               <div>
                 <label className="text-xs font-medium text-white/40">{t('playbooks.on_no_response')}</label>
+                <p className="text-[11px] text-white/25">¿Qué hacer si el paciente no responde en el tiempo configurado?</p>
                 <select
                   value={step.on_no_response || 'continue'}
                   onChange={e => update({ on_no_response: e.target.value })}
@@ -399,6 +412,7 @@ export default function StepEditor({
               {/* On unclassified */}
               <div>
                 <label className="text-xs font-medium text-white/40">{t('playbooks.on_unclassified')}</label>
+                <p className="text-[11px] text-white/25">¿Qué hacer si la respuesta del paciente no coincide con ninguna palabra clave ni botón?</p>
                 <select
                   value={step.on_unclassified || 'pass_to_ai'}
                   onChange={e => update({ on_unclassified: e.target.value })}

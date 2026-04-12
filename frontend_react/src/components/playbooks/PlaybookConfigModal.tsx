@@ -201,6 +201,9 @@ export default function PlaybookConfigModal({ playbookId, onClose, onSaved }: Pl
             <h3 className="text-sm font-bold text-white/60 uppercase tracking-wider mb-3 flex items-center gap-2">
               <Zap size={14} /> {t('playbooks.section_identity')}
             </h3>
+            <p className="text-[11px] text-white/25 mb-3 leading-relaxed">
+              Dale un nombre claro que describa el objetivo de esta estrategia. La categoría te ayuda a organizarlas visualmente en la galería.
+            </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="text-xs text-white/40">{t('playbooks.name')}</label>
@@ -230,6 +233,9 @@ export default function PlaybookConfigModal({ playbookId, onClose, onSaved }: Pl
             <h3 className="text-sm font-bold text-white/60 uppercase tracking-wider mb-3 flex items-center gap-2">
               <Clock size={14} /> {t('playbooks.section_trigger')}
             </h3>
+            <p className="text-[11px] text-white/25 mb-3 leading-relaxed">
+              Elegí qué evento dispara esta secuencia. Por ejemplo, "Turno completado" se activa cuando la doctora marca un turno como atendido.
+            </p>
             <select value={triggerType} onChange={e => setTriggerType(e.target.value)}
               className="w-full px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white text-sm outline-none appearance-none">
               {TRIGGER_OPTIONS.map(t => <option key={t.value} value={t.value}>{t.icon} {t.label}</option>)}
@@ -241,6 +247,9 @@ export default function PlaybookConfigModal({ playbookId, onClose, onSaved }: Pl
             <h3 className="text-sm font-bold text-white/60 uppercase tracking-wider mb-3 flex items-center gap-2">
               <Users size={14} /> {t('playbooks.section_conditions')}
             </h3>
+            <p className="text-[11px] text-white/25 mb-3 leading-relaxed">
+              Filtrá para qué tratamientos aplica esta estrategia. Si no seleccionás ninguno, se aplica a todos. Por ejemplo, seleccioná solo "Implantes" y "Cirugía" para el protocolo post-quirúrgico.
+            </p>
             <div>
               <label className="text-xs text-white/40 mb-2 block">{t('playbooks.filter_treatments')}</label>
               <div className="flex flex-wrap gap-1.5">
@@ -269,6 +278,9 @@ export default function PlaybookConfigModal({ playbookId, onClose, onSaved }: Pl
             <h3 className="text-sm font-bold text-white/60 uppercase tracking-wider mb-3 flex items-center gap-2">
               <Zap size={14} /> {t('playbooks.section_steps')} ({steps.length})
             </h3>
+            <p className="text-[11px] text-white/25 mb-3 leading-relaxed">
+              Armá la secuencia paso a paso. Cada paso se ejecuta después del anterior con el delay que configures. Podés enviar plantillas HSM con botones, mensajes de texto, instrucciones del tratamiento, o notificar al equipo. Usá ⬆️⬇️ para reordenar los pasos.
+            </p>
 
             {/* Timeline preview */}
             {steps.length > 0 && (
@@ -305,6 +317,9 @@ export default function PlaybookConfigModal({ playbookId, onClose, onSaved }: Pl
             <h3 className="text-sm font-bold text-white/60 uppercase tracking-wider mb-3 flex items-center gap-2">
               <Shield size={14} /> {t('playbooks.section_safety')}
             </h3>
+            <p className="text-[11px] text-white/25 mb-3 leading-relaxed">
+              Controlá cuántos mensajes por día puede recibir un paciente y en qué horarios. La secuencia se detiene automáticamente si el paciente agenda, si un humano toma el chat, o si pide que no le escriban más.
+            </p>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
                 <label className="text-xs text-white/40">{t('playbooks.max_msgs_day')}</label>
