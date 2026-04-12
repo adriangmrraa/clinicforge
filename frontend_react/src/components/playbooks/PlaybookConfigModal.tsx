@@ -6,7 +6,7 @@ import StepEditor, { StepData } from './StepEditor';
 import StepTimeline from './StepTimeline';
 
 interface PlaybookConfigModalProps {
-  playbookId: number | null; // null = create new
+  playbookId: number | null;
   onClose: () => void;
   onSaved: () => void;
 }
@@ -30,11 +30,60 @@ const CATEGORY_OPTIONS = [
   { value: 'custom', label: 'Personalizado' },
 ];
 
+/** Safely parse a value that might be string JSON, dict, or null into a dict */
+function safeDict(v: any): Record<string, any> {
+  if (!v) return {};
+  if (typeof v === 'object' && !Array.isArray(v)) return v;
+  if (typeof v === 'string') {
+    try { const p = JSON.parse(v); return typeof p === 'object' && !Array.isArray(p) ? p : {}; }
+    catch { return {}; }
+  }
+  return {};
+}
+
+/** Safely parse array (might be string JSON) */
+function safeArray(v: any): any[] {
+  if (!v) return [];
+  if (Array.isArray(v)) return v;
+  if (typeof v === 'string') {
+    try { const p = JSON.parse(v); return Array.isArray(p) ? p : []; }
+    catch { return []; }
+  }
+  return [];
+}
+
+/** Clean step data for POST (remove DB-only fields) */
+function cleanStepForPost(s: StepData, idx: number): Record<string, any> {
+  return {
+    step_order: idx,
+    step_label: s.step_label || null,
+    action_type: s.action_type || 'send_text',
+    delay_minutes: Number(s.delay_minutes) || 0,
+    schedule_hour_min: s.schedule_hour_min ?? null,
+    schedule_hour_max: s.schedule_hour_max ?? null,
+    template_name: s.template_name || null,
+    template_lang: s.template_lang || 'es',
+    template_vars: safeDict(s.template_vars),
+    message_text: s.message_text || null,
+    instruction_source: s.instruction_source || 'from_treatment',
+    custom_instructions: s.custom_instructions || null,
+    notify_channel: s.notify_channel || 'telegram',
+    notify_message: s.notify_message || null,
+    update_field: s.update_field || null,
+    update_value: s.update_value || null,
+    wait_timeout_minutes: Number(s.wait_timeout_minutes) || 120,
+    response_rules: safeArray(s.response_rules),
+    on_no_response: s.on_no_response || 'continue',
+    on_unclassified: s.on_unclassified || 'pass_to_ai',
+    on_response_next_step: s.on_response_next_step ?? null,
+    on_no_response_next_step: s.on_no_response_next_step ?? null,
+  };
+}
+
 export default function PlaybookConfigModal({ playbookId, onClose, onSaved }: PlaybookConfigModalProps) {
   const { t } = useTranslation();
   const isEdit = playbookId !== null;
 
-  // Playbook state
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [icon, setIcon] = useState('📋');
@@ -49,32 +98,27 @@ export default function PlaybookConfigModal({ playbookId, onClose, onSaved }: Pl
   const [abortOnHuman, setAbortOnHuman] = useState(true);
   const [abortOnOptout, setAbortOnOptout] = useState(true);
 
-  // Steps
   const [steps, setSteps] = useState<StepData[]>([]);
   const [activeStep, setActiveStep] = useState(0);
 
-  // Templates & treatments
   const [templates, setTemplates] = useState<any[]>([]);
   const [treatments, setTreatments] = useState<any[]>([]);
-  const [professionals, setProfessionals] = useState<any[]>([]);
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  // Load data
   useEffect(() => {
     const loadData = async () => {
       setLoading(true);
       try {
-        const [tplRes, ttRes, profRes] = await Promise.all([
+        const [tplRes, ttRes] = await Promise.all([
           api.get('/admin/automations/ycloud-templates').catch(() => ({ data: { templates: [] } })),
           api.get('/admin/treatment-types').catch(() => ({ data: [] })),
-          api.get('/admin/professionals').catch(() => ({ data: [] })),
         ]);
         setTemplates(tplRes.data.templates || []);
-        setTreatments(Array.isArray(ttRes.data) ? ttRes.data : ttRes.data.treatments || []);
-        setProfessionals(Array.isArray(profRes.data) ? profRes.data : profRes.data.professionals || []);
+        const ttData = ttRes.data;
+        setTreatments(Array.isArray(ttData) ? ttData : ttData?.treatments || ttData?.data || []);
 
         if (isEdit) {
           const { data } = await api.get(`/admin/playbooks/${playbookId}`);
@@ -83,15 +127,20 @@ export default function PlaybookConfigModal({ playbookId, onClose, onSaved }: Pl
           setIcon(data.icon || '📋');
           setCategory(data.category || 'custom');
           setTriggerType(data.trigger_type || 'appointment_completed');
-          setTriggerConfig(data.trigger_config || {});
-          setConditions(data.conditions || {});
+          setTriggerConfig(safeDict(data.trigger_config));
+          setConditions(safeDict(data.conditions));
           setMaxMsgsPerDay(data.max_messages_per_day ?? 2);
           setScheduleMin(data.schedule_hour_min ?? 9);
           setScheduleMax(data.schedule_hour_max ?? 20);
           setAbortOnBooking(data.abort_on_booking ?? true);
           setAbortOnHuman(data.abort_on_human ?? true);
           setAbortOnOptout(data.abort_on_optout ?? true);
-          setSteps((data.steps || []).map((s: any, i: number) => ({ ...s, step_order: i })));
+          setSteps((data.steps || []).map((s: any, i: number) => ({
+            ...s,
+            step_order: i,
+            template_vars: safeDict(s.template_vars),
+            response_rules: safeArray(s.response_rules),
+          })));
         }
       } catch (e) {
         console.error('Error loading playbook data:', e);
@@ -107,37 +156,44 @@ export default function PlaybookConfigModal({ playbookId, onClose, onSaved }: Pl
     setSaving(true);
     setError('');
     try {
-      const payload = {
-        name, description, icon, category, trigger_type: triggerType,
-        trigger_config: triggerConfig, conditions,
+      const playbookPayload = {
+        name, description, icon, category,
+        trigger_type: triggerType,
+        trigger_config: triggerConfig,
+        conditions,
         max_messages_per_day: maxMsgsPerDay,
-        schedule_hour_min: scheduleMin, schedule_hour_max: scheduleMax,
-        abort_on_booking: abortOnBooking, abort_on_human: abortOnHuman, abort_on_optout: abortOnOptout,
-        steps: steps.map((s, i) => ({ ...s, step_order: i })),
+        schedule_hour_min: scheduleMin,
+        schedule_hour_max: scheduleMax,
+        abort_on_booking: abortOnBooking,
+        abort_on_human: abortOnHuman,
+        abort_on_optout: abortOnOptout,
       };
 
       if (isEdit) {
-        // Update playbook
-        await api.patch(`/admin/playbooks/${playbookId}`, payload);
-        // Sync steps: delete all and recreate
+        await api.patch(`/admin/playbooks/${playbookId}`, playbookPayload);
+        // Sync steps: delete all existing, then recreate
         const existing = await api.get(`/admin/playbooks/${playbookId}/steps`);
         for (const s of (existing.data.steps || [])) {
           await api.delete(`/admin/playbooks/${playbookId}/steps/${s.id}`);
         }
-        for (const s of steps) {
-          await api.post(`/admin/playbooks/${playbookId}/steps`, { ...s, step_order: steps.indexOf(s) });
+        for (let i = 0; i < steps.length; i++) {
+          await api.post(`/admin/playbooks/${playbookId}/steps`, cleanStepForPost(steps[i], i));
         }
       } else {
-        await api.post('/admin/playbooks', payload);
+        // Create with steps in one call
+        await api.post('/admin/playbooks', {
+          ...playbookPayload,
+          steps: steps.map((s, i) => cleanStepForPost(s, i)),
+        });
       }
       onSaved();
     } catch (e: any) {
       const detail = e?.response?.data?.detail;
       const errorMsg = typeof detail === 'string' ? detail
-        : Array.isArray(detail) ? detail.map((d: any) => d.msg || JSON.stringify(d)).join(', ')
-        : typeof detail === 'object' ? JSON.stringify(detail)
+        : Array.isArray(detail) ? detail.map((d: any) => typeof d === 'string' ? d : d?.msg || JSON.stringify(d)).join(', ')
+        : detail && typeof detail === 'object' ? JSON.stringify(detail)
         : t('playbooks.error_saving');
-      setError(errorMsg);
+      setError(String(errorMsg));
     } finally {
       setSaving(false);
     }
@@ -169,8 +225,7 @@ export default function PlaybookConfigModal({ playbookId, onClose, onSaved }: Pl
     setActiveStep(target);
   };
 
-  // Treatment filter chips
-  const selectedTreatments = (conditions.treatments || []) as string[];
+  const selectedTreatments = safeArray(conditions.treatments) as string[];
   const toggleTreatment = (code: string) => {
     const current = [...selectedTreatments];
     const idx = current.indexOf(code);
@@ -243,7 +298,7 @@ export default function PlaybookConfigModal({ playbookId, onClose, onSaved }: Pl
             </p>
             <select value={triggerType} onChange={e => setTriggerType(e.target.value)}
               className="w-full px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white text-sm outline-none appearance-none">
-              {TRIGGER_OPTIONS.map(t => <option key={t.value} value={t.value}>{t.icon} {t.label}</option>)}
+              {TRIGGER_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.icon} {opt.label}</option>)}
             </select>
           </section>
 
@@ -253,21 +308,22 @@ export default function PlaybookConfigModal({ playbookId, onClose, onSaved }: Pl
               <Users size={14} /> {t('playbooks.section_conditions')}
             </h3>
             <p className="text-[11px] text-white/25 mb-3 leading-relaxed">
-              Filtrá para qué tratamientos aplica esta estrategia. Si no seleccionás ninguno, se aplica a todos. Por ejemplo, seleccioná solo "Implantes" y "Cirugía" para el protocolo post-quirúrgico.
+              Filtrá para qué tratamientos aplica esta estrategia. Si no seleccionás ninguno, se aplica a todos.
             </p>
             <div>
               <label className="text-xs text-white/40 mb-2 block">{t('playbooks.filter_treatments')}</label>
               <div className="flex flex-wrap gap-1.5">
                 {treatments.map((tt: any) => {
-                  const selected = selectedTreatments.includes(tt.code);
+                  const code = tt.code || tt.id;
+                  const selected = selectedTreatments.includes(code);
                   return (
-                    <button key={tt.code} type="button" onClick={() => toggleTreatment(tt.code)}
+                    <button key={code} type="button" onClick={() => toggleTreatment(code)}
                       className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors border
                         ${selected
                           ? 'bg-blue-500/20 text-blue-400 border-blue-500/30'
                           : 'bg-white/[0.04] text-white/40 border-white/[0.08] hover:bg-white/[0.08]'
                         }`}>
-                      {tt.name}
+                      {tt.name || code}
                     </button>
                   );
                 })}
@@ -284,31 +340,29 @@ export default function PlaybookConfigModal({ playbookId, onClose, onSaved }: Pl
               <Zap size={14} /> {t('playbooks.section_steps')} ({steps.length})
             </h3>
             <p className="text-[11px] text-white/25 mb-2 leading-relaxed">
-              Armá la secuencia paso a paso. Cada paso se ejecuta después del anterior con el delay que configures. Podés enviar plantillas HSM con botones, mensajes de texto, instrucciones del tratamiento, o notificar al equipo. Usá ⬆️⬇️ para reordenar los pasos.
+              Armá la secuencia paso a paso. Cada paso se ejecuta después del anterior con el delay que configures. Usá ⬆️⬇️ para reordenar.
             </p>
-            <div className="p-2.5 bg-blue-500/8 border border-blue-500/15 rounded-lg mb-3">
+            <div className="p-2.5 bg-blue-500/[0.08] border border-blue-500/[0.15] rounded-lg mb-3">
               <p className="text-[11px] text-blue-400/80 leading-relaxed">
-                <b>📋 Regla de WhatsApp:</b> Para iniciar una conversación o reabrir después de 24h sin respuesta del paciente, es obligatorio usar una <b>Plantilla HSM</b> aprobada. Los mensajes de texto libre solo se pueden enviar dentro de la ventana de 24h desde el último mensaje del paciente. Los mensajes al equipo por Telegram no tienen esta restricción.
+                <b>📋 Regla de WhatsApp:</b> Para iniciar una conversación o reabrir después de 24h sin respuesta, es obligatorio usar una <b>Plantilla HSM</b> aprobada. Los mensajes de texto libre solo funcionan dentro de la ventana de 24h. Los mensajes al equipo por Telegram no tienen esta restricción.
               </p>
             </div>
 
-            {/* Timeline preview */}
             {steps.length > 0 && (
               <div className="mb-4 p-3 bg-white/[0.02] rounded-xl border border-white/[0.04]">
                 <StepTimeline steps={steps} activeStepOrder={activeStep} onStepClick={setActiveStep} />
               </div>
             )}
 
-            {/* Step editors */}
             <div className="space-y-2">
               {steps.map((step, idx) => (
                 <StepEditor
-                  key={idx}
+                  key={`step-${idx}-${step.action_type}`}
                   step={step}
                   stepIndex={idx}
                   totalSteps={steps.length}
                   templates={templates}
-                  accumulatedDelayMinutes={steps.slice(0, idx + 1).reduce((sum, s) => sum + (s.delay_minutes || 0), 0)}
+                  accumulatedDelayMinutes={steps.slice(0, idx + 1).reduce((sum, s) => sum + (Number(s.delay_minutes) || 0), 0)}
                   triggerType={triggerType}
                   onChange={(updated) => updateStep(idx, updated)}
                   onDelete={() => deleteStep(idx)}
@@ -375,7 +429,6 @@ export default function PlaybookConfigModal({ playbookId, onClose, onSaved }: Pl
             </div>
           </section>
 
-          {/* Error */}
           {error && (
             <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm">{error}</div>
           )}
