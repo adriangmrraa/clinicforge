@@ -691,5 +691,81 @@ async def handle_patient_response(pool, tenant_id: int, phone: str, message_text
     return False
 
 
+async def check_inactive_patients():
+    """Daily check: find patients inactive for X days and trigger matching playbooks."""
+    try:
+        from db import db
+        if not db.pool:
+            return
+
+        # Find all active playbooks with patient_inactive trigger
+        playbooks = await db.pool.fetch("""
+            SELECT id, tenant_id, trigger_config, conditions
+            FROM automation_playbooks
+            WHERE trigger_type = 'patient_inactive' AND is_active = true
+        """)
+
+        if not playbooks:
+            return
+
+        from jobs.playbook_triggers import create_execution_for_event
+
+        for pb in playbooks:
+            tenant_id = pb["tenant_id"]
+            config = pb["trigger_config"] or {}
+            inactive_days = config.get("inactive_days", 90)
+
+            # Find patients with no appointment in X days
+            inactive_patients = await db.pool.fetch("""
+                SELECT p.id, p.phone_number, p.first_name
+                FROM patients p
+                WHERE p.tenant_id = $1
+                  AND p.phone_number IS NOT NULL AND p.phone_number != ''
+                  AND p.no_followup = false
+                  AND NOT EXISTS (
+                      SELECT 1 FROM appointments a
+                      WHERE a.patient_id = p.id AND a.tenant_id = $1
+                        AND a.appointment_datetime > NOW() - INTERVAL '1 day' * $2
+                  )
+                  AND NOT EXISTS (
+                      SELECT 1 FROM automation_executions ae
+                      WHERE ae.playbook_id = $3 AND ae.phone_number = p.phone_number
+                        AND ae.status IN ('running', 'waiting_response', 'paused', 'completed')
+                        AND ae.created_at > NOW() - INTERVAL '30 days'
+                  )
+                LIMIT 20
+            """, tenant_id, inactive_days, pb["id"])
+
+            for patient in inactive_patients:
+                await create_execution_for_event(
+                    db.pool, tenant_id, "patient_inactive",
+                    patient["phone_number"],
+                    patient_id=patient["id"],
+                    context={"patient_name": patient["first_name"] or ""},
+                )
+
+            if inactive_patients:
+                logger.info(f"📋 Inactive patient trigger: {len(inactive_patients)} patients for tenant {tenant_id}")
+
+    except Exception as e:
+        logger.error(f"❌ check_inactive_patients error: {e}")
+
+
+async def daily_reset_counters():
+    """Reset messages_sent_today counter for all running executions."""
+    try:
+        from db import db
+        if not db.pool:
+            return
+        await db.pool.execute(
+            "UPDATE automation_executions SET messages_sent_today = 0 WHERE status IN ('running', 'waiting_response')"
+        )
+        logger.info("🔄 Playbook daily counters reset")
+    except Exception as e:
+        logger.error(f"❌ daily_reset_counters error: {e}")
+
+
 # Register with scheduler
 scheduler.add_job(process_pending_executions, 300, run_at_startup=False)
+scheduler.add_job(check_inactive_patients, 86400, run_at_startup=False)  # Daily
+scheduler.add_job(daily_reset_counters, 86400, run_at_startup=False)  # Daily

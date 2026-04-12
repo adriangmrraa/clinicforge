@@ -528,6 +528,25 @@ export default function TreatmentsView() {
 
   const loadExistingFollowupRule = useCallback(async (treatmentCode: string) => {
     try {
+      // Check Playbooks V2 first, fallback to legacy automation_rules
+      const { data: pbData } = await api.get('/admin/playbooks');
+      const existingPb = (pbData.playbooks || []).find(
+        (p: any) => p.trigger_type === 'appointment_completed' &&
+          p.conditions?.treatments?.includes(treatmentCode)
+      );
+      if (existingPb) {
+        // Load steps to find the template step
+        const { data: pbDetail } = await api.get(`/admin/playbooks/${existingPb.id}`);
+        const tplStep = (pbDetail.steps || []).find((s: any) => s.action_type === 'send_template');
+        setHsmFollowup({
+          templateName: tplStep?.template_name || '',
+          templateVars: tplStep?.template_vars || {},
+          existingRuleId: existingPb.id, // Reusing field for playbook ID
+        });
+        return;
+      }
+
+      // Fallback: legacy automation_rules
       const { data } = await api.get('/admin/automations/rules');
       const existing = (data.rules || []).find(
         (r: any) => r.trigger_type === 'post_treatment_followup' &&
@@ -591,36 +610,69 @@ export default function TreatmentsView() {
       followup_template: null as any, // HSM templates now managed via automation_rules
     };
 
-    // Save HSM followup automation rule (if template selected)
+    // Save HSM followup as Playbook V2 (or legacy automation_rule fallback)
     const treatmentCode = (instructionsTarget === 'edit' ? editForm.code : newForm.code) || '';
     const treatmentName = (instructionsTarget === 'edit' ? editForm.name : newForm.name) || treatmentCode;
     if (hsmFollowup.templateName && treatmentCode) {
       try {
-        const rulePayload = {
+        // Try Playbook V2 first
+        const playbookPayload = {
           name: `Seguimiento: ${treatmentName}`,
-          trigger_type: 'post_treatment_followup',
-          condition_json: { treatment_code: treatmentCode },
-          message_type: 'hsm',
-          ycloud_template_name: hsmFollowup.templateName,
-          ycloud_template_lang: 'es',
-          ycloud_template_vars: hsmFollowup.templateVars,
-          channels: ['whatsapp'],
-          send_hour_min: 8,
-          send_hour_max: 20,
+          description: `Envía plantilla "${hsmFollowup.templateName}" después de completar ${treatmentName}`,
+          icon: '📋',
+          category: 'clinical',
+          trigger_type: 'appointment_completed',
+          trigger_config: {},
+          conditions: { treatments: [treatmentCode] },
+          is_active: true,
+          max_messages_per_day: 2,
+          schedule_hour_min: 8,
+          schedule_hour_max: 20,
+          steps: [{
+            step_order: 0,
+            step_label: `Enviar ${hsmFollowup.templateName}`,
+            action_type: 'send_template',
+            delay_minutes: 180, // 3 hours after completion
+            template_name: hsmFollowup.templateName,
+            template_lang: 'es',
+            template_vars: hsmFollowup.templateVars,
+          }],
         };
         if (hsmFollowup.existingRuleId) {
-          await api.patch(`/admin/automations/rules/${hsmFollowup.existingRuleId}`, rulePayload);
+          // Check if it's a playbook or legacy rule
+          try {
+            await api.get(`/admin/playbooks/${hsmFollowup.existingRuleId}`);
+            // It's a playbook — update it
+            await api.patch(`/admin/playbooks/${hsmFollowup.existingRuleId}`, playbookPayload);
+            // Update step
+            const stepsRes = await api.get(`/admin/playbooks/${hsmFollowup.existingRuleId}/steps`);
+            const existingSteps = stepsRes.data.steps || [];
+            if (existingSteps.length > 0) {
+              await api.patch(`/admin/playbooks/${hsmFollowup.existingRuleId}/steps/${existingSteps[0].id}`, {
+                template_name: hsmFollowup.templateName,
+                template_vars: hsmFollowup.templateVars,
+              });
+            }
+          } catch {
+            // Fallback: it's a legacy rule — update it
+            await api.patch(`/admin/automations/rules/${hsmFollowup.existingRuleId}`, {
+              ycloud_template_name: hsmFollowup.templateName,
+              ycloud_template_vars: hsmFollowup.templateVars,
+            });
+          }
         } else {
-          await api.post('/admin/automations/rules', rulePayload);
+          await api.post('/admin/playbooks', playbookPayload);
         }
       } catch (err: any) {
-        console.error('Error saving followup HSM rule:', err);
+        console.error('Error saving followup playbook:', err);
       }
     } else if (!hsmFollowup.templateName && hsmFollowup.existingRuleId) {
-      // Template deselected — delete the rule
+      // Template deselected — delete the playbook/rule
       try {
-        await api.delete(`/admin/automations/rules/${hsmFollowup.existingRuleId}`);
-      } catch { /* rule may already be deleted */ }
+        await api.delete(`/admin/playbooks/${hsmFollowup.existingRuleId}`);
+      } catch {
+        try { await api.delete(`/admin/automations/rules/${hsmFollowup.existingRuleId}`); } catch { /* already deleted */ }
+      }
     }
     if (instructionsTarget === 'edit') {
       const updatedForm = { ...editForm, ...patch };

@@ -6808,6 +6808,19 @@ async def update_appointment_status(
         except Exception as emit_err:
             logger.warning(f"Socket emit failed for status update {id}: {emit_err}")
 
+        # 3. Playbook V2 triggers
+        try:
+            from jobs.playbook_triggers import on_appointment_completed, on_no_show
+            apt_dict = dict(appointment_data)
+            if payload.status == "completed" and _prev_status != "completed":
+                background_tasks.add_task(on_appointment_completed, db.pool, tenant_id, apt_dict)
+                logger.info(f"📋 Playbook trigger: appointment_completed for {id}")
+            elif payload.status in ("no_show", "no-show") and _prev_status not in ("no_show", "no-show"):
+                background_tasks.add_task(on_no_show, db.pool, tenant_id, apt_dict)
+                logger.info(f"📋 Playbook trigger: no_show for {id}")
+        except Exception as pb_err:
+            logger.warning(f"⚠️ Playbook trigger (non-fatal): {pb_err}")
+
     return {
         "status": "updated",
         "appointment_id": str(id),
