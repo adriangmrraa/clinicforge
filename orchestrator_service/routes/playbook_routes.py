@@ -5,9 +5,9 @@ Endpoints for managing playbooks, steps, executions, and stats.
 
 import logging
 import json
-from typing import Optional
+from typing import Any, Optional, Union
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, validator
 
 from db import db
 from core.auth import verify_admin_token, get_resolved_tenant_id
@@ -19,13 +19,16 @@ router = APIRouter(prefix="/admin/playbooks", tags=["Playbooks"])
 # --- Pydantic Models ---
 
 class PlaybookCreate(BaseModel):
+    class Config:
+        extra = "ignore"
+
     name: str
     description: Optional[str] = None
     icon: Optional[str] = "📋"
     category: Optional[str] = "custom"
     trigger_type: str
-    trigger_config: Optional[dict] = {}
-    conditions: Optional[dict] = {}
+    trigger_config: Optional[Any] = {}
+    conditions: Optional[Any] = {}
     is_active: Optional[bool] = False
     max_messages_per_day: Optional[int] = 2
     frequency_cap_hours: Optional[int] = 24
@@ -34,7 +37,26 @@ class PlaybookCreate(BaseModel):
     abort_on_booking: Optional[bool] = True
     abort_on_human: Optional[bool] = True
     abort_on_optout: Optional[bool] = True
-    steps: Optional[list] = None  # Optional: create with steps in one call
+    steps: Optional[list] = None
+
+    @validator("trigger_config", "conditions", pre=True, always=True)
+    def parse_json_fields(cls, v):
+        return _ensure_dict(v) or {}
+
+
+def _ensure_dict(v: Any) -> Optional[dict]:
+    """Accept dict, JSON string, or None — always return dict or None."""
+    if v is None:
+        return None
+    if isinstance(v, dict):
+        return v
+    if isinstance(v, str):
+        try:
+            parsed = json.loads(v)
+            return parsed if isinstance(parsed, dict) else {}
+        except (json.JSONDecodeError, TypeError):
+            return {}
+    return {}
 
 
 class PlaybookUpdate(BaseModel):
@@ -46,8 +68,8 @@ class PlaybookUpdate(BaseModel):
     icon: Optional[str] = None
     category: Optional[str] = None
     trigger_type: Optional[str] = None
-    trigger_config: Optional[dict] = None
-    conditions: Optional[dict] = None
+    trigger_config: Optional[Any] = None
+    conditions: Optional[Any] = None
     is_active: Optional[bool] = None
     max_messages_per_day: Optional[int] = None
     frequency_cap_hours: Optional[int] = None
@@ -56,6 +78,10 @@ class PlaybookUpdate(BaseModel):
     abort_on_booking: Optional[bool] = None
     abort_on_human: Optional[bool] = None
     abort_on_optout: Optional[bool] = None
+
+    @validator("trigger_config", "conditions", pre=True, always=True)
+    def parse_json_fields(cls, v):
+        return _ensure_dict(v)
 
 
 class StepCreate(BaseModel):
