@@ -38,6 +38,9 @@ class PlaybookCreate(BaseModel):
 
 
 class PlaybookUpdate(BaseModel):
+    class Config:
+        extra = "ignore"
+
     name: Optional[str] = None
     description: Optional[str] = None
     icon: Optional[str] = None
@@ -80,6 +83,9 @@ class StepCreate(BaseModel):
 
 
 class StepUpdate(StepCreate):
+    class Config:
+        extra = "ignore"
+
     action_type: Optional[str] = None
 
 

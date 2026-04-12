@@ -132,7 +132,12 @@ export default function PlaybookConfigModal({ playbookId, onClose, onSaved }: Pl
       }
       onSaved();
     } catch (e: any) {
-      setError(e?.response?.data?.detail || t('playbooks.error_saving'));
+      const detail = e?.response?.data?.detail;
+      const errorMsg = typeof detail === 'string' ? detail
+        : Array.isArray(detail) ? detail.map((d: any) => d.msg || JSON.stringify(d)).join(', ')
+        : typeof detail === 'object' ? JSON.stringify(detail)
+        : t('playbooks.error_saving');
+      setError(errorMsg);
     } finally {
       setSaving(false);
     }
