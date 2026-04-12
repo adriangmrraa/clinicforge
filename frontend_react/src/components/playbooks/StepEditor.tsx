@@ -37,6 +37,10 @@ interface StepEditorProps {
   stepIndex: number;
   totalSteps: number;
   templates: Array<{ name: string; language: string; components?: any[] }>;
+  /** Accumulated delay in minutes from step 0 to this step (sum of all previous delays + this step's delay) */
+  accumulatedDelayMinutes: number;
+  /** Trigger type of the parent playbook — helps determine if 24h window applies */
+  triggerType: string;
   onChange: (updated: StepData) => void;
   onDelete: () => void;
   onMoveUp: () => void;
@@ -82,14 +86,36 @@ const VARIABLE_LIST = [
   '{{sede}}', '{{precio}}', '{{saldo_pendiente}}', '{{nombre_clinica}}',
 ];
 
+// Triggers that initiate contact (outside 24h window = must use HSM)
+const OUTBOUND_TRIGGERS = ['patient_inactive', 'no_show', 'lead_no_booking', 'appointment_reminder', 'payment_pending'];
+
 export default function StepEditor({
   step, stepIndex, totalSteps, templates,
+  accumulatedDelayMinutes, triggerType,
   onChange, onDelete, onMoveUp, onMoveDown,
 }: StepEditorProps) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(stepIndex === 0);
   const action = step.action_type;
   const isMessage = ['send_template', 'send_text', 'send_instructions'].includes(action);
+
+  // Determine if this step is outside the 24h free window
+  // For outbound triggers (we initiate), the FIRST message must be HSM.
+  // For reactive triggers (patient triggered, like appointment_completed),
+  // we have 24h from their last message to send free text.
+  const isOutboundTrigger = OUTBOUND_TRIGGERS.includes(triggerType);
+  const isOutside24hWindow = isOutboundTrigger
+    ? stepIndex === 0  // First step of outbound playbook MUST be HSM
+    : accumulatedDelayMinutes > 1440;  // For reactive: after 24h from trigger, must be HSM
+
+  // Force HSM if outside window and current action is text
+  const requiresHSM = isOutside24hWindow && ['send_text', 'send_instructions'].includes(action);
+
+  // Filter action options: if outside 24h window, disable free text options
+  const availableActions = ACTION_OPTIONS.map(opt => ({
+    ...opt,
+    disabled: isOutside24hWindow && ['send_text', 'send_instructions'].includes(opt.value),
+  }));
 
   const update = (partial: Partial<StepData>) => onChange({ ...step, ...partial });
 
@@ -172,20 +198,38 @@ export default function StepEditor({
             />
           </div>
 
+          {/* HSM Required Warning */}
+          {requiresHSM && (
+            <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg flex items-start gap-2">
+              <span className="text-amber-400 shrink-0 mt-0.5">⚠️</span>
+              <div>
+                <p className="text-sm text-amber-400 font-medium">Plantilla HSM obligatoria</p>
+                <p className="text-xs text-amber-400/70 mt-0.5">
+                  {isOutboundTrigger
+                    ? 'Este paso inicia la conversación con el paciente. WhatsApp requiere usar una plantilla aprobada (HSM) para el primer contacto fuera de la ventana de 24 horas.'
+                    : 'Este paso se ejecuta después de 24 horas desde la última interacción del paciente. WhatsApp requiere usar una plantilla aprobada (HSM) para reabrir la conversación.'
+                  }
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Action type */}
           <div>
             <label className="text-xs font-medium text-white/40">{t('playbooks.action_type')}</label>
             <select
-              value={action}
+              value={requiresHSM ? 'send_template' : action}
               onChange={e => update({ action_type: e.target.value })}
               className="w-full mt-1 px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white text-sm outline-none focus:ring-1 focus:ring-blue-500/30 appearance-none"
             >
-              {ACTION_OPTIONS.map(opt => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              {availableActions.map(opt => (
+                <option key={opt.value} value={opt.value} disabled={opt.disabled}>
+                  {opt.label}{opt.disabled ? ' (requiere ventana 24h)' : ''}
+                </option>
               ))}
             </select>
             <p className="text-[11px] text-white/30 mt-1 leading-relaxed">
-              {ACTION_OPTIONS.find(o => o.value === action)?.hint}
+              {ACTION_OPTIONS.find(o => o.value === (requiresHSM ? 'send_template' : action))?.hint}
             </p>
           </div>
 

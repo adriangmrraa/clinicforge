@@ -278,9 +278,14 @@ export default function PlaybookConfigModal({ playbookId, onClose, onSaved }: Pl
             <h3 className="text-sm font-bold text-white/60 uppercase tracking-wider mb-3 flex items-center gap-2">
               <Zap size={14} /> {t('playbooks.section_steps')} ({steps.length})
             </h3>
-            <p className="text-[11px] text-white/25 mb-3 leading-relaxed">
+            <p className="text-[11px] text-white/25 mb-2 leading-relaxed">
               Armá la secuencia paso a paso. Cada paso se ejecuta después del anterior con el delay que configures. Podés enviar plantillas HSM con botones, mensajes de texto, instrucciones del tratamiento, o notificar al equipo. Usá ⬆️⬇️ para reordenar los pasos.
             </p>
+            <div className="p-2.5 bg-blue-500/8 border border-blue-500/15 rounded-lg mb-3">
+              <p className="text-[11px] text-blue-400/80 leading-relaxed">
+                <b>📋 Regla de WhatsApp:</b> Para iniciar una conversación o reabrir después de 24h sin respuesta del paciente, es obligatorio usar una <b>Plantilla HSM</b> aprobada. Los mensajes de texto libre solo se pueden enviar dentro de la ventana de 24h desde el último mensaje del paciente. Los mensajes al equipo por Telegram no tienen esta restricción.
+              </p>
+            </div>
 
             {/* Timeline preview */}
             {steps.length > 0 && (
@@ -298,6 +303,8 @@ export default function PlaybookConfigModal({ playbookId, onClose, onSaved }: Pl
                   stepIndex={idx}
                   totalSteps={steps.length}
                   templates={templates}
+                  accumulatedDelayMinutes={steps.slice(0, idx + 1).reduce((sum, s) => sum + (s.delay_minutes || 0), 0)}
+                  triggerType={triggerType}
                   onChange={(updated) => updateStep(idx, updated)}
                   onDelete={() => deleteStep(idx)}
                   onMoveUp={() => moveStep(idx, -1)}
