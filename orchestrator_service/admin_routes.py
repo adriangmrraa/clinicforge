@@ -441,16 +441,11 @@ async def get_allowed_tenant_ids(user_data=Depends(verify_admin_token)) -> List[
     """
     try:
         if user_data.role == "ceo":
-            # Solo tenants donde el CEO tiene un professional vinculado
+            # CEO sees ALL tenants
             rows = await db.pool.fetch(
-                "SELECT DISTINCT tenant_id FROM professionals WHERE user_id = $1 ORDER BY tenant_id ASC",
-                uuid.UUID(user_data.user_id),
+                "SELECT id AS tenant_id FROM tenants ORDER BY id ASC"
             )
             allowed = [int(r["tenant_id"]) for r in rows] if rows else []
-            # Siempre incluir el tenant del JWT como fallback
-            jwt_tid = getattr(user_data, "tenant_id", 1)
-            if isinstance(jwt_tid, int) and jwt_tid not in allowed:
-                allowed.append(jwt_tid)
             return allowed if allowed else [1]
         try:
             tid = await db.pool.fetchval(
