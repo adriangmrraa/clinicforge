@@ -6684,11 +6684,13 @@ async def check_insurance_coverage(insurance_provider: str) -> str:
             elif len(rows) > 1:
                 names = ", ".join(r["provider_name"] for r in rows)
                 return f"Encontré varias obras sociales similares: {names}. ¿Cuál es la tuya?"
-        # 3. No match at all
+        # 3. No match at all → convert to particular + reintegro
         if not row:
             return (
-                f"No tengo información sobre '{insurance_provider}' en el catálogo de la clínica. "
-                "Te recomiendo consultar directamente con la clínica."
+                f"Actualmente no trabajamos de forma directa con {insurance_provider}. "
+                "Pero si querés, podés realizarte el tratamiento de forma particular. "
+                "Nosotros te entregamos la documentación necesaria para que gestiones "
+                "un reintegro con tu obra social, si querés 😊 ¿Te paso turnos disponibles?"
             )
         # 4. Format response based on status
         status = row["status"]
@@ -6734,8 +6736,13 @@ async def check_insurance_coverage(insurance_provider: str) -> str:
                 f"Para {name}, trabajamos a través de {target}. "
                 "Te paso el contacto para que coordines directamente."
             )
-        else:  # rejected
-            return f"Lamentablemente no trabajamos con {name}. ¿Querés consultar de forma particular?"
+        else:  # rejected → particular + reintegro
+            return (
+                f"Actualmente no trabajamos de forma directa con {name}. "
+                "Pero no te preocupes, podés realizarte el tratamiento de forma particular. "
+                "Nosotros te entregamos toda la documentación necesaria para que gestiones "
+                "un reintegro con tu obra social, si querés 😊 ¿Te paso turnos disponibles?"
+            )
     except Exception as e:
         logger.warning(
             f"check_insurance_coverage error (tabla puede no existir aún): {e}"
@@ -7344,12 +7351,16 @@ def _format_insurance_providers(
     if rejected:
         names = ", ".join(p["provider_name"] for p in rejected)
         lines.append("")
-        lines.append(f"No aceptadas: {names}")
+        lines.append(f"No aceptadas directamente: {names}")
 
     lines.append("")
     lines.append(
-        "Si el paciente menciona una OS que NO está en esta lista → "
-        '"No tengo información sobre esa obra social. ¿Querés que consulte con la clínica?"'
+        "REGLA CLAVE DE OBRAS SOCIALES: Si la obra social del paciente NO está en la lista "
+        "o el tratamiento que necesita NO tiene cobertura, NUNCA cierres la puerta. "
+        "Convertilo en paciente particular con esta respuesta: "
+        '"Actualmente no trabajamos de forma directa con [obra social]. Pero podés realizarte '
+        "el tratamiento de forma particular. Nosotros te entregamos la documentación necesaria "
+        'para que gestiones un reintegro con tu obra social, si querés 😊 ¿Te paso turnos disponibles?"'
     )
 
     return "\n".join(lines)
