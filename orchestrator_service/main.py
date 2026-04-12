@@ -2392,10 +2392,20 @@ async def check_availability(
             else:
                 lines.append(f"🗓️ Opciones disponibles para tu {treatment_display}:\n")
 
+            # Check if multi-sede (different locations across options)
+            sedes = [opt.get("sede", "") for opt in options]
+            unique_sedes = list(dict.fromkeys(s for s in sedes if s))
+            is_multi_sede = len(unique_sedes) > 1
+
             for i, opt in enumerate(options):
-                lines.append(
-                    f"{emoji_nums[i]}  {opt['date_display']} — {opt['time']} hs"
-                )
+                line = f"{emoji_nums[i]}  {opt['date_display']} — {opt['time']} hs"
+                # If multi-sede: show sede inline per option (only location name, not full address)
+                if is_multi_sede and opt.get("sede"):
+                    # Extract just the sede name (first part before "Dirección:")
+                    sede_short = opt["sede"].split("Dirección:")[0].strip().rstrip(".")
+                    if sede_short:
+                        line += f"  ({sede_short})"
+                lines.append(line)
 
             if professional_name:
                 lines.append(f"\nConsultando con Dr/a. {professional_name}.")
@@ -2403,26 +2413,19 @@ async def check_availability(
             # Duration info
             if _is_ht:
                 lines.append(f"\n⏱️ La evaluación dura {duration} min.")
-            # Duration info (non-high-ticket path)
             if not _is_ht:
                 lines.append(f"\n⏱️ Duración: {duration} min")
 
-            # Debt info — internal tag (TIER 2). Agent must mention pending debt
-            # cordially before confirming the new booking. NEVER blocks the booking.
+            # Debt info
             if unpaid_count > 0:
                 lines.append(
                     f"[INTERNAL_DEBT:count={unpaid_count};total={int(unpaid_total)}]"
                 )
 
-            # Sede info grouped at the end (only once if all same)
-            sedes = [opt["sede"] for opt in options if opt.get("sede")]
-            unique_sedes = list(dict.fromkeys(sedes))
-            if unique_sedes:
-                if len(unique_sedes) == 1:
-                    lines.append(f"📍 {unique_sedes[0]}")
-                else:
-                    for sede in unique_sedes:
-                        lines.append(f"📍 {sede}")
+            # Sede info: single sede → show once at the end with full address
+            # Multi-sede → already shown inline per option, show full address only when booking confirms
+            if unique_sedes and not is_multi_sede:
+                lines.append(f"📍 {unique_sedes[0]}")
 
             # BOOK_HINT: tell the LLM exactly what treatment_reason to pass to book_appointment
             _offered_treatment_name = treatment_name
