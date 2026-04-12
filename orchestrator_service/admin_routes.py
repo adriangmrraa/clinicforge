@@ -6714,15 +6714,15 @@ async def update_appointment_status(
     # Obtener datos actuales del turno para emitir evento y lógica de feedback
     appointment_data = await db.pool.fetchrow(
         """
-        SELECT a.id, a.patient_id, a.professional_id, a.appointment_datetime, 
+        SELECT a.id, a.patient_id, a.professional_id, a.appointment_datetime,
                a.appointment_type, a.status, a.urgency_level,
-               (p.first_name || ' ' || COALESCE(p.last_name, '')) as patient_name, 
+               (p.first_name || ' ' || COALESCE(p.last_name, '')) as patient_name,
                p.first_name, p.last_name, p.phone_number,
-               prof.first_name as professional_name,
+               COALESCE(prof.first_name, '') as professional_name,
                a.google_calendar_event_id, a.google_calendar_sync_status
         FROM appointments a
         JOIN patients p ON a.patient_id = p.id
-        JOIN professionals prof ON a.professional_id = prof.id
+        LEFT JOIN professionals prof ON a.professional_id = prof.id
         WHERE a.id = $1
     """,
         id,
@@ -6811,7 +6811,8 @@ async def update_appointment_status(
         # 3. Playbook V2 triggers
         try:
             from jobs.playbook_triggers import on_appointment_completed, on_no_show
-            apt_dict = dict(appointment_data)
+            # Convert Record to plain dict with string IDs (asyncpg UUIDs → str)
+            apt_dict = {k: (str(v) if hasattr(v, 'hex') else v) for k, v in dict(appointment_data).items()}
             if payload.status == "completed" and _prev_status != "completed":
                 background_tasks.add_task(on_appointment_completed, db.pool, tenant_id, apt_dict)
                 logger.info(f"📋 Playbook trigger: appointment_completed for {id}")

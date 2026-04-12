@@ -246,20 +246,35 @@ async def _action_send_template(pool, tenant_id, phone, step, variables) -> bool
 
         template_name = step.get("template_name")
         if not template_name:
-            logger.warning("send_template step has no template_name")
+            logger.warning("send_template step has no template_name — skipping")
             return False
 
         api_key = await get_tenant_credential(tenant_id, YCLOUD_API_KEY)
         biz_num = await get_tenant_credential(tenant_id, YCLOUD_WHATSAPP_NUMBER)
         if not api_key:
+            logger.warning(f"No YCloud API key for tenant {tenant_id}")
             return False
 
-        # Build positional parameters from template_vars mapping
+        # Parse var_mapping defensively
         var_mapping = step.get("template_vars") or {}
+        if isinstance(var_mapping, str):
+            try:
+                var_mapping = json.loads(var_mapping)
+            except (json.JSONDecodeError, TypeError):
+                var_mapping = {}
+
         body_params = []
-        for key in sorted(var_mapping.keys()):
-            var_name = var_mapping[key]
-            body_params.append({"type": "text", "text": variables.get(var_name, "")})
+        if var_mapping and isinstance(var_mapping, dict):
+            # Explicit mapping: {"1": "nombre_paciente", "2": "dia_semana", ...}
+            for key in sorted(var_mapping.keys()):
+                var_name = var_mapping[key]
+                body_params.append({"type": "text", "text": str(variables.get(var_name, "") or "")})
+        else:
+            # Auto-detect: use common variable order based on template name patterns
+            # This covers the case where CEO selected a template but didn't configure vars
+            _auto_vars = _auto_detect_template_vars(template_name)
+            for var_name in _auto_vars:
+                body_params.append({"type": "text", "text": str(variables.get(var_name, "") or "")})
 
         components = [{"type": "body", "parameters": body_params}] if body_params else None
 
@@ -271,10 +286,33 @@ async def _action_send_template(pool, tenant_id, phone, step, variables) -> bool
             components=components,
         )
         await _update_message_counters(pool, tenant_id, phone, step)
+        logger.info(f"✅ Template '{template_name}' sent to {phone} ({len(body_params)} vars)")
         return True
     except Exception as e:
-        logger.error(f"❌ send_template failed: {e}")
+        logger.error(f"❌ send_template failed for {phone}: {e}")
         return False
+
+
+def _auto_detect_template_vars(template_name: str) -> list:
+    """Auto-detect variable order for known template patterns."""
+    name = (template_name or "").lower()
+    # Recordatorio de Asistencia: nombre_paciente, dia_semana, fecha_turno, hora_turno
+    if "recordatorio" in name or "reminder" in name or "asistencia" in name:
+        return ["nombre_paciente", "dia_semana", "fecha_turno", "hora_turno"]
+    # Seguimiento Rápido: nombre_paciente
+    if "seguimiento" in name:
+        return ["nombre_paciente"]
+    # Post-Cirugía, Post-Implantes: nombre_paciente
+    if "post" in name or "cirugia" in name or "implante" in name:
+        return ["nombre_paciente"]
+    # Blanqueamiento: nombre_paciente, nombre_servicio
+    if "blanqueamiento" in name:
+        return ["nombre_paciente", "nombre_servicio"]
+    # Armonización: nombre_paciente
+    if "armoniza" in name:
+        return ["nombre_paciente"]
+    # Default: just send patient name as first variable
+    return ["nombre_paciente"]
 
 
 async def _action_send_text(pool, tenant_id, phone, step, variables) -> bool:
@@ -577,9 +615,9 @@ async def handle_patient_response(pool, tenant_id: int, phone: str, message_text
     Returns True if handled (skip AI agent), False otherwise.
     """
     execution = await pool.fetchrow(
-        """SELECT e.*, p.playbook_id as pb_id
+        """SELECT e.*
            FROM automation_executions e
-           JOIN automation_playbooks p ON e.playbook_id = p.id
+           JOIN automation_playbooks p ON e.playbook_id = p.id AND p.is_active = true
            WHERE e.tenant_id = $1 AND e.phone_number = $2
              AND e.status = 'waiting_response'
            ORDER BY e.updated_at DESC LIMIT 1""",

@@ -87,13 +87,10 @@ async def resolve_variables(
         if appointment_id:
             apt = await pool.fetchrow(
                 """SELECT a.appointment_datetime, a.appointment_type, a.duration_minutes,
-                          a.professional_id, a.billing_amount,
-                          COALESCE(a.billing_amount, 0) - COALESCE(
-                              (SELECT SUM(amount) FROM payment_records WHERE appointment_id = a.id), 0
-                          ) as pending_balance
+                          a.professional_id, a.billing_amount, a.payment_status
                    FROM appointments a
-                   WHERE a.id = $1 AND a.tenant_id = $2""",
-                appointment_id, tenant_id,
+                   WHERE a.id::text = $1 AND a.tenant_id = $2""",
+                str(appointment_id), tenant_id,
             )
             if apt:
                 apt_dt = apt["appointment_datetime"]
@@ -105,8 +102,8 @@ async def resolve_variables(
 
                 if apt["billing_amount"]:
                     variables["precio"] = f"${int(apt['billing_amount']):,}".replace(",", ".")
-                if apt.get("pending_balance") and apt["pending_balance"] > 0:
-                    variables["saldo_pendiente"] = f"${int(apt['pending_balance']):,}".replace(",", ".")
+                if apt.get("payment_status") in ("pending", "partial") and apt.get("billing_amount"):
+                    variables["saldo_pendiente"] = f"${int(apt['billing_amount']):,}".replace(",", ".")
 
                 # Treatment data
                 if apt["appointment_type"]:
