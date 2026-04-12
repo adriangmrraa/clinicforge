@@ -156,7 +156,7 @@ async def _preflight_check(pool, execution: dict, step: dict, now: datetime):
         return (False, "schedule_window")
 
     # 2. Daily message cap
-    if step["action_type"] in ("send_template", "send_text", "send_instructions"):
+    if step["action_type"] in ("send_template", "send_text", "send_instructions", "send_ai_message"):
         if execution["messages_sent_today"] >= execution["max_messages_per_day"]:
             return (False, "daily_cap")
 
@@ -228,6 +228,8 @@ async def _execute_step(pool, execution: dict, step: dict) -> bool:
             )
             return True  # Advance to next step, don't block the sequence
         return result
+    elif action == "send_ai_message":
+        return await _action_send_ai_message(pool, tenant_id, phone, step, execution, variables)
     elif action == "send_text":
         return await _action_send_text(pool, tenant_id, phone, step, variables)
     elif action == "send_instructions":
@@ -361,6 +363,118 @@ async def _action_send_text(pool, tenant_id, phone, step, variables) -> bool:
         return True
     except Exception as e:
         logger.error(f"❌ send_text failed: {e}")
+        return False
+
+
+async def _action_send_ai_message(pool, tenant_id, phone, step, execution, variables) -> bool:
+    """Generate a personalized message using LLM based on conversation history."""
+    try:
+        # 1. Load conversation history
+        recent_messages = await pool.fetch(
+            """SELECT role, content, created_at FROM chat_messages
+               WHERE tenant_id = $1 AND from_number = $2
+               ORDER BY created_at DESC LIMIT 20""",
+            tenant_id, phone,
+        )
+
+        if not recent_messages:
+            logger.info(f"[ai_message] No conversation history for {phone}, skipping")
+            return True  # No messages = nothing to follow up on
+
+        # Build conversation context
+        conversation = "\n".join([
+            f"{'Paciente' if m['role'] == 'user' else 'Bot'}: {m['content'][:200]}"
+            for m in reversed(recent_messages) if m.get('content')
+        ])
+
+        # 2. Get model from system_config
+        model = "gpt-4o-mini"
+        try:
+            model_row = await pool.fetchrow(
+                "SELECT value FROM system_config WHERE key = 'OPENAI_MODEL' AND tenant_id = $1",
+                tenant_id,
+            )
+            if model_row and model_row.get("value"):
+                model = str(model_row["value"]).strip()
+        except Exception:
+            pass
+
+        # 3. Build prompt
+        custom_instructions = step.get("message_text") or ""
+        patient_name = variables.get("nombre_paciente", "")
+        treatment = variables.get("tratamiento", "")
+
+        prompt = f"""Sos un asistente de seguimiento para una clínica dental. Analizá esta conversación con un paciente y generá UN mensaje de seguimiento personalizado.
+
+CONVERSACIÓN RECIENTE:
+{conversation}
+
+DATOS DEL PACIENTE:
+- Nombre: {patient_name}
+- Tratamiento de interés: {treatment or 'No especificado'}
+
+REGLAS:
+1. Si el paciente ya dijo que no le interesa, ya agendó, o pidió que no le escriban → respondé EXACTAMENTE "NO_ENVIAR" (sin nada más)
+2. Si tiene sentido hacer seguimiento → generá un mensaje corto, cálido, consultivo
+3. Tono: humano, empático, no vendedor, no robótico
+4. Máximo 3 líneas
+5. NO uses emojis excesivos (máximo 1-2)
+6. NO menciones que sos un bot o IA
+{f'7. INSTRUCCIONES ADICIONALES: {custom_instructions}' if custom_instructions else ''}
+
+Respondé SOLO con el mensaje a enviar, o "NO_ENVIAR" si no corresponde."""
+
+        # 4. Call LLM
+        import openai
+        client = openai.AsyncOpenAI()
+        response = await client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=200,
+            temperature=0.7,
+        )
+
+        message = (response.choices[0].message.content or "").strip()
+
+        # 5. Check if LLM says to skip
+        if not message or message.upper() == "NO_ENVIAR" or "NO_ENVIAR" in message.upper():
+            logger.info(f"[ai_message] LLM decided not to send message to {phone} — skipping")
+            return True  # Not a failure, LLM decided it's not worth it
+
+        # 6. Send the message
+        conv = await pool.fetchrow(
+            "SELECT id, provider, channel, external_account_id, external_chatwoot_id "
+            "FROM chat_conversations WHERE tenant_id = $1 AND external_user_id = $2 "
+            "ORDER BY updated_at DESC LIMIT 1",
+            tenant_id, phone,
+        )
+        if conv:
+            from services.response_sender import ResponseSender
+            await ResponseSender.send_sequence(
+                tenant_id=tenant_id, external_user_id=phone,
+                conversation_id=str(conv["id"]),
+                provider=conv.get("provider") or "ycloud",
+                channel=conv.get("channel") or "whatsapp",
+                account_id=str(conv.get("external_account_id") or ""),
+                cw_conv_id=str(conv.get("external_chatwoot_id") or ""),
+                messages_text=message,
+            )
+        else:
+            from core.credentials import get_tenant_credential, YCLOUD_API_KEY, YCLOUD_WHATSAPP_NUMBER
+            from ycloud_client import YCloudClient
+            api_key = await get_tenant_credential(tenant_id, YCLOUD_API_KEY)
+            biz_num = await get_tenant_credential(tenant_id, YCLOUD_WHATSAPP_NUMBER)
+            if not api_key:
+                return False
+            yc = YCloudClient(api_key=api_key, business_number=biz_num)
+            await yc.send_text_message(to=phone, text=message)
+
+        await _update_message_counters(pool, tenant_id, phone, step)
+        logger.info(f"✅ AI-generated message sent to {phone}: {message[:60]}...")
+        return True
+
+    except Exception as e:
+        logger.error(f"❌ send_ai_message failed for {phone}: {e}")
         return False
 
 
@@ -501,7 +615,7 @@ async def _advance_to_next_step(pool, execution: dict, current_step: dict):
         playbook_id, next_order,
     )
 
-    is_message = current_step["action_type"] in ("send_template", "send_text", "send_instructions")
+    is_message = current_step["action_type"] in ("send_template", "send_text", "send_instructions", "send_ai_message")
     sent_increment = 1 if is_message else 0
 
     if not next_step:

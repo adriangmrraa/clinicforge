@@ -1,7 +1,7 @@
 import React from 'react';
 import {
   Send, Clock, MessageSquare, Bell, RefreshCw, GitBranch,
-  Settings, FileText, CheckCircle2
+  Settings, FileText, CheckCircle2, Zap
 } from 'lucide-react';
 
 interface Step {
@@ -20,6 +20,7 @@ interface StepTimelineProps {
 
 const ACTION_ICONS: Record<string, React.ReactNode> = {
   send_template: <Send size={14} />,
+  send_ai_message: <Zap size={14} />,
   send_text: <MessageSquare size={14} />,
   send_instructions: <FileText size={14} />,
   wait: <Clock size={14} />,
@@ -31,6 +32,7 @@ const ACTION_ICONS: Record<string, React.ReactNode> = {
 
 const ACTION_COLORS: Record<string, string> = {
   send_template: 'bg-green-500',
+  send_ai_message: 'bg-violet-500',
   send_text: 'bg-blue-500',
   send_instructions: 'bg-purple-500',
   wait: 'bg-gray-500',
@@ -42,6 +44,7 @@ const ACTION_COLORS: Record<string, string> = {
 
 const ACTION_LABELS: Record<string, string> = {
   send_template: 'Plantilla HSM',
+  send_ai_message: 'Mensaje IA',
   send_text: 'Texto libre',
   send_instructions: 'Instrucciones',
   wait: 'Esperar',

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   ChevronDown, ChevronUp, Trash2, ArrowUp, ArrowDown,
-  Send, MessageSquare, FileText, Clock, RefreshCw, Bell, Settings, GitBranch, Plus, X
+  Send, MessageSquare, FileText, Clock, RefreshCw, Bell, Settings, GitBranch, Plus, X, Zap
 } from 'lucide-react';
 import { useTranslation } from '../../context/LanguageContext';
 import MessagePreview from './MessagePreview';
@@ -49,7 +49,8 @@ interface StepEditorProps {
 
 const ACTION_OPTIONS = [
   { value: 'send_template', label: 'Enviar plantilla HSM', icon: <Send size={14} />, hint: 'Usa una plantilla aprobada de WhatsApp (con botones interactivos). Ideal para recordatorios y reseñas.' },
-  { value: 'send_text', label: 'Enviar mensaje de texto', icon: <MessageSquare size={14} />, hint: 'Mensaje libre con variables. Úsalo para seguimientos personalizados como "¿Cómo te sentís?".' },
+  { value: 'send_ai_message', label: 'Mensaje generado por IA', icon: <Zap size={14} />, hint: 'El modelo analiza la conversación con el paciente y genera un mensaje personalizado. Ideal para seguimiento de leads: evalúa si vale la pena contactar y genera el mensaje con contexto real. Solo funciona dentro de la ventana de 24h.' },
+  { value: 'send_text', label: 'Enviar mensaje de texto', icon: <MessageSquare size={14} />, hint: 'Mensaje fijo con variables. Úsalo para mensajes predefinidos como "¿Cómo te sentís?".' },
   { value: 'send_instructions', label: 'Enviar instrucciones del tratamiento', icon: <FileText size={14} />, hint: 'Envía automáticamente las instrucciones post-operatorias configuradas en el tratamiento.' },
   { value: 'wait', label: 'Esperar (delay)', icon: <Clock size={14} />, hint: 'Pausa la secuencia por un tiempo antes de ejecutar el siguiente paso.' },
   { value: 'wait_response', label: 'Esperar respuesta del paciente', icon: <RefreshCw size={14} />, hint: 'Pausa hasta que el paciente responda. Si no responde en el tiempo configurado, continúa o aborta.' },
@@ -97,7 +98,7 @@ export default function StepEditor({
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(stepIndex === 0);
   const action = step.action_type;
-  const isMessage = ['send_template', 'send_text', 'send_instructions'].includes(action);
+  const isMessage = ['send_template', 'send_text', 'send_instructions', 'send_ai_message'].includes(action);
 
   // Determine if this step is outside the 24h free window
   // For outbound triggers (we initiate), the FIRST message must be HSM.
@@ -109,12 +110,12 @@ export default function StepEditor({
     : accumulatedDelayMinutes > 1440;  // For reactive: after 24h from trigger, must be HSM
 
   // Force HSM if outside window and current action is text
-  const requiresHSM = isOutside24hWindow && ['send_text', 'send_instructions'].includes(action);
+  const requiresHSM = isOutside24hWindow && ['send_text', 'send_instructions', 'send_ai_message'].includes(action);
 
   // Filter action options: if outside 24h window, disable free text options
   const availableActions = ACTION_OPTIONS.map(opt => ({
     ...opt,
-    disabled: isOutside24hWindow && ['send_text', 'send_instructions'].includes(opt.value),
+    disabled: isOutside24hWindow && ['send_text', 'send_instructions', 'send_ai_message'].includes(opt.value),
   }));
 
   const update = (partial: Partial<StepData>) => onChange({ ...step, ...partial });
@@ -243,15 +244,64 @@ export default function StepEditor({
           {/* Delay */}
           <div>
             <label className="text-xs font-medium text-white/40">{t('playbooks.when_execute')}</label>
-            <select
-              value={step.delay_minutes}
-              onChange={e => update({ delay_minutes: Number(e.target.value) })}
-              className="w-full mt-1 px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white text-sm outline-none focus:ring-1 focus:ring-blue-500/30 appearance-none"
-            >
-              {DELAY_PRESETS.map(d => (
-                <option key={d.value} value={d.value}>{d.label} {d.value === 0 ? '(después del paso anterior)' : 'después'}</option>
+            <div className="flex gap-2 mt-1">
+              <input
+                type="number"
+                min="0"
+                value={step.delay_minutes}
+                onChange={e => update({ delay_minutes: Number(e.target.value) || 0 })}
+                className="w-24 px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white text-sm outline-none focus:ring-1 focus:ring-blue-500/30"
+              />
+              <select
+                value={
+                  step.delay_minutes === 0 ? '0' :
+                  step.delay_minutes < 60 ? 'min' :
+                  step.delay_minutes < 1440 ? 'hours' : 'days'
+                }
+                onChange={e => {
+                  const unit = e.target.value;
+                  const current = step.delay_minutes || 0;
+                  if (unit === '0') update({ delay_minutes: 0 });
+                  else if (unit === 'min') update({ delay_minutes: Math.max(1, current < 60 ? current : Math.round(current / 60)) });
+                  else if (unit === 'hours') update({ delay_minutes: current < 60 ? current * 60 : current < 1440 ? current : Math.round(current / 24) });
+                  else if (unit === 'days') update({ delay_minutes: current < 1440 ? current * 24 : current });
+                }}
+                className="flex-1 px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white text-sm outline-none appearance-none"
+              >
+                <option value="0">Inmediato</option>
+                <option value="min">minutos</option>
+                <option value="hours">horas</option>
+                <option value="days">días</option>
+              </select>
+            </div>
+            <div className="flex flex-wrap gap-1 mt-2">
+              {[
+                { label: 'Inmediato', value: 0 },
+                { label: '30min', value: 30 },
+                { label: '1h', value: 60 },
+                { label: '2h', value: 120 },
+                { label: '3h', value: 180 },
+                { label: '6h', value: 360 },
+                { label: '12h', value: 720 },
+                { label: '24h', value: 1440 },
+                { label: '48h', value: 2880 },
+                { label: '7d', value: 10080 },
+                { label: '30d', value: 43200 },
+              ].map(preset => (
+                <button
+                  key={preset.value}
+                  type="button"
+                  onClick={() => update({ delay_minutes: preset.value })}
+                  className={`text-[10px] px-2 py-0.5 rounded transition-colors border
+                    ${step.delay_minutes === preset.value
+                      ? 'bg-blue-500/20 text-blue-400 border-blue-500/30'
+                      : 'bg-white/[0.04] text-white/40 border-white/[0.06] hover:bg-white/[0.08]'
+                    }`}
+                >
+                  {preset.label}
+                </button>
               ))}
-            </select>
+            </div>
           </div>
 
           {/* Content: send_template */}
@@ -272,6 +322,31 @@ export default function StepEditor({
                 </select>
               </div>
               {bodyText && <MessagePreview text={bodyText} />}
+            </div>
+          )}
+
+          {/* Content: send_ai_message */}
+          {action === 'send_ai_message' && (
+            <div className="space-y-3">
+              <div className="p-3 bg-purple-500/10 border border-purple-500/20 rounded-lg">
+                <p className="text-sm text-purple-400 font-medium flex items-center gap-2">
+                  <Zap size={14} /> Mensaje generado por IA
+                </p>
+                <p className="text-xs text-purple-400/70 mt-1 leading-relaxed">
+                  El modelo lee la conversación completa con el paciente, evalúa si tiene sentido enviar un seguimiento, y genera un mensaje personalizado con contexto real. Si determina que no vale la pena (el paciente ya dijo que no le interesa), no envía nada.
+                </p>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-white/40">Instrucciones para la IA (opcional)</label>
+                <p className="text-[11px] text-white/25">Guía al modelo sobre qué tono usar, qué mencionar, o qué evitar. Si lo dejás vacío, la IA decide libremente.</p>
+                <textarea
+                  value={step.message_text || ''}
+                  onChange={e => update({ message_text: e.target.value })}
+                  placeholder="Ej: Mencioná la disponibilidad real de turnos. Tono cercano y consultivo. Si el paciente mostró interés en implantes, posicioná a la Dra. Delgado."
+                  rows={3}
+                  className="w-full mt-1 px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white text-sm outline-none focus:ring-1 focus:ring-purple-500/30 resize-none"
+                />
+              </div>
             </div>
           )}
 
