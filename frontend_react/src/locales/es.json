@@ -1016,7 +1016,7 @@
         "aiTemplate": "Respuesta personalizada del asistente",
         "aiTemplatePlaceholder": "Dejá vacío para usar la respuesta por defecto",
         "isPrepaid": "Es prepaga",
-        "defaultCopay": "Coseguro por defecto (%)",
+        "defaultCopay": "Coseguro por defecto",
         "employeeDiscount": "Descuento empleados (%)",
         "coverageMatrix": "Cobertura por tratamiento",
         "coverageMatrixHint": "Configurá el detalle de cobertura para cada tratamiento",

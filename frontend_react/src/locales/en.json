@@ -1003,7 +1003,7 @@
         "aiTemplate": "Custom assistant response",
         "aiTemplatePlaceholder": "Leave empty to use the default response",
         "isPrepaid": "Is prepaid",
-        "defaultCopay": "Default copay (%)",
+        "defaultCopay": "Default copay",
         "employeeDiscount": "Employee discount (%)",
         "coverageMatrix": "Coverage by treatment",
         "coverageMatrixHint": "Set coverage details per treatment",
