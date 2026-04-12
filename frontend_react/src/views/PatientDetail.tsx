@@ -407,7 +407,7 @@ export default function PatientDetail() {
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
                   <div className="bg-white/[0.03] border border-white/[0.06] rounded-xl p-3">
                     <p className="text-[10px] text-white/40 uppercase font-bold">Turnos</p>
-                    <p className="text-lg font-bold text-white">{records.length}</p>
+                    <p className="text-lg font-bold text-white">{patient?.appointment_count ?? records.length}</p>
                   </div>
                   <div className="bg-white/[0.03] border border-white/[0.06] rounded-xl p-3">
                     <p className="text-[10px] text-white/40 uppercase font-bold">Próximo turno</p>

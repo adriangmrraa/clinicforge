@@ -5427,6 +5427,42 @@ async def get_patient(id: int, tenant_id: int = Depends(get_resolved_tenant_id))
         raise HTTPException(status_code=404, detail="Paciente no encontrado")
 
     patient_dict = dict(row)
+
+    # Enrich with appointment summary for patient detail cards
+    try:
+        apt_summary = await db.pool.fetchrow("""
+            SELECT
+                COUNT(*) as appointment_count,
+                MIN(CASE WHEN status IN ('scheduled', 'confirmed') AND appointment_datetime > NOW()
+                    THEN appointment_datetime END) as next_appointment_date,
+                MAX(CASE WHEN status = 'completed'
+                    THEN appointment_datetime END) as last_visit,
+                COALESCE(SUM(CASE
+                    WHEN status IN ('scheduled', 'confirmed', 'completed')
+                         AND (payment_status = 'pending' OR payment_status = 'partial')
+                         AND billing_amount IS NOT NULL
+                    THEN billing_amount ELSE 0 END), 0) as pending_balance
+            FROM appointments
+            WHERE patient_id = $1 AND tenant_id = $2
+        """, id, tenant_id)
+        if apt_summary:
+            patient_dict["appointment_count"] = apt_summary["appointment_count"] or 0
+            patient_dict["next_appointment_date"] = (
+                apt_summary["next_appointment_date"].isoformat()
+                if apt_summary["next_appointment_date"] else None
+            )
+            patient_dict["last_visit"] = (
+                apt_summary["last_visit"].isoformat()
+                if apt_summary["last_visit"] else None
+            )
+            patient_dict["pending_balance"] = float(apt_summary["pending_balance"] or 0)
+    except Exception as e:
+        logger.warning(f"Patient summary enrichment failed (non-fatal): {e}")
+        patient_dict["appointment_count"] = 0
+        patient_dict["next_appointment_date"] = None
+        patient_dict["last_visit"] = None
+        patient_dict["pending_balance"] = 0
+
     # Generar anamnesis_token si no existe (lazy generation)
     if not patient_dict.get("anamnesis_token"):
         new_token = str(uuid.uuid4())
