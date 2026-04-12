@@ -106,10 +106,10 @@ const ProfileView: React.FC = () => {
         first_name: form.first_name,
         last_name: form.last_name,
         email: form.email,
+        phone_number: form.phone_number,
       };
       if (authUser?.role === 'professional') {
         payload.specialty = form.specialty;
-        payload.phone_number = form.phone_number;
         payload.registration_id = form.registration_id;
         payload.google_calendar_id = form.google_calendar_id;
         payload.consultation_price = form.consultation_price ? parseFloat(form.consultation_price) : null;
@@ -221,12 +221,10 @@ const ProfileView: React.FC = () => {
                         <label className={labelClass}>Email</label>
                         <input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} className={inputClass} />
                       </div>
-                      {isProfessional && (
-                        <div>
-                          <label className={labelClass}>Teléfono</label>
-                          <input type="text" value={form.phone_number} onChange={e => setForm(f => ({ ...f, phone_number: e.target.value }))} className={inputClass} placeholder="+54 9 11 ..." />
-                        </div>
-                      )}
+                      <div>
+                        <label className={labelClass}>Teléfono</label>
+                        <input type="text" value={form.phone_number} onChange={e => setForm(f => ({ ...f, phone_number: e.target.value }))} className={inputClass} placeholder="+54 9 11 ..." />
+                      </div>
                     </div>
                   </div>
                 </GlassCard>

@@ -564,8 +564,8 @@ async def update_profile(payload: ProfileUpdate, request: Request):
         query = f"UPDATE users SET {', '.join(update_users_fields)}, updated_at = NOW() WHERE id = ${len(params)}"
         await db.execute(query, *params)
 
-    # Update professionals table (all professional fields)
-    if user_data.role == "professional":
+    # Update professionals table (for any role that has a linked professional record)
+    if user_data.role in ("professional", "ceo", "secretary"):
         prof_fields = []
         prof_params = []
 
