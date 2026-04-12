@@ -52,11 +52,16 @@ export default function PlaybooksView() {
   }, [loadPlaybooks]);
 
   const handleToggle = async (id: number) => {
+    // Optimistic update
+    setPlaybooks(prev => prev.map(p => p.id === id ? { ...p, is_active: !p.is_active } : p));
     try {
-      await api.patch(`/admin/playbooks/${id}/toggle`);
+      const { data } = await api.patch(`/admin/playbooks/${id}/toggle`);
+      // Refresh full list to get accurate state
       await loadPlaybooks();
-    } catch (e) {
+    } catch (e: any) {
       console.error('Error toggling playbook:', e);
+      // Rollback optimistic update
+      setPlaybooks(prev => prev.map(p => p.id === id ? { ...p, is_active: !p.is_active } : p));
     }
   };
 

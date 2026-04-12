@@ -2534,8 +2534,8 @@ export default function ClinicsView() {
                                     </div>
                                     <div className="grid grid-cols-2 gap-3">
                                         <div className="space-y-1">
-                                            <label className="text-sm font-semibold text-white/60">{t('settings.insurance.fields.defaultCopay')}</label>
-                                            <input type="number" min="0" max="100" value={insuranceForm.default_copay_percent ?? ''} onChange={e => setInsuranceForm(p => ({ ...p, default_copay_percent: e.target.value ? Number(e.target.value) : undefined }))}
+                                            <label className="text-sm font-semibold text-white/60">{t('settings.insurance.fields.defaultCopay')} ($)</label>
+                                            <input type="number" min="0" step="100" placeholder="Ej: 5000" value={insuranceForm.default_copay_percent ?? ''} onChange={e => setInsuranceForm(p => ({ ...p, default_copay_percent: e.target.value ? Number(e.target.value) : undefined }))}
                                                 className="w-full px-4 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white placeholder-white/20 focus:ring-2 focus:ring-blue-500 outline-none" />
                                         </div>
                                         <div className="space-y-1">
@@ -2592,8 +2592,8 @@ export default function ClinicsView() {
                                                         {coverage.covered && (
                                                             <div className="pl-6 grid grid-cols-2 gap-2 text-xs">
                                                                 <div>
-                                                                    <label className="text-white/40">{t('settings.insurance.fields.copayPercent')}</label>
-                                                                    <input type="number" min="0" max="100" value={coverage.copay_percent} onChange={e => {
+                                                                    <label className="text-white/40">Coseguro ($)</label>
+                                                                    <input type="number" min="0" step="100" placeholder="Ej: 5000" value={coverage.copay_percent} onChange={e => {
                                                                         const newCoverage = { ...insuranceForm.coverage_by_treatment };
                                                                         newCoverage[treat.code] = { ...coverage, copay_percent: Number(e.target.value) };
                                                                         setInsuranceForm(p => ({ ...p, coverage_by_treatment: newCoverage }));
