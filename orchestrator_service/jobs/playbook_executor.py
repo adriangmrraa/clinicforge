@@ -220,7 +220,14 @@ async def _execute_step(pool, execution: dict, step: dict) -> bool:
     )
 
     if action == "send_template":
-        return await _action_send_template(pool, tenant_id, phone, step, variables)
+        result = await _action_send_template(pool, tenant_id, phone, step, variables)
+        if not result and not step.get("template_name"):
+            logger.warning(
+                f"⚠️ Step {step.get('step_order', '?')} skipped: no template configured "
+                f"— configure it in Playbooks UI (playbook_id={execution.get('playbook_id')})"
+            )
+            return True  # Advance to next step, don't block the sequence
+        return result
     elif action == "send_text":
         return await _action_send_text(pool, tenant_id, phone, step, variables)
     elif action == "send_instructions":
@@ -803,7 +810,144 @@ async def daily_reset_counters():
         logger.error(f"❌ daily_reset_counters error: {e}")
 
 
+async def check_appointment_reminders():
+    """Periodic check: find appointments happening tomorrow and create executions for reminder playbooks."""
+    try:
+        from db import db
+        if not db.pool:
+            return
+
+        # Find all active playbooks with appointment_reminder trigger
+        playbooks = await db.pool.fetch("""
+            SELECT id, tenant_id, trigger_config, conditions
+            FROM automation_playbooks
+            WHERE trigger_type = 'appointment_reminder' AND is_active = true
+        """)
+
+        if not playbooks:
+            return
+
+        from jobs.playbook_triggers import create_execution_for_event
+
+        for pb in playbooks:
+            tenant_id = pb["tenant_id"]
+            config = pb["trigger_config"] or {}
+            if isinstance(config, str):
+                import json as _json
+                try:
+                    config = _json.loads(config)
+                except (json.JSONDecodeError, TypeError):
+                    config = {}
+            hours_before = config.get("hours_before", 24)
+
+            # Find appointments in the reminder window that don't already have an execution
+            appointments = await db.pool.fetch("""
+                SELECT a.id, a.patient_id, a.professional_id, a.appointment_datetime,
+                       a.appointment_type, a.status,
+                       p.phone_number
+                FROM appointments a
+                JOIN patients p ON a.patient_id = p.id AND p.tenant_id = a.tenant_id
+                WHERE a.tenant_id = $1
+                  AND a.status IN ('scheduled', 'confirmed')
+                  AND a.appointment_datetime > NOW()
+                  AND a.appointment_datetime <= NOW() + INTERVAL '1 hour' * $2
+                  AND p.phone_number IS NOT NULL AND p.phone_number != ''
+                  AND NOT EXISTS (
+                      SELECT 1 FROM automation_executions ae
+                      WHERE ae.playbook_id = $3 AND ae.appointment_id = a.id::text
+                        AND ae.status IN ('running', 'waiting_response', 'paused', 'completed')
+                  )
+                LIMIT 50
+            """, tenant_id, hours_before, pb["id"])
+
+            for apt in appointments:
+                context = {
+                    "appointment_type": apt["appointment_type"],
+                    "professional_id": apt["professional_id"],
+                    "patient_id": apt["patient_id"],
+                    "appointment_datetime": str(apt["appointment_datetime"]),
+                }
+                await create_execution_for_event(
+                    db.pool, tenant_id, "appointment_reminder",
+                    apt["phone_number"],
+                    patient_id=apt["patient_id"],
+                    appointment_id=str(apt["id"]),
+                    context=context,
+                )
+
+            if appointments:
+                logger.info(f"📋 Appointment reminder trigger: {len(appointments)} appointments for tenant {tenant_id}")
+
+    except Exception as e:
+        logger.error(f"❌ check_appointment_reminders error: {e}")
+
+
+async def check_leads_without_booking():
+    """Periodic check: find leads who chatted in the last 24h but have no appointment."""
+    try:
+        from db import db
+        if not db.pool:
+            return
+
+        # Find all active playbooks with lead_no_booking trigger
+        playbooks = await db.pool.fetch("""
+            SELECT id, tenant_id, trigger_config, conditions
+            FROM automation_playbooks
+            WHERE trigger_type = 'lead_no_booking' AND is_active = true
+        """)
+
+        if not playbooks:
+            return
+
+        from jobs.playbook_triggers import create_execution_for_event
+
+        for pb in playbooks:
+            tenant_id = pb["tenant_id"]
+
+            # Find patients with chat messages in the last 24h but no appointments at all
+            leads = await db.pool.fetch("""
+                SELECT DISTINCT p.id, p.phone_number, p.first_name
+                FROM patients p
+                WHERE p.tenant_id = $1
+                  AND p.phone_number IS NOT NULL AND p.phone_number != ''
+                  AND p.created_at > NOW() - INTERVAL '24 hours'
+                  AND EXISTS (
+                      SELECT 1 FROM chat_messages cm
+                      JOIN chat_conversations cc ON cm.conversation_id = cc.id
+                      WHERE cc.tenant_id = $1 AND cc.external_user_id = p.phone_number
+                        AND cm.created_at > NOW() - INTERVAL '24 hours'
+                  )
+                  AND NOT EXISTS (
+                      SELECT 1 FROM appointments a
+                      WHERE a.patient_id = p.id AND a.tenant_id = $1
+                  )
+                  AND NOT EXISTS (
+                      SELECT 1 FROM automation_executions ae
+                      WHERE ae.playbook_id = $2 AND ae.phone_number = p.phone_number
+                        AND ae.status IN ('running', 'waiting_response', 'paused', 'completed')
+                        AND ae.created_at > NOW() - INTERVAL '48 hours'
+                  )
+                LIMIT 30
+            """, tenant_id, pb["id"])
+
+            for lead in leads:
+                await create_execution_for_event(
+                    db.pool, tenant_id, "lead_no_booking",
+                    lead["phone_number"],
+                    patient_id=lead["id"],
+                    context={"patient_name": lead["first_name"] or ""},
+                )
+
+            if leads:
+                logger.info(f"📋 Lead no-booking trigger: {len(leads)} leads for tenant {tenant_id}")
+
+    except Exception as e:
+        logger.error(f"❌ check_leads_without_booking error: {e}")
+
+
 # Register with scheduler
 scheduler.add_job(process_pending_executions, 300, run_at_startup=False)
 scheduler.add_job(check_inactive_patients, 86400, run_at_startup=False)  # Daily
 scheduler.add_job(daily_reset_counters, 86400, run_at_startup=False)  # Daily
+scheduler.add_job(check_appointment_reminders, 86400, run_at_startup=False)  # Daily
+scheduler.add_job(check_leads_without_booking, 1800, run_at_startup=False)  # Every 30 min

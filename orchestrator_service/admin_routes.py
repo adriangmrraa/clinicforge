@@ -6450,6 +6450,7 @@ async def check_collisions(
 async def create_appointment_manual(
     apt: AppointmentCreate,
     request: Request,
+    background_tasks: BackgroundTasks,
     user_data=Depends(verify_admin_token),
     tenant_id: int = Depends(get_resolved_tenant_id),
 ):
@@ -6626,6 +6627,19 @@ async def create_appointment_manual(
                 logger.warning(
                     f"Socket emit failed for NEW_APPOINTMENT {new_id}: {emit_err}"
                 )
+
+        # 8. Playbook V2 trigger: appointment_created
+        try:
+            from jobs.playbook_triggers import on_appointment_created
+            apt_dict = {k: (str(v) if hasattr(v, 'hex') else v) for k, v in dict(appointment_data).items()} if appointment_data else {
+                "id": new_id, "patient_id": pid, "professional_id": apt.professional_id,
+                "appointment_datetime": apt.appointment_datetime, "appointment_type": apt.appointment_type,
+                "phone_number": apt.patient_phone, "payment_status": "pending",
+            }
+            background_tasks.add_task(on_appointment_created, db.pool, tenant_id, apt_dict)
+            logger.info(f"📋 Playbook trigger: appointment_created for {new_id}")
+        except Exception as pb_err:
+            logger.warning(f"⚠️ Playbook trigger appointment_created (non-fatal): {pb_err}")
 
         return {
             "id": new_id,

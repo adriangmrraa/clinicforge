@@ -3495,6 +3495,23 @@ async def book_appointment(
         except:
             pass
 
+        # 6a. Playbook V2 trigger: appointment_created
+        try:
+            from jobs.playbook_triggers import on_appointment_created
+
+            _apt_trigger_dict = {
+                "id": apt_id,
+                "patient_id": patient_id,
+                "professional_id": target_prof["id"],
+                "appointment_datetime": apt_datetime,
+                "appointment_type": treatment_code,
+                "phone_number": phone,
+                "payment_status": "pending",
+            }
+            await on_appointment_created(db.pool, tenant_id, _apt_trigger_dict)
+        except Exception as _pb_err:
+            logger.warning(f"⚠️ Playbook trigger appointment_created (non-fatal): {_pb_err}")
+
         # 6b. Notificación email al profesional (TIER 2)
         # Best-effort: nunca bloquea ni revierte el booking si falla.
         _patient_label_for_email = (
