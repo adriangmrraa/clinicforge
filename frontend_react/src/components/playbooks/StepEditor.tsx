@@ -93,20 +93,33 @@ export default function StepEditor({
 
   const update = (partial: Partial<StepData>) => onChange({ ...step, ...partial });
 
+  // Parse response_rules defensively (DB may return string or object)
+  const parseRules = (raw: any): Array<{ name: string; keywords: string[]; action: string }> => {
+    if (!raw) return [];
+    if (Array.isArray(raw)) return raw;
+    if (typeof raw === 'string') {
+      try { const parsed = JSON.parse(raw); return Array.isArray(parsed) ? parsed : []; }
+      catch { return []; }
+    }
+    return [];
+  };
+
+  const currentRules = parseRules(step.response_rules);
+
   const addKeywordRule = () => {
-    const rules = [...(step.response_rules || [])];
+    const rules = [...currentRules];
     rules.push({ name: '', keywords: [], action: 'continue' });
     update({ response_rules: rules });
   };
 
   const updateKeywordRule = (idx: number, field: string, value: any) => {
-    const rules = [...(step.response_rules || [])];
+    const rules = [...currentRules];
     rules[idx] = { ...rules[idx], [field]: value };
     update({ response_rules: rules });
   };
 
   const removeKeywordRule = (idx: number) => {
-    const rules = [...(step.response_rules || [])];
+    const rules = [...currentRules];
     rules.splice(idx, 1);
     update({ response_rules: rules });
   };
@@ -359,7 +372,7 @@ export default function StepEditor({
                 <p className="text-[11px] text-white/25 leading-relaxed">
                   Definí grupos de palabras clave para clasificar respuestas automáticamente. Incluí conjugaciones: "dolor", "duele", "me duele". Separalas con coma. El sistema busca coincidencia exacta de cada palabra en el mensaje.
                 </p>
-                {(step.response_rules || []).map((rule, idx) => (
+                {currentRules.map((rule, idx) => (
                   <div key={idx} className="flex gap-2 items-start bg-white/[0.02] rounded-lg p-2">
                     <input
                       value={rule.name}
