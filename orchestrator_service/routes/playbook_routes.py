@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from db import db
-from auth_helpers import verify_admin_token, get_resolved_tenant_id
+from core.auth import verify_admin_token, get_resolved_tenant_id
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin/playbooks", tags=["Playbooks"])
