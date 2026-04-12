@@ -84,15 +84,33 @@ class PlaybookUpdate(BaseModel):
         return _ensure_dict(v)
 
 
+def _ensure_list(v: Any) -> list:
+    """Accept list, JSON string, or None — always return list."""
+    if v is None:
+        return []
+    if isinstance(v, list):
+        return v
+    if isinstance(v, str):
+        try:
+            parsed = json.loads(v)
+            return parsed if isinstance(parsed, list) else []
+        except (json.JSONDecodeError, TypeError):
+            return []
+    return []
+
+
 class StepCreate(BaseModel):
+    class Config:
+        extra = "ignore"
+
     step_label: Optional[str] = None
-    action_type: str
+    action_type: str = "send_text"
     delay_minutes: Optional[int] = 0
     schedule_hour_min: Optional[int] = None
     schedule_hour_max: Optional[int] = None
     template_name: Optional[str] = None
     template_lang: Optional[str] = "es"
-    template_vars: Optional[dict] = {}
+    template_vars: Optional[Any] = {}
     message_text: Optional[str] = None
     instruction_source: Optional[str] = "from_treatment"
     custom_instructions: Optional[str] = None
@@ -101,17 +119,22 @@ class StepCreate(BaseModel):
     update_field: Optional[str] = None
     update_value: Optional[str] = None
     wait_timeout_minutes: Optional[int] = 120
-    response_rules: Optional[list] = []
+    response_rules: Optional[Any] = []
     on_no_response: Optional[str] = "continue"
     on_unclassified: Optional[str] = "pass_to_ai"
     on_response_next_step: Optional[int] = None
     on_no_response_next_step: Optional[int] = None
 
+    @validator("template_vars", pre=True, always=True)
+    def parse_template_vars(cls, v):
+        return _ensure_dict(v) or {}
+
+    @validator("response_rules", pre=True, always=True)
+    def parse_response_rules(cls, v):
+        return _ensure_list(v)
+
 
 class StepUpdate(StepCreate):
-    class Config:
-        extra = "ignore"
-
     action_type: Optional[str] = None
 
 
@@ -209,7 +232,10 @@ async def update_playbook(
     if not existing:
         raise HTTPException(404, "Playbook no encontrado")
 
-    updates = {k: v for k, v in payload.dict(exclude_unset=True).items() if v is not None}
+    # exclude_unset=True keeps only fields the client explicitly sent
+    # Don't filter None — allow setting fields to null if needed
+    # But DO filter the validator-generated defaults for unset fields
+    updates = payload.dict(exclude_unset=True)
     if not updates:
         raise HTTPException(400, "No hay campos para actualizar")
 
@@ -219,13 +245,16 @@ async def update_playbook(
     for key, value in updates.items():
         if key in ("trigger_config", "conditions"):
             set_clauses.append(f"{key} = ${idx}::jsonb")
-            params.append(json.dumps(value))
+            params.append(json.dumps(value if isinstance(value, dict) else {}))
+        elif isinstance(value, bool):
+            set_clauses.append(f"{key} = ${idx}")
+            params.append(value)
         else:
             set_clauses.append(f"{key} = ${idx}")
             params.append(value)
         idx += 1
 
-    set_clauses.append(f"updated_at = NOW()")
+    set_clauses.append("updated_at = NOW()")
     params.extend([playbook_id, tenant_id])
 
     query = f"UPDATE automation_playbooks SET {', '.join(set_clauses)} WHERE id = ${idx} AND tenant_id = ${idx+1} RETURNING *"
@@ -623,6 +652,16 @@ async def resume_execution(
 
 async def _insert_step(playbook_id: int, order: int, data: dict) -> dict:
     """Insert a step into the database."""
+    # Defensive JSON serialization for JSONB fields
+    tv = data.get("template_vars") or {}
+    if isinstance(tv, str):
+        try: tv = json.loads(tv)
+        except: tv = {}
+    rr = data.get("response_rules") or []
+    if isinstance(rr, str):
+        try: rr = json.loads(rr)
+        except: rr = []
+
     row = await db.pool.fetchrow("""
         INSERT INTO automation_steps
         (playbook_id, step_order, step_label, action_type, delay_minutes,
@@ -637,12 +676,12 @@ async def _insert_step(playbook_id: int, order: int, data: dict) -> dict:
         playbook_id, order,
         data.get("step_label"),
         data.get("action_type", "send_text"),
-        data.get("delay_minutes", 0),
+        int(data.get("delay_minutes") or 0),
         data.get("schedule_hour_min"),
         data.get("schedule_hour_max"),
         data.get("template_name"),
         data.get("template_lang", "es"),
-        json.dumps(data.get("template_vars") or {}),
+        json.dumps(tv),
         data.get("message_text"),
         data.get("instruction_source", "from_treatment"),
         data.get("custom_instructions"),
@@ -650,8 +689,8 @@ async def _insert_step(playbook_id: int, order: int, data: dict) -> dict:
         data.get("notify_message"),
         data.get("update_field"),
         data.get("update_value"),
-        data.get("wait_timeout_minutes", 120),
-        json.dumps(data.get("response_rules") or []),
+        int(data.get("wait_timeout_minutes") or 120),
+        json.dumps(rr),
         data.get("on_no_response", "continue"),
         data.get("on_unclassified", "pass_to_ai"),
         data.get("on_response_next_step"),
