@@ -30,6 +30,8 @@ def upgrade():
             "ORDER BY is_system DESC LIMIT 1"
         ), {"tid": tenant_id}).fetchone()
 
+        # Indices: 0=id, 1=is_active, 2=free_text_message, 3=message_type,
+        #          4=ycloud_template_name, 5=ycloud_template_vars, 6=send_hour_min, 7=send_hour_max
         pb_reminder = conn.execute(sa.text("""
             INSERT INTO automation_playbooks
             (tenant_id, name, description, icon, category, trigger_type, trigger_config,
@@ -44,8 +46,8 @@ def upgrade():
         """), {
             "tid": tenant_id,
             "active": existing_reminder[1] if existing_reminder else False,
-            "hmin": existing_reminder[5] if existing_reminder else 9,
-            "hmax": existing_reminder[6] if existing_reminder else 20,
+            "hmin": int(existing_reminder[6]) if existing_reminder and existing_reminder[6] is not None else 9,
+            "hmax": int(existing_reminder[7]) if existing_reminder and existing_reminder[7] is not None else 20,
         }).fetchone()
 
         if pb_reminder:
