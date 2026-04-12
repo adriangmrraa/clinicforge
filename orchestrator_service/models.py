@@ -182,6 +182,7 @@ class ChatConversation(Base):
     last_user_message_at = Column(DateTime(timezone=True))
     last_derivhumano_at = Column(DateTime(timezone=True))
     no_followup = Column(Boolean, nullable=False, server_default="false")
+    last_automation_message_at = Column(DateTime(timezone=True))
     recovery_touch_count = Column(Integer, nullable=False, server_default="0")
     last_recovery_at = Column(DateTime(timezone=True), nullable=True)
     # Meta Direct enrichment
@@ -889,6 +890,7 @@ class TreatmentType(Base):
     # and the new PostInstructions recovery protocol dict shape.
     post_instructions = Column(JSONB, nullable=True)
     followup_template = Column(JSONB, nullable=True)
+    post_treatment_hsm_template = Column(Text, nullable=True)
     patient_display_name = Column(Text, nullable=True)
     # Migration 041: consultation fields for high-ticket treatments
     is_high_ticket = Column(Boolean, nullable=False, server_default="false")
@@ -1064,6 +1066,130 @@ class AutomationRule(Base):
             "is_active",
             "trigger_type",
         ),
+    )
+
+
+class AutomationPlaybook(Base):
+    __tablename__ = "automation_playbooks"
+
+    id = Column(Integer, primary_key=True)
+    tenant_id = Column(
+        Integer, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    name = Column(Text, nullable=False)
+    description = Column(Text)
+    icon = Column(Text, server_default="📋")
+    category = Column(Text, nullable=False, server_default="custom")
+    trigger_type = Column(Text, nullable=False)
+    trigger_config = Column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    conditions = Column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    is_active = Column(Boolean, nullable=False, server_default="false")
+    is_system = Column(Boolean, nullable=False, server_default="false")
+    max_messages_per_day = Column(Integer, nullable=False, server_default="2")
+    frequency_cap_hours = Column(Integer, server_default="24")
+    schedule_hour_min = Column(Integer, nullable=False, server_default="9")
+    schedule_hour_max = Column(Integer, nullable=False, server_default="20")
+    abort_on_booking = Column(Boolean, nullable=False, server_default="true")
+    abort_on_human = Column(Boolean, nullable=False, server_default="true")
+    abort_on_optout = Column(Boolean, nullable=False, server_default="true")
+    stats_cache = Column(JSONB, server_default=text("'{}'::jsonb"))
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    __table_args__ = (
+        Index("idx_playbooks_tenant_active", "tenant_id", "is_active"),
+        Index("idx_playbooks_trigger", "trigger_type"),
+    )
+
+
+class AutomationStep(Base):
+    __tablename__ = "automation_steps"
+
+    id = Column(Integer, primary_key=True)
+    playbook_id = Column(
+        Integer, ForeignKey("automation_playbooks.id", ondelete="CASCADE"), nullable=False
+    )
+    step_order = Column(Integer, nullable=False, server_default="0")
+    step_label = Column(Text)
+    action_type = Column(Text, nullable=False)
+    delay_minutes = Column(Integer, nullable=False, server_default="0")
+    schedule_hour_min = Column(Integer)
+    schedule_hour_max = Column(Integer)
+    template_name = Column(Text)
+    template_lang = Column(Text, server_default="es")
+    template_vars = Column(JSONB, server_default=text("'{}'::jsonb"))
+    message_text = Column(Text)
+    instruction_source = Column(Text, server_default="from_treatment")
+    custom_instructions = Column(Text)
+    notify_channel = Column(Text, server_default="telegram")
+    notify_message = Column(Text)
+    update_field = Column(Text)
+    update_value = Column(Text)
+    wait_timeout_minutes = Column(Integer, server_default="120")
+    response_rules = Column(JSONB, server_default=text("'[]'::jsonb"))
+    on_no_response = Column(Text, server_default="continue")
+    on_unclassified = Column(Text, server_default="pass_to_ai")
+    on_response_next_step = Column(Integer)
+    on_no_response_next_step = Column(Integer)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        Index("idx_steps_playbook", "playbook_id", "step_order"),
+    )
+
+
+class AutomationExecution(Base):
+    __tablename__ = "automation_executions"
+
+    id = Column(Integer, primary_key=True)
+    playbook_id = Column(
+        Integer, ForeignKey("automation_playbooks.id", ondelete="CASCADE"), nullable=False
+    )
+    tenant_id = Column(
+        Integer, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    patient_id = Column(Integer, ForeignKey("patients.id", ondelete="SET NULL"))
+    phone_number = Column(Text, nullable=False)
+    appointment_id = Column(UUID(as_uuid=True))
+    current_step_order = Column(Integer, nullable=False, server_default="0")
+    status = Column(Text, nullable=False, server_default="running")
+    pause_reason = Column(Text)
+    started_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    next_step_at = Column(DateTime(timezone=True))
+    completed_at = Column(DateTime(timezone=True))
+    messages_sent = Column(Integer, nullable=False, server_default="0")
+    messages_sent_today = Column(Integer, nullable=False, server_default="0")
+    last_message_at = Column(DateTime(timezone=True))
+    last_response_at = Column(DateTime(timezone=True))
+    context = Column(JSONB, server_default=text("'{}'::jsonb"))
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    __table_args__ = (
+        Index("idx_executions_patient", "tenant_id", "phone_number", "status"),
+        Index("idx_executions_playbook", "playbook_id", "status"),
+    )
+
+
+class AutomationEvent(Base):
+    __tablename__ = "automation_events"
+
+    id = Column(Integer, primary_key=True)
+    execution_id = Column(
+        Integer, ForeignKey("automation_executions.id", ondelete="CASCADE"), nullable=False
+    )
+    step_id = Column(Integer, ForeignKey("automation_steps.id", ondelete="SET NULL"))
+    event_type = Column(Text, nullable=False)
+    event_data = Column(JSONB, server_default=text("'{}'::jsonb"))
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    __table_args__ = (
+        Index("idx_events_execution", "execution_id", "created_at"),
+        Index("idx_events_type", "event_type"),
     )
 
 
