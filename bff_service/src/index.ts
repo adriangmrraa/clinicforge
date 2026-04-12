@@ -168,7 +168,8 @@ app.use(async (req: Request, res: Response) => {
         || req.originalUrl.includes('/chat/media/proxy')
         || req.originalUrl.includes('/uploads/')
         || req.originalUrl.includes('/media/')
-        || req.originalUrl.includes('/tenant-logo/');
+        || req.originalUrl.includes('/tenant-logo/')
+        || req.originalUrl.includes('/backup/download/');
     const isBinaryRequest = isPdfRequest || isMediaProxy || acceptHeader.includes('application/octet-stream');
 
     try {

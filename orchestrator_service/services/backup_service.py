@@ -85,12 +85,38 @@ EXCLUDED_TABLES = {
     "inbound_messages",
 }
 
-# Tables that need JOIN-based tenant filtering
+# Tables that need JOIN-based tenant filtering (no tenant_id column)
 JUNCTION_TABLES = {
     "treatment_type_professionals": """
         SELECT ttp.* FROM treatment_type_professionals ttp
         JOIN treatment_types tt ON ttp.treatment_type_id = tt.id
         WHERE tt.tenant_id = $1
+    """,
+    "automation_steps": """
+        SELECT s.* FROM automation_steps s
+        JOIN automation_playbooks p ON s.playbook_id = p.id
+        WHERE p.tenant_id = $1
+        ORDER BY s.playbook_id, s.step_order
+    """,
+    "automation_events": """
+        SELECT ae.* FROM automation_events ae
+        JOIN automation_executions ex ON ae.execution_id = ex.id
+        WHERE ex.tenant_id = $1
+        ORDER BY ae.created_at DESC
+        LIMIT 10000
+    """,
+    "meta_ad_insights": """
+        SELECT mai.* FROM meta_ad_insights mai
+        WHERE EXISTS (
+            SELECT 1 FROM patients p
+            WHERE p.first_touch_campaign_id = mai.campaign_id AND p.tenant_id = $1
+        )
+        LIMIT 5000
+    """,
+    "patient_attribution_history": """
+        SELECT pah.* FROM patient_attribution_history pah
+        JOIN patients p ON pah.patient_id = p.id
+        WHERE p.tenant_id = $1
     """,
 }
 

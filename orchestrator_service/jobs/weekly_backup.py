@@ -18,17 +18,27 @@ logger = logging.getLogger(__name__)
 
 async def run_weekly_backup():
     """Generate backup for all tenants and send ZIP to Telegram."""
+    import asyncio
+
     try:
         from db import db
         if not db.pool:
             return
+
+        # Wait for Telegram bots to initialize (they start after JobScheduler)
+        for _ in range(12):  # Wait up to 60s
+            from services.telegram_bot import _bots
+            if _bots:
+                break
+            logger.info("[weekly_backup] Waiting for Telegram bots to initialize...")
+            await asyncio.sleep(5)
 
         from services.telegram_bot import _bots
 
         # Only run for tenants with active Telegram bots
         active_tenants = list(_bots.keys())
         if not active_tenants:
-            logger.info("[weekly_backup] No active Telegram bots, skipping")
+            logger.info("[weekly_backup] No active Telegram bots after waiting, skipping")
             return
 
         # Dedup: check if we already ran this week
