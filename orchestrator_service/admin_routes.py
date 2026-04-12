@@ -644,7 +644,9 @@ async def get_all_users(
 
     users = await db.fetch(
         """
-        SELECT DISTINCT u.id, u.email, u.role, u.status, u.created_at, u.updated_at, u.first_name, u.last_name
+        SELECT DISTINCT u.id, COALESCE(p.email, u.email) as email, u.role, u.status, u.created_at, u.updated_at,
+               COALESCE(p.first_name, u.first_name) as first_name,
+               COALESCE(p.last_name, u.last_name) as last_name
         FROM users u
         LEFT JOIN professionals p ON p.user_id = u.id
         WHERE p.tenant_id = ANY($1::int[])
