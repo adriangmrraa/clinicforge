@@ -743,6 +743,161 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
             # safely deduped (and we don't accidentally process it twice).
             _idem_processed_ok = True
 
+            # --- Appointment Confirmation Buttons (Quick Reply Intercept) ---
+            # When a patient taps a template button, the text arrives as a
+            # normal message. We intercept it HERE before the AI agent so the
+            # confirmation/reschedule is processed instantly without LLM cost.
+            _btn_text = (msg.content or "").strip().lower()
+            _CONFIRM_BUTTONS = {
+                # Template 5: Recordatorio de Asistencia
+                "confirmar asistencia ✅", "confirmar asistencia",
+                # Template 6: Seguimiento Rápido
+                "confirmo el turno",
+                # Generic
+                "confirmar", "confirmo", "sí, confirmo", "si, confirmo",
+            }
+            _RESCHEDULE_BUTTONS = {
+                # Template 5: Recordatorio de Asistencia
+                "necesito reprogramar",
+                # Template 6: Seguimiento Rápido
+                "quiero reprogramar",
+                # Generic
+                "reprogramar", "no puedo asistir",
+            }
+            _CANCEL_BUTTONS = {
+                # Template 6: Seguimiento Rápido
+                "quiero cancelar", "cancelar turno", "cancelar",
+            }
+
+            if not msg.is_agent and _btn_text in _CONFIRM_BUTTONS:
+                try:
+                    _apt_row = await pool.fetchrow(
+                        """UPDATE appointments SET status = 'confirmed', updated_at = NOW()
+                           WHERE tenant_id = $1 AND patient_id = (
+                               SELECT id FROM patients WHERE phone_number = $2 AND tenant_id = $1 LIMIT 1
+                           ) AND status IN ('scheduled', 'pending')
+                           AND appointment_datetime > NOW()
+                           ORDER BY appointment_datetime ASC
+                           RETURNING id, appointment_datetime, appointment_type""",
+                        tenant_id, msg.external_user_id,
+                    )
+                    if _apt_row:
+                        _apt_dt = _apt_row["appointment_datetime"]
+                        _confirm_msg = (
+                            f"✅ ¡Perfecto! Tu turno del {_apt_dt.strftime('%d/%m')} a las "
+                            f"{_apt_dt.strftime('%H:%M')} hs quedó confirmado. ¡Te esperamos! 🦷"
+                        )
+                    else:
+                        _confirm_msg = "✅ ¡Gracias por confirmar! Te esperamos en tu próximo turno. 🦷"
+
+                    # Send confirmation reply
+                    from services.response_sender import ResponseSender
+                    await ResponseSender.send_sequence(
+                        tenant_id=tenant_id,
+                        external_user_id=msg.external_user_id,
+                        conversation_id=str(conv_id),
+                        provider=provider,
+                        channel=msg.original_channel,
+                        account_id="",
+                        cw_conv_id="",
+                        messages_text=_confirm_msg,
+                    )
+                    logger.info(f"✅ Appointment confirmed via button for {msg.external_user_id} tenant={tenant_id}")
+
+                    # Emit socket event for real-time UI update
+                    try:
+                        from main import app
+                        sio = getattr(app.state, "sio", None)
+                        if sio and _apt_row:
+                            await sio.emit("APPOINTMENT_UPDATED", {
+                                "appointment_id": str(_apt_row["id"]),
+                                "status": "confirmed",
+                                "tenant_id": tenant_id,
+                                "phone_number": msg.external_user_id,
+                            })
+                    except Exception:
+                        pass
+
+                except Exception as _conf_err:
+                    logger.error(f"❌ Appointment confirm button failed: {_conf_err}")
+                continue  # Skip AI agent — already handled
+
+            if not msg.is_agent and _btn_text in _CANCEL_BUTTONS:
+                try:
+                    _cancel_row = await pool.fetchrow(
+                        """UPDATE appointments SET status = 'cancelled',
+                               cancellation_reason = 'Cancelado por paciente (botón WhatsApp)',
+                               cancellation_by = 'patient', updated_at = NOW()
+                           WHERE tenant_id = $1 AND patient_id = (
+                               SELECT id FROM patients WHERE phone_number = $2 AND tenant_id = $1 LIMIT 1
+                           ) AND status IN ('scheduled', 'confirmed', 'pending')
+                           AND appointment_datetime > NOW()
+                           ORDER BY appointment_datetime ASC
+                           RETURNING id, appointment_datetime""",
+                        tenant_id, msg.external_user_id,
+                    )
+                    if _cancel_row:
+                        _cancel_dt = _cancel_row["appointment_datetime"]
+                        _cancel_msg = (
+                            f"Tu turno del {_cancel_dt.strftime('%d/%m')} a las "
+                            f"{_cancel_dt.strftime('%H:%M')} hs fue cancelado. "
+                            f"Si necesitás un nuevo turno, escribinos cuando quieras 😊"
+                        )
+                    else:
+                        _cancel_msg = "No encontramos un turno próximo para cancelar. Si necesitás ayuda, escribinos 😊"
+
+                    from services.response_sender import ResponseSender
+                    await ResponseSender.send_sequence(
+                        tenant_id=tenant_id,
+                        external_user_id=msg.external_user_id,
+                        conversation_id=str(conv_id),
+                        provider=provider,
+                        channel=msg.original_channel,
+                        account_id="",
+                        cw_conv_id="",
+                        messages_text=_cancel_msg,
+                    )
+                    logger.info(f"🗑️ Appointment cancelled via button for {msg.external_user_id} tenant={tenant_id}")
+
+                    try:
+                        from main import app
+                        sio = getattr(app.state, "sio", None)
+                        if sio and _cancel_row:
+                            await sio.emit("APPOINTMENT_DELETED", {
+                                "appointment_id": str(_cancel_row["id"]),
+                                "tenant_id": tenant_id,
+                                "phone_number": msg.external_user_id,
+                            })
+                    except Exception:
+                        pass
+
+                except Exception as _cancel_err:
+                    logger.error(f"❌ Cancel button failed: {_cancel_err}")
+                continue  # Skip AI agent — already handled
+
+            if not msg.is_agent and _btn_text in _RESCHEDULE_BUTTONS:
+                try:
+                    _resched_msg = (
+                        "Entendemos 😊 No hay problema. Contame qué día y horario "
+                        "te quedaría mejor y te ayudo a reprogramar tu turno."
+                    )
+                    from services.response_sender import ResponseSender
+                    await ResponseSender.send_sequence(
+                        tenant_id=tenant_id,
+                        external_user_id=msg.external_user_id,
+                        conversation_id=str(conv_id),
+                        provider=provider,
+                        channel=msg.original_channel,
+                        account_id="",
+                        cw_conv_id="",
+                        messages_text=_resched_msg,
+                    )
+                    logger.info(f"🔄 Reschedule button tapped by {msg.external_user_id} tenant={tenant_id}")
+                except Exception as _resch_err:
+                    logger.error(f"❌ Reschedule button reply failed: {_resch_err}")
+                # DON'T continue — let it flow to the AI agent so it can handle the reschedule conversation
+                pass
+
             if not is_locked:
                 # Auto-cleanup: if override expired but status is still human_handling, reset it
                 if override_row and override_row["human_override_until"] is not None:
