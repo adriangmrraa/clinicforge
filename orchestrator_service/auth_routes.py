@@ -489,14 +489,17 @@ async def get_profile(request: Request):
     if profile.get("created_at"):
         profile["created_at"] = profile["created_at"].isoformat()
 
-    # Professional-specific data (all editable fields)
-    if user["role"] == "professional":
+    # Professional/CEO data — load from professionals table if linked
+    # CEO may also have a professional record for name/phone/specialty
+    try:
         prof = await db.fetchrow(
-            """SELECT id as professional_id, specialty, phone_number, registration_id,
+            """SELECT id as professional_id, first_name as prof_first_name,
+                      last_name as prof_last_name, email as prof_email,
+                      specialty, phone_number, registration_id,
                       google_calendar_id, consultation_price, working_hours,
                       is_active, is_priority_professional, tenant_id
-               FROM professionals WHERE user_id = $1 AND is_active = true
-               ORDER BY tenant_id ASC LIMIT 1""",
+               FROM professionals WHERE user_id = $1
+               ORDER BY is_active DESC, tenant_id ASC LIMIT 1""",
             uuid.UUID(user_id),
         )
         if prof:
@@ -510,7 +513,29 @@ async def get_profile(request: Request):
             # Convert Decimal to float
             if prof_dict.get("consultation_price") is not None:
                 prof_dict["consultation_price"] = float(prof_dict["consultation_price"])
+            # Fill name/email from professional if missing in user
+            if not profile.get("first_name") and prof_dict.get("prof_first_name"):
+                profile["first_name"] = prof_dict["prof_first_name"]
+            if not profile.get("last_name") and prof_dict.get("prof_last_name"):
+                profile["last_name"] = prof_dict["prof_last_name"]
+            if not profile.get("email") and prof_dict.get("prof_email"):
+                profile["email"] = prof_dict["prof_email"]
+            # Remove temp aliases
+            prof_dict.pop("prof_first_name", None)
+            prof_dict.pop("prof_last_name", None)
+            prof_dict.pop("prof_email", None)
             profile.update(prof_dict)
+    except Exception as e:
+        logger.warning(f"Profile professional enrichment failed (non-fatal): {e}")
+
+    # Resolve tenant_id for CEO (even without professional record)
+    if not profile.get("tenant_id"):
+        try:
+            tid = await db.fetchval("SELECT id FROM tenants ORDER BY id ASC LIMIT 1")
+            if tid:
+                profile["tenant_id"] = tid
+        except Exception:
+            pass
 
     return profile
 
