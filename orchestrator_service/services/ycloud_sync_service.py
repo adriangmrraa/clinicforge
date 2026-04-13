@@ -82,6 +82,8 @@ async def _update_progress(
     errors: list = None,
     started_at: datetime = None,
     completed_at: datetime = None,
+    current_week: str = "",
+    unique_conversations: int = 0,
 ):
     r = _get_redis()
     if not r:
@@ -97,6 +99,8 @@ async def _update_progress(
         "errors": errors or [],
         "started_at": started_at.isoformat() if started_at else None,
         "completed_at": completed_at.isoformat() if completed_at else None,
+        "current_week": current_week,
+        "unique_conversations": unique_conversations,
     }
     await r.setex(key, PROGRESS_TTL_SECONDS, json.dumps(progress))
 
@@ -316,6 +320,7 @@ async def _run_sync(pool, client: YCloudClient, tenant_id: int, task_id: str, bu
     total_media = 0
     errors = []
     seen_ids: set = set()  # Track message IDs to detect pagination loops
+    seen_phones: set = set()  # Track unique conversation phones
     started_at = datetime.now(timezone.utc)
 
     try:
@@ -377,17 +382,18 @@ async def _run_sync(pool, client: YCloudClient, tenant_id: int, task_id: str, bu
             contact_names_cache[phone] = ""
             return ""
 
-        # Iterate by week ranges to get ALL messages (YCloud limits ~100 per query without date filter)
+        # Iterate by week ranges BACKWARDS (today → past) to get ALL messages
         from datetime import timedelta as _td
-        sync_start_date = datetime(2024, 1, 1, tzinfo=timezone.utc)  # Start from Jan 2024
-        sync_end_date = datetime.now(timezone.utc) + _td(days=1)  # Tomorrow
-        week_start = sync_start_date
+        week_end = datetime.now(timezone.utc) + _td(days=1)  # Tomorrow
+        oldest_date = datetime(2023, 1, 1, tzinfo=timezone.utc)  # Absolute minimum
         week_number = 0
-        total_weeks = int((sync_end_date - sync_start_date).days / 7) + 1
+        empty_weeks_streak = 0  # Stop after 4 consecutive empty weeks
+        MAX_EMPTY_WEEKS = 4
 
-        while week_start < sync_end_date:
-            week_end = min(week_start + _td(days=7), sync_end_date)
+        while week_end > oldest_date and empty_weeks_streak < MAX_EMPTY_WEEKS:
+            week_start = week_end - _td(days=7)
             week_number += 1
+            week_label = f"{week_start.strftime('%d/%m/%Y')} → {week_end.strftime('%d/%m/%Y')}"
 
             # Check cancellation
             progress = await _get_progress(tenant_id, task_id)
@@ -428,8 +434,9 @@ async def _run_sync(pool, client: YCloudClient, tenant_id: int, task_id: str, bu
                     break  # All duplicates, move to next week
                 seen_ids |= page_ids
 
+                new_count = len(page_ids - overlap)
                 total_fetched += len(messages)
-                week_new += len(page_ids)
+                week_new += new_count
                 page_in_week += 1
 
                 # Process each message in this page
@@ -472,6 +479,7 @@ async def _run_sync(pool, client: YCloudClient, tenant_id: int, task_id: str, bu
                         external_user_id = to_num  # Bot sent to patient
 
                     if external_user_id:
+                        seen_phones.add(external_user_id)
                         wa_name = await _get_wa_name(external_user_id)
                         await _upsert_chat_record(pool, tenant_id, msg_data, external_user_id, wa_name)
 
@@ -565,15 +573,32 @@ async def _run_sync(pool, client: YCloudClient, tenant_id: int, task_id: str, bu
 
                 await asyncio.sleep(0.3)
 
-            # End of week — log and advance
+            # End of week — track empty streaks and log
             if week_new > 0:
+                empty_weeks_streak = 0
                 logger.info(
-                    f"[ycloud_sync] Week {week_number}/{total_weeks} "
-                    f"({week_start.strftime('%Y-%m-%d')} to {week_end.strftime('%Y-%m-%d')}): "
-                    f"{week_new} new messages, {page_in_week} pages"
+                    f"[ycloud_sync] Week {week_number} ({week_label}): "
+                    f"{week_new} new messages, {page_in_week} pages "
+                    f"(total: {total_saved} saved, {len(seen_ids)} unique)"
                 )
+            else:
+                empty_weeks_streak += 1
+                if empty_weeks_streak >= MAX_EMPTY_WEEKS:
+                    logger.info(
+                        f"[ycloud_sync] {MAX_EMPTY_WEEKS} consecutive empty weeks — "
+                        f"no more historical data. Stopping at {week_label}."
+                    )
 
-            week_start = week_end
+            # Update progress with week info for UI
+            await _update_progress(
+                tenant_id=tenant_id, task_id=task_id, status="processing",
+                messages_fetched=total_fetched, messages_saved=total_saved,
+                media_downloaded=total_media, errors=errors[-10:], started_at=started_at,
+                current_week=week_label, unique_conversations=len(seen_phones),
+            )
+
+            # Move backwards one week
+            week_end = week_start
             await asyncio.sleep(0.2)
 
         # Completed

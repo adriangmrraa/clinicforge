@@ -266,27 +266,49 @@ export const YCloudSyncSection: React.FC<YCloudSyncSectionProps> = ({ tenantId, 
             
             {/* Progress (when syncing) */}
             {isSyncing && progress && (
-                <div className="mb-6 p-4 bg-blue-500/10 border border-blue-500/20 rounded-xl">
-                    <div className="flex items-center gap-2 mb-3">
+                <div className="mb-6 p-4 bg-blue-500/10 border border-blue-500/20 rounded-xl space-y-3">
+                    <div className="flex items-center gap-2">
                         <Loader2 className="w-4 h-4 animate-spin text-blue-400" />
                         <span className="text-sm font-medium text-blue-400">
-                            {t('ycloud_sync.progress')}: {getStatusText(progress.status)}
+                            Sincronizando...
                         </span>
                     </div>
-                    <div className="grid grid-cols-3 gap-4 text-sm">
-                        <div>
-                            <span className="text-white/40">{t('ycloud_sync.messages_fetched')}:</span>
-                            <span className="ml-1 text-white">{progress.messages_fetched}</span>
+
+                    {/* Current week being processed */}
+                    {(progress as any).current_week && (
+                        <div className="text-xs text-white/50">
+                            Procesando: <span className="text-white/70 font-medium">{(progress as any).current_week}</span>
                         </div>
-                        <div>
-                            <span className="text-white/40">{t('ycloud_sync.messages_saved')}:</span>
-                            <span className="ml-1 text-white">{progress.messages_saved}</span>
+                    )}
+
+                    {/* Stats grid */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                        <div className="bg-white/[0.04] rounded-lg p-2 text-center">
+                            <div className="text-lg font-bold text-white">{progress.messages_saved}</div>
+                            <div className="text-[10px] text-white/40">Mensajes guardados</div>
                         </div>
-                        <div>
-                            <span className="text-white/40">{t('ycloud_sync.media_downloaded')}:</span>
-                            <span className="ml-1 text-white">{progress.media_downloaded}</span>
+                        <div className="bg-white/[0.04] rounded-lg p-2 text-center">
+                            <div className="text-lg font-bold text-white">{(progress as any).unique_conversations || 0}</div>
+                            <div className="text-[10px] text-white/40">Conversaciones</div>
+                        </div>
+                        <div className="bg-white/[0.04] rounded-lg p-2 text-center">
+                            <div className="text-lg font-bold text-white">{progress.messages_fetched}</div>
+                            <div className="text-[10px] text-white/40">Descargados</div>
+                        </div>
+                        <div className="bg-white/[0.04] rounded-lg p-2 text-center">
+                            <div className="text-lg font-bold text-white">{progress.media_downloaded}</div>
+                            <div className="text-[10px] text-white/40">Archivos</div>
                         </div>
                     </div>
+
+                    {/* Errors */}
+                    {progress.errors && progress.errors.length > 0 && (
+                        <div className="text-xs text-red-400/70 mt-1">
+                            {progress.errors.slice(-2).map((err: string, i: number) => (
+                                <div key={i}>⚠️ {err}</div>
+                            ))}
+                        </div>
+                    )}
                 </div>
             )}
             
