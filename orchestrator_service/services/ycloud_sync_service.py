@@ -444,13 +444,13 @@ async def _run_sync(pool, client: YCloudClient, tenant_id: int, task_id: str, bu
 
                 # Process each message in this page
                 for msg in messages:
-                try:
-                    msg_data = _parse_ycloud_message(msg, tenant_id, business_number)
-                    if not msg_data.get("external_id"):
-                        continue
+                    try:
+                        msg_data = _parse_ycloud_message(msg, tenant_id, business_number)
+                        if not msg_data.get("external_id"):
+                            continue
 
-                    # Upsert into whatsapp_messages
-                    msg_db_id = await pool.fetchval("""
+                        # Upsert into whatsapp_messages
+                        msg_db_id = await pool.fetchval("""
                         INSERT INTO whatsapp_messages
                         (tenant_id, external_id, wamid, from_number, to_number, direction,
                          message_type, content, media_id, media_mime_type, media_filename,
@@ -460,100 +460,43 @@ async def _run_sync(pool, client: YCloudClient, tenant_id: int, task_id: str, bu
                             content = EXCLUDED.content,
                             synced_at = NOW()
                         RETURNING id
-                    """,
-                        msg_data["tenant_id"], msg_data["external_id"], msg_data.get("wamid"),
-                        msg_data["from_number"], msg_data["to_number"], msg_data["direction"],
-                        msg_data["message_type"], msg_data.get("content"),
-                        msg_data.get("media_id"), msg_data.get("media_mime_type"),
-                        msg_data.get("media_filename"), msg_data["created_at"], msg_data["status"],
-                    )
+                        """,
+                            msg_data["tenant_id"], msg_data["external_id"], msg_data.get("wamid"),
+                            msg_data["from_number"], msg_data["to_number"], msg_data["direction"],
+                            msg_data["message_type"], msg_data.get("content"),
+                            msg_data.get("media_id"), msg_data.get("media_mime_type"),
+                            msg_data.get("media_filename"), msg_data["created_at"], msg_data["status"],
+                        )
 
-                    total_saved += 1
+                        total_saved += 1
 
-                    # Also upsert into chat_conversations + chat_messages for UI display
-                    # external_user_id = the PATIENT phone (not the business number)
-                    # Determine patient phone = whichever is NOT the business
-                    from_num = msg_data["from_number"]
-                    to_num = msg_data["to_number"]
+                        # Upsert chat conversation + message for UI
+                        from_num = msg_data["from_number"]
+                        to_num = msg_data["to_number"]
+                        external_user_id = from_num if msg_data["direction"] == "inbound" else to_num
 
-                    if msg_data["direction"] == "inbound":
-                        external_user_id = from_num  # Patient sent the message
-                    else:
-                        external_user_id = to_num  # Bot sent to patient
+                        if external_user_id:
+                            seen_phones.add(external_user_id)
+                            wa_name = await _get_wa_name(external_user_id)
+                            await _upsert_chat_record(pool, tenant_id, msg_data, external_user_id, wa_name)
 
-                    if external_user_id:
-                        seen_phones.add(external_user_id)
-                        wa_name = await _get_wa_name(external_user_id)
-                        await _upsert_chat_record(pool, tenant_id, msg_data, external_user_id, wa_name)
-
-                    # Download media if present
-                    if msg_data.get("media_id") and msg_db_id:
-                        media_ok = await _download_and_save_media(client, tenant_id, msg, msg_db_id)
-                        if media_ok:
-                            total_media += 1
-                            orig_filename = msg_data.get("media_filename") or ""
-                            ext = orig_filename.split(".")[-1] if "." in orig_filename else "bin"
-                            media_rel_path = f"/uploads/{tenant_id}/whatsapp_media/{msg_db_id}.{ext}"
-
-                            # Update whatsapp_messages with media URL
-                            await pool.execute(
-                                "UPDATE whatsapp_messages SET media_url = $1 WHERE id = $2",
-                                media_rel_path, msg_db_id,
-                            )
-
-                            # Update chat_messages content_attributes with downloaded URL
-                            import json as _json3
-                            ext_id_for_media = msg_data.get("external_id") or ""
-                            if ext_id_for_media:
-                                await pool.execute("""
-                                    UPDATE chat_messages SET content_attributes = $1::jsonb
-                                    WHERE platform_metadata->>'provider_message_id' = $2
-                                """,
-                                    _json3.dumps([{
-                                        "type": msg_data.get("message_type", "document"),
-                                        "url": media_rel_path,
-                                        "file_name": orig_filename or f"media_{msg_db_id}.{ext}",
-                                        "mime_type": msg_data.get("media_mime_type") or "application/octet-stream",
-                                    }]),
-                                    ext_id_for_media,
+                        # Download media if present
+                        if msg_data.get("media_id") and msg_db_id:
+                            media_ok = await _download_and_save_media(client, tenant_id, msg, msg_db_id)
+                            if media_ok:
+                                total_media += 1
+                                orig_filename = msg_data.get("media_filename") or ""
+                                ext = orig_filename.split(".")[-1] if "." in orig_filename else "bin"
+                                media_rel_path = f"/uploads/{tenant_id}/whatsapp_media/{msg_db_id}.{ext}"
+                                await pool.execute(
+                                    "UPDATE whatsapp_messages SET media_url = $1 WHERE id = $2",
+                                    media_rel_path, msg_db_id,
                                 )
 
-                            # Register in patient_documents if patient exists (for Archivos tab)
-                            patient_phone = external_user_id if msg_data["direction"] == "inbound" else msg_data["to_number"]
-                            patient_id = await pool.fetchval(
-                                "SELECT id FROM patients WHERE tenant_id = $1 AND phone_number = $2 LIMIT 1",
-                                tenant_id, patient_phone,
-                            )
-                            if patient_id:
-                                import json as _json2
-                                media_abs = _get_media_path(tenant_id, str(msg_db_id), ext)
-                                file_size = media_abs.stat().st_size if media_abs.exists() else 0
-                                doc_type = "clinical" if ext == "pdf" else "image" if ext in ("jpg", "png", "webp") else "audio" if ext in ("ogg", "mp3") else "other"
-                                # Dedup: don't insert if same file already registered
-                                existing_doc = await pool.fetchval(
-                                    "SELECT id FROM patient_documents WHERE tenant_id = $1 AND file_path = $2",
-                                    tenant_id, str(media_abs),
-                                )
-                                if not existing_doc:
-                                    await pool.execute("""
-                                        INSERT INTO patient_documents
-                                        (tenant_id, patient_id, file_name, file_path, file_size, mime_type,
-                                         document_type, source, source_details)
-                                        VALUES ($1, $2, $3, $4, $5, $6, $7, 'ycloud_sync', $8)
-                                    """,
-                                        tenant_id, patient_id,
-                                        orig_filename or f"media_{msg_db_id}.{ext}",
-                                        str(media_abs),
-                                        file_size,
-                                        msg_data.get("media_mime_type") or "application/octet-stream",
-                                        doc_type,
-                                        _json2.dumps({"ycloud_msg_id": msg_data.get("external_id"), "direction": msg_data["direction"]}),
-                                    )
-
-                except Exception as e:
-                    error_msg = f"Failed to persist message {msg.get('id')}: {e}"
-                    logger.warning(f"[ycloud_sync] {error_msg}")
-                    errors.append(error_msg)
+                    except Exception as e:
+                        error_msg = f"Failed to persist message {msg.get('id')}: {e}"
+                        logger.warning(f"[ycloud_sync] {error_msg}")
+                        errors.append(error_msg)
 
                 # Update progress after each page
                 await _update_progress(

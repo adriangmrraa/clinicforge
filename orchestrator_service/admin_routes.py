@@ -5420,7 +5420,7 @@ async def get_patient(id: int, tenant_id: int = Depends(get_resolved_tenant_id))
                dni, birth_date, city, first_touch_source as acquisition_source,
                meta_ad_id, meta_adset_id, meta_adset_name, meta_ad_name, meta_campaign_name,
                medical_history, created_at, status, notes, anamnesis_token,
-               display_name, guardian_phone
+               guardian_phone
         FROM patients
         WHERE id = $1 AND tenant_id = $2
     """,
