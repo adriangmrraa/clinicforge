@@ -275,6 +275,37 @@ class YCloudClient:
                 logger.error(f"ycloud_fetch_messages_error: {str(e)}")
                 raise
 
+    async def get_contacts(self, limit: int = 100, offset: int = 0) -> list:
+        """Fetch WhatsApp contacts from YCloud API. Returns list of contacts with phone + name."""
+        url = f"{self.base_url}/whatsapp/phoneNumbers"
+        params = {"limit": min(limit, 100), "offset": offset}
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(url, headers=self.headers, params=params, timeout=30.0)
+                if response.status_code == 200:
+                    data = response.json()
+                    return data.get("items") or data.get("phoneNumbers") or data.get("data") or []
+                else:
+                    logger.warning(f"ycloud_get_contacts: status={response.status_code}")
+                    return []
+        except Exception as e:
+            logger.warning(f"ycloud_get_contacts failed: {e}")
+            return []
+
+    async def get_contact_profile(self, phone_number: str) -> Optional[str]:
+        """Get WhatsApp profile name for a phone number. Returns name or None."""
+        # Try the contacts/phone endpoint
+        url = f"{self.base_url}/whatsapp/phoneNumbers/{phone_number}"
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(url, headers=self.headers, timeout=15.0)
+                if response.status_code == 200:
+                    data = response.json()
+                    return data.get("waName") or data.get("name") or data.get("profileName") or data.get("pushName")
+                return None
+        except Exception:
+            return None
+
     async def get_media_url(self, media_id: str) -> dict[str, Any]:
         """
         Get media URL from YCloud API.

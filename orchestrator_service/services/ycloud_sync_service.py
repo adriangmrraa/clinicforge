@@ -341,6 +341,35 @@ async def _run_sync(pool, client: YCloudClient, tenant_id: int, task_id: str, bu
         except Exception as e:
             logger.warning(f"[ycloud_sync] Business number auto-detect failed (non-fatal): {e}")
 
+        # Cache for WhatsApp profile names (phone → name)
+        # Avoids calling get_contact_profile for the same number multiple times
+        contact_names_cache: dict[str, str] = {}
+
+        async def _get_wa_name(phone: str) -> str:
+            """Get WhatsApp profile name, cached."""
+            if phone in contact_names_cache:
+                return contact_names_cache[phone]
+            # First check DB patients
+            patient_row = await pool.fetchrow(
+                "SELECT first_name, last_name FROM patients WHERE tenant_id = $1 AND phone_number = $2 LIMIT 1",
+                tenant_id, phone,
+            )
+            if patient_row:
+                name = f"{patient_row['first_name'] or ''} {patient_row['last_name'] or ''}".strip()
+                if name:
+                    contact_names_cache[phone] = name
+                    return name
+            # Then try YCloud contact API
+            try:
+                wa_name = await client.get_contact_profile(phone.lstrip("+"))
+                if wa_name:
+                    contact_names_cache[phone] = wa_name
+                    return wa_name
+            except Exception:
+                pass
+            contact_names_cache[phone] = ""
+            return ""
+
         while total_fetched < MAX_MESSAGES:
             # Check cancellation
             progress = await _get_progress(tenant_id, task_id)
@@ -429,7 +458,8 @@ async def _run_sync(pool, client: YCloudClient, tenant_id: int, task_id: str, bu
                         external_user_id = to_num  # Bot sent to patient
 
                     if external_user_id:
-                        await _upsert_chat_record(pool, tenant_id, msg_data, external_user_id)
+                        wa_name = await _get_wa_name(external_user_id)
+                        await _upsert_chat_record(pool, tenant_id, msg_data, external_user_id, wa_name)
 
                     # Download media if present
                     if msg_data.get("media_id") and msg_db_id:
@@ -538,29 +568,19 @@ async def _run_sync(pool, client: YCloudClient, tenant_id: int, task_id: str, bu
         await _release_lock(tenant_id)
 
 
-async def _upsert_chat_record(pool, tenant_id: int, msg_data: dict, external_user_id: str):
+async def _upsert_chat_record(pool, tenant_id: int, msg_data: dict, external_user_id: str, wa_name: str = ""):
     """Create/update chat_conversations and insert into chat_messages for UI display."""
     try:
         import json as _json
 
-        # 1. Resolve patient name if exists
-        patient_name = None
-        patient_row = await pool.fetchrow(
-            "SELECT id, first_name, last_name FROM patients WHERE tenant_id = $1 AND phone_number = $2 LIMIT 1",
-            tenant_id, external_user_id,
-        )
-        if patient_row:
-            fn = patient_row["first_name"] or ""
-            ln = patient_row["last_name"] or ""
-            patient_name = f"{fn} {ln}".strip() or None
+        # 1. Best name: patient DB name > WhatsApp profile name > phone number
+        display_name = wa_name or external_user_id
 
         # 2. Find existing conversation (by phone, any provider — reuse existing)
         conv_id = await pool.fetchval(
             "SELECT id FROM chat_conversations WHERE tenant_id = $1 AND external_user_id = $2 ORDER BY updated_at DESC LIMIT 1",
             tenant_id, external_user_id,
         )
-
-        display_name = patient_name or external_user_id
 
         if not conv_id:
             # Create new conversation
