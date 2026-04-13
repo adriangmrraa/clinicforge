@@ -199,8 +199,13 @@ class YCloudClient:
         url = f"{self.base_url}/whatsapp/messages"
 
         params = {"limit": min(limit, 100)}
+        # YCloud uses offset-based pagination, not cursor-based
         if cursor:
-            params["pageAfter"] = cursor
+            # cursor is the offset number as string
+            try:
+                params["offset"] = int(cursor)
+            except (ValueError, TypeError):
+                params["offset"] = 0
         if from_date:
             params["fromDate"] = from_date
         if to_date:
@@ -223,20 +228,22 @@ class YCloudClient:
                 response.raise_for_status()
                 data = response.json()
 
-                # YCloud may return messages in different keys
+                # YCloud returns messages in "items" key with offset-based pagination
                 messages = (
-                    data.get("messages")
-                    or data.get("items")
+                    data.get("items")
+                    or data.get("messages")
                     or data.get("data")
                     or data.get("results")
                     or (data if isinstance(data, list) else [])
                 )
 
-                next_cursor = (
-                    data.get("nextCursor")
-                    or data.get("pageAfter")
-                    or data.get("next_cursor")
-                )
+                # Calculate next offset for pagination
+                current_offset = data.get("offset", 0)
+                page_length = data.get("length", len(messages))
+                # If we got a full page, there might be more
+                next_cursor = None
+                if page_length >= limit and len(messages) >= limit:
+                    next_cursor = str(current_offset + len(messages))
 
                 logger.info(
                     f"ycloud_fetch_messages: status={response.status_code} "
