@@ -96,6 +96,44 @@ async def receive_ycloud_webhook(
     except Exception:
         return {"status": "ignored", "reason": "invalid_json"}
 
+    # Handle echo events (doctor/staff sent message from WhatsApp Business app)
+    # This activates manual mode so the AI stops responding.
+    event_type = payload.get("event_type") or payload.get("type", "")
+    if event_type in ("whatsapp.message.echo", "whatsapp.smb.message.echoes"):
+        from datetime import datetime, timezone, timedelta
+        user_phone = payload.get("from_number") or payload.get("to")
+        if user_phone:
+            pool = get_pool()
+            override_until = datetime.now(timezone.utc) + timedelta(hours=24)
+            # Set manual mode on BOTH tables (belt and suspenders)
+            await pool.execute(
+                "UPDATE patients SET human_handoff_requested = true, human_override_until = $1, updated_at = NOW() WHERE tenant_id = $2 AND phone_number = $3",
+                override_until, tenant_id, user_phone,
+            )
+            await pool.execute(
+                "UPDATE chat_conversations SET human_override_until = $1, updated_at = NOW() WHERE tenant_id = $2 AND external_user_id = $3",
+                override_until, tenant_id, user_phone,
+            )
+            # Persist the echo as an assistant message in chat_messages for UI visibility
+            text = payload.get("text") or ""
+            if text:
+                conv_row = await pool.fetchrow(
+                    "SELECT id FROM chat_conversations WHERE tenant_id = $1 AND external_user_id = $2 ORDER BY updated_at DESC LIMIT 1",
+                    tenant_id, user_phone,
+                )
+                if conv_row:
+                    await pool.execute(
+                        "INSERT INTO chat_messages (tenant_id, conversation_id, role, content, from_number, platform_metadata) VALUES ($1, $2, 'assistant', $3, $4, '{\"source\": \"whatsapp_business_app\"}'::jsonb)",
+                        tenant_id, conv_row["id"], text, user_phone,
+                    )
+            logger.info(f"👤 WhatsApp Business echo → manual mode activated for {user_phone} (tenant={tenant_id})")
+            try:
+                from main import sio
+                await sio.emit("HUMAN_OVERRIDE_CHANGED", {"phone_number": user_phone, "tenant_id": tenant_id, "enabled": True, "until": override_until.isoformat()})
+            except Exception:
+                pass
+        return {"status": "echo_handled", "manual_mode": True}
+
     # Force YCloud normalization
     try:
         messages = await ChannelService.normalize_webhook("ycloud", payload, tenant_id)
@@ -103,9 +141,6 @@ async def receive_ycloud_webhook(
         logger.exception(f"❌ Error normalizing YCloud webhook: {e}")
         return {"status": "error", "reason": str(e)}
 
-    # ... repetimos lógica de DB ...
-    # Para no duplicar código en este paso (Hotfix/Stabilization), voy a invocar una función shared
-    # Defino la función shared abajo y actualizo ambas rutas para usarla.
     return await _process_canonical_messages(
         messages, tenant_id, "ycloud", background_tasks
     )
