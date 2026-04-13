@@ -1603,6 +1603,28 @@ export default function ChatsView() {
                             <p className="font-medium text-white">{displayName}</p>
                             <p className="text-sm text-white/40">{displayPhone}</p>
                             <p className="text-xs text-amber-400 mt-2">{t('chats.no_appointments_yet')}</p>
+                            {/* Button: Create/View Patient */}
+                            <div className="mt-3 flex gap-2">
+                              {(selectedSession?.patient_id || (patientContext as any)?.patient_id) ? (
+                                <button
+                                  onClick={() => navigate(`/pacientes/${selectedSession?.patient_id || (patientContext as any)?.patient_id}`)}
+                                  className="flex-1 py-2 px-3 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/20 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1.5"
+                                >
+                                  <User size={12} /> Ver ficha del paciente
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => {
+                                    const phone = displayPhone;
+                                    const name = displayName !== phone ? displayName : '';
+                                    navigate('/pacientes', { state: { createPatient: true, phone, name } });
+                                  }}
+                                  className="flex-1 py-2 px-3 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1.5"
+                                >
+                                  <User size={12} /> Crear paciente
+                                </button>
+                              )}
+                            </div>
                           </>
                         )}
                       </div>
@@ -1683,8 +1705,18 @@ export default function ChatsView() {
                           </div>
                         </>
                       ) : (
-                        <div className="p-3 bg-white/[0.03] border border-white/[0.06] rounded-lg">
+                        <div className="p-3 bg-white/[0.03] border border-white/[0.06] rounded-lg space-y-3">
                           <p className="text-sm text-white/40 italic">{t('chats.no_clinical_history')}</p>
+                          <button
+                            onClick={() => {
+                              const phone = displayPhone;
+                              const name = displayName !== phone ? displayName : '';
+                              navigate('/pacientes', { state: { createPatient: true, phone, name } });
+                            }}
+                            className="w-full py-2 px-3 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1.5"
+                          >
+                            <User size={12} /> Crear paciente desde este contacto
+                          </button>
                         </div>
                       )}
                     </div>
