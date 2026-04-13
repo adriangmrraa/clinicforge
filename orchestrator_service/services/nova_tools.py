@@ -88,15 +88,15 @@ NOVA_TOOLS_SCHEMA: List[Dict[str, Any]] = [
     {
         "type": "function",
         "name": "registrar_paciente",
-        "description": "Crea un paciente nuevo con datos basicos.",
+        "description": "Crea un paciente nuevo o convierte un lead (contacto de chat sin ficha) en paciente. Si el telefono ya existe como lead/Visitante, lo actualiza a paciente activo. Solo nombre y telefono son obligatorios; apellido es opcional.",
         "parameters": {
             "type": "object",
             "properties": {
                 "first_name": {"type": "string", "description": "Nombre del paciente"},
-                "last_name": {"type": "string", "description": "Apellido del paciente"},
+                "last_name": {"type": "string", "description": "Apellido del paciente (opcional)"},
                 "phone_number": {
                     "type": "string",
-                    "description": "Telefono del paciente",
+                    "description": "Telefono del paciente. Si viene de un chat, usar el numero exacto del chat.",
                 },
                 "dni": {"type": "string", "description": "DNI del paciente"},
                 "insurance_provider": {
@@ -107,14 +107,35 @@ NOVA_TOOLS_SCHEMA: List[Dict[str, Any]] = [
                     "type": "string",
                     "description": "Numero de afiliado de la obra social",
                 },
+                "email": {"type": "string", "description": "Email del paciente"},
+                "city": {"type": "string", "description": "Ciudad del paciente"},
             },
-            "required": ["first_name", "last_name", "phone_number"],
+            "required": ["first_name", "phone_number"],
+        },
+    },
+    {
+        "type": "function",
+        "name": "convertir_lead",
+        "description": "Convierte un lead/contacto de chat en paciente. Busca el contacto por telefono en los chats recientes y lo registra como paciente con los datos proporcionados. Util cuando la doctora dice 'cargame al que escribio recien' o 'convertí este lead en paciente'.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "phone_number": {
+                    "type": "string",
+                    "description": "Telefono del lead a convertir. Si no lo tenes, usa ver_chats_recientes para buscarlo.",
+                },
+                "first_name": {"type": "string", "description": "Nombre del paciente"},
+                "last_name": {"type": "string", "description": "Apellido (opcional)"},
+                "dni": {"type": "string", "description": "DNI (opcional)"},
+                "insurance_provider": {"type": "string", "description": "Obra social (opcional)"},
+            },
+            "required": ["phone_number", "first_name"],
         },
     },
     {
         "type": "function",
         "name": "actualizar_paciente",
-        "description": "Actualiza un campo especifico de un paciente existente.",
+        "description": "Actualiza un campo especifico de un paciente existente. Podés actualizar nombre, apellido, telefono, email, obra social, DNI, ciudad, notas.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -122,12 +143,16 @@ NOVA_TOOLS_SCHEMA: List[Dict[str, Any]] = [
                 "field": {
                     "type": "string",
                     "enum": [
+                        "first_name",
+                        "last_name",
                         "phone_number",
                         "email",
                         "insurance_provider",
                         "insurance_id",
                         "notes",
                         "preferred_schedule",
+                        "city",
+                        "dni",
                     ],
                     "description": "Campo a actualizar",
                 },
@@ -851,6 +876,18 @@ NOVA_TOOLS_SCHEMA: List[Dict[str, Any]] = [
         "type": "function",
         "name": "ver_anamnesis",
         "description": "Lee la ficha médica (anamnesis) completa de un paciente para verificar qué datos ya están cargados y cuáles faltan.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "patient_id": {"type": "integer", "description": "ID del paciente"},
+            },
+            "required": ["patient_id"],
+        },
+    },
+    {
+        "type": "function",
+        "name": "enviar_anamnesis",
+        "description": "Envía el link del formulario de anamnesis (ficha médica) a un paciente por WhatsApp. Genera el link automáticamente y lo manda.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -2123,38 +2160,90 @@ async def _registrar_paciente(args: Dict, tenant_id: int) -> str:
     last_name = args.get("last_name", "").strip()
     phone = args.get("phone_number", "").strip()
 
-    if not first_name or not last_name or not phone:
-        return "Necesito nombre, apellido y telefono para registrar un paciente."
+    if not first_name or not phone:
+        return "Necesito al menos el nombre y el telefono para registrar un paciente."
 
-    # Check duplicate
-    existing = await db.pool.fetchval(
-        "SELECT id FROM patients WHERE tenant_id = $1 AND phone_number = $2",
+    # Check if guest/Visitante exists — upgrade instead of duplicate error
+    existing = await db.pool.fetchrow(
+        "SELECT id, status, first_name FROM patients WHERE tenant_id = $1 AND phone_number = $2",
         tenant_id,
         phone,
     )
     if existing:
-        return f"Ya existe un paciente con ese telefono (ID {existing})."
+        if existing["status"] == "guest" or existing["first_name"] in ("Visitante", "Paciente", "Sin nombre"):
+            # Upgrade guest to active patient
+            await db.pool.execute(
+                """UPDATE patients SET first_name=$1, last_name=$2, dni=$3,
+                   insurance_provider=$4, insurance_id=$5, email=$6, city=$7,
+                   status='active', updated_at=NOW()
+                   WHERE id=$8 AND tenant_id=$9""",
+                first_name, last_name or None, args.get("dni"),
+                args.get("insurance_provider"), args.get("insurance_id"),
+                args.get("email"), args.get("city"),
+                existing["id"], tenant_id,
+            )
+            await _nova_emit("PATIENT_CREATED", {
+                "patient_id": existing["id"], "phone_number": phone,
+                "tenant_id": tenant_id, "first_name": first_name,
+                "last_name": last_name or "", "status": "active",
+            })
+            full_name = f"{first_name} {last_name}".strip()
+            return f"✅ Paciente {full_name} registrado (convertido desde lead, ID {existing['id']})."
+        full_name = f"{existing['first_name']}".strip()
+        return f"Ya existe un paciente con ese telefono: {full_name} (ID {existing['id']}). Usa actualizar_paciente si necesitas cambiar datos."
 
     row = await db.pool.fetchrow(
         """
         INSERT INTO patients (tenant_id, first_name, last_name, phone_number, dni,
-                              insurance_provider, insurance_id)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
+                              insurance_provider, insurance_id, email, city, status, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'active', NOW())
         RETURNING id
         """,
         tenant_id,
         first_name,
-        last_name,
+        last_name or None,
         phone,
         args.get("dni"),
         args.get("insurance_provider"),
         args.get("insurance_id"),
+        args.get("email"),
+        args.get("city"),
     )
-    await _nova_emit(
-        "PATIENT_UPDATED",
-        {"patient_id": row["id"], "tenant_id": tenant_id, "action": "created"},
-    )
-    return f"Paciente {first_name} {last_name} registrado con ID {row['id']}."
+    await _nova_emit("PATIENT_CREATED", {
+        "patient_id": row["id"], "phone_number": phone,
+        "tenant_id": tenant_id, "first_name": first_name,
+        "last_name": last_name or "", "status": "active",
+    })
+    full_name = f"{first_name} {last_name}".strip()
+    return f"✅ Paciente {full_name} registrado con ID {row['id']}."
+
+
+async def _convertir_lead(args: Dict, tenant_id: int) -> str:
+    """Convierte un lead de chat en paciente. Busca por teléfono en chats y crea/actualiza el paciente."""
+    phone = args.get("phone_number", "").strip()
+    first_name = args.get("first_name", "").strip()
+
+    if not phone:
+        return "Necesito el teléfono del lead. Usá ver_chats_recientes para ver los leads actuales."
+    if not first_name:
+        # Try to get name from chat conversation
+        conv_name = await db.pool.fetchval(
+            "SELECT display_name FROM chat_conversations WHERE tenant_id=$1 AND external_user_id=$2 ORDER BY updated_at DESC LIMIT 1",
+            tenant_id, phone,
+        )
+        if conv_name and conv_name != phone:
+            first_name = conv_name.split()[0] if conv_name else ""
+        if not first_name:
+            return "Necesito al menos el nombre del paciente para convertir el lead."
+
+    # Delegate to registrar_paciente (handles guest upgrade)
+    return await _registrar_paciente({
+        "first_name": first_name,
+        "last_name": args.get("last_name", ""),
+        "phone_number": phone,
+        "dni": args.get("dni"),
+        "insurance_provider": args.get("insurance_provider"),
+    }, tenant_id)
 
 
 async def _actualizar_paciente(args: Dict, tenant_id: int) -> str:
@@ -2166,12 +2255,16 @@ async def _actualizar_paciente(args: Dict, tenant_id: int) -> str:
         return "Necesito patient_id, field y value."
 
     allowed_fields = {
+        "first_name",
+        "last_name",
         "phone_number",
         "email",
         "insurance_provider",
         "insurance_id",
         "notes",
         "preferred_schedule",
+        "city",
+        "dni",
     }
     if field not in allowed_fields:
         return f"Campo '{field}' no permitido. Campos validos: {', '.join(sorted(allowed_fields))}."
@@ -5087,6 +5180,8 @@ async def execute_nova_tool(
             return await _ver_paciente(args, tenant_id)
         elif name == "registrar_paciente":
             return await _registrar_paciente(args, tenant_id)
+        elif name == "convertir_lead":
+            return await _convertir_lead(args, tenant_id)
         elif name == "actualizar_paciente":
             return await _actualizar_paciente(args, tenant_id)
         elif name == "actualizar_email_paciente":
@@ -5181,6 +5276,8 @@ async def execute_nova_tool(
             return await _guardar_anamnesis(args, tenant_id)
         elif name == "ver_anamnesis":
             return await _ver_anamnesis(args, tenant_id)
+        elif name == "enviar_anamnesis":
+            return await _enviar_anamnesis(args, tenant_id)
 
         # H2. Odontograma
         elif name == "ver_odontograma":
@@ -5517,8 +5614,11 @@ async def _ver_chats_recientes(args: Dict, tenant_id: int) -> str:
     rows = await db.pool.fetch(
         """SELECT cc.external_user_id, cc.display_name, cc.channel, cc.updated_at,
                   cc.last_message_preview,
+                  p.id as patient_id, p.first_name as patient_first_name, p.status as patient_status,
                   (SELECT content FROM chat_messages WHERE conversation_id = cc.id ORDER BY created_at DESC LIMIT 1) as last_msg
-           FROM chat_conversations cc WHERE cc.tenant_id = $1 ORDER BY cc.updated_at DESC LIMIT $2""",
+           FROM chat_conversations cc
+           LEFT JOIN patients p ON p.phone_number = cc.external_user_id AND p.tenant_id = cc.tenant_id
+           WHERE cc.tenant_id = $1 ORDER BY cc.updated_at DESC LIMIT $2""",
         tenant_id,
         int(limit),
     )
@@ -5531,8 +5631,15 @@ async def _ver_chats_recientes(args: Dict, tenant_id: int) -> str:
         channel = r["channel"] or "whatsapp"
         last = (r["last_message_preview"] or r["last_msg"] or "")[:60]
         when = r["updated_at"].strftime("%d/%m %H:%M") if r["updated_at"] else "?"
+        # Badge: Lead or Paciente (with ID)
+        if r["patient_id"] and r["patient_status"] != "guest":
+            badge = f"[PACIENTE ID:{r['patient_id']}]"
+        elif r["patient_id"] and r["patient_status"] == "guest":
+            badge = f"[LEAD/GUEST ID:{r['patient_id']}]"
+        else:
+            badge = "[LEAD - sin ficha]"
         name_part = f" {name}" if name else ""
-        lines.append(f"• {phone}{name_part} ({channel}) — {when}: {last}")
+        lines.append(f"• {badge} {phone}{name_part} ({channel}) — {when}: {last}")
     return "\n".join(lines)
 
 
@@ -6266,6 +6373,49 @@ async def _ver_anamnesis(args: Dict, tenant_id: int) -> str:
         parts.append(f"\nFaltan: {', '.join(missing)}")
 
     return "\n".join(parts)
+
+
+async def _enviar_anamnesis(args: Dict, tenant_id: int) -> str:
+    """Envía el link de anamnesis a un paciente por WhatsApp."""
+    patient_id = args.get("patient_id")
+    if not patient_id:
+        return "Necesito el ID del paciente."
+
+    row = await db.pool.fetchrow(
+        "SELECT first_name, last_name, phone_number, anamnesis_token FROM patients WHERE id = $1 AND tenant_id = $2",
+        int(patient_id), tenant_id,
+    )
+    if not row:
+        return "Paciente no encontrado."
+    if not row["phone_number"]:
+        return "El paciente no tiene teléfono cargado."
+
+    # Generate token if missing
+    token = row["anamnesis_token"]
+    if not token:
+        token = str(uuid.uuid4())
+        await db.pool.execute(
+            "UPDATE patients SET anamnesis_token = $1 WHERE id = $2 AND tenant_id = $3",
+            token, int(patient_id), tenant_id,
+        )
+
+    import os
+    frontend_url = os.getenv("FRONTEND_URL", "http://localhost:4173").split(",")[0].strip().rstrip("/")
+    link = f"{frontend_url}/anamnesis/{tenant_id}/{token}"
+    name = f"{row['first_name'] or ''} {row['last_name'] or ''}".strip()
+
+    # Send via enviar_mensaje
+    message = (
+        f"¡Hola {row['first_name']}! 👋\n\n"
+        f"Para poder atenderte mejor, te pedimos que completes tu ficha médica en este formulario:\n\n"
+        f"{link}\n\n"
+        f"Es rápido y confidencial. ¡Gracias! 🦷"
+    )
+    result = await _enviar_mensaje(
+        {"phone": row["phone_number"], "message": message},
+        tenant_id, "ceo",
+    )
+    return f"✅ Link de anamnesis enviado a {name} ({row['phone_number']}). {result}"
 
 
 # =============================================================================
