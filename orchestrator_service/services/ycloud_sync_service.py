@@ -420,33 +420,58 @@ async def _run_sync(pool, client: YCloudClient, tenant_id: int, task_id: str, bu
 async def _upsert_chat_record(pool, tenant_id: int, msg_data: dict, external_user_id: str):
     """Create/update chat_conversations and insert into chat_messages for UI display."""
     try:
-        # Get or create conversation
-        conv_id = await pool.fetchval(
-            "SELECT id FROM chat_conversations WHERE tenant_id = $1 AND channel = 'whatsapp' AND external_user_id = $2",
+        import json as _json
+
+        # 1. Resolve patient name if exists
+        patient_name = None
+        patient_row = await pool.fetchrow(
+            "SELECT id, first_name, last_name FROM patients WHERE tenant_id = $1 AND phone_number = $2 LIMIT 1",
             tenant_id, external_user_id,
         )
+        if patient_row:
+            fn = patient_row["first_name"] or ""
+            ln = patient_row["last_name"] or ""
+            patient_name = f"{fn} {ln}".strip() or None
+
+        # 2. Find existing conversation (by phone, any provider — reuse existing)
+        conv_id = await pool.fetchval(
+            "SELECT id FROM chat_conversations WHERE tenant_id = $1 AND external_user_id = $2 ORDER BY updated_at DESC LIMIT 1",
+            tenant_id, external_user_id,
+        )
+
+        display_name = patient_name or external_user_id
+
         if not conv_id:
+            # Create new conversation
             conv_id = await pool.fetchval("""
                 INSERT INTO chat_conversations (tenant_id, channel, provider, external_user_id, display_name, status)
-                VALUES ($1, 'whatsapp', 'ycloud', $2, $2, 'active')
+                VALUES ($1, 'whatsapp', 'ycloud', $2, $3, 'active')
                 ON CONFLICT DO NOTHING
                 RETURNING id
-            """, tenant_id, external_user_id)
-            # If ON CONFLICT hit, fetch again
+            """, tenant_id, external_user_id, display_name)
             if not conv_id:
                 conv_id = await pool.fetchval(
-                    "SELECT id FROM chat_conversations WHERE tenant_id = $1 AND channel = 'whatsapp' AND external_user_id = $2",
+                    "SELECT id FROM chat_conversations WHERE tenant_id = $1 AND external_user_id = $2 ORDER BY updated_at DESC LIMIT 1",
                     tenant_id, external_user_id,
+                )
+        else:
+            # Update display_name if we found a patient name
+            if patient_name:
+                await pool.execute(
+                    "UPDATE chat_conversations SET display_name = COALESCE(NULLIF($1, ''), display_name) WHERE id = $2 AND (display_name IS NULL OR display_name = external_user_id)",
+                    patient_name, conv_id,
                 )
 
         if not conv_id:
             return
 
-        # Insert message (skip if duplicate by YCloud external_id stored in platform_metadata)
+        # 3. Insert message (dedup by YCloud external_id)
         role = "user" if msg_data["direction"] == "inbound" else "assistant"
         ext_id = msg_data.get("external_id") or ""
-        import json as _json
         platform_meta = _json.dumps({"provider_message_id": ext_id, "source": "ycloud_sync"})
+
+        # from_number: for inbound = patient, for outbound = business
+        from_num = external_user_id if msg_data["direction"] == "inbound" else msg_data.get("from_number", "")
 
         await pool.execute("""
             INSERT INTO chat_messages (tenant_id, conversation_id, from_number, role, content, created_at, platform_metadata)
@@ -458,14 +483,14 @@ async def _upsert_chat_record(pool, tenant_id: int, msg_data: dict, external_use
                   AND $8 != ''
             )
         """,
-            tenant_id, conv_id, external_user_id, role,
+            tenant_id, conv_id, from_num, role,
             msg_data.get("content") or f"[{msg_data['message_type']}]",
             msg_data["created_at"],
             platform_meta,
             ext_id,
         )
 
-        # Update conversation last message
+        # 4. Update conversation timestamps
         await pool.execute("""
             UPDATE chat_conversations SET
                 last_message_at = GREATEST(last_message_at, $1),
