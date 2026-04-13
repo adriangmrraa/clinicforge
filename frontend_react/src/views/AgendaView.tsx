@@ -516,12 +516,19 @@ export default function AgendaView() {
     const list = user?.role === 'professional' && user?.professional_id
       ? professionals.filter((p: Professional) => p.id === user.professional_id)
       : professionals;
-    return list.map((p: Professional) => ({
+    const mapped = list.map((p: Professional) => ({
       id: p.id.toString(),
       title: `Dr. ${p.first_name} ${p.last_name || ''}`,
       eventColor: '#3b82f6',
     }));
-  }, [professionals, user?.role, user?.professional_id]);
+    // Add catch-all resource for appointments without a professional assigned
+    // so they don't disappear in resourceTimeGridDay view
+    const hasUnassigned = filteredAppointments.some(apt => !apt.professional_id);
+    if (hasUnassigned) {
+      mapped.push({ id: '0', title: 'Sin asignar', eventColor: '#6b7280' });
+    }
+    return mapped;
+  }, [professionals, user?.role, user?.professional_id, filteredAppointments]);
 
   const handleDateClick = (info: { date: Date }) => {
     // Prevenir agendamiento en fechas/horas pasadas
