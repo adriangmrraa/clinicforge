@@ -778,7 +778,22 @@ async def media_proxy(
             logger.error(f"❌ Local media not found. Tried: {candidates}")
             raise HTTPException(status_code=404, detail="File not found")
 
-    # De lo contrario (URLs externas), mantener StreamingResponse
+    # De lo contrario (URLs externas), mantener StreamingResponse.
+    # If our guess is generic (octet-stream), do a HEAD request first to get
+    # the real Content-Type from the upstream CDN (Instagram/Meta CDN URLs
+    # lack file extensions but return proper Content-Type headers).
+    if media_content_type == "application/octet-stream":
+        try:
+            async with httpx.AsyncClient(follow_redirects=True, timeout=10.0) as head_client:
+                head_resp = await head_client.head(url)
+                if head_resp.status_code == 200:
+                    real_ct = head_resp.headers.get("content-type", "").split(";")[0].strip()
+                    if real_ct and real_ct != "application/octet-stream":
+                        media_content_type = real_ct
+                        logger.info(f"🔍 Resolved Content-Type via HEAD: {media_content_type}")
+        except Exception as head_err:
+            logger.warning(f"⚠️ HEAD request failed, using fallback Content-Type: {head_err}")
+
     async def stream_content():
         async with httpx.AsyncClient(follow_redirects=True, timeout=30.0) as client:
             try:

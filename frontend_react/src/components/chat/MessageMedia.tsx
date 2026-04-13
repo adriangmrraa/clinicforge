@@ -103,12 +103,11 @@ export const MessageMedia = ({ attachments, message }: { attachments: any[], mes
                     return (
                         <div key={idx} className="bg-gray-50 p-2 rounded-lg border flex flex-col gap-2 min-w-[240px]">
                             <div className="flex items-center gap-2">
-                                <audio 
-                                    controls 
-                                    src={url} 
-                                    className="h-8 w-full" 
+                                <audio
+                                    controls
+                                    src={url}
+                                    className="h-8 w-full"
                                     preload="metadata"
-                                    crossOrigin="anonymous"
                                 />
                                 <button
                                     onClick={() => handleTranscribeAgain(att.url)}
