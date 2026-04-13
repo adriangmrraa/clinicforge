@@ -315,6 +315,7 @@ async def _run_sync(pool, client: YCloudClient, tenant_id: int, task_id: str, bu
     total_saved = 0
     total_media = 0
     errors = []
+    seen_ids: set = set()  # Track message IDs to detect pagination loops
     started_at = datetime.now(timezone.utc)
 
     try:
@@ -423,6 +424,14 @@ async def _run_sync(pool, client: YCloudClient, tenant_id: int, task_id: str, bu
                         f"[ycloud_sync] SAMPLE+: from={s.get('from')} to={s.get('to')} "
                         f"dir={s.get('direction')} type={s.get('type')}"
                     )
+
+            # Detect duplicate pages (YCloud pagination loop)
+            page_ids = {m.get("id") for m in messages if m.get("id")}
+            overlap = page_ids & seen_ids
+            if overlap and len(overlap) > len(page_ids) * 0.5:  # >50% duplicates = looping
+                logger.info(f"[ycloud_sync] Pagination loop detected ({len(overlap)}/{len(page_ids)} duplicates). Stopping.")
+                break
+            seen_ids |= page_ids
 
             # Process each message
             for msg in messages:
