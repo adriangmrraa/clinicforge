@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 # Config
 PAGE_SIZE = 100
-MAX_MESSAGES = 10000
+MAX_MESSAGES = 50000
 MAX_RETRIES = 5
 INITIAL_BACKOFF = 1
 MAX_BACKOFF = 60
@@ -177,9 +177,23 @@ async def _download_and_save_media(
 
 # ── Parse YCloud message ─────────────────────────────────────────────────
 
-def _parse_ycloud_message(message: dict, tenant_id: int) -> dict:
+def _parse_ycloud_message(message: dict, tenant_id: int, business_number: str = "") -> dict:
     msg_type = message.get("type", "text")
-    direction = "inbound" if message.get("direction") == "inbound" else "outbound"
+
+    # Determine direction:
+    # YCloud field "direction" may exist, or we infer from whatsappInboundMessage
+    raw_direction = message.get("direction", "")
+    if raw_direction:
+        direction = "inbound" if raw_direction.lower() in ("inbound", "incoming") else "outbound"
+    elif message.get("whatsappInboundMessage"):
+        direction = "inbound"
+    elif business_number:
+        # If "from" is the business number → outbound; otherwise inbound
+        msg_from = normalize_phone_e164(message.get("from", ""))
+        biz = normalize_phone_e164(business_number)
+        direction = "outbound" if msg_from == biz else "inbound"
+    else:
+        direction = "outbound"  # Default if we can't tell
 
     content = None
     media_id = None
@@ -270,14 +284,14 @@ async def start_sync(
     client = YCloudClient(api_key=ycloud_api_key, business_number=ycloud_business_number)
 
     if background_tasks:
-        background_tasks.add_task(_run_sync, db.pool, client, tenant_id, task_id)
+        background_tasks.add_task(_run_sync, db.pool, client, tenant_id, task_id, ycloud_business_number or "")
     else:
-        await _run_sync(db.pool, client, tenant_id, task_id)
+        await _run_sync(db.pool, client, tenant_id, task_id, ycloud_business_number or "")
 
     return {"task_id": task_id, "status": "processing", "started_at": started_at.isoformat()}
 
 
-async def _run_sync(pool, client: YCloudClient, tenant_id: int, task_id: str) -> None:
+async def _run_sync(pool, client: YCloudClient, tenant_id: int, task_id: str, business_number: str = "") -> None:
     """Run the actual sync process using asyncpg pool."""
     cursor = None
     total_fetched = 0
@@ -319,7 +333,7 @@ async def _run_sync(pool, client: YCloudClient, tenant_id: int, task_id: str) ->
             # Process each message
             for msg in messages:
                 try:
-                    msg_data = _parse_ycloud_message(msg, tenant_id)
+                    msg_data = _parse_ycloud_message(msg, tenant_id, business_number)
                     if not msg_data.get("external_id"):
                         continue
 
@@ -428,19 +442,27 @@ async def _upsert_chat_record(pool, tenant_id: int, msg_data: dict, external_use
         if not conv_id:
             return
 
-        # Insert message (skip if duplicate by content+time)
+        # Insert message (skip if duplicate by YCloud external_id stored in platform_metadata)
         role = "user" if msg_data["direction"] == "inbound" else "assistant"
+        ext_id = msg_data.get("external_id") or ""
+        import json as _json
+        platform_meta = _json.dumps({"provider_message_id": ext_id, "source": "ycloud_sync"})
+
         await pool.execute("""
-            INSERT INTO chat_messages (tenant_id, conversation_id, from_number, role, content, created_at)
-            SELECT $1, $2, $3, $4, $5, $6
+            INSERT INTO chat_messages (tenant_id, conversation_id, from_number, role, content, created_at, platform_metadata)
+            SELECT $1, $2, $3, $4, $5, $6, $7::jsonb
             WHERE NOT EXISTS (
                 SELECT 1 FROM chat_messages
-                WHERE conversation_id = $2 AND content = $5 AND created_at = $6
+                WHERE conversation_id = $2
+                  AND platform_metadata->>'provider_message_id' = $8
+                  AND $8 != ''
             )
         """,
             tenant_id, conv_id, external_user_id, role,
             msg_data.get("content") or f"[{msg_data['message_type']}]",
             msg_data["created_at"],
+            platform_meta,
+            ext_id,
         )
 
         # Update conversation last message

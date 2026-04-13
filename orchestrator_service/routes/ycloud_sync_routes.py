@@ -366,56 +366,59 @@ async def purge_synced_data(
     _: int = Depends(get_resolved_tenant_id),
 ):
     """
-    Delete ALL chat conversations and messages for a tenant.
-    Use after a bad sync to clean up and start fresh.
-    CEO only. Destructive operation.
+    Delete ONLY data imported by YCloud sync (not real-time webhook data).
+    Targets: whatsapp_messages table + chat_messages with source=ycloud_sync.
+    CEO only.
     """
     try:
         from db import db
 
-        logger.info(f"[ycloud_sync] PURGE started for tenant {tenant_id} by user {getattr(user_data, 'user_id', '?')}")
+        logger.info(f"[ycloud_sync] PURGE (sync-only) started for tenant {tenant_id}")
 
-        # Count before deleting (for response)
-        msg_count = await db.pool.fetchval(
-            "SELECT COUNT(*) FROM chat_messages WHERE tenant_id = $1", tenant_id
+        # 1. Delete from whatsapp_messages (all are from sync)
+        wm_count = await db.pool.fetchval(
+            "SELECT COUNT(*) FROM whatsapp_messages WHERE tenant_id = $1", tenant_id
         )
-        conv_count = await db.pool.fetchval(
-            "SELECT COUNT(*) FROM chat_conversations WHERE tenant_id = $1", tenant_id
+        await db.pool.execute(
+            "DELETE FROM whatsapp_messages WHERE tenant_id = $1", tenant_id
         )
+        logger.info(f"[ycloud_sync] PURGE: deleted {wm_count} whatsapp_messages")
 
-        logger.info(f"[ycloud_sync] PURGE: found {conv_count} conversations, {msg_count} messages for tenant {tenant_id}")
-
-        # Delete messages first (FK dependency)
-        deleted_msgs = await db.pool.execute(
-            "DELETE FROM chat_messages WHERE tenant_id = $1", tenant_id
+        # 2. Delete chat_messages that were created by sync (marked with source=ycloud_sync)
+        sync_msg_count = await db.pool.fetchval(
+            "SELECT COUNT(*) FROM chat_messages WHERE tenant_id = $1 AND platform_metadata->>'source' = 'ycloud_sync'",
+            tenant_id,
         )
-        logger.info(f"[ycloud_sync] PURGE: deleted messages result: {deleted_msgs}")
-
-        # Delete conversations
-        deleted_convs = await db.pool.execute(
-            "DELETE FROM chat_conversations WHERE tenant_id = $1", tenant_id
+        await db.pool.execute(
+            "DELETE FROM chat_messages WHERE tenant_id = $1 AND platform_metadata->>'source' = 'ycloud_sync'",
+            tenant_id,
         )
-        logger.info(f"[ycloud_sync] PURGE: deleted conversations result: {deleted_convs}")
+        logger.info(f"[ycloud_sync] PURGE: deleted {sync_msg_count} sync chat_messages (preserved real-time messages)")
 
-        # Delete inbound_messages dedup records
-        try:
-            await db.pool.execute(
-                "DELETE FROM inbound_messages WHERE tenant_id = $1", tenant_id
-            )
-            logger.info(f"[ycloud_sync] PURGE: cleared inbound_messages dedup for tenant {tenant_id}")
-        except Exception as e:
-            logger.warning(f"[ycloud_sync] PURGE: inbound_messages cleanup skipped: {e}")
+        # 3. Delete empty conversations (conversations that have 0 messages left after purge)
+        empty_convs = await db.pool.fetchval("""
+            SELECT COUNT(*) FROM chat_conversations cc
+            WHERE cc.tenant_id = $1
+              AND NOT EXISTS (SELECT 1 FROM chat_messages cm WHERE cm.conversation_id = cc.id)
+        """, tenant_id)
+        await db.pool.execute("""
+            DELETE FROM chat_conversations cc
+            WHERE cc.tenant_id = $1
+              AND NOT EXISTS (SELECT 1 FROM chat_messages cm WHERE cm.conversation_id = cc.id)
+        """, tenant_id)
+        logger.info(f"[ycloud_sync] PURGE: deleted {empty_convs} empty conversations")
 
         logger.info(
             f"[ycloud_sync] PURGE complete for tenant {tenant_id}: "
-            f"{conv_count} conversations, {msg_count} messages deleted"
+            f"{wm_count} whatsapp_messages, {sync_msg_count} sync chat_messages, {empty_convs} empty conversations"
         )
 
         return {
             "status": "purged",
             "tenant_id": tenant_id,
-            "conversations_deleted": conv_count,
-            "messages_deleted": msg_count,
+            "conversations_deleted": empty_convs,
+            "messages_deleted": sync_msg_count,
+            "whatsapp_messages_deleted": wm_count,
         }
 
     except HTTPException:
