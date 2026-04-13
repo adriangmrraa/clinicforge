@@ -375,12 +375,17 @@ export default function AgendaView() {
       auth: { token: jwtToken || '' },
     });
 
-    // fetchDataRef siempre apunta a la versión más reciente de fetchData (sin re-suscribir)
-    socketRef.current.on('NEW_APPOINTMENT', () => fetchDataRef.current?.(true));
-    socketRef.current.on('APPOINTMENT_UPDATED', () => fetchDataRef.current?.(true));
-    socketRef.current.on('PAYMENT_CONFIRMED', () => fetchDataRef.current?.(true));
-    socketRef.current.on('BILLING_UPDATED', () => fetchDataRef.current?.(true));
-    socketRef.current.on('RECORD_UPDATED', () => fetchDataRef.current?.(true));
+    // Debounced background refresh — multiple rapid socket events only trigger ONE fetch
+    let agendaRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+    const debouncedAgendaRefresh = () => {
+      if (agendaRefreshTimer) clearTimeout(agendaRefreshTimer);
+      agendaRefreshTimer = setTimeout(() => fetchDataRef.current?.(true), 2000);
+    };
+    socketRef.current.on('NEW_APPOINTMENT', debouncedAgendaRefresh);
+    socketRef.current.on('APPOINTMENT_UPDATED', debouncedAgendaRefresh);
+    socketRef.current.on('PAYMENT_CONFIRMED', debouncedAgendaRefresh);
+    socketRef.current.on('BILLING_UPDATED', debouncedAgendaRefresh);
+    socketRef.current.on('RECORD_UPDATED', debouncedAgendaRefresh);
     socketRef.current.on('APPOINTMENT_DELETED', (deletedAppointmentId: string) => {
       setAppointments(prevAppointments => {
         const updated = prevAppointments.filter(apt => apt.id !== deletedAppointmentId);

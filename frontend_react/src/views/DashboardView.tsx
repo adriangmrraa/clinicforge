@@ -144,16 +144,15 @@ export default function DashboardView() {
       loadUrgencies();
     });
 
-    // Nova billing/CRUD updates — refetch dashboard stats
-    socketRef.current.on('BILLING_UPDATED', () => {
-      loadDashboardData(dateRange);
-    });
-    socketRef.current.on('RECORD_UPDATED', () => {
-      loadDashboardData(dateRange);
-    });
-    socketRef.current.on('TREATMENT_PLAN_UPDATED', () => {
-      loadDashboardData(dateRange);
-    });
+    // Nova billing/CRUD updates — debounced refetch (avoid flooding API)
+    let dashboardRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+    const debouncedRefresh = () => {
+      if (dashboardRefreshTimer) clearTimeout(dashboardRefreshTimer);
+      dashboardRefreshTimer = setTimeout(() => loadDashboardData(timeRange), 3000);
+    };
+    socketRef.current.on('BILLING_UPDATED', debouncedRefresh);
+    socketRef.current.on('RECORD_UPDATED', debouncedRefresh);
+    socketRef.current.on('TREATMENT_PLAN_UPDATED', debouncedRefresh);
 
     const loadDashboardData = async (range: string) => {
       try {
