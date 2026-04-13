@@ -180,20 +180,37 @@ async def _download_and_save_media(
 def _parse_ycloud_message(message: dict, tenant_id: int, business_number: str = "") -> dict:
     msg_type = message.get("type", "text")
 
-    # Determine direction:
-    # YCloud field "direction" may exist, or we infer from whatsappInboundMessage
+    # Determine direction using multiple signals:
+    # 1. YCloud "bizType" field: "user_initiated" = inbound, "business_initiated" = outbound
+    # 2. YCloud "direction" field (may not exist)
+    # 3. Compare from/to against business number
+    # 4. "whatsappInboundMessage" nested object
+    biz_type = message.get("bizType", "")
     raw_direction = message.get("direction", "")
-    if raw_direction:
+    msg_from = normalize_phone_e164(message.get("from", ""))
+    msg_to = normalize_phone_e164(message.get("to", ""))
+    biz = normalize_phone_e164(business_number) if business_number else ""
+
+    if biz_type:
+        # Most reliable: YCloud tells us directly
+        direction = "inbound" if "user" in biz_type.lower() else "outbound"
+    elif raw_direction:
         direction = "inbound" if raw_direction.lower() in ("inbound", "incoming") else "outbound"
     elif message.get("whatsappInboundMessage"):
         direction = "inbound"
-    elif business_number:
-        # If "from" is the business number → outbound; otherwise inbound
-        msg_from = normalize_phone_e164(message.get("from", ""))
-        biz = normalize_phone_e164(business_number)
-        direction = "outbound" if msg_from == biz else "inbound"
+    elif biz:
+        # Compare both from and to against business number (with and without +)
+        biz_variants = {biz, biz.lstrip("+"), "+" + biz.lstrip("+")}
+        from_variants = {msg_from, msg_from.lstrip("+"), "+" + msg_from.lstrip("+")}
+        to_variants = {msg_to, msg_to.lstrip("+"), "+" + msg_to.lstrip("+")}
+        if from_variants & biz_variants:
+            direction = "outbound"
+        elif to_variants & biz_variants:
+            direction = "inbound"
+        else:
+            direction = "outbound"
     else:
-        direction = "outbound"  # Default if we can't tell
+        direction = "outbound"
 
     content = None
     media_id = None
@@ -221,7 +238,7 @@ def _parse_ycloud_message(message: dict, tenant_id: int, business_number: str = 
     elif msg_type == "button":
         content = (message.get("button") or {}).get("text")
 
-    created_at = message.get("timestamp")
+    created_at = message.get("createTime") or message.get("sendTime") or message.get("timestamp")
     if isinstance(created_at, str):
         try:
             created_at = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
@@ -339,10 +356,10 @@ async def _run_sync(pool, client: YCloudClient, tenant_id: int, task_id: str, bu
                 )
                 logger.info(
                     f"[ycloud_sync] SAMPLE: from={sample.get('from')} to={sample.get('to')} "
-                    f"direction={sample.get('direction')} type={sample.get('type')} "
-                    f"id={sample.get('id')} wamid={sample.get('wamid')} "
-                    f"whatsappInboundMessage={bool(sample.get('whatsappInboundMessage'))} "
-                    f"businessNumber={business_number}"
+                    f"direction={sample.get('direction')} bizType={sample.get('bizType')} "
+                    f"type={sample.get('type')} id={sample.get('id')} "
+                    f"businessNumber={business_number} "
+                    f"timestamp={sample.get('createTime') or sample.get('timestamp')}"
                 )
                 # Log 3 more samples to see variety
                 for s in messages[1:4]:
@@ -381,20 +398,16 @@ async def _run_sync(pool, client: YCloudClient, tenant_id: int, task_id: str, bu
 
                     # Also upsert into chat_conversations + chat_messages for UI display
                     # external_user_id = the PATIENT phone (not the business number)
-                    biz_normalized = normalize_phone_e164(business_number) if business_number else ""
+                    # Determine patient phone = whichever is NOT the business
                     from_num = msg_data["from_number"]
                     to_num = msg_data["to_number"]
-                    # The patient is whichever number is NOT the business number
-                    if biz_normalized and from_num == biz_normalized:
-                        external_user_id = to_num  # outbound: patient is the recipient
-                    elif biz_normalized and to_num == biz_normalized:
-                        external_user_id = from_num  # inbound: patient is the sender
-                    elif msg_data["direction"] == "inbound":
-                        external_user_id = from_num
-                    else:
-                        external_user_id = to_num
 
-                    if external_user_id and external_user_id != biz_normalized:
+                    if msg_data["direction"] == "inbound":
+                        external_user_id = from_num  # Patient sent the message
+                    else:
+                        external_user_id = to_num  # Bot sent to patient
+
+                    if external_user_id:
                         await _upsert_chat_record(pool, tenant_id, msg_data, external_user_id)
 
                     # Download media if present
