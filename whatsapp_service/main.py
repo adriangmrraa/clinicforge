@@ -554,53 +554,66 @@ async def ycloud_webhook(request: Request):
         or event_type == "whatsapp.smb.message.echoes"
     ):
         logger.info("echo_received", correlation_id=correlation_id, evt_type=event_type, raw_keys=list(event.keys()))
-        # YCloud uses different payload keys depending on echo type:
-        # whatsapp.message.echo → "whatsappMessage"
-        # whatsapp.smb.message.echoes → "whatsappSmbMessageEcho" or "smbMessage"
-        msg = (
-            event.get("whatsappMessage")
-            or event.get("whatsappSmbMessageEcho")
-            or event.get("smbMessage")
-            or event.get("message")
-            or event.get("whatsappMessageEcho")
-            or {}
-        )
+
+        # Extract message from ANY dict-value key in the event (YCloud uses different
+        # keys per echo type: whatsappMessage, whatsappSmbMessageEcho, etc.)
+        msg = None
+        for candidate_key in ["whatsappMessage", "whatsappSmbMessageEcho", "whatsappSmbMessageEchoes",
+                              "smbMessage", "message", "whatsappMessageEcho"]:
+            if candidate_key in event and isinstance(event[candidate_key], dict):
+                msg = event[candidate_key]
+                logger.info(f"echo_key_matched: {candidate_key}")
+                break
         if not msg:
-            # Fallback: try any key that looks like a message object with "to" and "type"
+            # Dynamic fallback: find ANY dict value with a "to" or "from" field
             for k, v in event.items():
-                if isinstance(v, dict) and v.get("to") and v.get("type"):
+                if k in ("type", "id", "createTime", "sendTime", "apiVersion"):
+                    continue
+                if isinstance(v, dict) and (v.get("to") or v.get("from")):
                     msg = v
-                    logger.info(f"echo_fallback_key_found: {k}")
+                    logger.info(f"echo_dynamic_key: {k}")
                     break
-        logger.info(f"echo_msg_extracted: keys={list(msg.keys()) if msg else 'EMPTY'}, to={msg.get('to')}, type={msg.get('type')}")
+        if not msg:
+            logger.warning(f"echo_no_message_found: keys={list(event.keys())}, forwarding raw event")
+            # Last resort: forward the entire event as-is, let orchestrator handle it
+            msg = event
 
-        user_phone = msg.get("to")
-        bot_phone = msg.get("from")
+        user_phone = msg.get("to") or event.get("to")
+        bot_phone = msg.get("from") or event.get("from")
+        msg_type = msg.get("type") if msg.get("type") not in (event_type,) else "text"
 
+        # Extract text content
         text = None
-        msg_type = msg.get("type")
-
         if msg_type == "text":
-            text = msg.get("text", {}).get("body")
+            text_obj = msg.get("text")
+            text = text_obj.get("body") if isinstance(text_obj, dict) else text_obj
         elif msg_type == "audio":
             text = "[Audio enviado]"
         elif msg_type == "image":
-            text = msg.get("image", {}).get("caption") or "[Imagen enviada]"
+            text = (msg.get("image") or {}).get("caption") if isinstance(msg.get("image"), dict) else None
+            text = text or "[Imagen enviada]"
         elif msg_type == "document":
-            text = msg.get("document", {}).get("caption") or "[Documento enviado]"
+            text = (msg.get("document") or {}).get("caption") if isinstance(msg.get("document"), dict) else None
+            text = text or "[Documento enviado]"
         elif msg_type == "video":
-            text = msg.get("video", {}).get("caption") or "[Video enviado]"
+            text = (msg.get("video") or {}).get("caption") if isinstance(msg.get("video"), dict) else None
+            text = text or "[Video enviado]"
+        else:
+            # Unknown type — still forward with a placeholder
+            text = f"[{msg_type or 'Mensaje'} enviado desde WhatsApp Business]"
 
-        # If we have text (real or fallback) and a user phone, forward it
-        if text and user_phone:
+        logger.info(f"echo_extracted: to={user_phone}, from={bot_phone}, type={msg_type}, text={text[:50] if text else 'NONE'}")
+
+        # Forward to orchestrator — always, even if text is a placeholder
+        if user_phone:
             payload = {
                 "provider": "ycloud",
                 "event_id": event.get("id"),
                 "provider_message_id": msg.get("wamid") or event.get("id"),
-                "from_number": user_phone,  # Ensuring this maps to 'external_user_id' in DB
+                "from_number": user_phone,
                 "to_number": bot_phone,
-                "text": text,
-                "event_type": "whatsapp.message.echo",  # Standardize for Orchestrator
+                "text": text or "[Mensaje desde WhatsApp Business]",
+                "event_type": "whatsapp.message.echo",
                 "correlation_id": correlation_id,
             }
             headers = {"X-Correlation-Id": correlation_id}
@@ -613,6 +626,9 @@ async def ycloud_webhook(request: Request):
             except Exception as e:
                 logger.error("echo_forward_failed", error=str(e))
                 return {"status": "error_forwarding_echo"}
+        else:
+            logger.warning(f"echo_no_phone: cannot identify recipient from event keys={list(event.keys())}")
+            return {"status": "echo_no_phone"}
 
     return {"status": "ignored_event_type", "type": event_type}
 
