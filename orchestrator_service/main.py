@@ -4855,6 +4855,18 @@ async def derivhumano(reason: str):
             tenant_id,
             phone,
         )
+        # Sync with chat_conversations (AI gate checks this table first)
+        await db.pool.execute(
+            """
+            UPDATE chat_conversations
+            SET human_override_until = $1, updated_at = NOW()
+            WHERE tenant_id = $2 AND external_user_id = $3
+        """,
+            override_until,
+            tenant_id,
+            phone,
+        )
+
         logger.info(
             f"👤 Derivación humana solicitada para {phone} (tenant={tenant_id}): {reason}"
         )
