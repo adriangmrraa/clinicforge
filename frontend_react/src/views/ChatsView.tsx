@@ -560,7 +560,7 @@ export default function ChatsView() {
       setHasMoreMessages(newBatch.length === 50);
     } catch (error) {
       console.error('Error fetching messages:', error);
-      if (!append) setMessages([]);
+      // Don't clear existing messages on re-fetch failure (e.g. 429 rate limit)
     } finally {
       setLoadingMore(false);
     }
@@ -646,14 +646,29 @@ export default function ChatsView() {
         }
       }
 
+      const sentText = newMessage;
       await api.post('/admin/chat/send', {
         phone: selectedSession.phone_number,
         tenant_id: selectedSession.tenant_id,
-        message: newMessage,
+        message: sentText,
         attachments: attachments
       });
       setNewMessage('');
       setSelectedFiles([]);
+
+      // Optimistic update: show sent message immediately without waiting for re-fetch
+      if (sentText.trim()) {
+        setMessages(prev => [...prev, {
+          id: Date.now(),
+          from_number: selectedSession.phone_number,
+          role: 'human_supervisor' as const,
+          content: sentText,
+          created_at: new Date().toISOString(),
+        }]);
+        scrollToBottom();
+      }
+
+      // Background re-fetch to sync (won't clear on failure)
       fetchMessages(selectedSession.phone_number, selectedSession.tenant_id);
 
       socketRef.current?.emit('MANUAL_MESSAGE', {
@@ -747,14 +762,28 @@ export default function ChatsView() {
       }
 
       // 2. Send message with attachments
-      await chatsApi.sendChatMessage(selectedChatwoot.id, newMessage.trim(), attachments);
+      const sentText = newMessage.trim();
+      await chatsApi.sendChatMessage(selectedChatwoot.id, sentText, attachments);
 
       setNewMessage('');
-      setSelectedFiles([]); // Clear files
+      setSelectedFiles([]);
 
-      // 3. Refresh messages
-      const list = await chatsApi.fetchChatMessages(selectedChatwoot.id, { limit: 50 });
-      setChatwootMessages(list);
+      // Optimistic update: show sent message immediately
+      if (sentText) {
+        setChatwootMessages(prev => [...prev, {
+          id: String(Date.now()),
+          conversation_id: selectedChatwoot.id,
+          role: 'human_supervisor',
+          content: sentText,
+          timestamp: new Date().toISOString(),
+          attachments: [],
+        }]);
+      }
+
+      // 3. Background refresh to sync (don't clear on failure)
+      chatsApi.fetchChatMessages(selectedChatwoot.id, { limit: 50 })
+        .then(list => setChatwootMessages(list))
+        .catch(() => { /* keep optimistic message */ });
     } catch (err: any) {
       console.error('Error sending Chatwoot message:', err);
       if (err.response?.status === 403) {
