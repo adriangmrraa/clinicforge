@@ -252,7 +252,7 @@
     "urgencies": "Urgencies",
     "conversations": "IA Conversations",
     "appointments": "Appointments",
-    "appointments_hint": "AI-scheduled appointments for the selected range. Use Agenda to view all.",
+    "appointments_hint": "Total appointments scheduled for the selected range.",
     "revenue": "Revenue",
     "revenue_confirmed": "Confirmed Revenue",
     "revenue_estimated": "Estimated IA Sales",

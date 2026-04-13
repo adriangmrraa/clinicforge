@@ -254,7 +254,7 @@
     "urgencies": "Urgencias",
     "conversations": "Conversaciones IA",
     "appointments": "Turnos",
-    "appointments_hint": "Turnos agendados por IA según el rango seleccionado. Usá la Agenda para ver todos.",
+    "appointments_hint": "Total de turnos agendados en el rango seleccionado.",
     "revenue": "Ingresos",
     "revenue_confirmed": "Revenue Confirmado",
     "revenue_estimated": "Ventas Estimadas IA",

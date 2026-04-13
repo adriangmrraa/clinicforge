@@ -787,6 +787,7 @@ class PatientCreate(BaseModel):
     insurance: Optional[str] = None  # Obra Social
     city: Optional[str] = None
     birth_date: Optional[date] = None
+    notes: Optional[str] = None
 
 
 class AppointmentCreate(BaseModel):
@@ -2421,12 +2422,12 @@ async def get_dashboard_stats(
             or 0
         )
 
-        # 2. IA Appointments (Turnos de IA en el rango seleccionado)
+        # 2. Appointments — count ALL (not just AI-sourced) for the dashboard KPI
         ia_count = (
             await db.pool.fetchval(
                 f"""
-            SELECT COUNT(*) FROM appointments 
-            WHERE tenant_id = $1 AND source = 'ai' AND appointment_datetime >= CURRENT_DATE - {interval_expr}
+            SELECT COUNT(*) FROM appointments
+            WHERE tenant_id = $1 AND appointment_datetime >= CURRENT_DATE - {interval_expr}
         """,
                 tenant_id,
             )
@@ -4259,9 +4260,9 @@ async def create_patient(
     try:
         row = await db.pool.fetchrow(
             """
-            INSERT INTO patients (tenant_id, first_name, last_name, phone_number, email, dni, insurance_provider, city, birth_date, status, created_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'active', NOW())
-            RETURNING id
+            INSERT INTO patients (tenant_id, first_name, last_name, phone_number, email, dni, insurance_provider, city, birth_date, notes, status, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'active', NOW())
+            RETURNING id, first_name, last_name, phone_number, status
         """,
             tenant_id,
             (p.first_name or "").strip() or "Sin nombre",
@@ -4272,8 +4273,24 @@ async def create_patient(
             (p.insurance or "").strip() or None,
             (p.city or "").strip() or None,
             p.birth_date,
+            (p.notes or "").strip() or None,
         )
-        return {"id": row["id"]}
+
+        # Emit PATIENT_CREATED socket event for real-time UI updates
+        try:
+            from main import sio, to_json_safe
+            await sio.emit("PATIENT_CREATED", to_json_safe({
+                "patient_id": row["id"],
+                "phone_number": row["phone_number"],
+                "tenant_id": tenant_id,
+                "first_name": row["first_name"],
+                "last_name": row["last_name"] or "",
+                "status": row["status"],
+            }))
+        except Exception as sio_err:
+            logger.warning(f"⚠️ Error emitting PATIENT_CREATED: {sio_err}")
+
+        return {"id": row["id"], "first_name": row["first_name"], "last_name": row["last_name"], "phone_number": row["phone_number"], "status": row["status"]}
     except asyncpg.UniqueViolationError as e:
         if (
             "patients_tenant_id_phone_number_key" in str(e)
@@ -4291,6 +4308,30 @@ async def create_patient(
     except Exception as e:
         logger.error(f"Error creating patient: {e}")
         raise HTTPException(status_code=400, detail=str(e))
+
+
+# ==================== ENDPOINT: INSURANCE PROVIDERS ====================
+
+@router.get(
+    "/insurance-providers",
+    dependencies=[Depends(verify_admin_token)],
+    tags=["Pacientes"],
+    summary="Lista de obras sociales usadas en el tenant",
+)
+async def get_insurance_providers(
+    tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    """Devuelve la lista de obras sociales distintas ya registradas en pacientes del tenant."""
+    rows = await db.pool.fetch(
+        """
+        SELECT DISTINCT insurance_provider
+        FROM patients
+        WHERE tenant_id = $1 AND insurance_provider IS NOT NULL AND insurance_provider != ''
+        ORDER BY insurance_provider
+    """,
+        tenant_id,
+    )
+    return {"providers": [r["insurance_provider"] for r in rows]}
 
 
 # ==================== IMPORTACIÓN MASIVA DE PACIENTES ====================
