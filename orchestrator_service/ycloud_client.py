@@ -294,17 +294,33 @@ class YCloudClient:
 
     async def get_contact_profile(self, phone_number: str) -> Optional[str]:
         """Get WhatsApp profile name for a phone number. Returns name or None."""
-        # Try the contacts/phone endpoint
-        url = f"{self.base_url}/whatsapp/phoneNumbers/{phone_number}"
-        try:
-            async with httpx.AsyncClient() as client:
-                response = await client.get(url, headers=self.headers, timeout=15.0)
-                if response.status_code == 200:
-                    data = response.json()
-                    return data.get("waName") or data.get("name") or data.get("profileName") or data.get("pushName")
-                return None
-        except Exception:
-            return None
+        # Try multiple YCloud endpoints for contact name
+        endpoints = [
+            f"{self.base_url}/whatsapp/phoneNumbers/{phone_number}",
+            f"{self.base_url}/whatsapp/contacts/{phone_number}",
+        ]
+        for url in endpoints:
+            try:
+                async with httpx.AsyncClient() as client:
+                    response = await client.get(url, headers=self.headers, timeout=10.0)
+                    if response.status_code == 200:
+                        data = response.json()
+                        name = (
+                            data.get("waName")
+                            or data.get("name")
+                            or data.get("profileName")
+                            or data.get("pushName")
+                            or data.get("displayName")
+                            or data.get("display_name")
+                        )
+                        if name:
+                            logger.info(f"ycloud_contact_profile: {phone_number} → {name} (from {url})")
+                            return name
+                    elif response.status_code != 404:
+                        logger.debug(f"ycloud_contact_profile: {url} returned {response.status_code}: {response.text[:200]}")
+            except Exception as e:
+                logger.debug(f"ycloud_contact_profile failed for {url}: {e}")
+        return None
 
     async def get_media_url(self, media_id: str) -> dict[str, Any]:
         """

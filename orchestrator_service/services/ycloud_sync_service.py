@@ -363,10 +363,16 @@ async def _run_sync(pool, client: YCloudClient, tenant_id: int, task_id: str, bu
             try:
                 wa_name = await client.get_contact_profile(phone.lstrip("+"))
                 if wa_name:
+                    logger.info(f"[ycloud_sync] Got WA name for {phone}: {wa_name}")
                     contact_names_cache[phone] = wa_name
                     return wa_name
-            except Exception:
-                pass
+                else:
+                    # Log first failure to diagnose
+                    if len(contact_names_cache) < 3:
+                        logger.info(f"[ycloud_sync] No WA name from API for {phone}")
+            except Exception as e:
+                if len(contact_names_cache) < 3:
+                    logger.warning(f"[ycloud_sync] WA name API failed for {phone}: {e}")
             contact_names_cache[phone] = ""
             return ""
 
