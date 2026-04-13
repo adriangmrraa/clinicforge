@@ -196,12 +196,15 @@ app.use(async (req: Request, res: Response) => {
             validateStatus: () => true
         });
 
-        // Forward all response headers
-        if (response.headers['content-type']) {
-            res.setHeader('Content-Type', response.headers['content-type']);
-        }
-        if (response.headers['content-disposition']) {
-            res.setHeader('Content-Disposition', response.headers['content-disposition']);
+        // Forward all relevant response headers
+        const headersToCopy = [
+            'content-type', 'content-disposition', 'content-length',
+            'content-range', 'accept-ranges', 'cache-control', 'etag', 'last-modified'
+        ];
+        for (const h of headersToCopy) {
+            if (response.headers[h]) {
+                res.setHeader(h, response.headers[h]);
+            }
         }
 
         if (isBinaryRequest) {
