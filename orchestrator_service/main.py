@@ -2742,6 +2742,16 @@ async def book_appointment(
             apt_datetime = parse_datetime(date_time)
             logger.info(f"📅 BOOK: parsed datetime={apt_datetime} from '{date_time}'")
 
+        # Safety: if parsed date is in the past but within 7 days, advance to next week
+        # This handles the case where the LLM passes "jueves 13:00" without interpreted_date
+        # and parse_datetime resolves to last Thursday instead of next Thursday.
+        now_check_pre = get_now_arg()
+        if apt_datetime < now_check_pre:
+            days_behind = (now_check_pre - apt_datetime).days
+            if days_behind <= 7:
+                apt_datetime = apt_datetime + timedelta(days=7)
+                logger.info(f"📅 BOOK AUTO-ADVANCE: date was {days_behind}d in past, advanced 7d → {apt_datetime}")
+
         # No agendar en el pasado
         if apt_datetime < get_now_arg():
             return "❌ No se pueden agendar turnos para horarios que ya pasaron. Indicá un día y hora futuros. Formato esperado: date_time como 'día 17:00' (ej. miércoles 17:00)."
