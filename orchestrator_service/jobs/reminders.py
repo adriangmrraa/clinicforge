@@ -221,6 +221,41 @@ async def _send_template(
             components=components,
         )
         logger.info(f"✅ Template '{template_name}' sent to {phone} (tenant {tenant_id})")
+
+        # Persist in chat_conversations + chat_messages so it appears in the UI
+        try:
+            from db import db as _db
+            import uuid as _uuid
+            import json as _json
+
+            # Upsert conversation
+            conv = await _db.pool.fetchrow(
+                "SELECT id FROM chat_conversations WHERE tenant_id = $1 AND external_user_id = $2 AND channel = 'whatsapp' ORDER BY updated_at DESC LIMIT 1",
+                tenant_id, phone,
+            )
+            if conv:
+                conv_id = conv["id"]
+                await _db.pool.execute(
+                    "UPDATE chat_conversations SET last_message = $1, updated_at = NOW() WHERE id = $2",
+                    f"[Recordatorio: {template_name}]", conv_id,
+                )
+            else:
+                conv_id = _uuid.uuid4()
+                await _db.pool.execute(
+                    "INSERT INTO chat_conversations (id, tenant_id, channel, provider, external_user_id, last_message, status, updated_at) VALUES ($1, $2, 'whatsapp', 'ycloud', $3, $4, 'active', NOW())",
+                    conv_id, tenant_id, phone, f"[Recordatorio: {template_name}]",
+                )
+
+            # Persist message
+            preview = f"[Plantilla: {template_name}] " + " | ".join(p.get("text", "") for p in (components[0].get("parameters", []) if components else []))
+            await _db.pool.execute(
+                "INSERT INTO chat_messages (tenant_id, conversation_id, role, content, from_number, platform_metadata) VALUES ($1, $2, 'assistant', $3, $4, $5::jsonb)",
+                tenant_id, conv_id, preview, phone,
+                _json.dumps({"source": "reminder_template", "template": template_name}),
+            )
+        except Exception as _persist_err:
+            logger.warning(f"⚠️ Reminder persist failed (non-blocking): {_persist_err}")
+
         return True
 
     except Exception as e:
