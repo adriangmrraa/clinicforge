@@ -156,6 +156,7 @@ async def send_appointment_reminders():
                     sent = await _send_template(
                         tenant_id, apt["phone_number"],
                         template_name, template_lang, components,
+                        patient_name=f"{apt['first_name'] or ''} {apt.get('last_name') or ''}".strip(),
                     )
                     message_preview = f"[HSM:{template_name}] {patient_name} - {day_of_week} {formatted_date} {formatted_time}"
 
@@ -201,6 +202,7 @@ async def send_appointment_reminders():
 async def _send_template(
     tenant_id: int, phone: str,
     template_name: str, language_code: str, components: list,
+    patient_name: str = "",
 ) -> bool:
     """Send a YCloud HSM template (with buttons)."""
     try:
@@ -242,8 +244,8 @@ async def _send_template(
             else:
                 conv_id = _uuid.uuid4()
                 await _db.pool.execute(
-                    "INSERT INTO chat_conversations (id, tenant_id, channel, provider, external_user_id, last_message, status, updated_at) VALUES ($1, $2, 'whatsapp', 'ycloud', $3, $4, 'active', NOW())",
-                    conv_id, tenant_id, phone, f"[Recordatorio: {template_name}]",
+                    "INSERT INTO chat_conversations (id, tenant_id, channel, provider, external_user_id, display_name, last_message, status, updated_at) VALUES ($1, $2, 'whatsapp', 'ycloud', $3, $4, $5, 'active', NOW())",
+                    conv_id, tenant_id, phone, patient_name or None, f"[Recordatorio: {template_name}]",
                 )
 
             # Persist message

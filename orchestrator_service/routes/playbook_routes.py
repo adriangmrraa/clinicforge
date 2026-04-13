@@ -224,7 +224,7 @@ async def send_reminders_now(
                 parameters = [{"type": "text", "text": var_map.get(k, "")} for k in ["nombre_paciente", "dia_semana", "fecha_turno", "hora_turno"]]
                 components = [{"type": "body", "parameters": parameters}]
 
-                sent = await _send_template(tenant_id, apt["phone_number"], template_name, template_lang, components)
+                sent = await _send_template(tenant_id, apt["phone_number"], template_name, template_lang, components, patient_name=f"{apt['first_name'] or ''} {apt.get('last_name') or ''}".strip())
 
             # Fallback: free text
             if not sent:
