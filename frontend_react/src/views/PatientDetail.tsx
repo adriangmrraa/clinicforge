@@ -183,15 +183,21 @@ export default function PatientDetail() {
       ]);
       if (idRef.current !== fetchForId) return;
       setPatient(patientRes.data);
-      setRecords(recordsRes.data);
-      if (patientRes.data.medical_notes) {
-        const notes = patientRes.data.medical_notes.toLowerCase();
+      setRecords(Array.isArray(recordsRes.data) ? recordsRes.data : []);
+      const notes = patientRes.data?.medical_notes || patientRes.data?.notes || '';
+      if (notes) {
         setCriticalConditionsFound(
-          criticalConditions.filter(c => notes.includes(c.toLowerCase()))
+          criticalConditions.filter(c => notes.toLowerCase().includes(c.toLowerCase()))
         );
       }
-    } catch (error) {
-      if (idRef.current === fetchForId) console.error('Error fetching patient data:', error);
+    } catch (error: any) {
+      if (idRef.current === fetchForId) {
+        console.error('Error fetching patient data:', error);
+        // Don't crash the page on 429 — show what we have
+        if (error?.response?.status !== 429) {
+          setPatient(null);
+        }
+      }
     } finally {
       if (idRef.current === fetchForId) setLoading(false);
     }

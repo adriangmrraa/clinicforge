@@ -210,7 +210,12 @@ export default function AnamnesisPanel({
     return <p className="text-red-500 text-xs py-2 px-3">{error}</p>;
   }
 
-  if (!history || Object.keys(history).filter(k => !k.startsWith('anamnesis_')).length === 0) {
+  // Safety: if medical_history came as a JSON string instead of object, parse it
+  if (history && typeof history === 'string') {
+    try { setHistory(JSON.parse(history as unknown as string)); return null; } catch { /* fall through */ }
+  }
+
+  if (!history || typeof history !== 'object' || Object.keys(history).filter(k => !k.startsWith('anamnesis_')).length === 0) {
     return (
       <div className={`flex flex-col items-center justify-center gap-2 ${compact ? 'py-4' : 'py-8'} text-white/30`}>
         <HeartPulse size={compact ? 20 : 32} className="opacity-40" />
