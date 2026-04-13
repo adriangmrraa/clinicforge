@@ -198,18 +198,17 @@ class YCloudClient:
         """
         url = f"{self.base_url}/whatsapp/messages"
 
-        params = {"limit": min(limit, 100)}
-        # YCloud uses offset-based pagination, not cursor-based
+        # YCloud v2 API parameter names:
+        # - page.size (not limit)
+        # - page.after (cursor-based pagination)
+        # - filter.createTime.gte / filter.createTime.lte (not fromDate/toDate)
+        params: dict[str, Any] = {"page.size": min(limit, 100)}
         if cursor:
-            # cursor is the offset number as string
-            try:
-                params["offset"] = int(cursor)
-            except (ValueError, TypeError):
-                params["offset"] = 0
+            params["page.after"] = cursor
         if from_date:
-            params["fromDate"] = from_date
+            params["filter.createTime.gte"] = from_date
         if to_date:
-            params["toDate"] = to_date
+            params["filter.createTime.lte"] = to_date
 
         async with httpx.AsyncClient() as client:
             try:
@@ -228,7 +227,7 @@ class YCloudClient:
                 response.raise_for_status()
                 data = response.json()
 
-                # YCloud returns messages in "items" key with offset-based pagination
+                # YCloud v2 returns messages in "items" key with cursor-based pagination
                 messages = (
                     data.get("items")
                     or data.get("messages")
@@ -237,13 +236,20 @@ class YCloudClient:
                     or (data if isinstance(data, list) else [])
                 )
 
-                # Calculate next offset for pagination
-                current_offset = data.get("offset", 0)
+                # YCloud v2 cursor-based pagination: nextPageToken or page.after
+                next_cursor = (
+                    data.get("nextPageToken")
+                    or data.get("nextCursor")
+                    or data.get("next_cursor")
+                )
+                # Fallback: if no explicit cursor but we got a full page, use
+                # the last item's ID as cursor (YCloud page.after accepts item IDs)
+                if not next_cursor and len(messages) >= limit:
+                    last_id = messages[-1].get("id") if messages else None
+                    if last_id:
+                        next_cursor = last_id
+
                 page_length = data.get("length", len(messages))
-                # If we got a full page, there might be more
-                next_cursor = None
-                if page_length >= limit and len(messages) >= limit:
-                    next_cursor = str(current_offset + len(messages))
 
                 logger.info(
                     f"ycloud_fetch_messages: status={response.status_code} "
@@ -264,6 +270,8 @@ class YCloudClient:
                     "next_cursor": next_cursor,
                     "has_more": bool(next_cursor),
                     "total": data.get("total", len(messages)),
+                    "offset": data.get("offset", 0),
+                    "length": page_length,
                 }
 
             except httpx.HTTPStatusError as e:

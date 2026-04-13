@@ -505,15 +505,10 @@ async def _run_sync(pool, client: YCloudClient, tenant_id: int, task_id: str, bu
                     media_downloaded=total_media, errors=errors[-10:], started_at=started_at,
                 )
 
-                # Next page within this week
-                next_cursor = result.get("nextCursor") or result.get("next_cursor")
-                # Also calculate offset-based cursor
-                current_offset = result.get("offset", 0)
-                page_length = result.get("length", len(messages))
+                # Next page within this week (cursor-based)
+                next_cursor = result.get("next_cursor")
                 if next_cursor:
                     cursor = next_cursor
-                elif page_length >= 100 and len(messages) >= 100:
-                    cursor = str(current_offset + len(messages))
                 else:
                     break  # Last page for this week
 
