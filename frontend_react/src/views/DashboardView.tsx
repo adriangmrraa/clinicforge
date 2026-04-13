@@ -287,14 +287,14 @@ export default function DashboardView() {
               />
               <KPICard
                 title={t('dashboard.pending_payments')}
-                value={`$${Math.round(stats.pending_payments || 0).toLocaleString('es-AR')}`}
+                value={`$${Math.round(stats?.pending_payments || 0).toLocaleString('es-AR')}`}
                 icon={AlertCircle}
                 color="bg-amber-500"
                 image={CARD_IMAGES?.pending}
               />
               <KPICard
                 title={t('dashboard.today_revenue')}
-                value={`$${Math.round(stats.today_revenue || 0).toLocaleString('es-AR')}`}
+                value={`$${Math.round(stats?.today_revenue || 0).toLocaleString('es-AR')}`}
                 icon={DollarSign}
                 color="bg-teal-500"
                 image={CARD_IMAGES?.revenue_today}

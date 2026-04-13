@@ -61,10 +61,14 @@ app.use(cors({
     allowedHeaders: ['Content-Type', 'Authorization', 'x-tenant-id', 'x-signature']
 }));
 
+// Trust reverse proxy (EasyPanel/Traefik) so rate limiter uses real client IP
+// from X-Forwarded-For instead of the proxy's internal IP.
+app.set('trust proxy', 1);
+
 // --- Rate Limiting ---
 const globalLimiter = rateLimit({
     windowMs: 60 * 1000,
-    max: 200,
+    max: 500,  // 500 req/min per IP (admin panel with dashboard+agenda+chats needs more)
     standardHeaders: true,
     legacyHeaders: false,
     message: { error: 'Too many requests' }
