@@ -215,28 +215,26 @@ async def get_sync_status(
 @router.post("/sync/cancel/{task_id}")
 async def cancel_ycloud_sync(
     task_id: str,
-    body: SyncStartRequest,  # Reuse for password
     user_data=Depends(verify_ceo_token),
     tenant_id: int = Depends(get_resolved_tenant_id),
 ):
-    """
-    Cancel a running sync task.
-
-    Requires CEO authentication + password.
-    """
+    """Cancel a running sync task. CEO auth only (no password needed)."""
     try:
-        # Verify password
-        await _verify_password(user_data, body.password)
-
-        # Cancel via service
         from services import ycloud_sync_service
 
         cancelled = await ycloud_sync_service.cancel_sync(tenant_id, task_id)
 
+        # Also release lock so sync can be started again
+        try:
+            from services.relay import get_redis
+            r = get_redis()
+            if r:
+                await r.delete(f"ycloud_sync_lock:{tenant_id}")
+        except Exception:
+            pass
+
         if not cancelled:
-            raise HTTPException(
-                400, "No se puede cancelar. La tarea puede haber terminado."
-            )
+            raise HTTPException(400, "No se puede cancelar. La tarea puede haber terminado.")
 
         return {"message": "Sincronización cancelada", "task_id": task_id}
 

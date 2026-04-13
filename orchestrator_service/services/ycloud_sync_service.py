@@ -380,8 +380,21 @@ async def _run_sync(pool, client: YCloudClient, tenant_id: int, task_id: str, bu
                     total_saved += 1
 
                     # Also upsert into chat_conversations + chat_messages for UI display
-                    external_user_id = msg_data["from_number"] if msg_data["direction"] == "inbound" else msg_data["to_number"]
-                    if external_user_id:
+                    # external_user_id = the PATIENT phone (not the business number)
+                    biz_normalized = normalize_phone_e164(business_number) if business_number else ""
+                    from_num = msg_data["from_number"]
+                    to_num = msg_data["to_number"]
+                    # The patient is whichever number is NOT the business number
+                    if biz_normalized and from_num == biz_normalized:
+                        external_user_id = to_num  # outbound: patient is the recipient
+                    elif biz_normalized and to_num == biz_normalized:
+                        external_user_id = from_num  # inbound: patient is the sender
+                    elif msg_data["direction"] == "inbound":
+                        external_user_id = from_num
+                    else:
+                        external_user_id = to_num
+
+                    if external_user_id and external_user_id != biz_normalized:
                         await _upsert_chat_record(pool, tenant_id, msg_data, external_user_id)
 
                     # Download media if present
