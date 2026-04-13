@@ -301,6 +301,21 @@ export const YCloudSyncSection: React.FC<YCloudSyncSectionProps> = ({ tenantId, 
                         </div>
                     </div>
 
+                    {/* Week-by-week log */}
+                    {(progress as any).week_log && (progress as any).week_log.length > 0 && (
+                        <div className="bg-black/20 rounded-lg p-3 max-h-48 overflow-y-auto font-mono text-xs space-y-0.5">
+                            {((progress as any).week_log as string[]).map((entry: string, i: number) => (
+                                <div key={i} className={
+                                    entry.startsWith('✅') ? 'text-green-400' :
+                                    entry.startsWith('⏹') ? 'text-amber-400 font-bold' :
+                                    'text-white/30'
+                                }>
+                                    {entry}
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
                     {/* Errors */}
                     {progress.errors && progress.errors.length > 0 && (
                         <div className="text-xs text-red-400/70 mt-1">

@@ -84,6 +84,7 @@ async def _update_progress(
     completed_at: datetime = None,
     current_week: str = "",
     unique_conversations: int = 0,
+    week_log: list = None,
 ):
     r = _get_redis()
     if not r:
@@ -100,6 +101,7 @@ async def _update_progress(
         "started_at": started_at.isoformat() if started_at else None,
         "completed_at": completed_at.isoformat() if completed_at else None,
         "current_week": current_week,
+        "week_log": (week_log or [])[-15:],  # Keep last 15 entries
         "unique_conversations": unique_conversations,
     }
     await r.setex(key, PROGRESS_TTL_SECONDS, json.dumps(progress))
@@ -321,6 +323,7 @@ async def _run_sync(pool, client: YCloudClient, tenant_id: int, task_id: str, bu
     errors = []
     seen_ids: set = set()  # Track message IDs to detect pagination loops
     seen_phones: set = set()  # Track unique conversation phones
+    week_log: list = []  # Visual log for UI
     started_at = datetime.now(timezone.utc)
 
     try:
@@ -576,18 +579,16 @@ async def _run_sync(pool, client: YCloudClient, tenant_id: int, task_id: str, bu
             # End of week — track empty streaks and log
             if week_new > 0:
                 empty_weeks_streak = 0
-                logger.info(
-                    f"[ycloud_sync] Week {week_number} ({week_label}): "
-                    f"{week_new} new messages, {page_in_week} pages "
-                    f"(total: {total_saved} saved, {len(seen_ids)} unique)"
-                )
+                entry = f"✅ {week_label}: {week_new} nuevos"
+                logger.info(f"[ycloud_sync] {entry} ({page_in_week} pages, total: {total_saved} saved)")
             else:
                 empty_weeks_streak += 1
+                entry = f"— {week_label}: sin mensajes"
                 if empty_weeks_streak >= MAX_EMPTY_WEEKS:
-                    logger.info(
-                        f"[ycloud_sync] {MAX_EMPTY_WEEKS} consecutive empty weeks — "
-                        f"no more historical data. Stopping at {week_label}."
-                    )
+                    entry = f"⏹ {week_label}: {MAX_EMPTY_WEEKS} semanas vacías. Fin del historial."
+                    logger.info(f"[ycloud_sync] {entry}")
+
+            week_log.append(entry)
 
             # Update progress with week info for UI
             await _update_progress(
@@ -595,6 +596,7 @@ async def _run_sync(pool, client: YCloudClient, tenant_id: int, task_id: str, bu
                 messages_fetched=total_fetched, messages_saved=total_saved,
                 media_downloaded=total_media, errors=errors[-10:], started_at=started_at,
                 current_week=week_label, unique_conversations=len(seen_phones),
+                week_log=week_log,
             )
 
             # Move backwards one week
