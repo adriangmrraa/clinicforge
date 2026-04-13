@@ -122,6 +122,31 @@ class MetaWebhookService:
             logger.info("echo_filtered", platform=platform, sender=sender_id)
             return None
 
+        # Detect attachment type from Meta's payload structure
+        # Meta sends: image, video, audio, file, fallback, share, story_mention
+        attachments = message.get("attachments", [])
+        if message.get("text"):
+            msg_type = "text"
+        elif attachments:
+            att_type = attachments[0].get("type", "image")
+            _att_type_map = {
+                "image": "image",
+                "video": "video",
+                "audio": "audio",
+                "file": "document",
+                "fallback": "text",
+                "share": "text",
+                "story_mention": "text",
+            }
+            msg_type = _att_type_map.get(att_type, "image")
+        else:
+            msg_type = "text"
+
+        media_url = (
+            attachments[0].get("payload", {}).get("url")
+            if attachments else None
+        )
+
         return {
             "provider": "meta",
             "platform": platform,
@@ -133,11 +158,8 @@ class MetaWebhookService:
             "sender_name": "User",
             "payload": {
                 "id": message.get("mid"),
-                "type": "text" if message.get("text") else "image",
+                "type": msg_type,
                 "text": message.get("text"),
-                "media_url": (
-                    message.get("attachments", [{}])[0].get("payload", {}).get("url")
-                    if message.get("attachments") else None
-                )
+                "media_url": media_url
             }
         }
