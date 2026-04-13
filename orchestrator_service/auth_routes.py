@@ -474,7 +474,8 @@ class ProfileUpdate(BaseModel):
 async def get_profile(request: Request):
     """Returns the detailed profile of the current user, including professional data."""
     user_data = await get_me(request)
-    user_id = user_data.user_id
+    # get_me returns a dict, not a Pydantic model
+    user_id = user_data["user_id"] if isinstance(user_data, dict) else user_data.user_id
 
     user = await db.fetchrow(
         "SELECT id, email, role, first_name, last_name, created_at FROM users WHERE id = $1",
@@ -544,7 +545,8 @@ async def get_profile(request: Request):
 async def update_profile(payload: ProfileUpdate, request: Request):
     """Updates the profile of the current user, including professional fields."""
     user_data = await get_me(request)
-    user_id = user_data.user_id
+    # get_me returns a dict, not a Pydantic model
+    user_id = user_data["user_id"] if isinstance(user_data, dict) else user_data.user_id
 
     # Update users table (name + email)
     update_users_fields = []
@@ -565,7 +567,8 @@ async def update_profile(payload: ProfileUpdate, request: Request):
         await db.execute(query, *params)
 
     # Update professionals table (for any role that has a linked professional record)
-    if user_data.role in ("professional", "ceo", "secretary"):
+    user_role = user_data["role"] if isinstance(user_data, dict) else user_data.role
+    if user_role in ("professional", "ceo", "secretary"):
         prof_fields = []
         prof_params = []
 
