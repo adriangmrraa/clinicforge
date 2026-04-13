@@ -377,64 +377,63 @@ async def _run_sync(pool, client: YCloudClient, tenant_id: int, task_id: str, bu
             contact_names_cache[phone] = ""
             return ""
 
-        while total_fetched < MAX_MESSAGES:
+        # Iterate by week ranges to get ALL messages (YCloud limits ~100 per query without date filter)
+        from datetime import timedelta as _td
+        sync_start_date = datetime(2024, 1, 1, tzinfo=timezone.utc)  # Start from Jan 2024
+        sync_end_date = datetime.now(timezone.utc) + _td(days=1)  # Tomorrow
+        week_start = sync_start_date
+        week_number = 0
+        total_weeks = int((sync_end_date - sync_start_date).days / 7) + 1
+
+        while week_start < sync_end_date:
+            week_end = min(week_start + _td(days=7), sync_end_date)
+            week_number += 1
+
             # Check cancellation
             progress = await _get_progress(tenant_id, task_id)
             if progress and progress.get("status") == "cancelled":
                 logger.info(f"[ycloud_sync] Sync {task_id} was cancelled")
                 break
 
-            # Fetch page
-            try:
-                result = await _fetch_with_backoff(client, cursor)
-            except RateLimitError as e:
-                errors.append(f"Rate limit exceeded: {e}")
-                logger.error(f"[ycloud_sync] Rate limit exceeded for {task_id}")
-                break
-            except Exception as e:
-                errors.append(f"Fetch error: {e}")
-                logger.error(f"[ycloud_sync] Fetch error for {task_id}: {e}")
-                break
+            # Fetch all pages for this week
+            cursor = None
+            week_new = 0
+            page_in_week = 0
 
-            messages = result.get("messages") or result.get("items") or []
-            if not messages:
-                logger.info(f"[ycloud_sync] No more messages for {task_id} (fetched {total_fetched})")
-                break
-
-            total_fetched += len(messages)
-            logger.info(f"[ycloud_sync] Fetched page: {len(messages)} messages (total: {total_fetched})")
-
-            # Log first message of first page for debugging structure
-            if total_fetched <= 100 and messages:
-                sample = messages[0]
-                import json as _jlog
-                logger.info(
-                    f"[ycloud_sync] SAMPLE MESSAGE KEYS: {list(sample.keys())}"
-                )
-                logger.info(
-                    f"[ycloud_sync] SAMPLE: from={sample.get('from')} to={sample.get('to')} "
-                    f"direction={sample.get('direction')} bizType={sample.get('bizType')} "
-                    f"type={sample.get('type')} id={sample.get('id')} "
-                    f"businessNumber={business_number} "
-                    f"timestamp={sample.get('createTime') or sample.get('timestamp')}"
-                )
-                # Log 3 more samples to see variety
-                for s in messages[1:4]:
-                    logger.info(
-                        f"[ycloud_sync] SAMPLE+: from={s.get('from')} to={s.get('to')} "
-                        f"dir={s.get('direction')} type={s.get('type')}"
+            while True:
+                try:
+                    result = await client.fetch_messages(
+                        cursor=cursor, limit=100,
+                        from_date=week_start.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+                        to_date=week_end.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
                     )
+                except RateLimitError as e:
+                    errors.append(f"Rate limit week {week_number}: {e}")
+                    logger.warning(f"[ycloud_sync] Rate limit on week {week_number}, waiting 60s")
+                    await asyncio.sleep(60)
+                    continue
+                except Exception as e:
+                    errors.append(f"Fetch error week {week_number}: {e}")
+                    logger.error(f"[ycloud_sync] Fetch error week {week_number}: {e}")
+                    break
 
-            # Detect duplicate pages (YCloud pagination loop)
-            page_ids = {m.get("id") for m in messages if m.get("id")}
-            overlap = page_ids & seen_ids
-            if overlap and len(overlap) > len(page_ids) * 0.5:  # >50% duplicates = looping
-                logger.info(f"[ycloud_sync] Pagination loop detected ({len(overlap)}/{len(page_ids)} duplicates). Stopping.")
-                break
-            seen_ids |= page_ids
+                messages = result.get("messages") or result.get("items") or []
+                if not messages:
+                    break
 
-            # Process each message
-            for msg in messages:
+                # Detect duplicates within this week's pages
+                page_ids = {m.get("id") for m in messages if m.get("id")}
+                overlap = page_ids & seen_ids
+                if overlap and len(overlap) > len(page_ids) * 0.8:
+                    break  # All duplicates, move to next week
+                seen_ids |= page_ids
+
+                total_fetched += len(messages)
+                week_new += len(page_ids)
+                page_in_week += 1
+
+                # Process each message in this page
+                for msg in messages:
                 try:
                     msg_data = _parse_ycloud_message(msg, tenant_id, business_number)
                     if not msg_data.get("external_id"):
@@ -545,19 +544,37 @@ async def _run_sync(pool, client: YCloudClient, tenant_id: int, task_id: str, bu
                     logger.warning(f"[ycloud_sync] {error_msg}")
                     errors.append(error_msg)
 
-            # Update progress
-            await _update_progress(
-                tenant_id=tenant_id, task_id=task_id, status="processing",
-                messages_fetched=total_fetched, messages_saved=total_saved,
-                media_downloaded=total_media, errors=errors[-10:], started_at=started_at,
-            )
+                # Update progress after each page
+                await _update_progress(
+                    tenant_id=tenant_id, task_id=task_id, status="processing",
+                    messages_fetched=total_fetched, messages_saved=total_saved,
+                    media_downloaded=total_media, errors=errors[-10:], started_at=started_at,
+                )
 
-            # Next page
-            cursor = result.get("nextCursor") or result.get("next_cursor")
-            if not cursor:
-                break
+                # Next page within this week
+                next_cursor = result.get("nextCursor") or result.get("next_cursor")
+                # Also calculate offset-based cursor
+                current_offset = result.get("offset", 0)
+                page_length = result.get("length", len(messages))
+                if next_cursor:
+                    cursor = next_cursor
+                elif page_length >= 100 and len(messages) >= 100:
+                    cursor = str(current_offset + len(messages))
+                else:
+                    break  # Last page for this week
 
-            await asyncio.sleep(0.5)
+                await asyncio.sleep(0.3)
+
+            # End of week — log and advance
+            if week_new > 0:
+                logger.info(
+                    f"[ycloud_sync] Week {week_number}/{total_weeks} "
+                    f"({week_start.strftime('%Y-%m-%d')} to {week_end.strftime('%Y-%m-%d')}): "
+                    f"{week_new} new messages, {page_in_week} pages"
+                )
+
+            week_start = week_end
+            await asyncio.sleep(0.2)
 
         # Completed
         final_status = "completed" if not errors else "completed_with_errors"
