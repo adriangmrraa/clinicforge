@@ -368,11 +368,64 @@ async def _run_sync(pool, client: YCloudClient, tenant_id: int, task_id: str, bu
                         media_ok = await _download_and_save_media(client, tenant_id, msg, msg_db_id)
                         if media_ok:
                             total_media += 1
-                            ext = (msg_data.get("media_filename", "").split(".")[-1] or "bin")
+                            orig_filename = msg_data.get("media_filename") or ""
+                            ext = orig_filename.split(".")[-1] if "." in orig_filename else "bin"
+                            media_rel_path = f"/uploads/{tenant_id}/whatsapp_media/{msg_db_id}.{ext}"
+
+                            # Update whatsapp_messages with media URL
                             await pool.execute(
                                 "UPDATE whatsapp_messages SET media_url = $1 WHERE id = $2",
-                                f"/uploads/{tenant_id}/whatsapp_media/{msg_db_id}.{ext}", msg_db_id,
+                                media_rel_path, msg_db_id,
                             )
+
+                            # Update chat_messages content_attributes with downloaded URL
+                            import json as _json3
+                            ext_id_for_media = msg_data.get("external_id") or ""
+                            if ext_id_for_media:
+                                await pool.execute("""
+                                    UPDATE chat_messages SET content_attributes = $1::jsonb
+                                    WHERE platform_metadata->>'provider_message_id' = $2
+                                """,
+                                    _json3.dumps([{
+                                        "type": msg_data.get("message_type", "document"),
+                                        "url": media_rel_path,
+                                        "file_name": orig_filename or f"media_{msg_db_id}.{ext}",
+                                        "mime_type": msg_data.get("media_mime_type") or "application/octet-stream",
+                                    }]),
+                                    ext_id_for_media,
+                                )
+
+                            # Register in patient_documents if patient exists (for Archivos tab)
+                            patient_phone = external_user_id if msg_data["direction"] == "inbound" else msg_data["to_number"]
+                            patient_id = await pool.fetchval(
+                                "SELECT id FROM patients WHERE tenant_id = $1 AND phone_number = $2 LIMIT 1",
+                                tenant_id, patient_phone,
+                            )
+                            if patient_id:
+                                import json as _json2
+                                media_abs = _get_media_path(tenant_id, str(msg_db_id), ext)
+                                file_size = media_abs.stat().st_size if media_abs.exists() else 0
+                                doc_type = "clinical" if ext == "pdf" else "image" if ext in ("jpg", "png", "webp") else "audio" if ext in ("ogg", "mp3") else "other"
+                                # Dedup: don't insert if same file already registered
+                                existing_doc = await pool.fetchval(
+                                    "SELECT id FROM patient_documents WHERE tenant_id = $1 AND file_path = $2",
+                                    tenant_id, str(media_abs),
+                                )
+                                if not existing_doc:
+                                    await pool.execute("""
+                                        INSERT INTO patient_documents
+                                        (tenant_id, patient_id, file_name, file_path, file_size, mime_type,
+                                         document_type, source, source_details)
+                                        VALUES ($1, $2, $3, $4, $5, $6, $7, 'ycloud_sync', $8)
+                                    """,
+                                        tenant_id, patient_id,
+                                        orig_filename or f"media_{msg_db_id}.{ext}",
+                                        str(media_abs),
+                                        file_size,
+                                        msg_data.get("media_mime_type") or "application/octet-stream",
+                                        doc_type,
+                                        _json2.dumps({"ycloud_msg_id": msg_data.get("external_id"), "direction": msg_data["direction"]}),
+                                    )
 
                 except Exception as e:
                     error_msg = f"Failed to persist message {msg.get('id')}: {e}"
@@ -473,9 +526,22 @@ async def _upsert_chat_record(pool, tenant_id: int, msg_data: dict, external_use
         # from_number: for inbound = patient, for outbound = business
         from_num = external_user_id if msg_data["direction"] == "inbound" else msg_data.get("from_number", "")
 
+        # Build content_attributes for media (so it shows in chat UI)
+        content_attrs = []
+        if msg_data.get("media_id"):
+            media_type = msg_data.get("message_type", "document")
+            content_attrs.append({
+                "type": media_type,
+                "url": None,  # Will be updated after download
+                "file_name": msg_data.get("media_filename") or f"media.{media_type}",
+                "mime_type": msg_data.get("media_mime_type") or "application/octet-stream",
+                "ycloud_media_id": msg_data.get("media_id"),
+            })
+        content_attrs_json = _json.dumps(content_attrs)
+
         await pool.execute("""
-            INSERT INTO chat_messages (tenant_id, conversation_id, from_number, role, content, created_at, platform_metadata)
-            SELECT $1, $2, $3, $4, $5, $6, $7::jsonb
+            INSERT INTO chat_messages (tenant_id, conversation_id, from_number, role, content, created_at, platform_metadata, content_attributes)
+            SELECT $1, $2, $3, $4, $5, $6, $7::jsonb, $9::jsonb
             WHERE NOT EXISTS (
                 SELECT 1 FROM chat_messages
                 WHERE conversation_id = $2
@@ -488,6 +554,7 @@ async def _upsert_chat_record(pool, tenant_id: int, msg_data: dict, external_use
             msg_data["created_at"],
             platform_meta,
             ext_id,
+            content_attrs_json,
         )
 
         # 4. Update conversation timestamps
