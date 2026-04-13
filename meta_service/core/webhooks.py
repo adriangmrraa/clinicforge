@@ -117,10 +117,10 @@ class MetaWebhookService:
         if not message:
             return None
 
-        # CRITICAL: Filter echo messages to prevent infinite loops
-        if message.get("is_echo"):
-            logger.info("echo_filtered", platform=platform, sender=sender_id)
-            return None
+        # Echo messages = doctor/staff sent from the Instagram/Facebook app.
+        # Pass through with is_echo flag so they get persisted for context
+        # and activate manual mode, but DON'T trigger the AI.
+        is_echo = bool(message.get("is_echo"))
 
         # Detect attachment type from Meta's payload structure
         # Meta sends: image, video, audio, file, fallback, share, story_mention
@@ -146,6 +146,27 @@ class MetaWebhookService:
             attachments[0].get("payload", {}).get("url")
             if attachments else None
         )
+
+        # For echoes, swap sender/recipient: the sender is the page (us),
+        # recipient is the user. We need external_user_id = the user.
+        if is_echo:
+            return {
+                "provider": "meta",
+                "platform": platform,
+                "tenant_identifier": sender_id,  # page ID (us)
+                "event_type": "message_echo",
+                "timestamp": timestamp,
+                "recipient_id": sender_id,
+                "sender_id": recipient_id,  # user who received our message
+                "sender_name": "Agent",
+                "is_echo": True,
+                "payload": {
+                    "id": message.get("mid"),
+                    "type": msg_type,
+                    "text": message.get("text"),
+                    "media_url": media_url
+                }
+            }
 
         return {
             "provider": "meta",

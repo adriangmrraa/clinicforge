@@ -128,12 +128,61 @@ async def receive_meta_direct_webhook(
             payload["sender_name"] = resolved_name
             logger.info(f"Sender name resolved: {resolved_name} (platform={platform})")
 
-    # 4. Normalize via ChannelService
+    # 4. Handle echo messages (doctor/staff sent from Instagram/Facebook app)
+    # Intercept BEFORE normalization to avoid touching the existing pipeline.
+    if payload.get("is_echo") or payload.get("event_type") == "message_echo":
+        from datetime import datetime, timezone, timedelta
+        import json
+
+        user_id = payload.get("sender_id", "")  # In echo, sender_id = the user who RECEIVED the message
+        text = (payload.get("payload") or {}).get("text") or ""
+        platform = payload.get("platform", "instagram")
+        override_until = datetime.now(timezone.utc) + timedelta(hours=24)
+
+        if user_id:
+            # Activate manual mode on BOTH tables
+            await pool.execute(
+                "UPDATE patients SET human_handoff_requested = true, human_override_until = $1, updated_at = NOW() WHERE tenant_id = $2 AND (phone_number = $3 OR instagram_psid = $3 OR facebook_psid = $3)",
+                override_until, tenant_id, user_id,
+            )
+            await pool.execute(
+                "UPDATE chat_conversations SET human_override_until = $1, updated_at = NOW() WHERE tenant_id = $2 AND external_user_id = $3",
+                override_until, tenant_id, user_id,
+            )
+
+            # Persist the message for full conversation context
+            if text:
+                conv_row = await pool.fetchrow(
+                    "SELECT id FROM chat_conversations WHERE tenant_id = $1 AND external_user_id = $2 ORDER BY updated_at DESC LIMIT 1",
+                    tenant_id, user_id,
+                )
+                if conv_row:
+                    meta_json = json.dumps({"source": f"{platform}_app_echo", "provider": "meta_direct"})
+                    await pool.execute(
+                        "INSERT INTO chat_messages (tenant_id, conversation_id, role, content, from_number, platform_metadata) VALUES ($1, $2, 'assistant', $3, $4, $5::jsonb)",
+                        tenant_id, conv_row["id"], text, user_id, meta_json,
+                    )
+                    # Update conversation preview
+                    await pool.execute(
+                        "UPDATE chat_conversations SET last_message = $1, updated_at = NOW() WHERE id = $2",
+                        text[:200], conv_row["id"],
+                    )
+
+            logger.info(f"👤 {platform} echo → manual mode activated for {user_id} (tenant={tenant_id})")
+            try:
+                from main import sio
+                await sio.emit("HUMAN_OVERRIDE_CHANGED", {"phone_number": user_id, "tenant_id": tenant_id, "enabled": True, "until": override_until.isoformat()})
+            except Exception:
+                pass
+
+        return {"status": "echo_handled", "manual_mode": True}
+
+    # 5. Normalize via ChannelService (only for NON-echo messages)
     messages = await ChannelService.normalize_webhook("meta_direct", payload, tenant_id)
 
     if not messages:
         return {"status": "ignored", "reason": "no_relevant_messages"}
 
-    # 5. Process through shared pipeline (same as Chatwoot/YCloud)
+    # 6. Process through shared pipeline (same as Chatwoot/YCloud)
     from routes.chat_webhooks import _process_canonical_messages
     return await _process_canonical_messages(messages, tenant_id, "meta_direct", background_tasks)
