@@ -6,7 +6,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { RefreshCw, Clock, Loader2, CheckCircle2, AlertCircle, XCircle, Lock } from 'lucide-react';
 import { useTranslation } from '../context/LanguageContext';
-import { 
+import api from '../api/axios';
+import {
     startYCloudSync, 
     getSyncStatus, 
     cancelSync, 
@@ -41,6 +42,11 @@ export const YCloudSyncSection: React.FC<YCloudSyncSectionProps> = ({ tenantId, 
     
     // Polling
     const [polling, setPolling] = useState(false);
+
+    // Purge state
+    const [purgeConfirm, setPurgeConfirm] = useState(false);
+    const [purging, setPurging] = useState(false);
+    const [purgeResult, setPurgeResult] = useState<string | null>(null);
     
     // Load config on mount
     useEffect(() => {
@@ -129,9 +135,23 @@ export const YCloudSyncSection: React.FC<YCloudSyncSectionProps> = ({ tenantId, 
         }
     };
     
+    const handlePurge = async () => {
+        setPurging(true);
+        setPurgeResult(null);
+        try {
+            const { data } = await api.post(`/admin/ycloud/sync/purge/${tenantId}`);
+            setPurgeResult(`Eliminados: ${data.conversations_deleted || 0} conversaciones, ${data.messages_deleted || 0} mensajes`);
+            setTimeout(() => { setPurgeConfirm(false); setPurgeResult(null); }, 5000);
+        } catch (err: any) {
+            setPurgeResult(`Error: ${err.response?.data?.detail || err.message}`);
+        } finally {
+            setPurging(false);
+        }
+    };
+
     const handleCancelSync = async () => {
         if (!currentTaskId) return;
-        
+
         try {
             await cancelSync(currentTaskId);
             setPolling(false);
@@ -304,6 +324,47 @@ export const YCloudSyncSection: React.FC<YCloudSyncSectionProps> = ({ tenantId, 
                 )}
             </div>
             
+            {/* Purge Button */}
+            {!isSyncing && (
+                <button
+                    onClick={() => setPurgeConfirm(true)}
+                    className="flex items-center gap-2 px-4 py-2 bg-red-600/20 hover:bg-red-600/40 text-red-400 border border-red-500/20 rounded-lg font-medium transition-all text-sm"
+                >
+                    <XCircle className="w-4 h-4" />
+                    Eliminar datos sincronizados
+                </button>
+            )}
+
+            {/* Purge Confirmation */}
+            {purgeConfirm && (
+                <div className="mt-3 p-4 bg-red-500/10 border border-red-500/20 rounded-xl">
+                    <p className="text-sm text-red-400 font-medium mb-2">⚠️ ¿Estás seguro?</p>
+                    <p className="text-xs text-red-400/70 mb-3">
+                        Esto eliminará TODAS las conversaciones y mensajes cargados por sincronización de YCloud.
+                        Los mensajes recibidos en tiempo real por webhook NO se eliminan.
+                    </p>
+                    <div className="flex gap-2">
+                        <button
+                            onClick={handlePurge}
+                            disabled={purging}
+                            className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium flex items-center gap-2"
+                        >
+                            {purging ? <Loader2 className="w-4 h-4 animate-spin" /> : <XCircle className="w-4 h-4" />}
+                            Sí, eliminar todo
+                        </button>
+                        <button
+                            onClick={() => setPurgeConfirm(false)}
+                            className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg text-sm"
+                        >
+                            Cancelar
+                        </button>
+                    </div>
+                    {purgeResult && (
+                        <p className="text-xs text-green-400 mt-2">{purgeResult}</p>
+                    )}
+                </div>
+            )}
+
             {/* Password Modal */}
             {showPasswordModal && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">

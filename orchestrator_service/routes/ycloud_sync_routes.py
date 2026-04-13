@@ -308,6 +308,75 @@ async def update_sync_config(
         raise HTTPException(500, f"Error al actualizar configuración: {str(e)}")
 
 
+# --- POST /sync/purge/{tenant_id} (delete all synced data) ---
+
+
+@router.post("/sync/purge/{tenant_id}")
+async def purge_synced_data(
+    tenant_id: int,
+    user_data=Depends(verify_ceo_token),
+    _: int = Depends(get_resolved_tenant_id),
+):
+    """
+    Delete ALL chat conversations and messages for a tenant.
+    Use after a bad sync to clean up and start fresh.
+    CEO only. Destructive operation.
+    """
+    try:
+        from db import db
+
+        logger.info(f"[ycloud_sync] PURGE started for tenant {tenant_id} by user {getattr(user_data, 'user_id', '?')}")
+
+        # Count before deleting (for response)
+        msg_count = await db.pool.fetchval(
+            "SELECT COUNT(*) FROM chat_messages WHERE tenant_id = $1", tenant_id
+        )
+        conv_count = await db.pool.fetchval(
+            "SELECT COUNT(*) FROM chat_conversations WHERE tenant_id = $1", tenant_id
+        )
+
+        logger.info(f"[ycloud_sync] PURGE: found {conv_count} conversations, {msg_count} messages for tenant {tenant_id}")
+
+        # Delete messages first (FK dependency)
+        deleted_msgs = await db.pool.execute(
+            "DELETE FROM chat_messages WHERE tenant_id = $1", tenant_id
+        )
+        logger.info(f"[ycloud_sync] PURGE: deleted messages result: {deleted_msgs}")
+
+        # Delete conversations
+        deleted_convs = await db.pool.execute(
+            "DELETE FROM chat_conversations WHERE tenant_id = $1", tenant_id
+        )
+        logger.info(f"[ycloud_sync] PURGE: deleted conversations result: {deleted_convs}")
+
+        # Delete inbound_messages dedup records
+        try:
+            await db.pool.execute(
+                "DELETE FROM inbound_messages WHERE tenant_id = $1", tenant_id
+            )
+            logger.info(f"[ycloud_sync] PURGE: cleared inbound_messages dedup for tenant {tenant_id}")
+        except Exception as e:
+            logger.warning(f"[ycloud_sync] PURGE: inbound_messages cleanup skipped: {e}")
+
+        logger.info(
+            f"[ycloud_sync] PURGE complete for tenant {tenant_id}: "
+            f"{conv_count} conversations, {msg_count} messages deleted"
+        )
+
+        return {
+            "status": "purged",
+            "tenant_id": tenant_id,
+            "conversations_deleted": conv_count,
+            "messages_deleted": msg_count,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"[ycloud_sync] PURGE failed for tenant {tenant_id}: {e}")
+        raise HTTPException(500, f"Error al eliminar datos: {str(e)}")
+
+
 # --- GET /sync/tasks (S6) ---
 
 
