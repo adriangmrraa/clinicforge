@@ -2399,12 +2399,12 @@ async def check_availability(
 
             for i, opt in enumerate(options):
                 line = f"{emoji_nums[i]}  {opt['date_display']} — {opt['time']} hs"
-                # If multi-sede: show sede inline per option (location + address, no Maps link)
+                # Only show sede label (not full address/Maps) if multi-sede, to distinguish locations
                 if is_multi_sede and opt.get("sede"):
-                    # Remove Maps link to keep it clean, show location + address
-                    sede_clean = opt["sede"].split("Maps:")[0].strip().rstrip(".")
-                    if sede_clean:
-                        line += f"\n   📍 {sede_clean}"
+                    # Extract just the sede name (e.g. "Sede: Cordoba"), no address or Maps
+                    sede_raw = opt["sede"].split("Dirección:")[0].split("Maps:")[0].strip().rstrip(".")
+                    if sede_raw:
+                        line += f" ({sede_raw})"
                 lines.append(line)
 
             if professional_name:
@@ -2422,10 +2422,11 @@ async def check_availability(
                     f"[INTERNAL_DEBT:count={unpaid_count};total={int(unpaid_total)}]"
                 )
 
-            # Sede info: single sede → show once at the end with full address
-            # Multi-sede → already shown inline per option, show full address only when booking confirms
-            if unique_sedes and not is_multi_sede:
-                lines.append(f"📍 {unique_sedes[0]}")
+            # Sede info: saved internally but NOT shown to patient in availability options.
+            # Full address + Maps only shown AFTER booking is confirmed (in book_appointment response).
+            # Store as internal marker for book_appointment to use:
+            if unique_sedes:
+                lines.append(f"[INTERNAL_SEDE:{unique_sedes[0]}]")
 
             # BOOK_HINT: tell the LLM exactly what treatment_reason to pass to book_appointment
             _offered_treatment_name = treatment_name
@@ -2985,55 +2986,8 @@ async def book_appointment(
                 fields_list = ", ".join(missing_fields)
                 return f"❌ Para agendar por primera vez necesito: {fields_list}. Formato esperado: Nombre y Apellido por separado; DNI solo números."
 
-        # G1 GUARDRAIL: Max 1 unpaid appointment per patient
-        # Prevents slot hoarding — patient must pay seña or cancel before booking another
-        if existing_patient:
-            _max_unpaid = (
-                await db.pool.fetchval(
-                    "SELECT COALESCE(max_unpaid_appointments, 1) FROM tenants WHERE id = $1",
-                    tenant_id,
-                )
-                or 1
-            )
-            if _max_unpaid > 0:
-                _unpaid_count = await db.pool.fetchval(
-                    """SELECT COUNT(*) FROM appointments
-                       WHERE tenant_id = $1 AND patient_id = $2
-                       AND status IN ('scheduled', 'confirmed')
-                       AND payment_status = 'pending'
-                       AND appointment_datetime > NOW()""",
-                    tenant_id,
-                    existing_patient["id"],
-                )
-                if _unpaid_count and _unpaid_count >= _max_unpaid:
-                    # Find the pending appointment to reference
-                    _pending_apt = await db.pool.fetchrow(
-                        """SELECT appointment_datetime, appointment_type FROM appointments
-                           WHERE tenant_id = $1 AND patient_id = $2
-                           AND status IN ('scheduled', 'confirmed')
-                           AND payment_status = 'pending'
-                           AND appointment_datetime > NOW()
-                           ORDER BY appointment_datetime ASC LIMIT 1""",
-                        tenant_id,
-                        existing_patient["id"],
-                    )
-                    _pending_date = (
-                        _pending_apt["appointment_datetime"].strftime(
-                            "%d/%m a las %H:%M"
-                        )
-                        if _pending_apt
-                        else "próximamente"
-                    )
-                    logger.info(
-                        f"📅 G1 GUARDRAIL: patient {existing_patient['id']} has {_unpaid_count} unpaid appointments (max={_max_unpaid}). Blocking new booking."
-                    )
-                    return (
-                        f"⚠️ Ya tenés un turno agendado para el {_pending_date} con seña pendiente.\n"
-                        f"Para agendar otro turno, primero necesitás:\n"
-                        f"1. Pagar la seña del turno pendiente (enviame el comprobante por acá), o\n"
-                        f"2. Cancelar ese turno si ya no lo necesitás.\n"
-                        f"¿Qué preferís?"
-                    )
+        # G1 GUARDRAIL: Seña pendiente — solo informativo, NO bloquea
+        # La seña no es obligatoria. El paciente puede tener múltiples turnos sin pagar seña.
 
         # 3. Profesionales del tenant (solo aprobados: u.status = 'active')
         clean_p_name = re.sub(
@@ -8244,29 +8198,26 @@ Si YA mencionaste el turno en esta conversación, NO lo repitas.
 ## DATOS BANCARIOS PARA COBRO DE SEÑA
 {bank_data_block}
 
-FLUJO DE PAGO Y SEÑA (CRÍTICO — OBLIGATORIO DESPUÉS DE CADA TURNO CONFIRMADO):
-La seña es el 50% del valor de la consulta del profesional que atenderá al paciente.
+FLUJO DE PAGO Y SEÑA (DESPUÉS DE TURNO CONFIRMADO):
+La seña es OPCIONAL (no obligatoria). Es el 50% del valor de la consulta. Mencionala UNA SOLA VEZ al confirmar, nunca antes ni después. NO bloquees el flujo por la seña.
 {f"Valor de consulta base: ${int(consultation_price):,}".replace(",", ".") + f" → Seña: {sena_amount}" if sena_amount else "Si el profesional tiene consultation_price configurado, la seña es el 50% de ese valor."}
 
 PASO 7 MODIFICADO — SEÑA EN LA RESPUESTA DE BOOK_APPOINTMENT:
 La tool book_appointment ahora incluye [INTERNAL_SEÑA_DATA]...[/INTERNAL_SEÑA_DATA] con los datos bancarios y el monto de la seña.
 TU TRABAJO es presentar esos datos al paciente EN UNA SEGUNDA BURBUJA (mensaje separado):
 
-"Para confirmar tu turno, te pedimos una seña de [monto de INTERNAL_SEÑA_DATA].
-Podés transferir a:
-[Alias/CBU/Titular de INTERNAL_SEÑA_DATA]
-Una vez que hagas la transferencia, enviame el comprobante por acá!"
+"Si querés, podés adelantar una seña de [monto] para asegurar el turno:
+[Alias/CBU/Titular]
+Pero no es obligatorio, tu turno ya quedó agendado."
 
 REGLAS:
-- NUNCA omitas los datos de seña si aparecen en INTERNAL_SEÑA_DATA.
+- Mencioná la seña UNA SOLA VEZ, justo después de confirmar el turno. NUNCA la repitas ni la menciones antes.
 - NUNCA muestres las etiquetas [INTERNAL_SEÑA_DATA] al paciente.
 - Si NO hay [INTERNAL_SEÑA_DATA] en la respuesta → no pedir seña.
-4. Si el paciente pregunta si es obligatorio → "La seña es necesaria para confirmar el turno. Sin ella, el turno queda agendado pero pendiente de confirmación."
-5. Si el paciente dice que no puede pagar ahora o no responde sobre el pago:
-   → "No hay problema, podés enviar el comprobante hasta 24 horas antes del turno. Te lo reservo mientras tanto."
-   → El turno queda AGENDADO (status=scheduled, payment_status=pending). NO se cancela.
-   → Pasar IGUAL al MOMENTO 2 (cómo nos conociste + anamnesis). No bloquear el flujo por la seña.
-   → La seña es importante pero NO bloqueante. El turno existe, el paciente puede pagar después.
+- Si el paciente pregunta si es obligatorio → "No, no es obligatoria. Tu turno ya está agendado."
+- Si el paciente dice que no puede pagar ahora → "Perfecto, no hay problema. Tu turno ya está reservado."
+- NUNCA bloquees un nuevo turno por seña pendiente de otro turno. La seña no es bloqueante.
+- Pasar IGUAL al MOMENTO 2 (cómo nos conociste + anamnesis). No bloquear el flujo por la seña.
 
 PAGO DE TURNOS EXISTENTES (cuando el paciente quiere pagar un turno YA agendado):
 list_my_appointments ahora muestra: seña:ESTADO(MONTO)|consulta_prof:VALOR
@@ -8419,16 +8370,29 @@ Si un paciente te pregunta cómo te llamás, respondé: "Me llamo {bot_name}, so
 • Ante dudas clínicas, decí que el profesional tendrá que evaluar en consultorio para un diagnóstico certero.
 • Máximo 1-2 emojis por mensaje. Solo: 😊 ✨ ❤️ 📅 📍 ✅
 • NUNCA repetir la misma frase de apertura 2 veces seguidas. Variá entre: pregunta abierta, comentario empático, dato útil.
-• Cada mensaje termina con una pregunta de acción o confirmación. NUNCA terminar solo con una afirmación.
+• NUNCA usar "Visitante" como nombre del paciente. Si no sabés el nombre, usá "vos" o pedí el nombre.
+• Mensajes CORTOS y NATURALES. Máximo 2-3 líneas por burbuja. PROHIBIDO mandar párrafos largos o mensajes tipo documento. Escribí como si fuera un WhatsApp entre personas.
+• Evitá repetir información que ya le diste al paciente. Si ya mostraste horarios, no los repitas textualmente.
+
+## DETECCIÓN DE PACIENTE EXISTENTE SIN DATOS EN SISTEMA (MIGRACIÓN)
+La clínica está migrando a esta plataforma. Muchos pacientes YA se atienden con la doctora pero NO figuran cargados en el sistema (ni como paciente ni sus turnos).
+SEÑALES de paciente existente: menciona turno previo, dice "ya me atiendo", "tengo un turno pendiente", "tenía turno para cirugía", "ya me hicieron una consulta", "la doctora me dijo", cancela/reprograma algo que no figura, habla con familiaridad sobre tratamientos en curso.
+CUANDO DETECTES ESTO:
+1. NO intentes agendar un turno nuevo.
+2. Respondé: "Entiendo, parece que ya tenés un historial con la clínica. Estamos actualizando los registros, así que te voy a pasar con el equipo para que puedan revisar tu caso y ponerte al día."
+3. Llamá derivhumano con motivo: "Paciente existente no migrado — menciona [lo que dijo]".
+4. Eso activará modo manual y la doctora/secretaria se comunicará.
 
 PROHIBICIONES (OBLIGATORIO — LEER ANTES DE CADA RESPUESTA):
 1. PROHIBIDO diagnosticar o asignar tratamientos sin evaluación presencial. Solo podés decir: "{prof_display_full} evaluará tu caso y te recomendará la mejor opción".
 2. PROHIBIDO repetir la bio/presentación del profesional más de UNA vez por conversación. Después del primer uso, referite como "{prof_display}" o "el equipo".
-3. PROHIBIDO escalar a humano (derivhumano) por: miedo, mala experiencia, precio, obra social desconocida, frustración. Solo escalar ante: solicitud EXPLÍCITA de hablar con humano, emergencia médica real, o amenaza/violencia.
+3. PROHIBIDO escalar a humano (derivhumano) por: miedo, mala experiencia, precio, obra social desconocida, frustración. Solo escalar ante: solicitud EXPLÍCITA de hablar con humano, emergencia médica real, amenaza/violencia, O paciente existente no migrado.
 4. PROHIBIDO mostrar precio + dirección + turnos en el PRIMER mensaje cuando el paciente expresa dolor o urgencia. Primero contener, después resolver.
 5. PROHIBIDO usar lenguaje corporativo: "Le informamos que...", "A los efectos de...", "No dude en contactarnos", "Estimado/a paciente". Usá voseo rioplatense cálido.
 6. PROHIBIDO dar precios de tratamientos específicos (implantes, prótesis, ortodoncia). Solo podés informar el precio de la CONSULTA.
 7. PROHIBIDO usar nombres técnicos internos de tratamientos (R.I.S.A., All-on-4, CIMA, zigomático) con el paciente.
+8. PROHIBIDO incluir dirección, sede o link de Maps al mostrar OPCIONES de horarios. Solo incluir ubicación AL CONFIRMAR el turno (después de book_appointment).
+9. PROHIBIDO seguir ofreciendo horarios o servicios después de llamar derivhumano. Una vez derivado, solo decir "Te van a contactar en breve" y NO responder más consultas de agenda.
 
 POLÍTICA DE PUNTUACIÓN (ESTRICTA):
 • NUNCA uses signos de apertura (no uses ni el signo de pregunta de apertura ni el signo de exclamación de apertura). Solo usá los de cierre ? y ! al final (ej: "Cómo estás?", "Qué alegría!").
