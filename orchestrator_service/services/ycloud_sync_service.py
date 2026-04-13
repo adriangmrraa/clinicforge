@@ -185,30 +185,30 @@ def _parse_ycloud_message(message: dict, tenant_id: int, business_number: str = 
     # 2. YCloud "direction" field (may not exist)
     # 3. Compare from/to against business number
     # 4. "whatsappInboundMessage" nested object
-    biz_type = message.get("bizType", "")
     raw_direction = message.get("direction", "")
     msg_from = normalize_phone_e164(message.get("from", ""))
     msg_to = normalize_phone_e164(message.get("to", ""))
     biz = normalize_phone_e164(business_number) if business_number else ""
 
-    if biz_type:
-        # Most reliable: YCloud tells us directly
-        direction = "inbound" if "user" in biz_type.lower() else "outbound"
-    elif raw_direction:
+    if raw_direction:
         direction = "inbound" if raw_direction.lower() in ("inbound", "incoming") else "outbound"
     elif message.get("whatsappInboundMessage"):
         direction = "inbound"
     elif biz:
-        # Compare both from and to against business number (with and without +)
-        biz_variants = {biz, biz.lstrip("+"), "+" + biz.lstrip("+")}
-        from_variants = {msg_from, msg_from.lstrip("+"), "+" + msg_from.lstrip("+")}
-        to_variants = {msg_to, msg_to.lstrip("+"), "+" + msg_to.lstrip("+")}
-        if from_variants & biz_variants:
+        # Business number = the bot. If "from" is the bot → outbound. If "to" is bot → inbound.
+        if msg_from == biz:
             direction = "outbound"
-        elif to_variants & biz_variants:
+        elif msg_to == biz:
             direction = "inbound"
         else:
-            direction = "outbound"
+            # Neither matches — try without +
+            biz_bare = biz.lstrip("+")
+            if msg_from.lstrip("+") == biz_bare:
+                direction = "outbound"
+            elif msg_to.lstrip("+") == biz_bare:
+                direction = "inbound"
+            else:
+                direction = "outbound"
     else:
         direction = "outbound"
 
@@ -318,7 +318,28 @@ async def _run_sync(pool, client: YCloudClient, tenant_id: int, task_id: str, bu
     started_at = datetime.now(timezone.utc)
 
     try:
-        logger.info(f"[ycloud_sync] Starting sync {task_id} for tenant {tenant_id}")
+        logger.info(f"[ycloud_sync] Starting sync {task_id} for tenant {tenant_id}, configured biz={business_number}")
+
+        # Auto-detect business number from first page if not matching
+        # YCloud's "to" field for outbound messages = business number
+        # We find the most common number across from+to — that's the bot
+        try:
+            probe = await client.fetch_messages(limit=100)
+            probe_msgs = probe.get("messages") or probe.get("items") or []
+            if probe_msgs:
+                from collections import Counter
+                all_numbers = []
+                for m in probe_msgs:
+                    all_numbers.append(normalize_phone_e164(m.get("to", "")))
+                    all_numbers.append(normalize_phone_e164(m.get("from", "")))
+                # The business number is the one that appears in EVERY message (either as from or to)
+                counter = Counter(all_numbers)
+                most_common = counter.most_common(1)[0][0] if counter else ""
+                if most_common and most_common != normalize_phone_e164(business_number):
+                    logger.info(f"[ycloud_sync] Auto-detected business number: {most_common} (configured was: {business_number})")
+                    business_number = most_common
+        except Exception as e:
+            logger.warning(f"[ycloud_sync] Business number auto-detect failed (non-fatal): {e}")
 
         while total_fetched < MAX_MESSAGES:
             # Check cancellation
