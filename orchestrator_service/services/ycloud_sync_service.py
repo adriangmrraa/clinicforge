@@ -330,6 +330,27 @@ async def _run_sync(pool, client: YCloudClient, tenant_id: int, task_id: str, bu
             total_fetched += len(messages)
             logger.info(f"[ycloud_sync] Fetched page: {len(messages)} messages (total: {total_fetched})")
 
+            # Log first message of first page for debugging structure
+            if total_fetched <= 100 and messages:
+                sample = messages[0]
+                import json as _jlog
+                logger.info(
+                    f"[ycloud_sync] SAMPLE MESSAGE KEYS: {list(sample.keys())}"
+                )
+                logger.info(
+                    f"[ycloud_sync] SAMPLE: from={sample.get('from')} to={sample.get('to')} "
+                    f"direction={sample.get('direction')} type={sample.get('type')} "
+                    f"id={sample.get('id')} wamid={sample.get('wamid')} "
+                    f"whatsappInboundMessage={bool(sample.get('whatsappInboundMessage'))} "
+                    f"businessNumber={business_number}"
+                )
+                # Log 3 more samples to see variety
+                for s in messages[1:4]:
+                    logger.info(
+                        f"[ycloud_sync] SAMPLE+: from={s.get('from')} to={s.get('to')} "
+                        f"dir={s.get('direction')} type={s.get('type')}"
+                    )
+
             # Process each message
             for msg in messages:
                 try:
