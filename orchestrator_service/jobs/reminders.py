@@ -157,6 +157,14 @@ async def send_appointment_reminders():
                         tenant_id, apt["phone_number"],
                         template_name, template_lang, components,
                         patient_name=f"{apt['first_name'] or ''} {apt.get('last_name') or ''}".strip(),
+                        appointment_info={
+                            "treatment": apt.get("appointment_type") or "Consulta",
+                            "date": formatted_date,
+                            "time": formatted_time,
+                            "day_name": day_of_week,
+                            "professional": "Laura Delgado",
+                            "appointment_id": str(apt["appointment_id"]),
+                        },
                     )
                     message_preview = f"[HSM:{template_name}] {patient_name} - {day_of_week} {formatted_date} {formatted_time}"
 
@@ -203,6 +211,7 @@ async def _send_template(
     tenant_id: int, phone: str,
     template_name: str, language_code: str, components: list,
     patient_name: str = "",
+    appointment_info: dict = None,
 ) -> bool:
     """Send a YCloud HSM template (with buttons)."""
     try:
@@ -248,12 +257,27 @@ async def _send_template(
                     conv_id, tenant_id, phone, patient_name or None, f"[Recordatorio: {template_name}]",
                 )
 
-            # Persist message
-            preview = f"[Plantilla: {template_name}] " + " | ".join(p.get("text", "") for p in (components[0].get("parameters", []) if components else []))
+            # Persist message with full clinical context
+            apt_info = appointment_info or {}
+            preview = f"📅 Recordatorio de turno enviado"
+            if apt_info.get("treatment"):
+                preview += f"\n🦷 {apt_info['treatment']}"
+            if apt_info.get("date") and apt_info.get("time"):
+                preview += f"\n📆 {apt_info.get('day_name', '')} {apt_info['date']} a las {apt_info['time']}"
+            if apt_info.get("professional"):
+                preview += f"\n👩‍⚕️ Con {apt_info['professional']}"
+            if patient_name:
+                preview += f"\n👤 {patient_name}"
+
             await _db.pool.execute(
                 "INSERT INTO chat_messages (tenant_id, conversation_id, role, content, from_number, platform_metadata) VALUES ($1, $2, 'assistant', $3, $4, $5::jsonb)",
                 tenant_id, conv_id, preview, phone,
-                _json.dumps({"source": "reminder_template", "template": template_name}),
+                _json.dumps({
+                    "source": "reminder_template",
+                    "template": template_name,
+                    "patient_name": patient_name,
+                    "appointment": apt_info,
+                }),
             )
         except Exception as _persist_err:
             logger.warning(f"⚠️ Reminder persist failed (non-blocking): {_persist_err}")
