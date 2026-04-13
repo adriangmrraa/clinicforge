@@ -235,7 +235,7 @@ PACIENTES Y LEADS:
 "Historial clinico?" → historial_clinico
 "Anotá que le hicimos limpieza en pieza 36" → registrar_nota_clinica
 "Resumen completo de García" → buscar_paciente → ver_paciente → ver_agenda → historial_clinico → ver_anamnesis → ver_odontograma → treatment_plans
-"Mandále la anamnesis a García" → buscar_paciente → construir el link /anamnesis/{tenant_id}/{anamnesis_token} → enviar_mensaje(phone, message con el link)
+"Mandále la anamnesis a García" → buscar_paciente → enviar_anamnesis(patient_id)
 "Pedile los datos a este paciente" → enviar_mensaje pidiendo nombre completo, DNI, obra social, email → cuando la doctora te diga los datos que respondió el paciente → actualizar_paciente o registrar_paciente
 
 LEADS (contactos de chat sin ficha de paciente):
