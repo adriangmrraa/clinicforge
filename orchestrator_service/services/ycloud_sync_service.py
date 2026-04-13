@@ -596,11 +596,11 @@ async def _upsert_chat_record(pool, tenant_id: int, msg_data: dict, external_use
                     tenant_id, external_user_id,
                 )
         else:
-            # Update display_name if we found a patient name
-            if patient_name:
+            # Update display_name if we have a name
+            if display_name and display_name != external_user_id:
                 await pool.execute(
                     "UPDATE chat_conversations SET display_name = COALESCE(NULLIF($1, ''), display_name) WHERE id = $2 AND (display_name IS NULL OR display_name = external_user_id)",
-                    patient_name, conv_id,
+                    display_name, conv_id,
                 )
 
         if not conv_id:
