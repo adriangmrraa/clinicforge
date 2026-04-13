@@ -2559,5 +2559,32 @@
     "on_unclassified": "Si la respuesta no se clasifica",
     "error_name_required": "El nombre es obligatorio",
     "error_saving": "Error al guardar la estrategia"
+  },
+  "ycloud_sync": {
+    "title": "Sincronización de Mensajes",
+    "description": "Sincroniza todos los mensajes de WhatsApp desde YCloud a la base de datos",
+    "last_sync": "Última sincronización",
+    "last_sync_never": "Nunca",
+    "button": "Sincronizar Ahora",
+    "button_cancel": "Cancelar Sincronización",
+    "progress": "Progreso",
+    "errors": "Errores",
+    "success": "Sincronización completada: {{fetched}} recuperados, {{saved}} guardados",
+    "modal_title": "Confirmar Sincronización",
+    "modal_password_label": "Contraseña",
+    "modal_password_hint": "Ingresá tu contraseña para iniciar la sincronización",
+    "error_no_password": "Ingresá una contraseña",
+    "error_invalid_password": "Contraseña inválida",
+    "error_sync_in_progress": "Ya hay una sincronización en progreso",
+    "error_rate_limited": "Rate limited. Intentá más tarde.",
+    "rate_limited": "Espera {{minutes}} min",
+    "status_queued": "En cola",
+    "status_processing": "Procesando",
+    "status_completed": "Completado",
+    "status_error": "Error",
+    "status_cancelled": "Cancelado",
+    "messages_fetched": "Recuperados",
+    "messages_saved": "Guardados",
+    "media_downloaded": "Medios"
   }
 }

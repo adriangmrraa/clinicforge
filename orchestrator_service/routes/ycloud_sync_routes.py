@@ -223,12 +223,27 @@ async def get_sync_config(
             raise HTTPException(404, "Tenant no encontrado")
 
         config = tenant_row["config"] or {}
+        if isinstance(config, str):
+            import json
+            try:
+                config = json.loads(config)
+            except Exception:
+                config = {}
+
+        # Check API key from credentials vault (not tenants.config)
+        api_key_configured = False
+        try:
+            from core.credentials import get_tenant_credential, YCLOUD_API_KEY
+            api_key = await get_tenant_credential(tenant_id, YCLOUD_API_KEY)
+            api_key_configured = bool(api_key)
+        except Exception:
+            pass
 
         return {
             "tenant_id": tenant_id,
             "sync_enabled": config.get("ycloud_sync_enabled", True),
             "max_messages": config.get("ycloud_max_messages", 10000),
-            "ycloud_api_key_configured": bool(config.get("ycloud_api_key")),
+            "ycloud_api_key_configured": api_key_configured,
         }
 
     except HTTPException:
