@@ -223,8 +223,34 @@ class YCloudClient:
                 response.raise_for_status()
                 data = response.json()
 
-                messages = data.get("messages", [])
-                next_cursor = data.get("nextCursor") or data.get("pageAfter")
+                # YCloud may return messages in different keys
+                messages = (
+                    data.get("messages")
+                    or data.get("items")
+                    or data.get("data")
+                    or data.get("results")
+                    or (data if isinstance(data, list) else [])
+                )
+
+                next_cursor = (
+                    data.get("nextCursor")
+                    or data.get("pageAfter")
+                    or data.get("next_cursor")
+                )
+
+                logger.info(
+                    f"ycloud_fetch_messages: status={response.status_code} "
+                    f"keys={list(data.keys()) if isinstance(data, dict) else 'list'} "
+                    f"messages_count={len(messages)} has_next={bool(next_cursor)}"
+                )
+
+                # Log sample if first page and empty
+                if not messages and not cursor:
+                    logger.warning(
+                        f"ycloud_fetch_messages: EMPTY response. Raw keys: "
+                        f"{list(data.keys()) if isinstance(data, dict) else 'N/A'}. "
+                        f"Raw body (first 500 chars): {str(data)[:500]}"
+                    )
 
                 return {
                     "messages": messages,
