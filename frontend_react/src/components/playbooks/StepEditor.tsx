@@ -87,8 +87,10 @@ const VARIABLE_LIST = [
   '{{sede}}', '{{precio}}', '{{saldo_pendiente}}', '{{nombre_clinica}}',
 ];
 
-// Triggers that initiate contact (outside 24h window = must use HSM)
-const OUTBOUND_TRIGGERS = ['patient_inactive', 'no_show', 'lead_no_booking', 'appointment_reminder', 'payment_pending'];
+// Triggers that initiate contact WITHOUT prior patient interaction (must use HSM for first step).
+// lead_no_booking and payment_pending are REACTIVE: the patient already messaged or booked,
+// so the 24h free window is open. Only use accumulated delay > 1440 min for those.
+const OUTBOUND_TRIGGERS = ['patient_inactive', 'no_show', 'appointment_reminder'];
 
 export default function StepEditor({
   step, stepIndex, totalSteps, templates,
