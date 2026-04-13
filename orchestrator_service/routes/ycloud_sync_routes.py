@@ -383,39 +383,35 @@ async def purge_synced_data(
         )
         logger.info(f"[ycloud_sync] PURGE: deleted {wm_count} whatsapp_messages")
 
-        # 2. Delete ALL chat_messages in ycloud-provider conversations (tagged or not)
+        # 2. Delete ONLY chat_messages tagged as ycloud_sync (never touch webhook messages)
         sync_msg_count = await db.pool.fetchval("""
-            SELECT COUNT(*) FROM chat_messages cm
-            WHERE cm.tenant_id = $1
-              AND (
-                  cm.platform_metadata->>'source' = 'ycloud_sync'
-                  OR cm.conversation_id IN (
-                      SELECT id FROM chat_conversations
-                      WHERE tenant_id = $1 AND provider = 'ycloud'
-                  )
+            SELECT COUNT(*) FROM chat_messages
+            WHERE tenant_id = $1
+              AND platform_metadata->>'source' = 'ycloud_sync'
+        """, tenant_id)
+        await db.pool.execute("""
+            DELETE FROM chat_messages
+            WHERE tenant_id = $1
+              AND platform_metadata->>'source' = 'ycloud_sync'
+        """, tenant_id)
+        logger.info(f"[ycloud_sync] PURGE: deleted {sync_msg_count} sync-tagged chat_messages")
+
+        # 3. Delete ycloud-provider conversations ONLY if they have no remaining messages
+        #    (protects conversations that received real webhook messages after sync)
+        ycloud_convs = await db.pool.fetchval("""
+            SELECT COUNT(*) FROM chat_conversations cc
+            WHERE cc.tenant_id = $1 AND cc.provider = 'ycloud'
+              AND NOT EXISTS (
+                  SELECT 1 FROM chat_messages cm WHERE cm.conversation_id = cc.id
               )
         """, tenant_id)
         await db.pool.execute("""
-            DELETE FROM chat_messages cm
-            WHERE cm.tenant_id = $1
-              AND (
-                  cm.platform_metadata->>'source' = 'ycloud_sync'
-                  OR cm.conversation_id IN (
-                      SELECT id FROM chat_conversations
-                      WHERE tenant_id = $1 AND provider = 'ycloud'
-                  )
+            DELETE FROM chat_conversations cc
+            WHERE cc.tenant_id = $1 AND cc.provider = 'ycloud'
+              AND NOT EXISTS (
+                  SELECT 1 FROM chat_messages cm WHERE cm.conversation_id = cc.id
               )
-        """, tenant_id)
-        logger.info(f"[ycloud_sync] PURGE: deleted {sync_msg_count} chat_messages")
-
-        # 3. Delete ycloud-provider conversations
-        ycloud_convs = await db.pool.fetchval(
-            "SELECT COUNT(*) FROM chat_conversations WHERE tenant_id = $1 AND provider = 'ycloud'",
-            tenant_id,
-        )
-        await db.pool.execute(
-            "DELETE FROM chat_conversations WHERE tenant_id = $1 AND provider = 'ycloud'",
-            tenant_id,
+        """, tenant_id,
         )
         logger.info(f"[ycloud_sync] PURGE: deleted {ycloud_convs} ycloud conversations")
 
