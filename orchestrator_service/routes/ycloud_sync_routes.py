@@ -99,11 +99,20 @@ async def start_ycloud_sync(
             raise HTTPException(404, "Tenant no encontrado")
 
         config = tenant_row["config"] or {}
-        ycloud_api_key = config.get("ycloud_api_key")
+        if isinstance(config, str):
+            import json as _json
+            try:
+                config = _json.loads(config)
+            except Exception:
+                config = {}
+
+        # Check API key from credentials vault (same as get_config)
+        from core.credentials import get_tenant_credential, YCLOUD_API_KEY
+        ycloud_api_key = await get_tenant_credential(tenant_id, YCLOUD_API_KEY)
 
         if not ycloud_api_key:
             raise HTTPException(
-                400, "YCloud API key no configurada. Configurá primero en Settings."
+                400, "YCloud API key no configurada. Configurá primero en Settings → YCloud."
             )
 
         # Start sync via service
