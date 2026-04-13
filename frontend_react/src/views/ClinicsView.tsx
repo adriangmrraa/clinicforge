@@ -871,7 +871,7 @@ export default function ClinicsView() {
                 api.get('/admin/insurance-providers', th),
                 api.get('/admin/treatment-types', th),
             ]);
-            if (insResp.status === 'fulfilled') setInsuranceProviders(insResp.value.data);
+            if (insResp.status === 'fulfilled') setInsuranceProviders(Array.isArray(insResp.value.data) ? insResp.value.data : []);
             if (treatResp.status === 'fulfilled') {
                 setInsuranceTreatments(
                     Array.isArray(treatResp.value.data)
