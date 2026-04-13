@@ -15,6 +15,8 @@ import AdContextCard from '../components/AdContextCard';
 import { MessageContent } from '../components/chat/MessageMedia';
 import { useSmartScroll } from '../hooks/useSmartScroll';
 import AnamnesisPanel from '../components/AnamnesisPanel';
+import CreatePatientModal from '../components/CreatePatientModal';
+import ScheduleAppointmentModal from '../components/ScheduleAppointmentModal';
 import { useAuth } from '../context/AuthContext';
 
 // ============================================
@@ -127,6 +129,8 @@ export default function ChatsView() {
   const [showMobileContext, setShowMobileContext] = useState(false);
   /** Incrementa cuando save_patient_anamnesis guarda para refrescar AnamnesisPanel en tiempo real */
   const [anamnesisRefreshKey, setAnamnesisRefreshKey] = useState(0);
+  const [showCreatePatient, setShowCreatePatient] = useState(false);
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
 
 
 
@@ -368,7 +372,21 @@ export default function ChatsView() {
 
     // Nova sent a message — refresh chat list
     socketRef.current.on('MESSAGE_SENT', () => {
-      fetchChats();
+      if (selectedTenantIdRef.current) fetchSessions(selectedTenantIdRef.current);
+    });
+
+    // Patient created from another tab/session — update badges
+    socketRef.current.on('PATIENT_CREATED', (data: { patient_id: number; phone_number: string; tenant_id: number; first_name: string; last_name: string; status: string }) => {
+      const fullName = [data.first_name, data.last_name].filter(Boolean).join(' ').trim();
+      setSessions(prev => prev.map(s =>
+        s.phone_number === data.phone_number && s.tenant_id === data.tenant_id
+          ? { ...s, patient_id: data.patient_id, patient_name: fullName }
+          : s
+      ));
+      if (selectedSessionRef.current?.phone_number === data.phone_number) {
+        setSelectedSession(prev => prev ? { ...prev, patient_id: data.patient_id, patient_name: fullName } : prev);
+        fetchPatientContext(data.phone_number, data.tenant_id);
+      }
     });
 
     // Cleanup
@@ -563,6 +581,23 @@ export default function ChatsView() {
       console.error('Error fetching patient context:', error);
       setPatientContext(null);
     }
+  };
+
+  const handlePatientCreated = (patient: { id: number; first_name: string; last_name: string; phone_number: string; status: string }) => {
+    // Update session list
+    setSessions(prev => prev.map(s =>
+      s.phone_number === patient.phone_number
+        ? { ...s, patient_id: patient.id, patient_name: [patient.first_name, patient.last_name].filter(Boolean).join(' ').trim() }
+        : s
+    ));
+    // Update selected session
+    if (selectedSession?.phone_number === patient.phone_number) {
+      setSelectedSession(prev => prev ? { ...prev, patient_id: patient.id, patient_name: [patient.first_name, patient.last_name].filter(Boolean).join(' ').trim() } : prev);
+    }
+    // Refresh patient context
+    const phone = patient.phone_number;
+    const tid = selectedSession?.tenant_id || selectedTenantId;
+    if (phone) fetchPatientContext(phone, tid ?? undefined);
   };
 
   const markAsRead = async (phone: string, tenantId: number) => {
@@ -1583,50 +1618,72 @@ export default function ChatsView() {
                 {/* Patient / Contact Info — Lead vs Paciente */}
                 {(() => {
                   const hasAppointments = !!(patientContext?.last_appointment || patientContext?.upcoming_appointment);
-                  const apiPatient = (patientContext as { patient?: { first_name?: string; last_name?: string } })?.patient;
+                  const apiPatient = (patientContext as { patient?: { first_name?: string; last_name?: string; status?: string; last_name_raw?: string; insurance_provider?: string } })?.patient;
                   const nameFromApi = apiPatient ? [apiPatient.first_name, apiPatient.last_name].filter(Boolean).join(' ').trim() : '';
                   const displayName = (patientContext as any)?.patient_name || nameFromApi || selectedSession?.patient_name || selectedChatwoot?.name || selectedSession?.phone_number || selectedChatwoot?.external_user_id;
                   const displayPhone = selectedSession?.phone_number || selectedChatwoot?.external_user_id || '';
+                  const patientId = selectedSession?.patient_id || (patientContext as any)?.patient_id;
+                  const isGuest = apiPatient?.status === 'guest';
 
                   return (
                     <div className="mt-4 space-y-4 px-3">
                       <div className={`p-3 rounded-lg ${hasAppointments ? 'bg-white/[0.03] border border-white/[0.06]' : 'bg-amber-500/10 border border-amber-500/20'}`}>
-                        {hasAppointments ? (
-                          <>
-                            <h4 className="text-xs font-medium text-white/40 mb-2">{t('chats.patient_label')}</h4>
-                            <p className="font-medium text-white">{displayName}</p>
-                            <p className="text-sm text-white/40">{displayPhone}</p>
-                          </>
-                        ) : (
-                          <>
-                            <h4 className="text-xs font-medium text-amber-400 mb-2">{t('chats.contact_no_appointments')}</h4>
-                            <p className="font-medium text-white">{displayName}</p>
-                            <p className="text-sm text-white/40">{displayPhone}</p>
-                            <p className="text-xs text-amber-400 mt-2">{t('chats.no_appointments_yet')}</p>
-                            {/* Button: Create/View Patient */}
-                            <div className="mt-3 flex gap-2">
-                              {(selectedSession?.patient_id || (patientContext as any)?.patient_id) ? (
-                                <button
-                                  onClick={() => navigate(`/pacientes/${selectedSession?.patient_id || (patientContext as any)?.patient_id}`)}
-                                  className="flex-1 py-2 px-3 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/20 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1.5"
-                                >
-                                  <User size={12} /> Ver ficha del paciente
-                                </button>
-                              ) : (
-                                <button
-                                  onClick={() => {
-                                    const phone = displayPhone;
-                                    const name = displayName !== phone ? displayName : '';
-                                    navigate('/pacientes', { state: { createPatient: true, phone, name } });
-                                  }}
-                                  className="flex-1 py-2 px-3 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1.5"
-                                >
-                                  <User size={12} /> Crear paciente
-                                </button>
-                              )}
-                            </div>
-                          </>
+                        {/* Name + phone + badge */}
+                        <div className="flex items-center gap-2 mb-2">
+                          <h4 className="text-xs font-medium text-white/40">
+                            {hasAppointments ? t('chats.patient_label') : t('chats.contact_no_appointments')}
+                          </h4>
+                          {patientId ? (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                              {t('chats.badge_patient')}
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                              Lead
+                            </span>
+                          )}
+                        </div>
+                        <p className="font-medium text-white">{displayName}</p>
+                        <p className="text-sm text-white/40">{displayPhone}</p>
+                        {!hasAppointments && (
+                          <p className="text-xs text-amber-400 mt-2">{t('chats.no_appointments_yet')}</p>
                         )}
+
+                        {/* Action buttons */}
+                        <div className="mt-3 flex flex-col gap-2">
+                          {patientId && !isGuest ? (
+                            /* Active patient: Ver ficha */
+                            <button
+                              onClick={() => navigate(`/pacientes/${patientId}`)}
+                              className="w-full py-2 px-3 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/20 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1.5"
+                            >
+                              <User size={12} /> {t('chats.view_profile')}
+                            </button>
+                          ) : patientId && isGuest ? (
+                            /* Guest patient: Editar paciente */
+                            <button
+                              onClick={() => setShowCreatePatient(true)}
+                              className="w-full py-2 px-3 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/20 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1.5"
+                            >
+                              <User size={12} /> {t('chats.edit_patient')}
+                            </button>
+                          ) : (
+                            /* No patient: Crear paciente */
+                            <button
+                              onClick={() => setShowCreatePatient(true)}
+                              className="w-full py-2 px-3 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1.5"
+                            >
+                              <User size={12} /> {t('chats.create_patient')}
+                            </button>
+                          )}
+                          {/* Agendar turno — siempre visible */}
+                          <button
+                            onClick={() => setShowScheduleModal(true)}
+                            className="w-full py-2 px-3 bg-white/[0.04] hover:bg-white/[0.08] text-white/70 hover:text-white border border-white/[0.08] rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1.5"
+                          >
+                            <Calendar size={12} /> {t('chats.schedule_appointment')}
+                          </button>
+                        </div>
                       </div>
 
                       {hasAppointments ? (
@@ -1743,6 +1800,51 @@ export default function ChatsView() {
           animation: slide-in 0.3s ease-out;
         }
       `}</style>
+
+      {/* Create / Edit Patient Modal */}
+      <CreatePatientModal
+        isOpen={showCreatePatient}
+        onClose={() => setShowCreatePatient(false)}
+        onSaved={handlePatientCreated}
+        initialPhone={selectedSession?.phone_number || selectedChatwoot?.external_user_id || ''}
+        initialName={selectedSession?.patient_name || selectedChatwoot?.name || ''}
+        editPatientId={
+          (selectedSession?.patient_id || (patientContext as any)?.patient_id) && (patientContext as any)?.patient?.status === 'guest'
+            ? (selectedSession?.patient_id || (patientContext as any)?.patient_id)
+            : undefined
+        }
+        editPatientData={
+          (patientContext as any)?.patient?.status === 'guest'
+            ? {
+                first_name: (patientContext as any)?.patient?.first_name || '',
+                last_name: (patientContext as any)?.patient?.last_name || '',
+                dni: (patientContext as any)?.patient?.dni || '',
+                insurance: (patientContext as any)?.patient?.insurance_provider || '',
+                email: (patientContext as any)?.patient?.email || '',
+                city: (patientContext as any)?.patient?.city || '',
+                notes: (patientContext as any)?.patient?.notes || '',
+              }
+            : undefined
+        }
+        tenantId={selectedTenantId || selectedSession?.tenant_id || 0}
+      />
+
+      {/* Schedule Appointment Modal */}
+      <ScheduleAppointmentModal
+        isOpen={showScheduleModal}
+        onClose={() => setShowScheduleModal(false)}
+        onSaved={(appointment) => {
+          // Refresh patient context to show new appointment
+          const phone = selectedSession?.phone_number || selectedChatwoot?.external_user_id;
+          const tid = selectedSession?.tenant_id || selectedTenantId;
+          if (phone) fetchPatientContext(phone, tid ?? undefined);
+        }}
+        onPatientCreated={handlePatientCreated}
+        patientId={selectedSession?.patient_id || (patientContext as any)?.patient_id}
+        patientPhone={selectedSession?.phone_number || selectedChatwoot?.external_user_id || ''}
+        patientName={selectedSession?.patient_name || selectedChatwoot?.name || ''}
+        tenantId={selectedTenantId || selectedSession?.tenant_id || 0}
+      />
     </div>
   );
 }

@@ -222,16 +222,17 @@ class Database:
         logger.info(f"✅ New conversation created: {conv_id} with Chatwoot IDs: {external_chatwoot_id}/{external_account_id}")
         return conv_id
 
-    async def ensure_patient_exists(self, phone_number: Optional[str], tenant_id: int, first_name: str = 'Visitante', status: str = 'guest', external_id: Optional[dict] = None):
+    async def ensure_patient_exists(self, phone_number: Optional[str], tenant_id: int, first_name: str = 'Visitante', status: str = 'guest', external_id: Optional[dict] = None, create_if_missing: bool = True):
         """
         Asegura que exista un registro de paciente/lead.
         Soporta búsqueda por phone_number (WhatsApp) o por external_id (Meta/IG/FB).
+        Si create_if_missing=False, retorna None cuando no existe (no crea "Visitante").
         """
         # 1. Intentar buscar por external_id si viene (ej: {"instagram": "user_id"})
         if external_id:
             for platform, platform_id in external_id.items():
                 query_lookup = """
-                    SELECT id, status FROM patients 
+                    SELECT id, status FROM patients
                     WHERE tenant_id = $1 AND external_ids->>$2 = $3
                     LIMIT 1
                 """
@@ -243,7 +244,7 @@ class Database:
         # 2. Intentar buscar por phone_number si viene
         if phone_number:
             query_lookup_phone = """
-                SELECT id, status FROM patients 
+                SELECT id, status FROM patients
                 WHERE tenant_id = $1 AND phone_number = $2
                 LIMIT 1
             """
@@ -258,22 +259,26 @@ class Database:
                         """, json.dumps(external_id), row['id'])
                     return row
 
-        # 3. Si no existe, crear nuevo (Lead o Paciente según status)
+        # 3. Si no existe y create_if_missing=False, retornar None (no crear Visitante)
+        if not create_if_missing:
+            return None
+
+        # 4. Crear nuevo (Lead o Paciente según status)
         query_insert = """
         INSERT INTO patients (tenant_id, phone_number, first_name, status, external_ids, created_at)
         VALUES ($1, $2, $3, $4, $5::jsonb, NOW())
         ON CONFLICT (tenant_id, phone_number) WHERE phone_number IS NOT NULL
-        DO UPDATE SET 
-            first_name = CASE 
-                WHEN patients.status = 'guest' 
-                     OR patients.first_name IS NULL 
+        DO UPDATE SET
+            first_name = CASE
+                WHEN patients.status = 'guest'
+                     OR patients.first_name IS NULL
                      OR patients.first_name IN ('Visitante', 'Paciente', 'Visitante ', 'Paciente ')
-                THEN EXCLUDED.first_name 
-                ELSE patients.first_name 
+                THEN EXCLUDED.first_name
+                ELSE patients.first_name
             END,
             status = CASE WHEN patients.status = 'guest' AND EXCLUDED.status = 'active' THEN 'active' ELSE patients.status END,
             external_ids = patients.external_ids || EXCLUDED.external_ids,
-            updated_at = NOW() 
+            updated_at = NOW()
         RETURNING id, status
         """
         async with self.pool.acquire() as conn:

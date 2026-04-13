@@ -214,6 +214,7 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
                         phone_number=msg.external_user_id,
                         tenant_id=tenant_id,
                         first_name=msg.display_name or "Visitante",
+                        create_if_missing=False,
                     )
 
                     # --- Spec 34: NEW_PATIENT Notification (V7.6) ---

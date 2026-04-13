@@ -3998,7 +3998,7 @@ async def triage_urgency(symptoms: str):
                 "SELECT display_name FROM chat_conversations WHERE tenant_id = $1 AND external_user_id = $2 AND display_name IS NOT NULL AND display_name != external_user_id ORDER BY updated_at DESC LIMIT 1",
                 tenant_id, phone,
             )
-            patient_row = await db.ensure_patient_exists(phone, tenant_id, first_name=_conv_display_name or "Visitante")
+            patient_row = await db.ensure_patient_exists(phone, tenant_id, first_name=_conv_display_name or "Visitante", create_if_missing=False)
 
             # --- Spec 06: Registrar ad_intent_match ---
             ad_intent_match = False
@@ -9726,7 +9726,7 @@ async def chat_endpoint(
     # 0. A) Ensure patient reference exists
     try:
         existing_patient = await db.ensure_patient_exists(
-            req.final_phone, tenant_id, req.final_name
+            req.final_phone, tenant_id, req.final_name, create_if_missing=False
         )
 
         # --- Lógica de Atribución Meta Ads (First Touch + Last Touch) ---
