@@ -1,6 +1,7 @@
-import React from 'react';
-import { Settings, BarChart3, Zap, ZapOff, Play, Clock } from 'lucide-react';
+import React, { useState } from 'react';
+import { Settings, BarChart3, Zap, ZapOff, Play, Clock, Send } from 'lucide-react';
 import { useTranslation } from '../../context/LanguageContext';
+import api from '../../api/axios';
 
 interface PlaybookCardProps {
   playbook: {
@@ -48,6 +49,25 @@ export default function PlaybookCard({ playbook, onConfigure, onToggle, onStats 
   const colors = CATEGORY_COLORS[playbook.category] || CATEGORY_COLORS.custom;
   const stats = playbook.stats_cache || {};
   const isActive = playbook.is_active;
+  const isReminder = playbook.trigger_type === 'appointment_reminder';
+  const [sendingReminders, setSendingReminders] = useState(false);
+  const [reminderResult, setReminderResult] = useState<string | null>(null);
+
+  const handleSendRemindersNow = async () => {
+    if (!confirm('Enviar recordatorios de turnos de mañana ahora?')) return;
+    setSendingReminders(true);
+    setReminderResult(null);
+    try {
+      const { data } = await api.post('/admin/playbooks/send-reminders-now');
+      setReminderResult(`${data.sent} de ${data.total} enviados`);
+      setTimeout(() => setReminderResult(null), 8000);
+    } catch (err: any) {
+      setReminderResult('Error al enviar');
+      setTimeout(() => setReminderResult(null), 5000);
+    } finally {
+      setSendingReminders(false);
+    }
+  };
 
   return (
     <div className={`bg-white/[0.03] border rounded-2xl p-5 transition-all hover:bg-white/[0.05] ${isActive ? 'border-white/[0.08]' : 'border-white/[0.04] opacity-70'}`}>
@@ -105,12 +125,30 @@ export default function PlaybookCard({ playbook, onConfigure, onToggle, onStats 
         </div>
       ) : null}
 
+      {/* Reminder manual trigger */}
+      {isReminder && reminderResult && (
+        <div className="bg-green-500/10 border border-green-500/20 rounded-lg px-3 py-2 mb-3 text-center">
+          <p className="text-xs text-green-400 font-medium">{reminderResult}</p>
+        </div>
+      )}
+
       {/* Footer */}
       <div className="flex items-center gap-2">
         <div className="flex-1 flex items-center gap-1 text-white/30 text-xs">
           <Play size={12} />
           <span>{playbook.step_count || 0} {t('playbooks.steps')}</span>
         </div>
+        {isReminder && (
+          <button
+            onClick={handleSendRemindersNow}
+            disabled={sendingReminders}
+            className="px-3 py-1.5 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 text-xs font-medium rounded-lg transition-colors flex items-center gap-1.5 border border-blue-500/20 disabled:opacity-50"
+            title="Enviar recordatorios de mañana ahora"
+          >
+            <Send size={12} className={sendingReminders ? 'animate-pulse' : ''} />
+            {sendingReminders ? 'Enviando...' : 'Enviar ahora'}
+          </button>
+        )}
         <button
           onClick={() => onStats(playbook.id)}
           className="p-2 text-white/40 hover:text-white/70 hover:bg-white/[0.04] rounded-lg transition-colors"

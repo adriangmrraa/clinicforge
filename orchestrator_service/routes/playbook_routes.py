@@ -139,6 +139,131 @@ class StepUpdate(StepCreate):
 
 
 # ========================
+# MANUAL TRIGGERS
+# ========================
+
+@router.post("/send-reminders-now")
+async def send_reminders_now(
+    tenant_id: int = Depends(get_resolved_tenant_id),
+    _=Depends(verify_admin_token),
+):
+    """
+    Manually send appointment reminder templates for ALL of tomorrow's appointments.
+    Useful when the daily job didn't fire, or new appointments were just added.
+    """
+    from datetime import datetime, timedelta, date as date_type
+    import json as _json
+
+    tomorrow = date_type.today() + timedelta(days=1)
+    tomorrow_start = datetime.combine(tomorrow, datetime.min.time())
+    tomorrow_end = datetime.combine(tomorrow, datetime.max.time())
+
+    appointments = await db.pool.fetch("""
+        SELECT
+            a.id as appointment_id,
+            a.appointment_datetime,
+            a.appointment_type,
+            a.tenant_id,
+            a.reminder_sent,
+            p.id as patient_id,
+            p.first_name,
+            p.last_name,
+            p.phone_number
+        FROM appointments a
+        INNER JOIN patients p ON a.patient_id = p.id AND p.tenant_id = a.tenant_id
+        WHERE a.tenant_id = $1
+            AND a.status IN ('scheduled', 'confirmed')
+            AND a.appointment_datetime >= $2
+            AND a.appointment_datetime <= $3
+            AND p.phone_number IS NOT NULL
+            AND p.phone_number != ''
+        ORDER BY a.appointment_datetime
+    """, tenant_id, tomorrow_start, tomorrow_end)
+
+    if not appointments:
+        return {"status": "ok", "message": "No hay turnos para mañana", "sent": 0, "total": 0}
+
+    # Load reminder rule
+    rule_row = await db.pool.fetchrow("""
+        SELECT id, is_active, message_type, free_text_message,
+               ycloud_template_name, ycloud_template_lang, ycloud_template_vars
+        FROM automation_rules
+        WHERE tenant_id = $1 AND trigger_type = 'appointment_reminder'
+        ORDER BY is_system DESC, created_at ASC LIMIT 1
+    """, tenant_id)
+    rule = dict(rule_row) if rule_row else None
+
+    _DAYS_ES = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
+
+    sent_count = 0
+    skip_count = 0
+    errors = []
+
+    for apt in appointments:
+        try:
+            patient_name = apt["first_name"] or "paciente"
+            apt_time = apt["appointment_datetime"]
+            formatted_time = apt_time.strftime("%H:%M")
+            formatted_date = apt_time.strftime("%d/%m")
+            day_of_week = _DAYS_ES[apt_time.weekday()]
+
+            sent = False
+
+            # Try HSM template first
+            if rule and rule.get("message_type") == "hsm" and rule.get("ycloud_template_name"):
+                from jobs.reminders import _send_template
+                template_name = rule["ycloud_template_name"]
+                template_lang = rule.get("ycloud_template_lang") or "es"
+
+                var_map = {
+                    "nombre_paciente": patient_name,
+                    "dia_semana": day_of_week,
+                    "fecha_turno": formatted_date,
+                    "hora_turno": formatted_time,
+                }
+                parameters = [{"type": "text", "text": var_map.get(k, "")} for k in ["nombre_paciente", "dia_semana", "fecha_turno", "hora_turno"]]
+                components = [{"type": "body", "parameters": parameters}]
+
+                sent = await _send_template(tenant_id, apt["phone_number"], template_name, template_lang, components)
+
+            # Fallback: free text
+            if not sent:
+                from jobs.reminders import _send_text
+                if rule and rule.get("free_text_message"):
+                    message = rule["free_text_message"]
+                    message = message.replace("{{first_name}}", patient_name)
+                    message = message.replace("{{appointment_time}}", formatted_time)
+                    message = message.replace("{{appointment_date}}", formatted_date)
+                else:
+                    message = f"Hola {patient_name}, te recordamos tu turno de mañana a las {formatted_time}. Nos confirmás tu asistencia?"
+                sent = await _send_text(tenant_id, apt["phone_number"], message)
+
+            if sent:
+                await db.pool.execute(
+                    "UPDATE appointments SET reminder_sent = true, reminder_sent_at = NOW() WHERE id = $1 AND tenant_id = $2",
+                    apt["appointment_id"], tenant_id,
+                )
+                sent_count += 1
+                logger.info(f"✅ Manual reminder sent to {patient_name} ({apt['phone_number']})")
+            else:
+                skip_count += 1
+
+        except Exception as e:
+            errors.append(f"{apt.get('first_name')}: {str(e)[:100]}")
+            logger.error(f"❌ Manual reminder error: {e}")
+
+    return {
+        "status": "ok",
+        "sent": sent_count,
+        "skipped": skip_count,
+        "errors": len(errors),
+        "total": len(appointments),
+        "error_details": errors[:5],
+        "message": f"Enviados {sent_count} de {len(appointments)} recordatorios para mañana {tomorrow.strftime('%d/%m')}",
+    }
+
+
+# ========================
 # PLAYBOOK CRUD
 # ========================
 
