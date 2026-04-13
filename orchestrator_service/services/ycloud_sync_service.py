@@ -604,13 +604,16 @@ async def _upsert_chat_record(pool, tenant_id: int, msg_data: dict, external_use
             content_attrs_json,
         )
 
-        # 4. Update conversation timestamps
+        # 4. Update conversation timestamps + last message preview + display_name
+        msg_preview = (msg_data.get("content") or f"[{msg_data.get('message_type', 'message')}]")[:100]
         await pool.execute("""
             UPDATE chat_conversations SET
                 last_message_at = GREATEST(last_message_at, $1),
+                last_message_preview = CASE WHEN $1 >= COALESCE(last_message_at, '1970-01-01'::timestamptz) THEN $3 ELSE last_message_preview END,
+                display_name = COALESCE(NULLIF($4, ''), display_name),
                 updated_at = NOW()
             WHERE id = $2
-        """, msg_data["created_at"], conv_id)
+        """, msg_data["created_at"], conv_id, msg_preview, display_name)
 
     except Exception as e:
         logger.warning(f"[ycloud_sync] chat record upsert failed (non-fatal): {e}")

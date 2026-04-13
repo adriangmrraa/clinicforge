@@ -516,6 +516,7 @@
     "title": "Conversaciones",
     "select_clinic": "Seleccionar clínica",
     "no_sessions": "Sin conversaciones",
+    "no_messages": "Sin mensajes",
     "search_placeholder": "Buscar por nombre o teléfono...",
     "mute_sound": "Silenciar notificaciones",
     "enable_sound": "Activar sonido",
