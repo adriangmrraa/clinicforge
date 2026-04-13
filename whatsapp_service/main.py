@@ -553,8 +553,26 @@ async def ycloud_webhook(request: Request):
         event_type == "whatsapp.message.echo"
         or event_type == "whatsapp.smb.message.echoes"
     ):
-        logger.info("echo_received", correlation_id=correlation_id, evt_type=event_type)
-        msg = event.get("whatsappMessage", {}) or event.get("message", {})
+        logger.info("echo_received", correlation_id=correlation_id, evt_type=event_type, raw_keys=list(event.keys()))
+        # YCloud uses different payload keys depending on echo type:
+        # whatsapp.message.echo → "whatsappMessage"
+        # whatsapp.smb.message.echoes → "whatsappSmbMessageEcho" or "smbMessage"
+        msg = (
+            event.get("whatsappMessage")
+            or event.get("whatsappSmbMessageEcho")
+            or event.get("smbMessage")
+            or event.get("message")
+            or event.get("whatsappMessageEcho")
+            or {}
+        )
+        if not msg:
+            # Fallback: try any key that looks like a message object with "to" and "type"
+            for k, v in event.items():
+                if isinstance(v, dict) and v.get("to") and v.get("type"):
+                    msg = v
+                    logger.info(f"echo_fallback_key_found: {k}")
+                    break
+        logger.info(f"echo_msg_extracted: keys={list(msg.keys()) if msg else 'EMPTY'}, to={msg.get('to')}, type={msg.get('type')}")
 
         user_phone = msg.get("to")
         bot_phone = msg.get("from")
