@@ -48,11 +48,36 @@ export const YCloudSyncSection: React.FC<YCloudSyncSectionProps> = ({ tenantId, 
     const [purging, setPurging] = useState(false);
     const [purgeResult, setPurgeResult] = useState<string | null>(null);
     
-    // Load config on mount
+    // Load config + check for active sync on mount
     useEffect(() => {
         loadConfig();
+        checkActiveSync();
     }, [tenantId]);
-    
+
+    const checkActiveSync = async () => {
+        try {
+            const { data } = await api.get(`/admin/ycloud/sync/active`);
+            if (data.active && data.task_id) {
+                setCurrentTaskId(data.task_id);
+                setProgress({
+                    task_id: data.task_id,
+                    status: data.status || 'processing',
+                    messages_fetched: data.messages_fetched || 0,
+                    messages_saved: data.messages_saved || 0,
+                    media_downloaded: data.media_downloaded || 0,
+                    errors: data.errors || [],
+                    started_at: data.started_at || '',
+                    completed_at: null,
+                    last_sync_at: null,
+                });
+                // Resume polling
+                setPolling(true);
+            }
+        } catch {
+            // No active sync — normal
+        }
+    };
+
     const loadConfig = async () => {
         try {
             setLoadingConfig(true);

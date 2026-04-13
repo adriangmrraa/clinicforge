@@ -140,6 +140,45 @@ async def start_ycloud_sync(
 # --- GET /status/{task_id} ---
 
 
+@router.get("/sync/active")
+async def get_active_sync(
+    user_data=Depends(verify_ceo_token),
+    tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    """Check if there's an active sync running for this tenant. Returns progress or null."""
+    try:
+        from services.relay import get_redis
+        r = get_redis()
+        if not r:
+            return {"active": False}
+
+        # Check lock first
+        lock_key = f"ycloud_sync_lock:{tenant_id}"
+        has_lock = await r.exists(lock_key)
+        if not has_lock:
+            return {"active": False}
+
+        # Scan for active progress keys
+        import json as _json
+        cursor_val = 0
+        while True:
+            cursor_val, keys = await r.scan(cursor_val, match=f"ycloud_sync:{tenant_id}:*", count=20)
+            for key in keys:
+                raw = await r.get(key)
+                if raw:
+                    progress = _json.loads(raw)
+                    if progress.get("status") in ("processing", "queued"):
+                        return {"active": True, **progress}
+            if cursor_val == 0:
+                break
+
+        return {"active": False}
+
+    except Exception as e:
+        logger.warning(f"[ycloud_sync] active check failed: {e}")
+        return {"active": False}
+
+
 @router.get("/sync/status/{task_id}")
 async def get_sync_status(
     task_id: str,
