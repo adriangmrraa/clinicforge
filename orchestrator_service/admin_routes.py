@@ -4313,12 +4313,12 @@ async def create_patient(
 # ==================== ENDPOINT: INSURANCE PROVIDERS ====================
 
 @router.get(
-    "/insurance-providers",
+    "/insurance-providers/used",
     dependencies=[Depends(verify_admin_token)],
     tags=["Pacientes"],
-    summary="Lista de obras sociales usadas en el tenant",
+    summary="Lista de obras sociales usadas en pacientes del tenant",
 )
-async def get_insurance_providers(
+async def get_insurance_providers_used(
     tenant_id: int = Depends(get_resolved_tenant_id),
 ):
     """Devuelve la lista de obras sociales distintas ya registradas en pacientes del tenant."""

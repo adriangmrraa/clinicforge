@@ -82,7 +82,7 @@ export default function CreatePatientModal({
   // Fetch insurance providers
   useEffect(() => {
     if (!isOpen) return;
-    api.get('/admin/insurance-providers').then(r => {
+    api.get('/admin/insurance-providers/used').then(r => {
       setInsuranceOptions(r.data.providers || []);
     }).catch(() => {});
   }, [isOpen]);

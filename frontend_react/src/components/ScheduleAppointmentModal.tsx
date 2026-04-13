@@ -130,7 +130,7 @@ export default function ScheduleAppointmentModal({
       setTreatments(active);
     }).catch(() => {});
     // Insurance
-    api.get('/admin/insurance-providers').then(r => setInsuranceOptions(r.data.providers || [])).catch(() => {});
+    api.get('/admin/insurance-providers/used').then(r => setInsuranceOptions(r.data.providers || [])).catch(() => {});
     // Bank data for seña
     api.get('/admin/settings/clinic').then(r => {
       const d = r.data;
