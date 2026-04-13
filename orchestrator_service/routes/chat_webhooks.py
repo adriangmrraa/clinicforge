@@ -714,28 +714,37 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
                 logger.error(f"⚠️ Error emitting SocketIO event: {sio_err}")
 
             # --- Spec 24: Buffer / Agent Trigger (Only if not locked) ---
+            # Check BOTH sources: chat_conversations (per-conversation) AND patients (canonical toggle).
+            # The frontend toggle always updates patients.human_override_until reliably,
+            # but chat_conversations may fail silently (channel mismatch, missing row, etc.).
+            from datetime import datetime, timezone
+            utc_now = datetime.now(timezone.utc)
+
+            def _is_active_override(ts):
+                if ts is None:
+                    return False
+                aware_ts = ts if ts.tzinfo else ts.replace(tzinfo=timezone.utc)
+                return aware_ts > utc_now
+
             override_row = await pool.fetchrow(
                 "SELECT human_override_until FROM chat_conversations WHERE id = $1",
                 conv_id,
             )
-            from datetime import datetime, timezone
+            conv_locked = override_row and _is_active_override(override_row["human_override_until"])
 
-            utc_now = datetime.now(timezone.utc)
-            is_locked = (
-                override_row
-                and override_row["human_override_until"] is not None
-                and (
-                    override_row["human_override_until"]
-                    if override_row["human_override_until"].tzinfo
-                    else override_row["human_override_until"].replace(
-                        tzinfo=timezone.utc
-                    )
+            # Fallback: check patients table (canonical source, always updated by toggle)
+            patient_locked = False
+            if not conv_locked:
+                patient_override = await pool.fetchval(
+                    "SELECT human_override_until FROM patients WHERE tenant_id = $1 AND phone_number = $2",
+                    tenant_id, msg.external_user_id,
                 )
-                > utc_now
-            )
+                patient_locked = _is_active_override(patient_override)
+
+            is_locked = conv_locked or patient_locked
 
             logger.info(
-                f"🔒 Override check: conv={conv_id} override_until={override_row['human_override_until'] if override_row else 'N/A'} utc_now={utc_now} is_locked={is_locked}"
+                f"🔒 Override check: conv={conv_id} conv_locked={conv_locked} patient_locked={patient_locked} is_locked={is_locked}"
             )
 
             # If we got here, the message was successfully persisted to chat_messages

@@ -1649,13 +1649,13 @@ async def toggle_human_intervention(
             payload.tenant_id,
             payload.phone,
         )
-        # Spec 24 / Phase 5: Sync with chat_conversations for omnichannel buffering parity
+        # Sync with chat_conversations for ALL channels (WhatsApp, Instagram, Facebook, etc.)
         await db.pool.execute(
             """
             UPDATE chat_conversations
             SET human_override_until = $1,
                 updated_at = NOW()
-            WHERE tenant_id = $2 AND channel = 'whatsapp' AND external_user_id = $3
+            WHERE tenant_id = $2 AND external_user_id = $3
         """,
             override_until,
             payload.tenant_id,
@@ -1693,13 +1693,13 @@ async def toggle_human_intervention(
             payload.tenant_id,
             payload.phone,
         )
-        # Spec 24 / Phase 5: Sync with chat_conversations for omnichannel buffering parity
+        # Sync with chat_conversations for ALL channels
         await db.pool.execute(
             """
             UPDATE chat_conversations
             SET human_override_until = NULL,
                 updated_at = NOW()
-            WHERE tenant_id = $1 AND channel = 'whatsapp' AND external_user_id = $2
+            WHERE tenant_id = $1 AND external_user_id = $2
         """,
             payload.tenant_id,
             payload.phone,
