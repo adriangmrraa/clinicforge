@@ -959,6 +959,7 @@ export default function AgendaView() {
                   slotLabelInterval="01:00"
                   initialDate={new Date()}
                   firstDay={1} // Lunes como primer día de semana (0=Dom, 1=Lun)
+                  timeZone="local"
                   locale={language}
                   buttonText={{
                     today: t('agenda.today'),

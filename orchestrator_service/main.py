@@ -2738,6 +2738,53 @@ async def book_appointment(
                 )
                 apt_datetime = None
 
+        # Fallback: if no interpreted_date, try to match against offered slots from conversation state
+        if apt_datetime is None:
+            try:
+                from services.conversation_state import get_state
+                _conv_state = await get_state(tenant_id, phone)
+                _offered = _conv_state.get("last_offered_slots", [])
+                if _offered and date_time:
+                    _dt_lower = date_time.lower().strip()
+                    # Try to match by time (e.g. "13:00", "18:30")
+                    _time_match = re.search(r"(\d{1,2})[:h](\d{2})", _dt_lower)
+                    _target_time = None
+                    if _time_match:
+                        _target_time = f"{int(_time_match.group(1)):02d}:{int(_time_match.group(2)):02d}"
+                    else:
+                        _hour_only = re.search(r"(\d{1,2})\s*(?:hs?|horas?)?", _dt_lower)
+                        if _hour_only:
+                            _target_time = f"{int(_hour_only.group(1)):02d}:00"
+
+                    for slot in _offered:
+                        slot_time = slot.get("time", "")
+                        slot_date = slot.get("date", "")
+                        # Match by exact time
+                        if _target_time and slot_time == _target_time and slot_date:
+                            base_date = date.fromisoformat(slot_date)
+                            h, m = int(slot_time.split(":")[0]), int(slot_time.split(":")[1])
+                            apt_datetime = datetime.combine(base_date, datetime.min.time()).replace(
+                                hour=h, minute=m, second=0, microsecond=0, tzinfo=get_active_tz()
+                            )
+                            logger.info(f"📅 BOOK SLOT MATCH: matched time={_target_time} → slot {slot_date} {slot_time}")
+                            break
+                        # Match by option number ("1", "2", "3", "opción 1", etc.)
+                        _opt_num = re.search(r"(?:opci[oó]n\s*)?(\d)", _dt_lower)
+                        if _opt_num:
+                            idx = int(_opt_num.group(1)) - 1
+                            if 0 <= idx < len(_offered):
+                                s = _offered[idx]
+                                if s.get("date") and s.get("time"):
+                                    base_date = date.fromisoformat(s["date"])
+                                    h, m = int(s["time"].split(":")[0]), int(s["time"].split(":")[1])
+                                    apt_datetime = datetime.combine(base_date, datetime.min.time()).replace(
+                                        hour=h, minute=m, second=0, microsecond=0, tzinfo=get_active_tz()
+                                    )
+                                    logger.info(f"📅 BOOK SLOT MATCH: option #{idx+1} → {s['date']} {s['time']}")
+                                    break
+            except Exception as _slot_err:
+                logger.warning(f"📅 BOOK: slot match fallback failed: {_slot_err}")
+
         if apt_datetime is None:
             apt_datetime = parse_datetime(date_time)
             logger.info(f"📅 BOOK: parsed datetime={apt_datetime} from '{date_time}'")
