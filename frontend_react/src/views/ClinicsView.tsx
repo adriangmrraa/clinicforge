@@ -507,10 +507,64 @@ export default function ClinicsView() {
     const [opModalOpen, setOpModalOpen] = useState(false);
     const [editingOp, setEditingOp] = useState<OperationalRule | null>(null);
     const [opForm, setOpForm] = useState({
-        rule_name: '', rule_type: 'temporary', description: '', prompt_injection: '',
+        rule_name: '', rule_type: 'temporary_restriction' as string, description: '', prompt_injection: '',
         applies_to: ['all'] as string[], valid_from: '', valid_until: '', priority_order: 0, is_active: true,
+        // Type-specific fields
+        config: {} as Record<string, any>,
     });
     const [opSaving, setOpSaving] = useState(false);
+    const [opProfessionals, setOpProfessionals] = useState<{id: number; first_name: string; last_name: string}[]>([]);
+    const [opTreatments, setOpTreatments] = useState<{code: string; name: string}[]>([]);
+
+    const OP_RULE_TYPES = [
+        { value: 'temporary_restriction', label: 'Restricción temporal', icon: '⏰', desc: 'Limitación temporal por problemas técnicos, obras, etc.' },
+        { value: 'schedule_limit', label: 'Restricción de agenda', icon: '📅', desc: 'Limitar cantidad de turnos por tipo/día' },
+        { value: 'special_hours', label: 'Horario especial', icon: '🕐', desc: 'Cambiar horario de atención temporalmente' },
+        { value: 'pricing_rule', label: 'Regla de precio', icon: '💰', desc: 'Descuentos o promociones temporales' },
+        { value: 'mandatory_message', label: 'Mensaje obligatorio', icon: '💬', desc: 'Mensaje que el agente debe comunicar siempre' },
+        { value: 'channel_derivation', label: 'Derivación por canal', icon: '📱', desc: 'Derivar leads según canal de origen' },
+        { value: 'insurance_derivation', label: 'Derivación por obra social', icon: '🏥', desc: 'Derivar pacientes según su obra social' },
+        { value: 'custom', label: 'Regla personalizada', icon: '✏️', desc: 'Instrucción libre para el agente' },
+    ];
+
+    // Build prompt_injection automatically from config fields
+    const buildPromptFromConfig = (type: string, config: Record<string, any>, name: string): string => {
+        switch (type) {
+            case 'temporary_restriction':
+                return `RESTRICCIÓN TEMPORAL — ${name}: ${config.reason || ''}. ` +
+                    `Instrucción para el agente: ${config.instruction || ''}` +
+                    (config.affects_insurance ? ` Aplica a pacientes con OBRA SOCIAL.` : '') +
+                    (config.affects_private ? ` Aplica a pacientes PARTICULARES.` : '');
+            case 'schedule_limit':
+                return `LÍMITE DE AGENDA: Máximo ${config.max_per_day || 'X'} turnos de "${config.treatment_name || config.treatment || 'este tipo'}" por día.` +
+                    (config.professional_name ? ` Aplica al profesional ${config.professional_name}.` : ' Aplica a todos los profesionales.') +
+                    ` Si se alcanza el límite, informar al paciente y ofrecer otro día.`;
+            case 'special_hours':
+                return `HORARIO ESPECIAL: ${config.reason || 'Cambio de horario'}. ` +
+                    `Atención desde ${config.hour_start || '08:00'} hasta ${config.hour_end || '18:00'}. ` +
+                    (config.dates ? `Aplica los días: ${config.dates}. ` : '') +
+                    `Fuera de este horario NO ofrecer turnos.`;
+            case 'pricing_rule':
+                return `PROMOCIÓN/PRECIO: ${name}. ` +
+                    (config.discount_percent ? `${config.discount_percent}% de descuento ` : '') +
+                    (config.treatment_name ? `en ${config.treatment_name} ` : '') +
+                    (config.modality === 'particular' ? 'para PARTICULARES. ' : config.modality === 'insurance' ? 'con OBRA SOCIAL. ' : 'para TODOS. ') +
+                    `Cuando el paciente pregunte precios o quiera agendar este tratamiento, informar la promoción.`;
+            case 'mandatory_message':
+                return `MENSAJE OBLIGATORIO: ${config.when === 'before_booking' ? 'ANTES de agendar turno' : config.when === 'on_greeting' ? 'Al saludar al paciente' : 'SIEMPRE'}, ` +
+                    `comunicar al paciente: "${config.message || ''}"`;
+            case 'channel_derivation':
+                return `DERIVACIÓN POR CANAL: Los leads que lleguen por ${config.channel === 'instagram' ? 'Instagram' : config.channel === 'facebook' ? 'Facebook' : 'WhatsApp'} ` +
+                    (config.professional_name ? `deben ser atendidos por ${config.professional_name}.` : 'deben ser derivados al equipo general.');
+            case 'insurance_derivation':
+                return `DERIVACIÓN POR OBRA SOCIAL: Los pacientes con obra social "${config.insurance_name || ''}" ` +
+                    (config.professional_name ? `deben ser atendidos por ${config.professional_name}.` : 'deben ser derivados al equipo general.');
+            case 'custom':
+                return config.free_text || '';
+            default:
+                return '';
+        }
+    };
 
     // FAQ state
     const [faqModalOpen, setFaqModalOpen] = useState(false);
@@ -998,34 +1052,66 @@ export default function ClinicsView() {
         if (!selectedClinicId) return;
         setOpLoading(true);
         try {
-            const res = await api.get('/admin/operational-rules', { headers: { 'X-Tenant-ID': String(selectedClinicId) } });
-            setOpRules(res.data);
+            const th = { headers: { 'X-Tenant-ID': String(selectedClinicId) } };
+            const [rulesRes, profRes, treatRes] = await Promise.allSettled([
+                api.get('/admin/operational-rules', th),
+                api.get('/admin/professionals', th),
+                api.get('/admin/treatment-types', th),
+            ]);
+            if (rulesRes.status === 'fulfilled') setOpRules(rulesRes.value.data);
+            if (profRes.status === 'fulfilled') setOpProfessionals(Array.isArray(profRes.value.data) ? profRes.value.data : []);
+            if (treatRes.status === 'fulfilled') setOpTreatments((treatRes.value.data || []).filter((t: any) => t.is_active).map((t: any) => ({ code: t.code, name: t.name })));
         } catch { /* ignore */ }
         finally { setOpLoading(false); }
     };
     const openOpModal = (item: OperationalRule | null = null) => {
         if (item) {
             setEditingOp(item);
+            // Try to parse config from description if it's JSON, otherwise empty
+            let config = {};
+            try { if (item.description?.startsWith('{')) config = JSON.parse(item.description); } catch {}
             setOpForm({
                 rule_name: item.rule_name, rule_type: item.rule_type,
-                description: item.description || '', prompt_injection: item.prompt_injection,
+                description: typeof config === 'object' && Object.keys(config).length ? '' : (item.description || ''),
+                prompt_injection: item.prompt_injection,
                 applies_to: item.applies_to || ['all'],
                 valid_from: item.valid_from ? item.valid_from.slice(0, 16) : '',
                 valid_until: item.valid_until ? item.valid_until.slice(0, 16) : '',
                 priority_order: item.priority_order, is_active: item.is_active,
+                config,
             });
         } else {
             setEditingOp(null);
-            setOpForm({ rule_name: '', rule_type: 'temporary', description: '', prompt_injection: '', applies_to: ['all'], valid_from: '', valid_until: '', priority_order: 0, is_active: true });
+            setOpForm({ rule_name: '', rule_type: 'temporary_restriction', description: '', prompt_injection: '', applies_to: ['all'], valid_from: '', valid_until: '', priority_order: 0, is_active: true, config: {} });
         }
         setOpModalOpen(true);
     };
     const saveOpRule = async () => {
-        if (!opForm.rule_name.trim() || !opForm.prompt_injection.trim()) return;
+        if (!opForm.rule_name.trim()) return;
         setOpSaving(true);
         try {
             const th = { headers: { 'X-Tenant-ID': String(selectedClinicId) } };
-            const body = { ...opForm, valid_from: opForm.valid_from || null, valid_until: opForm.valid_until || null };
+            // Auto-generate prompt from config if not custom
+            const prompt = opForm.rule_type === 'custom'
+                ? (opForm.config.free_text || opForm.prompt_injection || '')
+                : buildPromptFromConfig(opForm.rule_type, opForm.config, opForm.rule_name);
+            if (!prompt.trim()) { alert('La instrucción del agente no puede estar vacía'); setOpSaving(false); return; }
+            // Map internal type to DB rule_type
+            const dbType = ['temporary_restriction', 'special_hours', 'mandatory_message'].includes(opForm.rule_type) ? 'temporary'
+                : ['schedule_limit', 'pricing_rule'].includes(opForm.rule_type) ? 'scheduling'
+                : ['channel_derivation', 'insurance_derivation'].includes(opForm.rule_type) ? 'strategic'
+                : opForm.rule_type === 'custom' ? 'strategic' : 'temporary';
+            const body = {
+                rule_name: opForm.rule_name.trim(),
+                rule_type: dbType,
+                description: JSON.stringify({ _ui_type: opForm.rule_type, ...opForm.config }),
+                prompt_injection: prompt,
+                applies_to: opForm.applies_to,
+                valid_from: opForm.valid_from || null,
+                valid_until: opForm.valid_until || null,
+                priority_order: opForm.priority_order,
+                is_active: opForm.is_active,
+            };
             if (editingOp) await api.put(`/admin/operational-rules/${editingOp.id}`, body, th);
             else await api.post('/admin/operational-rules', body, th);
             setOpModalOpen(false);
@@ -2809,9 +2895,16 @@ export default function ClinicsView() {
                 </div>
             )}
 
-            {/* ── Modal Operational Rule ── */}
-            {opModalOpen && (
-                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end lg:items-center justify-center lg:p-4">
+            {/* ── Modal Operational Rule (dynamic fields by type) ── */}
+            {opModalOpen && (() => {
+                const iCls = "w-full px-3 py-2 rounded-lg bg-white/[0.04] border border-white/[0.08] text-white text-sm";
+                const lCls = "block text-xs text-white/50 mb-1";
+                const sCls = iCls + " [&>option]:bg-[#0d1117]";
+                const setC = (k: string, v: any) => setOpForm(p => ({...p, config: {...p.config, [k]: v}}));
+                const c = opForm.config;
+                const curType = OP_RULE_TYPES.find(t => t.value === opForm.rule_type);
+                return (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end lg:items-center justify-center lg:p-4" onClick={e => { if (e.target === e.currentTarget) setOpModalOpen(false); }}>
                     <div className="bg-[#0d1117] border-t lg:border border-white/[0.08] rounded-t-2xl lg:rounded-xl w-full lg:max-w-lg max-h-[92vh] lg:max-h-[85vh] flex flex-col">
                         <div className="p-4 border-b border-white/[0.06] shrink-0 flex justify-between items-center">
                             <h2 className="text-lg font-bold text-white">{editingOp ? t('settings.operational_rules.edit') : t('settings.operational_rules.create')}</h2>
@@ -2820,44 +2913,134 @@ export default function ClinicsView() {
                         <div className="p-4 overflow-y-auto space-y-4" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}>
                             {/* Rule name */}
                             <div>
-                                <label className="block text-xs text-white/50 mb-1">{t('settings.operational_rules.field_name')} *</label>
-                                <input type="text" value={opForm.rule_name} onChange={e => setOpForm(p => ({...p, rule_name: e.target.value}))} className="w-full px-3 py-2 rounded-lg bg-white/[0.04] border border-white/[0.08] text-white text-sm" placeholder="Ej: Restricción obra social mayo 2026" />
+                                <label className={lCls}>{t('settings.operational_rules.field_name')} *</label>
+                                <input type="text" value={opForm.rule_name} onChange={e => setOpForm(p => ({...p, rule_name: e.target.value}))} className={iCls} placeholder="Ej: Restricción obra social mayo 2026" />
                             </div>
-                            {/* Rule type */}
+                            {/* Rule type selector — card grid */}
                             <div>
-                                <label className="block text-xs text-white/50 mb-1">{t('settings.operational_rules.field_type')}</label>
-                                <select value={opForm.rule_type} onChange={e => setOpForm(p => ({...p, rule_type: e.target.value}))} className="w-full px-3 py-2 rounded-lg bg-white/[0.04] border border-white/[0.08] text-white text-sm [&>option]:bg-[#0d1117]">
-                                    <option value="temporary">Temporal (con fecha de vencimiento)</option>
-                                    <option value="scheduling">Agendamiento (modifica cómo se agendan turnos)</option>
-                                    <option value="strategic">Estratégica (regla de negocio permanente)</option>
-                                </select>
+                                <label className={lCls}>{t('settings.operational_rules.field_type')}</label>
+                                <div className="grid grid-cols-2 gap-2">
+                                    {OP_RULE_TYPES.map(rt => (
+                                        <button key={rt.value} type="button" onClick={() => setOpForm(p => ({...p, rule_type: rt.value, config: {}}))}
+                                            className={`p-3 rounded-lg border text-left transition-colors ${opForm.rule_type === rt.value ? 'bg-white/[0.06] border-white/[0.15]' : 'bg-white/[0.02] border-white/[0.04] hover:border-white/[0.08]'}`}>
+                                            <div className="flex items-center gap-2 mb-1">
+                                                <span className="text-base">{rt.icon}</span>
+                                                <span className="text-xs font-medium text-white">{rt.label}</span>
+                                            </div>
+                                            <p className="text-[10px] text-white/30 leading-tight">{rt.desc}</p>
+                                        </button>
+                                    ))}
+                                </div>
                             </div>
-                            {/* Description */}
-                            <div>
-                                <label className="block text-xs text-white/50 mb-1">{t('settings.operational_rules.field_desc')}</label>
-                                <input type="text" value={opForm.description} onChange={e => setOpForm(p => ({...p, description: e.target.value}))} className="w-full px-3 py-2 rounded-lg bg-white/[0.04] border border-white/[0.08] text-white text-sm" placeholder="Descripción breve de por qué existe esta regla" />
+
+                            {/* ═══ DYNAMIC FIELDS BY TYPE ═══ */}
+                            <div className="space-y-3 p-3 rounded-lg bg-white/[0.02] border border-white/[0.04]">
+                                <p className="text-xs font-medium text-white/60">{curType?.icon} {curType?.label} — Configuración</p>
+
+                                {opForm.rule_type === 'temporary_restriction' && (<>
+                                    <div><label className={lCls}>Motivo de la restricción</label>
+                                        <input type="text" value={c.reason || ''} onChange={e => setC('reason', e.target.value)} className={iCls} placeholder="Ej: Problemas de facturación e internet" /></div>
+                                    <div><label className={lCls}>Instrucción para el agente *</label>
+                                        <textarea value={c.instruction || ''} onChange={e => setC('instruction', e.target.value)} rows={3} className={iCls + ' resize-none'} placeholder="Ej: Si el paciente tiene obra social, agendar recién desde el 15/05/2026. Si es particular, agendar normalmente." /></div>
+                                    <div className="flex gap-4">
+                                        <label className="flex items-center gap-2 text-sm text-white/70"><input type="checkbox" checked={!!c.affects_insurance} onChange={e => setC('affects_insurance', e.target.checked)} /> Afecta obra social</label>
+                                        <label className="flex items-center gap-2 text-sm text-white/70"><input type="checkbox" checked={!!c.affects_private} onChange={e => setC('affects_private', e.target.checked)} /> Afecta particulares</label>
+                                    </div>
+                                </>)}
+
+                                {opForm.rule_type === 'schedule_limit' && (<>
+                                    <div><label className={lCls}>Tratamiento</label>
+                                        <select value={c.treatment || ''} onChange={e => { const tt = opTreatments.find(t=>t.code===e.target.value); setC('treatment', e.target.value); if(tt) setC('treatment_name', tt.name); }} className={sCls}>
+                                            <option value="">Todos los tratamientos</option>
+                                            {opTreatments.map(t => <option key={t.code} value={t.code}>{t.name}</option>)}
+                                        </select></div>
+                                    <div><label className={lCls}>Máximo por día</label>
+                                        <input type="number" value={c.max_per_day || ''} onChange={e => setC('max_per_day', parseInt(e.target.value) || '')} className={iCls} min={1} placeholder="Ej: 2" /></div>
+                                    <div><label className={lCls}>Profesional (opcional)</label>
+                                        <select value={c.professional_id || ''} onChange={e => { const p = opProfessionals.find(p=>p.id===parseInt(e.target.value)); setC('professional_id', e.target.value); if(p) setC('professional_name', `${p.first_name} ${p.last_name}`); }} className={sCls}>
+                                            <option value="">Todos los profesionales</option>
+                                            {opProfessionals.map(p => <option key={p.id} value={p.id}>{p.first_name} {p.last_name}</option>)}
+                                        </select></div>
+                                </>)}
+
+                                {opForm.rule_type === 'special_hours' && (<>
+                                    <div><label className={lCls}>Motivo</label>
+                                        <input type="text" value={c.reason || ''} onChange={e => setC('reason', e.target.value)} className={iCls} placeholder="Ej: Obras en el consultorio" /></div>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div><label className={lCls}>Hora inicio</label><input type="time" value={c.hour_start || ''} onChange={e => setC('hour_start', e.target.value)} className={iCls} /></div>
+                                        <div><label className={lCls}>Hora fin</label><input type="time" value={c.hour_end || ''} onChange={e => setC('hour_end', e.target.value)} className={iCls} /></div>
+                                    </div>
+                                    <div><label className={lCls}>Días que aplica (opcional)</label>
+                                        <input type="text" value={c.dates || ''} onChange={e => setC('dates', e.target.value)} className={iCls} placeholder="Ej: lunes a viernes, o 14/04 al 18/04" /></div>
+                                </>)}
+
+                                {opForm.rule_type === 'pricing_rule' && (<>
+                                    <div><label className={lCls}>Tratamiento</label>
+                                        <select value={c.treatment || ''} onChange={e => { const tt = opTreatments.find(t=>t.code===e.target.value); setC('treatment', e.target.value); if(tt) setC('treatment_name', tt.name); }} className={sCls}>
+                                            <option value="">Todos</option>
+                                            {opTreatments.map(t => <option key={t.code} value={t.code}>{t.name}</option>)}
+                                        </select></div>
+                                    <div><label className={lCls}>Porcentaje de descuento</label>
+                                        <input type="number" value={c.discount_percent || ''} onChange={e => setC('discount_percent', parseInt(e.target.value) || '')} className={iCls} min={1} max={100} placeholder="Ej: 20" /></div>
+                                    <div><label className={lCls}>Aplica a</label>
+                                        <select value={c.modality || 'all'} onChange={e => setC('modality', e.target.value)} className={sCls}>
+                                            <option value="all">Todos</option>
+                                            <option value="particular">Solo particulares</option>
+                                            <option value="insurance">Solo obra social</option>
+                                        </select></div>
+                                </>)}
+
+                                {opForm.rule_type === 'mandatory_message' && (<>
+                                    <div><label className={lCls}>Mensaje a comunicar *</label>
+                                        <textarea value={c.message || ''} onChange={e => setC('message', e.target.value)} rows={3} className={iCls + ' resize-none'} placeholder="Ej: Le informamos que esta semana hay obras en el consultorio, puede haber ruido." /></div>
+                                    <div><label className={lCls}>Cuándo comunicar</label>
+                                        <select value={c.when || 'always'} onChange={e => setC('when', e.target.value)} className={sCls}>
+                                            <option value="always">Siempre (en cada conversación)</option>
+                                            <option value="before_booking">Antes de agendar turno</option>
+                                            <option value="on_greeting">Al saludar al paciente</option>
+                                        </select></div>
+                                </>)}
+
+                                {opForm.rule_type === 'channel_derivation' && (<>
+                                    <div><label className={lCls}>Canal de origen</label>
+                                        <select value={c.channel || ''} onChange={e => setC('channel', e.target.value)} className={sCls}>
+                                            <option value="">Seleccionar...</option>
+                                            <option value="instagram">Instagram</option>
+                                            <option value="facebook">Facebook</option>
+                                            <option value="whatsapp">WhatsApp</option>
+                                        </select></div>
+                                    <div><label className={lCls}>Derivar a profesional</label>
+                                        <select value={c.professional_id || ''} onChange={e => { const p = opProfessionals.find(p=>p.id===parseInt(e.target.value)); setC('professional_id', e.target.value); if(p) setC('professional_name', `${p.first_name} ${p.last_name}`); }} className={sCls}>
+                                            <option value="">Equipo general</option>
+                                            {opProfessionals.map(p => <option key={p.id} value={p.id}>{p.first_name} {p.last_name}</option>)}
+                                        </select></div>
+                                </>)}
+
+                                {opForm.rule_type === 'insurance_derivation' && (<>
+                                    <div><label className={lCls}>Obra social</label>
+                                        <input type="text" value={c.insurance_name || ''} onChange={e => setC('insurance_name', e.target.value)} className={iCls} placeholder="Ej: OSDE, Swiss Medical" /></div>
+                                    <div><label className={lCls}>Derivar a profesional</label>
+                                        <select value={c.professional_id || ''} onChange={e => { const p = opProfessionals.find(p=>p.id===parseInt(e.target.value)); setC('professional_id', e.target.value); if(p) setC('professional_name', `${p.first_name} ${p.last_name}`); }} className={sCls}>
+                                            <option value="">Equipo general</option>
+                                            {opProfessionals.map(p => <option key={p.id} value={p.id}>{p.first_name} {p.last_name}</option>)}
+                                        </select></div>
+                                </>)}
+
+                                {opForm.rule_type === 'custom' && (<>
+                                    <div><label className={lCls}>Instrucción libre para el agente *</label>
+                                        <textarea value={c.free_text || ''} onChange={e => setC('free_text', e.target.value)} rows={5} className={iCls + ' resize-none font-mono'} placeholder="Escribí cualquier instrucción. Se inyecta directamente al prompt del agente." /></div>
+                                </>)}
                             </div>
-                            {/* Prompt injection */}
-                            <div>
-                                <label className="block text-xs text-white/50 mb-1">{t('settings.operational_rules.field_prompt')} *</label>
-                                <textarea value={opForm.prompt_injection} onChange={e => setOpForm(p => ({...p, prompt_injection: e.target.value}))} rows={5} className="w-full px-3 py-2 rounded-lg bg-white/[0.04] border border-white/[0.08] text-white text-sm resize-none font-mono" placeholder="Instrucción que se inyecta al agente de IA. Ej: ANTES de agendar, preguntá si es particular u obra social. Si obra social → agendar desde 15/05/2026." />
-                                <p className="text-[10px] text-white/30 mt-1">Este texto se inyecta directamente en el prompt del agente. Escribilo como una instrucción clara.</p>
-                            </div>
+
                             {/* Applies to */}
                             <div>
-                                <label className="block text-xs text-white/50 mb-1">{t('settings.operational_rules.field_applies')}</label>
+                                <label className={lCls}>{t('settings.operational_rules.field_applies')}</label>
                                 <div className="flex flex-wrap gap-2">
                                     {['all', 'tora', 'nova', 'multi', 'social'].map(agent => (
                                         <label key={agent} className="flex items-center gap-1.5 text-sm text-white/70">
                                             <input type="checkbox" checked={opForm.applies_to.includes(agent)} onChange={e => {
-                                                if (agent === 'all') {
-                                                    setOpForm(p => ({...p, applies_to: e.target.checked ? ['all'] : []}));
-                                                } else {
-                                                    setOpForm(p => {
-                                                        const without = p.applies_to.filter(a => a !== 'all' && a !== agent);
-                                                        return {...p, applies_to: e.target.checked ? [...without, agent] : without};
-                                                    });
-                                                }
+                                                if (agent === 'all') { setOpForm(p => ({...p, applies_to: e.target.checked ? ['all'] : []})); }
+                                                else { setOpForm(p => { const w = p.applies_to.filter(a => a !== 'all' && a !== agent); return {...p, applies_to: e.target.checked ? [...w, agent] : w}; }); }
                                             }} className="rounded" />
                                             {agent === 'all' ? 'Todos' : agent === 'tora' ? 'TORA (WhatsApp)' : agent === 'nova' ? 'Nova (voz/Telegram)' : agent === 'multi' ? 'Multi-agente' : 'Redes sociales'}
                                         </label>
@@ -2866,26 +3049,22 @@ export default function ClinicsView() {
                             </div>
                             {/* Valid from/until */}
                             <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-xs text-white/50 mb-1">{t('settings.operational_rules.field_from')}</label>
-                                    <input type="datetime-local" value={opForm.valid_from} onChange={e => setOpForm(p => ({...p, valid_from: e.target.value}))} className="w-full px-3 py-2 rounded-lg bg-white/[0.04] border border-white/[0.08] text-white text-sm" />
-                                </div>
-                                <div>
-                                    <label className="block text-xs text-white/50 mb-1">{t('settings.operational_rules.field_until')}</label>
-                                    <input type="datetime-local" value={opForm.valid_until} onChange={e => setOpForm(p => ({...p, valid_until: e.target.value}))} className="w-full px-3 py-2 rounded-lg bg-white/[0.04] border border-white/[0.08] text-white text-sm" />
-                                </div>
+                                <div><label className={lCls}>{t('settings.operational_rules.field_from')}</label>
+                                    <input type="datetime-local" value={opForm.valid_from} onChange={e => setOpForm(p => ({...p, valid_from: e.target.value}))} className={iCls} /></div>
+                                <div><label className={lCls}>{t('settings.operational_rules.field_until')}</label>
+                                    <input type="datetime-local" value={opForm.valid_until} onChange={e => setOpForm(p => ({...p, valid_until: e.target.value}))} className={iCls} /></div>
                             </div>
                         </div>
                         <div className="p-4 border-t border-white/[0.06] shrink-0 flex justify-end gap-3">
                             <button onClick={() => setOpModalOpen(false)} className="px-4 py-2 rounded-lg bg-white/[0.04] text-white/70 text-sm">{t('common.cancel')}</button>
-                            <button onClick={saveOpRule} disabled={opSaving || !opForm.rule_name.trim() || !opForm.prompt_injection.trim()} className="px-4 py-2 rounded-lg bg-white text-[#0a0e1a] font-medium text-sm disabled:opacity-40 flex items-center gap-2">
+                            <button onClick={saveOpRule} disabled={opSaving || !opForm.rule_name.trim()} className="px-4 py-2 rounded-lg bg-white text-[#0a0e1a] font-medium text-sm disabled:opacity-40 flex items-center gap-2">
                                 {opSaving && <Loader2 size={14} className="animate-spin" />}
                                 {editingOp ? t('common.save') : t('settings.operational_rules.create')}
                             </button>
                         </div>
                     </div>
-                </div>
-            )}
+                </div>);
+            })()}
 
             {/* ── Modal Derivation ── */}
             {derivationModalOpen && (
