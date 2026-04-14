@@ -439,8 +439,6 @@ async def unified_send_message(
                 await client.send_text_message(account_id, cw_conv_id, message)
 
             # Send attachments
-            import os
-
             for att in attachments:
                 # att is expected to be { type: 'image', url: '/media/...' }
                 # Resolve local path from URL
