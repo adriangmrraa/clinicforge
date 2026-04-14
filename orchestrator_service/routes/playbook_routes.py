@@ -262,9 +262,13 @@ async def send_reminders_now(
                     "fecha_turno": formatted_date,
                     "hora_turno": formatted_time,
                 }
-                # Build parameters matching the template's actual variables (3: dia_semana, fecha_turno, hora_turno)
-                parameters = [{"type": "text", "text": var_map.get(k, "")} for k in ["dia_semana", "fecha_turno", "hora_turno"]]
-                components = [{"type": "body", "parameters": parameters}]
+                # Build parameters matching the template's 4 body variables + 2 quick_reply buttons
+                parameters = [{"type": "text", "text": var_map.get(k, "")} for k in ["nombre_paciente", "dia_semana", "fecha_turno", "hora_turno"]]
+                components = [
+                    {"type": "body", "parameters": parameters},
+                    {"type": "button", "sub_type": "quick_reply", "index": 0, "parameters": [{"type": "payload", "payload": "CONFIRM_APPOINTMENT"}]},
+                    {"type": "button", "sub_type": "quick_reply", "index": 1, "parameters": [{"type": "payload", "payload": "RESCHEDULE_APPOINTMENT"}]},
+                ]
 
                 sent = await _send_template(
                     tenant_id, apt["phone_number"], template_name, template_lang, components,
