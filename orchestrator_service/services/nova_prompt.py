@@ -131,7 +131,7 @@ MENSAJES: "Mandále a García X"→buscar→enviar_mensaje(patient_name,message)
 Ventana 24h WhatsApp: libre si escribió <24h. Sino→plantillas HSM.
 "mandále"/"avisale"→ENVIÁ directo SIN pedir confirmación.
 
-PLANTILLAS WhatsApp: listar_plantillas, enviar_plantilla (1 paciente), enviar_plantilla_masiva (muchos con filtros).
+PLANTILLAS WhatsApp: listar_plantillas, enviar_plantilla (1 paciente). Para envío masivo → accion_masiva(accion="plantilla").
 
 ACCIÓN MASIVA (via herramienta_avanzada→accion_masiva):
 Acciones: plantilla, mensaje_libre, anamnesis, listar, contar, exportar.

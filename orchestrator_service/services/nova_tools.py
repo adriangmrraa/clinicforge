@@ -1853,114 +1853,8 @@ IMPORTANTE — REGLAS QUIRÚRGICAS:
             "required": ["template_name"],
         },
     },
-    {
-        "type": "function",
-        "name": "enviar_plantilla_masiva",
-        "description": "Enviar una plantilla de WhatsApp a MUCHOS pacientes que cumplan ciertos filtros. Ideal para campañas: 'mandá la plantilla de limpieza a los que no vinieron en 30 días', 'avisale a los pacientes de implantes que hay promo'. Combina múltiples filtros. Primero muestra la cantidad de pacientes que matchean para confirmar, después envía.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "template_name": {
-                    "type": "string",
-                    "description": "Nombre exacto de la plantilla",
-                },
-                "confirmar": {
-                    "type": "boolean",
-                    "description": "false=solo contar cuántos matchean (preview). true=enviar de verdad. SIEMPRE mandá false primero para que la CEO confirme la cantidad.",
-                },
-                "variables": {
-                    "type": "object",
-                    "description": "Variables de la plantilla. Se pueden usar placeholders: {nombre} se reemplaza por el nombre del paciente automáticamente.",
-                },
-                "sin_turno_dias": {
-                    "type": "integer",
-                    "description": "Pacientes que NO tienen turno agendado en los últimos X días. Ej: 30 = no agendaron en el último mes.",
-                },
-                "ultimo_turno_hace_dias": {
-                    "type": "integer",
-                    "description": "Pacientes cuyo último turno fue hace más de X días. Ej: 180 = no vinieron en 6 meses.",
-                },
-                "nunca_agendo": {
-                    "type": "boolean",
-                    "description": "true = pacientes/leads que NUNCA tuvieron un turno.",
-                },
-                "tratamiento": {
-                    "type": "string",
-                    "description": "Filtrar por tipo de tratamiento del último turno. Ej: 'limpieza', 'implante', 'ortodoncia'. Búsqueda parcial.",
-                },
-                "obra_social": {
-                    "type": "string",
-                    "description": "Filtrar por obra social/prepaga. Búsqueda parcial. Ej: 'osde', 'swiss medical'.",
-                },
-                "fuente": {
-                    "type": "string",
-                    "description": "Filtrar por fuente de captación (first_touch_source). Ej: 'instagram', 'facebook', 'google', 'whatsapp', 'referido'.",
-                },
-                "edad_min": {
-                    "type": "integer",
-                    "description": "Edad mínima del paciente.",
-                },
-                "edad_max": {
-                    "type": "integer",
-                    "description": "Edad máxima del paciente.",
-                },
-                "genero": {
-                    "type": "string",
-                    "enum": ["masculino", "femenino", "otro"],
-                    "description": "Filtrar por género.",
-                },
-                "estado": {
-                    "type": "string",
-                    "enum": ["active", "inactive"],
-                    "description": "Estado del paciente (default: active).",
-                },
-                "con_anamnesis": {
-                    "type": "boolean",
-                    "description": "true=solo con anamnesis completada, false=solo SIN anamnesis.",
-                },
-                "urgencia": {
-                    "type": "string",
-                    "enum": ["baja", "media", "alta", "urgente"],
-                    "description": "Filtrar por nivel de urgencia del triage.",
-                },
-                "profesional": {
-                    "type": "string",
-                    "description": "Filtrar por profesional que los atendió. Nombre parcial.",
-                },
-                "profesional_id": {
-                    "type": "integer",
-                    "description": "ID del profesional que los atendió.",
-                },
-                "creado_desde": {
-                    "type": "string",
-                    "description": "Fecha mínima de creación del paciente. YYYY-MM-DD.",
-                },
-                "creado_hasta": {
-                    "type": "string",
-                    "description": "Fecha máxima de creación del paciente. YYYY-MM-DD.",
-                },
-                "sin_email": {
-                    "type": "boolean",
-                    "description": "true=pacientes sin email registrado.",
-                },
-                "con_deuda": {
-                    "type": "boolean",
-                    "description": "true=pacientes con turnos cuyo payment_status='pending' o 'partial'.",
-                },
-                "turno_cancelado_dias": {
-                    "type": "integer",
-                    "description": "Pacientes que cancelaron un turno en los últimos X días (oportunidad de reagendar).",
-                },
-                "limite": {
-                    "type": "integer",
-                    "description": "Máximo de pacientes a enviar (default 50, max 200). Seguridad contra envíos accidentales masivos.",
-                },
-            },
-            "required": ["template_name"],
-        },
-    },
     # -------------------------------------------------------
-    # N+1. Acción Masiva (herramienta Jarvis-style)
+    # N+1. Acción Masiva (herramienta Jarvis-style — reemplaza enviar_plantilla_masiva)
     # -------------------------------------------------------
     {
         "type": "function",
@@ -6588,7 +6482,7 @@ _META_TOOL_SCHEMA: Dict[str, Any] = {
                     "ver_faqs, eliminar_faq, actualizar_faq, "
                     "buscar_en_base_conocimiento, consultar_obra_social, ver_reglas_derivacion, "
                     "resumen_sedes, comparar_sedes, switch_sede, onboarding_status, "
-                    "listar_plantillas, enviar_plantilla, enviar_plantilla_masiva, accion_masiva, "
+                    "listar_plantillas, enviar_plantilla, accion_masiva, "
                     "registrar_nota_clinica, ver_contexto_memorias, "
                     "ver_memorias_paciente, agregar_memoria_paciente"
                 ),
@@ -6847,7 +6741,9 @@ async def execute_nova_tool(
         elif name == "enviar_plantilla":
             return await _enviar_plantilla(args, tenant_id, user_role)
         elif name == "enviar_plantilla_masiva":
-            return await _enviar_plantilla_masiva(args, tenant_id, user_role)
+            # Alias: redirect to accion_masiva with accion="plantilla"
+            args.setdefault("accion", "plantilla")
+            return await _accion_masiva(args, tenant_id, user_role)
 
         # N+1. Acción Masiva (Jarvis-style)
         elif name == "accion_masiva":
