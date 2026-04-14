@@ -10382,7 +10382,9 @@ def build_nova_system_prompt(
 
 async def _nova_realtime_handler(websocket: WebSocket, session_id: str):
     """Nova voice assistant WebSocket bridge to OpenAI Realtime API (inner handler)."""
-    from services.nova_tools import execute_nova_tool, NOVA_TOOLS_SCHEMA
+    from services.nova_tools import execute_nova_tool, nova_tools_for_voice
+
+    _voice_tools = nova_tools_for_voice()
 
     # Get session config from Redis
     try:
@@ -10428,7 +10430,7 @@ async def _nova_realtime_handler(websocket: WebSocket, session_id: str):
             f"🎙️ NOVA: Connecting to OpenAI Realtime: model={nova_voice_model} tenant={tenant_id_nova} page={config.get('page', 'unknown')}"
         )
         logger.info(
-            f"🎙️ NOVA: System prompt length: {len(config.get('system_prompt', ''))} chars, tools: {len(NOVA_TOOLS_SCHEMA)}"
+            f"🎙️ NOVA: System prompt length: {len(config.get('system_prompt', ''))} chars, tools: {len(_voice_tools)}"
         )
 
         async with websockets.connect(
@@ -10450,7 +10452,7 @@ async def _nova_realtime_handler(websocket: WebSocket, session_id: str):
                             "input_audio_format": "pcm16",
                             "output_audio_format": "pcm16",
                             "input_audio_transcription": {"model": "whisper-1"},
-                            "tools": NOVA_TOOLS_SCHEMA,
+                            "tools": _voice_tools,
                             "tool_choice": "auto",
                             "turn_detection": {
                                 "type": "server_vad",
@@ -10462,9 +10464,9 @@ async def _nova_realtime_handler(websocket: WebSocket, session_id: str):
                     }
                 )
             )
-            tool_names = [t.get("name", "?") for t in NOVA_TOOLS_SCHEMA]
+            tool_names = [t.get("name", "?") for t in _voice_tools]
             logger.info(
-                f"🎙️ NOVA: session.update sent with {len(NOVA_TOOLS_SCHEMA)} tools: {tool_names}"
+                f"🎙️ NOVA: session.update sent with {len(_voice_tools)} tools: {tool_names}"
             )
             logger.info(f"🎙️ NOVA: prompt={len(config.get('system_prompt', ''))} chars")
 

@@ -42,6 +42,7 @@ async def _nova_emit(event: str, data: Dict[str, Any]):
     # Mirror to Telegram
     try:
         from services.telegram_notifier import fire_telegram_notification
+
         fire_telegram_notification(event, data, data.get("tenant_id"))
     except Exception:
         pass
@@ -93,7 +94,10 @@ NOVA_TOOLS_SCHEMA: List[Dict[str, Any]] = [
             "type": "object",
             "properties": {
                 "first_name": {"type": "string", "description": "Nombre del paciente"},
-                "last_name": {"type": "string", "description": "Apellido del paciente (opcional)"},
+                "last_name": {
+                    "type": "string",
+                    "description": "Apellido del paciente (opcional)",
+                },
                 "phone_number": {
                     "type": "string",
                     "description": "Telefono del paciente. Si viene de un chat, usar el numero exacto del chat.",
@@ -127,7 +131,10 @@ NOVA_TOOLS_SCHEMA: List[Dict[str, Any]] = [
                 "first_name": {"type": "string", "description": "Nombre del paciente"},
                 "last_name": {"type": "string", "description": "Apellido (opcional)"},
                 "dni": {"type": "string", "description": "DNI (opcional)"},
-                "insurance_provider": {"type": "string", "description": "Obra social (opcional)"},
+                "insurance_provider": {
+                    "type": "string",
+                    "description": "Obra social (opcional)",
+                },
             },
             "required": ["phone_number", "first_name"],
         },
@@ -428,9 +435,15 @@ NOVA_TOOLS_SCHEMA: List[Dict[str, Any]] = [
         "type": "function",
         "name": "facturacion_pendiente",
         "description": "Lista turnos con pago pendiente (seña, saldo). Si se proporciona un nombre de paciente, filtra solo ese paciente. Si no, devuelve todos los pendientes de la clínica.",
-        "parameters": {"type": "object", "properties": {
-            "paciente": {"type": "string", "description": "Nombre del paciente para filtrar (opcional). Si el usuario pregunta por un paciente específico, pasar su nombre acá."}
-        }},
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "paciente": {
+                    "type": "string",
+                    "description": "Nombre del paciente para filtrar (opcional). Si el usuario pregunta por un paciente específico, pasar su nombre acá.",
+                }
+            },
+        },
     },
     # -------------------------------------------------------------------------
     # D. Analytics y Configuracion (3)
@@ -1797,6 +1810,270 @@ IMPORTANTE — REGLAS QUIRÚRGICAS:
             "required": ["patient_id", "memoria"],
         },
     },
+    # -------------------------------------------------------------------------
+    # N. Plantillas WhatsApp (3)
+    # -------------------------------------------------------------------------
+    {
+        "type": "function",
+        "name": "listar_plantillas",
+        "description": "Lista las plantillas de WhatsApp aprobadas disponibles para enviar. Muestra nombre, idioma, categoría y variables requeridas de cada una.",
+        "parameters": {
+            "type": "object",
+            "properties": {},
+        },
+    },
+    {
+        "type": "function",
+        "name": "enviar_plantilla",
+        "description": "Enviar una plantilla de WhatsApp a UN paciente específico. Primero usá listar_plantillas para ver cuáles hay. Pasá el nombre de la plantilla y los valores de las variables que requiere.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "template_name": {
+                    "type": "string",
+                    "description": "Nombre exacto de la plantilla (de listar_plantillas)",
+                },
+                "patient_id": {
+                    "type": "integer",
+                    "description": "ID del paciente (opcional si pasás patient_name o phone)",
+                },
+                "patient_name": {
+                    "type": "string",
+                    "description": "Nombre del paciente para buscar (opcional)",
+                },
+                "phone": {
+                    "type": "string",
+                    "description": "Teléfono directo (opcional si pasás patient_id o patient_name)",
+                },
+                "variables": {
+                    "type": "object",
+                    "description": 'Variables de la plantilla como clave:valor. Ej: {"nombre_paciente": "Juan", "fecha_turno": "15/04"}. Si no se pasan, se auto-completan con datos del paciente cuando sea posible.',
+                },
+            },
+            "required": ["template_name"],
+        },
+    },
+    {
+        "type": "function",
+        "name": "enviar_plantilla_masiva",
+        "description": "Enviar una plantilla de WhatsApp a MUCHOS pacientes que cumplan ciertos filtros. Ideal para campañas: 'mandá la plantilla de limpieza a los que no vinieron en 30 días', 'avisale a los pacientes de implantes que hay promo'. Combina múltiples filtros. Primero muestra la cantidad de pacientes que matchean para confirmar, después envía.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "template_name": {
+                    "type": "string",
+                    "description": "Nombre exacto de la plantilla",
+                },
+                "confirmar": {
+                    "type": "boolean",
+                    "description": "false=solo contar cuántos matchean (preview). true=enviar de verdad. SIEMPRE mandá false primero para que la CEO confirme la cantidad.",
+                },
+                "variables": {
+                    "type": "object",
+                    "description": "Variables de la plantilla. Se pueden usar placeholders: {nombre} se reemplaza por el nombre del paciente automáticamente.",
+                },
+                "sin_turno_dias": {
+                    "type": "integer",
+                    "description": "Pacientes que NO tienen turno agendado en los últimos X días. Ej: 30 = no agendaron en el último mes.",
+                },
+                "ultimo_turno_hace_dias": {
+                    "type": "integer",
+                    "description": "Pacientes cuyo último turno fue hace más de X días. Ej: 180 = no vinieron en 6 meses.",
+                },
+                "nunca_agendo": {
+                    "type": "boolean",
+                    "description": "true = pacientes/leads que NUNCA tuvieron un turno.",
+                },
+                "tratamiento": {
+                    "type": "string",
+                    "description": "Filtrar por tipo de tratamiento del último turno. Ej: 'limpieza', 'implante', 'ortodoncia'. Búsqueda parcial.",
+                },
+                "obra_social": {
+                    "type": "string",
+                    "description": "Filtrar por obra social/prepaga. Búsqueda parcial. Ej: 'osde', 'swiss medical'.",
+                },
+                "fuente": {
+                    "type": "string",
+                    "description": "Filtrar por fuente de captación (first_touch_source). Ej: 'instagram', 'facebook', 'google', 'whatsapp', 'referido'.",
+                },
+                "edad_min": {
+                    "type": "integer",
+                    "description": "Edad mínima del paciente.",
+                },
+                "edad_max": {
+                    "type": "integer",
+                    "description": "Edad máxima del paciente.",
+                },
+                "genero": {
+                    "type": "string",
+                    "enum": ["masculino", "femenino", "otro"],
+                    "description": "Filtrar por género.",
+                },
+                "estado": {
+                    "type": "string",
+                    "enum": ["active", "inactive"],
+                    "description": "Estado del paciente (default: active).",
+                },
+                "con_anamnesis": {
+                    "type": "boolean",
+                    "description": "true=solo con anamnesis completada, false=solo SIN anamnesis.",
+                },
+                "urgencia": {
+                    "type": "string",
+                    "enum": ["baja", "media", "alta", "urgente"],
+                    "description": "Filtrar por nivel de urgencia del triage.",
+                },
+                "profesional": {
+                    "type": "string",
+                    "description": "Filtrar por profesional que los atendió. Nombre parcial.",
+                },
+                "profesional_id": {
+                    "type": "integer",
+                    "description": "ID del profesional que los atendió.",
+                },
+                "creado_desde": {
+                    "type": "string",
+                    "description": "Fecha mínima de creación del paciente. YYYY-MM-DD.",
+                },
+                "creado_hasta": {
+                    "type": "string",
+                    "description": "Fecha máxima de creación del paciente. YYYY-MM-DD.",
+                },
+                "sin_email": {
+                    "type": "boolean",
+                    "description": "true=pacientes sin email registrado.",
+                },
+                "con_deuda": {
+                    "type": "boolean",
+                    "description": "true=pacientes con turnos cuyo payment_status='pending' o 'partial'.",
+                },
+                "turno_cancelado_dias": {
+                    "type": "integer",
+                    "description": "Pacientes que cancelaron un turno en los últimos X días (oportunidad de reagendar).",
+                },
+                "limite": {
+                    "type": "integer",
+                    "description": "Máximo de pacientes a enviar (default 50, max 200). Seguridad contra envíos accidentales masivos.",
+                },
+            },
+            "required": ["template_name"],
+        },
+    },
+    # -------------------------------------------------------
+    # N+1. Acción Masiva (herramienta Jarvis-style)
+    # -------------------------------------------------------
+    {
+        "type": "function",
+        "name": "accion_masiva",
+        "description": "Herramienta Jarvis-style: combinar filtros de pacientes con CUALQUIER acción (plantilla, mensaje libre, anamnesis, listar, contar, exportar). Ej: 'mandá esto a los que no vinieron en 30 días', 'avisale a los de OSDE que mañana no atiende', 'dame la lista de leads de Instagram sin turno'. NO requiere plantilla_name si la accion es 'listar', 'contar' o 'exportar'.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "accion": {
+                    "type": "string",
+                    "enum": [
+                        "plantilla",
+                        "mensaje_libre",
+                        "anamnesis",
+                        "listar",
+                        "contar",
+                        "exportar",
+                    ],
+                    "description": "Acción a ejecutar sobre los pacientes que matcheen los filtros. plantilla=enviar WhatsApp template, mensaje_libre=enviar texto por WhatsApp, anamnesis=enviar link de anamnesis, listar=devolver lista de pacientes, contar=solo contar cuántos matchean, exportar=generar CSV/texto exportable.",
+                },
+                "confirmar": {
+                    "type": "boolean",
+                    "description": "false=solo mostrar cuántos matchean (preview). true=ejecutar la acción. SIEMPRE mandá false primero para que la CEO confirme.",
+                },
+                "template_name": {
+                    "type": "string",
+                    "description": "Nombre de la plantilla YCloud (requerido si accion='plantilla'). Usá listar_plantillas para ver disponibles.",
+                },
+                "mensaje": {
+                    "type": "string",
+                    "description": "Texto del mensaje (requerido si accion='mensaje_libre'). Se reemplaza {nombre} por el nombre del paciente automáticamente.",
+                },
+                "variables": {
+                    "type": "object",
+                    "description": "Variables de la plantilla como clave:valor. Se pueden usar {nombre} que se reemplaza automáticamente.",
+                },
+                "limite": {
+                    "type": "integer",
+                    "description": "Máximo de pacientes a procesar (default 50, max 200).",
+                },
+                # Mismos filtros que enviar_plantilla_masiva
+                "sin_turno_dias": {
+                    "type": "integer",
+                    "description": "Pacientes que NO tienen turno en los últimos X días.",
+                },
+                "ultimo_turno_hace_dias": {
+                    "type": "integer",
+                    "description": "Última visita hace más de X días.",
+                },
+                "nunca_agendo": {
+                    "type": "boolean",
+                    "description": "true=pacientes/leads que NUNCA tuvieron turno.",
+                },
+                "tratamiento": {
+                    "type": "string",
+                    "description": "Filtrar por tipo de tratamiento del último turno.",
+                },
+                "obra_social": {
+                    "type": "string",
+                    "description": "Filtrar por obra social/prepaga (búsqueda parcial).",
+                },
+                "fuente": {
+                    "type": "string",
+                    "description": "Fuente de captación: instagram, facebook, google, referido.",
+                },
+                "edad_min": {"type": "integer", "description": "Edad mínima."},
+                "edad_max": {"type": "integer", "description": "Edad máxima."},
+                "genero": {"type": "string", "enum": ["masculino", "femenino", "otro"]},
+                "estado": {
+                    "type": "string",
+                    "enum": ["active", "inactive"],
+                    "description": "Default: active",
+                },
+                "con_anamnesis": {
+                    "type": "boolean",
+                    "description": "true=con anamnesis, false=sin anamnesis.",
+                },
+                "urgencia": {
+                    "type": "string",
+                    "enum": ["baja", "media", "alta", "urgente"],
+                },
+                "profesional": {
+                    "type": "string",
+                    "description": "Filtrar por profesional que atendió.",
+                },
+                "profesional_id": {
+                    "type": "integer",
+                    "description": "ID del profesional.",
+                },
+                "creado_desde": {
+                    "type": "string",
+                    "description": "Fecha mínima de creación (YYYY-MM-DD).",
+                },
+                "creado_hasta": {
+                    "type": "string",
+                    "description": "Fecha máxima de creación (YYYY-MM-DD).",
+                },
+                "sin_email": {
+                    "type": "boolean",
+                    "description": "true=pacientes sin email.",
+                },
+                "con_deuda": {
+                    "type": "boolean",
+                    "description": "true=con pagos pendientes.",
+                },
+                "turno_cancelado_dias": {
+                    "type": "integer",
+                    "description": "Cancelaron turno en los últimos X días.",
+                },
+            },
+            "required": ["accion"],
+        },
+    },
 ]
 
 
@@ -2170,23 +2447,38 @@ async def _registrar_paciente(args: Dict, tenant_id: int) -> str:
         phone,
     )
     if existing:
-        if existing["status"] == "guest" or existing["first_name"] in ("Visitante", "Paciente", "Sin nombre"):
+        if existing["status"] == "guest" or existing["first_name"] in (
+            "Visitante",
+            "Paciente",
+            "Sin nombre",
+        ):
             # Upgrade guest to active patient
             await db.pool.execute(
                 """UPDATE patients SET first_name=$1, last_name=$2, dni=$3,
                    insurance_provider=$4, insurance_id=$5, email=$6, city=$7,
                    status='active', updated_at=NOW()
                    WHERE id=$8 AND tenant_id=$9""",
-                first_name, last_name or None, args.get("dni"),
-                args.get("insurance_provider"), args.get("insurance_id"),
-                args.get("email"), args.get("city"),
-                existing["id"], tenant_id,
+                first_name,
+                last_name or None,
+                args.get("dni"),
+                args.get("insurance_provider"),
+                args.get("insurance_id"),
+                args.get("email"),
+                args.get("city"),
+                existing["id"],
+                tenant_id,
             )
-            await _nova_emit("PATIENT_CREATED", {
-                "patient_id": existing["id"], "phone_number": phone,
-                "tenant_id": tenant_id, "first_name": first_name,
-                "last_name": last_name or "", "status": "active",
-            })
+            await _nova_emit(
+                "PATIENT_CREATED",
+                {
+                    "patient_id": existing["id"],
+                    "phone_number": phone,
+                    "tenant_id": tenant_id,
+                    "first_name": first_name,
+                    "last_name": last_name or "",
+                    "status": "active",
+                },
+            )
             full_name = f"{first_name} {last_name}".strip()
             return f"✅ Paciente {full_name} registrado (convertido desde lead, ID {existing['id']})."
         full_name = f"{existing['first_name']}".strip()
@@ -2209,11 +2501,17 @@ async def _registrar_paciente(args: Dict, tenant_id: int) -> str:
         args.get("email"),
         args.get("city"),
     )
-    await _nova_emit("PATIENT_CREATED", {
-        "patient_id": row["id"], "phone_number": phone,
-        "tenant_id": tenant_id, "first_name": first_name,
-        "last_name": last_name or "", "status": "active",
-    })
+    await _nova_emit(
+        "PATIENT_CREATED",
+        {
+            "patient_id": row["id"],
+            "phone_number": phone,
+            "tenant_id": tenant_id,
+            "first_name": first_name,
+            "last_name": last_name or "",
+            "status": "active",
+        },
+    )
     full_name = f"{first_name} {last_name}".strip()
     return f"✅ Paciente {full_name} registrado con ID {row['id']}."
 
@@ -2229,7 +2527,8 @@ async def _convertir_lead(args: Dict, tenant_id: int) -> str:
         # Try to get name from chat conversation
         conv_name = await db.pool.fetchval(
             "SELECT display_name FROM chat_conversations WHERE tenant_id=$1 AND external_user_id=$2 ORDER BY updated_at DESC LIMIT 1",
-            tenant_id, phone,
+            tenant_id,
+            phone,
         )
         if conv_name and conv_name != phone:
             first_name = conv_name.split()[0] if conv_name else ""
@@ -2237,13 +2536,16 @@ async def _convertir_lead(args: Dict, tenant_id: int) -> str:
             return "Necesito al menos el nombre del paciente para convertir el lead."
 
     # Delegate to registrar_paciente (handles guest upgrade)
-    return await _registrar_paciente({
-        "first_name": first_name,
-        "last_name": args.get("last_name", ""),
-        "phone_number": phone,
-        "dni": args.get("dni"),
-        "insurance_provider": args.get("insurance_provider"),
-    }, tenant_id)
+    return await _registrar_paciente(
+        {
+            "first_name": first_name,
+            "last_name": args.get("last_name", ""),
+            "phone_number": phone,
+            "dni": args.get("dni"),
+            "insurance_provider": args.get("insurance_provider"),
+        },
+        tenant_id,
+    )
 
 
 async def _actualizar_paciente(args: Dict, tenant_id: int) -> str:
@@ -2573,9 +2875,13 @@ async def _aprobar_presupuesto(
         if not draft_plans:
             return f"No hay presupuestos en borrador para ese paciente."
         if len(draft_plans) > 1:
-            lines = [f"Encontré {len(draft_plans)} presupuestos en borrador. Especificá cuál querés aprobar usando plan_id:"]
+            lines = [
+                f"Encontré {len(draft_plans)} presupuestos en borrador. Especificá cuál querés aprobar usando plan_id:"
+            ]
             for dp in draft_plans:
-                lines.append(f"  • *{dp['name']}* — {dp['patient_full_name']} [ID: {dp['id']}]")
+                lines.append(
+                    f"  • *{dp['name']}* — {dp['patient_full_name']} [ID: {dp['id']}]"
+                )
             return "\n".join(lines)
         plan = draft_plans[0]
         # Ensure plan_id is set for the UPDATE below
@@ -2584,7 +2890,8 @@ async def _aprobar_presupuesto(
             # Recover patient_id for the emit
             patient_id = await db.pool.fetchval(
                 "SELECT patient_id FROM treatment_plans WHERE id = $1 AND tenant_id = $2",
-                plan["id"], tenant_id
+                plan["id"],
+                tenant_id,
             )
     else:
         return "Necesito plan_id, o patient_name (solo nombre), o (patient_id + patient_name)."
@@ -2804,7 +3111,9 @@ async def _generar_pdf_presupuesto(args: Dict, tenant_id: int, user_role: str) -
                     f"%{patient_name.lower()}%",
                 )
             else:
-                return "Necesito plan_id, patient_id o patient_name para generar el PDF."
+                return (
+                    "Necesito plan_id, patient_id o patient_name para generar el PDF."
+                )
 
             if not row:
                 return "No encontré ningún plan activo para ese paciente."
@@ -2816,7 +3125,9 @@ async def _generar_pdf_presupuesto(args: Dict, tenant_id: int, user_role: str) -
         if not pdf_path:
             return "Error generando el PDF. Verificá que el plan tenga ítems."
 
-        await _nova_emit("BILLING_UPDATED", {"plan_id": plan_id, "tenant_id": tenant_id})
+        await _nova_emit(
+            "BILLING_UPDATED", {"plan_id": plan_id, "tenant_id": tenant_id}
+        )
 
         logger.info(f"Nova: generar_pdf_presupuesto → {pdf_path}")
         return f"✅ PDF generado correctamente.\nRuta: {pdf_path}"
@@ -2910,7 +3221,9 @@ async def _enviar_presupuesto_email(args: Dict, tenant_id: int, user_role: str) 
             )
         )
 
-        await _nova_emit("BILLING_UPDATED", {"plan_id": plan_id, "tenant_id": tenant_id})
+        await _nova_emit(
+            "BILLING_UPDATED", {"plan_id": plan_id, "tenant_id": tenant_id}
+        )
 
         logger.info(f"Nova: enviar_presupuesto_email → {email}")
         return f"✅ Presupuesto enviado a {email} para {patient_name}."
@@ -3019,7 +3332,9 @@ async def _gestionar_usuarios(args: Dict, tenant_id: int, user_role: str) -> str
             return "No hay usuarios registrados."
         lines = ["Usuarios del sistema:"]
         for r in rows:
-            name = f"{r['first_name'] or ''} {r['last_name'] or ''}".strip() or r["email"]
+            name = (
+                f"{r['first_name'] or ''} {r['last_name'] or ''}".strip() or r["email"]
+            )
             lines.append(f"• {name} ({r['role']}) — {r['status']} [ID: {r['id']}]")
         return "\n".join(lines)
 
@@ -3047,7 +3362,10 @@ async def _gestionar_usuarios(args: Dict, tenant_id: int, user_role: str) -> str
             user_uuid,
             tenant_id,
         )
-        await _nova_emit("RECORD_UPDATED", {"entity": "user", "user_id": str(user_uuid), "tenant_id": tenant_id})
+        await _nova_emit(
+            "RECORD_UPDATED",
+            {"entity": "user", "user_id": str(user_uuid), "tenant_id": tenant_id},
+        )
         logger.info(f"Nova: gestionar_usuarios approve → {user_id}")
         return f"✅ Usuario {target['email']} aprobado. Ahora puede acceder al sistema."
 
@@ -3059,7 +3377,10 @@ async def _gestionar_usuarios(args: Dict, tenant_id: int, user_role: str) -> str
             user_uuid,
             tenant_id,
         )
-        await _nova_emit("RECORD_UPDATED", {"entity": "user", "user_id": str(user_uuid), "tenant_id": tenant_id})
+        await _nova_emit(
+            "RECORD_UPDATED",
+            {"entity": "user", "user_id": str(user_uuid), "tenant_id": tenant_id},
+        )
         logger.info(f"Nova: gestionar_usuarios suspend → {user_id}")
         return f"⚠️ Usuario {target['email']} suspendido. No podrá acceder hasta que se apruebe nuevamente."
 
@@ -3116,7 +3437,14 @@ async def _gestionar_obra_social(args: Dict, tenant_id: int, user_role: str) -> 
             tenant_id,
             name,
         )
-        await _nova_emit("RECORD_UPDATED", {"entity": "insurance_provider", "provider_id": new_id, "tenant_id": tenant_id})
+        await _nova_emit(
+            "RECORD_UPDATED",
+            {
+                "entity": "insurance_provider",
+                "provider_id": new_id,
+                "tenant_id": tenant_id,
+            },
+        )
         logger.info(f"Nova: gestionar_obra_social create → {new_id}")
         return f"✅ Obra social '{name}' creada (ID: {new_id}). Configurá la cobertura por tratamiento desde la página de Clínicas."
 
@@ -3156,7 +3484,14 @@ async def _gestionar_obra_social(args: Dict, tenant_id: int, user_role: str) -> 
             f"UPDATE tenant_insurance_providers SET {', '.join(set_parts)} WHERE id = ${idx} AND tenant_id = ${idx + 1}",
             *values,
         )
-        await _nova_emit("RECORD_UPDATED", {"entity": "insurance_provider", "provider_id": provider_id, "tenant_id": tenant_id})
+        await _nova_emit(
+            "RECORD_UPDATED",
+            {
+                "entity": "insurance_provider",
+                "provider_id": provider_id,
+                "tenant_id": tenant_id,
+            },
+        )
         logger.info(f"Nova: gestionar_obra_social update → {provider_id}")
         return f"✅ Obra social '{existing['provider_name']}' actualizada."
 
@@ -3168,7 +3503,14 @@ async def _gestionar_obra_social(args: Dict, tenant_id: int, user_role: str) -> 
             int(provider_id),
             tenant_id,
         )
-        await _nova_emit("RECORD_UPDATED", {"entity": "insurance_provider", "provider_id": provider_id, "tenant_id": tenant_id})
+        await _nova_emit(
+            "RECORD_UPDATED",
+            {
+                "entity": "insurance_provider",
+                "provider_id": provider_id,
+                "tenant_id": tenant_id,
+            },
+        )
         state_str = "activada" if new_state else "desactivada"
         logger.info(f"Nova: gestionar_obra_social toggle → {provider_id} → {new_state}")
         return f"✅ Obra social '{existing['provider_name']}' {state_str}."
@@ -3179,11 +3521,20 @@ async def _gestionar_obra_social(args: Dict, tenant_id: int, user_role: str) -> 
             int(provider_id),
             tenant_id,
         )
-        await _nova_emit("RECORD_UPDATED", {"entity": "insurance_provider", "provider_id": provider_id, "tenant_id": tenant_id})
+        await _nova_emit(
+            "RECORD_UPDATED",
+            {
+                "entity": "insurance_provider",
+                "provider_id": provider_id,
+                "tenant_id": tenant_id,
+            },
+        )
         logger.info(f"Nova: gestionar_obra_social delete → {provider_id}")
         return f"✅ Obra social '{existing['provider_name']}' eliminada."
 
-    return f"Acción '{action}' no reconocida. Usá: list, create, update, toggle o delete."
+    return (
+        f"Acción '{action}' no reconocida. Usá: list, create, update, toggle o delete."
+    )
 
 
 async def _generar_pdf_liquidacion(args: Dict, tenant_id: int, user_role: str) -> str:
@@ -3216,7 +3567,10 @@ async def _generar_pdf_liquidacion(args: Dict, tenant_id: int, user_role: str) -
         if not pdf_path:
             return "Error generando el PDF de la liquidación."
 
-        await _nova_emit("BILLING_UPDATED", {"liquidation_id": liquidation_id, "tenant_id": tenant_id})
+        await _nova_emit(
+            "BILLING_UPDATED",
+            {"liquidation_id": liquidation_id, "tenant_id": tenant_id},
+        )
 
         logger.info(f"Nova: generar_pdf_liquidacion → {pdf_path}")
         return f"✅ PDF de liquidación generado correctamente.\nRuta: {pdf_path}"
@@ -3293,7 +3647,10 @@ async def _enviar_liquidacion_email(args: Dict, tenant_id: int, user_role: str) 
             )
         )
 
-        await _nova_emit("BILLING_UPDATED", {"liquidation_id": liquidation_id, "tenant_id": tenant_id})
+        await _nova_emit(
+            "BILLING_UPDATED",
+            {"liquidation_id": liquidation_id, "tenant_id": tenant_id},
+        )
 
         logger.info(f"Nova: enviar_liquidacion_email → {to_email}")
         return f"✅ Liquidación enviada a {to_email} para {data['professional']['full_name']}."
@@ -3303,7 +3660,9 @@ async def _enviar_liquidacion_email(args: Dict, tenant_id: int, user_role: str) 
         return f"Error enviando la liquidación: {str(e)}"
 
 
-async def _sincronizar_turnos_presupuesto(args: Dict, tenant_id: int, user_role: str) -> str:
+async def _sincronizar_turnos_presupuesto(
+    args: Dict, tenant_id: int, user_role: str
+) -> str:
     """Sincroniza turnos no vinculados al plan de tratamiento."""
     if user_role not in ("ceo", "secretary"):
         return _role_error("sincronizar_turnos_presupuesto", ["ceo", "secretary"])
@@ -3440,7 +3799,9 @@ async def _sincronizar_turnos_presupuesto(args: Dict, tenant_id: int, user_role:
             {"plan_id": plan_id, "tenant_id": tenant_id, "patient_id": patient_id},
         )
 
-        logger.info(f"Nova: sincronizar_turnos_presupuesto → plan {plan_id}, {linked_count} turnos, ${total_migrated:,.0f}")
+        logger.info(
+            f"Nova: sincronizar_turnos_presupuesto → plan {plan_id}, {linked_count} turnos, ${total_migrated:,.0f}"
+        )
         return (
             f"✅ Sincronización completada para el plan *{plan['name']}*:\n"
             f"• {linked_count} turno(s) vinculados\n"
@@ -3859,6 +4220,7 @@ async def _agendar_turno(args: Dict, tenant_id: int) -> str:
     # Audit log (TIER 3 cap.3 Phase B)
     try:
         from services.audit_log import log_appointment_mutation as _audit
+
         await _audit(
             pool=db.pool,
             tenant_id=tenant_id,
@@ -3870,7 +4232,9 @@ async def _agendar_turno(args: Dict, tenant_id: int) -> str:
             after_values={
                 "patient_id": int(pid),
                 "professional_id": prof_id,
-                "appointment_datetime": appt_dt.isoformat() if hasattr(appt_dt, "isoformat") else str(appt_dt),
+                "appointment_datetime": appt_dt.isoformat()
+                if hasattr(appt_dt, "isoformat")
+                else str(appt_dt),
                 "duration_minutes": duration,
                 "appointment_type": treatment_type,
                 "status": "scheduled",
@@ -3882,7 +4246,10 @@ async def _agendar_turno(args: Dict, tenant_id: int) -> str:
         )
     except Exception as _audit_err:
         import logging as _lg
-        _lg.getLogger("nova_tools").warning(f"audit_log nova agendar failed (non-blocking): {_audit_err}")
+
+        _lg.getLogger("nova_tools").warning(
+            f"audit_log nova agendar failed (non-blocking): {_audit_err}"
+        )
 
     patient_name = f"{patient['first_name']} {patient['last_name'] or ''}".strip()
     patient_phone = patient.get("phone_number") or ""
@@ -3902,7 +4269,9 @@ async def _agendar_turno(args: Dict, tenant_id: int) -> str:
             "tenant_id": tenant_id,
             "appointment_id": str(appt_id),
             "patient_name": patient_name,
-            "appointment_datetime": appt_dt.isoformat() if hasattr(appt_dt, "isoformat") else str(appt_dt),
+            "appointment_datetime": appt_dt.isoformat()
+            if hasattr(appt_dt, "isoformat")
+            else str(appt_dt),
             "appointment_type": tt_name or treatment_type,
             "professional_name": prof_name.strip() if prof_id and prof_name else None,
         },
@@ -3913,19 +4282,27 @@ async def _agendar_turno(args: Dict, tenant_id: int) -> str:
         if patient_phone:
             _recovery_count = await db.pool.fetchval(
                 "SELECT recovery_touch_count FROM chat_conversations WHERE tenant_id = $1 AND external_user_id = $2 AND recovery_touch_count > 0",
-                tenant_id, patient_phone
+                tenant_id,
+                patient_phone,
             )
             if _recovery_count:
                 from services.telegram_notifier import fire_telegram_notification
-                fire_telegram_notification("LEAD_RECOVERY_CONVERSION", {
-                    "tenant_id": tenant_id,
-                    "patient_name": patient_name,
-                    "phone": patient_phone,
-                    "appointment_datetime": appt_dt.isoformat() if hasattr(appt_dt, 'isoformat') else str(appt_dt),
-                    "treatment_type": tt_name or treatment_type or "consulta",
-                    "recovery_touch_count": _recovery_count,
-                    "hours_to_convert": "?",
-                }, tenant_id)
+
+                fire_telegram_notification(
+                    "LEAD_RECOVERY_CONVERSION",
+                    {
+                        "tenant_id": tenant_id,
+                        "patient_name": patient_name,
+                        "phone": patient_phone,
+                        "appointment_datetime": appt_dt.isoformat()
+                        if hasattr(appt_dt, "isoformat")
+                        else str(appt_dt),
+                        "treatment_type": tt_name or treatment_type or "consulta",
+                        "recovery_touch_count": _recovery_count,
+                        "hours_to_convert": "?",
+                    },
+                    tenant_id,
+                )
     except Exception:
         pass  # Non-blocking
 
@@ -3977,6 +4354,7 @@ async def _cancelar_turno(args: Dict, tenant_id: int) -> str:
     # Audit log (TIER 3 cap.3 Phase B)
     try:
         from services.audit_log import log_appointment_mutation as _audit
+
         await _audit(
             pool=db.pool,
             tenant_id=tenant_id,
@@ -3985,13 +4363,20 @@ async def _cancelar_turno(args: Dict, tenant_id: int) -> str:
             actor_type="staff_user",
             actor_id="nova_voice",
             before_values={"status": row["status"]},
-            after_values={"status": "cancelled", "cancellation_reason": reason, "cancellation_by": "nova"},
+            after_values={
+                "status": "cancelled",
+                "cancellation_reason": reason,
+                "cancellation_by": "nova",
+            },
             source_channel="nova_voice",
             reason=reason,
         )
     except Exception as _audit_err:
         import logging as _lg
-        _lg.getLogger("nova_tools").warning(f"audit_log nova cancelar failed (non-blocking): {_audit_err}")
+
+        _lg.getLogger("nova_tools").warning(
+            f"audit_log nova cancelar failed (non-blocking): {_audit_err}"
+        )
 
     await _nova_emit(
         "APPOINTMENT_DELETED",
@@ -4251,7 +4636,7 @@ async def _registrar_pago_plan(args: Dict, tenant_id: int, user_role: str) -> st
             plan["patient_id"],
             Decimal(str(amount)),
             method,
-            f"Pago plan '{plan['name']}' - {method_labels.get(method, method)}"
+            f"Pago plan '{plan['name']}' - {method_labels.get(method, method)}",
         )
     except Exception as acc_err:
         logger.warning(f"accounting_transaction sync failed (non-fatal): {acc_err}")
@@ -4260,14 +4645,18 @@ async def _registrar_pago_plan(args: Dict, tenant_id: int, user_role: str) -> st
     try:
         total_paid = await db.pool.fetchval(
             "SELECT COALESCE(SUM(amount), 0) FROM treatment_plan_payments WHERE plan_id = $1 AND tenant_id = $2",
-            plan_uuid, tenant_id
+            plan_uuid,
+            tenant_id,
         )
         if float(total_paid) >= float(plan["approved_total"]):
             await db.pool.execute(
                 "UPDATE treatment_plans SET status = 'completed', updated_at = NOW() WHERE id = $1 AND tenant_id = $2",
-                plan_uuid, tenant_id
+                plan_uuid,
+                tenant_id,
             )
-            logger.info(f"Plan {plan_uuid} auto-completed (total_paid={total_paid} >= approved={plan['approved_total']})")
+            logger.info(
+                f"Plan {plan_uuid} auto-completed (total_paid={total_paid} >= approved={plan['approved_total']})"
+            )
     except Exception as complete_err:
         logger.warning(f"Auto-complete check failed (non-fatal): {complete_err}")
 
@@ -4288,7 +4677,9 @@ async def _facturacion_pendiente(tenant_id: int, paciente: str = None) -> str:
     patient_filter = ""
     params = [tenant_id]
     if paciente and paciente.strip():
-        patient_filter = " AND (p.first_name || ' ' || COALESCE(p.last_name, '')) ILIKE $2"
+        patient_filter = (
+            " AND (p.first_name || ' ' || COALESCE(p.last_name, '')) ILIKE $2"
+        )
         params.append(f"%{paciente.strip()}%")
 
     # Turnos con facturación pendiente (seña pendiente o sin pago)
@@ -4319,7 +4710,9 @@ async def _facturacion_pendiente(tenant_id: int, paciente: str = None) -> str:
     plan_params = [tenant_id]
     plan_filter = ""
     if paciente and paciente.strip():
-        plan_filter = " AND (pat.first_name || ' ' || COALESCE(pat.last_name, '')) ILIKE $2"
+        plan_filter = (
+            " AND (pat.first_name || ' ' || COALESCE(pat.last_name, '')) ILIKE $2"
+        )
         plan_params.append(f"%{paciente.strip()}%")
 
     plans = await db.pool.fetch(
@@ -4366,7 +4759,9 @@ async def _facturacion_pendiente(tenant_id: int, paciente: str = None) -> str:
     if plans:
         if lines:
             lines.append("")
-        lines.append(f"Planes con saldo pendiente{patient_label} ({len(plans)} planes):")
+        lines.append(
+            f"Planes con saldo pendiente{patient_label} ({len(plans)} planes):"
+        )
         for p in plans:
             pending = float(p["approved_total"]) - float(p["total_paid"])
             lines.append(
@@ -4403,15 +4798,18 @@ async def _resumen_semana(tenant_id: int, user_role: str) -> str:
     )
 
     # Plan payments for the same week
-    plan_revenue = await db.pool.fetchval(
-        """
+    plan_revenue = (
+        await db.pool.fetchval(
+            """
         SELECT COALESCE(SUM(amount), 0) FROM treatment_plan_payments
         WHERE tenant_id = $1 AND payment_date::date BETWEEN $2 AND $3
         """,
-        tenant_id,
-        week_start,
-        week_end,
-    ) or 0
+            tenant_id,
+            week_start,
+            week_end,
+        )
+        or 0
+    )
 
     new_patients = await db.pool.fetchval(
         """
@@ -4428,11 +4826,7 @@ async def _resumen_semana(tenant_id: int, user_role: str) -> str:
     cancelled = stats["cancelados"] or 0
     pending = stats["pendientes"] or 0
     revenue = float(stats["facturado_turnos"] or 0) + float(plan_revenue)
-    cancel_rate = (
-        f"{(cancelled / total * 100):.1f}%"
-        if total > 0
-        else "0%"
-    )
+    cancel_rate = f"{(cancelled / total * 100):.1f}%" if total > 0 else "0%"
 
     return (
         f"Resumen semanal ({_fmt_date(week_start)} al {_fmt_date(week_end)}):\n"
@@ -4482,18 +4876,21 @@ async def _rendimiento_profesional(args: Dict, tenant_id: int, user_role: str) -
     )
 
     # Plan payments for this professional's patients
-    plan_revenue = await db.pool.fetchval(
-        """
+    plan_revenue = (
+        await db.pool.fetchval(
+            """
         SELECT COALESCE(SUM(tpp.amount), 0)
         FROM treatment_plan_payments tpp
         JOIN treatment_plans tp ON tp.id = tpp.plan_id AND tp.tenant_id = tpp.tenant_id
         WHERE tp.professional_id = $1 AND tp.tenant_id = $2
           AND tpp.payment_date::date >= $3
         """,
-        int(prof_id),
-        tenant_id,
-        since,
-    ) or 0
+            int(prof_id),
+            tenant_id,
+            since,
+        )
+        or 0
+    )
 
     total = stats["total"] or 0
     completed = stats["completados"] or 0
@@ -5021,7 +5418,9 @@ async def _ver_contexto_memorias(args: Dict, tenant_id: int) -> str:
 
         lines = [f"Contexto de memorias recientes ({len(rows)}):"]
         for r in rows:
-            fecha = r["updated_at"].strftime("%d/%m/%Y %H:%M") if r["updated_at"] else "—"
+            fecha = (
+                r["updated_at"].strftime("%d/%m/%Y %H:%M") if r["updated_at"] else "—"
+            )
             key_info = f" [{r['topic_key']}]" if r.get("topic_key") else ""
             lines.append(
                 f"\n• [{r['type']}]{key_info} {r['title']} — {fecha}\n  {r['content'][:300]}{'...' if len(r['content']) > 300 else ''}"
@@ -5041,7 +5440,8 @@ async def _ver_memorias_paciente(args: Dict, tenant_id: int) -> str:
     try:
         patient = await db.pool.fetchrow(
             "SELECT phone_number, first_name, last_name FROM patients WHERE id = $1 AND tenant_id = $2",
-            int(patient_id), tenant_id
+            int(patient_id),
+            tenant_id,
         )
         if not patient:
             return "No encontré a ese paciente."
@@ -5050,6 +5450,7 @@ async def _ver_memorias_paciente(args: Dict, tenant_id: int) -> str:
             return "El paciente no tiene teléfono registrado (necesario para memorias)."
 
         from services.patient_memory import get_memories
+
         memories = await get_memories(db.pool, phone, tenant_id)
 
         name = f"{patient['first_name']} {patient.get('last_name', '')}".strip()
@@ -5081,7 +5482,8 @@ async def _agregar_memoria_paciente(args: Dict, tenant_id: int) -> str:
     try:
         patient = await db.pool.fetchrow(
             "SELECT phone_number, first_name, last_name FROM patients WHERE id = $1 AND tenant_id = $2",
-            int(patient_id), tenant_id
+            int(patient_id),
+            tenant_id,
         )
         if not patient:
             return "No encontré a ese paciente."
@@ -5090,13 +5492,1006 @@ async def _agregar_memoria_paciente(args: Dict, tenant_id: int) -> str:
             return "El paciente no tiene teléfono registrado."
 
         from services.patient_memory import add_manual_memory
-        await add_manual_memory(db.pool, phone, tenant_id, memoria, categoria, importancia)
+
+        await add_manual_memory(
+            db.pool, phone, tenant_id, memoria, categoria, importancia
+        )
 
         name = f"{patient['first_name']} {patient.get('last_name', '')}".strip()
         return f"Memoria guardada para {name}: [{categoria}] {memoria}"
     except Exception as e:
         logger.error(f"_agregar_memoria_paciente error: {e}", exc_info=True)
         return f"Error guardando memoria: {str(e)[:200]}"
+
+
+# =============================================================================
+# N. Plantillas WhatsApp
+# =============================================================================
+
+
+async def _listar_plantillas(tenant_id: int) -> str:
+    """List approved WhatsApp templates from YCloud for this tenant."""
+    try:
+        from core.credentials import get_tenant_credential, YCLOUD_API_KEY
+        import httpx
+
+        api_key = await get_tenant_credential(tenant_id, YCLOUD_API_KEY)
+        if not api_key:
+            return "No hay API key de YCloud configurada para esta clínica."
+
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(
+                "https://api.ycloud.com/v2/whatsapp/templates",
+                params={"limit": 50},
+                headers={"X-API-Key": api_key},
+            )
+            if resp.status_code != 200:
+                return f"Error al consultar templates: HTTP {resp.status_code}"
+
+            items = resp.json().get("items", [])
+
+        approved = [t for t in items if t.get("status") == "APPROVED"]
+        if not approved:
+            return "No hay plantillas aprobadas en YCloud."
+
+        import re
+
+        lines = [f"Plantillas aprobadas ({len(approved)}):"]
+        for t in approved:
+            name = t.get("name", "?")
+            lang = t.get("language", "?")
+            category = t.get("category", "?")
+            # Extract variable names from all components
+            var_names = []
+            for comp in t.get("components", []):
+                text = comp.get("text", "")
+                var_names.extend(re.findall(r"\{\{(\w+)\}\}", text))
+            vars_str = ", ".join(var_names) if var_names else "sin variables"
+            lines.append(f"\n• {name} ({lang}) — {category}\n  Variables: {vars_str}")
+
+        return "\n".join(lines)
+
+    except Exception as e:
+        logger.error(f"_listar_plantillas error: {e}", exc_info=True)
+        return f"Error listando plantillas: {str(e)[:200]}"
+
+
+async def _enviar_plantilla(args: Dict, tenant_id: int, user_role: str) -> str:
+    """Send a WhatsApp template to a single patient."""
+    if user_role not in ("ceo", "secretary"):
+        return "Solo CEO o secretaria pueden enviar plantillas."
+
+    template_name = (args.get("template_name") or "").strip()
+    if not template_name:
+        return "Necesito el nombre de la plantilla. Usá listar_plantillas para ver las disponibles."
+
+    # Resolve patient
+    patient_id = args.get("patient_id")
+    patient_name = args.get("patient_name")
+    phone = args.get("phone")
+
+    try:
+        patient = None
+        if patient_id:
+            patient = await db.pool.fetchrow(
+                "SELECT id, phone_number, first_name, last_name FROM patients WHERE id = $1 AND tenant_id = $2",
+                int(patient_id),
+                tenant_id,
+            )
+        elif patient_name:
+            patient = await db.pool.fetchrow(
+                """SELECT id, phone_number, first_name, last_name FROM patients
+                   WHERE tenant_id = $1 AND status = 'active'
+                     AND (first_name ILIKE $2 OR last_name ILIKE $2 OR (first_name || ' ' || last_name) ILIKE $2)
+                   ORDER BY updated_at DESC LIMIT 1""",
+                tenant_id,
+                f"%{patient_name}%",
+            )
+        elif phone:
+            patient = await db.pool.fetchrow(
+                "SELECT id, phone_number, first_name, last_name FROM patients WHERE phone_number = $1 AND tenant_id = $2",
+                phone,
+                tenant_id,
+            )
+
+        if not patient:
+            return "No encontré al paciente. Probá con buscar_paciente primero."
+
+        target_phone = patient["phone_number"]
+        if not target_phone:
+            return f"El paciente {patient['first_name']} no tiene teléfono registrado."
+
+        patient_display = (
+            f"{patient['first_name']} {patient.get('last_name', '')}".strip()
+        )
+
+        # Send via the generic template sender
+        result = await _generic_send_template(
+            tenant_id=tenant_id,
+            phone=target_phone,
+            template_name=template_name,
+            patient_name=patient_display,
+            custom_vars=args.get("variables") or {},
+            source="nova_manual",
+        )
+
+        if result["ok"]:
+            return f"Plantilla '{template_name}' enviada a {patient_display} ({target_phone})."
+        else:
+            return f"Error enviando plantilla: {result['error']}"
+
+    except Exception as e:
+        logger.error(f"_enviar_plantilla error: {e}", exc_info=True)
+        return f"Error: {str(e)[:200]}"
+
+
+async def _enviar_plantilla_masiva(args: Dict, tenant_id: int, user_role: str) -> str:
+    """Send a WhatsApp template to multiple patients matching filters."""
+    if user_role != "ceo":
+        return "Solo el CEO puede hacer envíos masivos de plantillas."
+
+    template_name = (args.get("template_name") or "").strip()
+    confirmar = args.get("confirmar", False)
+    limite = min(int(args.get("limite", 50)), 200)
+
+    if not template_name:
+        return "Necesito el nombre de la plantilla. Usá listar_plantillas para ver las disponibles."
+
+    try:
+        # Build dynamic query with filters
+        conditions = ["p.tenant_id = $1", "p.status = $2"]
+        params: list = [tenant_id, args.get("estado", "active")]
+        param_idx = 3
+
+        # --- Filter: sin_turno_dias (no appointment in last X days) ---
+        if args.get("sin_turno_dias"):
+            days = int(args["sin_turno_dias"])
+            conditions.append(f"""
+                NOT EXISTS (
+                    SELECT 1 FROM appointments a
+                    WHERE a.patient_id = p.id AND a.tenant_id = $1
+                      AND a.appointment_datetime >= (NOW() - INTERVAL '{days} days')
+                      AND a.status NOT IN ('cancelled', 'no_show')
+                )
+            """)
+
+        # --- Filter: ultimo_turno_hace_dias (last visit > X days ago) ---
+        if args.get("ultimo_turno_hace_dias"):
+            days = int(args["ultimo_turno_hace_dias"])
+            conditions.append(f"""
+                EXISTS (
+                    SELECT 1 FROM appointments a
+                    WHERE a.patient_id = p.id AND a.tenant_id = $1
+                      AND a.status IN ('completed', 'confirmed', 'scheduled')
+                ) AND NOT EXISTS (
+                    SELECT 1 FROM appointments a
+                    WHERE a.patient_id = p.id AND a.tenant_id = $1
+                      AND a.appointment_datetime >= (NOW() - INTERVAL '{days} days')
+                      AND a.status IN ('completed', 'confirmed', 'scheduled')
+                )
+            """)
+
+        # --- Filter: nunca_agendo ---
+        if args.get("nunca_agendo"):
+            conditions.append("""
+                NOT EXISTS (
+                    SELECT 1 FROM appointments a
+                    WHERE a.patient_id = p.id AND a.tenant_id = $1
+                )
+            """)
+
+        # --- Filter: tratamiento ---
+        if args.get("tratamiento"):
+            conditions.append(f"""
+                EXISTS (
+                    SELECT 1 FROM appointments a
+                    JOIN treatment_types tt ON tt.code = a.treatment_type AND tt.tenant_id = $1
+                    WHERE a.patient_id = p.id AND a.tenant_id = $1
+                      AND tt.name ILIKE ${param_idx}
+                )
+            """)
+            params.append(f"%{args['tratamiento']}%")
+            param_idx += 1
+
+        # --- Filter: obra_social ---
+        if args.get("obra_social"):
+            conditions.append(f"p.insurance_provider ILIKE ${param_idx}")
+            params.append(f"%{args['obra_social']}%")
+            param_idx += 1
+
+        # --- Filter: fuente ---
+        if args.get("fuente"):
+            conditions.append(f"p.first_touch_source ILIKE ${param_idx}")
+            params.append(f"%{args['fuente']}%")
+            param_idx += 1
+
+        # --- Filter: edad_min / edad_max ---
+        if args.get("edad_min"):
+            conditions.append(
+                f"p.birth_date <= (CURRENT_DATE - INTERVAL '{int(args['edad_min'])} years')"
+            )
+        if args.get("edad_max"):
+            conditions.append(
+                f"p.birth_date >= (CURRENT_DATE - INTERVAL '{int(args['edad_max'])} years')"
+            )
+
+        # --- Filter: genero ---
+        if args.get("genero"):
+            conditions.append(f"LOWER(p.gender) = ${param_idx}")
+            params.append(args["genero"].lower())
+            param_idx += 1
+
+        # --- Filter: con_anamnesis ---
+        if args.get("con_anamnesis") is not None:
+            if args["con_anamnesis"]:
+                conditions.append(
+                    "EXISTS (SELECT 1 FROM medical_history mh WHERE mh.patient_id = p.id AND mh.anamnesis_completed_at IS NOT NULL)"
+                )
+            else:
+                conditions.append(
+                    "NOT EXISTS (SELECT 1 FROM medical_history mh WHERE mh.patient_id = p.id AND mh.anamnesis_completed_at IS NOT NULL)"
+                )
+
+        # --- Filter: urgencia ---
+        if args.get("urgencia"):
+            conditions.append(f"p.urgency_level = ${param_idx}")
+            params.append(args["urgencia"])
+            param_idx += 1
+
+        # --- Filter: profesional / profesional_id ---
+        if args.get("profesional_id"):
+            conditions.append(f"""
+                EXISTS (
+                    SELECT 1 FROM appointments a
+                    WHERE a.patient_id = p.id AND a.tenant_id = $1
+                      AND a.professional_id = ${param_idx}
+                )
+            """)
+            params.append(int(args["profesional_id"]))
+            param_idx += 1
+        elif args.get("profesional"):
+            conditions.append(f"""
+                EXISTS (
+                    SELECT 1 FROM appointments a
+                    JOIN professionals pr ON pr.id = a.professional_id
+                    WHERE a.patient_id = p.id AND a.tenant_id = $1
+                      AND (pr.first_name ILIKE ${param_idx} OR pr.last_name ILIKE ${param_idx})
+                )
+            """)
+            params.append(f"%{args['profesional']}%")
+            param_idx += 1
+
+        # --- Filter: creado_desde / creado_hasta ---
+        if args.get("creado_desde"):
+            conditions.append(f"p.created_at >= ${param_idx}::date")
+            params.append(args["creado_desde"])
+            param_idx += 1
+        if args.get("creado_hasta"):
+            conditions.append(f"p.created_at <= ${param_idx}::date + INTERVAL '1 day'")
+            params.append(args["creado_hasta"])
+            param_idx += 1
+
+        # --- Filter: sin_email ---
+        if args.get("sin_email"):
+            conditions.append("(p.email IS NULL OR p.email = '')")
+
+        # --- Filter: con_deuda ---
+        if args.get("con_deuda"):
+            conditions.append("""
+                EXISTS (
+                    SELECT 1 FROM appointments a
+                    WHERE a.patient_id = p.id AND a.tenant_id = $1
+                      AND a.payment_status IN ('pending', 'partial')
+                )
+            """)
+
+        # --- Filter: turno_cancelado_dias ---
+        if args.get("turno_cancelado_dias"):
+            days = int(args["turno_cancelado_dias"])
+            conditions.append(f"""
+                EXISTS (
+                    SELECT 1 FROM appointments a
+                    WHERE a.patient_id = p.id AND a.tenant_id = $1
+                      AND a.status = 'cancelled'
+                      AND a.appointment_datetime >= (NOW() - INTERVAL '{days} days')
+                )
+            """)
+
+        # Exclude patients without phone
+        conditions.append("p.phone_number IS NOT NULL")
+        conditions.append("p.phone_number != ''")
+        # Exclude minor placeholders (phone like %-M%)
+        conditions.append("p.phone_number NOT LIKE '%-M%'")
+
+        where_clause = " AND ".join(conditions)
+
+        # COUNT first
+        count_sql = f"SELECT COUNT(*) FROM patients p WHERE {where_clause}"
+        total = await db.pool.fetchval(count_sql, *params)
+
+        if not confirmar:
+            # Preview mode — just show count
+            filter_desc = _describe_filters(args)
+            return (
+                f"Encontré {total} pacientes que cumplen los filtros:\n{filter_desc}\n\n"
+                f"Plantilla: {template_name}\n"
+                f"Límite de envío: {limite}\n"
+                f"Se enviarán a {min(total, limite)} pacientes.\n\n"
+                f"¿Confirmo el envío? Decime 'sí, enviá' para proceder."
+            )
+
+        # SEND mode
+        if total == 0:
+            return "No hay pacientes que cumplan esos filtros."
+
+        fetch_sql = f"""
+            SELECT p.id, p.phone_number, p.first_name, p.last_name
+            FROM patients p
+            WHERE {where_clause}
+            ORDER BY p.updated_at DESC
+            LIMIT {limite}
+        """
+        patients = await db.pool.fetch(fetch_sql, *params)
+
+        sent = 0
+        errors = 0
+        custom_vars = args.get("variables") or {}
+
+        for pat in patients:
+            pat_name = f"{pat['first_name']} {pat.get('last_name', '')}".strip()
+            # Replace {nombre} placeholder in custom vars
+            resolved_vars = {}
+            for k, v in custom_vars.items():
+                resolved_vars[k] = (
+                    str(v).replace("{nombre}", pat_name) if isinstance(v, str) else v
+                )
+
+            result = await _generic_send_template(
+                tenant_id=tenant_id,
+                phone=pat["phone_number"],
+                template_name=template_name,
+                patient_name=pat_name,
+                custom_vars=resolved_vars,
+                source="nova_bulk",
+            )
+
+            if result["ok"]:
+                sent += 1
+            else:
+                errors += 1
+                logger.warning(
+                    f"Bulk template error for {pat['phone_number']}: {result['error']}"
+                )
+
+            # Rate limit: ~1 msg/sec to avoid Meta throttling
+            import asyncio
+
+            await asyncio.sleep(1.0)
+
+        return (
+            f"Envío masivo completado:\n"
+            f"• Enviados: {sent}\n"
+            f"• Errores: {errors}\n"
+            f"• Total procesados: {sent + errors} de {total} que cumplían los filtros"
+        )
+
+    except Exception as e:
+        logger.error(f"_enviar_plantilla_masiva error: {e}", exc_info=True)
+        return f"Error en envío masivo: {str(e)[:200]}"
+
+
+def _describe_filters(args: Dict) -> str:
+    """Build a human-readable description of applied filters."""
+    parts = []
+    if args.get("sin_turno_dias"):
+        parts.append(f"• Sin turno en los últimos {args['sin_turno_dias']} días")
+    if args.get("ultimo_turno_hace_dias"):
+        parts.append(
+            f"• Última visita hace más de {args['ultimo_turno_hace_dias']} días"
+        )
+    if args.get("nunca_agendo"):
+        parts.append("• Nunca agendaron un turno")
+    if args.get("tratamiento"):
+        parts.append(f"• Tratamiento: {args['tratamiento']}")
+    if args.get("obra_social"):
+        parts.append(f"• Obra social: {args['obra_social']}")
+    if args.get("fuente"):
+        parts.append(f"• Fuente: {args['fuente']}")
+    if args.get("edad_min") or args.get("edad_max"):
+        rango = f"{args.get('edad_min', '?')}-{args.get('edad_max', '?')} años"
+        parts.append(f"• Rango de edad: {rango}")
+    if args.get("genero"):
+        parts.append(f"• Género: {args['genero']}")
+    if args.get("estado") and args["estado"] != "active":
+        parts.append(f"• Estado: {args['estado']}")
+    if args.get("con_anamnesis") is not None:
+        parts.append(
+            f"• {'Con' if args['con_anamnesis'] else 'Sin'} anamnesis completada"
+        )
+    if args.get("urgencia"):
+        parts.append(f"• Urgencia: {args['urgencia']}")
+    if args.get("profesional") or args.get("profesional_id"):
+        parts.append(
+            f"• Profesional: {args.get('profesional', args.get('profesional_id'))}"
+        )
+    if args.get("creado_desde"):
+        parts.append(f"• Creado desde: {args['creado_desde']}")
+    if args.get("creado_hasta"):
+        parts.append(f"• Creado hasta: {args['creado_hasta']}")
+    if args.get("sin_email"):
+        parts.append("• Sin email registrado")
+    if args.get("con_deuda"):
+        parts.append("• Con deuda pendiente")
+    if args.get("turno_cancelado_dias"):
+        parts.append(
+            f"• Cancelaron turno en los últimos {args['turno_cancelado_dias']} días"
+        )
+    return (
+        "\n".join(parts)
+        if parts
+        else "• Sin filtros adicionales (todos los pacientes activos)"
+    )
+
+
+async def _generic_send_template(
+    tenant_id: int,
+    phone: str,
+    template_name: str,
+    patient_name: str = "",
+    custom_vars: Dict[str, str] = None,
+    source: str = "nova",
+) -> Dict[str, Any]:
+    """
+    Generic template sender. Fetches template structure from YCloud,
+    maps variables automatically, and sends.
+
+    Returns: {"ok": True} or {"ok": False, "error": "..."}
+    """
+    try:
+        from core.credentials import get_tenant_credential, YCLOUD_API_KEY
+        from ycloud_client import YCloudClient
+        import httpx
+        import re
+
+        api_key = await get_tenant_credential(tenant_id, YCLOUD_API_KEY)
+        if not api_key:
+            return {"ok": False, "error": "No YCloud API key"}
+
+        # Resolve from_number
+        business_number = await db.pool.fetchval(
+            "SELECT bot_phone_number FROM tenants WHERE id = $1", tenant_id
+        )
+        if not business_number:
+            from core.credentials import YCLOUD_WHATSAPP_NUMBER
+
+            business_number = await get_tenant_credential(
+                tenant_id, YCLOUD_WHATSAPP_NUMBER
+            )
+
+        # Fetch template from YCloud to get REAL structure
+        real_lang = None
+        tpl_components = None
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(
+                "https://api.ycloud.com/v2/whatsapp/templates",
+                params={"filter.name": template_name, "limit": 10},
+                headers={"X-API-Key": api_key},
+            )
+            if resp.status_code == 200:
+                items = resp.json().get("items", [])
+                for tpl in items:
+                    if (
+                        tpl.get("status") == "APPROVED"
+                        and tpl.get("name") == template_name
+                    ):
+                        real_lang = tpl.get("language")
+                        tpl_components = tpl.get("components", [])
+                        break
+
+        if not real_lang:
+            return {
+                "ok": False,
+                "error": f"Template '{template_name}' not found or not approved",
+            }
+
+        # Extract variable names from template components
+        all_var_names = []
+        for comp in tpl_components or []:
+            text = comp.get("text", "")
+            var_names = re.findall(r"\{\{(\w+)\}\}", text)
+            all_var_names.extend(var_names)
+
+        # Build variable values: custom_vars override, then auto-fill
+        vars_dict = custom_vars or {}
+        auto_values = {
+            "nombre_paciente": patient_name,
+            "nombre": patient_name,
+            "1": patient_name,
+        }
+
+        # Build send components matching template structure
+        send_components = []
+        for comp in tpl_components or []:
+            comp_type = comp.get("type", "").upper()
+            text = comp.get("text", "")
+            comp_vars = re.findall(r"\{\{(\w+)\}\}", text)
+            if not comp_vars:
+                continue
+
+            parameters = []
+            for var_name in comp_vars:
+                # Priority: custom_vars > auto_values > empty
+                value = vars_dict.get(var_name) or auto_values.get(var_name) or ""
+                parameters.append(
+                    {
+                        "type": "text",
+                        "text": str(value),
+                        "parameter_name": var_name,
+                    }
+                )
+
+            send_components.append(
+                {
+                    "type": comp_type.lower(),
+                    "parameters": parameters,
+                }
+            )
+
+        # Send
+        yc = YCloudClient(api_key=api_key, business_number=business_number)
+        try:
+            await yc.send_template(
+                to=phone,
+                template_name=template_name,
+                language_code=real_lang,
+                components=send_components if send_components else None,
+            )
+        except httpx.HTTPStatusError as http_err:
+            try:
+                err_detail = http_err.response.json()
+            except Exception:
+                err_detail = http_err.response.text
+            return {"ok": False, "error": str(err_detail)[:300]}
+
+        # Persist in chat_conversations + chat_messages
+        try:
+            import uuid as _uuid
+            import json as _json
+
+            conv = await db.pool.fetchrow(
+                "SELECT id FROM chat_conversations WHERE tenant_id = $1 AND external_user_id = $2 AND channel = 'whatsapp' ORDER BY updated_at DESC LIMIT 1",
+                tenant_id,
+                phone,
+            )
+            preview_label = f"[Plantilla: {template_name}]"
+            if conv:
+                conv_id = conv["id"]
+                await db.pool.execute(
+                    "UPDATE chat_conversations SET last_message_preview = $1, updated_at = NOW() WHERE id = $2",
+                    preview_label,
+                    conv_id,
+                )
+            else:
+                conv_id = _uuid.uuid4()
+                await db.pool.execute(
+                    "INSERT INTO chat_conversations (id, tenant_id, channel, provider, external_user_id, display_name, last_message_preview, status, updated_at) VALUES ($1, $2, 'whatsapp', 'ycloud', $3, $4, $5, 'active', NOW())",
+                    conv_id,
+                    tenant_id,
+                    phone,
+                    patient_name or None,
+                    preview_label,
+                )
+
+            await db.pool.execute(
+                "INSERT INTO chat_messages (tenant_id, conversation_id, role, content, from_number, platform_metadata) VALUES ($1, $2, 'assistant', $3, $4, $5::jsonb)",
+                tenant_id,
+                conv_id,
+                f"📨 Plantilla '{template_name}' enviada a {patient_name}",
+                phone,
+                _json.dumps(
+                    {
+                        "source": source,
+                        "template": template_name,
+                        "patient_name": patient_name,
+                    }
+                ),
+            )
+        except Exception as persist_err:
+            logger.warning(
+                f"Template message persist failed (non-blocking): {persist_err}"
+            )
+
+        return {"ok": True}
+
+    except Exception as e:
+        logger.error(f"_generic_send_template error: {e}", exc_info=True)
+        return {"ok": False, "error": str(e)[:200]}
+
+
+# =============================================================================
+# N+1. Acción Masiva (herramienta Jarvis-style)
+# =============================================================================
+
+
+async def _build_patient_filter_query(
+    args: Dict, tenant_id: int
+) -> tuple[str, list, int]:
+    """
+    Build dynamic SQL query with filters. Returns (where_clause, params, param_idx).
+    This is SHARED between _enviar_plantilla_masiva and _accion_masiva.
+    """
+    conditions = ["p.tenant_id = $1", "p.status = $2"]
+    params: list = [tenant_id, args.get("estado", "active")]
+    param_idx = 3
+
+    # --- Filter: sin_turno_dias ---
+    if args.get("sin_turno_dias"):
+        days = int(args["sin_turno_dias"])
+        conditions.append(f"""
+            NOT EXISTS (
+                SELECT 1 FROM appointments a
+                WHERE a.patient_id = p.id AND a.tenant_id = $1
+                  AND a.appointment_datetime >= (NOW() - INTERVAL '{days} days')
+                  AND a.status NOT IN ('cancelled', 'no_show')
+            )
+        """)
+
+    # --- Filter: ultimo_turno_hace_dias ---
+    if args.get("ultimo_turno_hace_dias"):
+        days = int(args["ultimo_turno_hace_dias"])
+        conditions.append(f"""
+            EXISTS (
+                SELECT 1 FROM appointments a
+                WHERE a.patient_id = p.id AND a.tenant_id = $1
+                  AND a.status IN ('completed', 'confirmed', 'scheduled')
+            ) AND NOT EXISTS (
+                SELECT 1 FROM appointments a
+                WHERE a.patient_id = p.id AND a.tenant_id = $1
+                  AND a.appointment_datetime >= (NOW() - INTERVAL '{days} days')
+                  AND a.status IN ('completed', 'confirmed', 'scheduled')
+            )
+        """)
+
+    # --- Filter: nunca_agendo ---
+    if args.get("nunca_agendo"):
+        conditions.append("""
+            NOT EXISTS (
+                SELECT 1 FROM appointments a
+                WHERE a.patient_id = p.id AND a.tenant_id = $1
+            )
+        """)
+
+    # --- Filter: tratamiento ---
+    if args.get("tratamiento"):
+        conditions.append(f"""
+            EXISTS (
+                SELECT 1 FROM appointments a
+                JOIN treatment_types tt ON tt.code = a.treatment_type AND tt.tenant_id = $1
+                WHERE a.patient_id = p.id AND a.tenant_id = $1
+                  AND tt.name ILIKE ${param_idx}
+            )
+        """)
+        params.append(f"%{args['tratamiento']}%")
+        param_idx += 1
+
+    # --- Filter: obra_social ---
+    if args.get("obra_social"):
+        conditions.append(f"p.insurance_provider ILIKE ${param_idx}")
+        params.append(f"%{args['obra_social']}%")
+        param_idx += 1
+
+    # --- Filter: fuente ---
+    if args.get("fuente"):
+        conditions.append(f"p.first_touch_source ILIKE ${param_idx}")
+        params.append(f"%{args['fuente']}%")
+        param_idx += 1
+
+    # --- Filter: edad_min / edad_max ---
+    if args.get("edad_min"):
+        conditions.append(
+            f"p.birth_date <= (CURRENT_DATE - INTERVAL '{int(args['edad_min'])} years')"
+        )
+    if args.get("edad_max"):
+        conditions.append(
+            f"p.birth_date >= (CURRENT_DATE - INTERVAL '{int(args['edad_max'])} years')"
+        )
+
+    # --- Filter: genero ---
+    if args.get("genero"):
+        conditions.append(f"LOWER(p.gender) = ${param_idx}")
+        params.append(args["genero"].lower())
+        param_idx += 1
+
+    # --- Filter: con_anamnesis ---
+    if args.get("con_anamnesis") is not None:
+        if args["con_anamnesis"]:
+            conditions.append(
+                "EXISTS (SELECT 1 FROM medical_history mh WHERE mh.patient_id = p.id AND mh.anamnesis_completed_at IS NOT NULL)"
+            )
+        else:
+            conditions.append(
+                "NOT EXISTS (SELECT 1 FROM medical_history mh WHERE mh.patient_id = p.id AND mh.anamnesis_completed_at IS NOT NULL)"
+            )
+
+    # --- Filter: urgencia ---
+    if args.get("urgencia"):
+        conditions.append(f"p.urgency_level = ${param_idx}")
+        params.append(args["urgencia"])
+        param_idx += 1
+
+    # --- Filter: profesional / profesional_id ---
+    if args.get("profesional_id"):
+        conditions.append(f"""
+            EXISTS (
+                SELECT 1 FROM appointments a
+                WHERE a.patient_id = p.id AND a.tenant_id = $1
+                  AND a.professional_id = ${param_idx}
+            )
+        """)
+        params.append(int(args["profesional_id"]))
+        param_idx += 1
+    elif args.get("profesional"):
+        conditions.append(f"""
+            EXISTS (
+                SELECT 1 FROM appointments a
+                JOIN professionals pr ON pr.id = a.professional_id
+                WHERE a.patient_id = p.id AND a.tenant_id = $1
+                  AND (pr.first_name ILIKE ${param_idx} OR pr.last_name ILIKE ${param_idx})
+            )
+        """)
+        params.append(f"%{args['profesional']}%")
+        param_idx += 1
+
+    # --- Filter: creado_desde / creado_hasta ---
+    if args.get("creado_desde"):
+        conditions.append(f"p.created_at >= ${param_idx}::date")
+        params.append(args["creado_desde"])
+        param_idx += 1
+    if args.get("creado_hasta"):
+        conditions.append(f"p.created_at <= ${param_idx}::date + INTERVAL '1 day'")
+        params.append(args["creado_hasta"])
+        param_idx += 1
+
+    # --- Filter: sin_email ---
+    if args.get("sin_email"):
+        conditions.append("(p.email IS NULL OR p.email = '')")
+
+    # --- Filter: con_deuda ---
+    if args.get("con_deuda"):
+        conditions.append("""
+            EXISTS (
+                SELECT 1 FROM appointments a
+                WHERE a.patient_id = p.id AND a.tenant_id = $1
+                  AND a.payment_status IN ('pending', 'partial')
+            )
+        """)
+
+    # --- Filter: turno_cancelado_dias ---
+    if args.get("turno_cancelado_dias"):
+        days = int(args["turno_cancelado_dias"])
+        conditions.append(f"""
+            EXISTS (
+                SELECT 1 FROM appointments a
+                WHERE a.patient_id = p.id AND a.tenant_id = $1
+                  AND a.status = 'cancelled'
+                  AND a.appointment_datetime >= (NOW() - INTERVAL '{days} days')
+            )
+        """)
+
+    # Exclude patients without phone
+    conditions.append("p.phone_number IS NOT NULL")
+    conditions.append("p.phone_number != ''")
+    conditions.append("p.phone_number NOT LIKE '%-M%'")
+
+    where_clause = " AND ".join(conditions)
+    return where_clause, params, param_idx
+
+
+async def _accion_masiva(args: Dict, tenant_id: int, user_role: str) -> str:
+    """
+    Jarvis-style unified action tool: combines patient filters with any action.
+    Actions: plantilla, mensaje_libre, anamnesis, listar, contar, exportar
+    """
+    if user_role not in ("ceo", "secretary"):
+        return "Solo CEO o secretaria pueden usar acción masiva."
+
+    accion = args.get("accion", "")
+    confirmar = args.get("confirmar", False)
+    limite = min(int(args.get("limite", 50)), 200)
+
+    if not accion:
+        return "Necesito saber qué acción hacer. Opciones: plantilla, mensaje_libre, anamnesis, listar, contar, exportar"
+
+    try:
+        # Build filter query
+        where_clause, params, _ = await _build_patient_filter_query(args, tenant_id)
+
+        # COUNT first
+        count_sql = f"SELECT COUNT(*) FROM patients p WHERE {where_clause}"
+        total = await db.pool.fetchval(count_sql, *params)
+
+        filter_desc = _describe_filters(args)
+
+        # Preview mode
+        if not confirmar:
+            if accion in ("listar", "contar", "exportar"):
+                # These don't need confirmation, just show count
+                if accion == "contar":
+                    return f"Encontré {total} pacientes que cumplen los filtros:\n{filter_desc}"
+                # For listar/exportar, return preview with count
+                return (
+                    f"Encontré {total} pacientes que cumplen los filtros:\n{filter_desc}\n\n"
+                    f"Acción: {accion}\n"
+                    f"¿Procedo? Decime 'sí, {accion}' para ejecutar."
+                )
+            else:
+                # Actions that send messages need confirmation
+                return (
+                    f"Encontré {total} pacientes que cumplen los filtros:\n{filter_desc}\n\n"
+                    f"Acción: {accion}\n"
+                    f"Límite: {limite} (se procesarán {min(total, limite)})\n\n"
+                    f"¿Confirmo? Decime 'sí, {accion}' para proceder."
+                )
+
+        # Execution mode
+        if total == 0:
+            return "No hay pacientes que cumplan esos filtros."
+
+        # Fetch patients
+        fetch_sql = f"""
+            SELECT p.id, p.phone_number, p.first_name, p.last_name, p.email
+            FROM patients p
+            WHERE {where_clause}
+            ORDER BY p.updated_at DESC
+            LIMIT {limite}
+        """
+        patients = await db.pool.fetch(fetch_sql, *params)
+
+        # Handle different actions
+        if accion == "contar":
+            return f"Total: {total} pacientes."
+
+        elif accion == "listar":
+            lines = [f"Lista de {len(patients)} pacientes (de {total} totales):"]
+            for p in patients:
+                name = f"{p['first_name']} {p.get('last_name', '')}".strip()
+                phone = p.get("phone_number", "sin teléfono")
+                email = p.get("email") or "sin email"
+                lines.append(f"• {name} — {phone} — {email}")
+            return "\n".join(lines)
+
+        elif accion == "exportar":
+            lines = ["Nombre,Teléfono,Email"]
+            for p in patients:
+                name = f"{p['first_name']} {p.get('last_name', '')}".strip()
+                phone = p.get("phone_number", "")
+                email = p.get("email") or ""
+                lines.append(f'"{name}","{phone}","{email}"')
+            return "📄 CSV exportado:\n\n" + "\n".join(lines)
+
+        else:
+            # Actions that send messages: plantilla, mensaje_libre, anamnesis
+            sent = 0
+            errors = 0
+            template_name = args.get("template_name", "")
+            mensaje = args.get("mensaje", "")
+            variables = args.get("variables", {})
+
+            for pat in patients:
+                pat_name = f"{pat['first_name']} {pat.get('last_name', '')}".strip()
+                phone = pat["phone_number"]
+
+                try:
+                    if accion == "plantilla":
+                        # Resolve template vars
+                        resolved_vars = {}
+                        for k, v in variables.items():
+                            resolved_vars[k] = (
+                                str(v).replace("{nombre}", pat_name)
+                                if isinstance(v, str)
+                                else v
+                            )
+                        result = await _generic_send_template(
+                            tenant_id=tenant_id,
+                            phone=phone,
+                            template_name=template_name,
+                            patient_name=pat_name,
+                            custom_vars=resolved_vars,
+                            source="accion_masiva",
+                        )
+
+                    elif accion == "mensaje_libre":
+                        # Send free-text WhatsApp message
+                        from ycloud_client import YCloudClient
+                        from core.credentials import (
+                            get_tenant_credential,
+                            YCLOUD_API_KEY,
+                            YCLOUD_WHATSAPP_NUMBER,
+                        )
+
+                        api_key = await get_tenant_credential(tenant_id, YCLOUD_API_KEY)
+                        business_number = await db.pool.fetchval(
+                            "SELECT bot_phone_number FROM tenants WHERE id = $1",
+                            tenant_id,
+                        )
+                        if not business_number:
+                            business_number = await get_tenant_credential(
+                                tenant_id, YCLOUD_WHATSAPP_NUMBER
+                            )
+
+                        msg_text = mensaje.replace("{nombre}", pat_name)
+                        yc = YCloudClient(
+                            api_key=api_key, business_number=business_number
+                        )
+                        await yc.send_message(to=phone, message=msg_text)
+                        result = {"ok": True}
+
+                    elif accion == "anamnesis":
+                        # Generate and send anamnesis link
+                        from core.credentials import (
+                            get_tenant_credential,
+                            YCLOUD_API_KEY,
+                            YCLOUD_WHATSAPP_NUMBER,
+                        )
+                        import uuid
+
+                        # Get clinic name
+                        clinic_name = await db.pool.fetchval(
+                            "SELECT clinic_name FROM tenants WHERE id = $1", tenant_id
+                        )
+
+                        # Generate unique token
+                        token = uuid.uuid4().hex[:12]
+                        anamnesis_url = f"https://clinicforge.app/anamnesis/{tenant_id}/{pat['id']}/{token}"
+
+                        # Send via YCloud
+                        api_key = await get_tenant_credential(tenant_id, YCLOUD_API_KEY)
+                        business_number = await db.pool.fetchval(
+                            "SELECT bot_phone_number FROM tenants WHERE id = $1",
+                            tenant_id,
+                        )
+                        if not business_number:
+                            business_number = await get_tenant_credential(
+                                tenant_id, YCLOUD_WHATSAPP_NUMBER
+                            )
+
+                        msg_text = f"¡Hola {pat_name}! 👋\n\n{clinic_name} te invita a completar tu historia clínica antes de tu próxima visita.\n\nCompletá tu anamnesis aquí: {anamnesis_url}\n\n¡Te esperamos!"
+                        yc = YCloudClient(
+                            api_key=api_key, business_number=business_number
+                        )
+                        await yc.send_message(to=phone, message=msg_text)
+                        result = {"ok": True}
+
+                    else:
+                        result = {"ok": False, "error": "Acción desconocida"}
+
+                    if result.get("ok"):
+                        sent += 1
+                    else:
+                        errors += 1
+                        logger.warning(
+                            f"accion_masiva {accion} error for {phone}: {result.get('error')}"
+                        )
+
+                except Exception as e:
+                    errors += 1
+                    logger.warning(f"accion_masiva error for {phone}: {e}")
+
+                # Rate limit
+                import asyncio
+
+                await asyncio.sleep(1.0)
+
+            return (
+                f"✅ Acción '{accion}' completada:\n"
+                f"• Enviados: {sent}\n"
+                f"• Errores: {errors}\n"
+                f"• Total procesados: {sent + errors} de {total}"
+            )
+
+    except Exception as e:
+        logger.error(f"_accion_masiva error: {e}", exc_info=True)
+        return f"Error en acción masiva: {str(e)[:200]}"
 
 
 # =============================================================================
@@ -5133,6 +6528,38 @@ _EXCLUDED_TOOLS_BY_PAGE: Dict[str, set] = {
     "agenda": {"onboarding_status"},
 }
 
+# Voice (Realtime API) — aggressive filtering for gpt-4o-mini-realtime-preview
+# Only essential tools that make sense via voice. 77 tools saturate the mini model.
+_VOICE_ALLOWED_TOOLS: set = {
+    # Pacientes
+    "buscar_paciente", "ver_paciente", "registrar_paciente", "convertir_lead",
+    "actualizar_paciente", "historial_clinico", "eliminar_paciente",
+    # Agenda
+    "ver_agenda", "proximo_paciente", "verificar_disponibilidad",
+    "agendar_turno", "cancelar_turno", "confirmar_turnos",
+    "reprogramar_turno", "cambiar_estado_turno", "bloquear_agenda",
+    # Tratamientos
+    "listar_tratamientos", "listar_profesionales",
+    # Facturación
+    "registrar_pago", "facturacion_pendiente",
+    # Analytics
+    "resumen_semana", "rendimiento_profesional", "ver_estadisticas",
+    # Comunicación
+    "ver_chats_recientes", "enviar_mensaje",
+    # Anamnesis + Odontograma
+    "guardar_anamnesis", "ver_anamnesis", "enviar_anamnesis",
+    "ver_odontograma", "modificar_odontograma",
+    # Navegación
+    "ir_a_pagina", "ir_a_paciente",
+    # Memorias
+    "guardar_memoria", "buscar_memorias",
+}
+
+
+def nova_tools_for_voice() -> List[Dict[str, Any]]:
+    """Return flat-format tools filtered for Realtime API voice (reduced set for mini model)."""
+    return [t for t in NOVA_TOOLS_SCHEMA if t["name"] in _VOICE_ALLOWED_TOOLS]
+
 
 def nova_tools_for_page(page: str = "telegram") -> List[Dict[str, Any]]:
     """Return Chat Completions-formatted tools filtered by page context."""
@@ -5141,14 +6568,16 @@ def nova_tools_for_page(page: str = "telegram") -> List[Dict[str, Any]]:
     for tool in NOVA_TOOLS_SCHEMA:
         if tool["name"] in excluded:
             continue
-        tools.append({
-            "type": "function",
-            "function": {
-                "name": tool["name"],
-                "description": tool.get("description", ""),
-                "parameters": tool.get("parameters", {}),
-            },
-        })
+        tools.append(
+            {
+                "type": "function",
+                "function": {
+                    "name": tool["name"],
+                    "description": tool.get("description", ""),
+                    "parameters": tool.get("parameters", {}),
+                },
+            }
+        )
     return tools
 
 
@@ -5363,6 +6792,18 @@ async def execute_nova_tool(
         elif name == "agregar_memoria_paciente":
             return await _agregar_memoria_paciente(args, tenant_id)
 
+        # N. Plantillas WhatsApp
+        elif name == "listar_plantillas":
+            return await _listar_plantillas(tenant_id)
+        elif name == "enviar_plantilla":
+            return await _enviar_plantilla(args, tenant_id, user_role)
+        elif name == "enviar_plantilla_masiva":
+            return await _enviar_plantilla_masiva(args, tenant_id, user_role)
+
+        # N+1. Acción Masiva (Jarvis-style)
+        elif name == "accion_masiva":
+            return await _accion_masiva(args, tenant_id, user_role)
+
         else:
             return f"Tool '{name}' no reconocida."
 
@@ -5422,6 +6863,7 @@ async def _reprogramar_turno(args: Dict, tenant_id: int) -> str:
     # Audit log (TIER 3 cap.3 Phase B)
     try:
         from services.audit_log import log_appointment_mutation as _audit
+
         _old_dt = _old["appointment_datetime"] if _old else None
         await _audit(
             pool=db.pool,
@@ -5431,11 +6873,17 @@ async def _reprogramar_turno(args: Dict, tenant_id: int) -> str:
             actor_type="staff_user",
             actor_id="nova_voice",
             before_values={
-                "appointment_datetime": _old_dt.isoformat() if _old_dt and hasattr(_old_dt, "isoformat") else str(_old_dt),
+                "appointment_datetime": _old_dt.isoformat()
+                if _old_dt and hasattr(_old_dt, "isoformat")
+                else str(_old_dt),
                 "status": _old["status"] if _old else None,
-            } if _old else None,
+            }
+            if _old
+            else None,
             after_values={
-                "appointment_datetime": new_dt.isoformat() if hasattr(new_dt, "isoformat") else str(new_dt),
+                "appointment_datetime": new_dt.isoformat()
+                if hasattr(new_dt, "isoformat")
+                else str(new_dt),
                 "status": "scheduled",
             },
             source_channel="nova_voice",
@@ -5443,7 +6891,10 @@ async def _reprogramar_turno(args: Dict, tenant_id: int) -> str:
         )
     except Exception as _audit_err:
         import logging as _lg
-        _lg.getLogger("nova_tools").warning(f"audit_log nova reprogramar failed (non-blocking): {_audit_err}")
+
+        _lg.getLogger("nova_tools").warning(
+            f"audit_log nova reprogramar failed (non-blocking): {_audit_err}"
+        )
 
     await _nova_emit(
         "APPOINTMENT_UPDATED",
@@ -5799,7 +7250,10 @@ async def _enviar_mensaje(args: Dict, tenant_id: int, user_role: str) -> str:
             logger.info(
                 f"📩 NOVA {channel_es} sent via Chatwoot to {display}: {message[:80]}"
             )
-            await _nova_emit("MESSAGE_SENT", {"patient_name": display, "channel": channel, "tenant_id": tenant_id})
+            await _nova_emit(
+                "MESSAGE_SENT",
+                {"patient_name": display, "channel": channel, "tenant_id": tenant_id},
+            )
             return f'Mensaje enviado a {display} por {channel_es}: "{message[:80]}{"..." if len(message) > 80 else ""}"'
 
         # ── META DIRECT (Instagram / Facebook via Graph API) ──
@@ -5880,7 +7334,14 @@ async def _enviar_mensaje(args: Dict, tenant_id: int, user_role: str) -> str:
                 logger.info(
                     f"📩 NOVA {channel_es} sent via Meta Direct to {display}: {message[:80]}"
                 )
-                await _nova_emit("MESSAGE_SENT", {"patient_name": display, "channel": channel, "tenant_id": tenant_id})
+                await _nova_emit(
+                    "MESSAGE_SENT",
+                    {
+                        "patient_name": display,
+                        "channel": channel,
+                        "tenant_id": tenant_id,
+                    },
+                )
                 return f'Mensaje enviado a {display} por {channel_es}: "{message[:80]}{"..." if len(message) > 80 else ""}"'
 
             error_body = resp.text[:200] if hasattr(resp, "text") else ""
@@ -5945,7 +7406,14 @@ async def _enviar_mensaje(args: Dict, tenant_id: int, user_role: str) -> str:
                 logger.info(
                     f"📩 NOVA WhatsApp sent via YCloud to {display} ({phone}): {message[:80]}"
                 )
-                await _nova_emit("MESSAGE_SENT", {"patient_name": display, "channel": "whatsapp", "tenant_id": tenant_id})
+                await _nova_emit(
+                    "MESSAGE_SENT",
+                    {
+                        "patient_name": display,
+                        "channel": "whatsapp",
+                        "tenant_id": tenant_id,
+                    },
+                )
                 return f'Mensaje enviado a {display} por WhatsApp: "{message[:80]}{"..." if len(message) > 80 else ""}"'
 
             error_body = resp.text[:200] if hasattr(resp, "text") else ""
@@ -6014,16 +7482,22 @@ async def _ver_estadisticas(args: Dict, tenant_id: int) -> str:
 
     # Plan payments for the same period
     if days == 0:
-        plan_rev = await db.pool.fetchval(
-            "SELECT COALESCE(SUM(amount), 0) FROM treatment_plan_payments WHERE tenant_id = $1 AND payment_date::date = CURRENT_DATE",
-            tenant_id,
-        ) or 0
+        plan_rev = (
+            await db.pool.fetchval(
+                "SELECT COALESCE(SUM(amount), 0) FROM treatment_plan_payments WHERE tenant_id = $1 AND payment_date::date = CURRENT_DATE",
+                tenant_id,
+            )
+            or 0
+        )
     else:
-        plan_rev = await db.pool.fetchval(
-            "SELECT COALESCE(SUM(amount), 0) FROM treatment_plan_payments WHERE tenant_id = $1 AND payment_date::date >= $2",
-            tenant_id,
-            since,
-        ) or 0
+        plan_rev = (
+            await db.pool.fetchval(
+                "SELECT COALESCE(SUM(amount), 0) FROM treatment_plan_payments WHERE tenant_id = $1 AND payment_date::date >= $2",
+                tenant_id,
+                since,
+            )
+            or 0
+        )
 
     revenue = appt_revenue + float(plan_rev)
 
@@ -6037,10 +7511,13 @@ async def _ver_estadisticas(args: Dict, tenant_id: int) -> str:
     )
 
     # Active plans count
-    active_plans = await db.pool.fetchval(
-        "SELECT COUNT(*) FROM treatment_plans WHERE tenant_id = $1 AND status IN ('draft','approved','in_progress')",
-        tenant_id,
-    ) or 0
+    active_plans = (
+        await db.pool.fetchval(
+            "SELECT COUNT(*) FROM treatment_plans WHERE tenant_id = $1 AND status IN ('draft','approved','in_progress')",
+            tenant_id,
+        )
+        or 0
+    )
 
     return f"""Estadisticas ({period}):
 • Turnos totales: {total}
@@ -6166,6 +7643,7 @@ async def _cambiar_estado_turno(args: Dict, tenant_id: int) -> str:
     # Audit log (TIER 3 cap.3 Phase B)
     try:
         from services.audit_log import log_appointment_mutation as _audit
+
         await _audit(
             pool=db.pool,
             tenant_id=tenant_id,
@@ -6180,7 +7658,10 @@ async def _cambiar_estado_turno(args: Dict, tenant_id: int) -> str:
         )
     except Exception as _audit_err:
         import logging as _lg
-        _lg.getLogger("nova_tools").warning(f"audit_log nova cambiar_estado failed (non-blocking): {_audit_err}")
+
+        _lg.getLogger("nova_tools").warning(
+            f"audit_log nova cambiar_estado failed (non-blocking): {_audit_err}"
+        )
 
     await _nova_emit(
         "APPOINTMENT_UPDATED",
@@ -6227,9 +7708,17 @@ async def _completar_tratamiento(args: Dict, tenant_id: int) -> str:
     if not apt["phone_number"]:
         return "El paciente no tiene teléfono registrado."
 
-    patient_name = f"{apt['first_name'] or ''} {apt['last_name'] or ''}".strip() or "paciente"
-    professional_name = f"{apt['prof_first_name'] or ''} {apt['prof_last_name'] or ''}".strip()
-    apt_date = apt["appointment_datetime"].strftime("%d/%m/%Y") if apt["appointment_datetime"] else ""
+    patient_name = (
+        f"{apt['first_name'] or ''} {apt['last_name'] or ''}".strip() or "paciente"
+    )
+    professional_name = (
+        f"{apt['prof_first_name'] or ''} {apt['prof_last_name'] or ''}".strip()
+    )
+    apt_date = (
+        apt["appointment_datetime"].strftime("%d/%m/%Y")
+        if apt["appointment_datetime"]
+        else ""
+    )
 
     # Importar y ejecutar la función de envío
     from admin_routes import send_treatment_completion_hsm
@@ -6383,7 +7872,8 @@ async def _enviar_anamnesis(args: Dict, tenant_id: int) -> str:
 
     row = await db.pool.fetchrow(
         "SELECT first_name, last_name, phone_number, anamnesis_token FROM patients WHERE id = $1 AND tenant_id = $2",
-        int(patient_id), tenant_id,
+        int(patient_id),
+        tenant_id,
     )
     if not row:
         return "Paciente no encontrado."
@@ -6396,11 +7886,19 @@ async def _enviar_anamnesis(args: Dict, tenant_id: int) -> str:
         token = str(uuid.uuid4())
         await db.pool.execute(
             "UPDATE patients SET anamnesis_token = $1 WHERE id = $2 AND tenant_id = $3",
-            token, int(patient_id), tenant_id,
+            token,
+            int(patient_id),
+            tenant_id,
         )
 
     import os
-    frontend_url = os.getenv("FRONTEND_URL", "http://localhost:4173").split(",")[0].strip().rstrip("/")
+
+    frontend_url = (
+        os.getenv("FRONTEND_URL", "http://localhost:4173")
+        .split(",")[0]
+        .strip()
+        .rstrip("/")
+    )
     link = f"{frontend_url}/anamnesis/{tenant_id}/{token}"
     name = f"{row['first_name'] or ''} {row['last_name'] or ''}".strip()
 
@@ -6413,7 +7911,8 @@ async def _enviar_anamnesis(args: Dict, tenant_id: int) -> str:
     )
     result = await _enviar_mensaje(
         {"phone": row["phone_number"], "message": message},
-        tenant_id, "ceo",
+        tenant_id,
+        "ceo",
     )
     return f"✅ Link de anamnesis enviado a {name} ({row['phone_number']}). {result}"
 
@@ -6697,7 +8196,9 @@ async def _resumen_financiero(args: Dict, tenant_id: int, user_role: str) -> str
             tenant_id,
         )
 
-        plan_revenue = sum(float(r["total_paid"]) for r in plan_rows) if plan_rows else 0.0
+        plan_revenue = (
+            sum(float(r["total_paid"]) for r in plan_rows) if plan_rows else 0.0
+        )
         total_revenue = sum(float(r["revenue"]) for r in by_treatment) + plan_revenue
         parts = [f"Finanzas últimos {days} días:"]
         parts.append(f"Facturación total: ${int(total_revenue):,}".replace(",", "."))
@@ -7383,6 +8884,7 @@ def _resolve_state(raw_state: str) -> str:
         return resolved
     return raw_state  # let validation catch it
 
+
 # Valid FDI for permanent and deciduous
 _VALID_FDI = set(_FDI_NAMES.keys())
 _VALID_FDI_DECIDUOUS = set(_FDI_NAMES_DECIDUOUS.keys())
@@ -7878,13 +9380,15 @@ async def _consultar_obra_social(args: Dict, tenant_id: int) -> str:
             coverage = row.get("coverage_by_treatment") or {}
             if isinstance(coverage, str):
                 import json as _json_cov
+
                 try:
                     coverage = _json_cov.loads(coverage)
                 except (ValueError, TypeError):
                     coverage = {}
             covered_codes = (
                 [
-                    k for k, v in coverage.items()
+                    k
+                    for k, v in coverage.items()
                     if isinstance(v, dict) and v.get("covered", False)
                 ]
                 if isinstance(coverage, dict)
@@ -7990,15 +9494,14 @@ async def _generar_ficha_digital(args: Dict, tenant_id: int) -> str:
         from services.odontogram_svg import render_odontogram_svg
         from db import db as _db_inst
         import uuid as _uuid
+
         _pool = _db_inst.pool
 
         # Layer 1: Gather
         source_data = await gather_patient_data(_pool, patient_id, tenant_id, tipo)
 
         # Layer 2: AI Narrative
-        narrative_result = await generate_narrative(
-            _pool, tenant_id, tipo, source_data
-        )
+        narrative_result = await generate_narrative(_pool, tenant_id, tipo, source_data)
         ai_sections = narrative_result.get("sections", {})
         warnings = narrative_result.get("warnings", [])
         model_used = narrative_result.get("model_used", "unknown")
@@ -8247,6 +9750,7 @@ async def _generar_reporte_personalizado(args: Dict, tenant_id: int) -> str:
 
         # Build template data
         import os as _os
+
         template_dir = _os.path.join(
             _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))),
             "templates",
@@ -8276,7 +9780,9 @@ async def _generar_reporte_personalizado(args: Dict, tenant_id: int) -> str:
         await generate_pdf(html_content, pdf_path)
 
         safe_titulo = titulo.replace("/", "-").replace("\\", "-")
-        return f"[PDF_ATTACHMENT:{pdf_path}|{safe_titulo}.pdf]\nReporte generado: {titulo}"
+        return (
+            f"[PDF_ATTACHMENT:{pdf_path}|{safe_titulo}.pdf]\nReporte generado: {titulo}"
+        )
 
     except ImportError:
         return "No se pudo generar el PDF. WeasyPrint no está instalado."
