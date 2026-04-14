@@ -247,8 +247,7 @@ export default function VoiceRecorder({
     const uploadPromise = (async () => {
       const formData = new FormData();
       formData.append('file', file);
-      formData.append('tenant_id', tenantId.toString());
-      const res = await api.post('/admin/chat/upload', formData, {
+      const res = await api.post(`/admin/chat/upload?tenant_id=${tenantId}`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       return res.data as UploadedAttachment;
@@ -258,7 +257,6 @@ export default function VoiceRecorder({
       try {
         const formData = new FormData();
         formData.append('file', file);
-        formData.append('tenant_id', tenantId.toString());
         const res = await api.post('/admin/chat/transcribe', formData, {
           headers: { 'Content-Type': 'multipart/form-data' },
         });
