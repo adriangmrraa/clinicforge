@@ -506,9 +506,49 @@ async def unified_send_message(
                     logger.info(
                         f"📤 Sending audio via YCloud: to={external_user_id}, url={att_url[:100]}"
                     )
-                    await client.send_audio(
-                        to=external_user_id, url=att_url, from_number=from_number
-                    )
+                    try:
+                        await client.send_audio(
+                            to=external_user_id, url=att_url, from_number=from_number
+                        )
+                    except httpx.HTTPStatusError as audio_err:
+                        # YCloud may reject WebM (400/415). Attempt WebM → OGG conversion
+                        # and retry once before propagating the error.
+                        original_local = att.get("url", "")  # /media/{tenant}/{file}.webm
+                        if (
+                            audio_err.response.status_code in (400, 415)
+                            and original_local.endswith(".webm")
+                            and backend_public_url
+                        ):
+                            logger.warning(
+                                f"⚠️ YCloud rejected WebM (HTTP {audio_err.response.status_code}), "
+                                f"attempting WebM→OGG conversion: {original_local}"
+                            )
+                            from services.audio_converter import convert_webm_to_ogg
+
+                            # Resolve the local filesystem path from the /media/ URL
+                            rel_parts = original_local.lstrip("/").split("/")
+                            local_webm = os.path.join(os.getcwd(), *rel_parts)
+                            ogg_path = await convert_webm_to_ogg(local_webm)
+                            if ogg_path:
+                                ogg_url = backend_public_url + original_local.replace(
+                                    ".webm", ".ogg"
+                                )
+                                logger.info(
+                                    f"📤 Retrying audio via YCloud (OGG): url={ogg_url[:100]}"
+                                )
+                                await client.send_audio(
+                                    to=external_user_id,
+                                    url=ogg_url,
+                                    from_number=from_number,
+                                )
+                            else:
+                                logger.error(
+                                    "❌ WebM→OGG conversion unavailable (ffmpeg missing?), "
+                                    "propagating original YCloud error"
+                                )
+                                raise
+                        else:
+                            raise
 
         elif provider == "meta_direct":
             page_token = await get_tenant_credential(tenant_id, "meta_page_token")
