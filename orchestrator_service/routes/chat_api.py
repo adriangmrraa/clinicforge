@@ -481,9 +481,34 @@ async def unified_send_message(
 
             client = YCloudClient(api_key)
             # En YCloud, external_user_id es el teléfono (phone_number)
-            await client.send_text_message(
-                to=external_user_id, text=message, from_number=from_number
-            )
+            if message:
+                await client.send_text_message(
+                    to=external_user_id, text=message, from_number=from_number
+                )
+
+            # Enviar attachments de audio vía YCloud send_audio()
+            # Nota: para Chatwoot, los attachments de audio ya funcionan vía send_attachment()
+            backend_public_url = os.getenv("BACKEND_PUBLIC_URL", "").rstrip("/")
+            for att in attachments:
+                att_type = att.get("type", "")
+                att_url = att.get("url", "")
+                if att_type == "audio" and att_url:
+                    # Si la URL es local (/media/...), hay que convertirla en una URL pública
+                    # que YCloud pueda descargar desde internet
+                    if att_url.startswith("/media/") or att_url.startswith("/uploads/"):
+                        if backend_public_url:
+                            att_url = f"{backend_public_url}{att_url}"
+                        else:
+                            logger.warning(
+                                f"⚠️ BACKEND_PUBLIC_URL not set — YCloud cannot fetch local audio: {att_url}"
+                            )
+                            continue
+                    logger.info(
+                        f"📤 Sending audio via YCloud: to={external_user_id}, url={att_url[:100]}"
+                    )
+                    await client.send_audio(
+                        to=external_user_id, url=att_url, from_number=from_number
+                    )
 
         elif provider == "meta_direct":
             page_token = await get_tenant_credential(tenant_id, "meta_page_token")
@@ -811,6 +836,75 @@ async def media_proxy(
 
     headers = {"Content-Type": media_content_type}
     return StreamingResponse(stream_content(), headers=headers)
+
+
+@router.post("/admin/chat/transcribe", summary="Transcribir audio vía Whisper (síncrono)")
+async def transcribe_audio_upload(
+    file: UploadFile = File(...),
+    user_data=Depends(verify_staff_token),
+) -> dict:
+    """
+    Recibe un archivo de audio (multipart), lo transcribe vía Whisper y devuelve el texto.
+    Síncrono: responde directamente con {"text": "..."}.
+    Límite: 16 MB. MIME: audio/*.
+    """
+    OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+    if not OPENAI_API_KEY:
+        raise HTTPException(status_code=503, detail="OPENAI_API_KEY not configured")
+
+    # 1. Validar MIME type: debe ser audio/*
+    content_type = file.content_type or ""
+    if not content_type.startswith("audio/"):
+        raise HTTPException(
+            status_code=415,
+            detail=f"Unsupported media type '{content_type}'. Only audio/* is accepted.",
+        )
+
+    # 2. Leer contenido y validar tamaño (≤ 16 MB)
+    MAX_SIZE = 16 * 1024 * 1024
+    audio_data = await file.read()
+    if len(audio_data) > MAX_SIZE:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File too large ({len(audio_data)} bytes). Max 16 MB.",
+        )
+
+    if not audio_data:
+        raise HTTPException(status_code=400, detail="Empty audio file")
+
+    # 3. Determinar nombre de archivo para Whisper
+    filename = file.filename or "audio.ogg"
+    if "." not in filename:
+        filename += ".ogg"
+
+    logger.info(
+        f"🎙️ transcribe_audio_upload: file={filename}, size={len(audio_data)} bytes, mime={content_type}"
+    )
+
+    # 4. Llamar a Whisper sincrónicamente
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            whisper_resp = await client.post(
+                "https://api.openai.com/v1/audio/transcriptions",
+                headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
+                data={"model": "whisper-1"},
+                files={"file": (filename, audio_data)},
+            )
+            if whisper_resp.status_code != 200:
+                logger.error(f"❌ Whisper API error: {whisper_resp.text}")
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"Whisper API error: {whisper_resp.text[:200]}",
+                )
+            text = whisper_resp.json().get("text", "")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error calling Whisper API: {str(e)}")
+        raise HTTPException(status_code=502, detail=f"Whisper API unavailable: {str(e)}")
+
+    logger.info(f"✅ Transcription done: '{text[:80]}'")
+    return {"text": text}
 
 
 @router.post("/admin/chat/upload", summary="Subir archivo multimedia para el chat")

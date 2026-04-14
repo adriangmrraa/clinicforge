@@ -13,6 +13,7 @@ import { io, Socket } from 'socket.io-client';
 import type { ChatSummaryItem, ChatApiMessage } from '../types/chat';
 import AdContextCard from '../components/AdContextCard';
 import { MessageContent } from '../components/chat/MessageMedia';
+import VoiceRecorder, { type UploadedAttachment } from '../components/chat/VoiceRecorder';
 import { useSmartScroll } from '../hooks/useSmartScroll';
 import AnamnesisPanel from '../components/AnamnesisPanel';
 import CreatePatientModal from '../components/CreatePatientModal';
@@ -108,6 +109,7 @@ export default function ChatsView() {
   const [patientContext, setPatientContext] = useState<PatientContext | null>(null);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [voiceRecording, setVoiceRecording] = useState(false);
   const [newMessage, setNewMessage] = useState('');
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -797,6 +799,63 @@ export default function ChatsView() {
     } finally {
       setSending(false);
     }
+  };
+
+  // ============================================
+  // VOICE MESSAGE HANDLERS
+  // ============================================
+
+  const handleVoiceReady = async (attachment: UploadedAttachment) => {
+    // Upload was already done by VoiceRecorder — send directly with the pre-uploaded attachment
+    setSending(true);
+    try {
+      if (selectedChatwoot && selectedTenantId) {
+        await chatsApi.sendChatMessage(selectedChatwoot.id, '', [attachment]);
+        // Optimistic update
+        setChatwootMessages(prev => [...prev, {
+          id: String(Date.now()),
+          conversation_id: selectedChatwoot.id,
+          role: 'human_supervisor',
+          content: '',
+          timestamp: new Date().toISOString(),
+          attachments: [attachment],
+        }]);
+        chatsApi.fetchChatMessages(selectedChatwoot.id, { limit: 50 })
+          .then(list => setChatwootMessages(list))
+          .catch(() => {});
+      } else if (selectedSession) {
+        await api.post('/admin/chat/send', {
+          phone: selectedSession.phone_number,
+          tenant_id: selectedSession.tenant_id,
+          message: '',
+          attachments: [attachment],
+        });
+        // Optimistic update — show audio in chat immediately
+        setMessages(prev => [...prev, {
+          id: String(Date.now()),
+          role: 'human_supervisor',
+          content: '',
+          timestamp: new Date().toISOString(),
+          content_attributes: [attachment],
+        }]);
+        fetchMessages(selectedSession.phone_number, selectedSession.tenant_id);
+      }
+    } catch (err) {
+      // Re-throw so VoiceRecorder.handleSend enters catch → transcription fallback
+      throw err;
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const handleTranscriptionFallback = (text: string) => {
+    setNewMessage(text);
+    setShowToast({
+      id: Date.now().toString(),
+      type: 'warning',
+      title: 'Audio no enviado',
+      message: 'Texto transcripto disponible en el campo de mensaje.',
+    });
   };
 
   const handleRemoveSilence = async () => {
@@ -1540,7 +1599,7 @@ export default function ChatsView() {
                           ? t('chats.window_closed_placeholder')
                           : t('chats.type_message_placeholder')
                       }
-                      disabled={!!((selectedSession && selectedSession.is_window_open === false) || (selectedChatwoot && !isWindowOpen(selectedChatwoot.last_user_message_at)))}
+                      disabled={voiceRecording || !!((selectedSession && selectedSession.is_window_open === false) || (selectedChatwoot && !isWindowOpen(selectedChatwoot.last_user_message_at)))}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter' && !e.shiftKey) {
                           e.preventDefault();
@@ -1556,7 +1615,7 @@ export default function ChatsView() {
                     <button
                       type="submit"
                       disabled={
-                        sending ||
+                        sending || voiceRecording ||
                         (!newMessage.trim() && selectedFiles.length === 0) ||
                         !!((selectedSession && selectedSession.is_window_open === false) || (selectedChatwoot && !isWindowOpen(selectedChatwoot.last_user_message_at)))
                       }
@@ -1571,6 +1630,20 @@ export default function ChatsView() {
                         <Send size={20} />
                       )}
                     </button>
+                    {/* Voice Recorder — mic button in idle, expands when recording/preview */}
+                    {selectedTenantId && (
+                      <VoiceRecorder
+                        disabled={
+                          sending ||
+                          !!((selectedSession && selectedSession.is_window_open === false) || (selectedChatwoot && !isWindowOpen(selectedChatwoot.last_user_message_at)))
+                        }
+                        onAudioReady={handleVoiceReady}
+                        onTranscriptionFallback={handleTranscriptionFallback}
+                        onNotify={(title, message, type) => setShowToast({ id: Date.now().toString(), type: type || 'info', title, message })}
+                        onStateChange={setVoiceRecording}
+                        tenantId={selectedTenantId}
+                      />
+                    )}
                   </div>
                 </div>
               </form>
