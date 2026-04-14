@@ -10444,6 +10444,7 @@ async def _nova_realtime_handler(websocket: WebSocket, session_id: str):
                     {
                         "type": "session.update",
                         "session": {
+                            "modalities": ["text", "audio"],
                             "instructions": config.get("system_prompt", ""),
                             "voice": os.getenv("NOVA_VOICE", "coral"),
                             "input_audio_format": "pcm16",
@@ -10554,6 +10555,28 @@ async def _nova_realtime_handler(websocket: WebSocket, session_id: str):
                                         }
                                     )
                                 )
+
+                        elif etype == "response.text.delta":
+                            # Text-only response (no audio) — forward as transcript
+                            text = event.get("delta", "")
+                            if text:
+                                await websocket.send_text(
+                                    json_mod.dumps(
+                                        {
+                                            "type": "transcript",
+                                            "role": "assistant",
+                                            "text": text,
+                                        }
+                                    )
+                                )
+
+                        elif etype == "response.text.done":
+                            # Text-only response completed — send response_done
+                            # so frontend knows to display the accumulated transcript
+                            logger.info(f"🎙️ NOVA TEXT-ONLY response: {event.get('text', '')[:200]}")
+                            await websocket.send_text(
+                                json_mod.dumps({"type": "response_done"})
+                            )
 
                         elif (
                             etype
