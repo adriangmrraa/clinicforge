@@ -201,11 +201,11 @@ async def send_appointment_reminders():
                         "UPDATE appointments SET reminder_sent = true, reminder_sent_at = NOW() WHERE id = $1 AND tenant_id = $2",
                         apt["appointment_id"], tenant_id,
                     )
-                    await _log_reminder(tenant_id, "sent", patient_name, apt["phone_number"], message_preview, rule_id=rule["id"] if rule else None)
+                    await _log_reminder(tenant_id, "sent", patient_name, apt["phone_number"], message_preview, rule_id=rule["id"] if rule else None, patient_id=apt.get("patient_id"), appointment_id=apt.get("appointment_id"))
                     logger.info(f"✅ Recordatorio enviado a {patient_name} ({apt['phone_number']}) para las {formatted_time}")
                     sent_count += 1
                 else:
-                    await _log_reminder(tenant_id, "failed", patient_name, apt["phone_number"], message_preview, error_detail="send_failed", rule_id=rule["id"] if rule else None)
+                    await _log_reminder(tenant_id, "failed", patient_name, apt["phone_number"], message_preview, error_detail="send_failed", rule_id=rule["id"] if rule else None, patient_id=apt.get("patient_id"), appointment_id=apt.get("appointment_id"))
                     error_count += 1
 
             except Exception as e:
@@ -357,20 +357,32 @@ async def _log_reminder(
     tenant_id: int, status: str, patient_name: str, phone: str,
     message_preview: str = None, error_detail: str = None,
     skip_reason: str = None, rule_id: int = None,
+    patient_id: int = None, appointment_id: str = None,
 ):
-    """Insert into automation_logs."""
+    """Insert into automation_logs with patient and appointment linkage."""
     try:
         from db import db
+        import json as _json
+        meta = {}
+        if appointment_id:
+            meta["appointment_id"] = str(appointment_id)
+        if patient_name:
+            meta["patient_name"] = patient_name
+
         await db.pool.execute("""
             INSERT INTO automation_logs (
                 tenant_id, automation_rule_id, rule_name, trigger_type,
                 patient_name, phone_number, channel, message_type,
                 message_preview, status, skip_reason, error_details,
+                patient_id, target_id, meta,
                 triggered_at, sent_at
             ) VALUES ($1, $2, 'Recordatorio 24h', 'appointment_reminder',
                 $3, $4, 'whatsapp', 'hsm', $5, $6, $7, $8,
+                $9, $10, $11::jsonb,
                 NOW(), CASE WHEN $6 = 'sent' THEN NOW() ELSE NULL END)
         """, tenant_id, rule_id, patient_name, phone,
-            (message_preview or "")[:200], status, skip_reason, error_detail)
+            (message_preview or "")[:200], status, skip_reason, error_detail,
+            patient_id, str(appointment_id) if appointment_id else None,
+            _json.dumps(meta) if meta else '{}')
     except Exception as e:
         logger.warning(f"⚠️ automation_log insert failed (reminders): {e}")

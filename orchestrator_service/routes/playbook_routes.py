@@ -258,14 +258,36 @@ async def send_reminders_now(
                     message = f"Hola {patient_name}, te recordamos tu turno de mañana a las {formatted_time}. Nos confirmás tu asistencia?"
                 sent = await _send_text(tenant_id, apt["phone_number"], message)
 
+            # Build message preview for logs
+            full_name = f"{apt['first_name'] or ''} {apt.get('last_name') or ''}".strip()
+            msg_preview = f"[HSM:{rule.get('ycloud_template_name', '')}] {full_name} - {day_of_week} {formatted_date} {formatted_time}" if sent and rule and rule.get("message_type") == "hsm" else (message if not sent else "")
+
             if sent:
                 await db.pool.execute(
                     "UPDATE appointments SET reminder_sent = true, reminder_sent_at = NOW() WHERE id = $1 AND tenant_id = $2",
                     apt["appointment_id"], tenant_id,
                 )
+                # Log in automation_logs (same as daily job)
+                from jobs.reminders import _log_reminder
+                await _log_reminder(
+                    tenant_id, "sent", full_name, apt["phone_number"],
+                    message_preview=msg_preview or f"Recordatorio {formatted_date} {formatted_time}",
+                    rule_id=rule["id"] if rule else None,
+                    patient_id=apt.get("patient_id"),
+                    appointment_id=apt.get("appointment_id"),
+                )
                 sent_count += 1
-                logger.info(f"✅ Manual reminder sent to {patient_name} ({apt['phone_number']})")
+                logger.info(f"✅ Manual reminder sent to {full_name} ({apt['phone_number']})")
             else:
+                from jobs.reminders import _log_reminder
+                await _log_reminder(
+                    tenant_id, "failed", full_name, apt["phone_number"],
+                    message_preview=msg_preview,
+                    error_detail="send_failed",
+                    rule_id=rule["id"] if rule else None,
+                    patient_id=apt.get("patient_id"),
+                    appointment_id=apt.get("appointment_id"),
+                )
                 skip_count += 1
 
         except Exception as e:
