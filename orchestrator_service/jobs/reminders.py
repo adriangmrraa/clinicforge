@@ -242,14 +242,20 @@ async def _send_template(
             logger.warning(f"⚠️ No YCloud API key for tenant {tenant_id}")
             return False
 
-        # Use bot_phone_number from tenants (the actual WhatsApp Business number)
+        # Resolve the actual WhatsApp Business number — multiple fallback chain
+        business_number = None
+
+        # 1. tenants.bot_phone_number (most common)
         business_number = await _db_ref.pool.fetchval(
             "SELECT bot_phone_number FROM tenants WHERE id = $1", tenant_id
         )
+
+        # 2. YCloud credential from vault
         if not business_number:
-            # Fallback to vault credential
             from core.credentials import YCLOUD_WHATSAPP_NUMBER
             business_number = await get_tenant_credential(tenant_id, YCLOUD_WHATSAPP_NUMBER)
+
+        logger.info(f"📱 Reminder using from_number={business_number} for tenant {tenant_id}")
 
         yc = YCloudClient(api_key=api_key, business_number=business_number)
         await yc.send_template(
