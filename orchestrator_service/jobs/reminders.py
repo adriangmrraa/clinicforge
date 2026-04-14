@@ -181,14 +181,13 @@ async def send_appointment_reminders():
                         except (json.JSONDecodeError, TypeError):
                             pass
 
-                    # Build components list ordered by variable position
-                    # Template: HEADER(1 text var) + BODY(3 text vars) — separate components per YCloud docs
+                    # Pass all values in order — _send_template fetches real structure from YCloud
                     components = [
-                        {"type": "header", "parameters": [{"type": "text", "text": var_map.get("nombre_paciente", "")}]},
                         {"type": "body", "parameters": [
-                            {"type": "text", "text": var_map.get("dia_semana", "")},
-                            {"type": "text", "text": var_map.get("fecha_turno", "")},
-                            {"type": "text", "text": var_map.get("hora_turno", "")},
+                            {"type": "text", "text": str(var_map.get("nombre_paciente", "")).strip()},
+                            {"type": "text", "text": str(var_map.get("dia_semana", "")).strip()},
+                            {"type": "text", "text": str(var_map.get("fecha_turno", "")).strip()},
+                            {"type": "text", "text": str(var_map.get("hora_turno", "")).strip()},
                         ]},
                     ]
 
@@ -252,90 +251,120 @@ async def _send_template(
     patient_name: str = "",
     appointment_info: dict = None,
 ) -> bool:
-    """Send a YCloud HSM template (with buttons)."""
+    """
+    Send a YCloud HSM template. Clean implementation per YCloud v2 docs.
+
+    1. Fetch template details from YCloud API to get the EXACT language code
+    2. Build components matching the template structure (header vs body)
+    3. Send once with correct params — no blind retries
+    """
     try:
         from core.credentials import get_tenant_credential, YCLOUD_API_KEY
         from ycloud_client import YCloudClient
         from db import db as _db_ref
+        import httpx
 
         api_key = await get_tenant_credential(tenant_id, YCLOUD_API_KEY)
         if not api_key:
             logger.warning(f"⚠️ No YCloud API key for tenant {tenant_id}")
             return False
 
-        # Resolve the actual WhatsApp Business number — multiple fallback chain
-        business_number = None
-
-        # 1. tenants.bot_phone_number (most common)
+        # Resolve from_number: tenants.bot_phone_number first
         business_number = await _db_ref.pool.fetchval(
             "SELECT bot_phone_number FROM tenants WHERE id = $1", tenant_id
         )
-
-        # 2. YCloud credential from vault
         if not business_number:
             from core.credentials import YCLOUD_WHATSAPP_NUMBER
             business_number = await get_tenant_credential(tenant_id, YCLOUD_WHATSAPP_NUMBER)
 
-        logger.info(f"📱 Reminder using from_number={business_number} for tenant {tenant_id}")
+        logger.info(f"📱 Reminder from_number={business_number} tenant={tenant_id}")
 
-        yc = YCloudClient(api_key=api_key, business_number=business_number)
-
-        # Fetch template details from YCloud to get exact component structure
+        # Step 1: Fetch template from YCloud to get the REAL language code and structure
+        real_lang = None
+        tpl_components = None
         try:
-            import httpx as _httpx_diag
-            async with _httpx_diag.AsyncClient(timeout=10.0) as _diag_client:
-                _tpl_resp = await _diag_client.get(
-                    f"https://api.ycloud.com/v2/whatsapp/templates",
-                    params={"filter.name": template_name, "limit": 5},
+            async with httpx.AsyncClient(timeout=10.0) as diag:
+                resp = await diag.get(
+                    "https://api.ycloud.com/v2/whatsapp/templates",
+                    params={"filter.name": template_name, "limit": 10},
                     headers={"X-API-Key": api_key},
                 )
-                if _tpl_resp.status_code == 200:
-                    _tpl_data = _tpl_resp.json()
-                    _tpl_items = _tpl_data.get("items", [])
-                    for _tpl in _tpl_items:
-                        logger.info(f"📋 TEMPLATE DETAIL: name={_tpl.get('name')} lang={_tpl.get('language')} status={_tpl.get('status')} components={_tpl.get('components')}")
-        except Exception as _diag_err:
-            logger.warning(f"⚠️ Template diagnostic fetch failed: {_diag_err}")
+                if resp.status_code == 200:
+                    items = resp.json().get("items", [])
+                    # Find the APPROVED template
+                    for tpl in items:
+                        if tpl.get("status") == "APPROVED" and tpl.get("name") == template_name:
+                            real_lang = tpl.get("language")
+                            tpl_components = tpl.get("components", [])
+                            logger.info(f"📋 Template found: lang={real_lang} components={tpl_components}")
+                            break
+        except Exception as diag_err:
+            logger.warning(f"⚠️ Template fetch failed: {diag_err}")
 
-        # Try configured language first, then fallbacks (templates may be registered in en, es, es_AR)
-        _langs_to_try = [language_code]
-        for _fallback_lang in ["en", "en_US", "es_AR", "es"]:
-            if _fallback_lang not in _langs_to_try:
-                _langs_to_try.append(_fallback_lang)
+        if not real_lang:
+            logger.error(f"❌ Template '{template_name}' not found in YCloud API (no APPROVED version)")
+            return False
 
-        _send_ok = False
-        import httpx as _httpx
+        # Step 2: Build components matching the EXACT template structure
+        # Count variables in each component type
+        header_var_count = 0
+        body_var_count = 0
+        for comp in (tpl_components or []):
+            comp_type = comp.get("type", "").upper()
+            text = comp.get("text", "")
+            # Count {{var}} placeholders
+            import re
+            var_count = len(re.findall(r'\{\{[^}]+\}\}', text))
+            if comp_type == "HEADER":
+                header_var_count = var_count
+            elif comp_type == "BODY":
+                body_var_count = var_count
 
-        # Try each language, and for each language try with params then without
-        for _try_lang in _langs_to_try:
-            for _try_components in [components, []]:
-                try:
-                    await yc.send_template(
-                        to=phone,
-                        template_name=template_name,
-                        language_code=_try_lang,
-                        components=_try_components if _try_components else None,
-                    )
-                    logger.info(f"✅ Template '{template_name}' sent to {phone} (lang={_try_lang}, params={len(_try_components) if _try_components else 0})")
-                    _send_ok = True
-                    break
-                except _httpx.HTTPStatusError as _http_err:
-                    _resp_text = _http_err.response.text if hasattr(_http_err, 'response') else ""
-                    _status = _http_err.response.status_code
-                    if _status == 403 and ("TEMPLATE" in _resp_text or "template" in _resp_text.lower()):
-                        logger.info(f"📋 Template '{template_name}' not found with lang={_try_lang}, trying next lang...")
-                        break  # Break inner loop, try next language
-                    if _status == 400:
-                        logger.info(f"📋 Template '{template_name}' lang={_try_lang} params error, trying without params...")
-                        continue  # Try without params
-                    raise
-                except Exception:
-                    raise
-            if _send_ok:
-                break
+        logger.info(f"📋 Template vars: header={header_var_count} body={body_var_count}")
 
-        if not _send_ok:
-            raise Exception(f"Template '{template_name}' failed in all combinations: langs={_langs_to_try}")
+        # Build the components array based on actual template structure
+        # All values are stripped to avoid Meta rejecting whitespace
+        all_values = [str(v).strip() for v in
+                      [p.get("text", "") for p in (components[0].get("parameters", []) if components else [])]
+                      + [p.get("text", "") for p in (components[1].get("parameters", []) if len(components) > 1 else [])]]
+
+        # If we built header+body separately, flatten to get all values in order
+        if not all_values:
+            # Fallback: extract from the original components
+            for comp in components:
+                for p in comp.get("parameters", []):
+                    all_values.append(str(p.get("text", "")).strip())
+
+        send_components = []
+        idx = 0
+        if header_var_count > 0:
+            header_params = [{"type": "text", "text": all_values[i]} for i in range(idx, min(idx + header_var_count, len(all_values)))]
+            send_components.append({"type": "header", "parameters": header_params})
+            idx += header_var_count
+        if body_var_count > 0:
+            body_params = [{"type": "text", "text": all_values[i]} for i in range(idx, min(idx + body_var_count, len(all_values)))]
+            send_components.append({"type": "body", "parameters": body_params})
+
+        logger.info(f"📤 Sending template: lang={real_lang} components={send_components}")
+
+        # Step 3: Send ONCE with the correct language and components
+        yc = YCloudClient(api_key=api_key, business_number=business_number)
+        try:
+            await yc.send_template(
+                to=phone,
+                template_name=template_name,
+                language_code=real_lang,
+                components=send_components if send_components else None,
+            )
+            logger.info(f"✅ Template '{template_name}' sent to {phone} (lang={real_lang})")
+        except httpx.HTTPStatusError as http_err:
+            # Log the FULL error response for debugging
+            try:
+                err_json = http_err.response.json()
+                logger.error(f"❌ Template send error FULL: {err_json}")
+            except Exception:
+                logger.error(f"❌ Template send error: {http_err.response.text}")
+            return False
 
         # Persist in chat_conversations + chat_messages so it appears in the UI
         try:

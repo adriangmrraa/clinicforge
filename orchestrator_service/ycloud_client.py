@@ -148,7 +148,6 @@ class YCloudClient:
                 "name": template_name,
                 "language": {
                     "code": language_code,
-                    "policy": "deterministic",
                 },
             },
         }

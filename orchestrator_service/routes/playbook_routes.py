@@ -256,19 +256,14 @@ async def send_reminders_now(
                 template_name = rule["ycloud_template_name"]
                 template_lang = rule.get("ycloud_template_lang") or "es"
 
-                var_map = {
-                    "nombre_paciente": patient_name,
-                    "dia_semana": day_of_week,
-                    "fecha_turno": formatted_date,
-                    "hora_turno": formatted_time,
-                }
-                # Template: HEADER(1 text var) + BODY(3 text vars) — separate components per YCloud docs
+                # Pass all variable values in order — _send_template will fetch the real
+                # template structure from YCloud API and build correct components
                 components = [
-                    {"type": "header", "parameters": [{"type": "text", "text": var_map.get("nombre_paciente", "")}]},
                     {"type": "body", "parameters": [
-                        {"type": "text", "text": var_map.get("dia_semana", "")},
-                        {"type": "text", "text": var_map.get("fecha_turno", "")},
-                        {"type": "text", "text": var_map.get("hora_turno", "")},
+                        {"type": "text", "text": str(patient_name).strip()},
+                        {"type": "text", "text": str(day_of_week).strip()},
+                        {"type": "text", "text": str(formatted_date).strip()},
+                        {"type": "text", "text": str(formatted_time).strip()},
                     ]},
                 ]
 
