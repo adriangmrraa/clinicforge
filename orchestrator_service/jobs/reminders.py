@@ -32,7 +32,14 @@ async def send_appointment_reminders():
     try:
         from db import db
 
-        tomorrow = date.today() + timedelta(days=1)
+        # Use Argentina timezone for "tomorrow" (server runs in UTC)
+        try:
+            from zoneinfo import ZoneInfo
+            _ar_tz = ZoneInfo("America/Argentina/Buenos_Aires")
+            today_local = datetime.now(_ar_tz).date()
+        except Exception:
+            today_local = date.today()
+        tomorrow = today_local + timedelta(days=1)
         tomorrow_start = datetime.combine(tomorrow, datetime.min.time())
         tomorrow_end = datetime.combine(tomorrow, datetime.max.time())
 

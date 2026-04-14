@@ -154,7 +154,15 @@ async def send_reminders_now(
     from datetime import datetime, timedelta, date as date_type
     import json as _json
 
-    tomorrow = date_type.today() + timedelta(days=1)
+    # Use tenant timezone for "tomorrow" calculation (server is UTC)
+    try:
+        from services.tz_resolver import get_tenant_tz
+        _tz = await get_tenant_tz(tenant_id)
+    except Exception:
+        from zoneinfo import ZoneInfo
+        _tz = ZoneInfo("America/Argentina/Buenos_Aires")
+    today_local = datetime.now(_tz).date()
+    tomorrow = today_local + timedelta(days=1)
     tomorrow_start = datetime.combine(tomorrow, datetime.min.time())
     tomorrow_end = datetime.combine(tomorrow, datetime.max.time())
 
