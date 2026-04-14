@@ -286,32 +286,37 @@ async def _send_template(
 
         _send_ok = False
         import httpx as _httpx
+
+        # Try each language, and for each language try with params then without
         for _try_lang in _langs_to_try:
-            try:
-                await yc.send_template(
-                    to=phone,
-                    template_name=template_name,
-                    language_code=_try_lang,
-                    components=components,
-                )
-                logger.info(f"✅ Template '{template_name}' sent to {phone} (lang={_try_lang})")
-                _send_ok = True
+            for _try_components in [components, []]:
+                try:
+                    await yc.send_template(
+                        to=phone,
+                        template_name=template_name,
+                        language_code=_try_lang,
+                        components=_try_components if _try_components else None,
+                    )
+                    logger.info(f"✅ Template '{template_name}' sent to {phone} (lang={_try_lang}, params={len(_try_components) if _try_components else 0})")
+                    _send_ok = True
+                    break
+                except _httpx.HTTPStatusError as _http_err:
+                    _resp_text = _http_err.response.text if hasattr(_http_err, 'response') else ""
+                    _status = _http_err.response.status_code
+                    if _status == 403 and ("TEMPLATE" in _resp_text or "template" in _resp_text.lower()):
+                        logger.info(f"📋 Template '{template_name}' not found with lang={_try_lang}, trying next lang...")
+                        break  # Break inner loop, try next language
+                    if _status == 400:
+                        logger.info(f"📋 Template '{template_name}' lang={_try_lang} params error, trying without params...")
+                        continue  # Try without params
+                    raise
+                except Exception:
+                    raise
+            if _send_ok:
                 break
-            except _httpx.HTTPStatusError as _http_err:
-                _resp_text = _http_err.response.text if hasattr(_http_err, 'response') else ""
-                if _http_err.response.status_code == 403 and ("TEMPLATE" in _resp_text or "template" in _resp_text.lower()):
-                    logger.info(f"📋 Template '{template_name}' not found with lang={_try_lang}, trying next...")
-                    continue
-                raise
-            except Exception as _lang_err:
-                _err_str = str(_lang_err)
-                if "403" in _err_str and ("template" in _err_str.lower() or "TEMPLATE" in _err_str):
-                    logger.info(f"📋 Template '{template_name}' not found with lang={_try_lang}, trying next...")
-                    continue
-                raise
 
         if not _send_ok:
-            raise Exception(f"Template '{template_name}' not found in any language: {_langs_to_try}")
+            raise Exception(f"Template '{template_name}' failed in all combinations: langs={_langs_to_try}")
 
         # Persist in chat_conversations + chat_messages so it appears in the UI
         try:
