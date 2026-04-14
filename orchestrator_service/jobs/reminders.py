@@ -338,21 +338,15 @@ async def _send_template(
             for p in comp.get("parameters", []):
                 all_values.append(str(p.get("text", "")).strip())
 
-        # Build components: header params separate from body params, NO parameter_name
-        # Meta requires header and body as separate components with correct param counts
-        send_components = []
-        idx = 0
-        for comp in (tpl_components or []):
-            comp_type = comp.get("type", "").upper()
-            text = comp.get("text", "")
-            var_count = len(re.findall(r'\{\{[^}]+\}\}', text))
-            if var_count > 0 and comp_type in ("HEADER", "BODY"):
-                params = []
-                for _ in range(var_count):
-                    val = all_values[idx] if idx < len(all_values) else ""
-                    params.append({"type": "text", "text": val})
-                    idx += 1
-                send_components.append({"type": comp_type.lower(), "parameters": params})
+        # Build body component with all 4 named parameters (no header)
+        send_components = [
+            {"type": "body", "parameters": [
+                {"type": "text", "text": all_values[0] if len(all_values) > 0 else "", "parameter_name": "nombre_paciente"},
+                {"type": "text", "text": all_values[1] if len(all_values) > 1 else "", "parameter_name": "dia_semana"},
+                {"type": "text", "text": all_values[2] if len(all_values) > 2 else "", "parameter_name": "fecha_turno"},
+                {"type": "text", "text": all_values[3] if len(all_values) > 3 else "", "parameter_name": "hora_turno"},
+            ]}
+        ]
 
         logger.info(f"📤 Sending template: lang={real_lang} components={send_components}")
 
