@@ -277,13 +277,33 @@ async def _send_template(
         logger.info(f"📱 Reminder using from_number={business_number} for tenant {tenant_id}")
 
         yc = YCloudClient(api_key=api_key, business_number=business_number)
-        await yc.send_template(
-            to=phone,
-            template_name=template_name,
-            language_code=language_code,
-            components=components,
-        )
-        logger.info(f"✅ Template '{template_name}' sent to {phone} (tenant {tenant_id})")
+
+        # Try configured language first, then fallbacks (templates may be registered in en, es, es_AR)
+        _langs_to_try = [language_code]
+        for _fallback_lang in ["en", "es_AR", "es"]:
+            if _fallback_lang not in _langs_to_try:
+                _langs_to_try.append(_fallback_lang)
+
+        _send_ok = False
+        for _try_lang in _langs_to_try:
+            try:
+                await yc.send_template(
+                    to=phone,
+                    template_name=template_name,
+                    language_code=_try_lang,
+                    components=components,
+                )
+                logger.info(f"✅ Template '{template_name}' sent to {phone} (lang={_try_lang})")
+                _send_ok = True
+                break
+            except Exception as _lang_err:
+                if "TEMPLATE_UNAVAILABLE" in str(_lang_err) or "not found" in str(_lang_err).lower():
+                    logger.info(f"📋 Template '{template_name}' not found with lang={_try_lang}, trying next...")
+                    continue
+                raise  # Re-raise non-template errors
+
+        if not _send_ok:
+            raise Exception(f"Template '{template_name}' not found in any language: {_langs_to_try}")
 
         # Persist in chat_conversations + chat_messages so it appears in the UI
         try:
@@ -299,13 +319,13 @@ async def _send_template(
             if conv:
                 conv_id = conv["id"]
                 await _db.pool.execute(
-                    "UPDATE chat_conversations SET last_message = $1, updated_at = NOW() WHERE id = $2",
+                    "UPDATE chat_conversations SET last_message_preview = $1, updated_at = NOW() WHERE id = $2",
                     f"[Recordatorio: {template_name}]", conv_id,
                 )
             else:
                 conv_id = _uuid.uuid4()
                 await _db.pool.execute(
-                    "INSERT INTO chat_conversations (id, tenant_id, channel, provider, external_user_id, display_name, last_message, status, updated_at) VALUES ($1, $2, 'whatsapp', 'ycloud', $3, $4, $5, 'active', NOW())",
+                    "INSERT INTO chat_conversations (id, tenant_id, channel, provider, external_user_id, display_name, last_message_preview, status, updated_at) VALUES ($1, $2, 'whatsapp', 'ycloud', $3, $4, $5, 'active', NOW())",
                     conv_id, tenant_id, phone, patient_name or None, f"[Recordatorio: {template_name}]",
                 )
 
@@ -376,13 +396,13 @@ async def _send_text(tenant_id: int, phone: str, message: str, patient_name: str
             if conv:
                 conv_id = conv["id"]
                 await db.pool.execute(
-                    "UPDATE chat_conversations SET last_message = $1, updated_at = NOW() WHERE id = $2",
+                    "UPDATE chat_conversations SET last_message_preview = $1, updated_at = NOW() WHERE id = $2",
                     message[:200], conv_id,
                 )
             else:
                 conv_id = _uuid.uuid4()
                 await db.pool.execute(
-                    "INSERT INTO chat_conversations (id, tenant_id, channel, provider, external_user_id, display_name, last_message, status, updated_at) VALUES ($1, $2, 'whatsapp', 'ycloud', $3, $4, $5, 'active', NOW())",
+                    "INSERT INTO chat_conversations (id, tenant_id, channel, provider, external_user_id, display_name, last_message_preview, status, updated_at) VALUES ($1, $2, 'whatsapp', 'ycloud', $3, $4, $5, 'active', NOW())",
                     conv_id, tenant_id, phone, patient_name or None, message[:200],
                 )
 
@@ -418,6 +438,15 @@ async def _log_reminder(
             meta["patient_name"] = patient_name
 
         _status = str(status) if status else 'unknown'
+        # rule_id may be a playbook ID (not in automation_rules) — validate FK exists
+        _valid_rule_id = None
+        if rule_id:
+            _exists = await db.pool.fetchval(
+                "SELECT id FROM automation_rules WHERE id = $1", rule_id
+            )
+            if _exists:
+                _valid_rule_id = rule_id
+
         await db.pool.execute("""
             INSERT INTO automation_logs (
                 tenant_id, automation_rule_id, rule_name, trigger_type,
@@ -429,7 +458,7 @@ async def _log_reminder(
                 $3, $4, 'whatsapp', 'hsm', $5, $6::varchar, $7, $8,
                 $9, $10, $11::jsonb,
                 NOW(), CASE WHEN $6::varchar = 'sent' THEN NOW() ELSE NULL END)
-        """, tenant_id, rule_id, patient_name, phone,
+        """, tenant_id, _valid_rule_id, patient_name, phone,
             (message_preview or "")[:200], _status, skip_reason, error_detail,
             patient_id, str(appointment_id) if appointment_id else None,
             _json.dumps(meta) if meta else '{}')
