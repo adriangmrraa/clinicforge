@@ -203,6 +203,15 @@ async def send_reminders_now(
         try:
             patient_name = apt["first_name"] or "paciente"
             apt_time = apt["appointment_datetime"]
+            # Convert to tenant timezone for correct display
+            try:
+                from services.tz_resolver import get_tenant_tz
+                _tz = await get_tenant_tz(tenant_id)
+            except Exception:
+                from zoneinfo import ZoneInfo
+                _tz = ZoneInfo("America/Argentina/Buenos_Aires")
+            if apt_time.tzinfo is not None:
+                apt_time = apt_time.astimezone(_tz)
             formatted_time = apt_time.strftime("%H:%M")
             formatted_date = apt_time.strftime("%d/%m")
             day_of_week = _DAYS_ES[apt_time.weekday()]

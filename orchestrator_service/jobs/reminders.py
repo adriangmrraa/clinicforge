@@ -99,12 +99,23 @@ async def send_appointment_reminders():
 
                 rule = _rule_cache.get(tenant_id)
 
-                # Build variables
+                # Build variables — convert to tenant timezone for display
                 patient_name = apt["first_name"] or "paciente"
                 apt_time = apt["appointment_datetime"]
-                formatted_time = apt_time.strftime("%H:%M")
-                formatted_date = apt_time.strftime("%d/%m")
-                day_of_week = _DAYS_ES[apt_time.weekday()]
+                try:
+                    from services.tz_resolver import get_tenant_tz
+                    _tz = await get_tenant_tz(tenant_id)
+                except Exception:
+                    from zoneinfo import ZoneInfo
+                    _tz = ZoneInfo("America/Argentina/Buenos_Aires")
+                # Convert to local time if naive or UTC
+                if apt_time.tzinfo is None:
+                    apt_time_local = apt_time  # Assume already local if naive
+                else:
+                    apt_time_local = apt_time.astimezone(_tz)
+                formatted_time = apt_time_local.strftime("%H:%M")
+                formatted_date = apt_time_local.strftime("%d/%m")
+                day_of_week = _DAYS_ES[apt_time_local.weekday()]
 
                 sent = False
                 message_preview = ""
