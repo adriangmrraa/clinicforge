@@ -188,11 +188,7 @@ async def send_appointment_reminders():
                     for var_name in default_var_order:
                         parameters.append({"type": "text", "text": var_map.get(var_name, "")})
 
-                    components = [
-                        {"type": "body", "parameters": parameters},
-                        {"type": "button", "sub_type": "quick_reply", "index": 0, "parameters": [{"type": "payload", "payload": "CONFIRM_APPOINTMENT"}]},
-                        {"type": "button", "sub_type": "quick_reply", "index": 1, "parameters": [{"type": "payload", "payload": "RESCHEDULE_APPOINTMENT"}]},
-                    ]
+                    components = [{"type": "body", "parameters": parameters}]
 
                     sent = await _send_template(
                         tenant_id, apt["phone_number"],
