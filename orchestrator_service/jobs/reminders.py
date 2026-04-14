@@ -200,7 +200,7 @@ async def send_appointment_reminders():
                             f"Hola {patient_name}, te recordamos tu turno de mañana "
                             f"a las {formatted_time}. ¿Nos confirmás tu asistencia?"
                         )
-                    sent = await _send_text(tenant_id, apt["phone_number"], message)
+                    sent = await _send_text(tenant_id, apt["phone_number"], message, patient_name=f"{apt['first_name'] or ''} {apt.get('last_name') or ''}".strip())
                     message_preview = message
 
                 if sent:
@@ -322,32 +322,12 @@ async def _send_template(
         return False
 
 
-async def _send_text(tenant_id: int, phone: str, message: str) -> bool:
-    """Send a text message using ResponseSender (conversation-aware) or YCloud direct."""
+async def _send_text(tenant_id: int, phone: str, message: str, patient_name: str = "") -> bool:
+    """Send a text message via YCloud and persist in chat_messages."""
     try:
         from db import db
-
-        conv = await db.pool.fetchrow(
-            "SELECT id, provider, channel, external_account_id, external_chatwoot_id "
-            "FROM chat_conversations WHERE tenant_id = $1 AND external_user_id = $2 "
-            "ORDER BY updated_at DESC LIMIT 1",
-            tenant_id, phone,
-        )
-
-        if conv:
-            from services.response_sender import ResponseSender
-            await ResponseSender.send_sequence(
-                tenant_id=tenant_id,
-                external_user_id=phone,
-                conversation_id=str(conv["id"]),
-                provider=conv.get("provider") or "ycloud",
-                channel=conv.get("channel") or "whatsapp",
-                account_id=str(conv.get("external_account_id") or ""),
-                cw_conv_id=str(conv.get("external_chatwoot_id") or ""),
-                messages_text=message,
-            )
-            return True
-
+        import uuid as _uuid
+        import json as _json
         from core.credentials import get_tenant_credential, YCLOUD_API_KEY
         from ycloud_client import YCloudClient
 
@@ -356,7 +336,7 @@ async def _send_text(tenant_id: int, phone: str, message: str) -> bool:
             logger.warning(f"⚠️ No YCloud API key for tenant {tenant_id}")
             return False
 
-        # Use bot_phone_number from tenants (same as response_sender)
+        # Use bot_phone_number from tenants
         business_number = await db.pool.fetchval(
             "SELECT bot_phone_number FROM tenants WHERE id = $1", tenant_id
         )
@@ -364,8 +344,37 @@ async def _send_text(tenant_id: int, phone: str, message: str) -> bool:
             from core.credentials import YCLOUD_WHATSAPP_NUMBER
             business_number = await get_tenant_credential(tenant_id, YCLOUD_WHATSAPP_NUMBER)
 
+        # Send via YCloud
         yc = YCloudClient(api_key=api_key, business_number=business_number)
-        await yc.send_text_message(to=phone, text=message)
+        await yc.send_text_message(to=phone, text=message, from_number=business_number)
+
+        # Persist: upsert conversation + insert message
+        try:
+            conv = await db.pool.fetchrow(
+                "SELECT id FROM chat_conversations WHERE tenant_id = $1 AND external_user_id = $2 ORDER BY updated_at DESC LIMIT 1",
+                tenant_id, phone,
+            )
+            if conv:
+                conv_id = conv["id"]
+                await db.pool.execute(
+                    "UPDATE chat_conversations SET last_message = $1, updated_at = NOW() WHERE id = $2",
+                    message[:200], conv_id,
+                )
+            else:
+                conv_id = _uuid.uuid4()
+                await db.pool.execute(
+                    "INSERT INTO chat_conversations (id, tenant_id, channel, provider, external_user_id, display_name, last_message, status, updated_at) VALUES ($1, $2, 'whatsapp', 'ycloud', $3, $4, $5, 'active', NOW())",
+                    conv_id, tenant_id, phone, patient_name or None, message[:200],
+                )
+
+            await db.pool.execute(
+                "INSERT INTO chat_messages (tenant_id, conversation_id, role, content, from_number, platform_metadata) VALUES ($1, $2, 'assistant', $3, $4, $5::jsonb)",
+                tenant_id, conv_id, message, phone,
+                _json.dumps({"source": "reminder_text"}),
+            )
+        except Exception as _p:
+            logger.warning(f"⚠️ Reminder text persist failed (non-blocking): {_p}")
+
         return True
 
     except Exception as e:

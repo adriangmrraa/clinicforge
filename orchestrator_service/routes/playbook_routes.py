@@ -264,10 +264,10 @@ async def send_reminders_now(
                     message = message.replace("{{appointment_date}}", formatted_date)
                 else:
                     message = f"Hola {patient_name}, te recordamos tu turno de mañana a las {formatted_time}. Nos confirmás tu asistencia?"
-                sent = await _send_text(tenant_id, apt["phone_number"], message)
+                full_name = f"{apt['first_name'] or ''} {apt.get('last_name') or ''}".strip()
+                sent = await _send_text(tenant_id, apt["phone_number"], message, patient_name=full_name)
 
             # Build message preview for logs
-            full_name = f"{apt['first_name'] or ''} {apt.get('last_name') or ''}".strip()
             msg_preview = f"[HSM:{rule.get('ycloud_template_name', '')}] {full_name} - {day_of_week} {formatted_date} {formatted_time}" if sent and rule and rule.get("message_type") == "hsm" else (message if not sent else "")
 
             if sent:
