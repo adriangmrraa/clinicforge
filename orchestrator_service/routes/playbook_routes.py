@@ -282,17 +282,11 @@ async def send_reminders_now(
                     used_template = True
                     message = f"[HSM:{template_name}]"
 
-            # Fallback: free text
+            # NO fallback to free text — only send if template succeeds
             if not sent:
-                from jobs.reminders import _send_text
-                if rule and rule.get("free_text_message"):
-                    message = rule["free_text_message"]
-                    message = message.replace("{{first_name}}", patient_name)
-                    message = message.replace("{{appointment_time}}", formatted_time)
-                    message = message.replace("{{appointment_date}}", formatted_date)
-                else:
-                    message = f"Hola {patient_name}, te recordamos tu turno de mañana a las {formatted_time}. Nos confirmás tu asistencia?"
-                sent = await _send_text(tenant_id, apt["phone_number"], message, patient_name=full_name)
+                logger.warning(f"⚠️ Template failed for {full_name} ({apt['phone_number']}), skipping (no free text fallback)")
+                skip_count += 1
+                continue
 
             msg_preview = f"[HSM:{rule.get('ycloud_template_name', '')}] {full_name} - {day_of_week} {formatted_date} {formatted_time}" if used_template else message[:200]
 
