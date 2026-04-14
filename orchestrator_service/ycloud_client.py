@@ -148,7 +148,6 @@ class YCloudClient:
                 "name": template_name,
                 "language": {
                     "code": language_code,
-                    "policy": "deterministic",
                 },
             },
         }
@@ -156,6 +155,9 @@ class YCloudClient:
             payload["template"]["components"] = components
         if sender:
             payload["from"] = sender
+
+        import json as _json
+        logger.info(f"📤 TEMPLATE PAYLOAD: {_json.dumps(payload, ensure_ascii=False)[:500]}")
 
         async with httpx.AsyncClient() as client:
             try:
