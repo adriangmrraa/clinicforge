@@ -182,7 +182,7 @@ async def send_appointment_reminders():
                             pass
 
                     # Build components list ordered by variable position
-                    # Template structure: HEADER(nombre_paciente) + BODY(dia_semana, fecha_turno, hora_turno)
+                    # Template: HEADER(1 text var) + BODY(3 text vars) — separate components per YCloud docs
                     components = [
                         {"type": "header", "parameters": [{"type": "text", "text": var_map.get("nombre_paciente", "")}]},
                         {"type": "body", "parameters": [
@@ -299,7 +299,7 @@ async def _send_template(
 
         # Try configured language first, then fallbacks (templates may be registered in en, es, es_AR)
         _langs_to_try = [language_code]
-        for _fallback_lang in ["en", "es_AR", "es"]:
+        for _fallback_lang in ["en", "en_US", "es_AR", "es"]:
             if _fallback_lang not in _langs_to_try:
                 _langs_to_try.append(_fallback_lang)
 

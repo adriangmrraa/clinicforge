@@ -262,7 +262,7 @@ async def send_reminders_now(
                     "fecha_turno": formatted_date,
                     "hora_turno": formatted_time,
                 }
-                # Template structure: HEADER(1 var) + BODY(3 vars) + BUTTONS(static)
+                # Template: HEADER(1 text var) + BODY(3 text vars) — separate components per YCloud docs
                 components = [
                     {"type": "header", "parameters": [{"type": "text", "text": var_map.get("nombre_paciente", "")}]},
                     {"type": "body", "parameters": [
