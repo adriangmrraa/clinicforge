@@ -285,6 +285,7 @@ async def _send_template(
                 _langs_to_try.append(_fallback_lang)
 
         _send_ok = False
+        import httpx as _httpx
         for _try_lang in _langs_to_try:
             try:
                 await yc.send_template(
@@ -296,11 +297,18 @@ async def _send_template(
                 logger.info(f"✅ Template '{template_name}' sent to {phone} (lang={_try_lang})")
                 _send_ok = True
                 break
-            except Exception as _lang_err:
-                if "TEMPLATE_UNAVAILABLE" in str(_lang_err) or "not found" in str(_lang_err).lower():
+            except _httpx.HTTPStatusError as _http_err:
+                _resp_text = _http_err.response.text if hasattr(_http_err, 'response') else ""
+                if _http_err.response.status_code == 403 and ("TEMPLATE" in _resp_text or "template" in _resp_text.lower()):
                     logger.info(f"📋 Template '{template_name}' not found with lang={_try_lang}, trying next...")
                     continue
-                raise  # Re-raise non-template errors
+                raise
+            except Exception as _lang_err:
+                _err_str = str(_lang_err)
+                if "403" in _err_str and ("template" in _err_str.lower() or "TEMPLATE" in _err_str):
+                    logger.info(f"📋 Template '{template_name}' not found with lang={_try_lang}, trying next...")
+                    continue
+                raise
 
         if not _send_ok:
             raise Exception(f"Template '{template_name}' not found in any language: {_langs_to_try}")
