@@ -182,13 +182,15 @@ async def send_appointment_reminders():
                             pass
 
                     # Build components list ordered by variable position
-                    # Default order matches confirmacion_asistencia template (4 vars)
-                    default_var_order = ["nombre_paciente", "dia_semana", "fecha_turno", "hora_turno"]
-                    parameters = []
-                    for var_name in default_var_order:
-                        parameters.append({"type": "text", "text": var_map.get(var_name, "")})
-
-                    components = [{"type": "body", "parameters": parameters}]
+                    # Template structure: HEADER(nombre_paciente) + BODY(dia_semana, fecha_turno, hora_turno)
+                    components = [
+                        {"type": "header", "parameters": [{"type": "text", "text": var_map.get("nombre_paciente", "")}]},
+                        {"type": "body", "parameters": [
+                            {"type": "text", "text": var_map.get("dia_semana", "")},
+                            {"type": "text", "text": var_map.get("fecha_turno", "")},
+                            {"type": "text", "text": var_map.get("hora_turno", "")},
+                        ]},
+                    ]
 
                     sent = await _send_template(
                         tenant_id, apt["phone_number"],

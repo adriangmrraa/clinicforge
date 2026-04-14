@@ -262,9 +262,15 @@ async def send_reminders_now(
                     "fecha_turno": formatted_date,
                     "hora_turno": formatted_time,
                 }
-                # Build body parameters only (buttons are static in the template)
-                parameters = [{"type": "text", "text": var_map.get(k, "")} for k in ["nombre_paciente", "dia_semana", "fecha_turno", "hora_turno"]]
-                components = [{"type": "body", "parameters": parameters}]
+                # Template structure: HEADER(1 var) + BODY(3 vars) + BUTTONS(static)
+                components = [
+                    {"type": "header", "parameters": [{"type": "text", "text": var_map.get("nombre_paciente", "")}]},
+                    {"type": "body", "parameters": [
+                        {"type": "text", "text": var_map.get("dia_semana", "")},
+                        {"type": "text", "text": var_map.get("fecha_turno", "")},
+                        {"type": "text", "text": var_map.get("hora_turno", "")},
+                    ]},
+                ]
 
                 sent = await _send_template(
                     tenant_id, apt["phone_number"], template_name, template_lang, components,
