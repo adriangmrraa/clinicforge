@@ -146,7 +146,10 @@ class YCloudClient:
             "type": "template",
             "template": {
                 "name": template_name,
-                "language": {"code": language_code},
+                "language": {
+                    "code": language_code,
+                    "policy": "deterministic",
+                },
             },
         }
         if components:
