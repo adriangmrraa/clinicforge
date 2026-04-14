@@ -182,8 +182,8 @@ async def send_appointment_reminders():
                             pass
 
                     # Build components list ordered by variable position
-                    # Default order: nombre_paciente, dia_semana, fecha_turno, hora_turno
-                    default_var_order = ["nombre_paciente", "dia_semana", "fecha_turno", "hora_turno"]
+                    # Default order matches confirmacion_asistencia template (3 vars)
+                    default_var_order = ["dia_semana", "fecha_turno", "hora_turno"]
                     parameters = []
                     for var_name in default_var_order:
                         parameters.append({"type": "text", "text": var_map.get(var_name, "")})
