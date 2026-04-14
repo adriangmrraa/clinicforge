@@ -348,14 +348,21 @@ async def _send_text(tenant_id: int, phone: str, message: str) -> bool:
             )
             return True
 
-        from core.credentials import get_tenant_credential, YCLOUD_API_KEY, YCLOUD_WHATSAPP_NUMBER
+        from core.credentials import get_tenant_credential, YCLOUD_API_KEY
         from ycloud_client import YCloudClient
 
         api_key = await get_tenant_credential(tenant_id, YCLOUD_API_KEY)
-        business_number = await get_tenant_credential(tenant_id, YCLOUD_WHATSAPP_NUMBER)
         if not api_key:
             logger.warning(f"⚠️ No YCloud API key for tenant {tenant_id}")
             return False
+
+        # Use bot_phone_number from tenants (same as response_sender)
+        business_number = await db.pool.fetchval(
+            "SELECT bot_phone_number FROM tenants WHERE id = $1", tenant_id
+        )
+        if not business_number:
+            from core.credentials import YCLOUD_WHATSAPP_NUMBER
+            business_number = await get_tenant_credential(tenant_id, YCLOUD_WHATSAPP_NUMBER)
 
         yc = YCloudClient(api_key=api_key, business_number=business_number)
         await yc.send_text_message(to=phone, text=message)
