@@ -246,6 +246,9 @@ async def send_reminders_now(
             day_of_week = _DAYS_ES[apt_time.weekday()]
 
             sent = False
+            full_name = f"{apt['first_name'] or ''} {apt.get('last_name') or ''}".strip()
+            message = ""
+            used_template = False
 
             # Try HSM template first
             if rule and rule.get("message_type") == "hsm" and rule.get("ycloud_template_name"):
@@ -264,7 +267,7 @@ async def send_reminders_now(
 
                 sent = await _send_template(
                     tenant_id, apt["phone_number"], template_name, template_lang, components,
-                    patient_name=f"{apt['first_name'] or ''} {apt.get('last_name') or ''}".strip(),
+                    patient_name=full_name,
                     appointment_info={
                         "treatment": apt.get("appointment_type") or "Consulta",
                         "date": formatted_date,
@@ -274,6 +277,9 @@ async def send_reminders_now(
                         "appointment_id": str(apt["appointment_id"]),
                     },
                 )
+                if sent:
+                    used_template = True
+                    message = f"[HSM:{template_name}]"
 
             # Fallback: free text
             if not sent:
@@ -285,11 +291,9 @@ async def send_reminders_now(
                     message = message.replace("{{appointment_date}}", formatted_date)
                 else:
                     message = f"Hola {patient_name}, te recordamos tu turno de mañana a las {formatted_time}. Nos confirmás tu asistencia?"
-                full_name = f"{apt['first_name'] or ''} {apt.get('last_name') or ''}".strip()
                 sent = await _send_text(tenant_id, apt["phone_number"], message, patient_name=full_name)
 
-            # Build message preview for logs
-            msg_preview = f"[HSM:{rule.get('ycloud_template_name', '')}] {full_name} - {day_of_week} {formatted_date} {formatted_time}" if sent and rule and rule.get("message_type") == "hsm" else (message if not sent else "")
+            msg_preview = f"[HSM:{rule.get('ycloud_template_name', '')}] {full_name} - {day_of_week} {formatted_date} {formatted_time}" if used_template else message[:200]
 
             if sent:
                 await db.pool.execute(
