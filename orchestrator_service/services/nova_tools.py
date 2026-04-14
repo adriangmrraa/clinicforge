@@ -6556,9 +6556,58 @@ _VOICE_ALLOWED_TOOLS: set = {
 }
 
 
+_META_TOOL_SCHEMA: Dict[str, Any] = {
+    "type": "function",
+    "name": "herramienta_avanzada",
+    "description": (
+        "Ejecuta cualquier herramienta avanzada que no esté cargada directamente. "
+        "Usá esta tool cuando necesites hacer algo que no podés con las tools disponibles: "
+        "generar PDFs, presupuestos, liquidaciones, CRUD de tablas, configuración, FAQs, "
+        "obras sociales, fichas digitales, reportes, plantillas masivas, acciones masivas, etc. "
+        "Pasá el nombre exacto de la herramienta y sus argumentos."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "tool_name": {
+                "type": "string",
+                "description": (
+                    "Nombre de la herramienta. Opciones: "
+                    "obtener_registros, actualizar_registro, crear_registro, contar_registros, "
+                    "consultar_datos, resumen_marketing, resumen_financiero, "
+                    "generar_ficha_digital, enviar_ficha_digital, enviar_pdf_telegram, "
+                    "generar_reporte_personalizado, "
+                    "ver_presupuesto_paciente, crear_presupuesto, agregar_item_presupuesto, "
+                    "generar_pdf_presupuesto, enviar_presupuesto_email, aprobar_presupuesto, "
+                    "sincronizar_turnos_presupuesto, "
+                    "editar_facturacion_turno, registrar_pago_plan, "
+                    "gestionar_usuarios, gestionar_obra_social, "
+                    "generar_pdf_liquidacion, enviar_liquidacion_email, "
+                    "ver_configuracion, actualizar_configuracion, "
+                    "crear_tratamiento, editar_tratamiento, completar_tratamiento, "
+                    "ver_faqs, eliminar_faq, actualizar_faq, "
+                    "buscar_en_base_conocimiento, consultar_obra_social, ver_reglas_derivacion, "
+                    "resumen_sedes, comparar_sedes, switch_sede, onboarding_status, "
+                    "listar_plantillas, enviar_plantilla, enviar_plantilla_masiva, accion_masiva, "
+                    "registrar_nota_clinica, ver_contexto_memorias, "
+                    "ver_memorias_paciente, agregar_memoria_paciente"
+                ),
+            },
+            "args": {
+                "type": "object",
+                "description": "Argumentos de la herramienta como objeto JSON. Consultá la descripción de cada tool para saber qué argumentos necesita.",
+            },
+        },
+        "required": ["tool_name"],
+    },
+}
+
+
 def nova_tools_for_voice() -> List[Dict[str, Any]]:
-    """Return flat-format tools filtered for Realtime API voice (reduced set for mini model)."""
-    return [t for t in NOVA_TOOLS_SCHEMA if t["name"] in _VOICE_ALLOWED_TOOLS]
+    """Return flat-format tools filtered for Realtime API voice (reduced set + meta-tool for the rest)."""
+    core = [t for t in NOVA_TOOLS_SCHEMA if t["name"] in _VOICE_ALLOWED_TOOLS]
+    core.append(_META_TOOL_SCHEMA)
+    return core
 
 
 def nova_tools_for_page(page: str = "telegram") -> List[Dict[str, Any]]:
@@ -6803,6 +6852,15 @@ async def execute_nova_tool(
         # N+1. Acción Masiva (Jarvis-style)
         elif name == "accion_masiva":
             return await _accion_masiva(args, tenant_id, user_role)
+
+        # Meta-tool: proxy for voice to access all 77 tools
+        elif name == "herramienta_avanzada":
+            inner_name = args.get("tool_name", "")
+            inner_args = args.get("args", {}) or {}
+            if not inner_name:
+                return "Necesito el nombre de la herramienta (tool_name)."
+            logger.info(f"🔧 NOVA meta-tool: {inner_name}({list(inner_args.keys())})")
+            return await execute_nova_tool(inner_name, inner_args, tenant_id, user_role, user_id)
 
         else:
             return f"Tool '{name}' no reconocida."
