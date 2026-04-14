@@ -338,14 +338,21 @@ async def _send_template(
             for p in comp.get("parameters", []):
                 all_values.append(str(p.get("text", "")).strip())
 
-        # YCloud sendDirectly may not support separate header/body components
-        # or parameter_name field. Send ALL params as positional body params.
-        send_components = [
-            {"type": "body", "parameters": [
-                {"type": "text", "text": all_values[i] if i < len(all_values) else ""}
-                for i in range(total_vars)
-            ]}
-        ]
+        # Build components: header params separate from body params, NO parameter_name
+        # Meta requires header and body as separate components with correct param counts
+        send_components = []
+        idx = 0
+        for comp in (tpl_components or []):
+            comp_type = comp.get("type", "").upper()
+            text = comp.get("text", "")
+            var_count = len(re.findall(r'\{\{[^}]+\}\}', text))
+            if var_count > 0 and comp_type in ("HEADER", "BODY"):
+                params = []
+                for _ in range(var_count):
+                    val = all_values[idx] if idx < len(all_values) else ""
+                    params.append({"type": "text", "text": val})
+                    idx += 1
+                send_components.append({"type": comp_type.lower(), "parameters": params})
 
         logger.info(f"📤 Sending template: lang={real_lang} components={send_components}")
 
