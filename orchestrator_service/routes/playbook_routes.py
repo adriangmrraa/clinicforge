@@ -191,15 +191,36 @@ async def send_reminders_now(
     if not appointments:
         return {"status": "ok", "message": "No hay turnos para mañana", "sent": 0, "total": 0}
 
-    # Load reminder rule
-    rule_row = await db.pool.fetchrow("""
-        SELECT id, is_active, message_type, free_text_message,
-               ycloud_template_name, ycloud_template_lang, ycloud_template_vars
-        FROM automation_rules
-        WHERE tenant_id = $1 AND trigger_type = 'appointment_reminder'
-        ORDER BY is_system DESC, created_at ASC LIMIT 1
+    # Load reminder config from V2 playbook (Escudo Anti-Ausencias) first, fallback to V1
+    rule = None
+    playbook_row = await db.pool.fetchrow("""
+        SELECT p.id as playbook_id, s.action_type, s.template_name, s.template_lang,
+               s.template_vars, s.message_text
+        FROM automation_playbooks p
+        JOIN automation_steps s ON s.playbook_id = p.id AND s.step_order = 0
+        WHERE p.tenant_id = $1 AND p.trigger_type = 'appointment_reminder' AND p.is_active = true
+        ORDER BY p.is_system DESC LIMIT 1
     """, tenant_id)
-    rule = dict(rule_row) if rule_row else None
+    if playbook_row:
+        rule = {
+            "id": playbook_row["playbook_id"],
+            "message_type": "hsm" if playbook_row["action_type"] == "send_template" else "free_text",
+            "ycloud_template_name": playbook_row["template_name"],
+            "ycloud_template_lang": playbook_row["template_lang"] or "es",
+            "ycloud_template_vars": playbook_row["template_vars"],
+            "free_text_message": playbook_row["message_text"],
+        }
+        logger.info(f"📋 Reminder config from playbook V2: action={playbook_row['action_type']} template={playbook_row['template_name']}")
+    else:
+        # Fallback to V1 automation_rules
+        rule_row = await db.pool.fetchrow("""
+            SELECT id, is_active, message_type, free_text_message,
+                   ycloud_template_name, ycloud_template_lang, ycloud_template_vars
+            FROM automation_rules
+            WHERE tenant_id = $1 AND trigger_type = 'appointment_reminder'
+            ORDER BY is_system DESC, created_at ASC LIMIT 1
+        """, tenant_id)
+        rule = dict(rule_row) if rule_row else None
 
     _DAYS_ES = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
 

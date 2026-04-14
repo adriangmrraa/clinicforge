@@ -84,21 +84,40 @@ async def send_appointment_reminders():
             try:
                 tenant_id = apt["tenant_id"]
 
-                # Load rule for tenant (cached)
+                # Load rule for tenant (cached) — V2 playbook first, V1 fallback
                 if tenant_id not in _rule_cache:
-                    rule_row = await db.pool.fetchrow("""
-                        SELECT id, is_active, message_type, free_text_message,
-                               ycloud_template_name, ycloud_template_lang,
-                               ycloud_template_vars,
-                               send_hour_min, send_hour_max
-                        FROM automation_rules
-                        WHERE tenant_id = $1
-                          AND trigger_type = 'appointment_reminder'
-                        ORDER BY is_system DESC, created_at ASC
-                        LIMIT 1
+                    # Try V2 playbook (Escudo Anti-Ausencias)
+                    pb_row = await db.pool.fetchrow("""
+                        SELECT p.id, p.is_active, s.action_type, s.template_name,
+                               s.template_lang, s.template_vars, s.message_text
+                        FROM automation_playbooks p
+                        JOIN automation_steps s ON s.playbook_id = p.id AND s.step_order = 0
+                        WHERE p.tenant_id = $1 AND p.trigger_type = 'appointment_reminder'
+                        ORDER BY p.is_system DESC LIMIT 1
                     """, tenant_id)
-                    _rule_cache[tenant_id] = dict(rule_row) if rule_row else None
-                    _active_cache[tenant_id] = bool(rule_row and rule_row["is_active"])
+                    if pb_row:
+                        _rule_cache[tenant_id] = {
+                            "id": pb_row["id"],
+                            "is_active": pb_row["is_active"],
+                            "message_type": "hsm" if pb_row["action_type"] == "send_template" else "free_text",
+                            "ycloud_template_name": pb_row["template_name"],
+                            "ycloud_template_lang": pb_row["template_lang"] or "es",
+                            "ycloud_template_vars": pb_row["template_vars"],
+                            "free_text_message": pb_row["message_text"],
+                        }
+                        _active_cache[tenant_id] = bool(pb_row["is_active"])
+                    else:
+                        # Fallback V1
+                        rule_row = await db.pool.fetchrow("""
+                            SELECT id, is_active, message_type, free_text_message,
+                                   ycloud_template_name, ycloud_template_lang,
+                                   ycloud_template_vars
+                            FROM automation_rules
+                            WHERE tenant_id = $1 AND trigger_type = 'appointment_reminder'
+                            ORDER BY is_system DESC, created_at ASC LIMIT 1
+                        """, tenant_id)
+                        _rule_cache[tenant_id] = dict(rule_row) if rule_row else None
+                        _active_cache[tenant_id] = bool(rule_row and rule_row["is_active"])
 
                 if not _active_cache.get(tenant_id, True):
                     skip_count += 1
