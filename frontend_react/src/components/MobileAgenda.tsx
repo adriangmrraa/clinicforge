@@ -234,7 +234,7 @@ export default function MobileAgenda({
 
     return (
         <div className="flex flex-col flex-1 min-h-0">
-            {/* View mode toggle */}
+            {/* View mode toggle + New appointment button */}
             <div className="flex items-center gap-1 px-4 pt-3 pb-2">
                 {views.map(v => {
                     const active = viewMode === v.id;
@@ -255,6 +255,12 @@ export default function MobileAgenda({
                         </button>
                     );
                 })}
+                <button
+                    onClick={() => onNewAppointment(selectedDate)}
+                    className="flex items-center justify-center w-9 h-9 rounded-lg bg-blue-600 hover:bg-blue-500 active:scale-90 shadow-md shadow-blue-600/20 transition-all duration-200 shrink-0"
+                >
+                    <Plus size={18} className="text-white" />
+                </button>
             </div>
 
             {/* Date Strip — only in day mode */}
@@ -517,13 +523,6 @@ export default function MobileAgenda({
                 onSaved={() => { setHolidayModal(null); onHolidaySave?.(); }}
             />
 
-            {/* FAB — New Appointment */}
-            <button
-                onClick={() => onNewAppointment(selectedDate)}
-                className="fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full bg-blue-600 hover:bg-blue-500 active:scale-90 shadow-lg shadow-blue-600/30 flex items-center justify-center transition-all duration-200"
-            >
-                <Plus size={24} className="text-white" />
-            </button>
         </div>
     );
 }

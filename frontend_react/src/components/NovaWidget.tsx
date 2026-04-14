@@ -194,6 +194,49 @@ export const NovaWidget: React.FC = () => {
   const currentPage = detectCurrentPage(location.pathname);
 
   // ============================================
+  // SMART FAB POSITIONING — auto-hide on scroll, page-aware offset
+  // ============================================
+  const [fabVisible, setFabVisible] = useState(true);
+  const scrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isMobileDevice = typeof window !== 'undefined' && window.innerWidth < 768;
+
+  useEffect(() => {
+    if (isOpen) return; // Don't hide when panel is open
+
+    let lastScrollY = window.scrollY;
+
+    const handleScroll = () => {
+      const currentY = window.scrollY;
+      const scrollingDown = currentY > lastScrollY && currentY > 50;
+      lastScrollY = currentY;
+
+      if (scrollingDown) {
+        setFabVisible(false);
+      }
+
+      // Show again after user stops scrolling
+      if (scrollTimerRef.current) clearTimeout(scrollTimerRef.current);
+      scrollTimerRef.current = setTimeout(() => setFabVisible(true), 1500);
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    // Also listen on main content areas (overflow-y-auto containers)
+    const containers = document.querySelectorAll('[class*="overflow-y-auto"]');
+    containers.forEach(el => el.addEventListener('scroll', handleScroll, { passive: true }));
+
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+      containers.forEach(el => el.removeEventListener('scroll', handleScroll));
+      if (scrollTimerRef.current) clearTimeout(scrollTimerRef.current);
+    };
+  }, [isOpen]);
+
+  // Show FAB immediately when panel closes
+  useEffect(() => {
+    if (!isOpen) setFabVisible(true);
+  }, [isOpen]);
+
+  // ============================================
   // DATA FETCHING
   // ============================================
 
@@ -1132,16 +1175,21 @@ export const NovaWidget: React.FC = () => {
         </div>
       )}
 
-      {/* Floating button */}
+      {/* Floating button — smart positioning per page */}
       {!isOpen && (
         <button
           onClick={() => setIsOpen(true)}
-          className="nova-btn fixed bottom-6 right-6 z-[9998] w-14 h-14 rounded-full bg-gradient-to-br from-violet-600 to-indigo-600 shadow-lg shadow-violet-500/25 flex items-center justify-center text-white hover:scale-110 active:scale-90 transition-all duration-200"
-          style={{ bottom: 'max(1.5rem, env(safe-area-inset-bottom))' }}
+          className={`nova-btn fixed z-[9998] w-12 h-12 lg:w-14 lg:h-14 rounded-full bg-gradient-to-br from-violet-600 to-indigo-600 shadow-lg shadow-violet-500/25 flex items-center justify-center text-white hover:scale-110 active:scale-90 transition-all duration-300 ${
+            fabVisible ? 'opacity-100 scale-100' : 'opacity-0 scale-75 pointer-events-none'
+          }`}
+          style={{
+            right: isMobileDevice ? '0.75rem' : '1.5rem',
+            bottom: isMobileDevice
+              ? `max(${currentPage === 'chats' ? '5.5rem' : '4.5rem'}, calc(env(safe-area-inset-bottom) + ${currentPage === 'chats' ? '5.5rem' : '4.5rem'}))`
+              : 'max(1.5rem, env(safe-area-inset-bottom))',
+          }}
         >
-          <Sparkles className="w-6 h-6 nova-icon" />
-          {/* Ping ring */}
-          <span className="absolute inset-0 rounded-full border-2 border-violet-400/40 animate-[novaPing_3s_ease-out_infinite]" />
+          <Sparkles className="w-5 h-5 lg:w-6 lg:h-6 nova-icon" />
           {alertCount > 0 && (
             <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center z-10">
               {alertCount > 9 ? '9+' : alertCount}

@@ -511,6 +511,40 @@ export default function AgendaView() {
     })),
   ];
 
+  // Dynamic slot time range — never hide appointments outside 08:00-20:00
+  const { dynamicSlotMin, dynamicSlotMax } = useMemo(() => {
+    const DEFAULT_MIN = 8; // 08:00
+    const DEFAULT_MAX = 20; // 20:00
+    let earliest = DEFAULT_MIN;
+    let latest = DEFAULT_MAX;
+
+    for (const apt of filteredAppointments) {
+      const d = new Date(apt.appointment_datetime);
+      const h = d.getHours();
+      const endH = apt.end_datetime
+        ? new Date(apt.end_datetime).getHours() + (new Date(apt.end_datetime).getMinutes() > 0 ? 1 : 0)
+        : h + 1;
+      if (h < earliest) earliest = h;
+      if (endH > latest) latest = endH;
+    }
+    for (const block of filteredBlocks) {
+      if (block.all_day) continue;
+      const sh = new Date(block.start_datetime).getHours();
+      const ehRaw = new Date(block.end_datetime);
+      const eh = ehRaw.getHours() + (ehRaw.getMinutes() > 0 ? 1 : 0);
+      if (sh < earliest) earliest = sh;
+      if (eh > latest) latest = eh;
+    }
+
+    // Clamp: never go below 00:00 or above 24:00, add 1h padding
+    const padMin = Math.max(0, earliest - 1);
+    const padMax = Math.min(24, latest + 1);
+    return {
+      dynamicSlotMin: `${String(padMin).padStart(2, '0')}:00:00`,
+      dynamicSlotMax: `${String(padMax).padStart(2, '0')}:00:00`,
+    };
+  }, [filteredAppointments, filteredBlocks]);
+
   // Map professionals to resources (professional user: only their column)
   const resources = useMemo(() => {
     const list = user?.role === 'professional' && user?.professional_id
@@ -1048,8 +1082,8 @@ export default function AgendaView() {
                   dateClick={handleDateClick}
                   eventClick={handleEventClick}
                   slotEventOverlap={false}
-                  slotMinTime="08:00:00"
-                  slotMaxTime="20:00:00"
+                  slotMinTime={dynamicSlotMin}
+                  slotMaxTime={dynamicSlotMax}
                   eventContent={(eventInfo) => <AppointmentCard {...eventInfo} />}
                   eventDidMount={(info) => {
                     const { eventType, source, patient_phone, professional_name, notes } = info.event.extendedProps;
