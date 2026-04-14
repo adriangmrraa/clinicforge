@@ -174,7 +174,7 @@ class YCloudClient:
             except httpx.HTTPStatusError as e:
                 logger.error(
                     f"ycloud_send_template_failed: to={to} template={template_name} "
-                    f"status={e.response.status_code} body={e.response.text[:200]}"
+                    f"status={e.response.status_code} body={e.response.text}"
                 )
                 raise
             except Exception as e:
