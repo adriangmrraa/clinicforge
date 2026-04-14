@@ -640,8 +640,7 @@ export default function ChatsView() {
         for (const file of selectedFiles) {
           const formData = new FormData();
           formData.append('file', file);
-          formData.append('tenant_id', selectedSession.tenant_id.toString());
-          const uploadRes = await api.post('/admin/chat/upload', formData, {
+          const uploadRes = await api.post(`/admin/chat/upload?tenant_id=${selectedSession.tenant_id}`, formData, {
             headers: { 'Content-Type': 'multipart/form-data' }
           });
           attachments.push(uploadRes.data); // { type, url, file_name }
