@@ -10468,7 +10468,9 @@ async def _nova_realtime_handler(websocket: WebSocket, session_id: str):
             logger.info(
                 f"🎙️ NOVA: session.update sent with {len(_voice_tools)} tools: {tool_names}"
             )
-            logger.info(f"🎙️ NOVA: prompt={len(config.get('system_prompt', ''))} chars")
+            prompt_len = len(config.get("system_prompt", ""))
+            logger.info(f"🎙️ NOVA: prompt={prompt_len} chars, modalities=[text,audio], voice={os.getenv('NOVA_VOICE', 'coral')}")
+            logger.info(f"🎙️ NOVA: Waiting for OpenAI events...")
 
             async def client_to_openai():
                 """Forward browser audio/text to OpenAI."""
@@ -10487,7 +10489,9 @@ async def _nova_realtime_handler(websocket: WebSocket, session_id: str):
                             )
                         elif "text" in data and data["text"]:
                             msg = json_mod.loads(data["text"])
+                            logger.info(f"🎙️ NOVA CLIENT→OPENAI text: type={msg.get('type')}")
                             if msg.get("type") == "text_message":
+                                logger.info(f"🎙️ NOVA TEXT INPUT: '{msg['text'][:100]}'")
                                 await openai_ws.send(
                                     json_mod.dumps(
                                         {
@@ -10508,8 +10512,10 @@ async def _nova_realtime_handler(websocket: WebSocket, session_id: str):
                                 await openai_ws.send(
                                     json_mod.dumps({"type": "response.create"})
                                 )
-                except Exception:
-                    pass
+                            else:
+                                logger.warning(f"🎙️ NOVA CLIENT: Unknown text msg type: {msg.get('type')}")
+                except Exception as e:
+                    logger.error(f"🎙️ NOVA client_to_openai ERROR: {e}")
 
             async def openai_to_client():
                 """Forward OpenAI responses to browser."""
@@ -10524,6 +10530,7 @@ async def _nova_realtime_handler(websocket: WebSocket, session_id: str):
                             "response.audio_transcript.delta",
                             "input_audio_buffer.committed",
                             "input_audio_buffer.speech_stopped",
+                            "response.text.delta",
                         ):
                             extra = ""
                             if (
@@ -10531,6 +10538,7 @@ async def _nova_realtime_handler(websocket: WebSocket, session_id: str):
                                 or "function" in etype
                                 or "done" in etype
                                 or "session" in etype
+                                or "content_part" in etype
                             ):
                                 extra = f" {json_mod.dumps(event, ensure_ascii=False)[:300]}"
                             logger.info(f"🎙️ NOVA EVENT: {etype}{extra}")
@@ -10541,6 +10549,7 @@ async def _nova_realtime_handler(websocket: WebSocket, session_id: str):
                                 await websocket.send_bytes(base64.b64decode(audio_b64))
 
                         elif etype == "response.audio.done":
+                            logger.info("🎙️ NOVA: Audio response DONE — sending nova_audio_done to client")
                             await websocket.send_text(
                                 json_mod.dumps({"type": "nova_audio_done"})
                             )
@@ -10683,9 +10692,10 @@ async def _nova_realtime_handler(websocket: WebSocket, session_id: str):
                                 json_mod.dumps({"type": "response.create"})
                             )
 
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.error(f"🎙️ NOVA openai_to_client ERROR: {e}")
 
+            logger.info("🎙️ NOVA: Starting bidirectional bridge...")
             await asyncio.gather(client_to_openai(), openai_to_client())
 
     except Exception as e:
@@ -10756,6 +10766,7 @@ async def nova_voice_direct(websocket: WebSocket):
             system_prompt = build_nova_system_prompt(
                 clinic_name, page, user_role, tenant_id
             )
+            logger.info(f"🎙️ NOVA DIRECT: session={session_id} tenant={tenant_id} role={user_role} page={page} prompt={len(system_prompt)} chars")
 
             # Inject Engram persistent memories
             try:
