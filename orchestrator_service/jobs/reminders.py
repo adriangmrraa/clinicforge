@@ -322,44 +322,30 @@ async def _send_template(
 
         logger.info(f"📋 Template vars: header={header_var_count} body={body_var_count}")
 
-        # Build the components array with parameter_name (required by Meta for named templates)
-        # Extract variable names from template text using {{var_name}} pattern
-        header_var_names = []
-        body_var_names = []
+        # Count ALL variables across all components (header + body)
+        all_var_names = []
         for comp in (tpl_components or []):
-            comp_type = comp.get("type", "").upper()
             text = comp.get("text", "")
             var_names = re.findall(r'\{\{(\w+)\}\}', text)
-            if comp_type == "HEADER":
-                header_var_names = var_names
-            elif comp_type == "BODY":
-                body_var_names = var_names
+            all_var_names.extend(var_names)
 
-        logger.info(f"📋 Template var names: header={header_var_names} body={body_var_names}")
+        total_vars = len(all_var_names)
+        logger.info(f"📋 Template total vars: {total_vars} names={all_var_names}")
 
-        # Flatten all values from the input components
+        # Flatten all values from input components
         all_values = []
         for comp in (components or []):
             for p in comp.get("parameters", []):
                 all_values.append(str(p.get("text", "")).strip())
 
-        # Build send components with parameter_name field
-        send_components = []
-        idx = 0
-        if header_var_names:
-            header_params = []
-            for var_name in header_var_names:
-                val = all_values[idx] if idx < len(all_values) else ""
-                header_params.append({"type": "text", "text": val, "parameter_name": var_name})
-                idx += 1
-            send_components.append({"type": "header", "parameters": header_params})
-        if body_var_names:
-            body_params = []
-            for var_name in body_var_names:
-                val = all_values[idx] if idx < len(all_values) else ""
-                body_params.append({"type": "text", "text": val, "parameter_name": var_name})
-                idx += 1
-            send_components.append({"type": "body", "parameters": body_params})
+        # YCloud sendDirectly may not support separate header/body components
+        # or parameter_name field. Send ALL params as positional body params.
+        send_components = [
+            {"type": "body", "parameters": [
+                {"type": "text", "text": all_values[i] if i < len(all_values) else ""}
+                for i in range(total_vars)
+            ]}
+        ]
 
         logger.info(f"📤 Sending template: lang={real_lang} components={send_components}")
 
