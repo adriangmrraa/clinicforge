@@ -124,6 +124,11 @@ def _with_tenant_blocks(base_prompt: str, state: AgentState, specialist_name: st
     else:
         assembled = base_prompt
 
+    # Inject operational rules from state (loaded by graph.run_turn)
+    op_rules_block = state.get("operational_rules_block", "")
+    if op_rules_block:
+        extras.append(op_rules_block)
+
     if not extras:
         return assembled
     return assembled + "\n\n" + "\n\n".join(extras)

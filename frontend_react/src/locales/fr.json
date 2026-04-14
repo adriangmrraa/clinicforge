@@ -1085,6 +1085,24 @@
         "escalationMessagePlaceholder": "{primary} n'est pas disponible dans les prochains jours, mais nous pouvons coordonner avec {fallback}…",
         "escalationMessageHelp": "Utilisez {primary} et {fallback} comme placeholders. Si vide, le message par défaut est utilisé."
       }
+    },
+    "operational_rules": {
+      "title": "Règles opérationnelles",
+      "info_title": "Règles qui modifient le comportement de l'agent IA",
+      "info_desc": "Créez des règles temporaires ou stratégiques injectées automatiquement dans l'agent IA.",
+      "list_title": "Règles actives",
+      "add": "Nouvelle règle",
+      "create": "Créer règle",
+      "edit": "Modifier règle",
+      "empty": "Aucune règle opérationnelle configurée",
+      "empty_hint": "Les règles opérationnelles permettent d'ajuster le comportement de l'agent sans toucher au code.",
+      "field_name": "Nom de la règle",
+      "field_type": "Type de règle",
+      "field_desc": "Description",
+      "field_prompt": "Instruction pour l'agent",
+      "field_applies": "S'applique à",
+      "field_from": "Valide depuis",
+      "field_until": "Valide jusqu'à"
     }
   },
   "profile": {

@@ -499,6 +499,31 @@ class ProfessionalDerivationRule(Base):
     )
 
 
+class ClinicOperationalRule(Base):
+    """Temporary/strategic rules that modify AI agent behavior dynamically."""
+    __tablename__ = "clinic_operational_rules"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    tenant_id = Column(Integer, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
+    rule_name = Column(String(150), nullable=False)
+    rule_type = Column(String(30), nullable=False)  # 'temporary', 'strategic', 'scheduling'
+    description = Column(Text, nullable=True)
+    prompt_injection = Column(Text, nullable=False)
+    applies_to = Column(ARRAY(String), nullable=False, server_default="{}")
+    valid_from = Column(DateTime(timezone=True), nullable=True)
+    valid_until = Column(DateTime(timezone=True), nullable=True)
+    priority_order = Column(Integer, nullable=False, server_default="0")
+    is_active = Column(Boolean, nullable=False, server_default="true")
+    created_by = Column(String(100), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=text("NOW()"))
+    updated_at = Column(DateTime(timezone=True), server_default=text("NOW()"), onupdate=text("NOW()"))
+
+    __table_args__ = (
+        Index("idx_operational_rules_tenant", "tenant_id"),
+        Index("idx_operational_rules_tenant_active", "tenant_id", "is_active"),
+    )
+
+
 # =============================================================================
 # PATIENTS (with full first-touch / last-touch attribution)
 # =============================================================================

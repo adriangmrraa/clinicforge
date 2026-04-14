@@ -173,6 +173,28 @@ async def run_turn(ctx: "TurnContext") -> "TurnResult":
         "lead_context": None,
     }
 
+    # Operational rules injection (temporary/strategic rules from DB)
+    try:
+        from db import db as _db_mod
+        op_rows = await _db_mod.pool.fetch(
+            """SELECT rule_name, rule_type, prompt_injection, valid_until
+               FROM clinic_operational_rules
+               WHERE tenant_id = $1 AND is_active = true
+                 AND (valid_from IS NULL OR valid_from <= NOW())
+                 AND (valid_until IS NULL OR valid_until >= NOW())
+                 AND ('all' = ANY(applies_to) OR 'multi' = ANY(applies_to))
+               ORDER BY priority_order ASC, id ASC""",
+            ctx.tenant_id,
+        )
+        if op_rows:
+            parts = ["⚠️ REGLAS OPERATIVAS VIGENTES:"]
+            for opr in op_rows:
+                until = f" (hasta {opr['valid_until'].strftime('%d/%m/%Y')})" if opr.get("valid_until") else ""
+                parts.append(f"[{opr['rule_type'].upper()}]{until}: {opr['prompt_injection']}")
+            state["operational_rules_block"] = "\n".join(parts)
+    except Exception:
+        pass
+
     # Lead context injection: for leads not yet in the DB, load accumulated data
     if profile.get("is_new_lead"):
         try:

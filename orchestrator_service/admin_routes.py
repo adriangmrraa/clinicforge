@@ -9140,6 +9140,167 @@ async def reorder_derivation_rules(
     return {"status": "reordered", "count": len(body.order)}
 
 
+# ==================== REGLAS OPERATIVAS DE CLÍNICA ====================
+
+class OperationalRuleCreate(BaseModel):
+    rule_name: str
+    rule_type: str = "temporary"  # temporary, strategic, scheduling
+    description: Optional[str] = None
+    prompt_injection: str
+    applies_to: List[str] = ["all"]  # tora, nova, multi, social, all
+    valid_from: Optional[str] = None  # ISO datetime
+    valid_until: Optional[str] = None  # ISO datetime
+    priority_order: int = 0
+    is_active: bool = True
+
+class OperationalRuleUpdate(OperationalRuleCreate):
+    pass
+
+
+@router.get(
+    "/operational-rules",
+    dependencies=[Depends(verify_admin_token)],
+    tags=["Reglas Operativas"],
+    summary="Listar reglas operativas de la clínica",
+)
+async def list_operational_rules(
+    tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    rows = await db.pool.fetch(
+        """SELECT id, tenant_id, rule_name, rule_type, description, prompt_injection,
+                  applies_to, valid_from, valid_until, priority_order, is_active,
+                  created_by, created_at, updated_at
+           FROM clinic_operational_rules
+           WHERE tenant_id = $1
+           ORDER BY priority_order ASC, id ASC""",
+        tenant_id,
+    )
+    result = []
+    for r in rows:
+        d = dict(r)
+        d["applies_to"] = list(d.get("applies_to") or [])
+        result.append(d)
+    return result
+
+
+@router.post(
+    "/operational-rules",
+    dependencies=[Depends(verify_admin_token)],
+    tags=["Reglas Operativas"],
+    summary="Crear regla operativa",
+)
+async def create_operational_rule(
+    body: OperationalRuleCreate,
+    request: Request,
+    tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    if body.rule_type not in ("temporary", "strategic", "scheduling"):
+        raise HTTPException(400, "rule_type debe ser: temporary, strategic, scheduling")
+    if not body.prompt_injection.strip():
+        raise HTTPException(400, "prompt_injection no puede estar vacío")
+
+    # Resolve user
+    user_email = ""
+    try:
+        user_data = request.state.user_data if hasattr(request.state, "user_data") else None
+        if user_data:
+            user_email = getattr(user_data, "email", "") or ""
+    except Exception:
+        pass
+
+    row = await db.pool.fetchrow(
+        """INSERT INTO clinic_operational_rules
+           (tenant_id, rule_name, rule_type, description, prompt_injection,
+            applies_to, valid_from, valid_until, priority_order, is_active, created_by)
+           VALUES ($1, $2, $3, $4, $5, $6, $7::timestamptz, $8::timestamptz, $9, $10, $11)
+           RETURNING id""",
+        tenant_id,
+        body.rule_name.strip(),
+        body.rule_type,
+        (body.description or "").strip() or None,
+        body.prompt_injection.strip(),
+        body.applies_to,
+        body.valid_from,
+        body.valid_until,
+        body.priority_order,
+        body.is_active,
+        user_email,
+    )
+    return {"status": "created", "id": row["id"]}
+
+
+@router.put(
+    "/operational-rules/{rule_id}",
+    dependencies=[Depends(verify_admin_token)],
+    tags=["Reglas Operativas"],
+    summary="Actualizar regla operativa",
+)
+async def update_operational_rule(
+    rule_id: int,
+    body: OperationalRuleUpdate,
+    tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    result = await db.pool.execute(
+        """UPDATE clinic_operational_rules
+           SET rule_name=$1, rule_type=$2, description=$3, prompt_injection=$4,
+               applies_to=$5, valid_from=$6::timestamptz, valid_until=$7::timestamptz,
+               priority_order=$8, is_active=$9, updated_at=NOW()
+           WHERE id=$10 AND tenant_id=$11""",
+        body.rule_name.strip(),
+        body.rule_type,
+        (body.description or "").strip() or None,
+        body.prompt_injection.strip(),
+        body.applies_to,
+        body.valid_from,
+        body.valid_until,
+        body.priority_order,
+        body.is_active,
+        rule_id,
+        tenant_id,
+    )
+    if result == "UPDATE 0":
+        raise HTTPException(404, "Regla no encontrada")
+    return {"status": "updated", "id": rule_id}
+
+
+@router.delete(
+    "/operational-rules/{rule_id}",
+    dependencies=[Depends(verify_admin_token)],
+    tags=["Reglas Operativas"],
+    summary="Eliminar regla operativa",
+)
+async def delete_operational_rule(
+    rule_id: int,
+    tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    result = await db.pool.execute(
+        "DELETE FROM clinic_operational_rules WHERE id=$1 AND tenant_id=$2",
+        rule_id, tenant_id,
+    )
+    if result == "DELETE 0":
+        raise HTTPException(404, "Regla no encontrada")
+    return {"status": "deleted", "id": rule_id}
+
+
+@router.patch(
+    "/operational-rules/{rule_id}/toggle",
+    dependencies=[Depends(verify_admin_token)],
+    tags=["Reglas Operativas"],
+    summary="Activar/desactivar regla operativa",
+)
+async def toggle_operational_rule(
+    rule_id: int,
+    tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    row = await db.pool.fetchrow(
+        "UPDATE clinic_operational_rules SET is_active = NOT is_active, updated_at=NOW() WHERE id=$1 AND tenant_id=$2 RETURNING id, is_active",
+        rule_id, tenant_id,
+    )
+    if not row:
+        raise HTTPException(404, "Regla no encontrada")
+    return {"status": "updated", "id": row["id"], "is_active": row["is_active"]}
+
+
 @router.get(
     "/patients/{patient_id}/attachments-summary",
     dependencies=[Depends(verify_admin_token)],

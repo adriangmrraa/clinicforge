@@ -585,6 +585,30 @@ async def process_buffer_task(
         except Exception as der_err:
             logger.debug(f"Derivation rules fetch (non-fatal): {der_err}")
 
+        # --- OPERATIONAL RULES (temporary/strategic) ---
+        operational_rules_block = ""
+        try:
+            op_rows = await pool.fetch(
+                """SELECT rule_name, rule_type, prompt_injection, valid_until
+                   FROM clinic_operational_rules
+                   WHERE tenant_id = $1 AND is_active = true
+                     AND (valid_from IS NULL OR valid_from <= NOW())
+                     AND (valid_until IS NULL OR valid_until >= NOW())
+                     AND ('all' = ANY(applies_to) OR 'tora' = ANY(applies_to))
+                   ORDER BY priority_order ASC, id ASC""",
+                tenant_id,
+            )
+            if op_rows:
+                parts = ["⚠️ REGLAS OPERATIVAS VIGENTES (deben aplicarse SIEMPRE):"]
+                for opr in op_rows:
+                    until = f" (vigente hasta {opr['valid_until'].strftime('%d/%m/%Y')})" if opr.get("valid_until") else ""
+                    parts.append(f"[{opr['rule_type'].upper()}] {opr['rule_name']}{until}:")
+                    parts.append(opr["prompt_injection"])
+                    parts.append("")
+                operational_rules_block = "\n".join(parts)
+        except Exception as op_err:
+            logger.debug(f"Operational rules fetch (non-fatal): {op_err}")
+
         # --- PATIENT MEMORY SYSTEM: Ensure table exists (first call only) ---
         try:
             from services.patient_memory import (
@@ -1143,6 +1167,10 @@ async def process_buffer_task(
         ]
         if rag_sections:
             system_prompt += "\n\n" + "\n\n".join(rag_sections)
+
+        # Inject operational rules (temporary/strategic)
+        if operational_rules_block:
+            system_prompt += "\n\n" + operational_rules_block
 
         chat_history = []
         vision_context_str = ""

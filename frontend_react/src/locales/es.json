@@ -1129,6 +1129,24 @@
         "escalationMessagePlaceholder": "Hoy {primary} no tiene turnos disponibles en los próximos días, pero podemos coordinar con {fallback}…",
         "escalationMessageHelp": "Usá {primary} y {fallback} como placeholders. Si lo dejás vacío, se usa el mensaje por defecto."
       }
+    },
+    "operational_rules": {
+      "title": "Reglas Operativas",
+      "info_title": "Reglas que modifican el comportamiento del agente de IA",
+      "info_desc": "Creá reglas temporales (problemas técnicos, feriados) o estratégicas (políticas de negocio) que se inyectan automáticamente al agente. Se aplican mientras estén activas y dentro del rango de fechas.",
+      "list_title": "Reglas activas",
+      "add": "Nueva regla",
+      "create": "Crear regla",
+      "edit": "Editar regla",
+      "empty": "No hay reglas operativas configuradas",
+      "empty_hint": "Las reglas operativas permiten ajustar el comportamiento del agente sin tocar código.",
+      "field_name": "Nombre de la regla",
+      "field_type": "Tipo de regla",
+      "field_desc": "Descripción",
+      "field_prompt": "Instrucción para el agente",
+      "field_applies": "Aplica a",
+      "field_from": "Vigente desde",
+      "field_until": "Vigente hasta"
     }
   },
   "profile": {

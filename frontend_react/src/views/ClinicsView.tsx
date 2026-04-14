@@ -466,7 +466,7 @@ export default function ClinicsView() {
     const [success, setSuccess] = useState<string | null>(null);
 
     // Tab state
-    const [activeTab, setActiveTab] = useState<'clinics' | 'insurance' | 'derivation'>('clinics');
+    const [activeTab, setActiveTab] = useState<'clinics' | 'insurance' | 'derivation' | 'operational'>('clinics');
     const [selectedClinicId, setSelectedClinicId] = useState<number | null>(null);
 
     // Insurance state
@@ -495,6 +495,23 @@ export default function ClinicsView() {
     const [derivationProfessionals, setDerivationProfessionals] = useState<{id: number; first_name: string; last_name: string}[]>([]);
     const [derivationTreatments, setDerivationTreatments] = useState<{code: string; name: string; priority: string}[]>([]);
 
+    // Operational rules state
+    interface OperationalRule {
+        id: number; tenant_id: number; rule_name: string; rule_type: string;
+        description?: string; prompt_injection: string; applies_to: string[];
+        valid_from?: string; valid_until?: string; priority_order: number;
+        is_active: boolean; created_by?: string; created_at?: string;
+    }
+    const [opRules, setOpRules] = useState<OperationalRule[]>([]);
+    const [opLoading, setOpLoading] = useState(false);
+    const [opModalOpen, setOpModalOpen] = useState(false);
+    const [editingOp, setEditingOp] = useState<OperationalRule | null>(null);
+    const [opForm, setOpForm] = useState({
+        rule_name: '', rule_type: 'temporary', description: '', prompt_injection: '',
+        applies_to: ['all'] as string[], valid_from: '', valid_until: '', priority_order: 0, is_active: true,
+    });
+    const [opSaving, setOpSaving] = useState(false);
+
     // FAQ state
     const [faqModalOpen, setFaqModalOpen] = useState(false);
     const [faqClinicId, setFaqClinicId] = useState<number | null>(null);
@@ -516,6 +533,7 @@ export default function ClinicsView() {
         if (!selectedClinicId) return;
         if (activeTab === 'insurance') fetchInsurance();
         if (activeTab === 'derivation') fetchDerivation();
+        if (activeTab === 'operational') fetchOpRules();
     }, [activeTab, selectedClinicId]);
 
     const fetchClinicas = async () => {
@@ -975,6 +993,60 @@ export default function ClinicsView() {
         finally { setDerivationLoading(false); }
     };
 
+    // ═══ OPERATIONAL RULES CRUD ═══
+    const fetchOpRules = async () => {
+        if (!selectedClinicId) return;
+        setOpLoading(true);
+        try {
+            const res = await api.get('/admin/operational-rules', { headers: { 'X-Tenant-ID': String(selectedClinicId) } });
+            setOpRules(res.data);
+        } catch { /* ignore */ }
+        finally { setOpLoading(false); }
+    };
+    const openOpModal = (item: OperationalRule | null = null) => {
+        if (item) {
+            setEditingOp(item);
+            setOpForm({
+                rule_name: item.rule_name, rule_type: item.rule_type,
+                description: item.description || '', prompt_injection: item.prompt_injection,
+                applies_to: item.applies_to || ['all'],
+                valid_from: item.valid_from ? item.valid_from.slice(0, 16) : '',
+                valid_until: item.valid_until ? item.valid_until.slice(0, 16) : '',
+                priority_order: item.priority_order, is_active: item.is_active,
+            });
+        } else {
+            setEditingOp(null);
+            setOpForm({ rule_name: '', rule_type: 'temporary', description: '', prompt_injection: '', applies_to: ['all'], valid_from: '', valid_until: '', priority_order: 0, is_active: true });
+        }
+        setOpModalOpen(true);
+    };
+    const saveOpRule = async () => {
+        if (!opForm.rule_name.trim() || !opForm.prompt_injection.trim()) return;
+        setOpSaving(true);
+        try {
+            const th = { headers: { 'X-Tenant-ID': String(selectedClinicId) } };
+            const body = { ...opForm, valid_from: opForm.valid_from || null, valid_until: opForm.valid_until || null };
+            if (editingOp) await api.put(`/admin/operational-rules/${editingOp.id}`, body, th);
+            else await api.post('/admin/operational-rules', body, th);
+            setOpModalOpen(false);
+            fetchOpRules();
+        } catch (err: any) { alert(err.response?.data?.detail || 'Error'); }
+        finally { setOpSaving(false); }
+    };
+    const deleteOpRule = async (id: number) => {
+        if (!confirm(t('common.confirm_delete'))) return;
+        try {
+            await api.delete(`/admin/operational-rules/${id}`, { headers: { 'X-Tenant-ID': String(selectedClinicId) } });
+            fetchOpRules();
+        } catch { /* ignore */ }
+    };
+    const toggleOpRule = async (id: number) => {
+        try {
+            await api.patch(`/admin/operational-rules/${id}/toggle`, null, { headers: { 'X-Tenant-ID': String(selectedClinicId) } });
+            fetchOpRules();
+        } catch { /* ignore */ }
+    };
+
     const openDerivationModal = (item: DerivationRule | null = null) => {
         if (item) {
             setEditingDerivation(item);
@@ -1098,7 +1170,7 @@ export default function ClinicsView() {
 
             {/* Tab navigation */}
             <div className="flex gap-1 bg-white/[0.03] p-1 rounded-xl border border-white/[0.06] w-fit">
-                {([['clinics', <Building2 size={16} />, t('clinics.title')], ['insurance', <Shield size={16} />, t('settings.insurance.title')], ['derivation', <GitMerge size={16} />, t('settings.derivation.title')]] as [typeof activeTab, React.ReactNode, string][]).map(([key, icon, label]) => (
+                {([['clinics', <Building2 size={16} />, t('clinics.title')], ['insurance', <Shield size={16} />, t('settings.insurance.title')], ['derivation', <GitMerge size={16} />, t('settings.derivation.title')], ['operational', <AlertCircle size={16} />, t('settings.operational_rules.title')]] as [typeof activeTab, React.ReactNode, string][]).map(([key, icon, label]) => (
                     <button
                         key={key}
                         onClick={() => setActiveTab(key)}
@@ -2663,6 +2735,154 @@ export default function ClinicsView() {
                                 </button>
                             </div>
                         </form>
+                    </div>
+                </div>
+            )}
+
+            {/* ═══ TAB: OPERATIONAL RULES ═══ */}
+            {activeTab === 'operational' && (
+                <div className="space-y-4">
+                    <div className="flex items-start gap-3 bg-amber-500/5 border border-amber-500/20 rounded-xl p-4">
+                        <AlertCircle size={18} className="text-amber-400 shrink-0 mt-0.5" />
+                        <div className="text-sm text-amber-300/80">
+                            <p className="font-medium text-amber-300 mb-1">{t('settings.operational_rules.info_title')}</p>
+                            <p>{t('settings.operational_rules.info_desc')}</p>
+                        </div>
+                    </div>
+
+                    <div className="flex justify-between items-center">
+                        <h3 className="text-white font-medium">{t('settings.operational_rules.list_title')}</h3>
+                        <button onClick={() => openOpModal()} className="flex items-center gap-2 px-3 py-2 bg-white/[0.06] hover:bg-white/[0.1] text-white rounded-lg text-sm transition-colors">
+                            <Plus size={14} /> {t('settings.operational_rules.add')}
+                        </button>
+                    </div>
+
+                    {opLoading ? (
+                        <div className="flex justify-center py-8"><Loader2 className="animate-spin text-white/30" size={24} /></div>
+                    ) : opRules.length === 0 ? (
+                        <div className="text-center py-12 text-white/30">
+                            <AlertCircle size={40} className="mx-auto mb-4 text-white/20" />
+                            <p className="font-medium">{t('settings.operational_rules.empty')}</p>
+                            <p className="text-sm mt-1">{t('settings.operational_rules.empty_hint')}</p>
+                        </div>
+                    ) : (
+                        <div className="space-y-2">
+                            {opRules.map(rule => (
+                                <div key={rule.id} className={`p-4 rounded-xl border transition-colors ${rule.is_active ? 'bg-white/[0.02] border-white/[0.06]' : 'bg-white/[0.01] border-white/[0.03] opacity-50'}`}>
+                                    <div className="flex items-start justify-between gap-3">
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                                <span className="font-medium text-white text-sm">{rule.rule_name}</span>
+                                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${
+                                                    rule.rule_type === 'temporary' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                                                    : rule.rule_type === 'scheduling' ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
+                                                    : 'bg-purple-500/10 text-purple-400 border border-purple-500/20'
+                                                }`}>
+                                                    {rule.rule_type}
+                                                </span>
+                                                {rule.valid_until && (
+                                                    <span className="text-[10px] text-white/30">
+                                                        hasta {new Date(rule.valid_until).toLocaleDateString('es-AR')}
+                                                    </span>
+                                                )}
+                                            </div>
+                                            {rule.description && <p className="text-xs text-white/40 mt-1">{rule.description}</p>}
+                                            <p className="text-xs text-white/50 mt-2 font-mono bg-white/[0.02] rounded px-2 py-1 line-clamp-2">{rule.prompt_injection.slice(0, 200)}{rule.prompt_injection.length > 200 ? '...' : ''}</p>
+                                            <div className="flex items-center gap-2 mt-2">
+                                                {rule.applies_to.map(a => (
+                                                    <span key={a} className="px-1.5 py-0.5 rounded text-[9px] bg-white/[0.04] text-white/40">{a}</span>
+                                                ))}
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-1 shrink-0">
+                                            <button onClick={() => toggleOpRule(rule.id)} className="p-1.5 rounded-lg hover:bg-white/[0.06] text-white/40 hover:text-white transition-colors" title={rule.is_active ? 'Desactivar' : 'Activar'}>
+                                                {rule.is_active ? <ToggleRight size={16} className="text-emerald-400" /> : <ToggleLeft size={16} />}
+                                            </button>
+                                            <button onClick={() => openOpModal(rule)} className="p-1.5 rounded-lg hover:bg-white/[0.06] text-white/40 hover:text-white transition-colors"><Pencil size={14} /></button>
+                                            <button onClick={() => deleteOpRule(rule.id)} className="p-1.5 rounded-lg hover:bg-red-500/10 text-white/40 hover:text-red-400 transition-colors"><Trash2 size={14} /></button>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* ── Modal Operational Rule ── */}
+            {opModalOpen && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end lg:items-center justify-center lg:p-4">
+                    <div className="bg-[#0d1117] border-t lg:border border-white/[0.08] rounded-t-2xl lg:rounded-xl w-full lg:max-w-lg max-h-[92vh] lg:max-h-[85vh] flex flex-col">
+                        <div className="p-4 border-b border-white/[0.06] shrink-0 flex justify-between items-center">
+                            <h2 className="text-lg font-bold text-white">{editingOp ? t('settings.operational_rules.edit') : t('settings.operational_rules.create')}</h2>
+                            <button onClick={() => setOpModalOpen(false)} className="p-2 text-white/40 hover:text-white rounded-lg"><X size={20} /></button>
+                        </div>
+                        <div className="p-4 overflow-y-auto space-y-4" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}>
+                            {/* Rule name */}
+                            <div>
+                                <label className="block text-xs text-white/50 mb-1">{t('settings.operational_rules.field_name')} *</label>
+                                <input type="text" value={opForm.rule_name} onChange={e => setOpForm(p => ({...p, rule_name: e.target.value}))} className="w-full px-3 py-2 rounded-lg bg-white/[0.04] border border-white/[0.08] text-white text-sm" placeholder="Ej: Restricción obra social mayo 2026" />
+                            </div>
+                            {/* Rule type */}
+                            <div>
+                                <label className="block text-xs text-white/50 mb-1">{t('settings.operational_rules.field_type')}</label>
+                                <select value={opForm.rule_type} onChange={e => setOpForm(p => ({...p, rule_type: e.target.value}))} className="w-full px-3 py-2 rounded-lg bg-white/[0.04] border border-white/[0.08] text-white text-sm [&>option]:bg-[#0d1117]">
+                                    <option value="temporary">Temporal (con fecha de vencimiento)</option>
+                                    <option value="scheduling">Agendamiento (modifica cómo se agendan turnos)</option>
+                                    <option value="strategic">Estratégica (regla de negocio permanente)</option>
+                                </select>
+                            </div>
+                            {/* Description */}
+                            <div>
+                                <label className="block text-xs text-white/50 mb-1">{t('settings.operational_rules.field_desc')}</label>
+                                <input type="text" value={opForm.description} onChange={e => setOpForm(p => ({...p, description: e.target.value}))} className="w-full px-3 py-2 rounded-lg bg-white/[0.04] border border-white/[0.08] text-white text-sm" placeholder="Descripción breve de por qué existe esta regla" />
+                            </div>
+                            {/* Prompt injection */}
+                            <div>
+                                <label className="block text-xs text-white/50 mb-1">{t('settings.operational_rules.field_prompt')} *</label>
+                                <textarea value={opForm.prompt_injection} onChange={e => setOpForm(p => ({...p, prompt_injection: e.target.value}))} rows={5} className="w-full px-3 py-2 rounded-lg bg-white/[0.04] border border-white/[0.08] text-white text-sm resize-none font-mono" placeholder="Instrucción que se inyecta al agente de IA. Ej: ANTES de agendar, preguntá si es particular u obra social. Si obra social → agendar desde 15/05/2026." />
+                                <p className="text-[10px] text-white/30 mt-1">Este texto se inyecta directamente en el prompt del agente. Escribilo como una instrucción clara.</p>
+                            </div>
+                            {/* Applies to */}
+                            <div>
+                                <label className="block text-xs text-white/50 mb-1">{t('settings.operational_rules.field_applies')}</label>
+                                <div className="flex flex-wrap gap-2">
+                                    {['all', 'tora', 'nova', 'multi', 'social'].map(agent => (
+                                        <label key={agent} className="flex items-center gap-1.5 text-sm text-white/70">
+                                            <input type="checkbox" checked={opForm.applies_to.includes(agent)} onChange={e => {
+                                                if (agent === 'all') {
+                                                    setOpForm(p => ({...p, applies_to: e.target.checked ? ['all'] : []}));
+                                                } else {
+                                                    setOpForm(p => {
+                                                        const without = p.applies_to.filter(a => a !== 'all' && a !== agent);
+                                                        return {...p, applies_to: e.target.checked ? [...without, agent] : without};
+                                                    });
+                                                }
+                                            }} className="rounded" />
+                                            {agent === 'all' ? 'Todos' : agent === 'tora' ? 'TORA (WhatsApp)' : agent === 'nova' ? 'Nova (voz/Telegram)' : agent === 'multi' ? 'Multi-agente' : 'Redes sociales'}
+                                        </label>
+                                    ))}
+                                </div>
+                            </div>
+                            {/* Valid from/until */}
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-xs text-white/50 mb-1">{t('settings.operational_rules.field_from')}</label>
+                                    <input type="datetime-local" value={opForm.valid_from} onChange={e => setOpForm(p => ({...p, valid_from: e.target.value}))} className="w-full px-3 py-2 rounded-lg bg-white/[0.04] border border-white/[0.08] text-white text-sm" />
+                                </div>
+                                <div>
+                                    <label className="block text-xs text-white/50 mb-1">{t('settings.operational_rules.field_until')}</label>
+                                    <input type="datetime-local" value={opForm.valid_until} onChange={e => setOpForm(p => ({...p, valid_until: e.target.value}))} className="w-full px-3 py-2 rounded-lg bg-white/[0.04] border border-white/[0.08] text-white text-sm" />
+                                </div>
+                            </div>
+                        </div>
+                        <div className="p-4 border-t border-white/[0.06] shrink-0 flex justify-end gap-3">
+                            <button onClick={() => setOpModalOpen(false)} className="px-4 py-2 rounded-lg bg-white/[0.04] text-white/70 text-sm">{t('common.cancel')}</button>
+                            <button onClick={saveOpRule} disabled={opSaving || !opForm.rule_name.trim() || !opForm.prompt_injection.trim()} className="px-4 py-2 rounded-lg bg-white text-[#0a0e1a] font-medium text-sm disabled:opacity-40 flex items-center gap-2">
+                                {opSaving && <Loader2 size={14} className="animate-spin" />}
+                                {editingOp ? t('common.save') : t('settings.operational_rules.create')}
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}

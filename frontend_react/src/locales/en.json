@@ -1108,6 +1108,24 @@
         "escalationMessagePlaceholder": "{primary} is not available in the next few days, but we can coordinate with {fallback}…",
         "escalationMessageHelp": "Use {primary} and {fallback} as placeholders. If empty, the default message is used."
       }
+    },
+    "operational_rules": {
+      "title": "Operational Rules",
+      "info_title": "Rules that modify AI agent behavior",
+      "info_desc": "Create temporary (technical issues, holidays) or strategic (business policies) rules that are automatically injected into the AI agent. Applied while active and within the date range.",
+      "list_title": "Active rules",
+      "add": "New rule",
+      "create": "Create rule",
+      "edit": "Edit rule",
+      "empty": "No operational rules configured",
+      "empty_hint": "Operational rules allow adjusting agent behavior without touching code.",
+      "field_name": "Rule name",
+      "field_type": "Rule type",
+      "field_desc": "Description",
+      "field_prompt": "Agent instruction",
+      "field_applies": "Applies to",
+      "field_from": "Valid from",
+      "field_until": "Valid until"
     }
   },
   "profile": {

@@ -10803,6 +10803,27 @@ async def nova_voice_direct(websocket: WebSocket):
             except Exception as e:
                 logger.warning(f"Failed to load Engram memories for Realtime: {e}")
 
+            # Inject operational rules (temporary/strategic)
+            try:
+                op_rows = await db.pool.fetch(
+                    """SELECT rule_name, rule_type, prompt_injection, valid_until
+                       FROM clinic_operational_rules
+                       WHERE tenant_id = $1 AND is_active = true
+                         AND (valid_from IS NULL OR valid_from <= NOW())
+                         AND (valid_until IS NULL OR valid_until >= NOW())
+                         AND ('all' = ANY(applies_to) OR 'nova' = ANY(applies_to))
+                       ORDER BY priority_order ASC, id ASC""",
+                    tenant_id,
+                )
+                if op_rows:
+                    parts = ["\n⚠️ REGLAS OPERATIVAS VIGENTES:"]
+                    for opr in op_rows:
+                        until = f" (hasta {opr['valid_until'].strftime('%d/%m/%Y')})" if opr.get("valid_until") else ""
+                        parts.append(f"[{opr['rule_type'].upper()}]{until}: {opr['prompt_injection']}")
+                    system_prompt += "\n".join(parts)
+            except Exception as op_err:
+                logger.debug(f"Nova operational rules fetch (non-fatal): {op_err}")
+
             await redis.setex(
                 f"nova_session:{session_id}",
                 360,
