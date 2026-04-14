@@ -322,27 +322,43 @@ async def _send_template(
 
         logger.info(f"📋 Template vars: header={header_var_count} body={body_var_count}")
 
-        # Build the components array based on actual template structure
-        # All values are stripped to avoid Meta rejecting whitespace
-        all_values = [str(v).strip() for v in
-                      [p.get("text", "") for p in (components[0].get("parameters", []) if components else [])]
-                      + [p.get("text", "") for p in (components[1].get("parameters", []) if len(components) > 1 else [])]]
+        # Build the components array with parameter_name (required by Meta for named templates)
+        # Extract variable names from template text using {{var_name}} pattern
+        header_var_names = []
+        body_var_names = []
+        for comp in (tpl_components or []):
+            comp_type = comp.get("type", "").upper()
+            text = comp.get("text", "")
+            var_names = re.findall(r'\{\{(\w+)\}\}', text)
+            if comp_type == "HEADER":
+                header_var_names = var_names
+            elif comp_type == "BODY":
+                body_var_names = var_names
 
-        # If we built header+body separately, flatten to get all values in order
-        if not all_values:
-            # Fallback: extract from the original components
-            for comp in components:
-                for p in comp.get("parameters", []):
-                    all_values.append(str(p.get("text", "")).strip())
+        logger.info(f"📋 Template var names: header={header_var_names} body={body_var_names}")
 
+        # Flatten all values from the input components
+        all_values = []
+        for comp in (components or []):
+            for p in comp.get("parameters", []):
+                all_values.append(str(p.get("text", "")).strip())
+
+        # Build send components with parameter_name field
         send_components = []
         idx = 0
-        if header_var_count > 0:
-            header_params = [{"type": "text", "text": all_values[i]} for i in range(idx, min(idx + header_var_count, len(all_values)))]
+        if header_var_names:
+            header_params = []
+            for var_name in header_var_names:
+                val = all_values[idx] if idx < len(all_values) else ""
+                header_params.append({"type": "text", "text": val, "parameter_name": var_name})
+                idx += 1
             send_components.append({"type": "header", "parameters": header_params})
-            idx += header_var_count
-        if body_var_count > 0:
-            body_params = [{"type": "text", "text": all_values[i]} for i in range(idx, min(idx + body_var_count, len(all_values)))]
+        if body_var_names:
+            body_params = []
+            for var_name in body_var_names:
+                val = all_values[idx] if idx < len(all_values) else ""
+                body_params.append({"type": "text", "text": val, "parameter_name": var_name})
+                idx += 1
             send_components.append({"type": "body", "parameters": body_params})
 
         logger.info(f"📤 Sending template: lang={real_lang} components={send_components}")
