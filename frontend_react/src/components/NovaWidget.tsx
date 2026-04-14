@@ -374,10 +374,9 @@ export const NovaWidget: React.FC = () => {
         throw new Error('No WebSocket connection');
       }
       ws.send(JSON.stringify({
-        type: 'conversation.item.create',
-        item: { type: 'message', role: 'user', content: [{ type: 'input_text', text: text.trim() }] },
+        type: 'text_message',
+        text: text.trim(),
       }));
-      ws.send(JSON.stringify({ type: 'response.create' }));
       transcriptBufferRef.current = '';
     } catch {
       setMessages(prev => [
@@ -429,8 +428,8 @@ export const NovaWidget: React.FC = () => {
     playbackCtxRef.current = null;
     nextPlayTimeRef.current = 0;
     novaPlayingRef.current = false;
-    if (!micPaused) micPausedRef.current = false;
-  }, [micPaused]);
+    // Never override manual mic pause from here
+  }, []);
 
   const stopRealtimeAudio = useCallback(() => {
     if (wsRef.current) { wsRef.current.close(); wsRef.current = null; }
@@ -534,10 +533,10 @@ export const NovaWidget: React.FC = () => {
               : 0;
             setTimeout(() => {
               novaPlayingRef.current = false;
-              if (!micPausedRef.current || !micPaused) {
-                micPausedRef.current = false;
+              // Only un-pause mic if user didn't manually pause it
+              if (!micPausedRef.current) {
+                setVoiceState('listening');
               }
-              setVoiceState('listening');
             }, remainingMs + 300);
           }
 
@@ -550,16 +549,21 @@ export const NovaWidget: React.FC = () => {
             }
             setTimeout(() => {
               novaPlayingRef.current = false;
-              if (!micPaused) micPausedRef.current = false;
-              setVoiceState('listening');
+              setIsThinking(false);
+              // Only un-pause mic if user didn't manually pause it
+              if (!micPausedRef.current) {
+                setVoiceState('listening');
+              }
             }, 500);
           }
 
           if (msg.type === 'user_speech_started') {
             novaPlayingRef.current = false;
-            micPausedRef.current = false;
-            cancelPlayback();
-            setVoiceState('listening');
+            // Don't override manual pause
+            if (!micPausedRef.current) {
+              cancelPlayback();
+              setVoiceState('listening');
+            }
           }
 
           if (msg.type === 'error') {
