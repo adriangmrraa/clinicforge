@@ -278,6 +278,23 @@ async def _send_template(
 
         yc = YCloudClient(api_key=api_key, business_number=business_number)
 
+        # Fetch template details from YCloud to get exact component structure
+        try:
+            import httpx as _httpx_diag
+            async with _httpx_diag.AsyncClient(timeout=10.0) as _diag_client:
+                _tpl_resp = await _diag_client.get(
+                    f"https://api.ycloud.com/v2/whatsapp/templates",
+                    params={"filter.name": template_name, "limit": 5},
+                    headers={"X-API-Key": api_key},
+                )
+                if _tpl_resp.status_code == 200:
+                    _tpl_data = _tpl_resp.json()
+                    _tpl_items = _tpl_data.get("items", [])
+                    for _tpl in _tpl_items:
+                        logger.info(f"📋 TEMPLATE DETAIL: name={_tpl.get('name')} lang={_tpl.get('language')} status={_tpl.get('status')} components={_tpl.get('components')}")
+        except Exception as _diag_err:
+            logger.warning(f"⚠️ Template diagnostic fetch failed: {_diag_err}")
+
         # Try configured language first, then fallbacks (templates may be registered in en, es, es_AR)
         _langs_to_try = [language_code]
         for _fallback_lang in ["en", "es_AR", "es"]:
