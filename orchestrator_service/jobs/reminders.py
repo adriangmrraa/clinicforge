@@ -389,6 +389,7 @@ async def _log_reminder(
         if patient_name:
             meta["patient_name"] = patient_name
 
+        _status = str(status) if status else 'unknown'
         await db.pool.execute("""
             INSERT INTO automation_logs (
                 tenant_id, automation_rule_id, rule_name, trigger_type,
@@ -397,11 +398,11 @@ async def _log_reminder(
                 patient_id, target_id, meta,
                 triggered_at, sent_at
             ) VALUES ($1, $2, 'Recordatorio 24h', 'appointment_reminder',
-                $3, $4, 'whatsapp', 'hsm', $5, $6, $7, $8,
+                $3, $4, 'whatsapp', 'hsm', $5, $6::varchar, $7, $8,
                 $9, $10, $11::jsonb,
-                NOW(), CASE WHEN $6 = 'sent' THEN NOW() ELSE NULL END)
+                NOW(), CASE WHEN $6::varchar = 'sent' THEN NOW() ELSE NULL END)
         """, tenant_id, rule_id, patient_name, phone,
-            (message_preview or "")[:200], status, skip_reason, error_detail,
+            (message_preview or "")[:200], _status, skip_reason, error_detail,
             patient_id, str(appointment_id) if appointment_id else None,
             _json.dumps(meta) if meta else '{}')
     except Exception as e:
