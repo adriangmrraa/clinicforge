@@ -607,10 +607,12 @@ export default function ClinicsView() {
     const handleOpenModal = async (clinica: Clinica | null = null) => {
         if (clinica) {
             setEditingClinica(clinica);
-            // Fetch min_appointment_date from settings
+            // Fetch min_appointment_date from settings for THIS clinic
             let minDate = '';
             try {
-                const settingsRes = await api.get('/admin/settings/clinic');
+                const th = { headers: { 'X-Tenant-ID': String(clinica.id) } };
+                const settingsRes = await api.get('/admin/settings/clinic', th);
+                console.log('[handleOpenModal] settings response:', settingsRes.data);
                 minDate = settingsRes.data?.min_appointment_date || '';
             } catch (e) {
                 console.error('Error fetching min_appointment_date:', e);
@@ -793,9 +795,10 @@ export default function ClinicsView() {
                 await api.put(`/admin/tenants/${editingClinica.id}`, payload);
                 // Also update min_appointment_date in config
                 if (formData.min_appointment_date) {
+                    const th = { headers: { 'X-Tenant-ID': String(editingClinica.id) } };
                     await api.patch('/admin/settings/clinic', {
                         min_appointment_date: formData.min_appointment_date,
-                    });
+                    }, th);
                 }
                 setSuccess(t('clinics.toast_updated'));
             } else {
