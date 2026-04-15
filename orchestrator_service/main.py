@@ -9625,7 +9625,13 @@ app.openapi = _custom_openapi
 
 # --- SOCKET.IO CONFIGURATION ---
 # Create Socket.IO instance with async mode
-sio = socketio.AsyncServer(async_mode="asgi", cors_allowed_origins=origins)
+sio = socketio.AsyncServer(
+    async_mode="asgi",
+    cors_allowed_origins=origins,
+    ping_interval=15,
+    ping_timeout=10,
+    max_http_buffer_size=1_000_000,
+)
 socket_app = socketio.ASGIApp(sio, app)
 
 # Expose sio and helpers for other routes

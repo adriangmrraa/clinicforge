@@ -66,9 +66,11 @@ app.use(cors({
 app.set('trust proxy', 1);
 
 // --- Rate Limiting ---
+// Clinic environments: 4+ staff sharing the same public IP (NAT).
+// Dashboard + agenda + chats + Socket.IO polling = 50-80 req/min per user.
 const globalLimiter = rateLimit({
     windowMs: 60 * 1000,
-    max: 500,  // 500 req/min per IP (admin panel with dashboard+agenda+chats needs more)
+    max: 2000,  // 2000 req/min per IP — supports 4-8 concurrent staff behind NAT
     standardHeaders: true,
     legacyHeaders: false,
     message: { error: 'Too many requests' }
@@ -76,7 +78,7 @@ const globalLimiter = rateLimit({
 
 const authLimiter = rateLimit({
     windowMs: 60 * 1000,
-    max: 10,
+    max: 30,  // 30 auth attempts/min — supports multiple staff logging in
     message: { error: 'Too many auth requests' }
 });
 

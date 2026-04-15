@@ -37,16 +37,16 @@ class Database:
             try:
                 self.pool = await asyncpg.create_pool(
                     dsn,
-                    min_size=int(os.getenv("DB_POOL_MIN", "5")),
-                    max_size=int(os.getenv("DB_POOL_MAX", "20")),
-                    command_timeout=float(os.getenv("DB_COMMAND_TIMEOUT", "30")),
+                    min_size=int(os.getenv("DB_POOL_MIN", "10")),
+                    max_size=int(os.getenv("DB_POOL_MAX", "40")),
+                    command_timeout=float(os.getenv("DB_COMMAND_TIMEOUT", "60")),
                     max_inactive_connection_lifetime=300.0,
                     init=_init_connection,
                 )
                 logger.info(
-                    f"DB pool initialized: min={os.getenv('DB_POOL_MIN', '5')} "
-                    f"max={os.getenv('DB_POOL_MAX', '20')} "
-                    f"command_timeout={os.getenv('DB_COMMAND_TIMEOUT', '30')}s "
+                    f"DB pool initialized: min={os.getenv('DB_POOL_MIN', '10')} "
+                    f"max={os.getenv('DB_POOL_MAX', '40')} "
+                    f"command_timeout={os.getenv('DB_COMMAND_TIMEOUT', '60')}s "
                     f"(pgvector codec registration enabled)"
                 )
             except Exception as e:

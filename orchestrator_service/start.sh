@@ -39,6 +39,6 @@ chmod -R 777 /app/uploads /app/media
 
 echo "Iniciando servidor..."
 exec uvicorn main:socket_app --host 0.0.0.0 --port 8000 \
-  --timeout-keep-alive 30 \
+  --timeout-keep-alive 75 \
   --timeout-graceful-shutdown 30 \
-  --limit-concurrency 100
+  --limit-concurrency 500

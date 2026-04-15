@@ -8,6 +8,10 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
+# Limit concurrent LLM calls to prevent event loop starvation
+# when multiple conversations process simultaneously.
+_buffer_semaphore = asyncio.Semaphore(5)
+
 try:
     import redis.asyncio as redis
     _redis: Optional[redis.Redis] = None
@@ -117,10 +121,11 @@ async def _delayed_process_buffer_task(
         
         if not messages:
             return
-            
+
         try:
             from services.buffer_task import process_buffer_task
-            await process_buffer_task(tenant_id, conversation_id, external_user_id, messages)
+            async with _buffer_semaphore:
+                await process_buffer_task(tenant_id, conversation_id, external_user_id, messages)
         except ImportError:
             logger.warning("buffer_task.process_buffer_task not implemented")
             
