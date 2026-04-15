@@ -252,6 +252,8 @@ async def _action_send_template(pool, tenant_id, phone, step, variables) -> bool
     try:
         from core.credentials import get_tenant_credential, YCLOUD_API_KEY, YCLOUD_WHATSAPP_NUMBER
         from ycloud_client import YCloudClient
+        import httpx
+        import re
 
         template_name = step.get("template_name")
         if not template_name:
@@ -259,10 +261,37 @@ async def _action_send_template(pool, tenant_id, phone, step, variables) -> bool
             return False
 
         api_key = await get_tenant_credential(tenant_id, YCLOUD_API_KEY)
-        biz_num = await get_tenant_credential(tenant_id, YCLOUD_WHATSAPP_NUMBER)
         if not api_key:
             logger.warning(f"No YCloud API key for tenant {tenant_id}")
             return False
+
+        # Resolve from_number: tenants.bot_phone_number first, then credential vault
+        biz_num = await pool.fetchval(
+            "SELECT bot_phone_number FROM tenants WHERE id = $1", tenant_id
+        )
+        if not biz_num:
+            biz_num = await get_tenant_credential(tenant_id, YCLOUD_WHATSAPP_NUMBER)
+
+        # Fetch template from YCloud to get REAL language code and variable structure
+        real_lang = step.get("template_lang") or "es"
+        tpl_components = None
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.get(
+                    "https://api.ycloud.com/v2/whatsapp/templates",
+                    params={"filter.name": template_name, "limit": 10},
+                    headers={"X-API-Key": api_key},
+                )
+                if resp.status_code == 200:
+                    items = resp.json().get("items", [])
+                    for tpl in items:
+                        if tpl.get("status") == "APPROVED" and tpl.get("name") == template_name:
+                            real_lang = tpl.get("language") or real_lang
+                            tpl_components = tpl.get("components", [])
+                            logger.info(f"📋 Template '{template_name}' found: lang={real_lang}")
+                            break
+        except Exception as fetch_err:
+            logger.warning(f"⚠️ Template metadata fetch failed, using fallback: {fetch_err}")
 
         # Parse var_mapping defensively
         var_mapping = step.get("template_vars") or {}
@@ -272,30 +301,52 @@ async def _action_send_template(pool, tenant_id, phone, step, variables) -> bool
             except (json.JSONDecodeError, TypeError):
                 var_mapping = {}
 
-        body_params = []
-        if var_mapping and isinstance(var_mapping, dict):
-            # Explicit mapping: {"1": "nombre_paciente", "2": "dia_semana", ...}
-            for key in sorted(var_mapping.keys()):
-                var_name = var_mapping[key]
-                body_params.append({"type": "text", "text": str(variables.get(var_name, "") or "")})
+        # Build components matching the REAL template structure if available
+        if tpl_components:
+            send_components = []
+            for comp in tpl_components:
+                comp_type = comp.get("type", "").upper()
+                text = comp.get("text", "")
+                comp_vars = re.findall(r'\{\{(\w+)\}\}', text)
+                if not comp_vars:
+                    continue
+                parameters = []
+                for var_name in comp_vars:
+                    # Priority: explicit mapping > resolved variables > auto-detect > empty
+                    value = ""
+                    if var_mapping and isinstance(var_mapping, dict):
+                        # Check if any mapping key points to this var_name
+                        for _k, _v in var_mapping.items():
+                            if _v == var_name or _k == var_name:
+                                value = str(variables.get(_v, "") or "")
+                                break
+                    if not value:
+                        value = str(variables.get(var_name, "") or "")
+                    parameters.append({"type": "text", "text": value})
+                send_components.append({"type": comp_type.lower(), "parameters": parameters})
+            components = send_components if send_components else None
         else:
-            # Auto-detect: use common variable order based on template name patterns
-            # This covers the case where CEO selected a template but didn't configure vars
-            _auto_vars = _auto_detect_template_vars(template_name)
-            for var_name in _auto_vars:
-                body_params.append({"type": "text", "text": str(variables.get(var_name, "") or "")})
-
-        components = [{"type": "body", "parameters": body_params}] if body_params else None
+            # Fallback: use explicit mapping or auto-detect (original behavior)
+            body_params = []
+            if var_mapping and isinstance(var_mapping, dict):
+                for key in sorted(var_mapping.keys()):
+                    var_name = var_mapping[key]
+                    body_params.append({"type": "text", "text": str(variables.get(var_name, "") or "")})
+            else:
+                _auto_vars = _auto_detect_template_vars(template_name)
+                for var_name in _auto_vars:
+                    body_params.append({"type": "text", "text": str(variables.get(var_name, "") or "")})
+            components = [{"type": "body", "parameters": body_params}] if body_params else None
 
         yc = YCloudClient(api_key=api_key, business_number=biz_num)
         await yc.send_template(
             to=phone,
             template_name=template_name,
-            language_code=step.get("template_lang") or "es",
+            language_code=real_lang,
             components=components,
         )
         await _update_message_counters(pool, tenant_id, phone, step)
-        logger.info(f"✅ Template '{template_name}' sent to {phone} ({len(body_params)} vars)")
+        logger.info(f"✅ Template '{template_name}' sent to {phone} (lang={real_lang})")
         return True
     except Exception as e:
         logger.error(f"❌ send_template failed for {phone}: {e}")

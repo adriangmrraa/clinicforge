@@ -306,47 +306,45 @@ async def _send_template(
             return False
 
         # Step 2: Build components matching the EXACT template structure
-        # Count variables in each component type
-        header_var_count = 0
-        body_var_count = 0
-        for comp in (tpl_components or []):
-            comp_type = comp.get("type", "").upper()
-            text = comp.get("text", "")
-            # Count {{var}} placeholders
-            import re
-            var_count = len(re.findall(r'\{\{[^}]+\}\}', text))
-            if comp_type == "HEADER":
-                header_var_count = var_count
-            elif comp_type == "BODY":
-                body_var_count = var_count
+        import re
 
-        logger.info(f"📋 Template vars: header={header_var_count} body={body_var_count}")
-
-        # Count ALL variables across all components (header + body)
-        all_var_names = []
-        for comp in (tpl_components or []):
-            text = comp.get("text", "")
-            var_names = re.findall(r'\{\{(\w+)\}\}', text)
-            all_var_names.extend(var_names)
-
-        total_vars = len(all_var_names)
-        logger.info(f"📋 Template total vars: {total_vars} names={all_var_names}")
-
-        # Flatten all values from input components
+        # Flatten all values from input components (caller's variable values)
         all_values = []
         for comp in (components or []):
             for p in comp.get("parameters", []):
                 all_values.append(str(p.get("text", "")).strip())
 
-        # Build body component with all 4 named parameters (no header)
-        send_components = [
-            {"type": "body", "parameters": [
-                {"type": "text", "text": all_values[0] if len(all_values) > 0 else "", "parameter_name": "nombre_paciente"},
-                {"type": "text", "text": all_values[1] if len(all_values) > 1 else "", "parameter_name": "dia_semana"},
-                {"type": "text", "text": all_values[2] if len(all_values) > 2 else "", "parameter_name": "fecha_turno"},
-                {"type": "text", "text": all_values[3] if len(all_values) > 3 else "", "parameter_name": "hora_turno"},
-            ]}
-        ]
+        # Variable value map for lookup by name
+        var_value_map = {
+            "nombre_paciente": all_values[0] if len(all_values) > 0 else "",
+            "dia_semana": all_values[1] if len(all_values) > 1 else "",
+            "fecha_turno": all_values[2] if len(all_values) > 2 else "",
+            "hora_turno": all_values[3] if len(all_values) > 3 else "",
+        }
+
+        # Build components dynamically from the REAL template structure
+        send_components = []
+        for comp in (tpl_components or []):
+            comp_type = comp.get("type", "").upper()
+            text = comp.get("text", "")
+            comp_vars = re.findall(r'\{\{(\w+)\}\}', text)
+            if not comp_vars:
+                continue
+            parameters = []
+            for var_name in comp_vars:
+                value = var_value_map.get(var_name, "")
+                parameters.append({"type": "text", "text": value})
+            send_components.append({"type": comp_type.lower(), "parameters": parameters})
+
+        if not send_components:
+            # Fallback: if template structure couldn't be parsed, send all values as body
+            send_components = [
+                {"type": "body", "parameters": [
+                    {"type": "text", "text": v} for v in all_values if v
+                ]}
+            ]
+
+        logger.info(f"📋 Template vars resolved: {len(send_components)} components")
 
         logger.info(f"📤 Sending template: lang={real_lang} components={send_components}")
 
