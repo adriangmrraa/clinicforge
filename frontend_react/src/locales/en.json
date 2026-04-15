@@ -572,6 +572,7 @@
     "schedule_appointment": "Schedule appointment",
     "schedule_for_family": "For child/family",
     "link_to_family": "Link to family member",
+    "link_chat_to_patient": "Link to patient",
     "link": "Link",
     "linking_patient": "Patient to link",
     "select_guardian": "Select family member (existing patient)",

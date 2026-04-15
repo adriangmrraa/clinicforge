@@ -1799,16 +1799,14 @@ export default function ChatsView() {
                           >
                             <User size={12} /> {t('chats.schedule_for_family') || 'Para hijo/familiar'}
                           </button>
-                          {/* Enlazar a familiar - solo si hay paciente seleccionado */}
-                          {(patientContext as any)?.patient_id && (
-                            <button
-                              onClick={() => setShowLinkGuardianModal(true)}
-                              className="w-full py-2 px-3 bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 hover:text-purple-200 border border-purple-500/20 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1.5"
-                              title={t('chats.link_to_family') || 'Enlazar a familiar'}
-                            >
-                              <LinkIcon size={12} /> {t('chats.link_to_family') || 'Enlazar'}
-                            </button>
-                          )}
+                          {/* Enlazar chat a paciente — siempre visible (no requiere que el chat sea paciente) */}
+                          <button
+                            onClick={() => setShowLinkGuardianModal(true)}
+                            className="w-full py-2 px-3 bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 hover:text-purple-200 border border-purple-500/20 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1.5"
+                            title={t('chats.link_chat_to_patient') || 'Vincular chat a paciente'}
+                          >
+                            <LinkIcon size={12} /> {t('chats.link_chat_to_patient') || 'Vincular a paciente'}
+                          </button>
                         </div>
                       </div>
 
@@ -1986,6 +1984,7 @@ export default function ChatsView() {
         currentPatientId={(patientContext as any)?.patient_id || 0}
         currentPatientName={selectedSession?.patient_name || selectedChatwoot?.name || ''}
         tenantId={selectedTenantId || selectedSession?.tenant_id || 0}
+        conversationId={selectedChatwoot?.id || undefined}
       />
     </div>
   );

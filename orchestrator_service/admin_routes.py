@@ -596,6 +596,14 @@ class LinkGuardianRequest(BaseModel):
     guardian_patient_id: int
 
 
+class LinkChatToPatientRequest(BaseModel):
+    """Link a chat conversation to an existing patient.
+    The chat contact does NOT need to be a patient themselves."""
+    patient_id: int
+    conversation_id: str  # UUID of chat_conversations row
+    migrate_documents: bool = True  # copy chat attachments to patient_documents
+
+
 class StatusUpdate(BaseModel):
     status: str
     notes: Optional[str] = None  # active, suspended, pending
@@ -5768,6 +5776,143 @@ async def link_patient_to_guardian(
         "guardian_patient_id": guardian_patient_id,
         "guardian_phone": guardian_patient["phone_number"],
         "guardian_name": guardian_patient["first_name"],
+    }
+
+
+@router.post(
+    "/chat/link-to-patient",
+    dependencies=[Depends(verify_admin_token)],
+    tags=["Chats"],
+    summary="Vincular un chat a un paciente existente (para familiares que pagan, etc.)",
+)
+async def link_chat_to_patient(
+    payload: LinkChatToPatientRequest,
+    tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    """Link a chat conversation to an existing patient record.
+
+    Use case: family member (Jesus) chats and pays, but the patient is
+    his mother (Wilda). This links Jesus's chat to Wilda's record so
+    documents/receipts from that chat appear in Wilda's patient file.
+    The chat contact does NOT need to be a patient.
+    """
+    import uuid as _uuid
+
+    conv_id = _uuid.UUID(payload.conversation_id)
+
+    # Verify the conversation exists
+    conv = await db.pool.fetchrow(
+        "SELECT id, external_user_id, display_name FROM chat_conversations WHERE id = $1 AND tenant_id = $2",
+        conv_id,
+        tenant_id,
+    )
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversación no encontrada")
+
+    # Verify the target patient exists
+    patient = await db.pool.fetchrow(
+        "SELECT id, first_name, last_name, phone_number FROM patients WHERE id = $1 AND tenant_id = $2",
+        payload.patient_id,
+        tenant_id,
+    )
+    if not patient:
+        raise HTTPException(status_code=404, detail="Paciente no encontrado")
+
+    # Link the conversation to the patient
+    await db.pool.execute(
+        "UPDATE chat_conversations SET linked_patient_id = $1, linked_at = NOW() WHERE id = $2 AND tenant_id = $3",
+        payload.patient_id,
+        conv_id,
+        tenant_id,
+    )
+
+    migrated_docs = 0
+
+    # Migrate documents from chat messages to patient_documents
+    if payload.migrate_documents:
+        # Find chat messages with attachments (images, PDFs)
+        media_msgs = await db.pool.fetch(
+            """
+            SELECT id, content_attributes, created_at, content
+            FROM chat_messages
+            WHERE conversation_id = $1 AND tenant_id = $2
+            AND content_attributes IS NOT NULL
+            AND content_attributes::text != '[]'
+            AND content_attributes::text != 'null'
+            ORDER BY created_at ASC
+            """,
+            conv_id,
+            tenant_id,
+        )
+        for msg in media_msgs:
+            attrs = msg["content_attributes"]
+            if isinstance(attrs, str):
+                try:
+                    attrs = json.loads(attrs)
+                except Exception:
+                    continue
+            if not isinstance(attrs, list):
+                continue
+            for att in attrs:
+                media_url = att.get("media_url") or att.get("data_url") or ""
+                if not media_url:
+                    continue
+                mime = att.get("mime_type", "application/octet-stream")
+                desc = att.get("description", "")
+                fname = att.get("file_name") or f"chat_doc_{msg['id']}"
+
+                # Check if already migrated
+                exists = await db.pool.fetchval(
+                    """
+                    SELECT 1 FROM patient_documents
+                    WHERE tenant_id = $1 AND patient_id = $2
+                    AND source_details->>'source_message_id' = $3
+                    """,
+                    tenant_id,
+                    payload.patient_id,
+                    str(msg["id"]),
+                )
+                if exists:
+                    continue
+
+                await db.pool.execute(
+                    """
+                    INSERT INTO patient_documents
+                        (tenant_id, patient_id, file_name, file_path, mime_type,
+                         document_type, source, source_details, uploaded_at)
+                    VALUES ($1, $2, $3, $4, $5, $6, 'chat_link', $7::jsonb, $8)
+                    """,
+                    tenant_id,
+                    payload.patient_id,
+                    fname,
+                    media_url,
+                    mime,
+                    "receipt" if "comprobante" in (desc or "").lower() or "pago" in (desc or "").lower() else "clinical",
+                    json.dumps({
+                        "source_conversation_id": str(conv_id),
+                        "source_message_id": str(msg["id"]),
+                        "original_sender": conv.get("display_name") or conv.get("external_user_id"),
+                        "description": desc,
+                    }),
+                    msg["created_at"],
+                )
+                migrated_docs += 1
+
+    patient_name = f"{patient['first_name']} {patient.get('last_name') or ''}".strip()
+    sender_name = conv.get("display_name") or conv.get("external_user_id") or "Desconocido"
+
+    logger.info(
+        f"🔗 CHAT LINKED: conv={conv_id} ({sender_name}) → patient={payload.patient_id} ({patient_name}), "
+        f"migrated_docs={migrated_docs}"
+    )
+
+    return {
+        "status": "linked",
+        "conversation_id": str(conv_id),
+        "patient_id": payload.patient_id,
+        "patient_name": patient_name,
+        "sender_name": sender_name,
+        "migrated_documents": migrated_docs,
     }
 
 

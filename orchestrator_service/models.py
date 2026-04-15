@@ -185,6 +185,9 @@ class ChatConversation(Base):
     last_automation_message_at = Column(DateTime(timezone=True))
     recovery_touch_count = Column(Integer, nullable=False, server_default="0")
     last_recovery_at = Column(DateTime(timezone=True), nullable=True)
+    # Link chat to patient (family member paying on behalf, etc.)
+    linked_patient_id = Column(Integer, ForeignKey("patients.id", ondelete="SET NULL"), nullable=True)
+    linked_at = Column(DateTime(timezone=True), nullable=True)
     # Meta Direct enrichment
     source_entity_id = Column(Text, nullable=True)
     platform_origin = Column(Text, nullable=True)

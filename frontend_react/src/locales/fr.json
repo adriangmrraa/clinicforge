@@ -565,6 +565,7 @@
     "schedule_appointment": "Planifier rendez-vous",
     "schedule_for_family": "Pour enfant/famille",
     "link_to_family": "Lier à un membre de la famille",
+    "link_chat_to_patient": "Lier au patient",
     "link": "Lier",
     "linking_patient": "Patient à lier",
     "select_guardian": "Sélectionner un membre de la famille (patient existant)",

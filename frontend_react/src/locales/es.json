@@ -585,6 +585,7 @@
     "schedule_appointment": "Agendar turno",
     "schedule_for_family": "Para hijo/familiar",
     "link_to_family": "Enlazar a familiar",
+    "link_chat_to_patient": "Vincular a paciente",
     "link": "Enlazar",
     "linking_patient": "Paciente a enlazar",
     "select_guardian": "Buscar familiar (paciente existente)",
