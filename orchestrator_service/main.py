@@ -7159,6 +7159,234 @@ async def get_treatment_instructions(treatment_code: str, timing: str = "all") -
         )
 
 
+@tool
+async def link_payment_to_patient(
+    patient_name: str,
+    receipt_description: Optional[str] = None,
+    amount_detected: Optional[str] = None,
+    relationship: Optional[str] = None,
+):
+    """
+    Vincula un comprobante de pago enviado por un tercero (familiar) a la ficha de un paciente existente.
+    Usar cuando alguien que NO es el paciente envía un comprobante y dice para quién es el pago.
+    Ejemplo: Jesús (hijo) manda un comprobante y dice "es para mi mamá Wilma" → buscar a Wilma y asociarle el pago.
+
+    patient_name: Nombre del paciente al que se debe asociar el pago (como lo dijo el interlocutor).
+    receipt_description: (Opcional) Descripción del comprobante extraída por vision.
+    amount_detected: (Opcional) Monto detectado en el comprobante (ej: "50000", "2000000").
+    relationship: (Opcional) Relación del que paga con el paciente (ej: "hijo", "padre", "esposo").
+    """
+    chat_phone = current_customer_phone.get()
+    tenant_id = current_tenant_id.get()
+    if not tenant_id:
+        return "❌ No pude identificar la clínica."
+
+    try:
+        # 1. Search for the target patient by name
+        search_name = patient_name.strip()
+        target = await db.pool.fetchrow(
+            """
+            SELECT id, first_name, last_name, phone_number
+            FROM patients
+            WHERE tenant_id = $1
+              AND (first_name ILIKE $2 OR last_name ILIKE $2
+                   OR (first_name || ' ' || COALESCE(last_name, '')) ILIKE $2)
+              AND status != 'deleted'
+            ORDER BY
+                CASE WHEN (first_name || ' ' || COALESCE(last_name, '')) ILIKE $2 THEN 0 ELSE 1 END,
+                created_at DESC
+            LIMIT 1
+            """,
+            tenant_id,
+            f"%{search_name}%",
+        )
+        if not target:
+            return f"❌ No encontré a ningún paciente con el nombre '{patient_name}'. ¿Podrías darme el nombre completo como está registrado?"
+
+        target_name = f"{target['first_name']} {target.get('last_name') or ''}".strip()
+        target_id = target["id"]
+
+        # 2. Find the chat conversation for this sender
+        sender_phone_digits = normalize_phone_digits(chat_phone) if chat_phone else ""
+        conv = await db.pool.fetchrow(
+            """
+            SELECT id, display_name, external_user_id
+            FROM chat_conversations
+            WHERE tenant_id = $1
+              AND (external_user_id = $2 OR REGEXP_REPLACE(external_user_id, '[^0-9]', '', 'g') = $3)
+            ORDER BY last_message_at DESC NULLS LAST
+            LIMIT 1
+            """,
+            tenant_id,
+            chat_phone or "",
+            sender_phone_digits,
+        )
+
+        sender_name = "Desconocido"
+        migrated_docs = 0
+
+        if conv:
+            sender_name = conv.get("display_name") or conv.get("external_user_id") or sender_name
+            conv_id = conv["id"]
+
+            # 3. Link the conversation to the patient
+            await db.pool.execute(
+                "UPDATE chat_conversations SET linked_patient_id = $1, linked_at = NOW() WHERE id = $2 AND tenant_id = $3",
+                target_id,
+                conv_id,
+                tenant_id,
+            )
+
+            # 4. Migrate recent media (last 24h) from this conversation to patient_documents
+            media_msgs = await db.pool.fetch(
+                """
+                SELECT id, content_attributes, created_at
+                FROM chat_messages
+                WHERE conversation_id = $1 AND tenant_id = $2
+                AND content_attributes IS NOT NULL
+                AND content_attributes::text != '[]'
+                AND content_attributes::text != 'null'
+                AND created_at > NOW() - INTERVAL '24 hours'
+                ORDER BY created_at DESC
+                """,
+                conv_id,
+                tenant_id,
+            )
+            for msg in media_msgs:
+                attrs = msg["content_attributes"]
+                if isinstance(attrs, str):
+                    try:
+                        attrs = json.loads(attrs)
+                    except Exception:
+                        continue
+                if not isinstance(attrs, list):
+                    continue
+                for att in attrs:
+                    media_url = att.get("url") or att.get("media_url") or ""
+                    if not media_url:
+                        continue
+                    mime = att.get("mime_type", "application/octet-stream")
+                    desc = att.get("description", "")
+                    fname = att.get("file_name") or f"pago_{target_name.replace(' ', '_')}_{msg['id']}"
+
+                    exists = await db.pool.fetchval(
+                        "SELECT 1 FROM patient_documents WHERE tenant_id = $1 AND patient_id = $2 AND source_details->>'source_message_id' = $3",
+                        tenant_id,
+                        target_id,
+                        str(msg["id"]),
+                    )
+                    if exists:
+                        continue
+
+                    await db.pool.execute(
+                        """
+                        INSERT INTO patient_documents
+                            (tenant_id, patient_id, file_name, file_path, mime_type,
+                             document_type, source, source_details, uploaded_at)
+                        VALUES ($1, $2, $3, $4, $5, 'receipt', 'chat_link', $6::jsonb, $7)
+                        """,
+                        tenant_id,
+                        target_id,
+                        fname,
+                        media_url,
+                        mime,
+                        json.dumps({
+                            "source_conversation_id": str(conv_id),
+                            "source_message_id": str(msg["id"]),
+                            "original_sender": sender_name,
+                            "relationship": relationship or "familiar",
+                            "description": desc,
+                            "amount_detected": amount_detected,
+                        }),
+                        msg["created_at"],
+                    )
+                    migrated_docs += 1
+
+        # 5. If amount detected, try to verify against pending payments
+        payment_applied = False
+        if amount_detected and receipt_description:
+            try:
+                # Clean amount
+                clean_amount = re.sub(r"[^\d.,]", "", str(amount_detected))
+                clean_amount = clean_amount.replace(".", "").replace(",", ".")
+                amount_val = float(clean_amount) if clean_amount else 0
+
+                if amount_val > 0:
+                    # Find pending appointment or plan for the target patient
+                    pending_apt = await db.pool.fetchrow(
+                        """
+                        SELECT id, billing_amount, payment_status
+                        FROM appointments
+                        WHERE tenant_id = $1 AND patient_id = $2
+                        AND status IN ('scheduled', 'confirmed')
+                        AND (payment_status IS NULL OR payment_status IN ('pending', 'partial'))
+                        ORDER BY appointment_datetime ASC LIMIT 1
+                        """,
+                        tenant_id,
+                        target_id,
+                    )
+                    if pending_apt:
+                        await db.pool.execute(
+                            """
+                            UPDATE appointments
+                            SET payment_status = 'paid',
+                                payment_receipt_data = $1::jsonb,
+                                updated_at = NOW()
+                            WHERE id = $2 AND tenant_id = $3
+                            """,
+                            json.dumps({
+                                "status": "verified_by_link",
+                                "amount_detected": str(amount_val),
+                                "paid_by": sender_name,
+                                "relationship": relationship or "familiar",
+                                "receipt_description": (receipt_description or "")[:500],
+                            }),
+                            pending_apt["id"],
+                            tenant_id,
+                        )
+                        payment_applied = True
+            except Exception as pay_err:
+                logger.warning(f"link_payment_to_patient: payment apply failed (non-blocking): {pay_err}")
+
+        # 6. Emit Socket.IO + Telegram notification
+        try:
+            notification_data = {
+                "tenant_id": tenant_id,
+                "patient_id": target_id,
+                "patient_name": target_name,
+                "first_name": target["first_name"],
+                "paid_by": sender_name,
+                "relationship": relationship or "familiar",
+                "amount": amount_detected or "no detectado",
+                "billing_amount": amount_detected or "?",
+                "payment_status": "paid" if payment_applied else "linked",
+                "migrated_docs": migrated_docs,
+            }
+            await sio.emit("PAYMENT_CONFIRMED", to_json_safe(notification_data))
+            from services.telegram_notifier import fire_telegram_notification
+            fire_telegram_notification("PAYMENT_CONFIRMED", notification_data, tenant_id)
+        except Exception as notif_err:
+            logger.warning(f"link_payment_to_patient notification failed: {notif_err}")
+
+        logger.info(
+            f"🔗💰 PAYMENT LINKED: sender={sender_name} → patient={target_name} (id={target_id}), "
+            f"docs={migrated_docs}, payment_applied={payment_applied}, amount={amount_detected}"
+        )
+
+        result = f"✅ Listo! Vinculé el comprobante de pago a la ficha de **{target_name}**."
+        if migrated_docs > 0:
+            result += f" Se migraron {migrated_docs} documento(s) a su ficha."
+        if payment_applied:
+            result += f" El pago de ${amount_detected} fue registrado en su próximo turno."
+        result += f"\n📋 Pagado por: {sender_name} ({relationship or 'familiar'})."
+        result += "\nLa clínica ya recibió la notificación."
+        return result
+
+    except Exception as e:
+        logger.error(f"link_payment_to_patient error: {e}")
+        return f"❌ Error al vincular el pago: {str(e)}"
+
+
 DENTAL_TOOLS = [
     list_professionals,
     list_services,
@@ -7182,6 +7410,7 @@ DENTAL_TOOLS = [
     verify_payment_receipt,
     check_insurance_coverage,
     get_treatment_instructions,
+    link_payment_to_patient,
 ]
 
 

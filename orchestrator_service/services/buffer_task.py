@@ -1977,8 +1977,9 @@ async def process_buffer_task(
                                 "Es probable que esté pagando POR UN FAMILIAR (hijo/a, padre/madre, etc.). "
                                 "ACCIÓN: Preguntá amablemente: '¡Recibí tu comprobante! ¿Este pago es para vos o para un familiar? "
                                 "Si es para otra persona, decime su nombre así lo asocio a su ficha.' "
-                                "Cuando te diga el nombre, buscá al paciente con 'buscar_paciente' (si usás Nova) o indicá que "
-                                "la secretaría va a vincular el comprobante a la ficha del paciente correspondiente. "
+                                "Cuando te diga el nombre, usá la tool 'link_payment_to_patient' con el nombre del paciente, "
+                                "la descripción del comprobante (del CONTEXTO VISUAL), el monto detectado, y la relación (hijo, madre, etc.). "
+                                "La tool busca al paciente, vincula el comprobante a su ficha, registra el pago y notifica a la clínica. "
                                 "NO digas que ya verificaste el pago. Esperá a saber PARA QUIÉN es."
                             )
                         else:
@@ -1992,8 +1993,10 @@ async def process_buffer_task(
                         "Es MUY probable que esté pagando POR UN FAMILIAR que sí es paciente (hijo/a pagando por padre/madre, etc.). "
                         "ACCIÓN: Preguntá amablemente: '¡Recibí tu comprobante! ¿Para qué paciente es este pago? "
                         "Decime el nombre completo así lo asocio a su ficha.' "
-                        "Cuando te diga el nombre, indicá que la secretaría va a vincular el comprobante al paciente. "
-                        "NO digas que verificaste ni guardaste nada todavía."
+                        "Cuando te diga el nombre, usá la tool 'link_payment_to_patient' con el nombre del paciente, "
+                        "la descripción del comprobante (del CONTEXTO VISUAL), el monto detectado, y la relación. "
+                        "La tool busca al paciente, vincula el comprobante a su ficha, registra el pago y notifica a la clínica. "
+                        "NO digas que verificaste ni guardaste nada HASTA que el interlocutor te diga para quién es."
                     )
                 else:
                     media_context += (
