@@ -431,6 +431,7 @@ export default function PatientDetail() {
                         : 'Sin visitas'}
                     </p>
                   </div>
+                  {(user as any)?.role === 'ceo' && (
                   <div className="bg-white/[0.03] border border-white/[0.06] rounded-xl p-3">
                     <p className="text-[10px] text-white/40 uppercase font-bold">Balance pendiente</p>
                     <p className={`text-sm font-bold ${(patient?.pending_balance || 0) > 0 ? 'text-amber-400' : 'text-emerald-400'}`}>
@@ -439,6 +440,7 @@ export default function PatientDetail() {
                         : 'Al día'}
                     </p>
                   </div>
+                  )}
                 </div>
               );
             })()}
@@ -670,6 +672,7 @@ export default function PatientDetail() {
         );
 
       case 'billing':
+        if ((user as any)?.role !== 'ceo') return null;
         return (
           <BillingTab
             patientId={parseInt(id!)}

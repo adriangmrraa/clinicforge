@@ -576,9 +576,11 @@ export default function PatientsView() {
                     <th className="px-3 py-3 text-left text-xs font-medium text-white/50 uppercase tracking-wider">
                       {t('patients.next_appointment')}
                     </th>
+                    {user?.role === 'ceo' && (
                     <th className="px-3 py-3 text-left text-xs font-medium text-white/50 uppercase tracking-wider">
                       {t('patients.balance')}
                     </th>
+                    )}
                     <th className="px-3 py-3 text-left text-xs font-medium text-white/50 uppercase tracking-wider">
                       {t('patients.date_added')}
                     </th>
@@ -647,7 +649,7 @@ export default function PatientsView() {
                           <span className="text-xs text-white/20">Sin turno</span>
                         )}
                       </td>
-                      {/* Pending balance */}
+                      {user?.role === 'ceo' && (
                       <td className="px-3 py-4 whitespace-nowrap">
                         {patient.pending_balance > 0 ? (
                           <span className="text-xs font-semibold text-amber-400">
@@ -655,6 +657,7 @@ export default function PatientsView() {
                           </span>
                         ) : null}
                       </td>
+                      )}
                       <td className="px-3 py-4 whitespace-nowrap text-sm text-white/50">
                         {new Date(patient.created_at).toLocaleDateString(language)}
                       </td>

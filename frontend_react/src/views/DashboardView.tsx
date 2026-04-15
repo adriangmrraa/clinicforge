@@ -266,7 +266,7 @@ export default function DashboardView() {
             color="bg-rose-500"
             image={CARD_IMAGES.completion}
           />
-          {!isProfessional && (
+          {user?.role === 'ceo' && (
             <>
               <KPICard
                 title={t('dashboard.revenue_confirmed')}
@@ -369,10 +369,12 @@ export default function DashboardView() {
 
         </div>
 
-        {/* Spec 09: MARKETING PERFORMANCE */}
+        {/* Spec 09: MARKETING PERFORMANCE — CEO only */}
+        {user?.role === 'ceo' && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <MarketingPerformanceCard timeRange={timeRange === 'all' ? 'lifetime' : timeRange === 'yearly' ? 'this_year' : timeRange === 'monthly' ? 'last_30d' : 'weekly'} />
         </div>
+        )}
 
         {/* BOTTOM ROW: RECENT URGENCIES TABLE */}
         <GlassCard image={CARD_IMAGES.dental}>
