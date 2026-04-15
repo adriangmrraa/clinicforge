@@ -286,7 +286,7 @@ async def _process_with_nova(
             clinic_name = "Clínica"
 
         from services.nova_prompt import build_nova_system_prompt
-        system_prompt = build_nova_system_prompt(clinic_name, "telegram", user_role, tenant_id)
+        system_prompt = await build_nova_system_prompt(clinic_name, "telegram", user_role, tenant_id)
 
         # Inject Engram persistent memories
         try:

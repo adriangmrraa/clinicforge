@@ -10382,13 +10382,13 @@ if os.getenv("DEBUG", "").lower() in ("true", "1"):
         }
 
 
-def build_nova_system_prompt(
+async def build_nova_system_prompt(
     clinic_name: str, page: str, user_role: str, tenant_id: int
 ) -> str:
     """Build the full Nova system prompt. Delegates to services.nova_prompt."""
     from services.nova_prompt import build_nova_system_prompt as _build
 
-    return _build(clinic_name, page, user_role, tenant_id)
+    return await _build(clinic_name, page, user_role, tenant_id)
 
 
 async def _nova_realtime_handler(websocket: WebSocket, session_id: str):
@@ -10774,7 +10774,7 @@ async def nova_voice_direct(websocket: WebSocket):
             except Exception:
                 pass
 
-            system_prompt = build_nova_system_prompt(
+            system_prompt = await build_nova_system_prompt(
                 clinic_name, page, user_role, tenant_id
             )
             logger.info(f"🎙️ NOVA DIRECT: session={session_id} tenant={tenant_id} role={user_role} page={page} prompt={len(system_prompt)} chars")

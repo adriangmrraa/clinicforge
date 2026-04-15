@@ -7,12 +7,15 @@ Used by: main.py (Realtime WebSocket) and telegram_bot.py (Telegram).
 
 from datetime import datetime
 
+from services.tz_resolver import get_tenant_tz
 
-def build_nova_system_prompt(
+
+async def build_nova_system_prompt(
     clinic_name: str, page: str, user_role: str, tenant_id: int
 ) -> str:
     """Build the full Nova system prompt."""
-    now = datetime.now()
+    tz = await get_tenant_tz(tenant_id)
+    now = datetime.now(tz)
 
     return f"""IDIOMA: Español argentino con voseo. NUNCA cambies de idioma.
 

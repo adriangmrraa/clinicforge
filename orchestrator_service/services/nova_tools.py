@@ -1999,12 +1999,18 @@ def _parse_date_str(d: Any) -> date:
             return date.today()
 
 
-def _parse_datetime_str(d: Any) -> datetime:
-    """Parse string to datetime object. Handles various formats."""
+def _parse_datetime_str(d: Any, tz=None) -> datetime:
+    """Parse string to datetime object. Handles various formats.
+
+    If *tz* is supplied the returned datetime is timezone-aware in that zone.
+    """
     if isinstance(d, datetime):
+        if tz and d.tzinfo is None:
+            return d.replace(tzinfo=tz)
         return d
     if isinstance(d, date):
-        return datetime.combine(d, datetime.min.time())
+        dt = datetime.combine(d, datetime.min.time())
+        return dt.replace(tzinfo=tz) if tz else dt
     s = str(d).strip()
     for fmt in [
         "%Y-%m-%d %H:%M:%S",
@@ -2014,10 +2020,12 @@ def _parse_datetime_str(d: Any) -> datetime:
         "%Y-%m-%d",
     ]:
         try:
-            return datetime.strptime(s, fmt)
+            dt = datetime.strptime(s, fmt)
+            return dt.replace(tzinfo=tz) if tz else dt
         except ValueError:
             continue
-    return datetime.now()
+    from services.tz_resolver import _HARD_FALLBACK
+    return datetime.now(tz or _HARD_FALLBACK)
 
 
 def _fmt_date(d: Any) -> str:
@@ -4064,9 +4072,11 @@ async def _agendar_turno(args: Dict, tenant_id: int) -> str:
     if prof_id:
         prof_id = int(prof_id)
 
-    # Build datetime
+    # Build datetime (timezone-aware)
     try:
-        appt_dt = datetime.strptime(f"{target_date} {time_str}", "%Y-%m-%d %H:%M")
+        from services.tz_resolver import get_tenant_tz
+        _tz = await get_tenant_tz(tenant_id)
+        appt_dt = datetime.strptime(f"{target_date} {time_str}", "%Y-%m-%d %H:%M").replace(tzinfo=_tz)
     except ValueError:
         return "Formato de fecha/hora invalido. Usa YYYY-MM-DD y HH:MM."
 
@@ -6546,7 +6556,9 @@ async def _reprogramar_turno(args: Dict, tenant_id: int) -> str:
         appt_uuid = uuid.UUID(str(apt_id))
     except ValueError:
         return "ID de turno invalido."
-    new_dt = _parse_datetime_str(f"{new_date} {new_time}")
+    from services.tz_resolver import get_tenant_tz
+    _tz = await get_tenant_tz(tenant_id)
+    new_dt = _parse_datetime_str(f"{new_date} {new_time}", tz=_tz)
     # Capture old datetime for audit log
     _old = await db.pool.fetchrow(
         "SELECT appointment_datetime, status FROM appointments WHERE id = $1 AND tenant_id = $2",
@@ -7239,8 +7251,10 @@ async def _bloquear_agenda(args: Dict, tenant_id: int) -> str:
     reason = args.get("reason", "Bloqueado")
     if not prof_id or not start or not end:
         return "Necesito professional_id, start_datetime y end_datetime."
-    start_dt = _parse_datetime_str(start)
-    end_dt = _parse_datetime_str(end)
+    from services.tz_resolver import get_tenant_tz
+    _tz = await get_tenant_tz(tenant_id)
+    start_dt = _parse_datetime_str(start, tz=_tz)
+    end_dt = _parse_datetime_str(end, tz=_tz)
     block_id = uuid.uuid4()
     await db.pool.execute(
         """INSERT INTO google_calendar_blocks (id, tenant_id, google_event_id, professional_id, start_datetime, end_datetime, title, sync_status, created_at)
@@ -7945,7 +7959,7 @@ async def _resumen_financiero(args: Dict, tenant_id: int, user_role: str) -> str
         return f"Error obteniendo datos financieros: {str(e)}"
 
 
-def _coerce_crud_value(field: str, value: Any, tabla: str) -> Any:
+def _coerce_crud_value(field: str, value: Any, tabla: str, tz=None) -> Any:
     """Coerce a CRUD value to the correct Python type for asyncpg based on field name."""
     if value is None:
         return None
@@ -7966,7 +7980,7 @@ def _coerce_crud_value(field: str, value: Any, tabla: str) -> Any:
         "insurance_valid_until",
     ):
         if isinstance(value, str):
-            return _parse_datetime_str(value)
+            return _parse_datetime_str(value, tz=tz)
         return value
     # ID fields
     if field == "id":
@@ -8112,6 +8126,8 @@ async def _obtener_registros(args: Dict, tenant_id: int, user_role: str) -> str:
         query = f"SELECT {select_fields} FROM {tabla} WHERE tenant_id = $1"
 
         # Parse simple filters (field=value AND field>value)
+        from services.tz_resolver import get_tenant_tz
+        _tz = await get_tenant_tz(tenant_id)
         params = [tenant_id]
         if filtros:
             # Security: only allow simple comparisons, no subqueries
@@ -8133,7 +8149,7 @@ async def _obtener_registros(args: Dict, tenant_id: int, user_role: str) -> str:
                             or "updated_at" in field
                         ):
                             try:
-                                value = _parse_datetime_str(value)
+                                value = _parse_datetime_str(value, tz=_tz)
                             except Exception:
                                 pass
                         elif field.endswith("_id") and field != "external_user_id":
@@ -8212,13 +8228,15 @@ async def _actualizar_registro(args: Dict, tenant_id: int, user_role: str) -> st
             return "No especificaste qué campos actualizar."
 
         # Build UPDATE query with type coercion
+        from services.tz_resolver import get_tenant_tz
+        _tz = await get_tenant_tz(tenant_id)
         sets = []
         params = [tenant_id]
         for field, value in campos.items():
             if not all(c.isalnum() or c == "_" for c in field):
                 continue
             try:
-                value = _coerce_crud_value(field, value, tabla)
+                value = _coerce_crud_value(field, value, tabla, tz=_tz)
             except Exception:
                 pass  # keep original value
             params.append(value)
@@ -8285,6 +8303,8 @@ async def _crear_registro(args: Dict, tenant_id: int, user_role: str) -> str:
             except ValueError:
                 datos["id"] = uuid.uuid4()
 
+        from services.tz_resolver import get_tenant_tz
+        _tz = await get_tenant_tz(tenant_id)
         fields = []
         values = []
         params = []
@@ -8292,7 +8312,7 @@ async def _crear_registro(args: Dict, tenant_id: int, user_role: str) -> str:
             if not all(c.isalnum() or c == "_" for c in field):
                 continue
             try:
-                value = _coerce_crud_value(field, value, tabla)
+                value = _coerce_crud_value(field, value, tabla, tz=_tz)
             except Exception:
                 pass
             fields.append(field)
@@ -8325,6 +8345,8 @@ async def _contar_registros(args: Dict, tenant_id: int) -> str:
     filtros = args.get("filtros", "")
 
     try:
+        from services.tz_resolver import get_tenant_tz
+        _tz = await get_tenant_tz(tenant_id)
         query = f"SELECT COUNT(*) as cnt FROM {tabla} WHERE tenant_id = $1"
         params = [tenant_id]
 
@@ -8346,7 +8368,7 @@ async def _contar_registros(args: Dict, tenant_id: int) -> str:
                             or "updated_at" in field
                         ):
                             try:
-                                value = _parse_datetime_str(value)
+                                value = _parse_datetime_str(value, tz=_tz)
                             except Exception:
                                 pass
                         elif field.endswith("_id") and field != "external_user_id":
