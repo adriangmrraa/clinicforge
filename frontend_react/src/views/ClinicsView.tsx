@@ -262,6 +262,8 @@ export default function ClinicsView() {
         review_platforms: [] as ReviewPlatformItem[],
         complaint_handling_protocol: { level_1: '', level_2: '', level_3: '' },
         auto_send_review_link_after_followup: false,
+        // Min appointment date (fecha mínima para turnos)
+        min_appointment_date: '',
     });
     const [expandedDays, setExpandedDays] = useState<string[]>([]);
     const [paymentSectionExpanded, setPaymentSectionExpanded] = useState(false);
@@ -602,9 +604,17 @@ export default function ClinicsView() {
         }
     };
 
-    const handleOpenModal = (clinica: Clinica | null = null) => {
+    const handleOpenModal = async (clinica: Clinica | null = null) => {
         if (clinica) {
             setEditingClinica(clinica);
+            // Fetch min_appointment_date from settings
+            let minDate = '';
+            try {
+                const settingsRes = await api.get('/admin/settings/clinic');
+                minDate = settingsRes.data?.min_appointment_date || '';
+            } catch (e) {
+                console.error('Error fetching min_appointment_date:', e);
+            }
             setFormData({
                 clinic_name: clinica.clinic_name,
                 bot_name: clinica.bot_name || '',
@@ -665,6 +675,8 @@ export default function ClinicsView() {
                 review_platforms: Array.isArray(clinica.review_platforms) ? clinica.review_platforms : [],
                 complaint_handling_protocol: clinica.complaint_handling_protocol || { level_1: '', level_2: '', level_3: '' },
                 auto_send_review_link_after_followup: Boolean(clinica.auto_send_review_link_after_followup),
+                // Min appointment date
+                min_appointment_date: minDate,
             });
         } else {
             setEditingClinica(null);
@@ -694,6 +706,8 @@ export default function ClinicsView() {
                 review_platforms: [],
                 complaint_handling_protocol: { level_1: '', level_2: '', level_3: '' },
                 auto_send_review_link_after_followup: false,
+                // Min appointment date
+                min_appointment_date: '',
             });
         }
         setPaymentSectionExpanded(false);
@@ -777,6 +791,12 @@ export default function ClinicsView() {
             };
             if (editingClinica) {
                 await api.put(`/admin/tenants/${editingClinica.id}`, payload);
+                // Also update min_appointment_date in config
+                if (formData.min_appointment_date) {
+                    await api.patch('/admin/settings/clinic', {
+                        min_appointment_date: formData.min_appointment_date,
+                    });
+                }
                 setSuccess(t('clinics.toast_updated'));
             } else {
                 await api.post('/admin/tenants', payload);
@@ -2010,6 +2030,22 @@ export default function ClinicsView() {
                                         <option key={opt.value} value={opt.value}>{opt.label}</option>
                                     ))}
                                 </select>
+                            </div>
+
+                            {/* Fecha mínima para turnos */}
+                            <div className="space-y-1 border-t pt-4 mt-4">
+                                <label className="text-sm font-semibold text-white/60">
+                                    {t('config.min_appointment_date') || 'Fecha mínima para turnos'}
+                                </label>
+                                <input
+                                    type="date"
+                                    className="w-full px-4 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white placeholder-white/20 focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                                    value={formData.min_appointment_date}
+                                    onChange={(e) => setFormData(prev => ({ ...prev, min_appointment_date: e.target.value }))}
+                                />
+                                <p className="text-xs text-white/30">
+                                    {t('config.min_appointment_date_hint') || 'Los turnos no se ofrecerán antes de esta fecha'}
+                                </p>
                             </div>
 
                             {/* Horarios por día */}
