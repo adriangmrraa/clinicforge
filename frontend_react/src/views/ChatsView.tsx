@@ -610,7 +610,8 @@ export default function ChatsView() {
 
   const markAsRead = async (phone: string, tenantId: number) => {
     try {
-      await api.put(`/admin/chat/sessions/${phone}/read`, null, { params: { tenant_id: tenantId } });
+      const encodedPhone = encodeURIComponent(phone);
+      await api.put(`/admin/chat/sessions/${encodedPhone}/read`, null, { params: { tenant_id: tenantId } });
       setSessions(prev => prev.map(s =>
         s.phone_number === phone && s.tenant_id === tenantId ? { ...s, unread_count: 0 } : s
       ));
@@ -1798,14 +1799,16 @@ export default function ChatsView() {
                           >
                             <User size={12} /> {t('chats.schedule_for_family') || 'Para hijo/familiar'}
                           </button>
-                          {/* Enlazar a familiar */}
-                          <button
-                            onClick={() => setShowLinkGuardianModal(true)}
-                            className="w-full py-2 px-3 bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 hover:text-purple-200 border border-purple-500/20 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1.5"
-                            title={t('chats.link_to_family') || 'Enlazar a familiar'}
-                          >
-                            <LinkIcon size={12} /> {t('chats.link_to_family') || 'Enlazar'}
-                          </button>
+                          {/* Enlazar a familiar - solo si hay paciente seleccionado */}
+                          {(patientContext as any)?.patient_id && (
+                            <button
+                              onClick={() => setShowLinkGuardianModal(true)}
+                              className="w-full py-2 px-3 bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 hover:text-purple-200 border border-purple-500/20 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1.5"
+                              title={t('chats.link_to_family') || 'Enlazar a familiar'}
+                            >
+                              <LinkIcon size={12} /> {t('chats.link_to_family') || 'Enlazar'}
+                            </button>
+                          )}
                         </div>
                       </div>
 
