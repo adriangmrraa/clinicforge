@@ -4137,17 +4137,34 @@ async def update_clinic_settings(
     # Handle min_appointment_date (fecha mínima para turnos)
     if payload.min_appointment_date is not None:
         try:
-            # Guardar en config JSONB
-            await db.pool.execute(
-                """
-                UPDATE tenants
-                SET config = jsonb_set(COALESCE(config, '{}'), '{min_appointment_date}', to_jsonb($1::text)),
-                    updated_at = NOW()
-                WHERE id = $2
-                """,
-                str(payload.min_appointment_date),
-                resolved_tenant_id,
+            # Guardar en config JSONB - convertir a string primero
+            date_val = (
+                str(payload.min_appointment_date)
+                if payload.min_appointment_date
+                else None
             )
+            if date_val:
+                await db.pool.execute(
+                    """
+                    UPDATE tenants
+                    SET config = COALESCE(config, '{}') || jsonb_build_object('min_appointment_date', $1),
+                        updated_at = NOW()
+                    WHERE id = $2
+                    """,
+                    date_val,
+                    resolved_tenant_id,
+                )
+            else:
+                # Si es null o vacío, remover el campo
+                await db.pool.execute(
+                    """
+                    UPDATE tenants
+                    SET config = config - 'min_appointment_date',
+                        updated_at = NOW()
+                    WHERE id = $1 AND config ? 'min_appointment_date'
+                    """,
+                    resolved_tenant_id,
+                )
         except Exception as e:
             logger.error(f"update_clinic_settings min_appointment_date failed: {e}")
             raise HTTPException(
