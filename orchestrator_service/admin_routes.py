@@ -4170,33 +4170,6 @@ async def update_clinic_settings(
             raise HTTPException(
                 status_code=500, detail="Error al guardar la fecha mínima de turnos."
             )
-            if date_val:
-                await db.pool.execute(
-                    """
-                    UPDATE tenants
-                    SET config = COALESCE(config, '{}') || jsonb_build_object('min_appointment_date', $1),
-                        updated_at = NOW()
-                    WHERE id = $2
-                    """,
-                    date_val,
-                    resolved_tenant_id,
-                )
-            else:
-                # Si es null o vacío, remover el campo
-                await db.pool.execute(
-                    """
-                    UPDATE tenants
-                    SET config = config - 'min_appointment_date',
-                        updated_at = NOW()
-                    WHERE id = $1 AND config ? 'min_appointment_date'
-                    """,
-                    resolved_tenant_id,
-                )
-        except Exception as e:
-            logger.error(f"update_clinic_settings min_appointment_date failed: {e}")
-            raise HTTPException(
-                status_code=500, detail="Error al guardar la fecha mínima de turnos."
-            )
 
     return {"status": "ok", "ui_language": getattr(payload, "ui_language", None)}
 
