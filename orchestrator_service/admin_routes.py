@@ -592,6 +592,10 @@ async def get_patient_clinical_context(
     }
 
 
+class LinkGuardianRequest(BaseModel):
+    guardian_patient_id: int
+
+
 class StatusUpdate(BaseModel):
     status: str
     notes: Optional[str] = None  # active, suspended, pending
@@ -5712,11 +5716,15 @@ async def delete_patient(id: int, tenant_id: int = Depends(get_resolved_tenant_i
     summary="Enlazar paciente a un familiar (guardian)",
 )
 async def link_patient_to_guardian(
-    id: int, guardian_patient_id: int, tenant_id: int = Depends(get_resolved_tenant_id)
+    id: int,
+    payload: LinkGuardianRequest,
+    tenant_id: int = Depends(get_resolved_tenant_id),
 ):
     """Enlazar un paciente (hijo) a un familiar existente (padre/madre).
     El paciente actual tendrá guardian_phone = teléfono del familiar.
     El familiar debe ser paciente existente en el mismo tenant."""
+
+    guardian_patient_id = payload.guardian_patient_id
 
     # Verificar que el paciente actual existe
     current_patient = await db.pool.fetchrow(

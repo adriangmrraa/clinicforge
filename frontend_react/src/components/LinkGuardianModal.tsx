@@ -57,7 +57,14 @@ export default function LinkGuardianModal({
   };
 
   const handleLink = async () => {
-    if (!selectedGuardian) return;
+    if (!selectedGuardian) {
+      alert('Seleccioná un familiar primero');
+      return;
+    }
+    if (!currentPatientId) {
+      alert('No hay paciente seleccionado para enlazar');
+      return;
+    }
     setLinking(true);
     try {
       await api.patch(`/admin/patients/${currentPatientId}/link-guardian`, {
@@ -66,7 +73,9 @@ export default function LinkGuardianModal({
       onLinked();
       onClose();
     } catch (e: any) {
-      alert(e.response?.data?.detail || 'Error al enlazar');
+      const errMsg = e?.response?.data?.detail || e?.response?.data?.message || e?.message || 'Error al enlazar';
+      console.error('Link error:', e?.response?.data || e);
+      alert(errMsg);
     } finally {
       setLinking(false);
     }
