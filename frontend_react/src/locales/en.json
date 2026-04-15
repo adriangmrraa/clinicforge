@@ -621,6 +621,7 @@
     "reject": "Reject",
     "reactivate": "Reactivate access",
     "suspend": "Suspend access",
+    "delete": "Delete",
     "page_title": "User and Staff Management",
     "page_subtitle": "Manage access and clinic staff.",
     "no_requests": "No pending requests",

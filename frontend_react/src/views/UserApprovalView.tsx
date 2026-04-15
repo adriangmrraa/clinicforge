@@ -3,7 +3,7 @@ import api from '../api/axios';
 import { useTranslation } from '../context/LanguageContext';
 import {
     UserCheck, UserX, Clock, ShieldCheck, Mail,
-    AlertTriangle, User, Users, Lock, Unlock, X, Building2, Stethoscope, BarChart3, MessageSquare, Plus, Phone, Save, Settings, ChevronDown, ChevronUp, Edit, Activity
+    AlertTriangle, User, Users, Lock, Unlock, X, Building2, Stethoscope, BarChart3, MessageSquare, Plus, Phone, Save, Settings, ChevronDown, ChevronUp, Edit, Activity, Trash2
 } from 'lucide-react';
 
 interface DayConfig { enabled: boolean; slots: { start: string; end: string }[]; location?: string; address?: string; maps_url?: string; }
@@ -157,6 +157,19 @@ const UserApprovalView: React.FC = () => {
             ));
         } catch (err: any) {
             alert(t('alerts.error_process'));
+        }
+    };
+
+    const handleDelete = async (userId: string, userEmail: string) => {
+        if (!confirm(`¿Estás seguro de eliminar al usuario ${userEmail}? Esta acción no se puede deshacer.`)) {
+            return;
+        }
+        try {
+            await api.delete(`/admin/users/${userId}`);
+            setUsers(prev => prev.filter(u => u.id !== userId));
+            alert('Usuario eliminado correctamente');
+        } catch (err: any) {
+            alert(err.response?.data?.detail || t('alerts.error_process'));
         }
     };
 
@@ -456,7 +469,7 @@ const UserApprovalView: React.FC = () => {
                                 </div>
                             ) : (
                                 requests.map(user => (
-                                    <UserCard key={user.id} user={user} onAction={handleAction} isRequest />
+                                    <UserCard key={user.id} user={user} onAction={handleAction} onDelete={handleDelete} isRequest />
                                 ))
                             )
                         ) : (
@@ -472,6 +485,7 @@ const UserApprovalView: React.FC = () => {
                                         key={user.id}
                                         user={user}
                                         onAction={handleAction}
+                                        onDelete={handleDelete}
                                         onCardClick={() => setSelectedStaff(user)}
                                         onConfigClick={() => handleConfigClick(user)}
                                     />
@@ -1089,12 +1103,13 @@ const UserApprovalView: React.FC = () => {
 interface UserCardProps {
     user: StaffUser;
     onAction: (id: string, action: 'active' | 'suspended') => void;
+    onDelete: (id: string, email: string) => void;
     isRequest?: boolean;
     onCardClick?: () => void;
     onConfigClick?: () => void;
 }
 
-const UserCard: React.FC<UserCardProps> = ({ user, onAction, isRequest, onCardClick, onConfigClick }) => {
+const UserCard: React.FC<UserCardProps> = ({ user, onAction, onDelete, isRequest, onCardClick, onConfigClick }) => {
     const { t } = useTranslation();
     return (
     <div className="glass p-4 sm:p-5 flex flex-col gap-4 animate-fadeIn overflow-hidden">
@@ -1134,6 +1149,11 @@ const UserCard: React.FC<UserCardProps> = ({ user, onAction, isRequest, onCardCl
                     aria-label={t('approvals.edit_profile_schedules')}
                 >
                     <Settings size={20} />
+                </button>
+            )}
+            {!isRequest && user.role !== 'ceo' && (
+                <button onClick={() => onDelete(user.id, user.email)} className="btn-icon-labeled danger" title={t('approvals.delete')}>
+                    <Trash2 size={18} /> {t('approvals.delete')}
                 </button>
             )}
             {isRequest ? (

@@ -597,6 +597,71 @@ class StatusUpdate(BaseModel):
     notes: Optional[str] = None  # active, suspended, pending
 
 
+@router.delete(
+    "/users/{user_id}",
+    tags=["Usuarios"],
+    summary="Eliminar un usuario y sus datos relacionados",
+)
+async def delete_user(user_id: str, user_data=Depends(verify_ceo_token)):
+    """Eliminar un usuario completamente - Solo CEO.
+    Elimina: profesionales, appointments, y el usuario mismo.
+    Devuelve los IDs eliminados para confirmación."""
+
+    uid = uuid.UUID(user_id)
+
+    # Obtener info del usuario
+    target_user = await db.fetchrow(
+        "SELECT id, email, role FROM users WHERE id = $1",
+        user_id,
+    )
+    if not target_user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado.")
+
+    # No permitir eliminar al CEO
+    if target_user["role"] == "ceo":
+        raise HTTPException(status_code=400, detail="No se puede eliminar al CEO.")
+
+    deleted_info = {
+        "user_id": str(user_id),
+        "email": target_user["email"],
+        "role": target_user["role"],
+        "professionals_deleted": 0,
+        "appointments_deleted": 0,
+    }
+
+    # 1. Si es professional o secretary, eliminar filas en professionals
+    if target_user["role"] in ("professional", "secretary"):
+        # Contar appointments antes de borrar
+        apt_count = await db.pool.fetchval(
+            "SELECT COUNT(*) FROM appointments a "
+            "JOIN professionals p ON a.professional_id = p.id "
+            "WHERE p.user_id = $1",
+            uid,
+        )
+        deleted_info["appointments_deleted"] = apt_count
+
+        # Eliminar appointments del profesional
+        await db.pool.execute(
+            "DELETE FROM appointments WHERE professional_id IN (SELECT id FROM professionals WHERE user_id = $1)",
+            uid,
+        )
+
+        # Contar y eliminar profesionales
+        prof_count = await db.pool.fetchval(
+            "SELECT COUNT(*) FROM professionals WHERE user_id = $1", uid
+        )
+        deleted_info["professionals_deleted"] = prof_count
+
+        # Eliminar profesionales
+        await db.pool.execute("DELETE FROM professionals WHERE user_id = $1", uid)
+
+    # 2. Eliminar el usuario
+    await db.execute("DELETE FROM users WHERE id = $1", user_id)
+
+    logger.info(f"🗑️ USER_DELETED: {deleted_info}")
+    return deleted_info
+
+
 # --- RUTAS DE ADMINISTRACIÓN DE USUARIOS ---
 
 

@@ -634,6 +634,7 @@
     "reject": "Rechazar",
     "reactivate": "Reactivar Acceso",
     "suspend": "Suspender Acceso",
+    "delete": "Eliminar",
     "page_title": "Gestión de Usuarios y Personal",
     "page_subtitle": "Administre los accesos y el personal de la clínica.",
     "no_requests": "No hay solicitudes pendientes",
