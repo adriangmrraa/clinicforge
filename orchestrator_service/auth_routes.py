@@ -365,6 +365,17 @@ async def login(request: Request, payload: UserLogin, response: Response):
             detail=f"Tu cuenta está en estado '{user['status']}'. Contactá al administrador.",
         )
 
+    # Verificar si profesional está activo (aprobado por CEO)
+    if user["role"] == "professional":
+        prof_active = await db.fetchval(
+            "SELECT is_active FROM professionals WHERE user_id = $1", user["id"]
+        )
+        if not prof_active:
+            raise HTTPException(
+                status_code=403,
+                detail="Tu cuenta está pendiente de aprobación. Contactá al administrador.",
+            )
+
     # Regla de Oro: resolver tenant_id y professional_id desde professionals por user_id (aislamiento total)
     prof_row = await db.fetchrow(
         "SELECT id, tenant_id FROM professionals WHERE user_id = $1", user["id"]
@@ -436,7 +447,13 @@ async def get_me(request: Request):
         )
 
     # Convert TokenData (Pydantic) to dict for enrichment
-    result = token_data.model_dump() if hasattr(token_data, 'model_dump') else token_data.dict() if hasattr(token_data, 'dict') else dict(token_data)
+    result = (
+        token_data.model_dump()
+        if hasattr(token_data, "model_dump")
+        else token_data.dict()
+        if hasattr(token_data, "dict")
+        else dict(token_data)
+    )
 
     # Enrich with professional_id (always query DB — TokenData doesn't carry it yet)
     user_id = result.get("user_id")

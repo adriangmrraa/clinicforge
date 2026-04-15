@@ -865,7 +865,7 @@ export default function PatientDetail() {
                 <span className="sm:hidden">Fichas</span>
               </div>
             </button>
-            {(user as any)?.role !== 'professional' && (
+            {((user as any)?.role === 'ceo') && (
               <button
                 onClick={() => setActiveTab('billing')}
                 className={`flex-shrink-0 py-3 px-3 lg:px-4 text-xs lg:text-sm font-medium transition-colors whitespace-nowrap ${activeTab === 'billing'
