@@ -133,6 +133,7 @@ export default function ChatsView() {
   const [anamnesisRefreshKey, setAnamnesisRefreshKey] = useState(0);
   const [showCreatePatient, setShowCreatePatient] = useState(false);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [scheduleForMinor, setScheduleForMinor] = useState(false);
 
 
 
@@ -1783,10 +1784,18 @@ export default function ChatsView() {
                           )}
                           {/* Agendar turno — siempre visible */}
                           <button
-                            onClick={() => setShowScheduleModal(true)}
+                            onClick={() => { setScheduleForMinor(false); setShowScheduleModal(true); }}
                             className="w-full py-2 px-3 bg-white/[0.04] hover:bg-white/[0.08] text-white/70 hover:text-white border border-white/[0.08] rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1.5"
                           >
                             <Calendar size={12} /> {t('chats.schedule_appointment')}
+                          </button>
+                          {/* Agendar turno para familiar/hijo */}
+                          <button
+                            onClick={() => { setScheduleForMinor(true); setShowScheduleModal(true); }}
+                            className="w-full py-2 px-3 bg-blue-500/10 hover:bg-blue-500/20 text-blue-300 hover:text-blue-200 border border-blue-500/20 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1.5"
+                            title={t('chats.schedule_for_family') || 'Agendar para hijo/familiar'}
+                          >
+                            <User size={12} /> {t('chats.schedule_for_family') || 'Para hijo/familiar'}
                           </button>
                         </div>
                       </div>
@@ -1949,6 +1958,7 @@ export default function ChatsView() {
         patientPhone={selectedSession?.phone_number || selectedChatwoot?.external_user_id || ''}
         patientName={selectedSession?.patient_name || selectedChatwoot?.name || ''}
         tenantId={selectedTenantId || selectedSession?.tenant_id || 0}
+        isForMinor={scheduleForMinor}
       />
     </div>
   );

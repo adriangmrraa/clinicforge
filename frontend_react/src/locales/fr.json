@@ -562,7 +562,8 @@
     "create_patient": "Créer patient",
     "edit_patient": "Modifier patient",
     "view_profile": "Voir fiche patient",
-    "schedule_appointment": "Planifier rendez-vous"
+    "schedule_appointment": "Planifier rendez-vous",
+    "schedule_for_family": "Pour enfant/famille"
   },
   "create_patient_modal": {
     "title_create": "Nouveau patient",

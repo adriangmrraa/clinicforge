@@ -569,7 +569,8 @@
     "create_patient": "Create patient",
     "edit_patient": "Edit patient",
     "view_profile": "View patient profile",
-    "schedule_appointment": "Schedule appointment"
+    "schedule_appointment": "Schedule appointment",
+    "schedule_for_family": "For child/family"
   },
   "create_patient_modal": {
     "title_create": "New patient",

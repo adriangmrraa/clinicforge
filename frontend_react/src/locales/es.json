@@ -582,7 +582,8 @@
     "create_patient": "Crear paciente",
     "edit_patient": "Editar paciente",
     "view_profile": "Ver ficha del paciente",
-    "schedule_appointment": "Agendar turno"
+    "schedule_appointment": "Agendar turno",
+    "schedule_for_family": "Para hijo/familiar"
   },
   "create_patient_modal": {
     "title_create": "Nuevo paciente",

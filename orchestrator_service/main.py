@@ -2133,9 +2133,7 @@ async def check_availability(
                 while check_time.hour < 23:
                     busy_map[prof_id].add(check_time.strftime("%H:%M"))
                     check_time += timedelta(minutes=15)
-                logger.info(
-                    f"📅 DIAG prof={prof_id} day DISABLED → marked fully busy"
-                )
+                logger.info(f"📅 DIAG prof={prof_id} day DISABLED → marked fully busy")
             else:
                 # No working_hours config at all → professional available during clinic hours
                 logger.info(
@@ -2373,7 +2371,9 @@ async def check_availability(
         _effective_prof_name = professional_name
         if not _effective_prof_name and len(active_professionals) == 1:
             _p = active_professionals[0]
-            _effective_prof_name = f"{_p['first_name']} {_p.get('last_name') or ''}".strip()
+            _effective_prof_name = (
+                f"{_p['first_name']} {_p.get('last_name') or ''}".strip()
+            )
 
         # Seleccionar 2-3 opciones representativas (con multi-día si hace falta)
         options, total_today = await pick_representative_slots(
@@ -2679,8 +2679,11 @@ async def book_appointment(
         f"📅 BOOK START: phone={chat_phone} tenant={tenant_id} date_time={date_time} treatment={treatment_reason} (original={_original_treatment}) prof={professional_name} first_name={first_name} last_name={last_name} dni={dni} is_minor={is_minor} patient_phone={patient_phone}"
     )
 
-    # Lead context: accumulate name/DNI for self-bookings (skip third-party)
-    if not (bool(patient_phone) or bool(is_minor)):
+    # Lead context: accumulate name/DNI for self-bookings AND minor bookings
+    # IMPORTANT: Also save context for minors so AI doesn't lose track in long conversations
+    if not bool(
+        patient_phone
+    ):  # Skip only third-party (explicit phone), save for self and minor
         try:
             from services.lead_context import merge as lead_ctx_merge
 
@@ -2693,6 +2696,11 @@ async def book_appointment(
                 _lc_book["dni"] = dni
             if treatment_reason:
                 _lc_book["treatment_name"] = treatment_reason
+            # Also save minor info if this is a minor booking
+            if is_minor:
+                _lc_book["is_minor"] = "true"
+                _lc_book["minor_first_name"] = first_name or ""
+                _lc_book["minor_last_name"] = last_name or ""
             if _lc_book:
                 await lead_ctx_merge(
                     tenant_id,

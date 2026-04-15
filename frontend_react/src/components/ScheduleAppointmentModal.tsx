@@ -49,6 +49,7 @@ interface ScheduleAppointmentModalProps {
   patientPhone: string;
   patientName?: string;
   tenantId: number;
+  isForMinor?: boolean;  // NEW: flag to schedule for child/family member
 }
 
 const inputCls = "w-full px-3 py-2 rounded-lg bg-white/[0.04] border border-white/[0.08] text-white placeholder-white/30 focus:outline-none focus:border-white/20 text-sm";
@@ -57,7 +58,7 @@ const selectCls = "w-full px-3 py-2 rounded-lg bg-white/[0.04] border border-whi
 const labelCls = "block text-xs font-medium text-white/50 mb-1";
 
 export default function ScheduleAppointmentModal({
-  isOpen, onClose, onSaved, onPatientCreated, patientId, patientPhone, patientName, tenantId,
+  isOpen, onClose, onSaved, onPatientCreated, patientId, patientPhone, patientName, tenantId, isForMinor = false,
 }: ScheduleAppointmentModalProps) {
   const { t } = useTranslation();
 
@@ -91,6 +92,10 @@ export default function ScheduleAppointmentModal({
   // Patient context (read-only header in step 2)
   const [patientContext, setPatientContext] = useState<any>(null);
 
+  // For minor/family bookings: don't auto-fill phone (use parent's phone, not child's)
+  const isForMinorBooking = isForMinor;
+  const displayPhone = isForMinorBooking ? '' : patientPhone;  // Empty for minor = use parent's phone in API
+
   // Common state
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -114,11 +119,13 @@ export default function ScheduleAppointmentModal({
 
     // Init patient form
     const isPhoneName = /^\+?[\d\s()\-]{7,}$/.test(patientName || '');
+    // For minor booking: leave phone empty (API will use parent's phone)
+    const initialPhone = isForMinor ? '' : patientPhone;
     setPatientForm({
       first_name: isPhoneName ? '' : (patientName || ''),
-      last_name: '', phone_number: patientPhone, dni: '', insurance: '', email: '', city: '', notes: '',
+      last_name: '', phone_number: initialPhone, dni: '', insurance: '', email: '', city: '', notes: '',
     });
-  }, [isOpen, patientId, patientPhone, patientName]);
+  }, [isOpen, patientId, patientPhone, patientName, isForMinor]);
 
   // Fetch data on open
   useEffect(() => {
@@ -250,7 +257,7 @@ export default function ScheduleAppointmentModal({
     setError('');
     try {
       const datetimeStr = `${appointmentDate}T${appointmentTime}:00`;
-      const res = await api.post('/admin/appointments', {
+      const payload: any = {
         patient_id: effectivePatientId,
         professional_id: parseInt(selectedProfessionalId),
         appointment_datetime: datetimeStr,
@@ -258,7 +265,12 @@ export default function ScheduleAppointmentModal({
         appointment_type: selectedTreatmentCode || 'checkup',
         notes: appointmentNotes.trim() || null,
         check_collisions: true,
-      });
+      };
+      // If scheduling for minor/family member, pass is_minor flag
+      if (isForMinor) {
+        payload.is_minor = true;
+      }
+      const res = await api.post('/admin/appointments', payload);
       onSaved(res.data);
       onClose();
     } catch (err: any) {
