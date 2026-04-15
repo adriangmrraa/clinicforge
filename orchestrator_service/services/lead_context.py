@@ -139,6 +139,10 @@ _FIELD_LABELS = {
     "interpreted_date": "Fecha interpretada",
     "search_mode": "Modo de búsqueda",
     "channel": "Canal",
+    "booking_type": "Tipo de turno",
+    "minor_first_name": "Nombre del menor",
+    "minor_last_name": "Apellido del menor",
+    "minor_dni": "DNI del menor",
 }
 
 

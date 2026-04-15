@@ -1093,6 +1093,22 @@ async def process_buffer_task(
             except Exception:
                 pass
 
+        # Minor booking context: even for KNOWN patients, inject the cached
+        # is_minor flag so the AI remembers "this parent is booking for a child"
+        # across long conversations where the original message fell out of history.
+        try:
+            from services.lead_context import get as _lc_get
+            _lc_data = await _lc_get(tenant_id, external_user_id)
+            if _lc_data and _lc_data.get("is_minor") == "true":
+                _minor_name = f"{_lc_data.get('minor_first_name', '')} {_lc_data.get('minor_last_name', '')}".strip()
+                _minor_ctx = f"\n[INTERNAL_BOOKING_CONTEXT] Este interlocutor está agendando para su HIJO/A MENOR: {_minor_name or 'nombre pendiente'}. Usá is_minor=true en book_appointment. NO pidas teléfono del menor."
+                if patient_context:
+                    patient_context += _minor_ctx
+                else:
+                    patient_context = _minor_ctx
+        except Exception:
+            pass
+
         # Classify intent for conditional prompt injection (keyword-based, <1ms)
         intent_tags = classify_intent(messages)
         # Supplement with pending payment context from patient data
@@ -1247,7 +1263,7 @@ async def process_buffer_task(
         # 4. Fetching Recent History (Spec 23)
         # Re-fetch AFTER transcription wait to get updated content_attributes
         db_history_dicts = await db.get_chat_history(
-            external_user_id, limit=20, tenant_id=tenant_id
+            external_user_id, limit=40, tenant_id=tenant_id
         )
 
         # --- WAIT FOR VISION if recent images lack description ---
@@ -1309,16 +1325,23 @@ async def process_buffer_task(
             if last_db_msg.strip() == first_buffer_msg.strip():
                 db_history_dicts.pop()
 
-        # CONTEXT COMPRESSION: Keep last 6 messages full, compress older ones
-        if len(db_history_dicts) > 6:
+        # CONTEXT COMPRESSION: Keep last 10 messages full, compress older ones
+        if len(db_history_dicts) > 10:
             # Compress older messages into a summary line each (save ~60% tokens)
-            old_msgs = db_history_dicts[:-6]
-            recent_msgs = db_history_dicts[-6:]
+            old_msgs = db_history_dicts[:-10]
+            recent_msgs = db_history_dicts[-10:]
+            # Keywords that indicate third-party/minor bookings — preserve these messages in full
+            _preserve_keywords = {"hijo", "hija", "menor", "nene", "nena", "niño", "niña", "bebé", "familiar", "esposa", "esposo", "mamá", "papá", "abuelo", "abuela", "para mi", "para él", "para ella"}
             for msg in old_msgs:
                 role = msg["role"]
                 content = msg["content"]
-                # Truncate old messages to 80 chars max
-                truncated = content[:80] + "..." if len(content) > 80 else content
+                # Preserve full content if it mentions family/minor booking context
+                content_lower = content.lower() if content else ""
+                has_family_keyword = any(kw in content_lower for kw in _preserve_keywords)
+                if has_family_keyword:
+                    truncated = content[:200] + "..." if len(content) > 200 else content
+                else:
+                    truncated = content[:80] + "..." if len(content) > 80 else content
                 if role == "user":
                     chat_history.append(HumanMessage(content=truncated))
                 else:
