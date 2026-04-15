@@ -8,6 +8,7 @@ IMPORTANT: No agent hardcodes a model name. The model is read from
 `model_resolver.resolve_tenant_model(tenant_id)`. Source of truth:
 `system_config.OPENAI_MODEL` (Tokens & Metrics admin page).
 """
+
 from __future__ import annotations
 
 import logging
@@ -44,15 +45,19 @@ def _build_llm_from_config(cfg: dict[str, Any], temperature: float = 0.2) -> Cha
     return ChatOpenAI(**kwargs)
 
 
-def _build_executor(tools, cfg: dict[str, Any], system_prompt: str, temperature: float = 0.2) -> AgentExecutor:
+def _build_executor(
+    tools, cfg: dict[str, Any], system_prompt: str, temperature: float = 0.2
+) -> AgentExecutor:
     """Build a bounded AgentExecutor using the tenant's model config."""
     llm = _build_llm_from_config(cfg, temperature=temperature)
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", system_prompt),
-        MessagesPlaceholder(variable_name="chat_history", optional=True),
-        ("human", "{input}"),
-        MessagesPlaceholder(variable_name="agent_scratchpad"),
-    ])
+    prompt = ChatPromptTemplate.from_messages(
+        [
+            ("system", system_prompt),
+            MessagesPlaceholder(variable_name="chat_history", optional=True),
+            ("human", "{input}"),
+            MessagesPlaceholder(variable_name="agent_scratchpad"),
+        ]
+    )
     agent = create_openai_tools_agent(llm, tools, prompt)
     return AgentExecutor(agent=agent, tools=tools, verbose=False, max_iterations=4)
 
@@ -60,6 +65,7 @@ def _build_executor(tools, cfg: dict[str, Any], system_prompt: str, temperature:
 def _history_to_messages(chat_history: list[dict]) -> list:
     """Convert [{role, content}, ...] to LangChain messages."""
     from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+
     out = []
     for m in chat_history or []:
         role = (m.get("role") or "").lower()
@@ -73,7 +79,9 @@ def _history_to_messages(chat_history: list[dict]) -> list:
     return out
 
 
-def _with_tenant_blocks(base_prompt: str, state: AgentState, specialist_name: str) -> str:
+def _with_tenant_blocks(
+    base_prompt: str, state: AgentState, specialist_name: str
+) -> str:
     """Append the tenant-configured context blocks whitelisted for this specialist.
 
     Uses select_blocks_for_specialist() which enforces REQ-4.1 — each specialist
@@ -104,7 +112,9 @@ def _with_tenant_blocks(base_prompt: str, state: AgentState, specialist_name: st
                 whatsapp_link=state.get("whatsapp_link"),
             )
         except Exception:
-            logger.exception(f"{specialist_name}: social preamble build failed — continuing without it")
+            logger.exception(
+                f"{specialist_name}: social preamble build failed — continuing without it"
+            )
 
     try:
         from .tenant_context import select_blocks_for_specialist
@@ -144,6 +154,7 @@ def _get_model_config(state: AgentState) -> dict[str, Any]:
         return cfg
     # Fallback (should not happen in normal flow — graph.run_turn populates it)
     from .model_resolver import get_default_model_config
+
     logger.warning("Agent: no model_config in state, using default")
     return get_default_model_config()
 
@@ -153,6 +164,7 @@ class ReceptionAgent(BaseAgent):
 
     def _get_tools(self):
         from main import list_professionals, list_services  # type: ignore
+
         return [list_professionals, list_services]
 
     async def run(self, state: AgentState) -> AgentState:
@@ -206,14 +218,18 @@ mínima y dejá que el supervisor route la próxima vuelta:
         prompt = _with_tenant_blocks(prompt, state, "reception")
         executor = _build_executor(tools, cfg, prompt)
         try:
-            result = await executor.ainvoke({
-                "input": state.get("user_message", ""),
-                "chat_history": _history_to_messages(state.get("chat_history", [])),
-            })
+            result = await executor.ainvoke(
+                {
+                    "input": state.get("user_message", ""),
+                    "chat_history": _history_to_messages(state.get("chat_history", [])),
+                }
+            )
             state["agent_output"] = result.get("output", "") or ""
         except Exception:
             logger.exception("ReceptionAgent failed")
-            state["agent_output"] = "Disculpá, tuve un problema procesando tu mensaje. ¿Me lo podés repetir?"
+            state["agent_output"] = (
+                "Disculpá, tuve un problema procesando tu mensaje. ¿Me lo podés repetir?"
+            )
 
         state["active_agent"] = "END"
         return state
@@ -232,9 +248,15 @@ class BookingAgent(BaseAgent):
             list_services,
             reschedule_appointment,
         )
+
         return [
-            check_availability, confirm_slot, book_appointment,
-            list_my_appointments, cancel_appointment, reschedule_appointment, list_services,
+            check_availability,
+            confirm_slot,
+            book_appointment,
+            list_my_appointments,
+            cancel_appointment,
+            reschedule_appointment,
+            list_services,
         ]
 
     async def run(self, state: AgentState) -> AgentState:
@@ -246,11 +268,20 @@ de disponibilidad, confirmación de slots, booking, cancelación y reprogramaci�
 Sos la etapa de EJECUCIÓN del flujo: el paciente ya sabe que quiere un turno,
 tu tarea es conseguírselo con el mínimo de fricción.
 
+# ⚠️ REGLA CRÍTICA - DEBE PREGUNTARSE ANTES DE OFRECER CUALQUIER SLOT
+ANTES de llamar a check_availability, PREGUNTÁ: "¿Te atendés de forma particular o con obra social?"
+- Si el paciente ya respondió esto en ESTA MISMA CONVERSACIÓN → no preguntar de nuevo.
+- Si no respondió → PREGUNTAR y ESPERAR respuesta, NO ofrecer slots sin saber la modalidad.
+
+# ⚠️ CASO ESPECIAL: PACIENTE DICE "ES POR OSDE" DESPUÉS DE BOOKING
+Si el paciente YA tiene un turno confirmado y luego dice "es por OSDE", "es por obra social", o similar:
+- Los turnos con obra social se dan desde el 15/05/2026 en adelante.
+- Debés explicarle esto y preguntarle: "¿Querés mantener este turno o lo reprogramo para después del 15 de mayo?"
+- NO asumas que puede mantener el turno si es obra social.
+
 # ⚠️ REGLA TEMPORAL (VIGENTE HASTA 2026-05-15)
-ANTES de buscar disponibilidad, preguntá: "¿Te vas a atender de forma particular o con obra social?"
 - PARTICULAR → próximo turno disponible normal.
 - OBRA SOCIAL → agendar SOLO desde 15/05/2026 en adelante. Decí: "Por un tema técnico en el consultorio, los turnos con obra social se están agendando a partir del 15 de mayo. ¿Te parece bien o preferís una fecha posterior?"
-Si el paciente ya informó modalidad antes (en el contexto) → no volver a preguntar.
 
 # IDIOMA Y TONO
 Español rioplatense (voseo). Directo, cálido, sin vueltas. 1-3 oraciones por
@@ -313,14 +344,18 @@ REGLAS INMUTABLES:
         prompt = _with_tenant_blocks(prompt, state, "booking")
         executor = _build_executor(tools, cfg, prompt)
         try:
-            result = await executor.ainvoke({
-                "input": state.get("user_message", ""),
-                "chat_history": _history_to_messages(state.get("chat_history", [])),
-            })
+            result = await executor.ainvoke(
+                {
+                    "input": state.get("user_message", ""),
+                    "chat_history": _history_to_messages(state.get("chat_history", [])),
+                }
+            )
             state["agent_output"] = result.get("output", "") or ""
         except Exception:
             logger.exception("BookingAgent failed")
-            state["agent_output"] = "No pude procesar tu pedido de turno en este momento. ¿Me lo repetís?"
+            state["agent_output"] = (
+                "No pude procesar tu pedido de turno en este momento. ¿Me lo repetís?"
+            )
 
         state["active_agent"] = "END"
         return state
@@ -331,6 +366,7 @@ class TriageAgent(BaseAgent):
 
     def _get_tools(self):
         from main import derivhumano, triage_urgency  # type: ignore
+
         return [triage_urgency, derivhumano]
 
     async def run(self, state: AgentState) -> AgentState:
@@ -389,14 +425,18 @@ supervisor mueva a Booking en la próxima vuelta."""
         prompt = _with_tenant_blocks(prompt, state, "triage")
         executor = _build_executor(tools, cfg, prompt)
         try:
-            result = await executor.ainvoke({
-                "input": state.get("user_message", ""),
-                "chat_history": _history_to_messages(state.get("chat_history", [])),
-            })
+            result = await executor.ainvoke(
+                {
+                    "input": state.get("user_message", ""),
+                    "chat_history": _history_to_messages(state.get("chat_history", [])),
+                }
+            )
             state["agent_output"] = result.get("output", "") or ""
         except Exception:
             logger.exception("TriageAgent failed")
-            state["agent_output"] = "Entiendo tu preocupación. Un momento mientras te conectamos con el equipo clínico."
+            state["agent_output"] = (
+                "Entiendo tu preocupación. Un momento mientras te conectamos con el equipo clínico."
+            )
 
         state["active_agent"] = "END"
         return state
@@ -407,6 +447,7 @@ class BillingAgent(BaseAgent):
 
     def _get_tools(self):
         from main import verify_payment_receipt  # type: ignore
+
         return [verify_payment_receipt]
 
     async def run(self, state: AgentState) -> AgentState:
@@ -481,14 +522,18 @@ CBU y alias. No los inventes.
         prompt = _with_tenant_blocks(prompt, state, "billing")
         executor = _build_executor(tools, cfg, prompt)
         try:
-            result = await executor.ainvoke({
-                "input": state.get("user_message", ""),
-                "chat_history": _history_to_messages(state.get("chat_history", [])),
-            })
+            result = await executor.ainvoke(
+                {
+                    "input": state.get("user_message", ""),
+                    "chat_history": _history_to_messages(state.get("chat_history", [])),
+                }
+            )
             state["agent_output"] = result.get("output", "") or ""
         except Exception:
             logger.exception("BillingAgent failed")
-            state["agent_output"] = "No pude verificar el comprobante ahora. ¿Me lo podés enviar de nuevo?"
+            state["agent_output"] = (
+                "No pude verificar el comprobante ahora. ¿Me lo podés enviar de nuevo?"
+            )
 
         state["active_agent"] = "END"
         return state
@@ -503,6 +548,7 @@ class AnamnesisAgent(BaseAgent):
             save_patient_anamnesis,
             save_patient_email,
         )
+
         return [save_patient_anamnesis, get_patient_anamnesis, save_patient_email]
 
     async def run(self, state: AgentState) -> AgentState:
@@ -562,14 +608,18 @@ pasá el `patient_phone` correcto para no pisar el del interlocutor.
         prompt = _with_tenant_blocks(prompt, state, "anamnesis")
         executor = _build_executor(tools, cfg, prompt)
         try:
-            result = await executor.ainvoke({
-                "input": state.get("user_message", ""),
-                "chat_history": _history_to_messages(state.get("chat_history", [])),
-            })
+            result = await executor.ainvoke(
+                {
+                    "input": state.get("user_message", ""),
+                    "chat_history": _history_to_messages(state.get("chat_history", [])),
+                }
+            )
             state["agent_output"] = result.get("output", "") or ""
         except Exception:
             logger.exception("AnamnesisAgent failed")
-            state["agent_output"] = "Disculpá, no pude procesar eso. ¿Podés reformular tu mensaje?"
+            state["agent_output"] = (
+                "Disculpá, no pude procesar eso. ¿Podés reformular tu mensaje?"
+            )
 
         state["active_agent"] = "END"
         return state
@@ -580,6 +630,7 @@ class HandoffAgent(BaseAgent):
 
     def _get_tools(self):
         from main import derivhumano  # type: ignore
+
         return [derivhumano]
 
     async def run(self, state: AgentState) -> AgentState:
@@ -655,14 +706,18 @@ tool lo acepta.
         prompt = _with_tenant_blocks(prompt, state, "handoff")
         executor = _build_executor(tools, cfg, prompt)
         try:
-            result = await executor.ainvoke({
-                "input": state.get("user_message", ""),
-                "chat_history": _history_to_messages(state.get("chat_history", [])),
-            })
+            result = await executor.ainvoke(
+                {
+                    "input": state.get("user_message", ""),
+                    "chat_history": _history_to_messages(state.get("chat_history", [])),
+                }
+            )
             state["agent_output"] = result.get("output", "") or ""
         except Exception:
             logger.exception("HandoffAgent failed")
-            state["agent_output"] = "Ya avisé al equipo de la clínica, alguien te va a responder en breve."
+            state["agent_output"] = (
+                "Ya avisé al equipo de la clínica, alguien te va a responder en breve."
+            )
 
         state["active_agent"] = "END"
         return state
