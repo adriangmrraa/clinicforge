@@ -399,12 +399,15 @@ async def login(request: Request, payload: UserLogin, response: Response):
     }
     token = auth_service.create_access_token(token_data)
 
+    # Detectar si es HTTPS para decidir si usar secure cookie
+    is_secure = os.getenv("NODE_ENV", "production").lower() != "development"
+
     # Set HttpOnly Cookie (Nexus Security Protocol v7.6)
     response.set_cookie(
         key="access_token",
         value=token,
         httponly=True,
-        secure=True,  # Production-ready (HTTPS expected)
+        secure=is_secure,  # Solo HTTPS en producción
         samesite="lax",
         max_age=86400 * 7,  # 7 days
     )
