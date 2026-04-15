@@ -7,6 +7,7 @@ odontograms, etc.) is dropped to avoid notification spam.
 Proactive messages (morning briefing, smart alerts) bypass the whitelist
 via send_proactive_message().
 """
+
 import asyncio
 import json
 import logging
@@ -51,9 +52,18 @@ EVENT_FORMATS = {
         "fields": lambda d: [
             f"Paciente: {_patient_name(d)}",
             f"Fecha: {_format_datetime(d.get('appointment_datetime', d.get('date')))}",
-            f"Tipo: {d.get('appointment_type', d.get('treatment_type', 'Consulta'))}" if d.get('appointment_type') or d.get('treatment_type') else None,
-            f"Profesional: {d.get('professional_name')}" if d.get('professional_name') else None,
-            f"Fuente: {'🤖 Bot IA' if d.get('source') == 'ai' else '👩‍💼 Manual'}" if d.get('source') else None,
+            f"Tipo: {d.get('appointment_type', d.get('treatment_type', 'Consulta'))}"
+            if d.get("appointment_type") or d.get("treatment_type")
+            else None,
+            f"Profesional: {d.get('professional_name')}"
+            if d.get("professional_name")
+            else None,
+            f"Creado por: {d.get('created_by', {}).get('role', '?').upper()}"
+            if d.get("created_by")
+            else None,
+            f"Fuente: {'🤖 Bot IA' if d.get('source') == 'ai' else '👩‍💼 Manual'}"
+            if d.get("source")
+            else None,
         ],
     },
     "APPOINTMENT_UPDATED": {
@@ -69,9 +79,15 @@ EVENT_FORMATS = {
         "emoji": "❌",
         "title": "Turno cancelado",
         "fields": lambda d: [
-            f"Paciente: {_patient_name(d)}" if isinstance(d, dict) and _patient_name(d) != "Paciente desconocido" else None,
-            f"Fecha: {_format_datetime(d.get('appointment_datetime'))}" if isinstance(d, dict) and d.get('appointment_datetime') else None,
-            f"Tipo: {d.get('appointment_type')}" if isinstance(d, dict) and d.get('appointment_type') else None,
+            f"Paciente: {_patient_name(d)}"
+            if isinstance(d, dict) and _patient_name(d) != "Paciente desconocido"
+            else None,
+            f"Fecha: {_format_datetime(d.get('appointment_datetime'))}"
+            if isinstance(d, dict) and d.get("appointment_datetime")
+            else None,
+            f"Tipo: {d.get('appointment_type')}"
+            if isinstance(d, dict) and d.get("appointment_type")
+            else None,
         ],
     },
     "PAYMENT_CONFIRMED": {
@@ -98,7 +114,9 @@ EVENT_FORMATS = {
             f"Nombre: {d.get('name', d.get('first_name', '?'))}",
             f"Teléfono: {d.get('phone_number', d.get('phone', '?'))}",
             f"Canal: {d.get('channel', 'WhatsApp')}",
-            f"Fuente: {d.get('acquisition_source', 'Orgánico')}" if d.get('acquisition_source') else None,
+            f"Fuente: {d.get('acquisition_source', 'Orgánico')}"
+            if d.get("acquisition_source")
+            else None,
         ],
     },
     "URGENCY_DETECTED": {
@@ -126,9 +144,11 @@ EVENT_FORMATS = {
             f"👤 {d.get('lead_name', '?')} ({d.get('phone', '?')})",
             f"📱 Canal: {d.get('channel', '?')}",
             f"🦷 Interés: {d.get('servicio', 'General')}",
-            f"💬 {d.get('message_preview', '')[:80]}..." if d.get('message_preview') else None,
+            f"💬 {d.get('message_preview', '')[:80]}..."
+            if d.get("message_preview")
+            else None,
             f"🕐 Ventana 24h expira: {d.get('window_end', '?')}",
-            "💎 HIGH TICKET" if d.get('is_high_ticket') else None,
+            "💎 HIGH TICKET" if d.get("is_high_ticket") else None,
         ],
     },
     "LEAD_RECOVERY_TOUCH2": {
@@ -139,7 +159,7 @@ EVENT_FORMATS = {
             f"📱 Canal: {d.get('channel', '?')}",
             f"🦷 Interés: {d.get('servicio', 'General')}",
             "📍 No respondió al primer mensaje",
-            "💎 HIGH TICKET" if d.get('is_high_ticket') else None,
+            "💎 HIGH TICKET" if d.get("is_high_ticket") else None,
         ],
     },
     "LEAD_RECOVERY_TOUCH3": {
@@ -217,7 +237,9 @@ def _format_event(event: str, data: Any) -> Optional[str]:
     emoji = fmt["emoji"]
     title = fmt["title"]
     try:
-        fields = [f for f in fmt["fields"](data_dict if isinstance(data, dict) else data) if f]
+        fields = [
+            f for f in fmt["fields"](data_dict if isinstance(data, dict) else data) if f
+        ]
     except Exception:
         fields = [f"Datos: {json.dumps(data_dict, default=str)[:200]}"]
 
@@ -255,6 +277,7 @@ async def notify_telegram(event: str, data: Any, tenant_id: Optional[int] = None
 
         # Get the bot for this tenant
         from services.telegram_bot import _bots
+
         app = _bots.get(tenant_id)
         if not app:
             return  # No Telegram bot running for this tenant
@@ -292,7 +315,9 @@ async def notify_telegram(event: str, data: Any, tenant_id: Optional[int] = None
         logger.debug(f"Telegram notify error ({event}): {e}")
 
 
-async def _store_notification_context(tenant_id: int, chat_id: int, event: str, data: Any):
+async def _store_notification_context(
+    tenant_id: int, chat_id: int, event: str, data: Any
+):
     """Store notification context in Redis so Nova can reference it in follow-up questions."""
     try:
         import json
@@ -306,10 +331,20 @@ async def _store_notification_context(tenant_id: int, chat_id: int, event: str, 
 
         if isinstance(data, dict):
             # Extract patient/appointment info from notification data
-            for key in ("patient_name", "patient_id", "phone_number",
-                        "appointment_id", "appointment_type", "treatment",
-                        "professional_name", "amount", "billing_amount",
-                        "payment_status", "first_name", "last_name"):
+            for key in (
+                "patient_name",
+                "patient_id",
+                "phone_number",
+                "appointment_id",
+                "appointment_type",
+                "treatment",
+                "professional_name",
+                "amount",
+                "billing_amount",
+                "payment_status",
+                "first_name",
+                "last_name",
+            ):
                 if key in data and data[key]:
                     context[key] = str(data[key])
 
@@ -361,11 +396,13 @@ async def send_proactive_message(tenant_id: int, html_text: str):
     """Send a proactive message to all authorized Telegram users of a tenant."""
     try:
         from services.telegram_bot import _bots
+
         app = _bots.get(tenant_id)
         if not app:
             return
 
         from db import db
+
         rows = await db.fetch(
             "SELECT telegram_chat_id FROM telegram_authorized_users "
             "WHERE tenant_id = $1 AND is_active = true",

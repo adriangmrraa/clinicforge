@@ -1307,14 +1307,21 @@ async def get_chat_sessions(
     # Build professional patient filter subquery
     prof_filter_sql = ""
     if professional_id:
-        prof_filter_sql = "AND p.id IN (SELECT DISTINCT patient_id FROM appointments WHERE tenant_id = " + str(int(tenant_id)) + " AND professional_id = " + str(int(professional_id)) + ")"
+        prof_filter_sql = (
+            "AND p.id IN (SELECT DISTINCT patient_id FROM appointments WHERE tenant_id = "
+            + str(int(tenant_id))
+            + " AND professional_id = "
+            + str(int(professional_id))
+            + ")"
+        )
     # Sesiones = pacientes de esta clínica que tienen al menos un mensaje en esta clínica
     has_tenant_in_cm = await db.pool.fetchval(
         "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='chat_messages' AND column_name='tenant_id')"
     )
     if not has_tenant_in_cm:
         # Fallback: DB sin parche 15, filtrar solo por patients.tenant_id (mensajes sin tenant)
-        _q1 = """
+        _q1 = (
+            """
             SELECT * FROM (
                 SELECT DISTINCT ON (p.phone_number)
                     p.phone_number,
@@ -1350,14 +1357,18 @@ async def get_chat_sessions(
                     AND cw.external_user_id = p.phone_number
                     AND cw.channel IN ('instagram', 'facebook')
                 )
-                """ + prof_filter_sql + """
+                """
+            + prof_filter_sql
+            + """
                 ORDER BY p.phone_number, cm.created_at DESC
             ) sub
             ORDER BY last_message_time DESC NULLS LAST
         """
+        )
         rows = await db.pool.fetch(_q1, tenant_id)
     else:
-        _q2 = """
+        _q2 = (
+            """
             SELECT * FROM (
                 SELECT DISTINCT ON (p.phone_number)
                     p.phone_number,
@@ -1397,11 +1408,14 @@ async def get_chat_sessions(
                     AND cw.external_user_id = p.phone_number
                     AND cw.channel IN ('instagram', 'facebook')
                 )
-                """ + prof_filter_sql + """
+                """
+            + prof_filter_sql
+            + """
                 ORDER BY p.phone_number, cm.created_at DESC
             ) sub
             ORDER BY last_message_time DESC NULLS LAST
         """
+        )
         rows = await db.pool.fetch(_q2, tenant_id)
     sessions = []
     for row in rows:
@@ -4283,18 +4297,30 @@ async def create_patient(
         # Emit PATIENT_CREATED socket event for real-time UI updates
         try:
             from main import sio, to_json_safe
-            await sio.emit("PATIENT_CREATED", to_json_safe({
-                "patient_id": row["id"],
-                "phone_number": row["phone_number"],
-                "tenant_id": tenant_id,
-                "first_name": row["first_name"],
-                "last_name": row["last_name"] or "",
-                "status": row["status"],
-            }))
+
+            await sio.emit(
+                "PATIENT_CREATED",
+                to_json_safe(
+                    {
+                        "patient_id": row["id"],
+                        "phone_number": row["phone_number"],
+                        "tenant_id": tenant_id,
+                        "first_name": row["first_name"],
+                        "last_name": row["last_name"] or "",
+                        "status": row["status"],
+                    }
+                ),
+            )
         except Exception as sio_err:
             logger.warning(f"⚠️ Error emitting PATIENT_CREATED: {sio_err}")
 
-        return {"id": row["id"], "first_name": row["first_name"], "last_name": row["last_name"], "phone_number": row["phone_number"], "status": row["status"]}
+        return {
+            "id": row["id"],
+            "first_name": row["first_name"],
+            "last_name": row["last_name"],
+            "phone_number": row["phone_number"],
+            "status": row["status"],
+        }
     except asyncpg.UniqueViolationError as e:
         if (
             "patients_tenant_id_phone_number_key" in str(e)
@@ -4315,6 +4341,7 @@ async def create_patient(
 
 
 # ==================== ENDPOINT: INSURANCE PROVIDERS ====================
+
 
 @router.get(
     "/insurance-providers/used",
@@ -5479,7 +5506,8 @@ async def get_patient(id: int, tenant_id: int = Depends(get_resolved_tenant_id))
 
     # Enrich with appointment summary for patient detail cards
     try:
-        apt_summary = await db.pool.fetchrow("""
+        apt_summary = await db.pool.fetchrow(
+            """
             SELECT
                 COUNT(*) as appointment_count,
                 MIN(CASE WHEN status IN ('scheduled', 'confirmed') AND appointment_datetime > NOW()
@@ -5493,16 +5521,21 @@ async def get_patient(id: int, tenant_id: int = Depends(get_resolved_tenant_id))
                     THEN billing_amount ELSE 0 END), 0) as pending_balance
             FROM appointments
             WHERE patient_id = $1 AND tenant_id = $2
-        """, id, tenant_id)
+        """,
+            id,
+            tenant_id,
+        )
         if apt_summary:
             patient_dict["appointment_count"] = apt_summary["appointment_count"] or 0
             patient_dict["next_appointment_date"] = (
                 apt_summary["next_appointment_date"].isoformat()
-                if apt_summary["next_appointment_date"] else None
+                if apt_summary["next_appointment_date"]
+                else None
             )
             patient_dict["last_visit"] = (
                 apt_summary["last_visit"].isoformat()
-                if apt_summary["last_visit"] else None
+                if apt_summary["last_visit"]
+                else None
             )
             patient_dict["pending_balance"] = float(apt_summary["pending_balance"] or 0)
     except Exception as e:
@@ -6670,6 +6703,19 @@ async def create_appointment_manual(
             new_id,
         )
 
+        # Agregar información del creador para auditoría
+        created_by_info = {
+            "role": user_data.role
+            if hasattr(user_data, "role")
+            else user_data.get("role"),
+            "email": user_data.email
+            if hasattr(user_data, "email")
+            else user_data.get("email"),
+        }
+        # Convertir a dict serializable
+        appointment_data_dict = dict(appointment_data) if appointment_data else {}
+        appointment_data_dict["created_by"] = created_by_info
+
         # 6. Sincronizar con Google Calendar
         try:
             # Obtener google_calendar_id del profesional
@@ -6703,10 +6749,10 @@ async def create_appointment_manual(
             logger.warning(f"GCal sync failed for appointment {new_id}: {ge}")
 
         # 7. Emitir evento de Socket.IO para actualización en tiempo real (no fallar la respuesta si falla el emit)
-        if appointment_data:
+        if appointment_data_dict:
             try:
                 await emit_appointment_event(
-                    "NEW_APPOINTMENT", dict(appointment_data), request
+                    "NEW_APPOINTMENT", appointment_data_dict, request
                 )
             except Exception as emit_err:
                 logger.warning(
@@ -6716,15 +6762,31 @@ async def create_appointment_manual(
         # 8. Playbook V2 trigger: appointment_created
         try:
             from jobs.playbook_triggers import on_appointment_created
-            apt_dict = {k: (str(v) if hasattr(v, 'hex') else v) for k, v in dict(appointment_data).items()} if appointment_data else {
-                "id": new_id, "patient_id": pid, "professional_id": apt.professional_id,
-                "appointment_datetime": apt.appointment_datetime, "appointment_type": apt.appointment_type,
-                "phone_number": apt.patient_phone, "payment_status": "pending",
-            }
-            background_tasks.add_task(on_appointment_created, db.pool, tenant_id, apt_dict)
+
+            apt_dict = (
+                {
+                    k: (str(v) if hasattr(v, "hex") else v)
+                    for k, v in dict(appointment_data).items()
+                }
+                if appointment_data
+                else {
+                    "id": new_id,
+                    "patient_id": pid,
+                    "professional_id": apt.professional_id,
+                    "appointment_datetime": apt.appointment_datetime,
+                    "appointment_type": apt.appointment_type,
+                    "phone_number": apt.patient_phone,
+                    "payment_status": "pending",
+                }
+            )
+            background_tasks.add_task(
+                on_appointment_created, db.pool, tenant_id, apt_dict
+            )
             logger.info(f"📋 Playbook trigger: appointment_created for {new_id}")
         except Exception as pb_err:
-            logger.warning(f"⚠️ Playbook trigger appointment_created (non-fatal): {pb_err}")
+            logger.warning(
+                f"⚠️ Playbook trigger appointment_created (non-fatal): {pb_err}"
+            )
 
         return {
             "id": new_id,
@@ -6896,10 +6958,14 @@ async def update_appointment_status(
                 logger.error(f"Error programando feedback: {e}")
 
         # 2. Emitir evento según el nuevo estado
-        appointment_data_dict = dict(appointment_data) if appointment_data else {"id": id}
+        appointment_data_dict = (
+            dict(appointment_data) if appointment_data else {"id": id}
+        )
         try:
             if payload.status == "cancelled":
-                await emit_appointment_event("APPOINTMENT_DELETED", appointment_data_dict, request)
+                await emit_appointment_event(
+                    "APPOINTMENT_DELETED", appointment_data_dict, request
+                )
             else:
                 await emit_appointment_event(
                     "APPOINTMENT_UPDATED", appointment_data_dict, request
@@ -6910,12 +6976,21 @@ async def update_appointment_status(
         # 3. Playbook V2 triggers
         try:
             from jobs.playbook_triggers import on_appointment_completed, on_no_show
+
             # Convert Record to plain dict with string IDs (asyncpg UUIDs → str)
-            apt_dict = {k: (str(v) if hasattr(v, 'hex') else v) for k, v in dict(appointment_data).items()}
+            apt_dict = {
+                k: (str(v) if hasattr(v, "hex") else v)
+                for k, v in dict(appointment_data).items()
+            }
             if payload.status == "completed" and _prev_status != "completed":
-                background_tasks.add_task(on_appointment_completed, db.pool, tenant_id, apt_dict)
+                background_tasks.add_task(
+                    on_appointment_completed, db.pool, tenant_id, apt_dict
+                )
                 logger.info(f"📋 Playbook trigger: appointment_completed for {id}")
-            elif payload.status in ("no_show", "no-show") and _prev_status not in ("no_show", "no-show"):
+            elif payload.status in ("no_show", "no-show") and _prev_status not in (
+                "no_show",
+                "no-show",
+            ):
                 background_tasks.add_task(on_no_show, db.pool, tenant_id, apt_dict)
                 logger.info(f"📋 Playbook trigger: no_show for {id}")
         except Exception as pb_err:
@@ -9146,6 +9221,7 @@ async def reorder_derivation_rules(
 
 # ==================== REGLAS OPERATIVAS DE CLÍNICA ====================
 
+
 class OperationalRuleCreate(BaseModel):
     rule_name: str
     rule_type: str = "temporary"  # temporary, strategic, scheduling
@@ -9156,6 +9232,7 @@ class OperationalRuleCreate(BaseModel):
     valid_until: Optional[str] = None  # ISO datetime
     priority_order: int = 0
     is_active: bool = True
+
 
 class OperationalRuleUpdate(OperationalRuleCreate):
     pass
@@ -9206,7 +9283,9 @@ async def create_operational_rule(
     # Resolve user
     user_email = ""
     try:
-        user_data = request.state.user_data if hasattr(request.state, "user_data") else None
+        user_data = (
+            request.state.user_data if hasattr(request.state, "user_data") else None
+        )
         if user_data:
             user_email = getattr(user_data, "email", "") or ""
     except Exception:
@@ -9279,7 +9358,8 @@ async def delete_operational_rule(
 ):
     result = await db.pool.execute(
         "DELETE FROM clinic_operational_rules WHERE id=$1 AND tenant_id=$2",
-        rule_id, tenant_id,
+        rule_id,
+        tenant_id,
     )
     if result == "DELETE 0":
         raise HTTPException(404, "Regla no encontrada")
@@ -9298,7 +9378,8 @@ async def toggle_operational_rule(
 ):
     row = await db.pool.fetchrow(
         "UPDATE clinic_operational_rules SET is_active = NOT is_active, updated_at=NOW() WHERE id=$1 AND tenant_id=$2 RETURNING id, is_active",
-        rule_id, tenant_id,
+        rule_id,
+        tenant_id,
     )
     if not row:
         raise HTTPException(404, "Regla no encontrada")
@@ -11282,10 +11363,12 @@ async def trigger_feedback_after_delay(
                 "SELECT id, provider, channel, external_account_id, external_chatwoot_id "
                 "FROM chat_conversations WHERE tenant_id = $1 AND external_user_id = $2 "
                 "ORDER BY updated_at DESC LIMIT 1",
-                tenant_id, phone_number,
+                tenant_id,
+                phone_number,
             )
             if conv:
                 from services.response_sender import ResponseSender
+
                 await ResponseSender.send_sequence(
                     tenant_id=tenant_id,
                     external_user_id=phone_number,
@@ -11298,8 +11381,13 @@ async def trigger_feedback_after_delay(
                 )
                 sent_ok = True
             else:
-                from core.credentials import get_tenant_credential, YCLOUD_API_KEY, YCLOUD_WHATSAPP_NUMBER
+                from core.credentials import (
+                    get_tenant_credential,
+                    YCLOUD_API_KEY,
+                    YCLOUD_WHATSAPP_NUMBER,
+                )
                 from ycloud_client import YCloudClient
+
                 api_key = await get_tenant_credential(tenant_id, YCLOUD_API_KEY)
                 biz_num = await get_tenant_credential(tenant_id, YCLOUD_WHATSAPP_NUMBER)
                 if api_key:

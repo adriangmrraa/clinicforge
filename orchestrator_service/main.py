@@ -2402,7 +2402,13 @@ async def check_availability(
                 # Only show sede label (not full address/Maps) if multi-sede, to distinguish locations
                 if is_multi_sede and opt.get("sede"):
                     # Extract just the sede name (e.g. "Sede: Cordoba"), no address or Maps
-                    sede_raw = opt["sede"].split("Dirección:")[0].split("Maps:")[0].strip().rstrip(".")
+                    sede_raw = (
+                        opt["sede"]
+                        .split("Dirección:")[0]
+                        .split("Maps:")[0]
+                        .strip()
+                        .rstrip(".")
+                    )
                     if sede_raw:
                         line += f" ({sede_raw})"
                 lines.append(line)
@@ -2742,6 +2748,7 @@ async def book_appointment(
         if apt_datetime is None:
             try:
                 from services.conversation_state import get_state
+
                 _conv_state = await get_state(tenant_id, phone)
                 _offered = _conv_state.get("last_offered_slots", [])
                 if _offered and date_time:
@@ -2752,7 +2759,9 @@ async def book_appointment(
                     if _time_match:
                         _target_time = f"{int(_time_match.group(1)):02d}:{int(_time_match.group(2)):02d}"
                     else:
-                        _hour_only = re.search(r"(\d{1,2})\s*(?:hs?|horas?)?", _dt_lower)
+                        _hour_only = re.search(
+                            r"(\d{1,2})\s*(?:hs?|horas?)?", _dt_lower
+                        )
                         if _hour_only:
                             _target_time = f"{int(_hour_only.group(1)):02d}:00"
 
@@ -2762,11 +2771,22 @@ async def book_appointment(
                         # Match by exact time
                         if _target_time and slot_time == _target_time and slot_date:
                             base_date = date.fromisoformat(slot_date)
-                            h, m = int(slot_time.split(":")[0]), int(slot_time.split(":")[1])
-                            apt_datetime = datetime.combine(base_date, datetime.min.time()).replace(
-                                hour=h, minute=m, second=0, microsecond=0, tzinfo=get_active_tz()
+                            h, m = (
+                                int(slot_time.split(":")[0]),
+                                int(slot_time.split(":")[1]),
                             )
-                            logger.info(f"📅 BOOK SLOT MATCH: matched time={_target_time} → slot {slot_date} {slot_time}")
+                            apt_datetime = datetime.combine(
+                                base_date, datetime.min.time()
+                            ).replace(
+                                hour=h,
+                                minute=m,
+                                second=0,
+                                microsecond=0,
+                                tzinfo=get_active_tz(),
+                            )
+                            logger.info(
+                                f"📅 BOOK SLOT MATCH: matched time={_target_time} → slot {slot_date} {slot_time}"
+                            )
                             break
                         # Match by option number ("1", "2", "3", "opción 1", etc.)
                         _opt_num = re.search(r"(?:opci[oó]n\s*)?(\d)", _dt_lower)
@@ -2776,11 +2796,22 @@ async def book_appointment(
                                 s = _offered[idx]
                                 if s.get("date") and s.get("time"):
                                     base_date = date.fromisoformat(s["date"])
-                                    h, m = int(s["time"].split(":")[0]), int(s["time"].split(":")[1])
-                                    apt_datetime = datetime.combine(base_date, datetime.min.time()).replace(
-                                        hour=h, minute=m, second=0, microsecond=0, tzinfo=get_active_tz()
+                                    h, m = (
+                                        int(s["time"].split(":")[0]),
+                                        int(s["time"].split(":")[1]),
                                     )
-                                    logger.info(f"📅 BOOK SLOT MATCH: option #{idx+1} → {s['date']} {s['time']}")
+                                    apt_datetime = datetime.combine(
+                                        base_date, datetime.min.time()
+                                    ).replace(
+                                        hour=h,
+                                        minute=m,
+                                        second=0,
+                                        microsecond=0,
+                                        tzinfo=get_active_tz(),
+                                    )
+                                    logger.info(
+                                        f"📅 BOOK SLOT MATCH: option #{idx + 1} → {s['date']} {s['time']}"
+                                    )
                                     break
             except Exception as _slot_err:
                 logger.warning(f"📅 BOOK: slot match fallback failed: {_slot_err}")
@@ -2797,7 +2828,9 @@ async def book_appointment(
             days_behind = (now_check_pre - apt_datetime).days
             if days_behind <= 7:
                 apt_datetime = apt_datetime + timedelta(days=7)
-                logger.info(f"📅 BOOK AUTO-ADVANCE: date was {days_behind}d in past, advanced 7d → {apt_datetime}")
+                logger.info(
+                    f"📅 BOOK AUTO-ADVANCE: date was {days_behind}d in past, advanced 7d → {apt_datetime}"
+                )
 
         # No agendar en el pasado
         if apt_datetime < get_now_arg():
@@ -3495,10 +3528,13 @@ async def book_appointment(
                     "id": apt_id,
                     "patient_name": f"{first_name} {last_name or ''}".strip(),
                     "appointment_datetime": apt_datetime.isoformat(),
-                    "appointment_type": treatment_code or treatment_reason or "Consulta",
+                    "appointment_type": treatment_code
+                    or treatment_reason
+                    or "Consulta",
                     "professional_name": target_prof["first_name"],
                     "tenant_id": tenant_id,
                     "source": "ai",
+                    "created_by": {"role": "ai_agent", "email": "NOVA AI"},
                 }
             )
             await sio.emit("NEW_APPOINTMENT", safe_data)
@@ -3524,7 +3560,9 @@ async def book_appointment(
             }
             await on_appointment_created(db.pool, tenant_id, _apt_trigger_dict)
         except Exception as _pb_err:
-            logger.warning(f"⚠️ Playbook trigger appointment_created (non-fatal): {_pb_err}")
+            logger.warning(
+                f"⚠️ Playbook trigger appointment_created (non-fatal): {_pb_err}"
+            )
 
         # 6b. Notificación email al profesional (TIER 2)
         # Best-effort: nunca bloquea ni revierte el booking si falla.
@@ -3621,7 +3659,8 @@ async def book_appointment(
                     elif t_row.get("address"):
                         booking_sede = f"\nDirección: {t_row['address']}"
                         t_maps = await db.pool.fetchval(
-                            "SELECT google_maps_url FROM tenants WHERE id = $1", tenant_id
+                            "SELECT google_maps_url FROM tenants WHERE id = $1",
+                            tenant_id,
                         )
                         if t_maps:
                             booking_sede += f"\nMaps: {t_maps}"
@@ -4007,9 +4046,15 @@ async def triage_urgency(symptoms: str):
             # Get display_name from conversation (WhatsApp profile name) instead of "Visitante"
             _conv_display_name = await db.pool.fetchval(
                 "SELECT display_name FROM chat_conversations WHERE tenant_id = $1 AND external_user_id = $2 AND display_name IS NOT NULL AND display_name != external_user_id ORDER BY updated_at DESC LIMIT 1",
-                tenant_id, phone,
+                tenant_id,
+                phone,
             )
-            patient_row = await db.ensure_patient_exists(phone, tenant_id, first_name=_conv_display_name or "Visitante", create_if_missing=False)
+            patient_row = await db.ensure_patient_exists(
+                phone,
+                tenant_id,
+                first_name=_conv_display_name or "Visitante",
+                create_if_missing=False,
+            )
 
             # --- Spec 06: Registrar ad_intent_match ---
             ad_intent_match = False
@@ -4074,17 +4119,22 @@ async def triage_urgency(symptoms: str):
             if urgency_level in ("high", "emergency"):
                 try:
                     from services.telegram_notifier import fire_telegram_notification
+
                     patient_name = (
                         f"{patient_row.get('first_name', '')} {patient_row.get('last_name', '') or ''}".strip()
                         or phone
                     )
-                    fire_telegram_notification("URGENCY_DETECTED", {
-                        "patient_name": patient_name,
-                        "phone_number": phone,
-                        "urgency_level": urgency_level,
-                        "urgency_reason": symptoms,
-                        "tenant_id": tenant_id,
-                    }, tenant_id)
+                    fire_telegram_notification(
+                        "URGENCY_DETECTED",
+                        {
+                            "patient_name": patient_name,
+                            "phone_number": phone,
+                            "urgency_level": urgency_level,
+                            "urgency_reason": symptoms,
+                            "tenant_id": tenant_id,
+                        },
+                        tenant_id,
+                    )
                 except Exception:
                     pass
         except Exception as e:
@@ -9407,7 +9457,10 @@ class AdminRateLimitMiddleware(BaseHTTPMiddleware):
         client_ip = request.client.host if request.client else "unknown"
         now = _time.time()
         # Periodic cleanup: purge stale IPs every 5 minutes
-        if now - _admin_rate_limit_last_cleanup > 300 or len(_admin_rate_limit_store) > _ADMIN_RATE_MAX_IPS:
+        if (
+            now - _admin_rate_limit_last_cleanup > 300
+            or len(_admin_rate_limit_store) > _ADMIN_RATE_MAX_IPS
+        ):
             stale = [
                 ip
                 for ip, ts in _admin_rate_limit_store.items()
@@ -9552,6 +9605,7 @@ except Exception as e:
 # Playbook Engine V2 routes
 try:
     from routes.playbook_routes import router as playbook_router
+
     app.include_router(playbook_router, tags=["playbooks"])
     logger.info("✅ Playbook Engine V2 router registered")
 except Exception as e:
@@ -10486,7 +10540,9 @@ async def _nova_realtime_handler(websocket: WebSocket, session_id: str):
                 f"🎙️ NOVA: session.update sent with {len(_voice_tools)} tools: {tool_names}"
             )
             prompt_len = len(config.get("system_prompt", ""))
-            logger.info(f"🎙️ NOVA: prompt={prompt_len} chars, modalities=[text,audio], voice={os.getenv('NOVA_VOICE', 'coral')}")
+            logger.info(
+                f"🎙️ NOVA: prompt={prompt_len} chars, modalities=[text,audio], voice={os.getenv('NOVA_VOICE', 'coral')}"
+            )
             logger.info(f"🎙️ NOVA: Waiting for OpenAI events...")
 
             async def client_to_openai():
@@ -10506,7 +10562,9 @@ async def _nova_realtime_handler(websocket: WebSocket, session_id: str):
                             )
                         elif "text" in data and data["text"]:
                             msg = json_mod.loads(data["text"])
-                            logger.info(f"🎙️ NOVA CLIENT→OPENAI text: type={msg.get('type')}")
+                            logger.info(
+                                f"🎙️ NOVA CLIENT→OPENAI text: type={msg.get('type')}"
+                            )
                             if msg.get("type") == "text_message":
                                 logger.info(f"🎙️ NOVA TEXT INPUT: '{msg['text'][:100]}'")
                                 await openai_ws.send(
@@ -10530,7 +10588,9 @@ async def _nova_realtime_handler(websocket: WebSocket, session_id: str):
                                     json_mod.dumps({"type": "response.create"})
                                 )
                             else:
-                                logger.warning(f"🎙️ NOVA CLIENT: Unknown text msg type: {msg.get('type')}")
+                                logger.warning(
+                                    f"🎙️ NOVA CLIENT: Unknown text msg type: {msg.get('type')}"
+                                )
                 except Exception as e:
                     logger.error(f"🎙️ NOVA client_to_openai ERROR: {e}")
 
@@ -10566,7 +10626,9 @@ async def _nova_realtime_handler(websocket: WebSocket, session_id: str):
                                 await websocket.send_bytes(base64.b64decode(audio_b64))
 
                         elif etype == "response.audio.done":
-                            logger.info("🎙️ NOVA: Audio response DONE — sending nova_audio_done to client")
+                            logger.info(
+                                "🎙️ NOVA: Audio response DONE — sending nova_audio_done to client"
+                            )
                             await websocket.send_text(
                                 json_mod.dumps({"type": "nova_audio_done"})
                             )
@@ -10601,7 +10663,9 @@ async def _nova_realtime_handler(websocket: WebSocket, session_id: str):
                         elif etype == "response.text.done":
                             # Text-only response completed — send response_done
                             # so frontend knows to display the accumulated transcript
-                            logger.info(f"🎙️ NOVA TEXT-ONLY response: {event.get('text', '')[:200]}")
+                            logger.info(
+                                f"🎙️ NOVA TEXT-ONLY response: {event.get('text', '')[:200]}"
+                            )
                             await websocket.send_text(
                                 json_mod.dumps({"type": "response_done"})
                             )
@@ -10783,7 +10847,9 @@ async def nova_voice_direct(websocket: WebSocket):
             system_prompt = await build_nova_system_prompt(
                 clinic_name, page, user_role, tenant_id
             )
-            logger.info(f"🎙️ NOVA DIRECT: session={session_id} tenant={tenant_id} role={user_role} page={page} prompt={len(system_prompt)} chars")
+            logger.info(
+                f"🎙️ NOVA DIRECT: session={session_id} tenant={tenant_id} role={user_role} page={page} prompt={len(system_prompt)} chars"
+            )
 
             # Inject Engram persistent memories
             try:
@@ -10824,8 +10890,14 @@ async def nova_voice_direct(websocket: WebSocket):
                 if op_rows:
                     parts = ["\n⚠️ REGLAS OPERATIVAS VIGENTES:"]
                     for opr in op_rows:
-                        until = f" (hasta {opr['valid_until'].strftime('%d/%m/%Y')})" if opr.get("valid_until") else ""
-                        parts.append(f"[{opr['rule_type'].upper()}]{until}: {opr['prompt_injection']}")
+                        until = (
+                            f" (hasta {opr['valid_until'].strftime('%d/%m/%Y')})"
+                            if opr.get("valid_until")
+                            else ""
+                        )
+                        parts.append(
+                            f"[{opr['rule_type'].upper()}]{until}: {opr['prompt_injection']}"
+                        )
                     system_prompt += "\n".join(parts)
             except Exception as op_err:
                 logger.debug(f"Nova operational rules fetch (non-fatal): {op_err}")
