@@ -301,6 +301,21 @@ async def _action_send_template(pool, tenant_id, phone, step, variables) -> bool
             except (json.JSONDecodeError, TypeError):
                 var_mapping = {}
 
+        # Build positional mapping for templates using {{1}}, {{2}}, etc.
+        # Auto-detect uses ordered variable list; build position→value map
+        _auto_vars = _auto_detect_template_vars(template_name)
+        positional_values = {}
+        for idx, var_name in enumerate(_auto_vars, start=1):
+            val = str(variables.get(var_name, "") or "")
+            positional_values[str(idx)] = val
+            positional_values[var_name] = val
+
+        # Merge explicit mapping into positional values
+        if var_mapping and isinstance(var_mapping, dict):
+            for key, var_name in var_mapping.items():
+                positional_values[key] = str(variables.get(var_name, "") or "")
+                positional_values[var_name] = str(variables.get(var_name, "") or "")
+
         # Build components matching the REAL template structure if available
         if tpl_components:
             send_components = []
@@ -312,14 +327,7 @@ async def _action_send_template(pool, tenant_id, phone, step, variables) -> bool
                     continue
                 parameters = []
                 for var_name in comp_vars:
-                    # Priority: explicit mapping > resolved variables > auto-detect > empty
-                    value = ""
-                    if var_mapping and isinstance(var_mapping, dict):
-                        # Check if any mapping key points to this var_name
-                        for _k, _v in var_mapping.items():
-                            if _v == var_name or _k == var_name:
-                                value = str(variables.get(_v, "") or "")
-                                break
+                    value = positional_values.get(var_name, "")
                     if not value:
                         value = str(variables.get(var_name, "") or "")
                     parameters.append({"type": "text", "text": value})
@@ -333,7 +341,6 @@ async def _action_send_template(pool, tenant_id, phone, step, variables) -> bool
                     var_name = var_mapping[key]
                     body_params.append({"type": "text", "text": str(variables.get(var_name, "") or "")})
             else:
-                _auto_vars = _auto_detect_template_vars(template_name)
                 for var_name in _auto_vars:
                     body_params.append({"type": "text", "text": str(variables.get(var_name, "") or "")})
             components = [{"type": "body", "parameters": body_params}] if body_params else None

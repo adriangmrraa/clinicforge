@@ -5634,20 +5634,24 @@ async def _generic_send_template(
                 "error": f"Template '{template_name}' not found or not approved",
             }
 
-        # Extract variable names from template components
-        all_var_names = []
-        for comp in tpl_components or []:
-            text = comp.get("text", "")
-            var_names = re.findall(r"\{\{(\w+)\}\}", text)
-            all_var_names.extend(var_names)
-
         # Build variable values: custom_vars override, then auto-fill
         vars_dict = custom_vars or {}
+
+        # Positional-to-named mapping for templates using {{1}}, {{2}}, {{3}}
+        # Meta recommends positional format; map numbers to known variable names
+        positional_map = {
+            "1": patient_name,
+            "2": vars_dict.get("dia_semana", vars_dict.get("fecha_turno", "")),
+            "3": vars_dict.get("hora_turno", vars_dict.get("fecha_turno", "")),
+            "4": vars_dict.get("hora_turno", ""),
+        }
         auto_values = {
             "nombre_paciente": patient_name,
             "nombre": patient_name,
-            "1": patient_name,
+            "first_name": patient_name,
         }
+        # Merge: positional + named auto-values + custom_vars (highest priority)
+        merged = {**positional_map, **auto_values, **vars_dict}
 
         # Build send components matching template structure
         send_components = []
@@ -5660,13 +5664,11 @@ async def _generic_send_template(
 
             parameters = []
             for var_name in comp_vars:
-                # Priority: custom_vars > auto_values > empty
-                value = vars_dict.get(var_name) or auto_values.get(var_name) or ""
+                value = merged.get(var_name, "")
                 parameters.append(
                     {
                         "type": "text",
                         "text": str(value),
-                        "parameter_name": var_name,
                     }
                 )
 

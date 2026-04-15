@@ -314,12 +314,20 @@ async def _send_template(
             for p in comp.get("parameters", []):
                 all_values.append(str(p.get("text", "")).strip())
 
-        # Variable value map for lookup by name
+        # Variable value map for lookup by name AND by position ({{1}}, {{2}}, etc.)
+        # Meta templates may use either named or positional variables
         var_value_map = {
+            # Named variables
             "nombre_paciente": all_values[0] if len(all_values) > 0 else "",
+            "first_name": all_values[0] if len(all_values) > 0 else "",
             "dia_semana": all_values[1] if len(all_values) > 1 else "",
             "fecha_turno": all_values[2] if len(all_values) > 2 else "",
             "hora_turno": all_values[3] if len(all_values) > 3 else "",
+            # Positional variables ({{1}}, {{2}}, {{3}}, {{4}})
+            "1": all_values[0] if len(all_values) > 0 else "",
+            "2": all_values[1] if len(all_values) > 1 else "",
+            "3": all_values[2] if len(all_values) > 2 else "",
+            "4": all_values[3] if len(all_values) > 3 else "",
         }
 
         # Build components dynamically from the REAL template structure
