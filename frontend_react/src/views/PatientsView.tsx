@@ -160,11 +160,13 @@ export default function PatientsView() {
       if (user?.role === 'professional' && user?.professional_id) {
         params.professional_id = String(user.professional_id);
       }
+      console.log('[PatientsView] Fetching patients with params:', params);
       const response = await api.get('/admin/patients', { params });
+      console.log('[PatientsView] Patients response:', response.data);
       setPatients(response.data);
       setFilteredPatients(response.data);
-    } catch (error) {
-      console.error('Error fetching patients:', error);
+    } catch (error: any) {
+      console.error('[PatientsView] Error fetching patients:', error?.response?.data || error?.message || error);
     } finally {
       setLoading(false);
     }
@@ -172,14 +174,17 @@ export default function PatientsView() {
 
   const fetchResources = async () => {
     try {
+      console.log('[PatientsView] Fetching resources...');
       const [treatResponse, profResponse] = await Promise.all([
         api.get('/admin/treatment-types'),
         api.get('/admin/professionals')
       ]);
+      console.log('[PatientsView] Treatment types:', treatResponse.data?.length);
+      console.log('[PatientsView] Professionals:', profResponse.data?.length);
       setTreatments(treatResponse.data);
       setProfessionals((profResponse.data || []).filter((p: Professional) => p.is_active));
-    } catch (error) {
-      console.error('Error fetching resources:', error);
+    } catch (error: any) {
+      console.error('[PatientsView] Error fetching resources:', error?.response?.data || error?.message || error);
     }
   };
 

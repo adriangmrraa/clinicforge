@@ -377,14 +377,16 @@ async def login(request: Request, payload: UserLogin, response: Response):
             )
 
     # Regla de Oro: resolver tenant_id y professional_id desde professionals por user_id (aislamiento total)
+    # IMPORTANTE: solo si is_active = true (aprobado por CEO)
     prof_row = await db.fetchrow(
-        "SELECT id, tenant_id FROM professionals WHERE user_id = $1", user["id"]
+        "SELECT id, tenant_id FROM professionals WHERE user_id = $1 AND is_active = true",
+        user["id"],
     )
     if prof_row is not None:
         tenant_id = int(prof_row["tenant_id"])
         professional_id = int(prof_row["id"])
     else:
-        # CEO/secretary: no tienen fila en professionals, usar primera clínica
+        # CEO/secretary sin aprobar o sin fila activa: usar primera clínica
         tenant_id = int(
             await db.fetchval("SELECT id FROM tenants ORDER BY id ASC LIMIT 1") or 1
         )
