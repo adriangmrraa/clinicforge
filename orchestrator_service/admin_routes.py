@@ -5854,8 +5854,13 @@ async def link_chat_to_patient(
             if not isinstance(attrs, list):
                 continue
             for att in attrs:
-                media_url = att.get("media_url") or att.get("data_url") or ""
+                # Chat attachments use "url" key (local path after download)
+                media_url = att.get("url") or att.get("media_url") or att.get("data_url") or ""
                 if not media_url:
+                    continue
+                # Skip non-file entries (e.g. transcription-only audio)
+                att_type = att.get("type", "")
+                if att_type == "audio" and not att.get("file_name"):
                     continue
                 mime = att.get("mime_type", "application/octet-stream")
                 desc = att.get("description", "")
