@@ -563,7 +563,13 @@
     "edit_patient": "Modifier patient",
     "view_profile": "Voir fiche patient",
     "schedule_appointment": "Planifier rendez-vous",
-    "schedule_for_family": "Pour enfant/famille"
+    "schedule_for_family": "Pour enfant/famille",
+    "link_to_family": "Lier à un membre de la famille",
+    "link": "Lier",
+    "linking_patient": "Patient à lier",
+    "select_guardian": "Sélectionner un membre de la famille (patient existant)",
+    "search_patient": "Rechercher par nom, téléphone ou DNI...",
+    "no_patients_found": "Aucun patient trouvé"
   },
   "create_patient_modal": {
     "title_create": "Nouveau patient",

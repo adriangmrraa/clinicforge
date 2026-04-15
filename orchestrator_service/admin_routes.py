@@ -5705,6 +5705,64 @@ async def delete_patient(id: int, tenant_id: int = Depends(get_resolved_tenant_i
         raise HTTPException(status_code=400, detail=str(e))
 
 
+@router.patch(
+    "/patients/{id}/link-guardian",
+    dependencies=[Depends(verify_admin_token)],
+    tags=["Pacientes"],
+    summary="Enlazar paciente a un familiar (guardian)",
+)
+async def link_patient_to_guardian(
+    id: int, guardian_patient_id: int, tenant_id: int = Depends(get_resolved_tenant_id)
+):
+    """Enlazar un paciente (hijo) a un familiar existente (padre/madre).
+    El paciente actual tendrá guardian_phone = teléfono del familiar.
+    El familiar debe ser paciente existente en el mismo tenant."""
+
+    # Verificar que el paciente actual existe
+    current_patient = await db.pool.fetchrow(
+        "SELECT id, first_name, phone_number, guardian_phone FROM patients WHERE id = $1 AND tenant_id = $2",
+        id,
+        tenant_id,
+    )
+    if not current_patient:
+        raise HTTPException(status_code=404, detail="Paciente no encontrado")
+
+    # Verificar que el guardian existe
+    guardian_patient = await db.pool.fetchrow(
+        "SELECT id, first_name, phone_number FROM patients WHERE id = $1 AND tenant_id = $2",
+        guardian_patient_id,
+        tenant_id,
+    )
+    if not guardian_patient:
+        raise HTTPException(status_code=404, detail="Familiar no encontrado")
+
+    # No enlazar a sí mismo
+    if id == guardian_patient_id:
+        raise HTTPException(
+            status_code=400, detail="No puedes enlazar un paciente a sí mismo"
+        )
+
+    # Actualizar guardian_phone del paciente actual
+    await db.pool.execute(
+        "UPDATE patients SET guardian_phone = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3",
+        guardian_patient["phone_number"],
+        id,
+        tenant_id,
+    )
+
+    logger.info(
+        f"🔗 LINKED: patient {id} ({current_patient['first_name']}) → guardian {guardian_patient_id} ({guardian_patient['first_name']})"
+    )
+
+    return {
+        "status": "linked",
+        "patient_id": id,
+        "guardian_patient_id": guardian_patient_id,
+        "guardian_phone": guardian_patient["phone_number"],
+        "guardian_name": guardian_patient["first_name"],
+    }
+
+
 @router.get(
     "/patients/{id}/records",
     dependencies=[Depends(verify_admin_token)],

@@ -583,7 +583,13 @@
     "edit_patient": "Editar paciente",
     "view_profile": "Ver ficha del paciente",
     "schedule_appointment": "Agendar turno",
-    "schedule_for_family": "Para hijo/familiar"
+    "schedule_for_family": "Para hijo/familiar",
+    "link_to_family": "Enlazar a familiar",
+    "link": "Enlazar",
+    "linking_patient": "Paciente a enlazar",
+    "select_guardian": "Buscar familiar (paciente existente)",
+    "search_patient": "Buscar por nombre, teléfono o DNI...",
+    "no_patients_found": "No se encontraron pacientes"
   },
   "create_patient_modal": {
     "title_create": "Nuevo paciente",

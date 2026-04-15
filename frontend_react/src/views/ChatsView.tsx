@@ -4,7 +4,7 @@ import {
   MessageCircle, Send, Calendar, User, Activity,
   Pause, Play, AlertCircle, Clock, ChevronLeft,
   Search, XCircle, Bell, Volume2, VolumeX,
-  Instagram, Facebook, Lock, ChevronRight, Paperclip
+  Instagram, Facebook, Lock, ChevronRight, Paperclip, LinkIcon
 } from 'lucide-react';
 import api, { WS_URL, setTenantId } from '../api/axios';
 import * as chatsApi from '../api/chats';
@@ -18,6 +18,7 @@ import { useSmartScroll } from '../hooks/useSmartScroll';
 import AnamnesisPanel from '../components/AnamnesisPanel';
 import CreatePatientModal from '../components/CreatePatientModal';
 import ScheduleAppointmentModal from '../components/ScheduleAppointmentModal';
+import LinkGuardianModal from '../components/LinkGuardianModal';
 import { useAuth } from '../context/AuthContext';
 
 // ============================================
@@ -134,7 +135,7 @@ export default function ChatsView() {
   const [showCreatePatient, setShowCreatePatient] = useState(false);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [scheduleForMinor, setScheduleForMinor] = useState(false);
-
+  const [showLinkGuardianModal, setShowLinkGuardianModal] = useState(false);
 
 
   // Refs
@@ -1797,6 +1798,14 @@ export default function ChatsView() {
                           >
                             <User size={12} /> {t('chats.schedule_for_family') || 'Para hijo/familiar'}
                           </button>
+                          {/* Enlazar a familiar */}
+                          <button
+                            onClick={() => setShowLinkGuardianModal(true)}
+                            className="w-full py-2 px-3 bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 hover:text-purple-200 border border-purple-500/20 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1.5"
+                            title={t('chats.link_to_family') || 'Enlazar a familiar'}
+                          >
+                            <LinkIcon size={12} /> {t('chats.link_to_family') || 'Enlazar'}
+                          </button>
                         </div>
                       </div>
 
@@ -1959,6 +1968,21 @@ export default function ChatsView() {
         patientName={selectedSession?.patient_name || selectedChatwoot?.name || ''}
         tenantId={selectedTenantId || selectedSession?.tenant_id || 0}
         isForMinor={scheduleForMinor}
+      />
+
+      {/* Link Guardian Modal */}
+      <LinkGuardianModal
+        isOpen={showLinkGuardianModal}
+        onClose={() => setShowLinkGuardianModal(false)}
+        onLinked={() => {
+          // Refresh context after linking
+          const phone = selectedSession?.phone_number || selectedChatwoot?.external_user_id;
+          const tid = selectedSession?.tenant_id || selectedTenantId;
+          if (phone) fetchPatientContext(phone, tid ?? undefined);
+        }}
+        currentPatientId={(patientContext as any)?.patient_id || 0}
+        currentPatientName={selectedSession?.patient_name || selectedChatwoot?.name || ''}
+        tenantId={selectedTenantId || selectedSession?.tenant_id || 0}
       />
     </div>
   );

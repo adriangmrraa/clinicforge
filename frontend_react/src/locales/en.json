@@ -570,7 +570,13 @@
     "edit_patient": "Edit patient",
     "view_profile": "View patient profile",
     "schedule_appointment": "Schedule appointment",
-    "schedule_for_family": "For child/family"
+    "schedule_for_family": "For child/family",
+    "link_to_family": "Link to family member",
+    "link": "Link",
+    "linking_patient": "Patient to link",
+    "select_guardian": "Select family member (existing patient)",
+    "search_patient": "Search by name, phone or DNI...",
+    "no_patients_found": "No patients found"
   },
   "create_patient_modal": {
     "title_create": "New patient",
