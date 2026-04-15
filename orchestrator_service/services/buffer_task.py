@@ -1779,6 +1779,25 @@ async def process_buffer_task(
             except Exception:
                 has_patient = False
 
+            # Classify image BEFORE branching — needed in ALL paths (patient, non-patient)
+            is_classified_payment = False
+            is_classified_medical = False
+            try:
+                from services.image_classifier import classify_message as _clf_msg
+                _clf_text = messages[-1] if messages else ""
+                _clf_result = await _clf_msg(
+                    text=_clf_text,
+                    tenant_id=tenant_id,
+                    vision_description=vision_context_str if vision_context_str else None,
+                )
+                is_classified_payment = _clf_result.get("is_payment", False)
+                is_classified_medical = _clf_result.get("is_medical", False)
+                logger.info(
+                    f"🖼️ Pre-classification: payment={is_classified_payment}, medical={is_classified_medical}"
+                )
+            except Exception as _pre_clf_err:
+                logger.debug(f"Pre-classification skipped: {_pre_clf_err}")
+
             if has_patient and minor_count > 0:
                 media_context += (
                     "IMPORTANTE: Este paciente tiene hijos/menores vinculados. "
@@ -1949,15 +1968,40 @@ async def process_buffer_task(
                                     "Si la verificación es exitosa → confirmá el pago. Si falla → explicá qué falló."
                                 )
                     else:
-                        # No pending payment - treat as medical document
-                        media_context += "Responde confirmando que recibiste el archivo y que ya lo guardaste en su ficha médica para que la Dra. lo vea. Usa un tono amable y profesional."
+                        # No pending payment for THIS person
+                        if is_classified_payment:
+                            # Image looks like a receipt but this patient has no debt
+                            # → likely paying on behalf of a family member
+                            media_context += (
+                                "COMPROBANTE DE PAGO RECIBIDO pero este contacto NO tiene turnos ni planes con saldo pendiente. "
+                                "Es probable que esté pagando POR UN FAMILIAR (hijo/a, padre/madre, etc.). "
+                                "ACCIÓN: Preguntá amablemente: '¡Recibí tu comprobante! ¿Este pago es para vos o para un familiar? "
+                                "Si es para otra persona, decime su nombre así lo asocio a su ficha.' "
+                                "Cuando te diga el nombre, buscá al paciente con 'buscar_paciente' (si usás Nova) o indicá que "
+                                "la secretaría va a vincular el comprobante a la ficha del paciente correspondiente. "
+                                "NO digas que ya verificaste el pago. Esperá a saber PARA QUIÉN es."
+                            )
+                        else:
+                            media_context += "Responde confirmando que recibiste el archivo y que ya lo guardaste en su ficha médica para que la Dra. lo vea. Usa un tono amable y profesional."
             else:
-                media_context += (
-                    "NOTA: Este contacto AUN NO tiene ficha de paciente registrada. "
-                    "NO digas que guardaste el archivo en su ficha porque no existe. "
-                    "Si hay CONTEXTO VISUAL disponible, usalo para responder sobre la imagen. "
-                    "Si el contacto necesita agendar un turno, pedile sus datos (nombre, telefono, DNI) primero."
-                )
+                # Contact is NOT a patient
+                if is_classified_payment:
+                    # Non-patient sending a payment receipt → paying for someone else
+                    media_context += (
+                        "COMPROBANTE DE PAGO RECIBIDO de un contacto que NO es paciente registrado. "
+                        "Es MUY probable que esté pagando POR UN FAMILIAR que sí es paciente (hijo/a pagando por padre/madre, etc.). "
+                        "ACCIÓN: Preguntá amablemente: '¡Recibí tu comprobante! ¿Para qué paciente es este pago? "
+                        "Decime el nombre completo así lo asocio a su ficha.' "
+                        "Cuando te diga el nombre, indicá que la secretaría va a vincular el comprobante al paciente. "
+                        "NO digas que verificaste ni guardaste nada todavía."
+                    )
+                else:
+                    media_context += (
+                        "NOTA: Este contacto AUN NO tiene ficha de paciente registrada. "
+                        "NO digas que guardaste el archivo en su ficha porque no existe. "
+                        "Si hay CONTEXTO VISUAL disponible, usalo para responder sobre la imagen. "
+                        "Si el contacto necesita agendar un turno, pedile sus datos (nombre, telefono, DNI) primero."
+                    )
 
             special_context.append(media_context)
 
