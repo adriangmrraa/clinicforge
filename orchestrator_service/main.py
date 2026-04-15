@@ -1125,18 +1125,24 @@ async def _get_slots_for_extra_day(
                 wh = {}
         if not isinstance(wh, dict):
             wh = {}
-        day_config = wh.get(day_name_en, {"enabled": False, "slots": []})
+        day_config = wh.get(day_name_en, {})
         if day_config.get("enabled") and day_config.get("slots"):
             check_time = datetime.combine(target_date, datetime.min.time()).replace(
                 hour=8, minute=0
             )
-            for _ in range(24):
+            while check_time.hour < 20:
                 h_m = check_time.strftime("%H:%M")
                 if not is_time_in_working_hours(h_m, day_config):
                     busy_map[prof["id"]].add(h_m)
-                check_time += timedelta(minutes=30)
-                if check_time.hour >= 20:
-                    break
+                check_time += timedelta(minutes=15)
+        elif day_config.get("enabled") is False:
+            # Professional explicitly disabled for this day → mark ALL hours as busy
+            check_time = datetime.combine(target_date, datetime.min.time()).replace(
+                hour=6, minute=0
+            )
+            while check_time.hour < 23:
+                busy_map[prof["id"]].add(check_time.strftime("%H:%M"))
+                check_time += timedelta(minutes=15)
 
     global_busy = set()
     for b in gcal_blocks:
@@ -1882,8 +1888,11 @@ async def check_availability(
                 continue
 
             # Verificar si el profesional atiende este día
+            # Check ALL filtered professionals, not just when clean_name is provided.
+            # When forced_prof_id or derivation_filter_prof_id is set, we also have
+            # a single professional that must be checked.
             prof_closed = False
-            if clean_name and active_professionals:
+            if len(active_professionals) == 1:
                 prof = active_professionals[0]
                 wh = prof.get("working_hours")
                 if isinstance(wh, str):
@@ -1893,8 +1902,8 @@ async def check_availability(
                         wh = {}
                 if not isinstance(wh, dict):
                     wh = {}
-                day_config = wh.get(day_name_en, {"enabled": False, "slots": []})
-                if not day_config.get("enabled"):
+                day_config = wh.get(day_name_en, {})
+                if day_config and not day_config.get("enabled", True):
                     prof_closed = True
 
             if prof_closed:
@@ -2099,7 +2108,8 @@ async def check_availability(
                 f"📅 DIAG prof={prof_id} ({prof.get('first_name')}) day={day_name_en} "
                 f"day_config={day_config} wh_keys={list(wh.keys()) if wh else 'empty'}"
             )
-            # Solo marcar como ocupados los horarios fuera de working_hours cuando el día tiene slots configurados
+            # Mark non-working hours as busy. If the professional's day is explicitly
+            # disabled, mark the ENTIRE day as busy so they get zero slots.
             if day_config.get("enabled") and day_config.get("slots"):
                 check_time = datetime.combine(target_date, datetime.min.time()).replace(
                     hour=8, minute=0
@@ -2115,11 +2125,22 @@ async def check_availability(
                     logger.info(
                         f"📅 DIAG prof={prof_id} non_working_hours={_non_working}"
                     )
-            else:
-                logger.info(
-                    f"📅 DIAG prof={prof_id} no working_hours restriction → available full clinic hours"
+            elif day_config.get("enabled") is False:
+                # Professional explicitly disabled for this day → mark ALL hours as busy
+                check_time = datetime.combine(target_date, datetime.min.time()).replace(
+                    hour=6, minute=0
                 )
-            # Si enabled=False o slots=[], no añadimos ocupación → profesional disponible en horario clínica
+                while check_time.hour < 23:
+                    busy_map[prof_id].add(check_time.strftime("%H:%M"))
+                    check_time += timedelta(minutes=15)
+                logger.info(
+                    f"📅 DIAG prof={prof_id} day DISABLED → marked fully busy"
+                )
+            else:
+                # No working_hours config at all → professional available during clinic hours
+                logger.info(
+                    f"📅 DIAG prof={prof_id} no working_hours config → available full clinic hours"
+                )
 
         # Agregar bloqueos de GCal (granularidad 15 min)
         global_busy = set()
@@ -2345,6 +2366,15 @@ async def check_availability(
                     f"📅 search_range capped to {max_search_days} days (treatment priority={treatment_priority!r})"
                 )
 
+        # Resolve effective professional name for multi-day search.
+        # When the professional was assigned via forced_prof_id or derivation rule
+        # (not by name), professional_name is None. Pass the resolved name so
+        # _get_slots_for_extra_day filters to the correct professional.
+        _effective_prof_name = professional_name
+        if not _effective_prof_name and len(active_professionals) == 1:
+            _p = active_professionals[0]
+            _effective_prof_name = f"{_p['first_name']} {_p.get('last_name') or ''}".strip()
+
         # Seleccionar 2-3 opciones representativas (con multi-día si hace falta)
         options, total_today = await pick_representative_slots(
             available_slots,
@@ -2352,7 +2382,7 @@ async def check_availability(
             tenant_id,
             tenant_wh,
             tenant_row,
-            professional_name=professional_name,
+            professional_name=_effective_prof_name,
             treatment_name=treatment_name,
             duration=duration,
             max_options=3,
