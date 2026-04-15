@@ -14,6 +14,9 @@ export default function MetaTokenBanner() {
         // Solo para CEO
         if (user?.role !== 'ceo') return;
 
+        // Stop polling once the banner is dismissed
+        if (dismissed) return;
+
         const checkToken = async () => {
             try {
                 const { data } = await api.get('/admin/marketing/token-status');
@@ -29,7 +32,7 @@ export default function MetaTokenBanner() {
         // Check once an hour
         const interval = setInterval(checkToken, 3600000);
         return () => clearInterval(interval);
-    }, [user]);
+    }, [user, dismissed]);
 
     if (!status || dismissed) return null;
 

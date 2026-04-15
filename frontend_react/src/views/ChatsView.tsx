@@ -438,15 +438,18 @@ export default function ChatsView() {
       currentPatientKeyRef.current = patientKey;
       setPatientContext(null);
       setMessages([]);
+      const controller = new AbortController();
       const fetchForSession = async () => {
         const keyAtStart = patientKey;
         const [ctxRes, msgRes] = await Promise.all([
           api.get(`/admin/patients/phone/${selectedSession.phone_number}/context`, {
-            params: selectedSession.tenant_id != null ? { tenant_id_override: selectedSession.tenant_id } : {}
-          }).catch(() => null),
+            params: selectedSession.tenant_id != null ? { tenant_id_override: selectedSession.tenant_id } : {},
+            signal: controller.signal
+          }).catch((err) => { if (err?.name === 'AbortError' || err?.name === 'CanceledError') return null; return null; }),
           api.get(`/admin/chat/messages/${selectedSession.phone_number}`, {
-            params: { tenant_id: selectedSession.tenant_id, limit: 50, offset: 0 }
-          }).catch(() => null)
+            params: { tenant_id: selectedSession.tenant_id, limit: 50, offset: 0 },
+            signal: controller.signal
+          }).catch((err) => { if (err?.name === 'AbortError' || err?.name === 'CanceledError') return null; return null; })
         ]);
         if (currentPatientKeyRef.current !== keyAtStart) return;
         if (ctxRes?.data) setPatientContext(ctxRes.data);
@@ -456,6 +459,7 @@ export default function ChatsView() {
         markAsRead(selectedSession.phone_number, selectedSession.tenant_id);
       };
       fetchForSession();
+      return () => controller.abort();
     }
   }, [selectedSession]);
 
@@ -1560,7 +1564,7 @@ export default function ChatsView() {
                   {selectedFiles.length > 0 && (
                     <div className="flex flex-wrap gap-2 pb-2">
                       {selectedFiles.map((f, i) => (
-                        <div key={i} className="bg-medical-50 text-medical-700 px-2 py-1 rounded-md text-xs flex items-center gap-1 border border-medical-100">
+                        <div key={`${f.name}-${i}`} className="bg-medical-50 text-medical-700 px-2 py-1 rounded-md text-xs flex items-center gap-1 border border-medical-100">
                           <span className="truncate max-w-[100px]">{f.name}</span>
                           <button
                             type="button"

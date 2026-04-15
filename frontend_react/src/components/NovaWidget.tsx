@@ -767,7 +767,7 @@ export const NovaWidget: React.FC = () => {
             <p className="text-xs text-slate-400 mb-2">{onboarding.completed}/{onboarding.total} completados</p>
             <div className="space-y-1.5">
               {onboarding.items.map((item, i) => (
-                <div key={i} className="flex items-center gap-2 text-xs">
+                <div key={`${item.label}-${i}`} className="flex items-center gap-2 text-xs">
                   {item.completed ? (
                     <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
                   ) : (
@@ -926,7 +926,7 @@ export const NovaWidget: React.FC = () => {
               <p className="text-xs text-slate-500 uppercase tracking-wider mb-2">Alertas Globales</p>
               <div className="space-y-2">
                 {consolidated.alerts.map((a, i) => (
-                  <div key={i} className={`p-2 rounded-lg border text-xs ${CHECK_STYLES[a.type] || CHECK_STYLES.info}`}>
+                  <div key={`${a.sede}-${i}`} className={`p-2 rounded-lg border text-xs ${CHECK_STYLES[a.type] || CHECK_STYLES.info}`}>
                     <span className="font-medium">{a.sede}:</span> {a.message}
                   </div>
                 ))}
@@ -973,7 +973,7 @@ export const NovaWidget: React.FC = () => {
           <div>
             <div className="space-y-1.5">
               {novaCtx.completed.map((item, i) => (
-                <div key={i} className="flex items-center gap-2 text-sm">
+                <div key={`${item.label}-${i}`} className="flex items-center gap-2 text-sm">
                   <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
                   <span className="text-slate-300">{item.label}</span>
                   {item.detail && <span className="text-slate-500 text-xs ml-auto">{item.detail}</span>}
@@ -988,7 +988,7 @@ export const NovaWidget: React.FC = () => {
           <div className="space-y-2">
             {novaCtx.pending.map((item, i) => (
               <button
-                key={i}
+                key={`${item.action || item.label}-${i}`}
                 onClick={() => handleCheckAction(item.action)}
                 className="w-full text-left p-2.5 bg-white/5 border border-white/5 rounded-lg text-sm text-slate-300 hover:bg-white/10 transition-colors flex items-center justify-between"
               >
@@ -1055,7 +1055,7 @@ export const NovaWidget: React.FC = () => {
             <p className="text-xs text-slate-500 uppercase tracking-wider mb-2">Temas Frecuentes</p>
             <div className="space-y-1.5">
               {insights.frequent_topics.map((t, i) => (
-                <div key={i} className="flex items-center justify-between bg-white/5 rounded-lg px-3 py-2">
+                <div key={`${t.topic}-${i}`} className="flex items-center justify-between bg-white/5 rounded-lg px-3 py-2">
                   <span className="text-sm text-slate-300">{t.topic}</span>
                   <span className="text-xs text-slate-500 font-medium">{t.count}x</span>
                 </div>
@@ -1073,7 +1073,7 @@ export const NovaWidget: React.FC = () => {
             </div>
             <div className="space-y-2">
               {insights.problems.map((p, i) => (
-                <div key={i} className="bg-amber-500/5 border border-amber-500/10 rounded-lg p-3 text-sm text-amber-200">
+                <div key={`${p.slice(0, 20)}-${i}`} className="bg-amber-500/5 border border-amber-500/10 rounded-lg p-3 text-sm text-amber-200">
                   {p}
                 </div>
               ))}
@@ -1090,7 +1090,7 @@ export const NovaWidget: React.FC = () => {
             </div>
             <div className="space-y-2">
               {insights.suggestions.map((s, i) => (
-                <div key={i} className="bg-cyan-500/5 border border-cyan-500/10 rounded-lg p-3">
+                <div key={`${s.text.slice(0, 20)}-${i}`} className="bg-cyan-500/5 border border-cyan-500/10 rounded-lg p-3">
                   <p className="text-sm text-cyan-200">{s.text}</p>
                   {!s.applied ? (
                     <button
@@ -1114,7 +1114,7 @@ export const NovaWidget: React.FC = () => {
             <p className="text-xs text-slate-500 uppercase tracking-wider mb-2">Comparativa entre Sedes</p>
             <div className="space-y-2">
               {insights.cross_sede.comparisons.map((c, i) => (
-                <div key={i} className="bg-white/5 border border-white/5 rounded-lg p-3 text-sm text-slate-300">
+                <div key={`${c.slice(0, 20)}-${i}`} className="bg-white/5 border border-white/5 rounded-lg p-3 text-sm text-slate-300">
                   {c}
                 </div>
               ))}
@@ -1122,7 +1122,7 @@ export const NovaWidget: React.FC = () => {
             {insights.cross_sede.ranking.length > 0 && (
               <div className="mt-3 space-y-1.5">
                 {insights.cross_sede.ranking.map((r, i) => (
-                  <div key={i} className="flex items-center gap-3">
+                  <div key={`${r.sede}-${i}`} className="flex items-center gap-3">
                     <span className="text-xs text-slate-500 w-4">{i + 1}.</span>
                     <span className="text-sm text-slate-300 flex-1">{r.sede}</span>
                     <span className={`text-sm font-medium ${getScoreColor(r.score)}`}>{r.score}</span>

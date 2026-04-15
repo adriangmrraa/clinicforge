@@ -2130,7 +2130,11 @@ async def delete_credential(
                 status_code=403, detail="No tienes acceso a esta clínica."
             )
 
-        await db.pool.execute("DELETE FROM credentials WHERE id = $1", id)
+        await db.pool.execute(
+            "DELETE FROM credentials WHERE id = $1 AND (scope = 'global' OR tenant_id = ANY($2::int[]))",
+            id,
+            allowed_ids,
+        )
         return {"status": "deleted"}
     except Exception as e:
         logger.error(f"Error deleting credential: {e}")
@@ -5528,7 +5532,7 @@ async def get_patient(id: int, tenant_id: int = Depends(get_resolved_tenant_id))
             patient_dict["medical_history"] = json.loads(
                 patient_dict["medical_history"]
             )
-        except:
+        except (json.JSONDecodeError, ValueError, TypeError):
             pass
     return patient_dict
 
@@ -5635,7 +5639,7 @@ async def get_clinical_records(
                 record_dict["odontogram_data"] = json.loads(
                     record_dict["odontogram_data"]
                 )
-            except:
+            except (json.JSONDecodeError, ValueError, TypeError):
                 record_dict["odontogram_data"] = {}
 
         if isinstance(record_dict.get("treatment_plan"), str):
@@ -5643,7 +5647,7 @@ async def get_clinical_records(
                 record_dict["treatment_plan"] = json.loads(
                     record_dict["treatment_plan"]
                 )
-            except:
+            except (json.JSONDecodeError, ValueError, TypeError):
                 record_dict["treatment_plan"] = {}
 
         records.append(record_dict)
@@ -10649,7 +10653,7 @@ async def update_patient_anamnesis(
                 }
             ),
         )
-    except:
+    except Exception:
         pass
 
     return {
@@ -10714,7 +10718,7 @@ async def update_patient_email(
                 }
             ),
         )
-    except:
+    except Exception:
         pass
 
     return {"message": "Email actualizado correctamente.", "email": email}

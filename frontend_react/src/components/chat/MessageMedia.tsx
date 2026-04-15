@@ -25,7 +25,7 @@ export const Linkify = ({ text }: { text: string }) => {
             {parts.map((part, i) => (
                 urlRegex.test(part) ? (
                     <a
-                        key={i}
+                        key={`${part}-${i}`}
                         href={part}
                         target="_blank"
                         rel="noopener noreferrer"
@@ -86,7 +86,7 @@ export const MessageMedia = ({ attachments, message }: { attachments: any[], mes
 
                 if ((type === 'image' || type.includes('image')) && !isGrouped) {
                     return (
-                        <div key={idx} className="relative group">
+                        <div key={`${url}-${idx}`} className="relative group">
                             <img
                                 src={url}
                                 alt="attachment"
@@ -101,7 +101,7 @@ export const MessageMedia = ({ attachments, message }: { attachments: any[], mes
 
                 if ((type === 'audio' || type.includes('audio')) && !isGrouped) {
                     return (
-                        <div key={idx} className="bg-gray-50 p-2 rounded-lg border flex flex-col gap-2 min-w-[240px]">
+                        <div key={`${url}-${idx}`} className="bg-gray-50 p-2 rounded-lg border flex flex-col gap-2 min-w-[240px]">
                             <div className="flex items-center gap-2">
                                 <audio
                                     controls
@@ -128,7 +128,7 @@ export const MessageMedia = ({ attachments, message }: { attachments: any[], mes
 
                 return (
                     <div
-                        key={idx}
+                        key={`${url}-${idx}`}
                         className={`flex items-center gap-2 p-2 rounded-lg border bg-white hover:bg-gray-50 transition-colors cursor-pointer ${isGrouped ? 'aspect-square justify-center' : ''}`}
                         onClick={() => window.open(url, '_blank', 'noopener,noreferrer')}
                     >

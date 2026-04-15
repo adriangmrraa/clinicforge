@@ -256,8 +256,8 @@ export default function FinancialDashboard({ data, loading, formatCurrency }: Fi
                         dataKey="value"
                         paddingAngle={3}
                       >
-                        {pieData.map((_, i) => (
-                          <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
+                        {pieData.map((entry, i) => (
+                          <Cell key={entry.name} fill={CHART_COLORS[i % CHART_COLORS.length]} />
                         ))}
                       </Pie>
                       <Tooltip
@@ -279,7 +279,7 @@ export default function FinancialDashboard({ data, loading, formatCurrency }: Fi
                 </div>
                 <div className="space-y-2 mt-2">
                   {pieData.map((item, i) => (
-                    <div key={i} className="flex items-center justify-between text-xs">
+                    <div key={item.name} className="flex items-center justify-between text-xs">
                       <div className="flex items-center gap-2">
                         <div
                           className="w-2.5 h-2.5 rounded-full"
@@ -443,9 +443,9 @@ export default function FinancialDashboard({ data, loading, formatCurrency }: Fi
             </h3>
             {pending_collections.length > 0 ? (
               <div className="space-y-3">
-                {pending_collections.slice(0, 5).map((item: PendingCollection, i: number) => (
+                {pending_collections.slice(0, 5).map((item: PendingCollection) => (
                   <div
-                    key={i}
+                    key={item.appointment_id}
                     className="flex items-center justify-between py-2 border-b border-white/[0.04] last:border-0"
                   >
                     <div className="flex-1 min-w-0">

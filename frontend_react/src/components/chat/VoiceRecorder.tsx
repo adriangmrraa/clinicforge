@@ -87,6 +87,17 @@ export default function VoiceRecorder({
   const blobRef = useRef<Blob | null>(null);
   const mimeTypeRef = useRef<string>('audio/webm;codecs=opus');
 
+  // Stable refs for callbacks — avoids stale closures inside recorder event
+  // handlers (onstop, auto-stop timeout) without triggering re-renders.
+  // Prop callbacks:
+  const onStateChangeRef = useRef(onStateChange);
+  const onNotifyRef = useRef(onNotify);
+  useEffect(() => { onStateChangeRef.current = onStateChange; }, [onStateChange]);
+  useEffect(() => { onNotifyRef.current = onNotify; }, [onNotify]);
+  // Internal callbacks (declared here, populated below via useEffect updaters):
+  const stopRecordingRef = useRef<() => void>(() => {});
+  const uploadAndTranscribeRef = useRef<(blob: Blob) => void>(() => {});
+
   // ============================================
   // CLEANUP on unmount
   // ============================================
@@ -173,14 +184,15 @@ export default function VoiceRecorder({
         const url = URL.createObjectURL(blob);
         setBlobUrl(url);
         setRecorderState('preview');
-        // Start parallel upload + transcription
-        uploadAndTranscribe(blob);
+        // Start parallel upload + transcription — use ref so we always call
+        // the latest version even if tenantId changed between start and stop.
+        uploadAndTranscribeRef.current(blob);
       };
 
       recorder.start(200); // collect data every 200ms
       setElapsed(0);
       setRecorderState('recording');
-      onStateChange?.(true);
+      onStateChangeRef.current?.(true);
       startWaveform(stream);
 
       // Timer
@@ -188,16 +200,16 @@ export default function VoiceRecorder({
         setElapsed(prev => prev + 1);
       }, 1000);
 
-      // Auto-stop at 5 minutes
+      // Auto-stop at 5 minutes — use refs so closures see current callbacks.
       autoStopRef.current = setTimeout(() => {
-        stopRecording();
-        onNotify?.('Grabación detenida', 'Límite máximo de 5 minutos alcanzado.', 'info');
+        stopRecordingRef.current();
+        onNotifyRef.current?.('Grabación detenida', 'Límite máximo de 5 minutos alcanzado.', 'info');
       }, 300_000);
     } catch (err) {
       console.error('[VoiceRecorder] getUserMedia error:', err);
-      onNotify?.('Micrófono no disponible', 'Permiso de micrófono denegado. Habilitalo desde la configuración del navegador.', 'error');
+      onNotifyRef.current?.('Micrófono no disponible', 'Permiso de micrófono denegado. Habilitalo desde la configuración del navegador.', 'error');
     }
-  }, [disabled, startWaveform]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [disabled, startWaveform]);
 
   // ============================================
   // STOP RECORDING
@@ -231,6 +243,9 @@ export default function VoiceRecorder({
     setRecorderState('idle');
     onStateChange?.(false);
   }, [stopWaveform, onStateChange]);
+
+  // Keep stopRecordingRef current:
+  useEffect(() => { stopRecordingRef.current = stopRecording; }, [stopRecording]);
 
   // ============================================
   // UPLOAD + TRANSCRIBE (parallel, at preview time)
@@ -276,6 +291,9 @@ export default function VoiceRecorder({
       setUploadError(true);
     }
   }, [tenantId]);
+
+  // Keep uploadAndTranscribeRef current:
+  useEffect(() => { uploadAndTranscribeRef.current = uploadAndTranscribe; }, [uploadAndTranscribe]);
 
   // ============================================
   // SEND AUDIO
