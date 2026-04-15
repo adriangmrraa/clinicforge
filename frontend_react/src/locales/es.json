@@ -74,6 +74,8 @@
     "sena_expiration_hint": "0 = sin expiración. El turno sin seña se cancela automáticamente después de este tiempo.",
     "max_unpaid_label": "Máx. turnos sin seña por paciente",
     "max_unpaid_hint": "0 = sin límite. Cuántos turnos sin pagar puede tener un paciente simultáneamente.",
+    "min_appointment_date": "Fecha mínima para turnos",
+    "min_appointment_date_hint": "Dejar vacío para sin restricción. Los turnos antes de esta fecha no se ofrecerán.",
     "ai_engine_label": "Motor de IA conversacional",
     "ai_engine_helper": "El cambio afecta todas las conversaciones nuevas. Las conversaciones en curso terminan en el motor actual.",
     "engine_solo": "Solo (TORA legacy)",

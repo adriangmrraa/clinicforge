@@ -71,9 +71,8 @@ def compute_social_context(channel_type: str, tenant_row: dict) -> dict:
         instagram_handle, facebook_page_id.
     """
     effective_channel = channel_type or "whatsapp"
-    is_social = (
-        effective_channel in ("instagram", "facebook")
-        and bool(tenant_row.get("social_ig_active", False))
+    is_social = effective_channel in ("instagram", "facebook") and bool(
+        tenant_row.get("social_ig_active", False)
     )
 
     # JSONB gotcha from CLAUDE.md: asyncpg may return JSONB columns as raw strings.
@@ -115,23 +114,23 @@ def _detect_selection_intent(msg: str) -> bool:
             # Numeric ordinals: "el 1", "el 1ro", "el 1°", "el 2do", "el 3er", etc.
             r"\bel\s+[0-9]+(?:ro|do|er|°)?\b",
             # Spanish ordinal words
-            r"\bel\s+primero\b",   # "el primero"
-            r"\bla\s+primera\b",   # "la primera"
-            r"\bel\s+segundo\b",   # "el segundo"
-            r"\bla\s+segunda\b",   # "la segunda"
-            r"\bel\s+tercero\b",   # "el tercero"
-            r"\bla\s+tercera\b",   # "la tercera"
-            r"\bconfirmo\b",       # "confirmo", "confirmar"
+            r"\bel\s+primero\b",  # "el primero"
+            r"\bla\s+primera\b",  # "la primera"
+            r"\bel\s+segundo\b",  # "el segundo"
+            r"\bla\s+segunda\b",  # "la segunda"
+            r"\bel\s+tercero\b",  # "el tercero"
+            r"\bla\s+tercera\b",  # "la tercera"
+            r"\bconfirmo\b",  # "confirmo", "confirmar"
             # "si" / "sí" as standalone affirmation (NOT as conjunction meaning "if")
             # Only match at start of short messages to avoid "si atienden" false positives
-            r"^s[ií]$",            # exactly "si" or "sí"
-            r"^s[ií]\b",           # "si," or "si!" or "sí," at start
-            r"\bsí\b",             # accented "sí" anywhere (rarer as conjunction)
-            r"\bquiero\s+ese\b",   # "quiero ese"
-            r"\bagéndame\s+ese\b", # "agéndame ese"
-            r"\breservar\b",       # "reservar"
+            r"^s[ií]$",  # exactly "si" or "sí"
+            r"^s[ií]\b",  # "si," or "si!" or "sí," at start
+            r"\bsí\b",  # accented "sí" anywhere (rarer as conjunction)
+            r"\bquiero\s+ese\b",  # "quiero ese"
+            r"\bagéndame\s+ese\b",  # "agéndame ese"
+            r"\breservar\b",  # "reservar"
             r"\b\d{1,2}\s*(de\s+)?(ene|feb|mar|abr|may|jun|jul|ago|sep|oct|nov|dic)",  # "12 de mayo"
-            r"\bde\s+la\s+tarde\b",   # "el de la tarde"
+            r"\bde\s+la\s+tarde\b",  # "el de la tarde"
             r"\bde\s+la\s+ma[ñn]ana\b",  # "el de la mañana"
         ]
         combined = "|".join(patterns)
@@ -302,7 +301,8 @@ async def process_buffer_task(
         await pool.execute(
             "UPDATE chat_conversations SET recovery_touch_count = 0, last_recovery_at = NULL "
             "WHERE tenant_id = $1 AND external_user_id = $2 AND recovery_touch_count > 0",
-            tenant_id, external_user_id
+            tenant_id,
+            external_user_id,
         )
     except Exception:
         pass  # Non-blocking — recovery reset is best-effort
@@ -363,7 +363,7 @@ async def process_buffer_task(
                       expected_wait_time_minutes, revision_policy, review_platforms,
                       complaint_handling_protocol, auto_send_review_link_after_followup,
                       social_ig_active, social_landings, instagram_handle, facebook_page_id,
-                      bot_phone_number
+                      bot_phone_number, config
                FROM tenants WHERE id = $1""",
             tenant_id,
         )
@@ -371,9 +371,7 @@ async def process_buffer_task(
             (tenant_row["clinic_name"] or CLINIC_NAME) if tenant_row else CLINIC_NAME
         )
         # Editable bot display name (migration 033). NULL or empty → fallback to "TORA".
-        bot_name = (
-            (tenant_row.get("bot_name") or "TORA") if tenant_row else "TORA"
-        )
+        bot_name = (tenant_row.get("bot_name") or "TORA") if tenant_row else "TORA"
         clinic_address = (tenant_row["address"] or "") if tenant_row else ""
         clinic_maps_url = (tenant_row["google_maps_url"] or "") if tenant_row else ""
         consultation_price = (
@@ -397,12 +395,8 @@ async def process_buffer_task(
         financing_available = bool(
             tenant_row.get("financing_available") if tenant_row else False
         )
-        max_installments = (
-            tenant_row.get("max_installments") if tenant_row else None
-        )
-        _iif = (
-            tenant_row.get("installments_interest_free") if tenant_row else None
-        )
+        max_installments = tenant_row.get("max_installments") if tenant_row else None
+        _iif = tenant_row.get("installments_interest_free") if tenant_row else None
         installments_interest_free = bool(_iif) if _iif is not None else True
         financing_provider = (
             (tenant_row.get("financing_provider") or "") if tenant_row else ""
@@ -415,9 +409,7 @@ async def process_buffer_task(
             cash_discount_percent = float(_cdp) if _cdp is not None else None
         except (TypeError, ValueError):
             cash_discount_percent = None
-        accepts_crypto = bool(
-            tenant_row.get("accepts_crypto") if tenant_row else False
-        )
+        accepts_crypto = bool(tenant_row.get("accepts_crypto") if tenant_row else False)
 
         # --- Clinic special conditions (migración 036) ---
         # Computamos el bloque pre-formateado acá para que build_system_prompt
@@ -446,9 +438,7 @@ async def process_buffer_task(
                     treatment_name_map=treatment_name_map,
                 )
         except Exception as _sc_err:
-            logger.debug(
-                f"_format_special_conditions skipped (non-fatal): {_sc_err}"
-            )
+            logger.debug(f"_format_special_conditions skipped (non-fatal): {_sc_err}")
             special_conditions_block = ""
 
         # --- Clinic support / complaints / review config (migration 039) ---
@@ -459,9 +449,7 @@ async def process_buffer_task(
 
                 support_policy_block = _format_support_policy(dict(tenant_row))
         except Exception as _sp_err:
-            logger.debug(
-                f"_format_support_policy skipped (non-fatal): {_sp_err}"
-            )
+            logger.debug(f"_format_support_policy skipped (non-fatal): {_sp_err}")
             support_policy_block = ""
 
         system_prompt_template = (
@@ -532,6 +520,7 @@ async def process_buffer_task(
                 if isinstance(d.get("coverage_by_treatment"), str):
                     try:
                         import json as _json_cov
+
                         d["coverage_by_treatment"] = _json_cov.loads(
                             d["coverage_by_treatment"]
                         )
@@ -601,8 +590,14 @@ async def process_buffer_task(
             if op_rows:
                 parts = ["⚠️ REGLAS OPERATIVAS VIGENTES (deben aplicarse SIEMPRE):"]
                 for opr in op_rows:
-                    until = f" (vigente hasta {opr['valid_until'].strftime('%d/%m/%Y')})" if opr.get("valid_until") else ""
-                    parts.append(f"[{opr['rule_type'].upper()}] {opr['rule_name']}{until}:")
+                    until = (
+                        f" (vigente hasta {opr['valid_until'].strftime('%d/%m/%Y')})"
+                        if opr.get("valid_until")
+                        else ""
+                    )
+                    parts.append(
+                        f"[{opr['rule_type'].upper()}] {opr['rule_name']}{until}:"
+                    )
                     parts.append(opr["prompt_injection"])
                     parts.append("")
                 operational_rules_block = "\n".join(parts)
@@ -1086,7 +1081,11 @@ async def process_buffer_task(
         # data from Redis and inject into patient_context so the AI has continuity.
         if not patient_row and not patient_context:
             try:
-                from services.lead_context import get as lead_ctx_get, format_for_prompt as lead_ctx_format
+                from services.lead_context import (
+                    get as lead_ctx_get,
+                    format_for_prompt as lead_ctx_format,
+                )
+
                 _lead_data = await lead_ctx_get(tenant_id, external_user_id)
                 if _lead_data:
                     patient_context = lead_ctx_format(_lead_data)
@@ -1098,6 +1097,7 @@ async def process_buffer_task(
         # across long conversations where the original message fell out of history.
         try:
             from services.lead_context import get as _lc_get
+
             _lc_data = await _lc_get(tenant_id, external_user_id)
             if _lc_data and _lc_data.get("is_minor") == "true":
                 _minor_name = f"{_lc_data.get('minor_first_name', '')} {_lc_data.get('minor_last_name', '')}".strip()
@@ -1187,6 +1187,22 @@ async def process_buffer_task(
         # Inject operational rules (temporary/strategic)
         if operational_rules_block:
             system_prompt += "\n\n" + operational_rules_block
+
+        # Inject min appointment date if configured
+        tenant_config = dict(tenant_row).get("config") if tenant_row else {}
+        min_apt_date = (
+            tenant_config.get("min_appointment_date") if tenant_config else None
+        )
+        if min_apt_date:
+            system_prompt += f"""
+
+# 📅 FECHA MÍNIMA PARA TURNOS
+Por temas de reorganización de la agenda, los turnos se están dando a partir del {min_apt_date}.
+Si el paciente pide un turno para ANTES de esa fecha, decile:
+"Por temas de reorganización de la agenda, los turnos se están dando a partir del {min_apt_date}. ¿Te parece bien o preferís otra fecha?"
+
+Si el paciente pide un turno para {min_apt_date} o después, continuar normalmente.
+"""
 
         chat_history = []
         vision_context_str = ""
@@ -1331,13 +1347,34 @@ async def process_buffer_task(
             old_msgs = db_history_dicts[:-10]
             recent_msgs = db_history_dicts[-10:]
             # Keywords that indicate third-party/minor bookings — preserve these messages in full
-            _preserve_keywords = {"hijo", "hija", "menor", "nene", "nena", "niño", "niña", "bebé", "familiar", "esposa", "esposo", "mamá", "papá", "abuelo", "abuela", "para mi", "para él", "para ella"}
+            _preserve_keywords = {
+                "hijo",
+                "hija",
+                "menor",
+                "nene",
+                "nena",
+                "niño",
+                "niña",
+                "bebé",
+                "familiar",
+                "esposa",
+                "esposo",
+                "mamá",
+                "papá",
+                "abuelo",
+                "abuela",
+                "para mi",
+                "para él",
+                "para ella",
+            }
             for msg in old_msgs:
                 role = msg["role"]
                 content = msg["content"]
                 # Preserve full content if it mentions family/minor booking context
                 content_lower = content.lower() if content else ""
-                has_family_keyword = any(kw in content_lower for kw in _preserve_keywords)
+                has_family_keyword = any(
+                    kw in content_lower for kw in _preserve_keywords
+                )
                 if has_family_keyword:
                     truncated = content[:200] + "..." if len(content) > 200 else content
                 else:
@@ -1496,7 +1533,9 @@ async def process_buffer_task(
         # --- Social channel context (phase 6) ---
         # channel_type is now resolved from the DB JOIN above (line ~1361).
         # compute_social_context is a pure function so this is always fast.
-        _social_ctx = compute_social_context(channel_type, dict(tenant_row) if tenant_row else {})
+        _social_ctx = compute_social_context(
+            channel_type, dict(tenant_row) if tenant_row else {}
+        )
 
         # SOLO path: prepend social preamble to system_prompt when IG/FB active.
         # This path calls build_system_prompt before channel_type is known, so
@@ -1521,7 +1560,9 @@ async def process_buffer_task(
                     f"channel={_social_ctx['channel']}"
                 )
             except Exception as _social_err:
-                logger.warning(f"⚠️ Social preamble injection failed (non-fatal): {_social_err}")
+                logger.warning(
+                    f"⚠️ Social preamble injection failed (non-fatal): {_social_err}"
+                )
 
         executor = await get_agent_executable_for_tenant(tenant_id)
         logger.info(f"🧠 Invoking Agent for {external_user_id}...")
@@ -1784,11 +1825,14 @@ async def process_buffer_task(
             is_classified_medical = False
             try:
                 from services.image_classifier import classify_message as _clf_msg
+
                 _clf_text = messages[-1] if messages else ""
                 _clf_result = await _clf_msg(
                     text=_clf_text,
                     tenant_id=tenant_id,
-                    vision_description=vision_context_str if vision_context_str else None,
+                    vision_description=vision_context_str
+                    if vision_context_str
+                    else None,
                 )
                 is_classified_payment = _clf_result.get("is_payment", False)
                 is_classified_medical = _clf_result.get("is_medical", False)

@@ -599,6 +599,7 @@ class LinkGuardianRequest(BaseModel):
 class LinkChatToPatientRequest(BaseModel):
     """Link a chat conversation to an existing patient.
     The chat contact does NOT need to be a patient themselves."""
+
     patient_id: int
     conversation_id: str  # UUID of chat_conversations row
     migrate_documents: bool = True  # copy chat attachments to patient_documents
@@ -3950,6 +3951,9 @@ async def get_clinic_settings(
             "facebook_page_id": row.get("facebook_page_id"),
             "sena_expiration_hours": row.get("sena_expiration_hours") or 24,
             "max_unpaid_appointments": row.get("max_unpaid_appointments") or 1,
+            "min_appointment_date": config.get("min_appointment_date")
+            if config
+            else None,
         }
     except Exception as e:
         logger.warning(f"get_clinic_settings failed: {e}")
@@ -3985,6 +3989,8 @@ class ClinicSettingsUpdate(BaseModel):
     # Seña guardrails (migration 042)
     sena_expiration_hours: Optional[int] = None
     max_unpaid_appointments: Optional[int] = None
+    # Fecha mínima para turnos (regla de agenda)
+    min_appointment_date: Optional[date] = None
 
 
 @router.patch(
@@ -4126,6 +4132,26 @@ async def update_clinic_settings(
             logger.error(f"update_clinic_settings sena guardrails failed: {e}")
             raise HTTPException(
                 status_code=500, detail="Error al guardar la configuración de seña."
+            )
+
+    # Handle min_appointment_date (fecha mínima para turnos)
+    if payload.min_appointment_date is not None:
+        try:
+            # Guardar en config JSONB
+            await db.pool.execute(
+                """
+                UPDATE tenants
+                SET config = jsonb_set(COALESCE(config, '{}'), '{min_appointment_date}', to_jsonb($1::text)),
+                    updated_at = NOW()
+                WHERE id = $2
+                """,
+                str(payload.min_appointment_date),
+                resolved_tenant_id,
+            )
+        except Exception as e:
+            logger.error(f"update_clinic_settings min_appointment_date failed: {e}")
+            raise HTTPException(
+                status_code=500, detail="Error al guardar la fecha mínima de turnos."
             )
 
     return {"status": "ok", "ui_language": getattr(payload, "ui_language", None)}
@@ -5855,7 +5881,9 @@ async def link_chat_to_patient(
                 continue
             for att in attrs:
                 # Chat attachments use "url" key (local path after download)
-                media_url = att.get("url") or att.get("media_url") or att.get("data_url") or ""
+                media_url = (
+                    att.get("url") or att.get("media_url") or att.get("data_url") or ""
+                )
                 if not media_url:
                     continue
                 # Skip non-file entries (e.g. transcription-only audio)
@@ -5892,19 +5920,27 @@ async def link_chat_to_patient(
                     fname,
                     media_url,
                     mime,
-                    "receipt" if "comprobante" in (desc or "").lower() or "pago" in (desc or "").lower() else "clinical",
-                    json.dumps({
-                        "source_conversation_id": str(conv_id),
-                        "source_message_id": str(msg["id"]),
-                        "original_sender": conv.get("display_name") or conv.get("external_user_id"),
-                        "description": desc,
-                    }),
+                    "receipt"
+                    if "comprobante" in (desc or "").lower()
+                    or "pago" in (desc or "").lower()
+                    else "clinical",
+                    json.dumps(
+                        {
+                            "source_conversation_id": str(conv_id),
+                            "source_message_id": str(msg["id"]),
+                            "original_sender": conv.get("display_name")
+                            or conv.get("external_user_id"),
+                            "description": desc,
+                        }
+                    ),
                     msg["created_at"],
                 )
                 migrated_docs += 1
 
     patient_name = f"{patient['first_name']} {patient.get('last_name') or ''}".strip()
-    sender_name = conv.get("display_name") or conv.get("external_user_id") or "Desconocido"
+    sender_name = (
+        conv.get("display_name") or conv.get("external_user_id") or "Desconocido"
+    )
 
     logger.info(
         f"🔗 CHAT LINKED: conv={conv_id} ({sender_name}) → patient={payload.patient_id} ({patient_name}), "

@@ -25,6 +25,7 @@ interface ClinicSettings {
     facebook_page_id?: string | null;
     sena_expiration_hours?: number | null;
     max_unpaid_appointments?: number | null;
+    min_appointment_date?: string | null;
 }
 
 const LANGUAGE_OPTIONS: { value: UiLanguage; labelKey: string }[] = [
@@ -120,6 +121,8 @@ export default function ConfigView() {
     // Seña guardrails (migration 042)
     const [senaExpirationHours, setSenaExpirationHours] = useState(24);
     const [maxUnpaidAppointments, setMaxUnpaidAppointments] = useState(1);
+    // Fecha mínima para turnos
+    const [minAppointmentDate, setMinAppointmentDate] = useState('');
 
     useEffect(() => {
         loadGeneralSettings();
@@ -152,6 +155,7 @@ export default function ConfigView() {
             setFacebookPageId(res.data.facebook_page_id ?? '');
             setSenaExpirationHours(res.data.sena_expiration_hours ?? 24);
             setMaxUnpaidAppointments(res.data.max_unpaid_appointments ?? 1);
+            setMinAppointmentDate(res.data.min_appointment_date ?? '');
         } catch (err) {
             console.error(err);
         } finally {
@@ -617,6 +621,22 @@ export default function ConfigView() {
                         </div>
                     </div>
 
+                    {/* Fecha mínima para turnos */}
+                    <div>
+                        <label className="block text-sm font-medium text-white/70 mb-2">
+                            {t('config.min_appointment_date') || 'Fecha mínima para turnos'}
+                        </label>
+                        <input
+                            type="date"
+                            value={minAppointmentDate}
+                            onChange={(e) => setMinAppointmentDate(e.target.value)}
+                            className="w-full px-4 py-3 bg-white/[0.04] border border-white/[0.08] rounded-xl text-white placeholder-white/30 focus:outline-none focus:border-white/20"
+                        />
+                        <p className="text-xs text-white/30 mt-1">
+                            {t('config.min_appointment_date_hint') || 'Dejar vacío para sin restricción'}
+                        </p>
+                    </div>
+
                     <button
                         onClick={async () => {
                             setSaving(true);
@@ -624,6 +644,7 @@ export default function ConfigView() {
                                 await api.patch('/admin/settings/clinic', {
                                     sena_expiration_hours: senaExpirationHours,
                                     max_unpaid_appointments: maxUnpaidAppointments,
+                                    min_appointment_date: minAppointmentDate || null,
                                 });
                                 showSuccess(t('config.saved'));
                             } catch (err: any) {
