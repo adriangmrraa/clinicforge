@@ -1190,9 +1190,14 @@ async def process_buffer_task(
 
         # Inject min appointment date if configured
         tenant_config = dict(tenant_row).get("config") if tenant_row else {}
-        min_apt_date = (
-            tenant_config.get("min_appointment_date") if tenant_config else None
-        )
+        if isinstance(tenant_config, str):
+            try:
+                tenant_config = json.loads(tenant_config)
+            except Exception:
+                tenant_config = {}
+        if not isinstance(tenant_config, dict):
+            tenant_config = {}
+        min_apt_date = tenant_config.get("min_appointment_date")
         if min_apt_date:
             system_prompt += f"""
 
