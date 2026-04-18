@@ -645,8 +645,8 @@ export default function ChatsView() {
       setSessions(prev => prev.map(s =>
         s.phone_number === phone && s.tenant_id === tenantId ? { ...s, unread_count: 0 } : s
       ));
-    } catch (error) {
-      console.error('Error marking as read:', error);
+    } catch {
+      // Best-effort — mark-as-read failure is not critical
     }
   };
 
