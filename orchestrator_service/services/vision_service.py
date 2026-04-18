@@ -8,8 +8,17 @@ import urllib.parse
 
 logger = logging.getLogger(__name__)
 
-# Instancia global de cliente OpenAI (puede reutilizarse la configurarción existente)
-aclient = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+# Lazy client — avoids crash at import time when OPENAI_API_KEY is not yet set
+_aclient: Optional[AsyncOpenAI] = None
+
+def _get_vision_client() -> AsyncOpenAI:
+    global _aclient
+    if _aclient is None:
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise RuntimeError("OPENAI_API_KEY not set — cannot use vision service")
+        _aclient = AsyncOpenAI(api_key=api_key)
+    return _aclient
 
 # Límites para procesamiento de adjuntos
 MAX_IMAGES = 10
@@ -125,7 +134,7 @@ async def analyze_image_url(image_url: str, tenant_id: int) -> Optional[str]:
         logger.info(f"👁️ Iniciando análisis de visión para: {image_url[:50]}...")
 
         # Llamada a OpenAI GPT-4o ("gpt-4o" tiene capacidades visuales nativas)
-        response = await aclient.chat.completions.create(
+        response = await _get_vision_client().chat.completions.create(
             model="gpt-4o",
             messages=vision_messages,
             max_tokens=300,
@@ -254,7 +263,7 @@ async def analyze_pdf_url(pdf_url: str, tenant_id: int) -> Optional[str]:
         logger.info(f"👁️ Iniciando análisis de PDF para: {pdf_url[:50]}...")
 
         # Llamada a OpenAI GPT-4o ("gpt-4o" tiene capacidades visuales nativas)
-        response = await aclient.chat.completions.create(
+        response = await _get_vision_client().chat.completions.create(
             model="gpt-4o",
             messages=vision_messages,
             max_tokens=300,
