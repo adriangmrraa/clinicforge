@@ -131,10 +131,12 @@ api.interceptors.response.use(
 
     const retryCount = (metadata.retryCount || 0) + 1;
 
-    // Solo hacer retry para errores 5xx o pérdida de conexión
+    // Solo retry para errores transitorios de infraestructura (502/503) o pérdida de conexión.
+    // NO retry 500 (bug del servidor — reintentar no ayuda) ni 429 (rate limit — respetar).
     const status = error.response?.status;
+    const isRetryableStatus = status === 502 || status === 503;
     const shouldRetry =
-      status && (status >= 500 || error.code === 'ECONNABORTED') &&
+      (isRetryableStatus || error.code === 'ECONNABORTED') &&
       retryCount <= MAX_RETRIES;
 
     if (shouldRetry) {

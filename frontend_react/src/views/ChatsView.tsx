@@ -157,6 +157,10 @@ export default function ChatsView() {
   soundEnabledRef.current = soundEnabled;
   const selectedTenantIdRef = useRef(selectedTenantId);
   selectedTenantIdRef.current = selectedTenantId;
+  /** Debounce timer for socket-triggered fetchSessions calls */
+  const fetchSessionsTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** AbortController to cancel in-flight fetchSessions requests */
+  const fetchSessionsAbort = useRef<AbortController | null>(null);
 
   // Scroll Inteligente
   const scrollDependency = useMemo(() => [messages, chatwootMessages], [messages, chatwootMessages]);
@@ -255,9 +259,9 @@ export default function ChatsView() {
           .catch(err => console.error("Error refreshing chatwoot messages:", err));
       }
 
-      // 5. Refrescar listas de chats siempre para ver vistas previas actualizadas
+      // 5. Refrescar listas de chats (debounced — múltiples eventos rápidos disparan UN solo fetch)
       if (selectedTenantIdRef.current != null) {
-        fetchSessions(selectedTenantIdRef.current);
+        debouncedFetchSessions(selectedTenantIdRef.current);
       }
       chatsApi.fetchChatsSummary({ limit: 50, channel: currentChannelFilter === 'all' ? undefined : currentChannelFilter })
         .then(list => setChatwootList(list))
@@ -375,9 +379,9 @@ export default function ChatsView() {
       });
     });
 
-    // Nova sent a message — refresh chat list
+    // Nova sent a message — refresh chat list (debounced)
     socketRef.current.on('MESSAGE_SENT', () => {
-      if (selectedTenantIdRef.current) fetchSessions(selectedTenantIdRef.current);
+      if (selectedTenantIdRef.current) debouncedFetchSessions(selectedTenantIdRef.current);
     });
 
     // Patient created from another tab/session — update badges
@@ -406,6 +410,9 @@ export default function ChatsView() {
         socketRef.current.off('MESSAGE_SENT');
         socketRef.current.off('PATIENT_CREATED');
       }
+      // Cancel pending debounced fetch and in-flight request
+      if (fetchSessionsTimeout.current) clearTimeout(fetchSessionsTimeout.current);
+      if (fetchSessionsAbort.current) fetchSessionsAbort.current.abort();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [t]);
@@ -517,14 +524,27 @@ export default function ChatsView() {
   // FUNCIONES DE DATOS
   // ============================================
 
+  /** Debounced fetchSessions for socket events — coalesces rapid-fire events into one call */
+  const debouncedFetchSessions = (tenantId: number) => {
+    if (fetchSessionsTimeout.current) clearTimeout(fetchSessionsTimeout.current);
+    fetchSessionsTimeout.current = setTimeout(() => {
+      fetchSessions(tenantId);
+    }, 2000);
+  };
+
   const fetchSessions = async (tenantId: number, selectPhone?: string, nav?: ReturnType<typeof useNavigate>) => {
+    // Cancel any in-flight request to prevent stale responses from overwriting fresh data
+    if (fetchSessionsAbort.current) fetchSessionsAbort.current.abort();
+    const controller = new AbortController();
+    fetchSessionsAbort.current = controller;
+
     try {
       setLoading(true);
       const params: Record<string, any> = { tenant_id: tenantId };
       if (user?.role === 'professional' && (user as any)?.professional_id) {
         params.professional_id = (user as any).professional_id;
       }
-      const response = await api.get<ChatSession[]>('/admin/chat/sessions', { params });
+      const response = await api.get<ChatSession[]>('/admin/chat/sessions', { params, signal: controller.signal });
       // Preserve unread_count=0 for the currently open conversation (already marked as read)
       const currentPhone = selectedSessionRef.current?.phone_number;
       const currentTenant = selectedSessionRef.current?.tenant_id;
@@ -540,7 +560,9 @@ export default function ChatsView() {
           nav?.('/chats', { replace: true, state: {} });
         }
       }
-    } catch (error) {
+    } catch (error: any) {
+      // Aborted requests are expected (superseded by a newer fetch) — ignore silently
+      if (error?.name === 'CanceledError' || error?.code === 'ERR_CANCELED') return;
       console.error('Error fetching sessions:', error);
       setSessions([]);
       setShowToast({

@@ -1382,206 +1382,221 @@ async def get_chat_sessions(
     if tenant_id not in allowed_ids:
         raise HTTPException(status_code=403, detail="No tienes acceso a esta clínica.")
 
-    # Build professional patient filter subquery
-    prof_filter_sql = ""
-    if professional_id:
-        prof_filter_sql = (
-            "AND p.id IN (SELECT DISTINCT patient_id FROM appointments WHERE tenant_id = "
-            + str(int(tenant_id))
-            + " AND professional_id = "
-            + str(int(professional_id))
-            + ")"
-        )
-    # Sesiones = pacientes de esta clínica que tienen al menos un mensaje en esta clínica
-    has_tenant_in_cm = await db.check_column_exists("chat_messages", "tenant_id")
-    if not has_tenant_in_cm:
-        # Fallback: DB sin parche 15, filtrar solo por patients.tenant_id (mensajes sin tenant)
-        _q1 = (
-            """
-            SELECT * FROM (
-                SELECT DISTINCT ON (p.phone_number)
-                    p.phone_number,
-                    p.id as patient_id,
-                    p.first_name || ' ' || COALESCE(p.last_name, '') as patient_name,
-                    cm.content as last_message,
-                    cm.created_at as last_message_time,
-                    p.human_handoff_requested,
-                    p.human_override_until,
-                    p.last_derivhumano_at,
-                    CASE
-                        WHEN p.human_handoff_requested AND p.human_override_until > NOW() THEN 'human_handling'
-                        WHEN p.human_override_until > NOW() THEN 'silenced'
-                        ELSE 'active'
-                    END as status,
-                    urgency.urgency_level
-                FROM patients p
-                LEFT JOIN LATERAL (
-                    SELECT content, created_at FROM chat_messages
-                    WHERE from_number = p.phone_number
-                    ORDER BY created_at DESC LIMIT 1
-                ) cm ON true
-                LEFT JOIN LATERAL (
-                    SELECT urgency_level FROM appointments
-                    WHERE tenant_id = $1 AND patient_id = p.id
-                    ORDER BY created_at DESC LIMIT 1
-                ) urgency ON true
-                WHERE p.tenant_id = $1
-                AND EXISTS (SELECT 1 FROM chat_messages WHERE from_number = p.phone_number)
-                AND NOT EXISTS (
-                    SELECT 1 FROM chat_conversations cw
-                    WHERE cw.tenant_id = $1
-                    AND cw.external_user_id = p.phone_number
-                    AND cw.channel IN ('instagram', 'facebook')
-                )
+    # --- Main sessions query (guarded) ---
+    try:
+        # Build professional patient filter subquery
+        prof_filter_sql = ""
+        if professional_id:
+            prof_filter_sql = (
+                "AND p.id IN (SELECT DISTINCT patient_id FROM appointments WHERE tenant_id = "
+                + str(int(tenant_id))
+                + " AND professional_id = "
+                + str(int(professional_id))
+                + ")"
+            )
+        # Sesiones = pacientes de esta clínica que tienen al menos un mensaje en esta clínica
+        has_tenant_in_cm = await db.check_column_exists("chat_messages", "tenant_id")
+        if not has_tenant_in_cm:
+            # Fallback: DB sin parche 15, filtrar solo por patients.tenant_id (mensajes sin tenant)
+            _q1 = (
                 """
-            + prof_filter_sql
-            + """
-                ORDER BY p.phone_number, cm.created_at DESC
-            ) sub
-            ORDER BY last_message_time DESC NULLS LAST
-        """
-        )
-        rows = await db.pool.fetch(_q1, tenant_id)
-    else:
-        _q2 = (
+                SELECT * FROM (
+                    SELECT DISTINCT ON (p.phone_number)
+                        p.phone_number,
+                        p.id as patient_id,
+                        p.first_name || ' ' || COALESCE(p.last_name, '') as patient_name,
+                        cm.content as last_message,
+                        cm.created_at as last_message_time,
+                        p.human_handoff_requested,
+                        p.human_override_until,
+                        p.last_derivhumano_at,
+                        CASE
+                            WHEN p.human_handoff_requested AND p.human_override_until > NOW() THEN 'human_handling'
+                            WHEN p.human_override_until > NOW() THEN 'silenced'
+                            ELSE 'active'
+                        END as status,
+                        urgency.urgency_level
+                    FROM patients p
+                    LEFT JOIN LATERAL (
+                        SELECT content, created_at FROM chat_messages
+                        WHERE from_number = p.phone_number
+                        ORDER BY created_at DESC LIMIT 1
+                    ) cm ON true
+                    LEFT JOIN LATERAL (
+                        SELECT urgency_level FROM appointments
+                        WHERE tenant_id = $1 AND patient_id = p.id
+                        ORDER BY created_at DESC LIMIT 1
+                    ) urgency ON true
+                    WHERE p.tenant_id = $1
+                    AND EXISTS (SELECT 1 FROM chat_messages WHERE from_number = p.phone_number)
+                    AND NOT EXISTS (
+                        SELECT 1 FROM chat_conversations cw
+                        WHERE cw.tenant_id = $1
+                        AND cw.external_user_id = p.phone_number
+                        AND cw.channel IN ('instagram', 'facebook')
+                    )
+                    """
+                + prof_filter_sql
+                + """
+                    ORDER BY p.phone_number, cm.created_at DESC
+                ) sub
+                ORDER BY last_message_time DESC NULLS LAST
             """
-            SELECT * FROM (
-                SELECT DISTINCT ON (p.phone_number)
-                    p.phone_number,
-                    p.id as patient_id,
-                    p.first_name || ' ' || COALESCE(p.last_name, '') as patient_name,
-                    cm.content as last_message,
-                    cm.created_at as last_message_time,
-                    p.human_handoff_requested,
-                    p.human_override_until,
-                    p.last_derivhumano_at,
-                    CASE
-                        WHEN p.human_handoff_requested AND p.human_override_until > NOW() THEN 'human_handling'
-                        WHEN p.human_override_until > NOW() THEN 'silenced'
-                        ELSE 'active'
-                    END as status,
-                    urgency.urgency_level,
-                    cc.last_read_at,
-                    cc.last_user_message_at as conv_last_user_msg_at,
-                    cc.id as conversation_id
-                FROM patients p
-                LEFT JOIN chat_conversations cc ON cc.tenant_id = p.tenant_id AND cc.channel = 'whatsapp' AND cc.external_user_id = p.phone_number
-                LEFT JOIN LATERAL (
-                    SELECT content, created_at FROM chat_messages
-                    WHERE tenant_id = $1 AND from_number = p.phone_number AND conversation_id = cc.id
-                    ORDER BY created_at DESC LIMIT 1
-                ) cm ON true
-                LEFT JOIN LATERAL (
-                    SELECT urgency_level FROM appointments
-                    WHERE tenant_id = $1 AND patient_id = p.id
-                    ORDER BY created_at DESC LIMIT 1
-                ) urgency ON true
-                WHERE p.tenant_id = $1
-                AND EXISTS (SELECT 1 FROM chat_messages WHERE tenant_id = $1 AND from_number = p.phone_number)
-                AND NOT EXISTS (
-                    SELECT 1 FROM chat_conversations cw
-                    WHERE cw.tenant_id = $1
-                    AND cw.external_user_id = p.phone_number
-                    AND cw.channel IN ('instagram', 'facebook')
-                )
+            )
+            rows = await db.pool.fetch(_q1, tenant_id, timeout=15)
+        else:
+            _q2 = (
                 """
-            + prof_filter_sql
-            + """
-                ORDER BY p.phone_number, cm.created_at DESC
-            ) sub
-            ORDER BY last_message_time DESC NULLS LAST
-        """
+                SELECT * FROM (
+                    SELECT DISTINCT ON (p.phone_number)
+                        p.phone_number,
+                        p.id as patient_id,
+                        p.first_name || ' ' || COALESCE(p.last_name, '') as patient_name,
+                        cm.content as last_message,
+                        cm.created_at as last_message_time,
+                        p.human_handoff_requested,
+                        p.human_override_until,
+                        p.last_derivhumano_at,
+                        CASE
+                            WHEN p.human_handoff_requested AND p.human_override_until > NOW() THEN 'human_handling'
+                            WHEN p.human_override_until > NOW() THEN 'silenced'
+                            ELSE 'active'
+                        END as status,
+                        urgency.urgency_level,
+                        cc.last_read_at,
+                        cc.last_user_message_at as conv_last_user_msg_at,
+                        cc.id as conversation_id
+                    FROM patients p
+                    LEFT JOIN chat_conversations cc ON cc.tenant_id = p.tenant_id AND cc.channel = 'whatsapp' AND cc.external_user_id = p.phone_number
+                    LEFT JOIN LATERAL (
+                        SELECT content, created_at FROM chat_messages
+                        WHERE tenant_id = $1 AND from_number = p.phone_number AND conversation_id = cc.id
+                        ORDER BY created_at DESC LIMIT 1
+                    ) cm ON true
+                    LEFT JOIN LATERAL (
+                        SELECT urgency_level FROM appointments
+                        WHERE tenant_id = $1 AND patient_id = p.id
+                        ORDER BY created_at DESC LIMIT 1
+                    ) urgency ON true
+                    WHERE p.tenant_id = $1
+                    AND EXISTS (SELECT 1 FROM chat_messages WHERE tenant_id = $1 AND from_number = p.phone_number)
+                    AND NOT EXISTS (
+                        SELECT 1 FROM chat_conversations cw
+                        WHERE cw.tenant_id = $1
+                        AND cw.external_user_id = p.phone_number
+                        AND cw.channel IN ('instagram', 'facebook')
+                    )
+                    """
+                + prof_filter_sql
+                + """
+                    ORDER BY p.phone_number, cm.created_at DESC
+                ) sub
+                ORDER BY last_message_time DESC NULLS LAST
+            """
+            )
+            rows = await db.pool.fetch(_q2, tenant_id, timeout=15)
+    except (asyncpg.PostgresError, asyncpg.InterfaceError, asyncio.TimeoutError, Exception) as exc:
+        logger.warning("chat/sessions: main query failed for tenant %s: %s", tenant_id, exc)
+        return JSONResponse(
+            content=[],
+            headers={"X-Chat-Sessions-Warning": "main-query-failed"},
         )
-        rows = await db.pool.fetch(_q2, tenant_id)
-    # Batch-fetch unread counts for ALL sessions in a single query (eliminates N+1)
-    # For each session: count user messages after GREATEST(last assistant msg, last_read_at)
-    conv_ids = [row.get("conversation_id") for row in rows]
-    phone_numbers = [row["phone_number"] for row in rows]
-    last_read_ats = [row.get("last_read_at") for row in rows]
 
+    # --- Unread counts query (guarded separately for graceful degradation) ---
     unread_map: dict = {}
-    if rows:
-        # Detect fallback path (_q1): chat_messages has no tenant_id column, so
-        # conversation_id and last_read_at are not available on any row.
-        # Passing [None, None, ...] to unnest($1::int[]) would crash asyncpg.
-        # Use a simpler phone-only unread query instead.
-        all_conv_ids_missing = all(cid is None for cid in conv_ids)
-        if all_conv_ids_missing:
-            # Fallback path: no conversation_id available — match on phone_number only.
-            # Count user messages that come after the last assistant message for each phone.
-            fallback_unread_sql = """
-                WITH phones AS (
-                    SELECT unnest($1::text[]) AS phone_number
-                ),
-                last_assistant AS (
+    try:
+        # Batch-fetch unread counts for ALL sessions in a single query (eliminates N+1)
+        # For each session: count user messages after GREATEST(last assistant msg, last_read_at)
+        conv_ids = [row.get("conversation_id") for row in rows]
+        phone_numbers = [row["phone_number"] for row in rows]
+        last_read_ats = [row.get("last_read_at") for row in rows]
+
+        if rows:
+            # Detect fallback path (_q1): chat_messages has no tenant_id column, so
+            # conversation_id and last_read_at are not available on any row.
+            # Passing [None, None, ...] to unnest($1::int[]) would crash asyncpg.
+            # Use a simpler phone-only unread query instead.
+            all_conv_ids_missing = all(cid is None for cid in conv_ids)
+            if all_conv_ids_missing:
+                # Fallback path: no conversation_id available — match on phone_number only.
+                # Count user messages that come after the last assistant message for each phone.
+                fallback_unread_sql = """
+                    WITH phones AS (
+                        SELECT unnest($1::text[]) AS phone_number
+                    ),
+                    last_assistant AS (
+                        SELECT
+                            p.phone_number,
+                            MAX(cm.created_at) AS last_assistant_at
+                        FROM phones p
+                        LEFT JOIN chat_messages cm
+                            ON cm.from_number = p.phone_number
+                            AND cm.role = 'assistant'
+                        GROUP BY p.phone_number
+                    )
                     SELECT
                         p.phone_number,
-                        MAX(cm.created_at) AS last_assistant_at
+                        COUNT(cm.id) AS unread_count
                     FROM phones p
+                    LEFT JOIN last_assistant la ON la.phone_number = p.phone_number
                     LEFT JOIN chat_messages cm
                         ON cm.from_number = p.phone_number
-                        AND cm.role = 'assistant'
+                        AND cm.role = 'user'
+                        AND cm.created_at > COALESCE(la.last_assistant_at, '1970-01-01'::timestamptz)
                     GROUP BY p.phone_number
-                )
-                SELECT
-                    p.phone_number,
-                    COUNT(cm.id) AS unread_count
-                FROM phones p
-                LEFT JOIN last_assistant la ON la.phone_number = p.phone_number
-                LEFT JOIN chat_messages cm
-                    ON cm.from_number = p.phone_number
-                    AND cm.role = 'user'
-                    AND cm.created_at > COALESCE(la.last_assistant_at, '1970-01-01'::timestamptz)
-                GROUP BY p.phone_number
-            """
-            unread_rows = await db.pool.fetch(fallback_unread_sql, phone_numbers)
-        else:
-            # Normal path (_q2): conversation_id and last_read_at are available.
-            # Build per-session unread counts using a single CTE query.
-            # We use unnest to pass all (conv_id, phone, last_read_at) tuples at once.
-            batch_unread_sql = """
-                WITH session_params AS (
-                    SELECT
-                        unnest($1::int[])        AS conversation_id,
-                        unnest($2::text[])       AS phone_number,
-                        unnest($3::timestamptz[]) AS last_read_at
-                ),
-                last_assistant AS (
+                """
+                unread_rows = await db.pool.fetch(fallback_unread_sql, phone_numbers, timeout=15)
+            else:
+                # Normal path (_q2): conversation_id and last_read_at are available.
+                # Build per-session unread counts using a single CTE query.
+                # We use unnest to pass all (conv_id, phone, last_read_at) tuples at once.
+                batch_unread_sql = """
+                    WITH session_params AS (
+                        SELECT
+                            unnest($1::int[])        AS conversation_id,
+                            unnest($2::text[])       AS phone_number,
+                            unnest($3::timestamptz[]) AS last_read_at
+                    ),
+                    last_assistant AS (
+                        SELECT
+                            sp.phone_number,
+                            sp.conversation_id,
+                            MAX(cm.created_at) AS last_assistant_at
+                        FROM session_params sp
+                        LEFT JOIN chat_messages cm
+                            ON cm.tenant_id = $4
+                            AND (cm.conversation_id = sp.conversation_id OR (cm.from_number = sp.phone_number AND cm.tenant_id = $4))
+                            AND cm.role = 'assistant'
+                        GROUP BY sp.phone_number, sp.conversation_id
+                    )
                     SELECT
                         sp.phone_number,
-                        sp.conversation_id,
-                        MAX(cm.created_at) AS last_assistant_at
+                        COUNT(cm.id) AS unread_count
                     FROM session_params sp
+                    LEFT JOIN last_assistant la
+                        ON la.phone_number = sp.phone_number AND la.conversation_id = sp.conversation_id
                     LEFT JOIN chat_messages cm
                         ON cm.tenant_id = $4
                         AND (cm.conversation_id = sp.conversation_id OR (cm.from_number = sp.phone_number AND cm.tenant_id = $4))
-                        AND cm.role = 'assistant'
-                    GROUP BY sp.phone_number, sp.conversation_id
+                        AND cm.role = 'user'
+                        AND cm.created_at > GREATEST(
+                            COALESCE(la.last_assistant_at, '1970-01-01'::timestamptz),
+                            COALESCE(sp.last_read_at, '1970-01-01'::timestamptz)
+                        )
+                    GROUP BY sp.phone_number
+                """
+                unread_rows = await db.pool.fetch(
+                    batch_unread_sql,
+                    conv_ids,
+                    phone_numbers,
+                    last_read_ats,
+                    tenant_id,
+                    timeout=15,
                 )
-                SELECT
-                    sp.phone_number,
-                    COUNT(cm.id) AS unread_count
-                FROM session_params sp
-                LEFT JOIN last_assistant la
-                    ON la.phone_number = sp.phone_number AND la.conversation_id = sp.conversation_id
-                LEFT JOIN chat_messages cm
-                    ON cm.tenant_id = $4
-                    AND (cm.conversation_id = sp.conversation_id OR (cm.from_number = sp.phone_number AND cm.tenant_id = $4))
-                    AND cm.role = 'user'
-                    AND cm.created_at > GREATEST(
-                        COALESCE(la.last_assistant_at, '1970-01-01'::timestamptz),
-                        COALESCE(sp.last_read_at, '1970-01-01'::timestamptz)
-                    )
-                GROUP BY sp.phone_number
-            """
-            unread_rows = await db.pool.fetch(
-                batch_unread_sql,
-                conv_ids,
-                phone_numbers,
-                last_read_ats,
-                tenant_id,
-            )
-        unread_map = {r["phone_number"]: r["unread_count"] for r in unread_rows}
+            unread_map = {r["phone_number"]: r["unread_count"] for r in unread_rows}
+    except (asyncpg.PostgresError, asyncpg.InterfaceError, asyncio.TimeoutError, Exception) as exc:
+        logger.warning("chat/sessions: unread counts query failed for tenant %s (returning sessions without counts): %s", tenant_id, exc)
+        # unread_map stays empty — sessions returned with unread_count=0
 
     sessions = []
     for row in rows:
