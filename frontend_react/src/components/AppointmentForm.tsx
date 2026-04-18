@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { X, Calendar, User, Clock, FileText, DollarSign, Activity, AlertTriangle, Trash2, Check, ExternalLink, Info, Search, Send } from 'lucide-react';
 import type { Appointment, Patient, Professional } from '../views/AgendaView';
-import api, { WS_URL } from '../api/axios';
+import api from '../api/axios';
 import { useTranslation } from '../context/LanguageContext';
 import { useAuth } from '../context/AuthContext';
 import AnamnesisPanel from './AnamnesisPanel';
-import { io, Socket } from 'socket.io-client';
+import { getSocket } from '../services/socket';
+import type { Socket } from 'socket.io-client';
 import { addMonths } from 'date-fns';
 
 interface AppointmentFormProps {
@@ -259,12 +260,7 @@ export default function AppointmentForm({
     useEffect(() => {
         if (!isOpen) return;
 
-        const jwtToken = localStorage.getItem('access_token');
-
-        socketRef.current = io(WS_URL, {
-            transports: ['websocket', 'polling'],
-            auth: { token: jwtToken || '' },
-        });
+        socketRef.current = getSocket();
 
         socketRef.current.on('PATIENT_UPDATED', (payload: { patient_id?: number; phone?: string }) => {
             const currentPatientId = formData.patient_id ? parseInt(formData.patient_id) : null;
@@ -279,7 +275,8 @@ export default function AppointmentForm({
         });
 
         return () => {
-            socketRef.current?.disconnect();
+            // Remove event handlers only — do NOT disconnect the singleton
+            socketRef.current?.off('PATIENT_UPDATED');
         };
     }, [isOpen, formData.patient_id, patients]);
 

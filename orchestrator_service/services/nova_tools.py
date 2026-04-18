@@ -30,12 +30,16 @@ logger = logging.getLogger(__name__)
 # Helper: emit Socket.IO events from Nova tools (for real-time UI sync)
 # =============================================================================
 async def _nova_emit(event: str, data: Dict[str, Any]):
-    """Emit a Socket.IO event so the frontend updates in real-time + notify Telegram."""
+    """Emit a Socket.IO event to the tenant room so the frontend updates in real-time + notify Telegram."""
     try:
         from main import sio, to_json_safe
 
-        await sio.emit(event, to_json_safe(data))
-        logger.info(f"📡 NOVA Socket: {event} → {list(data.keys())}")
+        tenant_id = data.get("tenant_id")
+        if tenant_id:
+            await sio.emit(event, to_json_safe(data), room=f"tenant:{tenant_id}")
+        else:
+            await sio.emit(event, to_json_safe(data))
+        logger.info(f"📡 NOVA Socket: {event} → {list(data.keys())} (tenant={tenant_id})")
     except Exception as e:
         logger.warning(f"📡 NOVA Socket emit failed ({event}): {e}")
 
@@ -3247,10 +3251,11 @@ async def _gestionar_usuarios(args: Dict, tenant_id: int, user_role: str) -> str
     if action == "list":
         rows = await db.pool.fetch(
             """
-            SELECT id, email, role, status, first_name, last_name, created_at
-            FROM users
-            WHERE tenant_id = $1
-            ORDER BY created_at DESC
+            SELECT u.id, u.email, u.role, u.status, u.first_name, u.last_name, u.created_at
+            FROM users u
+            JOIN professionals p ON p.user_id = u.id
+            WHERE p.tenant_id = $1
+            ORDER BY u.created_at DESC
             """,
             tenant_id,
         )
@@ -3273,7 +3278,10 @@ async def _gestionar_usuarios(args: Dict, tenant_id: int, user_role: str) -> str
         return "ID de usuario inválido."
 
     target = await db.pool.fetchrow(
-        "SELECT id, email, status, role FROM users WHERE id = $1 AND tenant_id = $2",
+        """SELECT u.id, u.email, u.status, u.role
+           FROM users u
+           JOIN professionals p ON p.user_id = u.id
+           WHERE u.id = $1 AND p.tenant_id = $2""",
         user_uuid,
         tenant_id,
     )
@@ -3284,7 +3292,9 @@ async def _gestionar_usuarios(args: Dict, tenant_id: int, user_role: str) -> str
         if target["status"] == "active":
             return f"El usuario {target['email']} ya está activo."
         await db.pool.execute(
-            "UPDATE users SET status = 'active', updated_at = NOW() WHERE id = $1 AND tenant_id = $2",
+            """UPDATE users SET status = 'active', updated_at = NOW()
+               WHERE id = $1
+               AND EXISTS (SELECT 1 FROM professionals WHERE user_id = $1 AND tenant_id = $2)""",
             user_uuid,
             tenant_id,
         )
@@ -3299,7 +3309,9 @@ async def _gestionar_usuarios(args: Dict, tenant_id: int, user_role: str) -> str
         if target["status"] == "suspended":
             return f"El usuario {target['email']} ya está suspendido."
         await db.pool.execute(
-            "UPDATE users SET status = 'suspended', updated_at = NOW() WHERE id = $1 AND tenant_id = $2",
+            """UPDATE users SET status = 'suspended', updated_at = NOW()
+               WHERE id = $1
+               AND EXISTS (SELECT 1 FROM professionals WHERE user_id = $1 AND tenant_id = $2)""",
             user_uuid,
             tenant_id,
         )
@@ -6383,7 +6395,9 @@ async def _enviar_email_chat(args: Dict, tenant_id: int, user_role: str) -> str:
                 "SELECT DISTINCT u.email FROM users u "
                 "JOIN professionals prof ON prof.user_id = u.id "
                 "WHERE prof.tenant_id = $1 AND prof.is_active = true AND u.status = 'active' AND u.email IS NOT NULL "
-                "UNION SELECT u.email FROM users u WHERE u.role = 'ceo' AND u.status = 'active' AND u.email IS NOT NULL",
+                "UNION SELECT u.email FROM users u "
+                "JOIN professionals p ON p.user_id = u.id "
+                "WHERE u.role = 'ceo' AND u.status = 'active' AND u.email IS NOT NULL AND p.tenant_id = $1",
                 tenant_id,
             )
             destinatarios = [row["email"] for row in staff_emails if row.get("email")]

@@ -19,6 +19,8 @@ import json
 from datetime import datetime, timedelta, date, timezone
 from typing import Dict, Any, Optional, List
 
+_ai_semaphore = asyncio.Semaphore(3)  # max 3 concurrent AI calls across all tenants
+
 try:
     from zoneinfo import ZoneInfo
 except ImportError:
@@ -317,8 +319,15 @@ async def _process_touch1(pool, cand, rule, lead_name, clinic_name, now_utc, win
         }
         logger.info(f"Lead recovery T1: using lead_ctx treatment={lead_ctx['treatment_name']} for {phone} (skipped LLM)")
     else:
-        # Fallback: OpenAI analysis
-        analysis = await analyze_conversation(pool, tenant_id, phone, messages)
+        # Fallback: OpenAI analysis (semaphore + 30s timeout)
+        try:
+            async with _ai_semaphore:
+                async with asyncio.timeout(30):
+                    analysis = await analyze_conversation(pool, tenant_id, phone, messages)
+        except asyncio.TimeoutError:
+            logger.warning(f"Lead recovery T1: analyze_conversation timed out for {phone}")
+            await _log_recovery(pool, tenant_id, phone, trigger_type, "skipped", skip_reason="ai_timeout")
+            return
 
     if not analysis.get("seguimiento"):
         await _log_recovery(pool, tenant_id, phone, trigger_type, "skipped", skip_reason="ai_no_seguimiento")
@@ -336,7 +345,14 @@ async def _process_touch1(pool, cand, rule, lead_name, clinic_name, now_utc, win
         "clinic_name": clinic_name,
         "availability_text": avail_text,
     }
-    message = await generate_recovery_message(pool, tenant_id, 1, context)
+    try:
+        async with _ai_semaphore:
+            async with asyncio.timeout(30):
+                message = await generate_recovery_message(pool, tenant_id, 1, context)
+    except asyncio.TimeoutError:
+        logger.warning(f"Lead recovery T1: generate_recovery_message timed out for {phone}")
+        await _log_recovery(pool, tenant_id, phone, trigger_type, "failed", error_details="ai_timeout")
+        return
     if not message:
         await _log_recovery(pool, tenant_id, phone, trigger_type, "failed", error_details="message_generation_failed")
         return
@@ -394,7 +410,14 @@ async def _process_touch2(pool, cand, rule, lead_name, clinic_name, now_utc, lea
         "servicio": servicio,
         "clinic_name": clinic_name,
     }
-    message = await generate_recovery_message(pool, tenant_id, 2, context)
+    try:
+        async with _ai_semaphore:
+            async with asyncio.timeout(30):
+                message = await generate_recovery_message(pool, tenant_id, 2, context)
+    except asyncio.TimeoutError:
+        logger.warning(f"Lead recovery T2: generate_recovery_message timed out for {phone}")
+        await _log_recovery(pool, tenant_id, phone, trigger_type, "failed", error_details="ai_timeout")
+        return
     if not message:
         await _log_recovery(pool, tenant_id, phone, trigger_type, "failed", error_details="message_generation_failed")
         return
@@ -437,7 +460,14 @@ async def _process_touch3(pool, cand, rule, lead_name, clinic_name, now_utc, lea
         "servicio": servicio,
         "clinic_name": clinic_name,
     }
-    message = await generate_recovery_message(pool, tenant_id, 3, context)
+    try:
+        async with _ai_semaphore:
+            async with asyncio.timeout(30):
+                message = await generate_recovery_message(pool, tenant_id, 3, context)
+    except asyncio.TimeoutError:
+        logger.warning(f"Lead recovery T3: generate_recovery_message timed out for {phone}")
+        await _log_recovery(pool, tenant_id, phone, trigger_type, "failed", error_details="ai_timeout")
+        return
     if not message:
         await _log_recovery(pool, tenant_id, phone, trigger_type, "failed", error_details="message_generation_failed")
         return

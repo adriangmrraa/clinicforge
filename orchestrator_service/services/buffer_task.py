@@ -2534,6 +2534,7 @@ Si el paciente pide un turno para {min_apt_date} o después, continuar normalmen
                         "channel": row.get("channel") or "whatsapp",
                     }
                 ),
+                room=f"tenant:{tenant_id}",
             )
             logger.info(f"📡 Socket AI NEW_MESSAGE emitted for {external_user_id}")
 

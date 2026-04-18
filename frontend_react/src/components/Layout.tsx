@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { useAuth } from '../context/AuthContext';
 import { useTranslation } from '../context/LanguageContext';
-import { io, Socket } from 'socket.io-client';
-import { WS_URL, setTenantId, getCurrentTenantId } from '../api/axios';
+import { getSocket, disconnectSocket } from '../services/socket';
+import { setTenantId, getCurrentTenantId } from '../api/axios';
 import api from '../api/axios';
 import { X, Wifi, WifiOff, Bell, UserPlus, Calendar, AlertTriangle, HelpCircle } from 'lucide-react';
 import MetaTokenBanner from './MetaTokenBanner';
@@ -22,7 +22,6 @@ export const Layout: React.FC<LayoutProps> = ({ children }: LayoutProps) => {
   const { user } = useAuth();
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const socketRef = useRef<Socket | null>(null);
   const [isConnected, setIsConnected] = useState(true);
   const [isReconnecting, setIsReconnecting] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
@@ -88,19 +87,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }: LayoutProps) => {
   useEffect(() => {
     if (!user) return;
 
-    // Conectar socket si no existe
-    if (!socketRef.current) {
-      // Connect to root namespace (matching ChatsView.tsx logic)
-      socketRef.current = io(WS_URL, {
-        reconnection: true,
-        reconnectionAttempts: Infinity,
-        reconnectionDelay: 1000,
-        reconnectionDelayMax: 5000,
-        randomizationFactor: 0.5
-      });
-    }
-
-    const socket = socketRef.current;
+    const socket = getSocket();
 
     const onConnect = () => {
       setIsConnected(true);
@@ -207,8 +194,17 @@ export const Layout: React.FC<LayoutProps> = ({ children }: LayoutProps) => {
       socket.off('NEW_PATIENT', handleNewPatient);
       socket.off('PATIENT_UPDATED', handleUrgency);
       socket.off('NEW_APPOINTMENT', handleAppointment);
+      // NOTE: do NOT call disconnectSocket() here — the singleton stays alive
+      // Call disconnectSocket() only on explicit logout
     };
   }, [user]);
+
+  // Disconnect socket on logout (called externally via window event or AuthContext)
+  useEffect(() => {
+    const onLogout = () => disconnectSocket();
+    window.addEventListener('auth:logout', onLogout);
+    return () => window.removeEventListener('auth:logout', onLogout);
+  }, []);
 
   const handleNotificationClick = () => {
     if (!notification) return;

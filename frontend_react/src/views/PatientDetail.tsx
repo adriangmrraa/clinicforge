@@ -14,8 +14,8 @@ import DocumentGallery from '../components/DocumentGallery';
 import AnamnesisPanel from '../components/AnamnesisPanel';
 import DigitalRecordsTab from '../components/DigitalRecordsTab';
 import BillingTab from '../components/BillingTab';
-import { io, Socket } from 'socket.io-client';
-import { WS_URL } from '../api/axios';
+import { getSocket } from '../services/socket';
+import type { Socket } from 'socket.io-client';
 
 interface Patient {
   id: number;
@@ -204,12 +204,7 @@ export default function PatientDetail() {
   };
 
   useEffect(() => {
-    const jwtToken = localStorage.getItem('access_token');
-
-    socketRef.current = io(WS_URL, {
-      transports: ['websocket', 'polling'],
-      auth: { token: jwtToken || '' },
-    });
+    socketRef.current = getSocket();
 
     socketRef.current.on('PATIENT_UPDATED', (payload: { patient_id?: number; phone?: string }) => {
       // Si el evento coincide con el paciente actual, refrescar AnamnesisPanel
@@ -278,7 +273,17 @@ export default function PatientDetail() {
     });
 
     return () => {
-      socketRef.current?.disconnect();
+      // Remove event handlers only — do NOT disconnect the singleton
+      if (socketRef.current) {
+        socketRef.current.off('PATIENT_UPDATED');
+        socketRef.current.off('DIGITAL_RECORD_CREATED');
+        socketRef.current.off('DIGITAL_RECORD_SENT');
+        socketRef.current.off('TREATMENT_PLAN_UPDATED');
+        socketRef.current.off('BILLING_UPDATED');
+        socketRef.current.off('RECORD_UPDATED');
+        socketRef.current.off('ODONTOGRAM_UPDATED');
+        socketRef.current.off('PAYMENT_CONFIRMED');
+      }
     };
   }, [id, patient?.phone_number]);
 

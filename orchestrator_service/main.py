@@ -1006,12 +1006,18 @@ async def _get_slots_for_extra_day(
     treatment_name: Optional[str],
     duration: int = 30,
     time_preference: Optional[str] = None,
+    prefetched_appointments: Optional[dict] = None,
+    prefetched_gcal_blocks: Optional[dict] = None,
 ) -> List[str]:
     """Obtiene slots libres para un día extra (para completar opciones multi-día). Versión simplificada.
 
     Si time_preference filtra todos los slots del día (ej. solo hay disponibilidad a la mañana
     y el paciente pidió 'tarde'), se retorna lista vacía. Este es el comportamiento correcto:
     el caller (loop de range expansion) debe avanzar al siguiente día disponible.
+
+    prefetched_appointments: dict keyed by date → list of appointment records (avoids per-day DB query)
+    prefetched_gcal_blocks: dict keyed by date → list of gcal_block records (avoids per-day DB query)
+    When provided, skips the two per-day SELECT queries entirely (N+1 fix).
     """
     # Verificar feriado antes de cualquier cálculo — si es feriado retornar vacío
     from services.holiday_service import is_holiday as check_is_holiday
@@ -1080,39 +1086,64 @@ async def _get_slots_for_extra_day(
                 if not active_professionals:
                     return []
 
-    # Construir busy_map (simplificado: solo appointments, sin GCal sync)
+    # Construir busy_map — use pre-fetched data when available to avoid N+1 queries
     prof_ids = [p["id"] for p in active_professionals]
-    start_day = datetime.combine(
-        target_date, datetime.min.time(), tzinfo=get_active_tz()
-    )
-    end_day = datetime.combine(target_date, datetime.max.time(), tzinfo=get_active_tz())
 
-    appointments = await db.pool.fetch(
-        """
-        SELECT professional_id, appointment_datetime as start, duration_minutes
-        FROM appointments
-        WHERE tenant_id = $1 AND professional_id = ANY($2) AND status IN ('scheduled', 'confirmed')
-        AND (appointment_datetime < $4 AND (appointment_datetime + interval '1 minute' * COALESCE(duration_minutes, 60)) > $3)
-    """,
-        tenant_id,
-        prof_ids,
-        start_day,
-        end_day,
-    )
+    if prefetched_appointments is not None:
+        # Use pre-fetched batch data: filter by prof_ids for this day
+        day_key = target_date
+        all_day_apts = prefetched_appointments.get(day_key, [])
+        appointments = [r for r in all_day_apts if r["professional_id"] in prof_ids]
+    else:
+        start_day = datetime.combine(
+            target_date, datetime.min.time(), tzinfo=get_active_tz()
+        )
+        end_day = datetime.combine(target_date, datetime.max.time(), tzinfo=get_active_tz())
+        appointments = await db.pool.fetch(
+            """
+            SELECT professional_id, appointment_datetime as start, duration_minutes
+            FROM appointments
+            WHERE tenant_id = $1 AND professional_id = ANY($2) AND status IN ('scheduled', 'confirmed')
+            AND (appointment_datetime < $4 AND (appointment_datetime + interval '1 minute' * COALESCE(duration_minutes, 60)) > $3)
+        """,
+            tenant_id,
+            prof_ids,
+            start_day,
+            end_day,
+        )
 
-    # GCal blocks (si existen en DB, sin JIT fetch para no ralentizar)
-    gcal_blocks = await db.pool.fetch(
-        """
-        SELECT professional_id, start_datetime as start, end_datetime as end
-        FROM google_calendar_blocks
-        WHERE tenant_id = $1 AND (professional_id = ANY($2) OR professional_id IS NULL)
-        AND (start_datetime < $4 AND end_datetime > $3)
-    """,
-        tenant_id,
-        prof_ids,
-        start_day,
-        end_day,
-    )
+    if prefetched_gcal_blocks is not None:
+        day_key = target_date
+        all_day_blocks = prefetched_gcal_blocks.get(day_key, [])
+        gcal_blocks = [
+            r for r in all_day_blocks
+            if r["professional_id"] is None or r["professional_id"] in prof_ids
+        ]
+    else:
+        # Ensure start_day/end_day are defined (may not be if prefetched_appointments path ran)
+        if prefetched_appointments is None:
+            # start_day/end_day already set in the appointments fallback block above
+            pass
+        else:
+            # prefetched_appointments was provided (fast path), so start_day/end_day were
+            # never computed — compute them now for the gcal fallback query
+            start_day = datetime.combine(
+                target_date, datetime.min.time(), tzinfo=get_active_tz()
+            )
+            end_day = datetime.combine(target_date, datetime.max.time(), tzinfo=get_active_tz())
+        # GCal blocks (si existen en DB, sin JIT fetch para no ralentizar)
+        gcal_blocks = await db.pool.fetch(
+            """
+            SELECT professional_id, start_datetime as start, end_datetime as end
+            FROM google_calendar_blocks
+            WHERE tenant_id = $1 AND (professional_id = ANY($2) OR professional_id IS NULL)
+            AND (start_datetime < $4 AND end_datetime > $3)
+        """,
+            tenant_id,
+            prof_ids,
+            start_day,
+            end_day,
+        )
 
     busy_map = {pid: set() for pid in prof_ids}
 
@@ -1206,6 +1237,67 @@ async def _get_slots_for_extra_day(
     )
 
 
+async def _batch_fetch_availability_for_range(
+    tenant_id: int,
+    prof_ids: list,
+    start_date,
+    end_date,
+) -> tuple:
+    """Batch-fetch all appointments and gcal_blocks for a date range in 2 queries.
+
+    Returns:
+        (appointments_by_date, gcal_blocks_by_date) where each is a dict
+        keyed by date → list of records. This eliminates the N+1 pattern in
+        pick_representative_slots when searching across many days.
+    """
+    range_start = datetime.combine(start_date, datetime.min.time(), tzinfo=get_active_tz())
+    range_end = datetime.combine(end_date, datetime.max.time(), tzinfo=get_active_tz())
+
+    raw_apts = await db.pool.fetch(
+        """
+        SELECT professional_id, appointment_datetime AS start, duration_minutes
+        FROM appointments
+        WHERE tenant_id = $1
+          AND professional_id = ANY($2::int[])
+          AND status IN ('scheduled', 'confirmed')
+          AND appointment_datetime < $4
+          AND (appointment_datetime + interval '1 minute' * COALESCE(duration_minutes, 60)) > $3
+        """,
+        tenant_id,
+        prof_ids,
+        range_start,
+        range_end,
+    )
+
+    raw_blocks = await db.pool.fetch(
+        """
+        SELECT professional_id, start_datetime AS start, end_datetime AS end
+        FROM google_calendar_blocks
+        WHERE tenant_id = $1
+          AND (professional_id = ANY($2::int[]) OR professional_id IS NULL)
+          AND start_datetime < $4
+          AND end_datetime > $3
+        """,
+        tenant_id,
+        prof_ids,
+        range_start,
+        range_end,
+    )
+
+    # Group by date (local tz)
+    appointments_by_date: dict = {}
+    for r in raw_apts:
+        d = r["start"].astimezone(get_active_tz()).date()
+        appointments_by_date.setdefault(d, []).append(r)
+
+    gcal_blocks_by_date: dict = {}
+    for r in raw_blocks:
+        d = r["start"].astimezone(get_active_tz()).date()
+        gcal_blocks_by_date.setdefault(d, []).append(r)
+
+    return appointments_by_date, gcal_blocks_by_date
+
+
 async def pick_representative_slots(
     slots: List[str],
     target_date,
@@ -1230,6 +1322,49 @@ async def pick_representative_slots(
     """
     options = []
     total_today = len(slots)
+
+    # ── BATCH PRE-FETCH: load all appointments + gcal_blocks for the full search window
+    # in 2 queries instead of 2 per day (N+1 fix). The window covers both the
+    # range search AND the 30-day expansion fallback.
+    _prefetched_apts: Optional[dict] = None
+    _prefetched_blocks: Optional[dict] = None
+    _total_window_days = max(search_range_days, 1) + 30  # range + expansion budget
+    _batch_end_date = target_date + timedelta(days=_total_window_days)
+    try:
+        # Resolve prof_ids for batch fetch — re-query here is lightweight (same
+        # query already executed earlier in check_availability; professionals are
+        # cached in the process for this call). We need the IDs scoped correctly.
+        _prof_query = """SELECT p.id FROM professionals p
+                         INNER JOIN users u ON p.user_id = u.id AND u.role IN ('professional', 'ceo') AND u.status = 'active'
+                         WHERE p.is_active = true AND p.tenant_id = $1"""
+        _prof_params = [tenant_id]
+        if professional_name:
+            _clean = re.sub(
+                r"^(dr|dra|doctor|doctora)\.?\s+",
+                "",
+                professional_name,
+                flags=re.IGNORECASE,
+            ).strip()
+            _prof_query += " AND (p.first_name ILIKE $2 OR p.last_name ILIKE $2 OR (p.first_name || ' ' || COALESCE(p.last_name, '')) ILIKE $2)"
+            _prof_params.append(f"%{_clean}%")
+        _prof_rows = await db.pool.fetch(_prof_query, *_prof_params)
+        _batch_prof_ids = [r["id"] for r in _prof_rows]
+        if _batch_prof_ids:
+            _prefetched_apts, _prefetched_blocks = await _batch_fetch_availability_for_range(
+                tenant_id,
+                _batch_prof_ids,
+                target_date,
+                _batch_end_date,
+            )
+            logger.debug(
+                f"📅 batch pre-fetch: {len(_prefetched_apts)} apt-days, "
+                f"{len(_prefetched_blocks)} gcal-days for range {target_date}..{_batch_end_date}"
+            )
+    except Exception as _bf_err:
+        # Non-fatal: fall back to per-day queries inside _get_slots_for_extra_day
+        logger.warning(f"📅 batch pre-fetch failed (falling back to per-day): {_bf_err}")
+        _prefetched_apts = None
+        _prefetched_blocks = None
 
     if search_range_days <= 1:
         # ── MODO FECHA ESPECÍFICA: 2 del día + 1 comodín ──
@@ -1291,6 +1426,8 @@ async def pick_representative_slots(
                     treatment_name,
                     duration,
                     time_preference=time_preference,
+                    prefetched_appointments=_prefetched_apts,
+                    prefetched_gcal_blocks=_prefetched_blocks,
                 )
             except Exception as e:
                 logger.warning(f"Error getting range day slots for {extra_date}: {e}")
@@ -1363,6 +1500,8 @@ async def pick_representative_slots(
                     treatment_name,
                     duration,
                     time_preference=time_preference,
+                    prefetched_appointments=_prefetched_apts,
+                    prefetched_gcal_blocks=_prefetched_blocks,
                 )
             except Exception as e:
                 logger.warning(f"Error getting extra day slots for {extra_date}: {e}")
@@ -3575,7 +3714,7 @@ async def book_appointment(
                     "created_by": {"role": "ai_agent", "email": "NOVA AI"},
                 }
             )
-            await sio.emit("NEW_APPOINTMENT", safe_data)
+            await sio.emit("NEW_APPOINTMENT", safe_data, room=f"tenant:{tenant_id}")
             # Mirror to Telegram
             from services.telegram_notifier import fire_telegram_notification
 
@@ -4149,6 +4288,7 @@ async def triage_urgency(symptoms: str):
                             "tenant_id": tenant_id,
                         }
                     ),
+                    room=f"tenant:{tenant_id}",
                 )
             except Exception:
                 pass  # Socket notification is non-critical
@@ -4364,7 +4504,7 @@ async def cancel_appointment(date_query: str):
         try:
             from main import sio
 
-            await sio.emit("APPOINTMENT_DELETED", apt["id"])
+            await sio.emit("APPOINTMENT_DELETED", apt["id"], room=f"tenant:{tenant_id}")
         except Exception:
             pass  # Socket notification is non-critical
 
@@ -4587,7 +4727,10 @@ async def reschedule_appointment(original_date: str, new_date_time: str):
                 apt["id"],
             )
             if updated_apt:
-                await sio.emit("APPOINTMENT_UPDATED", to_json_safe(dict(updated_apt)))
+                apt_data = to_json_safe(dict(updated_apt))
+                if isinstance(apt_data, dict) and not apt_data.get("tenant_id"):
+                    apt_data["tenant_id"] = tenant_id
+                await sio.emit("APPOINTMENT_UPDATED", apt_data, room=f"tenant:{tenant_id}")
         except Exception as se:
             logger.error(f"Error emitiendo APPOINTMENT_UPDATED via Socket: {se}")
 
@@ -4977,6 +5120,7 @@ async def derivhumano(reason: str):
                 to_json_safe(
                     {"phone_number": phone, "tenant_id": tenant_id, "reason": reason}
                 ),
+                room=f"tenant:{tenant_id}",
             )
         except Exception:
             pass  # Socket notification is non-critical
@@ -5263,6 +5407,7 @@ async def save_patient_anamnesis(
                         "patient_id": row["id"],
                     }
                 ),
+                room=f"tenant:{tenant_id}",
             )
         except Exception as e:
             logger.warning(f"No se pudo emitir evento Socket.IO: {e}")
@@ -6265,8 +6410,8 @@ async def verify_payment_receipt(
                         "payment_status": payment_status,
                     }
                 )
-                await sio.emit("PAYMENT_CONFIRMED", safe_data)
-                await sio.emit("APPOINTMENT_UPDATED", safe_data)
+                await sio.emit("PAYMENT_CONFIRMED", safe_data, room=f"tenant:{tenant_id}")
+                await sio.emit("APPOINTMENT_UPDATED", safe_data, room=f"tenant:{tenant_id}")
             except Exception:
                 pass
 
@@ -7362,7 +7507,7 @@ async def link_payment_to_patient(
                 "payment_status": "paid" if payment_applied else "linked",
                 "migrated_docs": migrated_docs,
             }
-            await sio.emit("PAYMENT_CONFIRMED", to_json_safe(notification_data))
+            await sio.emit("PAYMENT_CONFIRMED", to_json_safe(notification_data), room=f"tenant:{tenant_id}")
             from services.telegram_notifier import fire_telegram_notification
             fire_telegram_notification("PAYMENT_CONFIRMED", notification_data, tenant_id)
         except Exception as notif_err:
@@ -9964,14 +10109,27 @@ app.state.to_json_safe = to_json_safe
 @sio.event
 async def connect(sid, environ, auth=None):
     """
-    Acepta la conexión WebSocket y registra si lleva credenciales.
+    Acepta la conexión WebSocket, une al cliente a su sala de tenant,
+    y registra si lleva credenciales.
     Los eventos solo notifican cambios — el dato real se obtiene vía REST (autenticado).
     No rechazamos en handshake para evitar loops de reconexión en el cliente.
     """
-    has_token = bool((auth or {}).get("token", ""))
-    logger.info(
-        f"🔌 Client connected: {sid} (auth={'present' if has_token else 'none'})"
-    )
+    token = (auth or {}).get("token", "")
+    tenant_id = None
+    if token:
+        try:
+            from auth_service import AuthService
+            token_data = AuthService.decode_token(token)
+            if token_data:
+                tenant_id = token_data.tenant_id
+        except Exception:
+            pass
+
+    if tenant_id:
+        await sio.enter_room(sid, f"tenant:{tenant_id}")
+        logger.info(f"🔌 Client connected: {sid} → room tenant:{tenant_id}")
+    else:
+        logger.info(f"🔌 Client connected: {sid} (no valid auth — no room assigned)")
 
 
 @sio.event
@@ -9981,16 +10139,23 @@ async def disconnect(sid):
 
 # Helper function to emit appointment events (can be imported by admin_routes)
 async def emit_appointment_event(event_type: str, data: Dict[str, Any]):
-    """Emit appointment-related events to all connected clients + Telegram. Serializa a JSON-safe para evitar fallos por UUID/datetime."""
+    """Emit appointment-related events to the tenant room + Telegram.
+    Emits to room 'tenant:{tenant_id}' when tenant_id is present in data.
+    Serializa a JSON-safe para evitar fallos por UUID/datetime."""
     payload = to_json_safe(data) if data else data
-    await sio.emit(event_type, payload)
-    logger.info(f"📡 Socket event emitted: {event_type}")
+    tenant_id = data.get("tenant_id") if isinstance(data, dict) else None
+    if tenant_id:
+        await sio.emit(event_type, payload, room=f"tenant:{tenant_id}")
+    else:
+        # Fallback: broadcast (should not happen in production — log as warning)
+        logger.warning(f"📡 Socket event {event_type} emitted without tenant_id — broadcasting to all")
+        await sio.emit(event_type, payload)
+    logger.info(f"📡 Socket event emitted: {event_type} (tenant={tenant_id})")
 
     # Mirror to Telegram
     try:
         from services.telegram_notifier import fire_telegram_notification
 
-        tenant_id = data.get("tenant_id") if isinstance(data, dict) else None
         fire_telegram_notification(event_type, data, tenant_id)
     except Exception:
         pass
@@ -10374,6 +10539,7 @@ async def chat_endpoint(
                     "role": "user",
                 }
             ),
+            room=f"tenant:{tenant_id}",
         )
         # -----------------------------------------
 

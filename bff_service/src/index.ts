@@ -3,8 +3,13 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import axios from 'axios';
 import path from 'path';
+import http from 'http';
+import https from 'https';
 import { createProxyMiddleware } from 'http-proxy-middleware';
 import rateLimit from 'express-rate-limit';
+
+const httpAgent = new http.Agent({ keepAlive: true, maxSockets: 50 });
+const httpsAgent = new https.Agent({ keepAlive: true, maxSockets: 50 });
 
 // Buscar .env en la carpeta actual o en la raíz
 dotenv.config();
@@ -191,6 +196,9 @@ app.use(async (req: Request, res: Response) => {
             timeout: 120000,
             maxContentLength: Infinity,
             maxBodyLength: Infinity,
+            // Reuse TCP connections via keep-alive agents
+            httpAgent,
+            httpsAgent,
             // Binary responses need arraybuffer to avoid corruption
             responseType: isBinaryRequest ? 'arraybuffer' : undefined,
             // Don't let axios transform the multipart buffer

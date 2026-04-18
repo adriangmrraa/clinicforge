@@ -1,32 +1,40 @@
+import { lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Layout } from './components/Layout';
-import DashboardView from './views/DashboardView';
-import AgendaView from './views/AgendaView';
-import PatientsView from './views/PatientsView';
-import PatientDetail from './views/PatientDetail';
-import ProfessionalAnalyticsView from './views/ProfessionalAnalyticsView';
-import ChatsView from './views/ChatsView';
-import TreatmentsView from './views/TreatmentsView';
-import LoginView from './views/LoginView';
-import LandingView from './views/LandingView';
-import UserApprovalView from './views/UserApprovalView';
-import ProfileView from './views/ProfileView';
-import ClinicsView from './views/ClinicsView';
-import ConfigView from './views/ConfigView';
-import MetaTemplatesView from './views/MetaTemplatesView';
-import PlaybooksView from './views/PlaybooksView';
-import MarketingHubView from './views/MarketingHubView';
-import ROIDashboardView from './views/ROIDashboardView';
-import LeadsManagementView from './views/LeadsManagementView';
-import LeadDetailView from './views/LeadDetailView';
-import DashboardStatusView from './views/DashboardStatusView';
-import PrivacyTermsView from './views/PrivacyTermsView';
-import AnamnesisPublicView from './views/AnamnesisPublicView';
-import FinancialCommandCenterView from './views/FinancialCommandCenterView';
-import ProfessionalLiquidationsView from './views/ProfessionalLiquidationsView';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { LanguageProvider } from './context/LanguageContext';
 import ProtectedRoute from './components/ProtectedRoute';
+
+const DashboardView = lazy(() => import('./views/DashboardView'));
+const AgendaView = lazy(() => import('./views/AgendaView'));
+const PatientsView = lazy(() => import('./views/PatientsView'));
+const PatientDetail = lazy(() => import('./views/PatientDetail'));
+const ProfessionalAnalyticsView = lazy(() => import('./views/ProfessionalAnalyticsView'));
+const ChatsView = lazy(() => import('./views/ChatsView'));
+const TreatmentsView = lazy(() => import('./views/TreatmentsView'));
+const LoginView = lazy(() => import('./views/LoginView'));
+const LandingView = lazy(() => import('./views/LandingView'));
+const UserApprovalView = lazy(() => import('./views/UserApprovalView'));
+const ProfileView = lazy(() => import('./views/ProfileView'));
+const ClinicsView = lazy(() => import('./views/ClinicsView'));
+const ConfigView = lazy(() => import('./views/ConfigView'));
+const MetaTemplatesView = lazy(() => import('./views/MetaTemplatesView'));
+const PlaybooksView = lazy(() => import('./views/PlaybooksView'));
+const MarketingHubView = lazy(() => import('./views/MarketingHubView'));
+const ROIDashboardView = lazy(() => import('./views/ROIDashboardView'));
+const LeadsManagementView = lazy(() => import('./views/LeadsManagementView'));
+const LeadDetailView = lazy(() => import('./views/LeadDetailView'));
+const DashboardStatusView = lazy(() => import('./views/DashboardStatusView'));
+const PrivacyTermsView = lazy(() => import('./views/PrivacyTermsView'));
+const AnamnesisPublicView = lazy(() => import('./views/AnamnesisPublicView'));
+const FinancialCommandCenterView = lazy(() => import('./views/FinancialCommandCenterView'));
+const ProfessionalLiquidationsView = lazy(() => import('./views/ProfessionalLiquidationsView'));
+
+const PageLoader = () => (
+  <div className="flex items-center justify-center h-screen bg-[#06060e] text-white">
+    Cargando...
+  </div>
+);
 
 function RoleLandingRedirect() {
   const { user } = useAuth();
@@ -39,6 +47,7 @@ function App() {
     <Router>
       <AuthProvider>
         <LanguageProvider>
+          <Suspense fallback={<PageLoader />}>
           <Routes>
             <Route path="/login" element={<LoginView />} />
             <Route path="/demo" element={<LandingView />} />
@@ -135,6 +144,7 @@ function App() {
               </ProtectedRoute>
             } />
           </Routes>
+          </Suspense>
         </LanguageProvider>
       </AuthProvider>
     </Router>

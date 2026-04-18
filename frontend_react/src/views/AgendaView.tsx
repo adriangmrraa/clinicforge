@@ -13,8 +13,8 @@ import { RefreshCw, Stethoscope } from 'lucide-react';
 import AppointmentCard from '../components/AppointmentCard';
 import api from '../api/axios';
 import { addDays, subDays, startOfDay, endOfDay } from 'date-fns';
-import { io, Socket } from 'socket.io-client';
-import { WS_URL } from '../api/axios';
+import { getSocket } from '../services/socket';
+import type { Socket } from 'socket.io-client';
 import { useAuth } from '../context/AuthContext';
 import { useTranslation } from '../context/LanguageContext';
 
@@ -365,15 +365,7 @@ export default function AgendaView() {
 
   // === EFECTO 2: Socket.IO — corre UNA SOLA VEZ, sin depender de fetchData ===
   useEffect(() => {
-    const jwtToken = localStorage.getItem('access_token');
-    socketRef.current = io(WS_URL, {
-      transports: ['websocket', 'polling'],
-      reconnection: true,
-      reconnectionAttempts: 3,
-      reconnectionDelay: 5000,
-      reconnectionDelayMax: 15000,
-      auth: { token: jwtToken || '' },
-    });
+    socketRef.current = getSocket();
 
     // Debounced background refresh — multiple rapid socket events only trigger ONE fetch
     let agendaRefreshTimer: ReturnType<typeof setTimeout> | null = null;
@@ -400,7 +392,16 @@ export default function AgendaView() {
     });
 
     return () => {
-      if (socketRef.current) socketRef.current.disconnect();
+      // Remove event handlers only — do NOT disconnect the singleton
+      if (socketRef.current) {
+        socketRef.current.off('NEW_APPOINTMENT', debouncedAgendaRefresh);
+        socketRef.current.off('APPOINTMENT_UPDATED', debouncedAgendaRefresh);
+        socketRef.current.off('PAYMENT_CONFIRMED', debouncedAgendaRefresh);
+        socketRef.current.off('BILLING_UPDATED', debouncedAgendaRefresh);
+        socketRef.current.off('RECORD_UPDATED', debouncedAgendaRefresh);
+        socketRef.current.off('APPOINTMENT_DELETED');
+      }
+      if (agendaRefreshTimer) clearTimeout(agendaRefreshTimer);
       if (datesSetTimerRef.current) clearTimeout(datesSetTimerRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -422,7 +423,7 @@ export default function AgendaView() {
   }, [googleBlocks, selectedProfessionalId]);
 
   // Holidays shown to all users (not filtered by professional)
-  const filteredHolidays = useMemo(() => holidays, [holidays]);
+  const filteredHolidays = holidays;
 
   // Professional user: lock filter to their id (fallback for old sessions without professional_id in JWT)
   useEffect(() => {
@@ -477,7 +478,7 @@ export default function AgendaView() {
   }, [location.state, appointments]);
 
   // Calendar events transformer
-  const calendarEvents = [
+  const calendarEvents = useMemo(() => [
     ...filteredAppointments.map((apt) => ({
       id: apt.id,
       title: `${apt.patient_name} - ${apt.appointment_type}`,
@@ -509,7 +510,7 @@ export default function AgendaView() {
       textColor: '#ffffff',
       extendedProps: { ...holiday, eventType: 'holiday' },
     })),
-  ];
+  ], [filteredAppointments, filteredBlocks, filteredHolidays]);
 
   // Dynamic slot time range — never hide appointments outside 08:00-20:00
   const { dynamicSlotMin, dynamicSlotMax } = useMemo(() => {

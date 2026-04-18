@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
-import { io, Socket } from 'socket.io-client';
+import { getSocket } from '../services/socket';
+import type { Socket } from 'socket.io-client';
 import { MessageSquare, Calendar, Activity as LucideActivity, DollarSign, TrendingUp, TrendingDown, Target, Zap, Clock, ArrowUpRight, User, AlertCircle } from 'lucide-react';
 import {
   XAxis,
@@ -10,7 +11,7 @@ import {
   AreaChart,
   Area
 } from 'recharts';
-import api, { WS_URL } from '../api/axios';
+import api from '../api/axios';
 import { useTranslation } from '../context/LanguageContext';
 import { useAuth } from '../context/AuthContext';
 import PageHeader from '../components/PageHeader';
@@ -99,10 +100,31 @@ export default function DashboardView() {
   const [loading, setLoading] = useState(true);
   const [timeRange, setTimeRange] = useState<'weekly' | 'monthly' | 'yearly' | 'all'>('all');
   const socketRef = useRef<Socket | null>(null);
+  // Ref so socket event handlers always see the current timeRange without re-subscribing
+  const timeRangeRef = useRef(timeRange);
+  useEffect(() => { timeRangeRef.current = timeRange; }, [timeRange]);
 
+  const loadDashboardData = async (range: string) => {
+    try {
+      setLoading(true);
+      const [statsRes, urgenciesRes] = await Promise.all([
+        api.get(`/admin/stats/summary?range=${range}`),
+        api.get('/admin/chat/urgencies')
+      ]);
+
+      setStats(statsRes.data);
+      setUrgencies(urgenciesRes.data);
+
+    } catch (error) {
+      console.error('Error loading analytics:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Socket: connect once on mount, disconnect on unmount — no timeRange dependency
   useEffect(() => {
-    // 1. Conectar WebSocket
-    socketRef.current = io(WS_URL);
+    socketRef.current = getSocket();
 
     const loadUrgencies = async () => {
       try {
@@ -113,7 +135,7 @@ export default function DashboardView() {
       }
     };
 
-    // 2. Escuchar nuevos turnos/mensajes para actualización en vivo
+    // Escuchar nuevos turnos/mensajes para actualización en vivo
     socketRef.current.on('NEW_APPOINTMENT', () => {
       setStats((prev: AnalyticsStats | null) => {
         if (!prev) return prev;
@@ -131,8 +153,7 @@ export default function DashboardView() {
       });
     });
 
-    socketRef.current.on('PATIENT_UPDATED', (data: any) => {
-      // Actualizar contador
+    socketRef.current.on('PATIENT_UPDATED', (_data: any) => {
       setStats((prev: AnalyticsStats | null) => {
         if (!prev) return prev;
         return {
@@ -140,44 +161,38 @@ export default function DashboardView() {
           active_urgencies: (prev.active_urgencies || 0) + 1
         };
       });
-      // Recargar lista de urgencias
       loadUrgencies();
     });
 
     // Nova billing/CRUD updates — debounced refetch (avoid flooding API)
+    // Uses timeRangeRef so the handler always reads the latest value without re-subscribing
     let dashboardRefreshTimer: ReturnType<typeof setTimeout> | null = null;
     const debouncedRefresh = () => {
       if (dashboardRefreshTimer) clearTimeout(dashboardRefreshTimer);
-      dashboardRefreshTimer = setTimeout(() => loadDashboardData(timeRange), 3000);
+      dashboardRefreshTimer = setTimeout(() => loadDashboardData(timeRangeRef.current), 3000);
     };
     socketRef.current.on('BILLING_UPDATED', debouncedRefresh);
     socketRef.current.on('RECORD_UPDATED', debouncedRefresh);
     socketRef.current.on('TREATMENT_PLAN_UPDATED', debouncedRefresh);
 
-    const loadDashboardData = async (range: string) => {
-      try {
-        setLoading(true);
-        const [statsRes, urgenciesRes] = await Promise.all([
-          api.get(`/admin/stats/summary?range=${range}`),
-          api.get('/admin/chat/urgencies')
-        ]);
-
-        setStats(statsRes.data);
-        setUrgencies(urgenciesRes.data);
-
-      } catch (error) {
-        console.error('Error loading analytics:', error);
-      } finally {
-        setLoading(false);
+    return () => {
+      if (dashboardRefreshTimer) clearTimeout(dashboardRefreshTimer);
+      // Remove event handlers only — do NOT disconnect the singleton
+      if (socketRef.current) {
+        socketRef.current.off('NEW_APPOINTMENT');
+        socketRef.current.off('PAYMENT_CONFIRMED');
+        socketRef.current.off('PATIENT_UPDATED');
+        socketRef.current.off('BILLING_UPDATED');
+        socketRef.current.off('RECORD_UPDATED');
+        socketRef.current.off('TREATMENT_PLAN_UPDATED');
       }
     };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Data fetch: re-run whenever timeRange changes
+  useEffect(() => {
     loadDashboardData(timeRange);
-
-    return () => {
-      if (socketRef.current) socketRef.current.disconnect();
-    };
-  }, [timeRange]); // Re-run effect when timeRange changes to fetch new data
+  }, [timeRange]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loading) {
     return (

@@ -726,7 +726,7 @@ async def human_override(
             "tenant_id": tenant_id,
         }
         logger.info(f"📡 Emitting HUMAN_OVERRIDE_CHANGED: {payload}")
-        await sio.emit("HUMAN_OVERRIDE_CHANGED", payload)
+        await sio.emit("HUMAN_OVERRIDE_CHANGED", payload, room=f"tenant:{tenant_id}")
 
         return {"status": "ok", "human_override": enabled}
 

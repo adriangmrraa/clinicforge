@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { updateSocketToken } from '../services/socket';
 
 interface User {
     id: string;
@@ -53,6 +54,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         localStorage.setItem('X-Tenant-ID', tid);
 
         setUser(profile);
+
+        // Update socket auth token so reconnections use the fresh JWT
+        updateSocketToken();
     };
 
     const logout = () => {

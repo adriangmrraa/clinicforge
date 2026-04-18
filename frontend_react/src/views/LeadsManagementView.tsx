@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { io, Socket } from 'socket.io-client';
+import { getSocket } from '../services/socket';
+import type { Socket } from 'socket.io-client';
 import { useNavigate } from 'react-router-dom';
 import {
   Users, Search, Filter, Calendar, Phone, Mail, MessageSquare,
@@ -7,7 +8,7 @@ import {
   ChevronRight, ChevronLeft, Download, RefreshCw, BarChart3,
   Eye, MoreVertical, Tag, UserCheck, ArrowUpDown
 } from 'lucide-react';
-import api, { WS_URL } from '../api/axios';
+import api from '../api/axios';
 import { useTranslation } from '../context/LanguageContext';
 import PageHeader from '../components/PageHeader';
 import { Modal } from '../components/Modal';
@@ -114,7 +115,7 @@ export default function LeadsManagementView() {
 
   // WebSocket Connection
   useEffect(() => {
-    socketRef.current = io(WS_URL);
+    socketRef.current = getSocket();
 
     socketRef.current.on('NEW_PATIENT', () => {
       loadLeads();
@@ -122,7 +123,8 @@ export default function LeadsManagementView() {
     });
 
     return () => {
-      if (socketRef.current) socketRef.current.disconnect();
+      // Remove event handlers only — do NOT disconnect the singleton
+      if (socketRef.current) socketRef.current.off('NEW_PATIENT');
     };
   }, []);
 

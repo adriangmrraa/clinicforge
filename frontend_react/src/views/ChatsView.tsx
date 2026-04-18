@@ -6,10 +6,11 @@ import {
   Search, XCircle, Bell, Volume2, VolumeX,
   Instagram, Facebook, Lock, ChevronRight, Paperclip, LinkIcon
 } from 'lucide-react';
-import api, { WS_URL, setTenantId } from '../api/axios';
+import api, { setTenantId } from '../api/axios';
 import * as chatsApi from '../api/chats';
 import { useTranslation } from '../context/LanguageContext';
-import { io, Socket } from 'socket.io-client';
+import { getSocket } from '../services/socket';
+import type { Socket } from 'socket.io-client';
 import type { ChatSummaryItem, ChatApiMessage } from '../types/chat';
 import AdContextCard from '../components/AdContextCard';
 import { MessageContent } from '../components/chat/MessageMedia';
@@ -167,8 +168,8 @@ export default function ChatsView() {
   // ============================================
 
   useEffect(() => {
-    // Conectar al WebSocket (una sola vez — los handlers leen refs para valores frescos)
-    socketRef.current = io(WS_URL);
+    // Conectar al WebSocket (singleton compartido — los handlers leen refs para valores frescos)
+    socketRef.current = getSocket();
 
     // Evento: Nueva derivación humana (derivhumano) — solo para la clínica seleccionada
     socketRef.current.on('HUMAN_HANDOFF', (data: { phone_number: string; reason: string; tenant_id?: number }) => {
@@ -393,10 +394,17 @@ export default function ChatsView() {
       }
     });
 
-    // Cleanup
+    // Cleanup — remove only our event handlers; do NOT disconnect the singleton
     return () => {
       if (socketRef.current) {
-        socketRef.current.disconnect();
+        socketRef.current.off('HUMAN_HANDOFF');
+        socketRef.current.off('NEW_MESSAGE');
+        socketRef.current.off('HUMAN_OVERRIDE_CHANGED');
+        socketRef.current.off('CHAT_UPDATED');
+        socketRef.current.off('PATIENT_UPDATED');
+        socketRef.current.off('NEW_APPOINTMENT');
+        socketRef.current.off('MESSAGE_SENT');
+        socketRef.current.off('PATIENT_CREATED');
       }
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps

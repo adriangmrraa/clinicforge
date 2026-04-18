@@ -12,6 +12,22 @@ logger = logging.getLogger(__name__)
 class Database:
     def __init__(self):
         self.pool: Optional[asyncpg.Pool] = None
+        # Permanent cache for information_schema column existence checks.
+        # Schema never changes at runtime, so a miss is queried once and cached forever.
+        self.schema_cache: Dict[str, bool] = {}
+
+    async def check_column_exists(self, table: str, column: str) -> bool:
+        """Return True if the column exists on the given table (public schema).
+        Result is cached permanently — information_schema is only queried on the first call."""
+        key = f"{table}.{column}"
+        if key not in self.schema_cache:
+            result = await self.pool.fetchval(
+                "SELECT EXISTS (SELECT 1 FROM information_schema.columns "
+                "WHERE table_schema='public' AND table_name=$1 AND column_name=$2)",
+                table, column,
+            )
+            self.schema_cache[key] = bool(result)
+        return self.schema_cache[key]
 
     async def connect(self):
         """Conecta al pool de PostgreSQL. Migraciones manejadas por Alembic."""

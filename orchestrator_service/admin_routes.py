@@ -1393,9 +1393,7 @@ async def get_chat_sessions(
             + ")"
         )
     # Sesiones = pacientes de esta clínica que tienen al menos un mensaje en esta clínica
-    has_tenant_in_cm = await db.pool.fetchval(
-        "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='chat_messages' AND column_name='tenant_id')"
-    )
+    has_tenant_in_cm = await db.check_column_exists("chat_messages", "tenant_id")
     if not has_tenant_in_cm:
         # Fallback: DB sin parche 15, filtrar solo por patients.tenant_id (mensajes sin tenant)
         _q1 = (
@@ -1495,49 +1493,99 @@ async def get_chat_sessions(
         """
         )
         rows = await db.pool.fetch(_q2, tenant_id)
+    # Batch-fetch unread counts for ALL sessions in a single query (eliminates N+1)
+    # For each session: count user messages after GREATEST(last assistant msg, last_read_at)
+    conv_ids = [row.get("conversation_id") for row in rows]
+    phone_numbers = [row["phone_number"] for row in rows]
+    last_read_ats = [row.get("last_read_at") for row in rows]
+
+    unread_map: dict = {}
+    if rows:
+        # Detect fallback path (_q1): chat_messages has no tenant_id column, so
+        # conversation_id and last_read_at are not available on any row.
+        # Passing [None, None, ...] to unnest($1::int[]) would crash asyncpg.
+        # Use a simpler phone-only unread query instead.
+        all_conv_ids_missing = all(cid is None for cid in conv_ids)
+        if all_conv_ids_missing:
+            # Fallback path: no conversation_id available — match on phone_number only.
+            # Count user messages that come after the last assistant message for each phone.
+            fallback_unread_sql = """
+                WITH phones AS (
+                    SELECT unnest($1::text[]) AS phone_number
+                ),
+                last_assistant AS (
+                    SELECT
+                        p.phone_number,
+                        MAX(cm.created_at) AS last_assistant_at
+                    FROM phones p
+                    LEFT JOIN chat_messages cm
+                        ON cm.from_number = p.phone_number
+                        AND cm.role = 'assistant'
+                    GROUP BY p.phone_number
+                )
+                SELECT
+                    p.phone_number,
+                    COUNT(cm.id) AS unread_count
+                FROM phones p
+                LEFT JOIN last_assistant la ON la.phone_number = p.phone_number
+                LEFT JOIN chat_messages cm
+                    ON cm.from_number = p.phone_number
+                    AND cm.role = 'user'
+                    AND cm.created_at > COALESCE(la.last_assistant_at, '1970-01-01'::timestamptz)
+                GROUP BY p.phone_number
+            """
+            unread_rows = await db.pool.fetch(fallback_unread_sql, phone_numbers)
+        else:
+            # Normal path (_q2): conversation_id and last_read_at are available.
+            # Build per-session unread counts using a single CTE query.
+            # We use unnest to pass all (conv_id, phone, last_read_at) tuples at once.
+            batch_unread_sql = """
+                WITH session_params AS (
+                    SELECT
+                        unnest($1::int[])        AS conversation_id,
+                        unnest($2::text[])       AS phone_number,
+                        unnest($3::timestamptz[]) AS last_read_at
+                ),
+                last_assistant AS (
+                    SELECT
+                        sp.phone_number,
+                        sp.conversation_id,
+                        MAX(cm.created_at) AS last_assistant_at
+                    FROM session_params sp
+                    LEFT JOIN chat_messages cm
+                        ON cm.tenant_id = $4
+                        AND (cm.conversation_id = sp.conversation_id OR (cm.from_number = sp.phone_number AND cm.tenant_id = $4))
+                        AND cm.role = 'assistant'
+                    GROUP BY sp.phone_number, sp.conversation_id
+                )
+                SELECT
+                    sp.phone_number,
+                    COUNT(cm.id) AS unread_count
+                FROM session_params sp
+                LEFT JOIN last_assistant la
+                    ON la.phone_number = sp.phone_number AND la.conversation_id = sp.conversation_id
+                LEFT JOIN chat_messages cm
+                    ON cm.tenant_id = $4
+                    AND (cm.conversation_id = sp.conversation_id OR (cm.from_number = sp.phone_number AND cm.tenant_id = $4))
+                    AND cm.role = 'user'
+                    AND cm.created_at > GREATEST(
+                        COALESCE(la.last_assistant_at, '1970-01-01'::timestamptz),
+                        COALESCE(sp.last_read_at, '1970-01-01'::timestamptz)
+                    )
+                GROUP BY sp.phone_number
+            """
+            unread_rows = await db.pool.fetch(
+                batch_unread_sql,
+                conv_ids,
+                phone_numbers,
+                last_read_ats,
+                tenant_id,
+            )
+        unread_map = {r["phone_number"]: r["unread_count"] for r in unread_rows}
+
     sessions = []
     for row in rows:
-        unread_sql = """
-            SELECT COUNT(*) FROM chat_messages
-            WHERE correlation_id = (SELECT id FROM chat_conversations WHERE tenant_id = $1 AND id = $2) -- Just a safety check, or use conversation_id directly
-            OR conversation_id = $2
-            AND role = 'user'
-            AND tenant_id = $1
-            AND created_at > GREATEST(
-                COALESCE(
-                    (SELECT created_at FROM chat_messages
-                     WHERE (conversation_id = $2 OR (from_number = $3 AND tenant_id = $1)) AND role = 'assistant'
-                     ORDER BY created_at DESC LIMIT 1),
-                    '1970-01-01'::timestamptz
-                ),
-                COALESCE($4, '1970-01-01'::timestamptz)
-            )
-        """
-        # unread_sql simplificado con ID de conversación (Spec 14 isolation)
-        unread_sql = """
-            SELECT COUNT(*) FROM chat_messages
-            WHERE (conversation_id = $1 OR (from_number = $2 AND tenant_id = $3))
-            AND role = 'user'
-            AND tenant_id = $3
-            AND created_at > GREATEST(
-                COALESCE(
-                    (SELECT created_at FROM chat_messages
-                     WHERE (conversation_id = $1 OR (from_number = $2 AND tenant_id = $3)) 
-                     AND role = 'assistant' AND tenant_id = $3
-                     ORDER BY created_at DESC LIMIT 1),
-                    '1970-01-01'::timestamptz
-                ),
-                COALESCE($4, '1970-01-01'::timestamptz)
-            )
-        """
-        unread = await db.pool.fetchval(
-            unread_sql,
-            row.get("conversation_id"),
-            row["phone_number"],
-            tenant_id,
-            row.get("last_read_at"),
-        )
-
+        unread = unread_map.get(row["phone_number"], 0)
         last_user_msg = row.get("conv_last_user_msg_at")
         is_window_open = False
         if last_user_msg:
@@ -1598,9 +1646,7 @@ async def get_chat_messages(
     """Historial de mensajes para un número en la clínica indicada. Aislado por tenant_id."""
     if tenant_id not in allowed_ids:
         raise HTTPException(status_code=403, detail="No tienes acceso a esta clínica.")
-    has_tenant = await db.pool.fetchval(
-        "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='chat_messages' AND column_name='tenant_id')"
-    )
+    has_tenant = await db.check_column_exists("chat_messages", "tenant_id")
     if has_tenant:
         rows = await db.pool.fetch(
             """
@@ -2355,9 +2401,7 @@ async def send_chat_message(
     if payload.tenant_id not in allowed_ids:
         raise HTTPException(status_code=403, detail="No tienes acceso a esta clínica.")
     try:
-        has_tenant = await db.pool.fetchval(
-            "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='chat_messages' AND column_name='tenant_id')"
-        )
+        has_tenant = await db.check_column_exists("chat_messages", "tenant_id")
         if has_tenant:
             last_user_msg = await db.pool.fetchval(
                 """
@@ -3924,9 +3968,14 @@ async def get_clinic_settings(
         if not row:
             return _fallback_clinic_settings()
         config = row["config"] or {}
-        ui_lang = (
-            (config.get("ui_language") or "es") if isinstance(config, dict) else "es"
-        )
+        if isinstance(config, str):
+            try:
+                config = json.loads(config)
+            except Exception:
+                config = {}
+        if not isinstance(config, dict):
+            config = {}
+        ui_lang = config.get("ui_language") or "es"
         # social_landings may be returned as a string from asyncpg (JSONB)
         raw_landings = row["social_landings"]
         if isinstance(raw_landings, str):
@@ -4430,6 +4479,7 @@ async def create_patient(
                         "status": row["status"],
                     }
                 ),
+                room=f"tenant:{tenant_id}",
             )
         except Exception as sio_err:
             logger.warning(f"⚠️ Error emitting PATIENT_CREATED: {sio_err}")
@@ -4813,6 +4863,10 @@ async def import_patients_execute(
     skipped = 0
     errors = 0
 
+    # Separate rows by action and pre-process dates once
+    new_records = []   # tuples for bulk INSERT
+    update_records = []  # tuples for bulk UPDATE (duplicates with update action)
+
     for row in body.rows:
         status = row.get("status", "new")
         first_name = (row.get("first_name") or "").strip()
@@ -4820,79 +4874,101 @@ async def import_patients_execute(
             errors += 1
             continue
 
-        if status == "new":
+        birth = None
+        if row.get("birth_date"):
             try:
-                birth = None
-                if row.get("birth_date"):
-                    try:
-                        birth = date.fromisoformat(row["birth_date"])
-                    except (ValueError, TypeError):
-                        birth = _parse_birth_date(row["birth_date"])
-                await db.pool.execute(
-                    """
-                    INSERT INTO patients (tenant_id, first_name, last_name, phone_number, email, dni, insurance_provider, city, birth_date, notes, status, created_at)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'active', NOW())
-                """,
+                birth = date.fromisoformat(row["birth_date"])
+            except (ValueError, TypeError):
+                birth = _parse_birth_date(row["birth_date"])
+
+        if status == "new":
+            new_records.append((
+                tenant_id,
+                first_name,
+                (row.get("last_name") or "").strip(),
+                (row.get("phone_number") or "").strip(),
+                row.get("email") or None,
+                (row.get("dni") or "").strip() or None,
+                row.get("insurance") or None,
+                row.get("city") or None,
+                birth,
+                row.get("notes") or None,
+            ))
+        elif status == "duplicate":
+            if body.duplicate_action == "skip":
+                skipped += 1
+            elif body.duplicate_action == "update":
+                phone = (row.get("phone_number") or "").strip()
+                update_records.append((
                     tenant_id,
-                    first_name,
-                    (row.get("last_name") or "").strip(),
-                    (row.get("phone_number") or "").strip(),
+                    (row.get("last_name") or "").strip() or None,
                     row.get("email") or None,
                     (row.get("dni") or "").strip() or None,
                     row.get("insurance") or None,
                     row.get("city") or None,
                     birth,
                     row.get("notes") or None,
-                )
-                imported += 1
-            except asyncpg.UniqueViolationError:
-                skipped += 1
-            except Exception as e:
-                logger.error(f"Error importing patient row: {e}")
+                    phone,
+                ))
+            else:
                 errors += 1
-
-        elif status == "duplicate":
-            if body.duplicate_action == "skip":
-                skipped += 1
-            elif body.duplicate_action == "update":
-                try:
-                    phone = (row.get("phone_number") or "").strip()
-                    birth = None
-                    if row.get("birth_date"):
-                        try:
-                            birth = date.fromisoformat(row["birth_date"])
-                        except (ValueError, TypeError):
-                            birth = _parse_birth_date(row["birth_date"])
-                    # COALESCE: only fill empty fields, never overwrite existing data
-                    await db.pool.execute(
-                        """
-                        UPDATE patients SET
-                            last_name = COALESCE(NULLIF(last_name, ''), $2),
-                            email = COALESCE(email, $3),
-                            dni = COALESCE(dni, $4),
-                            insurance_provider = COALESCE(insurance_provider, $5),
-                            city = COALESCE(city, $6),
-                            birth_date = COALESCE(birth_date, $7),
-                            notes = COALESCE(notes, $8),
-                            updated_at = NOW()
-                        WHERE tenant_id = $1 AND phone_number = $9
-                    """,
-                        tenant_id,
-                        (row.get("last_name") or "").strip() or None,
-                        row.get("email") or None,
-                        (row.get("dni") or "").strip() or None,
-                        row.get("insurance") or None,
-                        row.get("city") or None,
-                        birth,
-                        row.get("notes") or None,
-                        phone,
-                    )
-                    updated += 1
-                except Exception as e:
-                    logger.error(f"Error updating patient during import: {e}")
-                    errors += 1
         else:
             errors += 1
+
+    # Bulk INSERT new patients using executemany
+    if new_records:
+        try:
+            await db.pool.executemany(
+                """
+                INSERT INTO patients (tenant_id, first_name, last_name, phone_number, email, dni, insurance_provider, city, birth_date, notes, status, created_at)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'active', NOW())
+                """,
+                new_records,
+            )
+            imported = len(new_records)
+        except asyncpg.UniqueViolationError:
+            # Fallback: insert one-by-one to count skips precisely
+            for rec in new_records:
+                try:
+                    await db.pool.execute(
+                        """
+                        INSERT INTO patients (tenant_id, first_name, last_name, phone_number, email, dni, insurance_provider, city, birth_date, notes, status, created_at)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'active', NOW())
+                        """,
+                        *rec,
+                    )
+                    imported += 1
+                except asyncpg.UniqueViolationError:
+                    skipped += 1
+                except Exception as e:
+                    logger.error(f"Error importing patient row: {e}")
+                    errors += 1
+        except Exception as e:
+            logger.error(f"Error bulk importing patients: {e}")
+            errors += len(new_records)
+
+    # Bulk UPDATE duplicates using executemany (COALESCE: only fills empty fields)
+    if update_records:
+        try:
+            await db.pool.executemany(
+                """
+                UPDATE patients SET
+                    last_name = COALESCE(NULLIF(last_name, ''), $2),
+                    email = COALESCE(email, $3),
+                    dni = COALESCE(dni, $4),
+                    insurance_provider = COALESCE(insurance_provider, $5),
+                    city = COALESCE(city, $6),
+                    birth_date = COALESCE(birth_date, $7),
+                    notes = COALESCE(notes, $8),
+                    updated_at = NOW()
+                WHERE tenant_id = $1 AND phone_number = $9
+                """,
+                update_records,
+            )
+            updated = len(update_records)
+        except Exception as e:
+            logger.error(f"Error bulk updating patients during import: {e}")
+            errors += len(update_records)
 
     return {
         "imported": imported,
@@ -6129,6 +6205,7 @@ async def update_odontogram(
                     "odontogram_data": v3_normalized,
                 }
             ),
+            room=f"tenant:{tenant_id}",
         )
     except Exception:
         pass  # Non-critical — UI will still get the REST response
@@ -7905,6 +7982,57 @@ async def get_next_available_slots(
         return []
     available_slots: List[Dict[str, Any]] = []
     today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+
+    # Batch-fetch ALL appointments + gcal_blocks for the full date range (2 queries total)
+    _date_from = today.date()
+    _date_to = (today + timedelta(days=days_ahead)).date()
+    _prof_ids = [p["id"] for p in professionals]
+
+    _all_apts = await db.pool.fetch(
+        """
+        SELECT professional_id, appointment_datetime, duration_minutes
+        FROM appointments
+        WHERE tenant_id = $1
+          AND professional_id = ANY($2::int[])
+          AND DATE(appointment_datetime) BETWEEN $3 AND $4
+          AND status NOT IN ('cancelled', 'no-show')
+        ORDER BY appointment_datetime ASC
+        """,
+        tenant_id,
+        _prof_ids,
+        _date_from,
+        _date_to,
+    )
+    _all_gcal = await db.pool.fetch(
+        """
+        SELECT professional_id, start_datetime, end_datetime
+        FROM google_calendar_blocks
+        WHERE tenant_id = $1
+          AND (professional_id = ANY($2::int[]) OR professional_id IS NULL)
+          AND DATE(start_datetime) BETWEEN $3 AND $4
+        ORDER BY start_datetime ASC
+        """,
+        tenant_id,
+        _prof_ids,
+        _date_from,
+        _date_to,
+    )
+
+    # Group by (professional_id, date) for O(1) lookup inside the nested loop
+    _apts_idx: dict = {}
+    for _r in _all_apts:
+        _k = (_r["professional_id"], _r["appointment_datetime"].date())
+        _apts_idx.setdefault(_k, []).append(_r)
+
+    _gcal_idx: dict = {}
+    _gcal_null: dict = {}
+    for _r in _all_gcal:
+        _d = _r["start_datetime"].date()
+        if _r["professional_id"] is None:
+            _gcal_null.setdefault(_d, []).append(_r)
+        else:
+            _gcal_idx.setdefault((_r["professional_id"], _d), []).append(_r)
+
     for day_offset in range(days_ahead + 1):
         current_date = today + timedelta(days=day_offset)
         if current_date.weekday() >= 5:
@@ -7914,31 +8042,10 @@ async def get_next_available_slots(
         for prof in professionals:
             prof_id = prof["id"]
             prof_name = f"{prof['first_name']} {prof.get('last_name', '')}".strip()
-            appointments = await db.pool.fetch(
-                """
-                SELECT appointment_datetime, duration_minutes
-                FROM appointments
-                WHERE tenant_id = $1 AND professional_id = $2
-                AND DATE(appointment_datetime) = $3
-                AND status NOT IN ('cancelled', 'no-show')
-                ORDER BY appointment_datetime ASC
-            """,
-                tenant_id,
-                prof_id,
-                current_date.date(),
-            )
-            gcal_blocks = await db.pool.fetch(
-                """
-                SELECT start_datetime, end_datetime
-                FROM google_calendar_blocks
-                WHERE tenant_id = $1 AND (professional_id = $2 OR professional_id IS NULL)
-                AND DATE(start_datetime) = $3
-                ORDER BY start_datetime ASC
-            """,
-                tenant_id,
-                prof_id,
-                current_date.date(),
-            )
+            appointments = _apts_idx.get((prof_id, current_date.date()), [])
+            gcal_blocks = _gcal_idx.get(
+                (prof_id, current_date.date()), []
+            ) + _gcal_null.get(current_date.date(), [])
 
             # Crear lista de busy periods (turnos + bloques)
             busy_periods = []
@@ -8241,30 +8348,48 @@ async def get_professional_conversation_insights(
 
     pids = [r["patient_id"] for r in patient_ids]
 
-    # Get conversation snippets (first 200 chars of last messages)
+    # Get conversation snippets — batch fetch phones and messages (eliminates N+1)
     snippets = []
-    for pid in pids[:10]:
-        phone = await db.pool.fetchval(
-            "SELECT phone_number FROM patients WHERE id = $1 AND tenant_id = $2",
-            pid,
-            tenant_id,
-        )
-        if not phone:
-            continue
-        messages = await db.pool.fetch(
+    _target_pids = pids[:10]
+    _phone_rows = await db.pool.fetch(
+        "SELECT id, phone_number FROM patients WHERE id = ANY($1::int[]) AND tenant_id = $2",
+        _target_pids,
+        tenant_id,
+    )
+    _pid_to_phone = {r["id"]: r["phone_number"] for r in _phone_rows}
+    _phones = [p for p in _pid_to_phone.values() if p]
+
+    if _phones:
+        # Fetch last 6 messages per phone in one query using LATERAL
+        _msg_rows = await db.pool.fetch(
             """
-            SELECT role, LEFT(content, 200) as content FROM chat_messages
-            WHERE from_number = $1 AND tenant_id = $2
-            ORDER BY created_at DESC LIMIT 6
-        """,
-            phone,
+            SELECT m.from_number, m.role, LEFT(m.content, 200) AS content
+            FROM unnest($1::text[]) AS p(phone_number)
+            JOIN LATERAL (
+                SELECT from_number, role, content, created_at
+                FROM chat_messages
+                WHERE from_number = p.phone_number AND tenant_id = $2
+                ORDER BY created_at DESC LIMIT 6
+            ) m ON true
+            """,
+            _phones,
             tenant_id,
         )
-        if messages:
-            conv_text = " | ".join(
-                [f"{m['role']}: {m['content']}" for m in reversed(messages)]
-            )
-            snippets.append(conv_text)
+        # Group messages by phone, preserving per-phone order
+        _msgs_by_phone: dict = {}
+        for _m in _msg_rows:
+            _msgs_by_phone.setdefault(_m["from_number"], []).append(_m)
+
+        for pid in _target_pids:
+            phone = _pid_to_phone.get(pid)
+            if not phone:
+                continue
+            messages = _msgs_by_phone.get(phone, [])
+            if messages:
+                conv_text = " | ".join(
+                    [f"{m['role']}: {m['content']}" for m in reversed(messages)]
+                )
+                snippets.append(conv_text)
 
     if not snippets:
         return {"insights": "No se encontraron conversaciones recientes para analizar."}
@@ -8636,8 +8761,9 @@ async def trigger_sync(tenant_id: int = Depends(get_resolved_tenant_id)):
 
             # Obtener IDs ya existentes para este profesional
             existing_blocks = await db.pool.fetch(
-                "SELECT google_event_id FROM google_calendar_blocks WHERE professional_id = $1",
+                "SELECT google_event_id FROM google_calendar_blocks WHERE professional_id = $1 AND tenant_id = $2",
                 prof_id,
+                tenant_id,
             )
             existing_ids_set = {row["google_event_id"] for row in existing_blocks}
 
@@ -8673,7 +8799,7 @@ async def trigger_sync(tenant_id: int = Depends(get_resolved_tenant_id)):
                         UPDATE google_calendar_blocks SET
                             title = $1, description = $2, start_datetime = $3, end_datetime = $4,
                             all_day = $5, updated_at = NOW()
-                        WHERE google_event_id = $6 AND professional_id = $7
+                        WHERE google_event_id = $6 AND professional_id = $7 AND tenant_id = $8
                     """,
                         summary,
                         description,
@@ -8682,6 +8808,7 @@ async def trigger_sync(tenant_id: int = Depends(get_resolved_tenant_id)):
                         all_day,
                         g_id,
                         prof_id,
+                        tenant_id,
                     )
                     total_updated += 1
                 else:
@@ -11067,6 +11194,7 @@ async def update_patient_anamnesis(
                     "update_type": "anamnesis_manual_update",
                 }
             ),
+            room=f"tenant:{tenant_id}",
         )
     except Exception:
         pass
@@ -11132,6 +11260,7 @@ async def update_patient_email(
                     "update_type": "email_update",
                 }
             ),
+            room=f"tenant:{tenant_id}",
         )
     except Exception:
         pass
@@ -11311,28 +11440,33 @@ async def update_automation_rule(
         if payload.ycloud_template_lang is not None:
             system_updates["ycloud_template_lang"] = payload.ycloud_template_lang
 
-        if payload.ycloud_template_vars is not None:
-            await db.pool.execute(
-                "UPDATE automation_rules SET ycloud_template_vars=$1::jsonb, updated_at=NOW() WHERE id=$2 AND tenant_id=$3",
-                json.dumps(payload.ycloud_template_vars),
-                rule_id,
-                tenant_id,
-            )
+        # Build a single UPDATE for all system fields (eliminates per-field N+1)
+        if system_updates or payload.ycloud_template_vars is not None:
+            set_clauses = []
+            params: list = [rule_id, tenant_id]
+            param_idx = 3
 
-        for field, value in system_updates.items():
-            await db.pool.execute(
-                f"UPDATE automation_rules SET {field}=$1, updated_at=NOW() WHERE id=$2 AND tenant_id=$3",
-                value,
-                rule_id,
-                tenant_id,
-            )
+            # JSONB field handled separately with explicit cast
+            if payload.ycloud_template_vars is not None:
+                set_clauses.append(f"ycloud_template_vars=${param_idx}::jsonb")
+                params.append(json.dumps(payload.ycloud_template_vars))
+                param_idx += 1
+
+            for field, value in system_updates.items():
+                set_clauses.append(f"{field}=${param_idx}")
+                params.append(value)
+                param_idx += 1
+
+            set_clauses.append("updated_at=NOW()")
+            sql = f"UPDATE automation_rules SET {', '.join(set_clauses)} WHERE id=$1 AND tenant_id=$2"
+            await db.pool.execute(sql, *params)
 
         updated = await db.pool.fetchrow(
-            "SELECT * FROM automation_rules WHERE id=$1", rule_id
+            "SELECT * FROM automation_rules WHERE id=$1 AND tenant_id=$2", rule_id, tenant_id
         )
         return {"rule": dict(updated), "message": "Regla de sistema actualizada."}
 
-    # Construir UPDATE dinámico
+    # Construir UPDATE dinámico — single query for all fields (eliminates per-field N+1)
     updates = {}
     if payload.name is not None:
         updates["name"] = payload.name
@@ -11355,31 +11489,31 @@ async def update_automation_rule(
     if payload.is_active is not None:
         updates["is_active"] = payload.is_active
 
-    if payload.condition_json is not None:
-        await db.pool.execute(
-            "UPDATE automation_rules SET condition_json=$1::jsonb, updated_at=NOW() WHERE id=$2 AND tenant_id=$3",
-            json.dumps(payload.condition_json),
-            rule_id,
-            tenant_id,
-        )
-    if payload.ycloud_template_vars is not None:
-        await db.pool.execute(
-            "UPDATE automation_rules SET ycloud_template_vars=$1::jsonb, updated_at=NOW() WHERE id=$2 AND tenant_id=$3",
-            json.dumps(payload.ycloud_template_vars),
-            rule_id,
-            tenant_id,
-        )
+    if updates or payload.condition_json is not None or payload.ycloud_template_vars is not None:
+        set_clauses = []
+        params = [rule_id, tenant_id]
+        param_idx = 3
 
-    for field, value in updates.items():
-        await db.pool.execute(
-            f"UPDATE automation_rules SET {field}=$1, updated_at=NOW() WHERE id=$2 AND tenant_id=$3",
-            value,
-            rule_id,
-            tenant_id,
-        )
+        if payload.condition_json is not None:
+            set_clauses.append(f"condition_json=${param_idx}::jsonb")
+            params.append(json.dumps(payload.condition_json))
+            param_idx += 1
+        if payload.ycloud_template_vars is not None:
+            set_clauses.append(f"ycloud_template_vars=${param_idx}::jsonb")
+            params.append(json.dumps(payload.ycloud_template_vars))
+            param_idx += 1
+
+        for field, value in updates.items():
+            set_clauses.append(f"{field}=${param_idx}")
+            params.append(value)
+            param_idx += 1
+
+        set_clauses.append("updated_at=NOW()")
+        sql = f"UPDATE automation_rules SET {', '.join(set_clauses)} WHERE id=$1 AND tenant_id=$2"
+        await db.pool.execute(sql, *params)
 
     updated = await db.pool.fetchrow(
-        "SELECT * FROM automation_rules WHERE id=$1", rule_id
+        "SELECT * FROM automation_rules WHERE id=$1 AND tenant_id=$2", rule_id, tenant_id
     )
     return {"rule": dict(updated), "message": "Regla actualizada."}
 
@@ -11675,7 +11809,7 @@ async def trigger_feedback_after_delay(
         existing = await db.pool.fetchval(
             """
             SELECT id FROM automation_logs
-            WHERE automation_rule_id=$1 AND phone_number=$2 AND DATE(triggered_at)=CURRENT_DATE AND status='sent'
+            WHERE automation_rule_id=$1 AND phone_number=$2 AND triggered_at >= CURRENT_DATE AND triggered_at < CURRENT_DATE + INTERVAL '1 day' AND status='sent'
         """,
             rule["id"],
             phone_number,
@@ -11809,7 +11943,7 @@ async def send_treatment_completion_hsm(
             """
             SELECT id FROM automation_logs
             WHERE automation_rule_id = $1 AND phone_number = $2
-              AND DATE(triggered_at) = CURRENT_DATE AND status = 'sent'
+              AND triggered_at >= CURRENT_DATE AND triggered_at < CURRENT_DATE + INTERVAL '1 day' AND status = 'sent'
             """,
             rule["id"],
             phone_number,
@@ -12728,9 +12862,10 @@ async def sync_appointments_to_plan(
                 conn, plan_uuid, tenant_id
             )
             await conn.execute(
-                "UPDATE treatment_plans SET estimated_total=$1, updated_at=NOW() WHERE id=$2",
+                "UPDATE treatment_plans SET estimated_total=$1, updated_at=NOW() WHERE id=$2 AND tenant_id=$3",
                 new_total,
                 plan_uuid,
+                tenant_id,
             )
 
     # Emit event
@@ -12979,13 +13114,14 @@ async def create_treatment_plan(
             totals = await recalculate_plan_totals(conn, str(plan_id), tenant_id)
             if totals["estimated_total"] > 0:
                 await conn.execute(
-                    "UPDATE treatment_plans SET estimated_total = $1 WHERE id = $2",
+                    "UPDATE treatment_plans SET estimated_total = $1 WHERE id = $2 AND tenant_id = $3",
                     totals["estimated_total"],
                     plan_id,
+                    tenant_id,
                 )
 
     plan = await db.pool.fetchrow(
-        "SELECT * FROM treatment_plans WHERE id = $1", plan_id
+        "SELECT * FROM treatment_plans WHERE id = $1 AND tenant_id = $2", plan_id, tenant_id
     )
     prof_name = (
         await get_professional_name(db.pool, plan["professional_id"])
@@ -13335,14 +13471,15 @@ async def update_treatment_plan(
 
     update_fields.append(f"updated_at = NOW()")
     params.append(plan_uuid)
+    params.append(tenant_id)
 
     await db.pool.execute(
-        f"UPDATE treatment_plans SET {', '.join(update_fields)} WHERE id = ${idx}",
+        f"UPDATE treatment_plans SET {', '.join(update_fields)} WHERE id = ${idx} AND tenant_id = ${idx + 1}",
         *params,
     )
 
     updated_plan = await db.pool.fetchrow(
-        "SELECT * FROM treatment_plans WHERE id = $1", plan_uuid
+        "SELECT * FROM treatment_plans WHERE id = $1 AND tenant_id = $2", plan_uuid, tenant_id
     )
     prof_name = (
         await get_professional_name(db.pool, updated_plan["professional_id"])
@@ -13442,8 +13579,9 @@ async def delete_treatment_plan(
         }
 
     await db.pool.execute(
-        "UPDATE treatment_plans SET status = 'cancelled', updated_at = NOW() WHERE id = $1",
+        "UPDATE treatment_plans SET status = 'cancelled', updated_at = NOW() WHERE id = $1 AND tenant_id = $2",
         plan_uuid,
+        tenant_id,
     )
 
     await emit_treatment_plan_event(

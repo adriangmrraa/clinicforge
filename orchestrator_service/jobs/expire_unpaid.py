@@ -84,7 +84,7 @@ async def expire_unpaid_appointments():
                         "appointment_id": str(apt["id"]),
                         "tenant_id": apt["tenant_id"],
                         "reason": "sena_expired",
-                    })
+                    }, room=f"tenant:{apt['tenant_id']}")
                 except Exception:
                     pass
 

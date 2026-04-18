@@ -129,7 +129,7 @@ async def receive_ycloud_webhook(
             logger.info(f"👤 WhatsApp Business echo → manual mode activated for {user_phone} (tenant={tenant_id})")
             try:
                 from main import sio
-                await sio.emit("HUMAN_OVERRIDE_CHANGED", {"phone_number": user_phone, "tenant_id": tenant_id, "enabled": True, "until": override_until.isoformat()})
+                await sio.emit("HUMAN_OVERRIDE_CHANGED", {"phone_number": user_phone, "tenant_id": tenant_id, "enabled": True, "until": override_until.isoformat()}, room=f"tenant:{tenant_id}")
             except Exception:
                 pass
         return {"status": "echo_handled", "manual_mode": True}
@@ -290,6 +290,7 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
                                                 "channel": msg.original_channel,
                                             }
                                         ),
+                                        room=f"tenant:{tenant_id}",
                                     )
                                     logger.info(
                                         f"📡 Socket NEW_PATIENT emitted for {msg.external_user_id}"
@@ -741,6 +742,7 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
                                 "channel": msg.original_channel,
                             }
                         ),
+                        room=f"tenant:{tenant_id}",
                     )
                     logger.info(
                         f"📡 Socket NEW_MESSAGE emitted for {msg.external_user_id} via {provider}"
@@ -859,7 +861,7 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
                                 "status": "confirmed",
                                 "tenant_id": tenant_id,
                                 "phone_number": msg.external_user_id,
-                            })
+                            }, room=f"tenant:{tenant_id}")
                     except Exception:
                         pass
 
@@ -926,7 +928,7 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
                                 "appointment_id": str(_cancel_row["id"]),
                                 "tenant_id": tenant_id,
                                 "phone_number": msg.external_user_id,
-                            })
+                            }, room=f"tenant:{tenant_id}")
                     except Exception:
                         pass
 

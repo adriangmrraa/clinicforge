@@ -228,7 +228,7 @@ async def submit_anamnesis_form(tenant_id: int, token: str, data: AnamnesisFormS
                     'patient_id': patient["id"],
                     'tenant_id': tenant_id,
                     'update_type': 'anamnesis_saved',
-                }))
+                }), room=f"tenant:{tenant_id}")
         except Exception:
             pass
 

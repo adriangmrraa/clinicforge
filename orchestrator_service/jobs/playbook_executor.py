@@ -9,12 +9,15 @@ Runs every 5 minutes via JobScheduler. Processes pending automation_executions:
 5. Advance to next step or complete execution
 """
 
+import asyncio
 import logging
 import json
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from .scheduler import scheduler
+
+_ai_semaphore = asyncio.Semaphore(3)  # max 3 concurrent AI calls across all executions
 
 logger = logging.getLogger(__name__)
 
@@ -482,15 +485,21 @@ REGLAS:
 
 Respondé SOLO con el mensaje a enviar, o "NO_ENVIAR" si no corresponde."""
 
-        # 4. Call LLM
+        # 4. Call LLM (semaphore + 30s timeout)
         import openai
         client = openai.AsyncOpenAI()
-        response = await client.chat.completions.create(
-            model=model,
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=200,
-            temperature=0.7,
-        )
+        try:
+            async with _ai_semaphore:
+                async with asyncio.timeout(30):
+                    response = await client.chat.completions.create(
+                        model=model,
+                        messages=[{"role": "user", "content": prompt}],
+                        max_tokens=200,
+                        temperature=0.7,
+                    )
+        except asyncio.TimeoutError:
+            logger.warning(f"[ai_message] LLM call timed out after 30s for {phone} — skipping")
+            return True  # Not a failure, just skip this step
 
         message = (response.choices[0].message.content or "").strip()
 
@@ -621,7 +630,7 @@ async def _action_notify_team(tenant_id, step, variables) -> bool:
                         "message": message,
                         "phone": variables.get("telefono", ""),
                         "patient_name": variables.get("nombre_paciente", ""),
-                    })
+                    }, room=f"tenant:{tenant_id}")
             except Exception:
                 pass
 

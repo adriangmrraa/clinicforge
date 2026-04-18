@@ -6,6 +6,7 @@ from typing import Optional, List, Dict, Any, Tuple
 from fastapi import Header, HTTPException, Depends, Request, status
 from db import db
 from auth_service import auth_service
+from services.relay import get_redis
 
 logger = logging.getLogger(__name__)
 
@@ -141,30 +142,54 @@ async def get_resolved_tenant_id(
     Resuelve el tenant_id real con aislamiento estricto (Spec 32):
     1. CEOs: Global Access. Usan X-Tenant-ID header para alternar sedes.
     2. Staff (Sec/Prof): Locked Access. Solo pueden acceder a su tenant_id de registro.
+
+    El tenant_id se cachea en Redis (TTL 60s) para evitar round-trips a la DB
+    en cada request autenticado.
     """
-    # Lookup real tenant_id from database
+    # ── Redis cache ──────────────────────────────────────────────────────────
     real_tenant_id = None
+    cache_key = f"user_tenant:{user_data.user_id}"
     try:
-        # Para profesionales y secretarios, buscar en professionals con is_active=true
-        # CEO puede no tener fila en professionals
-        if user_data.role in ("secretary", "professional"):
-            real_tenant_id = await db.pool.fetchval(
-                "SELECT tenant_id FROM professionals WHERE user_id = $1 AND is_active = true ORDER BY tenant_id ASC LIMIT 1",
-                uuid.UUID(user_data.user_id),
-            )
-        elif user_data.role == "ceo":
-            # CEO: buscar cualquier fila en professionals (aunque sea inactiva) o usar tenants
-            real_tenant_id = await db.pool.fetchval(
-                "SELECT tenant_id FROM professionals WHERE user_id = $1 ORDER BY tenant_id ASC LIMIT 1",
-                uuid.UUID(user_data.user_id),
-            )
-            if real_tenant_id is None:
-                # CEO sin fila en professionals: usar primera clínica
-                real_tenant_id = await db.pool.fetchval(
-                    "SELECT id FROM tenants ORDER BY id ASC LIMIT 1"
-                )
+        redis = get_redis()
+        if redis is not None:
+            cached = await redis.get(cache_key)
+            if cached is not None:
+                real_tenant_id = int(cached)
     except Exception as e:
-        logger.error(f"Error fetching real_tenant_id for {user_data.user_id}: {e}")
+        logger.warning(f"Redis unavailable for tenant cache lookup ({cache_key}): {e}")
+
+    # ── DB lookup (only on cache miss) ───────────────────────────────────────
+    if real_tenant_id is None:
+        try:
+            # Para profesionales y secretarios, buscar en professionals con is_active=true
+            # CEO puede no tener fila en professionals
+            if user_data.role in ("secretary", "professional"):
+                real_tenant_id = await db.pool.fetchval(
+                    "SELECT tenant_id FROM professionals WHERE user_id = $1 AND is_active = true ORDER BY tenant_id ASC LIMIT 1",
+                    uuid.UUID(user_data.user_id),
+                )
+            elif user_data.role == "ceo":
+                # CEO: buscar cualquier fila en professionals (aunque sea inactiva) o usar tenants
+                real_tenant_id = await db.pool.fetchval(
+                    "SELECT tenant_id FROM professionals WHERE user_id = $1 ORDER BY tenant_id ASC LIMIT 1",
+                    uuid.UUID(user_data.user_id),
+                )
+                if real_tenant_id is None:
+                    # CEO sin fila en professionals: usar primera clínica
+                    real_tenant_id = await db.pool.fetchval(
+                        "SELECT id FROM tenants ORDER BY id ASC LIMIT 1"
+                    )
+
+            # Persist to Redis for subsequent requests
+            if real_tenant_id is not None:
+                try:
+                    redis = get_redis()
+                    if redis is not None:
+                        await redis.set(cache_key, str(real_tenant_id), ex=60)
+                except Exception as e:
+                    logger.warning(f"Redis unavailable for tenant cache write ({cache_key}): {e}")
+        except Exception as e:
+            logger.error(f"Error fetching real_tenant_id for {user_data.user_id}: {e}")
 
     # Input Header Hint
     header_tid = request.headers.get("X-Tenant-ID")

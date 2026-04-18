@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useTranslation } from '../context/LanguageContext';
 import { Save, RotateCcw, AlertCircle, Check } from 'lucide-react';
-import { io, Socket } from 'socket.io-client';
-import { WS_URL } from '../api/axios';
+import { getSocket } from '../services/socket';
+import type { Socket } from 'socket.io-client';
 import api from '../api/axios';
 import { ToothSVG, type SurfaceName } from './odontogram/ToothSVG';
 import { SurfacePath } from './odontogram/SurfacePath';
@@ -144,9 +144,8 @@ export default function Odontogram({ patientId, recordId, initialData, onSave, r
 
   // WebSocket
   useEffect(() => {
-    const jwt = localStorage.getItem('access_token');
-    const socket: Socket = io(WS_URL, { transports: ['websocket','polling'], auth: { token: jwt||'' } });
-    socket.on('ODONTOGRAM_UPDATED', (payload: { patient_id?: number; odontogram_data?: any }) => {
+    const socket: Socket = getSocket();
+    const handleOdontogramUpdated = (payload: { patient_id?: number; odontogram_data?: any }) => {
       if (payload.patient_id !== patientId || !payload.odontogram_data) return;
       const data = payload.odontogram_data;
       const animateUpdate = (newTeeth: ToothState[], setter: typeof setPermanentTeeth) => {
@@ -162,8 +161,10 @@ export default function Odontogram({ patientId, recordId, initialData, onSave, r
       setNovaUpdate(t('odontogram.nova_updated','Nova actualizó el odontograma'));
       setTimeout(() => setNovaUpdate(null), 3000);
       setTimeout(() => { initialRef.current = JSON.stringify({ permanentTeeth, deciduousTeeth }); setHasChanges(false); }, 100);
-    });
-    return () => { socket.disconnect(); };
+    };
+    socket.on('ODONTOGRAM_UPDATED', handleOdontogramUpdated);
+    // Remove event handler only — do NOT disconnect the singleton
+    return () => { socket.off('ODONTOGRAM_UPDATED', handleOdontogramUpdated); };
   }, [patientId]);
 
   // Health stats

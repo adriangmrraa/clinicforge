@@ -171,7 +171,7 @@ async def receive_meta_direct_webhook(
             logger.info(f"👤 {platform} echo → manual mode activated for {user_id} (tenant={tenant_id})")
             try:
                 from main import sio
-                await sio.emit("HUMAN_OVERRIDE_CHANGED", {"phone_number": user_id, "tenant_id": tenant_id, "enabled": True, "until": override_until.isoformat()})
+                await sio.emit("HUMAN_OVERRIDE_CHANGED", {"phone_number": user_id, "tenant_id": tenant_id, "enabled": True, "until": override_until.isoformat()}, room=f"tenant:{tenant_id}")
             except Exception:
                 pass
 

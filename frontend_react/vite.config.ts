@@ -9,7 +9,24 @@ export default defineConfig({
   },
   build: {
     rollupOptions: {
-      external: ['/env-config.js']
+      output: {
+        manualChunks: {
+          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+          'vendor-calendar': [
+            '@fullcalendar/core',
+            '@fullcalendar/daygrid',
+            '@fullcalendar/timegrid',
+            '@fullcalendar/interaction',
+            '@fullcalendar/list',
+            '@fullcalendar/react',
+            '@fullcalendar/resource',
+            '@fullcalendar/resource-timegrid',
+          ],
+          'vendor-charts': ['recharts'],
+          'vendor-socket': ['socket.io-client'],
+        },
+      },
+      external: ['/env-config.js'],
     }
   }
 })

@@ -120,11 +120,16 @@ api.interceptors.response.use(
   async (error: AxiosError) => {
     const originalConfig = error.config as CustomAxiosConfig | undefined;
 
-    if (!originalConfig || originalConfig._retryCount === undefined) {
+    if (!originalConfig) {
       return Promise.reject(error);
     }
 
-    const retryCount = (originalConfig._retryCount || 0) + 1;
+    const metadata = (originalConfig as any).metadata;
+    if (!metadata) {
+      return Promise.reject(error);
+    }
+
+    const retryCount = (metadata.retryCount || 0) + 1;
 
     // Solo hacer retry para errores 5xx o pérdida de conexión
     const status = error.response?.status;
@@ -133,7 +138,7 @@ api.interceptors.response.use(
       retryCount <= MAX_RETRIES;
 
     if (shouldRetry) {
-      originalConfig._retryCount = retryCount;
+      metadata.retryCount = retryCount;
       const delayMs = calculateExponentialDelay(retryCount - 1);
 
       console.log(`[API] ⏳ Retry ${retryCount}/${MAX_RETRIES} para ${originalConfig.url} en ${Math.round(delayMs)}ms`);

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, Plus, Edit, Trash2, X, FileText, Brain, Calendar, User, Clock, Stethoscope, Mail, Phone, Upload, CheckCircle, AlertTriangle, XCircle, UserCheck } from 'lucide-react';
 import api, { setTenantId } from '../api/axios';
@@ -105,13 +105,19 @@ export default function PatientsView() {
   const [appointmentFilter, setAppointmentFilter] = useState<'all' | 'with' | 'without'>('all');
   const [treatmentFilter, setTreatmentFilter] = useState<string>('all');
 
-  // Fetch clinics + patients on mount
+  // Debounce ref for semantic search
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Fetch clinics + patients on mount; clean up debounce timeout on unmount
   useEffect(() => {
     api.get<ClinicOption[]>('/admin/chat/tenants').then((res) => {
       setClinics(res.data);
       if (res.data.length >= 1) setSelectedTenantId(res.data[0].id);
     });
     fetchResources();
+    return () => {
+      if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+    };
   }, []);
 
   // Refetch patients when tenant changes
@@ -189,8 +195,6 @@ export default function PatientsView() {
   };
 
   const handleSemanticSearch = async (value: string) => {
-    setSemanticSearchTerm(value);
-
     if (!value.trim()) {
       setSemanticResults([]);
       setFilteredPatients(patients);
@@ -216,6 +220,14 @@ export default function PatientsView() {
     } finally {
       setSemanticLoading(false);
     }
+  };
+
+  const handleSemanticSearchDebounced = (value: string) => {
+    setSemanticSearchTerm(value);
+    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+    searchTimeoutRef.current = setTimeout(() => {
+      handleSemanticSearch(value);
+    }, 300);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -501,7 +513,7 @@ export default function PatientsView() {
             type="text"
             placeholder={t('patients.search_semantic')}
             value={semanticSearchTerm}
-            onChange={(e) => handleSemanticSearch(e.target.value)}
+            onChange={(e) => handleSemanticSearchDebounced(e.target.value)}
             className="w-full pl-10 pr-4 py-2 text-sm border border-purple-500/30 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white/[0.04] text-white placeholder-white/20"
           />
           {semanticLoading && (
