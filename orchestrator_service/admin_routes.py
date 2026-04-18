@@ -1736,18 +1736,42 @@ async def mark_chat_session_read(
     if tenant_id not in allowed_ids:
         raise HTTPException(status_code=403, detail="No tienes acceso a esta clínica.")
 
-    # Persistir estado de lectura (Spec 14 / Fase 3)
-    await db.execute(
-        """
-        UPDATE chat_conversations 
-        SET last_read_at = NOW(), updated_at = NOW()
-        WHERE tenant_id = $1 AND channel = 'whatsapp' AND external_user_id = $2
-    """,
-        tenant_id,
-        phone,
-    )
+    # Normalize phone: strip spaces, dashes, parentheses → digits-only core
+    # Then try exact match first, fallback to digits-only match
+    cleaned = phone.strip()
 
-    return {"status": "ok", "phone": phone, "tenant_id": tenant_id}
+    try:
+        # 1. Try exact match (covers E.164 phones like +5492995940813)
+        result = await db.execute(
+            """
+            UPDATE chat_conversations
+            SET last_read_at = NOW(), updated_at = NOW()
+            WHERE tenant_id = $1 AND channel = 'whatsapp' AND external_user_id = $2
+        """,
+            tenant_id,
+            cleaned,
+        )
+
+        # If exact match updated 0 rows, try digits-only match
+        # Handles cases like "299 589-1350" matching "+5492995891350"
+        if result and "UPDATE 0" in str(result):
+            digits_only = re.sub(r"[^\d]", "", cleaned)
+            if digits_only:
+                await db.execute(
+                    """
+                    UPDATE chat_conversations
+                    SET last_read_at = NOW(), updated_at = NOW()
+                    WHERE tenant_id = $1 AND channel = 'whatsapp'
+                      AND REGEXP_REPLACE(external_user_id, '[^0-9]', '', 'g') LIKE '%' || $2
+                """,
+                    tenant_id,
+                    digits_only,
+                )
+    except Exception as e:
+        logger.warning(f"mark_chat_session_read error for phone={cleaned}: {e}")
+        # Don't fail the request — marking as read is best-effort
+
+    return {"status": "ok", "phone": cleaned, "tenant_id": tenant_id}
 
 
 @router.post(
@@ -6933,8 +6957,19 @@ async def check_collisions(
     tenant_id: int = Depends(get_resolved_tenant_id),
 ):
     """Verificar colisiones de horario. Aislado por tenant_id (Regla de Oro)."""
-    target_datetime = datetime.fromisoformat(datetime_str)
+    try:
+        target_datetime = datetime.fromisoformat(datetime_str)
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="Formato de fecha inválido. Usá ISO 8601: YYYY-MM-DDTHH:MM")
     target_end = target_datetime + timedelta(minutes=duration_minutes)
+
+    exclude_uuid = None
+    if exclude_appointment_id:
+        try:
+            exclude_uuid = uuid.UUID(exclude_appointment_id)
+        except (ValueError, AttributeError):
+            raise HTTPException(status_code=400, detail="ID de turno a excluir inválido")
+
     overlap_query = """
         SELECT id, appointment_datetime, duration_minutes, status, source
         FROM appointments
@@ -6944,9 +6979,9 @@ async def check_collisions(
         AND appointment_datetime + (duration_minutes || ' minutes')::interval > $3
     """
     params = [tenant_id, professional_id, target_datetime, target_end]
-    if exclude_appointment_id:
+    if exclude_uuid:
         overlap_query += " AND id != $5"
-        params.append(exclude_appointment_id)
+        params.append(exclude_uuid)
     overlapping = await db.pool.fetch(overlap_query, *params)
     gcal_blocks = await db.pool.fetch(
         """
@@ -6989,7 +7024,7 @@ async def create_appointment_manual(
             collision_response = await check_collisions(
                 apt.professional_id,
                 apt.appointment_datetime.isoformat(),
-                apt.duration_minutes or 60,  # Use duration_minutes from model
+                apt.duration_minutes if apt.duration_minutes is not None else 30,
                 None,
                 tenant_id=tenant_id,
             )
@@ -7048,7 +7083,7 @@ async def create_appointment_manual(
             raise HTTPException(status_code=400, detail="Paciente no encontrado")
         # 4. Crear turno (source='manual')
         new_id = str(uuid.uuid4())
-        duration = apt.duration_minutes or 30
+        duration = apt.duration_minutes if apt.duration_minutes is not None else 30
         await db.pool.execute(
             """
             INSERT INTO appointments (
@@ -7428,13 +7463,22 @@ async def update_appointment(
 ):
     """Actualizar datos de un turno (fecha, profesional, tipo, notas)."""
     try:
+        # Parse UUID safely (matches GET single-appointment pattern)
+        try:
+            apt_uuid = uuid.UUID(id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="ID de turno inválido")
+
+        # Resolve duration: keep explicit value, fallback to 30 only when None
+        resolved_duration = apt.duration_minutes if apt.duration_minutes is not None else 30
+
         # 1. Obtener datos actuales (solo del tenant del usuario)
         old_apt = await db.pool.fetchrow(
             """
             SELECT id, professional_id, appointment_datetime, google_calendar_event_id, status
             FROM appointments WHERE id = $1 AND tenant_id = $2
         """,
-            id,
+            apt_uuid,
             tenant_id,
         )
 
@@ -7449,8 +7493,8 @@ async def update_appointment(
             collision_response = await check_collisions(
                 apt.professional_id,
                 apt.appointment_datetime.isoformat(),
-                apt.duration_minutes or 30,
-                id,  # Excluir este mismo turno de la búsqueda de colisiones
+                resolved_duration,
+                str(apt_uuid),  # Excluir este mismo turno de la búsqueda de colisiones
                 tenant_id=tenant_id,
             )
             if collision_response["has_collisions"]:
@@ -7460,7 +7504,7 @@ async def update_appointment(
                 )
 
         # 3. Actualizar en Base de Datos (solo si pertenece al tenant)
-        await db.pool.execute(
+        result = await db.pool.execute(
             """
             UPDATE appointments SET
                 patient_id = $1,
@@ -7477,10 +7521,14 @@ async def update_appointment(
             apt.appointment_datetime,
             apt.appointment_type,
             apt.notes,
-            apt.duration_minutes or 30,
-            id,
+            resolved_duration,
+            apt_uuid,
             tenant_id,
         )
+        # Safety check: if no rows were updated, the WHERE clause didn't match
+        if result and result.split()[-1] == '0':
+            logger.warning(f"update_appointment: UPDATE matched 0 rows for id={apt_uuid} tenant={tenant_id}")
+            raise HTTPException(status_code=404, detail="Turno no encontrado o no pertenece al tenant")
         # Audit log (TIER 3 cap.3 Phase B)
         try:
             from services.audit_log import log_appointment_mutation as _audit
@@ -7494,7 +7542,7 @@ async def update_appointment(
             await _audit(
                 pool=db.pool,
                 tenant_id=tenant_id,
-                appointment_id=id,
+                appointment_id=str(apt_uuid),
                 action="rescheduled" if _date_changed else "status_changed",
                 actor_type="staff_user",
                 actor_id=getattr(user_data, "user_id", None),
@@ -7536,7 +7584,7 @@ async def update_appointment(
                 JOIN professionals prof ON a.professional_id = prof.id
                 WHERE a.id = $1
             """,
-                id,
+                apt_uuid,
             )
 
             if appointment_data:
@@ -7560,7 +7608,7 @@ async def update_appointment(
                             summary=summary,
                             start_time=apt.appointment_datetime.isoformat(),
                             end_time=(
-                                apt.appointment_datetime + timedelta(minutes=60)
+                                apt.appointment_datetime + timedelta(minutes=resolved_duration)
                             ).isoformat(),
                             description=f"Paciente: {appointment_data['first_name']}\nTel: {appointment_data['patient_phone']}\nNotas: {apt.notes or ''}",
                         )
@@ -7568,7 +7616,7 @@ async def update_appointment(
                             await db.pool.execute(
                                 "UPDATE appointments SET google_calendar_event_id = $1 WHERE id = $2",
                                 new_gcal["id"],
-                                id,
+                                apt_uuid,
                             )
 
                 # Si no cambió el profesional pero sí la fecha u otros datos, intentar actualizar el evento existente
@@ -7588,7 +7636,7 @@ async def update_appointment(
                         summary=summary,
                         start_time=apt.appointment_datetime.isoformat(),
                         end_time=(
-                            apt.appointment_datetime + timedelta(minutes=60)
+                            apt.appointment_datetime + timedelta(minutes=resolved_duration)
                         ).isoformat(),
                         description=f"Paciente: {appointment_data['first_name']}\nTel: {appointment_data['patient_phone']}\nNotas: {apt.notes or ''}",
                     )
@@ -7596,7 +7644,7 @@ async def update_appointment(
                         await db.pool.execute(
                             "UPDATE appointments SET google_calendar_event_id = $1 WHERE id = $2",
                             new_gcal["id"],
-                            id,
+                            apt_uuid,
                         )
 
         except Exception as ge:
@@ -7614,7 +7662,7 @@ async def update_appointment(
             JOIN professionals prof ON a.professional_id = prof.id
             WHERE a.id = $1
         """,
-            id,
+            apt_uuid,
         )
         if full_data:
             full_data_dict = dict(full_data)
@@ -7629,10 +7677,10 @@ async def update_appointment(
                 )
             except Exception as emit_err:
                 logger.warning(
-                    f"Socket emit failed for appointment update {id}: {emit_err}"
+                    f"Socket emit failed for appointment update {apt_uuid}: {emit_err}"
                 )
 
-        return {"status": "updated", "id": id}
+        return {"status": "updated", "id": str(apt_uuid)}
     except HTTPException:
         raise
     except Exception as e:

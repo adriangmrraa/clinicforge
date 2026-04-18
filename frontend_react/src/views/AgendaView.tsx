@@ -1040,7 +1040,7 @@ export default function AgendaView() {
                     // Kill sticky on list view after data loads
                     if (dateInfo.view.type.startsWith('list')) {
                       requestAnimationFrame(() => {
-                        const table = dateInfo.view.el.querySelector('.fc-list-sticky');
+                        const table = dateInfo.view.el?.querySelector('.fc-list-sticky');
                         if (table) table.classList.remove('fc-list-sticky');
                       });
                     }
@@ -1076,7 +1076,7 @@ export default function AgendaView() {
                     // Kill sticky on list view date headers — FullCalendar sets inline
                     // position:sticky via JS which causes headers to stack on scroll
                     if (viewInfo.view.type.startsWith('list')) {
-                      const table = viewInfo.el.querySelector('.fc-list-sticky');
+                      const table = viewInfo.el?.querySelector('.fc-list-sticky');
                       if (table) table.classList.remove('fc-list-sticky');
                     }
                   }}
