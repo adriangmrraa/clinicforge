@@ -12,7 +12,7 @@ double-sends when the job fires multiple times in the same hour.
 
 import asyncio
 import logging
-from datetime import datetime, date
+from datetime import datetime
 
 try:
     from zoneinfo import ZoneInfo
@@ -118,8 +118,12 @@ async def _send_tenant_summary(tenant_id: int):
     """Build and send the morning summary message for one tenant."""
     from db import db
     from services.telegram_notifier import send_proactive_message
+    from services.tz_resolver import get_tenant_tz
 
-    today = date.today()
+    tenant_tz = await get_tenant_tz(tenant_id)
+
+    # Use the tenant's local date, not the server's UTC date.
+    today = datetime.now(tenant_tz).date()
     today_str = today.strftime("%d/%m/%Y")
     day_names = {
         0: "Lunes", 1: "Martes", 2: "Miércoles",
@@ -198,20 +202,23 @@ async def _send_tenant_summary(tenant_id: int):
             lines.append(f"▸ {unconfirmed} sin confirmar ⚠️")
 
         if appointments:
+            def _apt_time(apt_dt) -> str:
+                """Format appointment datetime in tenant local time."""
+                if not apt_dt:
+                    return "?"
+                if apt_dt.tzinfo is None:
+                    from datetime import timezone as _tz
+                    apt_dt = apt_dt.replace(tzinfo=_tz.utc)
+                return apt_dt.astimezone(tenant_tz).strftime("%H:%M")
+
             first = appointments[0]
-            first_time = (
-                first["appointment_datetime"].strftime("%H:%M")
-                if first["appointment_datetime"] else "?"
-            )
+            first_time = _apt_time(first["appointment_datetime"])
             first_name = f"{first.get('first_name', '?')} {first.get('last_name', '') or ''}".strip()
             lines.append(f"▸ Primer turno: <b>{first_time}</b> — {first_name}")
 
             if len(appointments) > 1:
                 last = appointments[-1]
-                last_time = (
-                    last["appointment_datetime"].strftime("%H:%M")
-                    if last["appointment_datetime"] else "?"
-                )
+                last_time = _apt_time(last["appointment_datetime"])
                 last_name = f"{last.get('first_name', '?')} {last.get('last_name', '') or ''}".strip()
                 lines.append(f"▸ Último turno: <b>{last_time}</b> — {last_name}")
 

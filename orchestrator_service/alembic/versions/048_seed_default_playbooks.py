@@ -361,7 +361,7 @@ def upgrade():
             INSERT INTO automation_steps
             (playbook_id, step_order, step_label, action_type, delay_minutes, message_text)
             VALUES (:pid, 0, 'Segundo aviso', 'send_text', 0,
-                    'Hola {{nombre_paciente}}, seguimos a la espera de tu confirmación para el turno de mañana. De no recibir respuesta en la próxima hora, lamentablemente deberemos liberar el espacio para otro paciente. ¡Gracias!')
+                    'Hola {{nombre_paciente}}, te recordamos que tu turno de mañana sigue reservado a tu nombre. Confirmanos si podés asistir asi te esperamos como corresponde 😊')
         """), {"pid": pb_id})
 
 

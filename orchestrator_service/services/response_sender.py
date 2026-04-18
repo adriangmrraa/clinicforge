@@ -37,6 +37,32 @@ class ResponseSender:
         messages_text = _strip_internal_markers(messages_text)
 
         pool = get_pool()
+
+        # ── Sandbox suppression guard ──────────────────────────────────────────
+        # If the tenant has config.sandbox = true, log the message but do NOT
+        # send it to any real channel (WhatsApp, YCloud, Chatwoot, Meta).
+        # This prevents sandbox/QA tenants from ever reaching real patients.
+        try:
+            import json as _json
+            _tenant_config_raw = await pool.fetchval(
+                "SELECT config FROM tenants WHERE id = $1", tenant_id
+            )
+            if _tenant_config_raw is not None:
+                _tenant_config = (
+                    _tenant_config_raw
+                    if isinstance(_tenant_config_raw, dict)
+                    else _json.loads(_tenant_config_raw)
+                )
+                if _tenant_config.get("sandbox"):
+                    logger.info(
+                        "[SANDBOX] tenant_id=%s — message suppressed (not sent to %s/%s). "
+                        "Content: %s",
+                        tenant_id, provider, channel, messages_text[:200],
+                    )
+                    return
+        except Exception as _sandbox_err:
+            logger.warning("[SANDBOX] Could not check sandbox flag: %s", _sandbox_err)
+        # ── End sandbox suppression guard ─────────────────────────────────────
         delay = await BufferManager.get_config(pool, provider, channel, tenant_id, "bubble_delay", 3)
         typing_enabled = await BufferManager.get_config(pool, provider, channel, tenant_id, "typing_indicator", True)
 

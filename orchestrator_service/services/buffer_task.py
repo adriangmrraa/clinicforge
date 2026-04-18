@@ -2024,7 +2024,7 @@ Si el paciente pide un turno para {min_apt_date} o después, continuar normalmen
                             media_context += (
                                 "COMPROBANTE DE PAGO RECIBIDO pero este contacto NO tiene turnos ni planes con saldo pendiente. "
                                 "Es probable que esté pagando POR UN FAMILIAR (hijo/a, padre/madre, etc.). "
-                                "ACCIÓN: Preguntá amablemente: '¡Recibí tu comprobante! ¿Este pago es para vos o para un familiar? "
+                                "ACCIÓN: Preguntá amablemente: 'Recibí tu comprobante! ¿Este pago es para vos o para un familiar? "
                                 "Si es para otra persona, decime su nombre así lo asocio a su ficha.' "
                                 "Cuando te diga el nombre, usá la tool 'link_payment_to_patient' con el nombre del paciente, "
                                 "la descripción del comprobante (del CONTEXTO VISUAL), el monto detectado, y la relación (hijo, madre, etc.). "
@@ -2040,7 +2040,7 @@ Si el paciente pide un turno para {min_apt_date} o después, continuar normalmen
                     media_context += (
                         "COMPROBANTE DE PAGO RECIBIDO de un contacto que NO es paciente registrado. "
                         "Es MUY probable que esté pagando POR UN FAMILIAR que sí es paciente (hijo/a pagando por padre/madre, etc.). "
-                        "ACCIÓN: Preguntá amablemente: '¡Recibí tu comprobante! ¿Para qué paciente es este pago? "
+                        "ACCIÓN: Preguntá amablemente: 'Recibí tu comprobante! ¿Para qué paciente es este pago? "
                         "Decime el nombre completo así lo asocio a su ficha.' "
                         "Cuando te diga el nombre, usá la tool 'link_payment_to_patient' con el nombre del paciente, "
                         "la descripción del comprobante (del CONTEXTO VISUAL), el monto detectado, y la relación. "

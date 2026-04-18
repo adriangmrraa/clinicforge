@@ -1,0 +1,5 @@
+# STUB — Este archivo debe ser regenerado con datos reales del tenant antes de usar como baseline.
+# Ejecutar: pytest tests/generate_golden_prompts_social.py -s
+# El archivo golden es el output real de build_system_prompt(channel="facebook", is_social_channel=True)
+# No usar este stub para regresiones hasta que haya sido regenerado.
+STUB:NEEDS_GENERATION

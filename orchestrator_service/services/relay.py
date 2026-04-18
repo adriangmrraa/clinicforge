@@ -85,8 +85,11 @@ async def enqueue_buffer_and_schedule_task(tenant_id: int, conversation_id: str,
     
     # 3. Ensure Consumer Task is running
     if not await r.get(lock_key):
-        await r.setex(lock_key, 60 + final_ttl, "1") # Lock ensures only one task runs per batch
-        asyncio.create_task(_delayed_process_buffer_task(tenant_id, conversation_id, external_user_id, buffer_key, timer_key, lock_key))
+        await r.setex(lock_key, 60, "1")  # Lock TTL: 60s — reduces dead zone after restart
+        asyncio.create_task(
+            _delayed_process_buffer_task(tenant_id, conversation_id, external_user_id, buffer_key, timer_key, lock_key),
+            name=f"buffer-task-{tenant_id}-{external_user_id}",
+        )
 
 
 async def _delayed_process_buffer_task(

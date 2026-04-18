@@ -88,6 +88,9 @@ CLINIC_HOURS_END = os.getenv("CLINIC_HOURS_END", "19:00")
 # clinics in DST-observing countries (CL, BR, MX, ES, US…) work correctly.
 ARG_TZ = timezone(timedelta(hours=-3))
 
+# R6 — TTL consistency: single source of truth for slot lock duration
+SLOT_LOCK_TTL_SECONDS = 120
+
 
 def get_active_tz():
     """Return the timezone bound to the current request via ContextVar.
@@ -1307,14 +1310,14 @@ async def pick_representative_slots(
     professional_name: Optional[str] = None,
     treatment_name: Optional[str] = None,
     duration: int = 30,
-    max_options: int = 3,
+    max_options: int = 2,
     search_range_days: int = 1,
     time_preference: Optional[str] = None,
     specific_time: Optional[str] = None,
 ) -> tuple:
     """
     Selecciona hasta max_options slots representativos.
-    - search_range_days=1: fecha específica → 2 del mismo día + 1 comodín de otro día.
+    - search_range_days=1: fecha específica → todos los slots del mismo día (hasta max_options).
     - search_range_days>1: rango (ej: "mitad de julio") → distribuir 1 opción por día
       en diferentes días del rango para dar variedad al paciente.
     Si no hay suficientes en el rango, expande la búsqueda hacia adelante.
@@ -1367,15 +1370,13 @@ async def pick_representative_slots(
         _prefetched_blocks = None
 
     if search_range_days <= 1:
-        # ── MODO FECHA ESPECÍFICA: 2 del día + 1 comodín ──
+        # ── MODO FECHA ESPECÍFICA: slots del mismo día (hasta max_options) ──
         day_name_en = DAYS_EN[target_date.weekday()]
         tenant_day_cfg = tenant_wh.get(day_name_en, {})
         sede_text = _resolve_sede_text(tenant_day_cfg, tenant_row)
         date_display = f"{DIAS_ES.get(day_name_en, '')} {target_date.strftime('%d/%m')}"
 
-        slots_from_today = min(max_options - 1, len(slots)) if len(slots) > 0 else 0
-        if slots_from_today < 1:
-            slots_from_today = min(max_options, len(slots))
+        slots_from_today = min(max_options, len(slots))
         picked = _pick_from_slots(slots, slots_from_today, specific_time=specific_time)
         for time_str in picked:
             hour = int(time_str.split(":")[0])
@@ -1586,7 +1587,7 @@ async def check_availability(
     treatment_name: (Opcional) Tratamiento definido (ej. limpieza profunda, consulta).
     time_preference: Si el paciente pide horarios de un momento del día: 'mañana' (horario AM) o 'tarde'. Si no especifica no pasar.
     specific_time: (Opcional) Hora EXACTA que el paciente pidió, en formato HH:MM (ej: "16:30", "10:00"). Usar SOLO cuando el paciente pide una hora concreta ("a las 16:30", "quiero a las 10"). Si el paciente solo dice "mañana" o "tarde" sin hora exacta, NO pasar este campo — usar time_preference. Si se pasa, la tool verifica si ESE slot exacto está libre y lo incluye primero en las opciones.
-    La tool devuelve 2-3 opciones concretas de horario con sede. Presentá las opciones al paciente tal cual las recibís.
+    La tool devuelve 2 opciones concretas de horario con sede. Presentá las opciones al paciente tal cual las recibís.
     """
     try:
         tid = current_tenant_id.get()
@@ -2514,7 +2515,7 @@ async def check_availability(
                 f"{_p['first_name']} {_p.get('last_name') or ''}".strip()
             )
 
-        # Seleccionar 2-3 opciones representativas (con multi-día si hace falta)
+        # Seleccionar 2 opciones representativas (con multi-día si hace falta)
         options, total_today = await pick_representative_slots(
             available_slots,
             target_date,
@@ -2524,7 +2525,7 @@ async def check_availability(
             professional_name=_effective_prof_name,
             treatment_name=treatment_name,
             duration=duration,
-            max_options=3,
+            max_options=2,
             search_range_days=search_range,
             time_preference=time_preference,
             specific_time=specific_time,
@@ -2645,6 +2646,25 @@ async def check_availability(
             except Exception as state_err:
                 logger.warning(
                     f"[conversation_state] set_state in check_availability failed (non-blocking): {state_err}"
+                )
+
+            # R1 — Store offered slots in Redis so book_appointment can validate the token
+            try:
+                from services.relay import get_redis as _get_redis_offer
+
+                _r_offer = _get_redis_offer()
+                if _r_offer and phone and options:
+                    _slot_offer_key = f"slot_offer:{tenant_id}:{phone}"
+                    _slot_offer_payload = json.dumps(
+                        [{"date": opt.get("date"), "time": opt.get("time")} for opt in options]
+                    )
+                    await _r_offer.set(_slot_offer_key, _slot_offer_payload, ex=300)
+                    logger.info(
+                        f"📋 slot_offer stored: key={_slot_offer_key} slots={len(options)} TTL=300s"
+                    )
+            except Exception as _offer_err:
+                logger.warning(
+                    f"check_availability: slot_offer Redis store failed (non-blocking): {_offer_err}"
                 )
 
             # Lead context accumulator: persist treatment/professional/date for leads
@@ -3012,6 +3032,52 @@ async def book_appointment(
         # No agendar en el pasado
         if apt_datetime < get_now_arg():
             return "❌ No se pueden agendar turnos para horarios que ya pasaron. Indicá un día y hora futuros. Formato esperado: date_time como 'día 17:00' (ej. miércoles 17:00)."
+
+        # R1 — Validate that the requested slot was actually offered by check_availability
+        try:
+            from services.relay import get_redis as _get_redis_validate
+
+            _r_validate = _get_redis_validate()
+            if _r_validate:
+                _offer_key = f"slot_offer:{tenant_id}:{chat_phone}"
+                _offer_raw = await _r_validate.get(_offer_key)
+                if _offer_raw is None:
+                    # Offer expired — tell agent to re-run check_availability
+                    logger.warning(
+                        f"📅 BOOK R1: slot_offer key missing for {chat_phone} — availability expired"
+                    )
+                    return (
+                        "AVAILABILITY_EXPIRED: La disponibilidad ofrecida expiró. "
+                        "Llamá check_availability nuevamente para buscar opciones actualizadas."
+                    )
+                else:
+                    _offered_slots = json.loads(
+                        _offer_raw.decode() if isinstance(_offer_raw, bytes) else _offer_raw
+                    )
+                    _req_date = apt_datetime.strftime("%Y-%m-%d")
+                    _req_time = apt_datetime.strftime("%H:%M")
+                    _slot_match = any(
+                        s.get("date") == _req_date and s.get("time") == _req_time
+                        for s in _offered_slots
+                    )
+                    if not _slot_match:
+                        logger.warning(
+                            f"📅 BOOK R1: SLOT_NOT_OFFERED — requested {_req_date} {_req_time} not in offered slots: {_offered_slots}"
+                        )
+                        _opts_text = ", ".join(
+                            f"{s.get('date')} {s.get('time')}" for s in _offered_slots
+                        )
+                        return (
+                            f"SLOT_NOT_OFFERED: El horario {_req_date} {_req_time} no fue ofrecido al paciente. "
+                            f"Las opciones válidas son: {_opts_text}. "
+                            "Pedile al paciente que elija una de esas opciones."
+                        )
+            # If Redis is down, log and skip validation (fail-open to avoid blocking bookings)
+        except Exception as _validate_err:
+            logger.warning(
+                f"📅 BOOK R1: slot_offer validation failed (fail-open): {_validate_err}"
+            )
+
         # No agendar en feriados
         from services.holiday_service import is_holiday as check_is_holiday
 
@@ -3575,12 +3641,52 @@ async def book_appointment(
             else None
         )
 
-        # Wrap patient + appointment in a single transaction (atomicity)
-        # The UNIQUE index idx_appointments_no_double_booking will reject duplicates
-        # at the database level even if soft-locks fail
+        # R2 — Atomic conflict check + insert within a single transaction using advisory lock
+        # pg_try_advisory_xact_lock acquires a transaction-level advisory lock scoped to
+        # (tenant_id, professional_id, epoch_minute). This prevents concurrent inserts for
+        # the same slot even if the UNIQUE constraint index is not yet visible to concurrent txns.
+        _epoch_minute = int(apt_datetime.timestamp() // 60)
+        _lock_key1 = tenant_id % (2**31)  # fit in int4
+        _lock_key2 = (target_prof["id"] * 1_000_000 + _epoch_minute) % (2**31)
         try:
             async with db.pool.acquire() as _conn:
                 async with _conn.transaction():
+                    # Acquire advisory lock — releases automatically at transaction end
+                    _locked = await _conn.fetchval(
+                        "SELECT pg_try_advisory_xact_lock($1, $2)",
+                        _lock_key1,
+                        _lock_key2,
+                    )
+                    if not _locked:
+                        logger.warning(
+                            f"🔒 R2 advisory lock contention: prof={target_prof['id']} datetime={apt_datetime}"
+                        )
+                        return (
+                            "❌ Ese horario fue tomado por otro paciente justo ahora. "
+                            "Te ofrezco otra opción cercana, ¿te parece?"
+                        )
+                    # Atomic conflict re-check inside the lock (SELECT FOR UPDATE on existing rows)
+                    _atomic_conflict = await _conn.fetchval(
+                        """
+                        SELECT EXISTS(
+                            SELECT 1 FROM appointments
+                            WHERE tenant_id = $1 AND professional_id = $2 AND status IN ('scheduled', 'confirmed')
+                            AND appointment_datetime = $3
+                            FOR UPDATE SKIP LOCKED
+                        )
+                        """,
+                        tenant_id,
+                        target_prof["id"],
+                        apt_datetime,
+                    )
+                    if _atomic_conflict:
+                        logger.warning(
+                            f"🔒 R2 atomic conflict: prof={target_prof['id']} datetime={apt_datetime}"
+                        )
+                        return (
+                            "❌ Ese horario fue tomado por otro paciente justo ahora. "
+                            "Te ofrezco otra opción cercana, ¿te parece?"
+                        )
                     await _conn.execute(
                         """
                         INSERT INTO appointments (id, tenant_id, patient_id, professional_id, appointment_datetime, duration_minutes, appointment_type, status, source, sena_expires_at, created_at)
@@ -4319,30 +4425,30 @@ async def triage_urgency(symptoms: str):
             logger.error(f"Error persisting triage: {e}")
 
     responses = {
-        "emergency": "🚨 **URGENCIA MÉDICA DETECTADA** - Protocolo de emergencia activado.\n\n"
-        "🔴 **ACCIONES INMEDIATAS:**\n"
+        "emergency": "🚨 URGENCIA MEDICA DETECTADA - Protocolo de emergencia activado.\n\n"
+        "🔴 ACCIONES INMEDIATAS:\n"
         "1. Si es fuera de horario de atención: Dirigite a la guardia odontológica más cercana\n"
         "2. Si es en horario de atención: Vení HOY MISMO al consultorio\n"
         "3. Si tenés dificultad para respirar o tragar: Llamá al 107 (emergencias médicas)\n\n"
-        "📞 **Contacto directo:** Llamá al consultorio para prioridad inmediata",
-        "high": "⚠️ **URGENCIA ALTA** - Requiere atención pronta\n\n"
-        "🟡 **Recomendaciones:**\n"
+        "📞 Contacto directo: Llamá al consultorio para prioridad inmediata",
+        "high": "⚠️ URGENCIA ALTA - Requiere atención pronta\n\n"
+        "🟡 Recomendaciones:\n"
         "1. Agendá un turno para las próximas 48-72 horas\n"
         "2. Si empeora, contactá al consultorio para reprogramar a prioridad\n"
         "3. Seguí las indicaciones de primeros auxilios según síntomas\n\n"
-        "📅 **Acción:** Buscá disponibilidad para esta semana",
-        "normal": "✅ **CONSULTA PROGRAMADA**\n\n"
-        "🟢 **Recomendaciones:**\n"
+        "📅 Acción: Buscá disponibilidad para esta semana",
+        "normal": "✅ CONSULTA PROGRAMADA\n\n"
+        "🟢 Recomendaciones:\n"
         "1. Podés agendar en la fecha que te venga bien\n"
         "2. Mantené buena higiene oral mientras tanto\n"
         "3. Si aparecen síntomas de urgencia, volvé a contactarnos\n\n"
-        "📅 **Acción:** Buscá disponibilidad según tu conveniencia",
-        "low": "ℹ️ **REVISIÓN DE RUTINA**\n\n"
-        "🔵 **Recomendaciones:**\n"
+        "📅 Acción: Buscá disponibilidad según tu conveniencia",
+        "low": "ℹ️ REVISION DE RUTINA\n\n"
+        "🔵 Recomendaciones:\n"
         "1. Podés agendar una revisión cuando lo necesites\n"
         "2. Mantené tus controles periódicos\n"
         "3. No presenta signos de urgencia dental\n\n"
-        "📅 **Acción:** Buscá disponibilidad para control preventivo",
+        "📅 Acción: Buscá disponibilidad para control preventivo",
     }
 
     return responses.get(urgency_level, responses["normal"])
@@ -4771,7 +4877,7 @@ async def reschedule_appointment(original_date: str, new_date_time: str):
                 f"[conversation_state] reset in reschedule_appointment failed (non-blocking): {state_err}"
             )
 
-        return f"¡Listo! Tu turno ha sido reprogramado para el {new_date_time}. Te esperamos."
+        return f"Listo! Tu turno ha sido reprogramado para el {new_date_time}. Te esperamos."
 
     except Exception as e:
         logger.error(f"Error en reschedule_appointment: {e}")
@@ -4979,9 +5085,7 @@ async def list_services(category: str = None, patient_term: str = ""):
 async def get_service_details(code: str):
     """
     Obtiene detalles e imágenes de UN tratamiento específico.
-    USAR SIEMPRE que:
-    - El paciente pide info sobre un servicio concreto ("cómo funciona X", "tenés fotos de X", "contame sobre X")
-    - El paciente menciona una necesidad que mapea con un servicio conocido.
+    Usar SOLO cuando el paciente pregunta explícitamente por precio o duración de un servicio. NUNCA usar para describir o recomendar tratamientos.
     NO USAR para listados generales (usar 'list_services' en su lugar).
     El sistema enviará las imágenes automáticamente al paciente vía WhatsApp/Chatwoot si las hay.
     code: El código único del tratamiento devuelto por list_services (ej: 'cleaning', 'implant').
@@ -5056,9 +5160,9 @@ async def get_service_details(code: str):
             if assigned_profs:
                 res += f"\nProfesionales: {', '.join(assigned_profs)}\n"
         else:
-            res = f"Detalles de {display_name}:\nDescripción: {row['description']}\nDuración: {row['default_duration_minutes']} min\nComplejidad: {row['complexity_level']}\nPrecio: Se coordina en la consulta de evaluación\n"
+            res = f"{display_name} es uno de los servicios que ofrecemos.\nDuración aproximada: {row['default_duration_minutes']} min\nPara más información sobre este tratamiento, lo ideal es coordinar una consulta de evaluación. ¿Te agendo un turno?"
             if assigned_profs:
-                res += f"Profesionales que realizan este tratamiento: {', '.join(assigned_profs)}\n"
+                res += f"\nProfesionales: {', '.join(assigned_profs)}\n"
 
         if images:
             # Add an obscure markdown format for the parser
@@ -5725,7 +5829,7 @@ async def confirm_slot(
             r = get_redis()
             if r:
                 # Atomic SET NX — prevents race condition / double-booking
-                result = await r.set(lock_key, phone, ex=120, nx=True)
+                result = await r.set(lock_key, phone, ex=SLOT_LOCK_TTL_SECONDS, nx=True)
                 if not result:
                     # Key already exists — check who holds it
                     existing = await r.get(lock_key)
@@ -5739,13 +5843,14 @@ async def confirm_slot(
                             return f"⚠️ El turno de las {time_str} del {date_str} acaba de ser reservado por otro paciente. Consultemos otra opción."
                         else:
                             return f"✅ Ya tenés reservado el turno para {date_str} a las {time_str}. Continuemos con tus datos."
-                logger.info(f"🔒 Soft lock created: {lock_key} for {phone} (120s)")
+                logger.info(f"🔒 Soft lock created: {lock_key} for {phone} ({SLOT_LOCK_TTL_SECONDS}s)")
         except Exception as e:
             logger.warning(f"Redis soft lock failed (non-blocking): {e}")
-            # No bloquear el flujo si Redis falla
+            # R3 — Redis-down fallback: log warning, let book_appointment's DB conflict check handle it
+            logger.warning("confirm_slot: Redis unavailable — DB conflict check in book_appointment will act as fallback (lock_source: db_fallback)")
 
         dia_name = DIAS_ES.get(DAYS_EN[apt_datetime.weekday()], "")
-        response = f"✅ Reservé temporalmente el turno de las {time_str} del {dia_name} {apt_datetime.strftime('%d/%m')} por 2 minutos. Necesito tus datos para confirmar la reserva."
+        response = f"✅ Reservé temporalmente el turno de las {time_str} del {dia_name} {apt_datetime.strftime('%d/%m')} por {SLOT_LOCK_TTL_SECONDS // 60} minutos. Necesito tus datos para confirmar la reserva."
 
         # Bug #4 Phase B: Set conversation state to SLOT_LOCKED
         try:
@@ -6434,13 +6539,13 @@ async def verify_payment_receipt(
                 )
                 remaining = float(plan_row["approved_total"]) - new_total_paid_plan
                 if remaining <= 0:
-                    balance_msg = "¡El plan está completamente saldado! 🎉"
+                    balance_msg = "El plan está completamente saldado! 🎉"
                 else:
                     remaining_str = f"${int(remaining):,}".replace(",", ".")
                     balance_msg = f"Saldo pendiente del plan: {remaining_str}."
                 return (
                     f"✅ Pago de ${amount_str_plan} verificado correctamente para tu plan de tratamiento "
-                    f"'{plan_row['plan_name']}'. {balance_msg} ¡Gracias!"
+                    f"'{plan_row['plan_name']}'. {balance_msg} Gracias!"
                 )
 
             apt_dt = apt["appointment_datetime"]
@@ -7721,6 +7826,7 @@ def _format_faqs(faqs: list) -> str:
         "DEBÉS usar la respuesta oficial de abajo. NO inventes tu propia versión. "
         "Podés parafrasear ligeramente para que suene natural, pero el CONTENIDO debe ser el de la FAQ. "
         "Si la pregunta NO coincide con ninguna FAQ, respondé normalmente con tus conocimientos.",
+        "⚠️ GUARDRAIL DE CONTENIDO CLÍNICO: La información de FAQs solo se usa para responder preguntas operativas (horarios, precios, ubicación, formas de pago). NUNCA reproduzcas descripciones clínicas de tratamientos desde las FAQs. Si una FAQ describe un tratamiento y el paciente pregunta cómo funciona o qué es, derivá a consulta.",
         "",
     ]
     for faq in faqs[:20]:  # Limitar a 20 FAQs por prompt
@@ -8515,10 +8621,15 @@ REGLA SUPREMA DE HERRAMIENTAS (TOOLS) — LEER 3 VECES:
 REGLA ANTI-CONFIRMACIÓN-FALSA (CRÍTICO):
 • PROHIBIDO decir "tu turno está confirmado" o "nos vemos" sin haber ejecutado 'book_appointment' y recibido ✅.
 • PROHIBIDO decir "turno confirmado" después de 'check_availability' — esa tool solo MUESTRA opciones, no agenda.
-• PROHIBIDO decir "turno confirmado" después de 'confirm_slot' — esa tool solo RESERVA temporalmente por 30s.
+• PROHIBIDO decir "turno confirmado" después de 'confirm_slot' — esa tool solo RESERVA temporalmente por 2 minutos (120s).
 • La ÚNICA forma de confirmar un turno es ejecutar 'book_appointment' y recibir ✅ en la respuesta.
 • Si la respuesta de 'book_appointment' contiene [INTERNAL_SEÑA_DATA], DEBÉS presentar los datos bancarios OBLIGATORIAMENTE.
 • Si decís "confirmado" sin haber recibido ✅ de book_appointment, estás MINTIENDO al paciente.
+
+REGLA DE ÚLTIMO RECURSO (CATCH-ALL):
+• Si por cualquier razón no podés procesar, entender o continuar el mensaje del paciente → llamá derivhumano con el motivo exacto.
+• Esto incluye: errores de tools, respuestas inesperadas, loops, confusión, mensajes ambiguos que no podés resolver.
+• NUNCA te quedés en silencio ni respondas con un error técnico al paciente directamente.
 
 """
     # ANTI-MARKDOWN block: only inject for WhatsApp; social channels render markdown natively
@@ -8736,7 +8847,7 @@ REGLAS:
 - Si el paciente pregunta si es obligatorio → "No, no es obligatoria. Tu turno ya está agendado."
 - Si el paciente dice que no puede pagar ahora → "Perfecto, no hay problema. Tu turno ya está reservado."
 - NUNCA bloquees un nuevo turno por seña pendiente de otro turno. La seña no es bloqueante.
-- Pasar IGUAL al MOMENTO 2 (cómo nos conociste + anamnesis). No bloquear el flujo por la seña.
+- Pasar IGUAL a los BLOQUES siguientes (email, cómo nos conociste, anamnesis, cierre). No bloquear el flujo por la seña.
 
 PAGO DE TURNOS EXISTENTES (cuando el paciente quiere pagar un turno YA agendado):
 list_my_appointments ahora muestra: seña:ESTADO(MONTO)|consulta_prof:VALOR
@@ -8782,7 +8893,7 @@ Cuando el paciente envíe imagen/PDF de comprobante → usá 'verify_payment_rec
 Presentá el resultado TAL CUAL (✅ o ⚠️). Si ⚠️ tras 2 intentos → derivhumano (involucra dinero real).
 NUNCA inventes datos bancarios. Solo compartí los configurados arriba.
 
-SI NO HAY PRECIO CONFIGURADO: No pedir seña. Agendar normalmente y pasar directo a MOMENTO 2."""
+SI NO HAY PRECIO CONFIGURADO: No pedir seña. Agendar normalmente y pasar directo a los BLOQUES siguientes."""
 
     # Payment & financing section (migration 035) — se inyecta después del
     # bloque bancario. Devuelve "" para tenants sin configuración (backward compat).
@@ -8942,7 +9053,7 @@ TRIGGER: "me duele", "dolor", "urgencia", "urgente", "emergencia", "inflamación
 PROTOCOLO:
   M1 — Contener: "Entiendo, vamos a ayudarte a resolverlo lo antes posible." (SIN precio, SIN dirección, SIN turnos)
   M2 — Orientar: UNA sola pregunta: "Hace cuánto tiempo estás con dolor y si notás inflamación?"
-  M3 — Resolver: Llamar triage_urgency + check_availability. Mostrar 2-3 opciones de turno.
+  M3 — Resolver: Llamar triage_urgency + check_availability. Mostrar 2 opciones de turno.
 PROHIBIDO: emojis de calendario en M1, precio antes de M3, dirección antes de confirmar turno, frases del tipo "X turnos disponibles" o contar slots.
 Máximo 2 mensajes antes de ofrecer turno.
 
@@ -9066,26 +9177,22 @@ REGLA: Si el trigger está en "NO ESCALAR" Y el paciente NO pidió explícitamen
 
 PRIORIDAD DE RESPUESTA — REGLA DE PRIMERA MENCIÓN:
 
-PASO 0 — PRIMERA MENCIÓN DE TRATAMIENTO (tiene prioridad sobre FAQs):
-Antes de usar una FAQ sobre un tratamiento, revisá el historial de ESTA conversación.
-Si el paciente menciona un tratamiento por PRIMERA VEZ con interés amplio ("quiero saber sobre X", "hacen X?", "me interesa X", "qué es X?", "contame sobre X") y VOS TODAVÍA NO le presentaste ese tratamiento con get_service_details → DEBÉS llamar get_service_details PRIMERO.
-La ai_response_template es la presentación oficial de la doctora para ese tratamiento. Tiene prioridad en la PRIMERA mención.
-Excepción: si el paciente SOLO pregunta precio o duración en su primera mención ("cuánto cuesta X?", "cuánto dura X?") sin interés amplio → usá la FAQ si existe.
+REGLA SOBRE TRATAMIENTOS (CRÍTICA E INQUEBRANTABLE):
+NUNCA describas, expliques ni recomiendes tratamientos clínicos. Si el paciente pregunta qué es un tratamiento o cómo funciona, respondé: "Para darte la mejor orientación, lo ideal es que la Dra. te evalúe en consulta. ¿Te agendo un turno?".
+Solo usá get_service_details cuando el paciente pregunte EXPLÍCITAMENTE por precio o duración de un servicio nombrado.
+Si el tratamiento tiene ai_response_template configurada → usala ÚNICAMENTE cuando exista. Nunca improvises una descripción.
 
 PASO 1 — FAQs PARA TODO LO DEMÁS (VOZ OFICIAL):
-• Si ya presentaste el tratamiento con get_service_details en esta conversación → las preguntas de seguimiento (precio, duración, cuidados, dolor) se responden con FAQs.
 • Temas generales (ubicación, horarios, obras sociales, formas de pago) → SIEMPRE usar FAQ.
 • PROHIBIDO parafrasear la FAQ — usala TAL CUAL (podés ajustar saludo).
 • PROHIBIDO mezclar FAQ con datos de get_service_details en la misma respuesta.
-• Si NO hay FAQ que cubra el tema → ahí sí podés llamar get_service_details.
 • Sin tool y sin FAQ = no describir tratamientos.
 
 RESUMEN RÁPIDO:
-1. Paciente menciona tratamiento por primera vez con interés amplio → get_service_details (ai_response_template)
-2. Paciente ya recibió presentación del tratamiento → FAQ para seguimiento
+1. Paciente pregunta qué es / cómo funciona un tratamiento → derivar a consulta, NO describir
+2. Paciente pregunta precio o duración de un servicio concreto → get_service_details (si tiene ai_response_template, usarla; si no, duración genérica + invitar a consulta)
 3. Pregunta general (no tratamiento) → FAQ siempre
-4. Solo precio/duración en primera mención → FAQ si existe
-5. Tratamiento sin ai_response_template → FAQ si existe, sino get_service_details con descripción
+4. Sin FAQ y sin ai_response_template → invitar a consulta, NUNCA inventar descripción clínica
 
 {faqs_section}
 
@@ -9207,7 +9314,7 @@ PASO 4: CONSULTAR DISPONIBILIDAD — Llamá 'check_availability' UNA vez con tre
 
   REGLA: date_query SIEMPRE debe incluir el mes. Si el paciente lo mencionó antes, AGREGARLO.
   REGLA INQUEBRANTABLE: interpreted_date SIEMPRE fecha FUTURA respecto a {current_time}. NUNCA una fecha pasada.
-  La tool devuelve 2-3 opciones con emojis numerados (1️⃣ 2️⃣ 3️⃣) y la sede al final. Presentá el resultado TAL CUAL lo recibís, sin reformatear. NO agregues la dirección ni sede entre las opciones — ya viene al final del mensaje de la tool.
+  La tool devuelve 2 opciones con emojis numerados (1️⃣ 2️⃣) y la sede al final. Presentá el resultado TAL CUAL lo recibís, sin reformatear. NO agregues la dirección ni sede entre las opciones — ya viene al final del mensaje de la tool.
   REGLA INQUEBRANTABLE DE SELECCIÓN: Cuando el paciente elige una opción (dice "1", "2", "3", "la primera", "la segunda", etc.), \
   usá EXACTAMENTE la fecha y hora de ESA opción tal como la mostraste. NO cambies la fecha ni la hora. \
   Si el paciente dijo "2" y la opción 2 era "Martes 14/04 — 10:00 hs", pasá interpreted_date="2026-04-14" y date_time="10:00". \
@@ -9218,7 +9325,7 @@ PASO 4: CONSULTAR DISPONIBILIDAD — Llamá 'check_availability' UNA vez con tre
     - Si está ocupado → decir honestamente que está ocupado y ofrecer el más cercano disponible.
   Si NINGUNA opción funciona → ejecutá check_availability para el siguiente día hábil INMEDIATAMENTE. No preguntes "querés que busque otro día?", HACELO.
 PASO 4b: RESERVA TEMPORAL — Cuando el paciente confirma un horario, llamá 'confirm_slot(date_time, professional_name, treatment_name)'.
-  Esto reserva el turno por 30 segundos mientras recopilás datos. Si falla (otro paciente lo reservó), volver a PASO 4.
+  Esto reserva el turno por 2 minutos (120s) mientras recopilás datos. Si falla (otro paciente lo reservó), volver a PASO 4.
 PASO 5: DATOS DE ADMISIÓN — ⚠️ VERIFICAR ANTES DE PEDIR DATOS:
   PREGUNTA INTERNA (no decir al paciente): "El CONTEXTO DEL PACIENTE tiene 'Nombre registrado' o 'DNI registrado'?"
   → SI tiene nombre y/o DNI → SALTEAR ESTE PASO COMPLETO. Ir directo a PASO 6. Ya tenés los datos, NO los pidas de nuevo.
@@ -9252,39 +9359,60 @@ REGLA ANTI-RE-BOOKING (INQUEBRANTABLE):
   NO re-agendés. NO re-verifiqués disponibilidad. El turno YA ESTÁ HECHO.
   Solo volver a agendar si el paciente EXPLÍCITAMENTE dice "quiero OTRO turno" o "quiero CAMBIAR el turno".
 
-SECUENCIA POST-BOOKING (DOS MOMENTOS — ORDEN ESTRICTO):
+=== SECUENCIA POST-BOOKING (6 BLOQUES) ===
+Después de que book_appointment confirme el turno, respondé con EXACTAMENTE estos 6 bloques separados por doble salto de línea. Cada bloque es un párrafo independiente que se envía como burbuja separada en WhatsApp.
 
-═══ MOMENTO 1: INMEDIATO DESPUÉS DE AGENDAR (2 burbujas) ═══
+BLOQUE 1 — CONFIRMACIÓN (celebratorio)
+Tono: cálido, seguro, profesional. Celebrá la decisión del paciente.
+Contenido: datos del turno (fecha, hora, profesional, sede/dirección, link de Maps).
+Ejemplo: "Genial, ya quedó agendada tu evaluación con la Dra. Laura para el [día] [fecha] a las [hora] en [sede]. [link maps]"
 
-PASO 7b: CONFIRMACIÓN + SEÑA
-  BURBUJA 1: Confirmación del turno (datos de book_appointment tal cual).
-  BURBUJA 2: Datos de seña con monto y datos bancarios (si hay bank_holder_name configurado).
-  (Ver sección DATOS BANCARIOS PARA COBRO DE SEÑA más abajo.)
+BLOQUE 2 — EMAIL (solo si falta)
+Si el paciente no tiene email registrado, pedirlo de forma natural.
+"Si querés, pasame tu email así te mando la confirmación por escrito."
+Si ya tiene email → OMITIR este bloque.
 
-═══ MOMENTO 2: SIEMPRE SE ENVÍA (no depende del pago) ═══
-  Después de la burbuja de seña (o después de la confirmación si no hay seña), SIEMPRE enviar:
+BLOQUE 3 — SEÑA (valor primero)
+Tono: informativo, sin presión. Posicionar la seña como beneficio, no como obligación.
+"Para asegurar tu lugar, podés adelantar una seña de $[monto] por transferencia:
+[Alias] / [CBU] / [Titular]
+No es obligatorio — tu turno ya está confirmado."
+Si NO hay [INTERNAL_SEÑA_DATA] en la respuesta de book_appointment → OMITIR este bloque.
 
-PASO 7c: "CÓMO NOS CONOCISTE?"
-  Solo para pacientes NUEVOS (sin "Nombre registrado" en contexto).
-  BURBUJA 3: "Por cierto, cómo nos conociste? Redes, recomendación, Google...?"
-  Si responde → guardá como acquisition_source. Si no responde → no insistir.
+BLOQUE 4 — PREPARACIÓN (anamnesis)
+Tono: cuidadoso, útil. Posicionar como ahorro de tiempo.
+  • Para sí mismo: "Para que tu consulta sea más productiva, podés completar tu ficha médica desde acá: [INTERNAL_ANAMNESIS_URL]
+Así la Dra. ya tiene tus datos cuando llegués."
+  • Para menor: "Te paso el link para completar la ficha médica de [nombre hijo/a]: [INTERNAL_ANAMNESIS_URL]"
+  • Para adulto tercero: "Te paso el link de ficha médica para que se lo reenvíes a [nombre]: [INTERNAL_ANAMNESIS_URL]"
+IMPORTANTE: Enviá la URL LIMPIA, sin formato markdown. NO uses [texto](url). Solo la URL directa.
+Solo enviar si el paciente NO tiene anamnesis completada. Si ya la completó → OMITIR este bloque.
 
-PASO 8: FICHA MÉDICA
-  BURBUJA 4: Link de anamnesis de [INTERNAL_ANAMNESIS_URL].
-  • Para sí mismo: "Para ahorrar tiempo en tu consulta, completá tu ficha médica desde acá:" + URL
-  • Para menor: "Te paso el link para completar la ficha médica de [nombre hijo/a]:" + URL
-  • Para adulto tercero: "Te paso el link de ficha médica para que se lo reenvíes a [nombre]:" + URL
-  IMPORTANTE: Enviá la URL LIMPIA, sin formato markdown. NO uses [texto](url). Solo la URL directa.
+BLOQUE 5 — ORIGEN (solo pacientes nuevos)
+Tono: casual, conversacional. NO parecer encuesta.
+"Por cierto, cómo nos conociste? Redes, recomendación, Google...?"
+Solo para pacientes SIN nombre registrado en contexto. Si no responde, no insistir.
+Si el paciente tiene nombre registrado → OMITIR este bloque.
 
-IMPORTANTE: El MOMENTO 2 NO depende del pago de la seña. Se envía SIEMPRE después de agendar.
-Si el paciente paga después, la verificación del comprobante actualiza el turno a CONFIRMADO. Pero la anamnesis y el "cómo nos conociste" se envían independientemente del estado de pago.
+BLOQUE 6 — CIERRE
+Tono: cálido, disponible.
+"Cualquier duda que tengas antes de la consulta, escribime por acá. Te esperamos!"
+
+=== REGLAS DE LOS BLOQUES ===
+- Cada bloque DEBE estar separado por doble salto de línea
+- Si un bloque no aplica (email ya existe, anamnesis ya completada, paciente conocido, sin datos bancarios), OMITIRLO
+- NUNCA fusionar dos bloques en un mismo párrafo
+- Vocabulario: usar "evaluación" o "diagnóstico" para primeras consultas, NUNCA "control" o "revisión"
+- Tono general: cercano, seguro, profesional. Sos una recepcionista de confianza, NO una máquina administrativa.
+- Los bloques NO dependen del pago de la seña. Se envían SIEMPRE después de agendar.
+- Si el paciente paga después, la verificación del comprobante actualiza el turno a CONFIRMADO. Pero los demás bloques se envían independientemente del estado de pago.
 
 PASO 8b: Si dan un email (en cualquier momento):
   • Para SÍ MISMO → save_patient_email(email=...) sin patient_phone.
   • Para TERCERO/MENOR → save_patient_email(email=..., patient_phone=...) con el [INTERNAL_PATIENT_PHONE].
 
 PASO 9: INSTRUCCIONES PRE-TURNO — Solo para pacientes NUEVOS (primera visita):
-  Incluir al final de la burbuja de anamnesis: "Recordá traer DNI y llegar 10 min antes."
+  Incluir al final del BLOQUE 4 (anamnesis): "Recordá traer DNI y llegar 10 min antes."
 PASO 10: SEGUIMIENTO — Si el paciente no responde en 2-3 mensajes durante el flujo de agendamiento:
   No enviar más mensajes automáticos. Cuando vuelva a escribir, retomar donde quedó sin repetir pasos ya completados.
 
@@ -9534,6 +9662,7 @@ async def recover_orphaned_buffers():
         if not r:
             return
         cursor = 0
+        requeued = 0
         cleaned = 0
         while True:
             cursor, keys = await r.scan(cursor, match="buffer:*", count=100)
@@ -9543,16 +9672,84 @@ async def recover_orphaned_buffers():
                 lock_key = f"active_task:{parts}"
                 if not await r.exists(timer_key) and not await r.exists(lock_key):
                     msg_count = await r.llen(buf_key)
-                    await r.delete(buf_key)
-                    if msg_count > 0:
-                        logger.warning(
-                            f"♻️ Cleaned orphaned buffer {buf_key} ({msg_count} msgs)"
-                        )
+                    if msg_count == 0:
+                        # Empty buffer — safe to delete
+                        await r.delete(buf_key)
                         cleaned += 1
+                        continue
+
+                    # Non-empty orphaned buffer — try to re-process
+                    # Key format: buffer:{tenant_id}:{external_user_id}
+                    try:
+                        tenant_id_str, external_user_id = parts.split(":", 1)
+                        orphan_tenant_id = int(tenant_id_str)
+                    except (ValueError, TypeError):
+                        logger.warning(
+                            f"recover_orphaned_buffers: unrecognised key format '{buf_key}', deleting"
+                        )
+                        await r.delete(buf_key)
+                        cleaned += 1
+                        continue
+
+                    # Look up the most recent active conversation for this user
+                    conv_row = None
+                    if db.pool:
+                        try:
+                            conv_row = await db.pool.fetchrow(
+                                """
+                                SELECT id FROM chat_conversations
+                                WHERE tenant_id = $1 AND external_user_id = $2
+                                ORDER BY updated_at DESC LIMIT 1
+                                """,
+                                orphan_tenant_id,
+                                external_user_id,
+                            )
+                        except Exception as db_err:
+                            logger.warning(
+                                f"recover_orphaned_buffers: DB lookup failed for {buf_key}: {db_err}"
+                            )
+
+                    if not conv_row:
+                        logger.warning(
+                            f"♻️ Orphaned buffer {buf_key} ({msg_count} msgs): "
+                            "no conversation found in DB — deleting"
+                        )
+                        await r.delete(buf_key)
+                        cleaned += 1
+                        continue
+
+                    orphan_conv_id = conv_row["id"]
+
+                    # Drain messages and dispatch for processing
+                    try:
+                        messages = await r.lrange(buf_key, 0, -1)
+                        await r.delete(buf_key)
+                        from services.buffer_task import process_buffer_task
+
+                        asyncio.create_task(
+                            process_buffer_task(
+                                orphan_tenant_id, orphan_conv_id, external_user_id, messages
+                            ),
+                            name=f"buffer-task-{orphan_tenant_id}-{external_user_id}",
+                        )
+                        logger.info(
+                            f"♻️ Re-queued orphaned buffer {buf_key} "
+                            f"({msg_count} msgs) → conv {orphan_conv_id}"
+                        )
+                        requeued += 1
+                    except Exception as proc_err:
+                        logger.warning(
+                            f"♻️ Re-process failed for {buf_key}: {proc_err} — deleting buffer"
+                        )
+                        await r.delete(buf_key)
+                        cleaned += 1
+
             if cursor == 0:
                 break
+        if requeued:
+            logger.info(f"♻️ Re-queued {requeued} orphaned buffer(s) at startup")
         if cleaned:
-            logger.info(f"♻️ Cleaned {cleaned} orphaned buffer(s) at startup")
+            logger.info(f"♻️ Cleaned {cleaned} empty/unrecoverable buffer(s) at startup")
     except Exception as e:
         logger.warning(f"recover_orphaned_buffers error: {e}")
 
@@ -9684,6 +9881,16 @@ async def lifespan(app: FastAPI):
         logger.warning(f"🤖 Telegram bots start skipped: {e}")
 
     yield
+
+    # Graceful shutdown — wait for active buffer tasks to complete
+    drain_timeout = int(os.getenv("SHUTDOWN_DRAIN_TIMEOUT", "15"))
+    logger.info(f"Shutting down — waiting up to {drain_timeout}s for active tasks...")
+    pending = [t for t in asyncio.all_tasks() if t.get_name().startswith("buffer-task-")]
+    if pending:
+        logger.info(f"Waiting for {len(pending)} active buffer tasks...")
+        done, still_pending = await asyncio.wait(pending, timeout=drain_timeout)
+        if still_pending:
+            logger.warning(f"{len(still_pending)} buffer tasks did not complete in time")
 
     # Shutdown
     logger.info("🔴 Cerrando orquestador dental...")
@@ -10226,38 +10433,50 @@ async def chat_endpoint(
     req.final_message = sanitize_input(req.final_message)
 
     # 0. DEDUP) Si el mensaje viene con provider_message_id (ej. WhatsApp/YCloud), procesar solo una vez
+    # R7 — When provider_message_id is missing, generate composite key via SHA-256
     provider = (req.provider or "ycloud").strip() or "ycloud"
     provider_message_id = (req.provider_message_id or req.event_id or "").strip()
-    if provider_message_id:
-        try:
-            payload_snapshot = {
-                "from_number": req.final_phone,
-                "to_number": getattr(req, "to_number", None),
-                "text": req.final_message[:500] if req.final_message else None,
-            }
-            inserted = await db.try_insert_inbound(
-                provider=provider,
-                provider_message_id=provider_message_id,
-                event_id=(req.event_id or provider_message_id),
-                from_number=req.final_phone,
-                payload=payload_snapshot,
-                correlation_id=correlation_id,
-            )
-            if not inserted:
-                logger.warning(
-                    f"📩 CHAT duplicate ignored provider_message_id={provider_message_id!r} from={req.final_phone}"
-                )
-                return {
-                    "status": "duplicate",
-                    "send": False,
-                    "text": "",
-                    "output": "",
-                    "correlation_id": correlation_id,
-                }
-        except Exception as dedup_err:
+    if not provider_message_id:
+        # Build composite dedup key: SHA-256(tenant_id + phone + content_prefix + minute_bucket)
+        _minute_bucket = str(int(time.time() // 60))
+        _composite_raw = (
+            f"{tenant_id}:{req.final_phone}:{(req.final_message or '')[:200]}:{_minute_bucket}"
+        )
+        provider_message_id = "composite:" + hashlib.sha256(
+            _composite_raw.encode("utf-8")
+        ).hexdigest()[:32]
+        logger.debug(
+            f"📩 CHAT dedup: no provider_message_id — using composite key {provider_message_id!r}"
+        )
+    try:
+        payload_snapshot = {
+            "from_number": req.final_phone,
+            "to_number": getattr(req, "to_number", None),
+            "text": req.final_message[:500] if req.final_message else None,
+        }
+        inserted = await db.try_insert_inbound(
+            provider=provider,
+            provider_message_id=provider_message_id,
+            event_id=(req.event_id or provider_message_id),
+            from_number=req.final_phone,
+            payload=payload_snapshot,
+            correlation_id=correlation_id,
+        )
+        if not inserted:
             logger.warning(
-                f"📩 CHAT dedup check failed (processing anyway): {dedup_err}"
+                f"📩 CHAT duplicate ignored provider_message_id={provider_message_id!r} from={req.final_phone}"
             )
+            return {
+                "status": "duplicate",
+                "send": False,
+                "text": "",
+                "output": "",
+                "correlation_id": correlation_id,
+            }
+    except Exception as dedup_err:
+        logger.warning(
+            f"📩 CHAT dedup check failed (processing anyway): {dedup_err}"
+        )
 
     # 0. A) Ensure patient reference exists
     try:
@@ -10511,9 +10730,11 @@ async def chat_endpoint(
             logger.error(f"⚠️ Error syncing WhatsApp preview: {sync_err}")
 
         # Spec 23: Vision Trigger (YCloud/Others)
+        # R5 — Also trigger vision processing for PDF documents (type == "document")
         if message_id and attachments:
             for att in attachments:
-                if att.get("type") == "image":
+                att_type = att.get("type")
+                if att_type in ("image", "document"):
                     try:
                         background_tasks.add_task(
                             process_vision_task,
@@ -10522,10 +10743,10 @@ async def chat_endpoint(
                             tenant_id=tenant_id,
                         )
                         logger.info(
-                            f"👁️ Vision task queued for image (YCloud/API): {att['url']}"
+                            f"👁️ Vision task queued for {att_type} (YCloud/API): {att['url']}"
                         )
                     except Exception as e:
-                        logger.error(f"❌ Error queuing vision task: {e}")
+                        logger.error(f"❌ Error queuing vision task ({att_type}): {e}")
 
         # --- Notificar al Frontend (Real-time) ---
         await sio.emit(

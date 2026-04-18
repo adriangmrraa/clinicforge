@@ -831,8 +831,8 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
                     if _apt_row:
                         _apt_dt = _apt_row["appointment_datetime"]
                         _confirm_msg = (
-                            f"✅ ¡Perfecto! Tu turno del {_apt_dt.strftime('%d/%m')} a las "
-                            f"{_apt_dt.strftime('%H:%M')} hs quedó confirmado. ¡Te esperamos! 🦷"
+                            f"✅ Perfecto! Tu turno del {_apt_dt.strftime('%d/%m')} a las "
+                            f"{_apt_dt.strftime('%H:%M')} hs quedó confirmado. Te esperamos! 🦷"
                         )
                     else:
                         _confirm_msg = "✅ ¡Gracias por confirmar! Te esperamos en tu próximo turno. 🦷"

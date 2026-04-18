@@ -1,0 +1,5 @@
+# STUB — Telegram usa un engine separado (telegram_bot.py) que NO pasa por build_system_prompt.
+# El golden file de Telegram captura el system prompt del TelegramBot, no del agente WhatsApp/Social.
+# Para generar: ejecutar pytest tests/generate_golden_prompts_social.py -s
+# Ver tests/test_telegram_multimedia.py para el patrón de tests de Telegram.
+STUB:NEEDS_GENERATION

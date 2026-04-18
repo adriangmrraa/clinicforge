@@ -12,15 +12,27 @@ import asyncio
 import json
 import logging
 from datetime import datetime
+from datetime import timezone
 from typing import Any, Dict, Optional
+
+try:
+    from zoneinfo import ZoneInfo  # noqa: F401 — used by callers via TzInfoLike
+except ImportError:
+    from backports.zoneinfo import ZoneInfo  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
 DIAS_SEMANA = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
 
 
-def _format_datetime(raw: Any) -> str:
-    """Parse ISO datetime into a human-readable format like 'Mié 20/04 18:30'."""
+def _format_datetime(raw: Any, tz=None) -> str:
+    """Parse ISO datetime into a human-readable format like 'Mié 20/04 18:30'.
+
+    Args:
+        raw: A datetime object or ISO 8601 string.
+        tz:  Optional tzinfo to convert to before formatting. When provided,
+             naive datetimes are first assumed to be UTC.
+    """
     if not raw or raw == "?":
         return "?"
     try:
@@ -28,6 +40,10 @@ def _format_datetime(raw: Any) -> str:
             dt = raw
         else:
             dt = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+        if tz is not None:
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            dt = dt.astimezone(tz)
         dia = DIAS_SEMANA[dt.weekday()]
         return f"{dia} {dt.strftime('%d/%m %H:%M')}"
     except Exception:
@@ -49,9 +65,9 @@ EVENT_FORMATS = {
     "NEW_APPOINTMENT": {
         "emoji": "📅",
         "title": "Nuevo turno",
-        "fields": lambda d: [
+        "fields": lambda d, tz=None: [
             f"Paciente: {_patient_name(d)}",
-            f"Fecha: {_format_datetime(d.get('appointment_datetime', d.get('date')))}",
+            f"Fecha: {_format_datetime(d.get('appointment_datetime', d.get('date')), tz=tz)}",
             f"Tipo: {d.get('appointment_type', d.get('treatment_type', 'Consulta'))}"
             if d.get("appointment_type") or d.get("treatment_type")
             else None,
@@ -69,20 +85,20 @@ EVENT_FORMATS = {
     "APPOINTMENT_UPDATED": {
         "emoji": "🔄",
         "title": "Turno actualizado",
-        "fields": lambda d: [
+        "fields": lambda d, tz=None: [
             f"Paciente: {_patient_name(d)}",
-            f"Fecha: {_format_datetime(d.get('appointment_datetime', d.get('date')))}",
+            f"Fecha: {_format_datetime(d.get('appointment_datetime', d.get('date')), tz=tz)}",
             f"Estado: {d.get('status', '?')}",
         ],
     },
     "APPOINTMENT_DELETED": {
         "emoji": "❌",
         "title": "Turno cancelado",
-        "fields": lambda d: [
+        "fields": lambda d, tz=None: [
             f"Paciente: {_patient_name(d)}"
             if isinstance(d, dict) and _patient_name(d) != "Paciente desconocido"
             else None,
-            f"Fecha: {_format_datetime(d.get('appointment_datetime'))}"
+            f"Fecha: {_format_datetime(d.get('appointment_datetime'), tz=tz)}"
             if isinstance(d, dict) and d.get("appointment_datetime")
             else None,
             f"Tipo: {d.get('appointment_type')}"
@@ -212,12 +228,18 @@ ALLOWED_EVENTS = {
 }
 
 
-def _format_event(event: str, data: Any) -> Optional[str]:
+def _format_event(event: str, data: Any, tz=None) -> Optional[str]:
     """Format a WebSocket event as a human-readable Telegram notification.
 
     Only ALLOWED_EVENTS are formatted. Everything else returns None (dropped).
     No generic fallback — if it's not explicitly whitelisted, it doesn't reach
     the doctor's phone.
+
+    Args:
+        event: WebSocket event name.
+        data:  Event payload (dict or str).
+        tz:    Optional tzinfo for datetime formatting. When provided, UTC
+               datetimes are converted to this timezone before display.
     """
     if event not in ALLOWED_EVENTS:
         return None
@@ -236,10 +258,17 @@ def _format_event(event: str, data: Any) -> Optional[str]:
 
     emoji = fmt["emoji"]
     title = fmt["title"]
+    raw_data = data_dict if isinstance(data, dict) else data
     try:
-        fields = [
-            f for f in fmt["fields"](data_dict if isinstance(data, dict) else data) if f
-        ]
+        import inspect
+        fn = fmt["fields"]
+        # Lambdas that format datetimes accept an optional tz kwarg;
+        # older/other lambdas only accept d — call accordingly.
+        sig = inspect.signature(fn)
+        if "tz" in sig.parameters:
+            fields = [f for f in fn(raw_data, tz=tz) if f]
+        else:
+            fields = [f for f in fn(raw_data) if f]
     except Exception:
         fields = [f"Datos: {json.dumps(data_dict, default=str)[:200]}"]
 
@@ -270,8 +299,16 @@ async def notify_telegram(event: str, data: Any, tenant_id: Optional[int] = None
         if tenant_id is None:
             return  # Can't send without tenant
 
+        # Resolve tenant timezone for datetime display
+        tenant_tz = None
+        try:
+            from services.tz_resolver import get_tenant_tz
+            tenant_tz = await get_tenant_tz(tenant_id)
+        except Exception:
+            pass  # Fallback: display times as-is (UTC)
+
         # Format the message
-        message = _format_event(event, data)
+        message = _format_event(event, data, tz=tenant_tz)
         if not message:
             return
 

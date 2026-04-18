@@ -7449,7 +7449,7 @@ async def update_appointment(
             collision_response = await check_collisions(
                 apt.professional_id,
                 apt.appointment_datetime.isoformat(),
-                60,
+                apt.duration_minutes or 30,
                 id,  # Excluir este mismo turno de la búsqueda de colisiones
                 tenant_id=tenant_id,
             )
@@ -7468,14 +7468,16 @@ async def update_appointment(
                 appointment_datetime = $3,
                 appointment_type = $4,
                 notes = $5,
+                duration_minutes = $6,
                 updated_at = NOW()
-            WHERE id = $6 AND tenant_id = $7
+            WHERE id = $7 AND tenant_id = $8
         """,
             apt.patient_id,
             apt.professional_id,
             apt.appointment_datetime,
             apt.appointment_type,
             apt.notes,
+            apt.duration_minutes or 30,
             id,
             tenant_id,
         )
@@ -7603,9 +7605,9 @@ async def update_appointment(
         # 5. Emitir evento Socket.IO
         full_data = await db.pool.fetchrow(
             """
-            SELECT a.id, a.patient_id, a.professional_id, a.appointment_datetime, 
-                   a.appointment_type, a.status, a.urgency_level,
-                   (p.first_name || ' ' || COALESCE(p.last_name, '')) as patient_name, 
+            SELECT a.id, a.patient_id, a.professional_id, a.appointment_datetime,
+                   a.appointment_type, a.status, a.urgency_level, a.duration_minutes,
+                   (p.first_name || ' ' || COALESCE(p.last_name, '')) as patient_name,
                    p.phone_number as patient_phone, prof.first_name as professional_name
             FROM appointments a
             JOIN patients p ON a.patient_id = p.id
