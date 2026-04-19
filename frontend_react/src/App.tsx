@@ -38,7 +38,7 @@ const PageLoader = () => (
 
 function RoleLandingRedirect() {
   const { user } = useAuth();
-  if (user?.role === 'ceo') return <DashboardView />;
+  if (user?.role === 'ceo' || user?.role === 'secretary') return <DashboardView />;
   return <Navigate to="/agenda" replace />;
 }
 
@@ -71,7 +71,7 @@ function App() {
                     <Route path="chats" element={<ChatsView />} />
                     <Route path="profesionales" element={<Navigate to="/aprobaciones" replace />} />
                     <Route path="analytics/professionals" element={
-                      <ProtectedRoute allowedRoles={['ceo']}>
+                      <ProtectedRoute allowedRoles={['ceo', 'secretary']}>
                         <ProfessionalAnalyticsView />
                       </ProtectedRoute>
                     } />

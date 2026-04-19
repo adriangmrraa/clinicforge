@@ -6868,7 +6868,8 @@ async def get_appointment_audit_log(
         SELECT al.id, al.action, al.actor_type, al.actor_id,
                al.before_values, al.after_values, al.source_channel, al.reason,
                al.created_at,
-               u.email AS actor_email
+               u.email AS actor_email,
+               u.role AS actor_role
         FROM appointment_audit_log al
         LEFT JOIN users u ON u.id::text = al.actor_id AND al.actor_type = 'staff_user'
         WHERE al.tenant_id = $1 AND al.appointment_id = $2
@@ -6885,6 +6886,63 @@ async def get_appointment_audit_log(
             "actor_type": r["actor_type"],
             "actor_id": r["actor_id"],
             "actor_display": r["actor_email"] or r["actor_id"],
+            "actor_role": r["actor_role"],
+            "before_values": r["before_values"],
+            "after_values": r["after_values"],
+            "source_channel": r["source_channel"],
+            "reason": r["reason"],
+            "created_at": r["created_at"].isoformat() if r["created_at"] else None,
+        }
+        for r in rows
+    ]
+
+
+@router.get(
+    "/activity-feed",
+    tags=["Auditoría"],
+    summary="Feed de actividad reciente del staff (turnos creados, editados, cancelados)",
+)
+async def get_activity_feed(
+    limit: int = 50,
+    user_data=Depends(verify_admin_token),
+    tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    """
+    Devuelve las últimas acciones del staff sobre turnos.
+    Visible para CEO y secretary para monitorear actividad.
+    """
+    if user_data.role not in ("ceo", "secretary"):
+        raise HTTPException(status_code=403, detail="Acceso restringido a CEO y secretaría.")
+
+    safe_limit = min(max(limit, 1), 200)
+    rows = await db.pool.fetch(
+        """
+        SELECT al.id, al.action, al.actor_type, al.actor_id,
+               al.appointment_id, al.before_values, al.after_values,
+               al.source_channel, al.reason, al.created_at,
+               u.email AS actor_email, u.role AS actor_role,
+               p.first_name || ' ' || COALESCE(p.last_name, '') AS patient_name
+        FROM appointment_audit_log al
+        LEFT JOIN users u ON u.id::text = al.actor_id AND al.actor_type = 'staff_user'
+        LEFT JOIN appointments a ON a.id = al.appointment_id AND a.tenant_id = al.tenant_id
+        LEFT JOIN patients p ON p.id = a.patient_id AND p.tenant_id = al.tenant_id
+        WHERE al.tenant_id = $1
+        ORDER BY al.created_at DESC
+        LIMIT $2
+        """,
+        tenant_id,
+        safe_limit,
+    )
+
+    return [
+        {
+            "id": r["id"],
+            "action": r["action"],
+            "actor_type": r["actor_type"],
+            "actor_email": r["actor_email"],
+            "actor_role": r["actor_role"],
+            "appointment_id": str(r["appointment_id"]) if r["appointment_id"] else None,
+            "patient_name": r["patient_name"],
             "before_values": r["before_values"],
             "after_values": r["after_values"],
             "source_channel": r["source_channel"],

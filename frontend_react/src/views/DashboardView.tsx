@@ -281,7 +281,7 @@ export default function DashboardView() {
             color="bg-rose-500"
             image={CARD_IMAGES.completion}
           />
-          {user?.role === 'ceo' && (
+          {(user?.role === 'ceo' || user?.role === 'secretary') && (
             <>
               <KPICard
                 title={t('dashboard.revenue_confirmed')}
@@ -384,8 +384,8 @@ export default function DashboardView() {
 
         </div>
 
-        {/* Spec 09: MARKETING PERFORMANCE — CEO only */}
-        {user?.role === 'ceo' && (
+        {/* Spec 09: MARKETING PERFORMANCE — CEO & Secretary */}
+        {(user?.role === 'ceo' || user?.role === 'secretary') && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <MarketingPerformanceCard timeRange={timeRange === 'all' ? 'lifetime' : timeRange === 'yearly' ? 'this_year' : timeRange === 'monthly' ? 'last_30d' : 'weekly'} />
         </div>

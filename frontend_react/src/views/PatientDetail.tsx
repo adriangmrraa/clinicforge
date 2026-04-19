@@ -436,7 +436,7 @@ export default function PatientDetail() {
                         : 'Sin visitas'}
                     </p>
                   </div>
-                  {(user as any)?.role === 'ceo' && (
+                  {((user as any)?.role === 'ceo' || (user as any)?.role === 'secretary') && (
                   <div className="bg-white/[0.03] border border-white/[0.06] rounded-xl p-3">
                     <p className="text-[10px] text-white/40 uppercase font-bold">Balance pendiente</p>
                     <p className={`text-sm font-bold ${(patient?.pending_balance || 0) > 0 ? 'text-amber-400' : 'text-emerald-400'}`}>
@@ -873,7 +873,7 @@ export default function PatientDetail() {
                 <span className="sm:hidden">Fichas</span>
               </div>
             </button>
-            {((user as any)?.role === 'ceo') && (
+            {((user as any)?.role === 'ceo' || (user as any)?.role === 'secretary') && (
               <button
                 onClick={() => setActiveTab('billing')}
                 className={`flex-shrink-0 py-3 px-3 lg:px-4 text-xs lg:text-sm font-medium transition-colors whitespace-nowrap ${activeTab === 'billing'
