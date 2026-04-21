@@ -7313,10 +7313,30 @@ async def _enviar_mensaje(args: Dict, tenant_id: int, user_role: str) -> str:
                 or "window" in error_body.lower()
                 or "session" in error_body.lower()
             ):
+                # ── Auto-fallback: try a recontacto template ──
+                logger.info(
+                    f"📩 NOVA 24h window closed for {phone} — attempting template fallback"
+                )
+                fallback_template = "seguimiento_rapido"
+                fallback_result = await _generic_send_template(
+                    tenant_id=tenant_id,
+                    phone=phone,
+                    template_name=fallback_template,
+                    patient_name=resolved_name or display,
+                    source="nova_auto_fallback",
+                )
+                if fallback_result.get("ok"):
+                    return (
+                        f"El mensaje libre no se pudo enviar a {display} (ventana de 24h cerrada), "
+                        f"pero se envió automáticamente una plantilla de recontacto ('{fallback_template}') por WhatsApp."
+                    )
+                # Template also failed — inform Nova with detail
+                template_err = fallback_result.get("error", "")
                 return (
-                    f"No se pudo enviar el mensaje a {display} por WhatsApp. "
-                    f"La ventana de 24 horas probablemente está cerrada (el paciente no escribió recientemente). "
-                    f"Para contactarlo fuera de la ventana, se necesita un template de mensaje aprobado por Meta."
+                    f"No se pudo enviar el mensaje a {display} por WhatsApp: la ventana de 24h está cerrada "
+                    f"(el paciente no escribió recientemente). "
+                    f"También intenté enviar la plantilla '{fallback_template}' automáticamente, pero falló: {template_err}. "
+                    f"Podés pedir que se use una plantilla específica con herramienta_avanzada→enviar_plantilla."
                 )
             return f"Error enviando mensaje a {display}: código {resp.status_code}"
 

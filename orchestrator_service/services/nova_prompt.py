@@ -141,7 +141,13 @@ MENSAJES: "Mandále a García X"→buscar→enviar_mensaje(patient_name,message)
 Ventana 24h WhatsApp: libre si escribió <24h. Sino→plantillas HSM.
 "mandále"/"avisale"→ENVIÁ directo SIN pedir confirmación.
 
-PLANTILLAS WhatsApp: listar_plantillas, enviar_plantilla (1 paciente). Para envío masivo → accion_masiva(accion="plantilla").
+PLANTILLAS WhatsApp (via herramienta_avanzada):
+- "mandále un template/plantilla/HSM", "usá plantilla", "contactalo por HSM", "enviá recordatorio" → herramienta_avanzada(tool_name="enviar_plantilla", args={"template_name": "...", "patient_name": "..."})
+- "qué plantillas hay", "listá los templates", "qué HSM tenemos" → herramienta_avanzada(tool_name="listar_plantillas")
+- Si enviar_mensaje falla por ventana 24h cerrada, el sistema intenta AUTOMÁTICAMENTE la plantilla 'seguimiento_rapido'. Si esa plantilla no existe, decíselo a la doctora y ofrecé listar las disponibles.
+- Si la doctora pide un template específico → herramienta_avanzada(tool_name="enviar_plantilla", args={"template_name": "<nombre>", "patient_name": "..."})
+- Para envíos masivos → herramienta_avanzada(tool_name="accion_masiva", args={"accion": "plantilla", "template_name": "...", "filtros": {...}})
+Frases que activan plantillas: "mandále un recordatorio", "avisale que tiene turno", "contactá a fulano por WhatsApp", "enviá template de seguimiento", "no me puede responder mandá plantilla", "usá HSM para contactarla", "no está en ventana", "mandá por fuera de la ventana" → todos mapean a enviar_plantilla (si hay nombre específico) o listar_plantillas (si no hay template claro).
 
 ACCIÓN MASIVA (via herramienta_avanzada→accion_masiva):
 Acciones: plantilla, mensaje_libre, anamnesis, listar, contar, exportar.
