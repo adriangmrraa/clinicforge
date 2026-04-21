@@ -5603,6 +5603,112 @@ async def save_patient_email(email: str, patient_phone: Optional[str] = None):
 
 
 @tool
+async def save_patient_birth_date(
+    birth_date: str, patient_phone: Optional[str] = None
+):
+    """
+    Guarda la fecha de nacimiento del paciente en su ficha.
+    Usar cuando el paciente informa su fecha de nacimiento durante la conversación.
+    birth_date: Fecha de nacimiento en cualquier formato (DD/MM/YYYY, DD-MM-YYYY, YYYY-MM-DD, '15 de marzo de 1990').
+    patient_phone: (Opcional) Teléfono del paciente si el turno fue para un TERCERO o MENOR. Si el turno fue para el interlocutor, no pasar este parámetro.
+    """
+    phone = current_customer_phone.get()
+    if not phone:
+        return "❌ No pude identificar tu número. Escribí desde el mismo WhatsApp con el que agendaste."
+    tenant_id = current_tenant_id.get()
+
+    # --- Parse birth_date flexibly ---
+    date_str = str(birth_date).strip() if birth_date else ""
+    if not date_str or date_str.lower() in ["none", "null", ""]:
+        return "❌ No es una fecha válida. Decime tu fecha de nacimiento (ej: 15/03/1990) y la guardo."
+
+    # Month name map for Spanish
+    _MES = {
+        "enero": 1, "febrero": 2, "marzo": 3, "abril": 4, "mayo": 5, "junio": 6,
+        "julio": 7, "agosto": 8, "septiembre": 9, "octubre": 10, "noviembre": 11, "diciembre": 12,
+    }
+
+    parsed_date = None
+    try:
+        import re as _re
+        # Try YYYY-MM-DD
+        if _re.match(r"^\d{4}-\d{2}-\d{2}$", date_str):
+            parsed_date = date.fromisoformat(date_str)
+        # Try DD/MM/YYYY or DD-MM-YYYY
+        elif _re.match(r"^\d{1,2}[/\-]\d{1,2}[/\-]\d{4}$", date_str):
+            parts = _re.split(r"[/\-]", date_str)
+            parsed_date = date(int(parts[2]), int(parts[1]), int(parts[0]))
+        # Try "15 de marzo de 1990" or "15 marzo 1990"
+        else:
+            m = _re.search(
+                r"(\d{1,2})\s+de\s+(\w+)\s+de\s+(\d{4})|(\d{1,2})\s+(\w+)\s+(\d{4})",
+                date_str.lower(),
+            )
+            if m:
+                if m.group(1):
+                    day, month_name, year = int(m.group(1)), m.group(2), int(m.group(3))
+                else:
+                    day, month_name, year = int(m.group(4)), m.group(5), int(m.group(6))
+                month = _MES.get(month_name)
+                if not month:
+                    return f"❌ No reconocí el mes '{month_name}'. Escribí la fecha así: 15/03/1990."
+                parsed_date = date(year, month, day)
+            else:
+                return "❌ No pude interpretar esa fecha. Usá el formato DD/MM/AAAA (ej: 15/03/1990)."
+    except (ValueError, TypeError) as parse_err:
+        logger.warning(f"save_patient_birth_date parse error: {parse_err} input={date_str!r}")
+        return "❌ Fecha inválida. Verificá el día, mes y año (ej: 15/03/1990)."
+
+    # Validate range
+    today = date.today()
+    if parsed_date >= today:
+        return "❌ La fecha de nacimiento no puede ser hoy ni en el futuro."
+    if parsed_date.year < 1900:
+        return "❌ Fecha de nacimiento fuera de rango. Verificá el año."
+
+    try:
+        target_phone = (
+            patient_phone.strip() if patient_phone and patient_phone.strip() else phone
+        )
+        phone_digits = normalize_phone_digits(target_phone)
+        row = await db.pool.fetchrow(
+            """
+            UPDATE patients
+            SET birth_date = $1, updated_at = NOW()
+            WHERE tenant_id = $2 AND REGEXP_REPLACE(phone_number, '[^0-9]', '', 'g') = $3
+            RETURNING id
+        """,
+            parsed_date,
+            tenant_id,
+            phone_digits,
+        )
+        # Fallback: minor with -M1 suffix — try exact match
+        if not row and patient_phone:
+            row = await db.pool.fetchrow(
+                """
+                UPDATE patients
+                SET birth_date = $1, updated_at = NOW()
+                WHERE tenant_id = $2 AND phone_number = $3
+                RETURNING id
+            """,
+                parsed_date,
+                tenant_id,
+                target_phone,
+            )
+        if not row:
+            return "No encontré la ficha del paciente. Asegurate de haber agendado primero."
+        logger.info(
+            f"✅ save_patient_birth_date OK target_phone={target_phone} tenant={tenant_id} patient_id={row['id']} birth_date={parsed_date}"
+        )
+        return f"✅ Guardé tu fecha de nacimiento ({parsed_date.strftime('%d/%m/%Y')}) correctamente."
+    except Exception as e:
+        logger.error(f"Error en save_patient_birth_date: {e}")
+        return (
+            "Hubo un problema al guardar la fecha de nacimiento. Probá de nuevo o avisá a la clínica."
+        )
+
+
+@tool
 async def set_no_followup(reason: str = "patient_request") -> str:
     """Mark this lead as not interested in follow-up. Call this when the patient
     clearly says they don't want to be contacted, aren't interested, or already
@@ -7650,6 +7756,7 @@ DENTAL_TOOLS = [
     triage_urgency,
     save_patient_anamnesis,
     save_patient_email,
+    save_patient_birth_date,
     set_no_followup,
     get_patient_anamnesis,
     get_patient_payment_status,
@@ -9372,6 +9479,13 @@ Si el paciente no tiene email registrado, pedirlo de forma natural.
 "Si querés, pasame tu email así te mando la confirmación por escrito."
 Si ya tiene email → OMITIR este bloque.
 
+BLOQUE 2b — FECHA DE NACIMIENTO (solo si falta):
+Condición: el paciente NO tiene fecha de nacimiento registrada Y ya le pediste el email (o ya lo tiene).
+Acción: En un MENSAJE SEPARADO (no junto con el email), pedí la fecha de nacimiento de forma natural.
+Ejemplo: "Para completar tu ficha, ¿me pasás tu fecha de nacimiento? 📅"
+Si ya tiene fecha de nacimiento → OMITIR este bloque completamente.
+REGLA: Nunca pidas email Y fecha de nacimiento en el MISMO mensaje. Un dato por turno.
+
 BLOQUE 3 — SEÑA (valor primero)
 Tono: informativo, sin presión. Posicionar la seña como beneficio, no como obligación.
 "Para asegurar tu lugar, podés adelantar una seña de $[monto] por transferencia:
@@ -9410,6 +9524,18 @@ Tono: cálido, disponible.
 PASO 8b: Si dan un email (en cualquier momento):
   • Para SÍ MISMO → save_patient_email(email=...) sin patient_phone.
   • Para TERCERO/MENOR → save_patient_email(email=..., patient_phone=...) con el [INTERNAL_PATIENT_PHONE].
+
+PASO 8c: Si dan una fecha de nacimiento (en cualquier momento de la conversación):
+  • Detectá formatos: DD/MM/AAAA, DD-MM-AAAA, "15 de marzo de 1990", AAAA-MM-DD.
+  • Convertí SIEMPRE al formato YYYY-MM-DD antes de llamar la tool.
+  • Para SÍ MISMO → save_patient_birth_date(birth_date="YYYY-MM-DD") sin patient_phone.
+  • Para TERCERO/MENOR → save_patient_birth_date(birth_date="YYYY-MM-DD", patient_phone="...") con el [INTERNAL_PATIENT_PHONE].
+  • Confirmá que guardaste la fecha: "¡Guardé tu fecha de nacimiento, gracias! 📅"
+
+DETECCIÓN DE DATOS ESPONTÁNEOS:
+Si el paciente envía un mensaje que contiene una fecha de nacimiento (formato DD/MM/AAAA o similar) y en los últimos mensajes de la conversación hubo una solicitud de esos datos (de la secretaria o del sistema), guardá la fecha automáticamente usando save_patient_birth_date.
+Si el mensaje contiene TAMBIÉN un email, guardá ambos datos (uno por tool call).
+Confirmá explícitamente qué datos guardaste.
 
 PASO 9: INSTRUCCIONES PRE-TURNO — Solo para pacientes NUEVOS (primera visita):
   Incluir al final del BLOQUE 4 (anamnesis): "Recordá traer DNI y llegar 10 min antes."

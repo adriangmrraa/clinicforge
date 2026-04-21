@@ -621,7 +621,7 @@ async def process_buffer_task(
         # or by external_ids JSONB (for IG/FB patients linked post-creation)
         phone_digits = normalize_phone_digits(external_user_id)
         patient_row = await pool.fetchrow(
-            """SELECT id, first_name, last_name, dni, email, phone_number, acquisition_source, anamnesis_token, medical_history, assigned_professional_id FROM patients
+            """SELECT id, first_name, last_name, dni, email, phone_number, birth_date, acquisition_source, anamnesis_token, medical_history, assigned_professional_id FROM patients
                WHERE tenant_id = $1 AND (
                    REGEXP_REPLACE(phone_number, '[^0-9]', '', 'g') = $2
                    OR phone_number = $3
@@ -668,6 +668,10 @@ async def process_buffer_task(
             p_email = patient_row.get("email") or ""
             if p_email:
                 identity_lines.append(f"• Email registrado: {p_email}")
+
+            # Birth date
+            if patient_row.get('birth_date'):
+                identity_lines.append(f"• Fecha de nacimiento: {patient_row['birth_date']}")
 
             # Assigned Professional (persistent patient→professional relationship)
             assigned_prof_id = patient_row.get("assigned_professional_id")

@@ -29,7 +29,7 @@ from fastapi import (
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from fastapi.responses import JSONResponse, StreamingResponse, FileResponse, Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, validator
 from db import db
 from gcal_service import gcal_service
 from analytics_service import analytics_service
@@ -866,6 +866,12 @@ class PatientCreate(BaseModel):
     city: Optional[str] = None
     birth_date: Optional[date] = None
     notes: Optional[str] = None
+
+    @validator('last_name', 'email', 'dni', 'insurance', 'city', 'notes', pre=True, always=True)
+    def empty_str_to_none(cls, v):
+        if isinstance(v, str) and v.strip() == '':
+            return None
+        return v
 
 
 class AppointmentCreate(BaseModel):
@@ -5827,8 +5833,9 @@ async def update_patient(
                 insurance_provider = $6,
                 city = $7,
                 birth_date = $8,
+                notes = $9,
                 updated_at = NOW()
-            WHERE id = $9 AND tenant_id = $10
+            WHERE id = $10 AND tenant_id = $11
         """,
             p.first_name,
             p.last_name,
@@ -5838,11 +5845,29 @@ async def update_patient(
             p.insurance,
             p.city,
             p.birth_date,
+            p.notes,
             id,
             tenant_id,
         )
         if result == "UPDATE 0":
             raise HTTPException(status_code=404, detail="Paciente no encontrado")
+        # Emit PATIENT_UPDATED socket event for real-time UI updates
+        try:
+            from main import sio, to_json_safe
+
+            await sio.emit(
+                "PATIENT_UPDATED",
+                to_json_safe(
+                    {
+                        "patient_id": id,
+                        "tenant_id": tenant_id,
+                        "update_type": "full_update",
+                    }
+                ),
+                room=f"tenant:{tenant_id}",
+            )
+        except Exception as sio_err:
+            logger.warning(f"⚠️ Error emitting PATIENT_UPDATED: {sio_err}")
         return {"id": id, "status": "updated"}
     except HTTPException:
         raise

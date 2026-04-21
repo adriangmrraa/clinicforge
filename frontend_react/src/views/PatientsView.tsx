@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, Plus, Edit, Trash2, X, FileText, Brain, Calendar, User, Clock, Stethoscope, Mail, Phone, Upload, CheckCircle, AlertTriangle, XCircle, UserCheck } from 'lucide-react';
+import { Search, Plus, Edit, Trash2, X, FileText, Brain, Calendar, User, Clock, Stethoscope, Mail, Phone, Upload, CheckCircle, AlertTriangle, XCircle, UserCheck, AlertCircle } from 'lucide-react';
 import api, { setTenantId } from '../api/axios';
 import { useTranslation } from '../context/LanguageContext';
 import { useAuth } from '../context/AuthContext';
@@ -233,10 +233,18 @@ export default function PatientsView() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      // Map obra_social to insurance for the backend
+      const sanitize = (v: string | undefined | null): string | null =>
+        !v || v.trim() === '' ? null : v.trim();
+
       const payload = {
-        ...formData,
-        insurance: formData.obra_social
+        first_name: formData.first_name.trim(),
+        phone_number: formData.phone_number.trim(),
+        last_name: sanitize(formData.last_name),
+        email: sanitize(formData.email),
+        insurance: sanitize(formData.obra_social),
+        dni: sanitize(formData.dni),
+        city: sanitize(formData.city),
+        birth_date: sanitize(formData.birth_date),
       };
 
       let patientId;
@@ -407,6 +415,16 @@ export default function PatientsView() {
     } finally {
       setImportLoading(false);
     }
+  };
+
+  const getMissingFields = (p: any): string[] => {
+    const checks: [string, string][] = [
+      [p.email, 'Email'],
+      [p.dni, 'DNI'],
+      [p.birth_date, t('patients.birth_date') || 'Fecha de nacimiento'],
+      [p.obra_social, t('patients.obra_social') || 'Obra social'],
+    ];
+    return checks.filter(([val]) => !val).map(([, label]) => label);
   };
 
   return (
@@ -634,6 +652,18 @@ export default function PatientsView() {
                               {semanticResults.some(r => r.id === patient.id) && (
                                 <Brain size={16} className="text-purple-500" />
                               )}
+                              {(() => {
+                                const missing = getMissingFields(patient);
+                                return missing.length > 0 ? (
+                                  <span
+                                    title={t('patients.missing_fields', { fields: missing.join(', ') })}
+                                    className="inline-flex items-center ml-2 px-1.5 py-0.5 rounded text-xs bg-amber-500/10 text-amber-400 border border-amber-500/20"
+                                  >
+                                    <AlertCircle size={12} className="mr-1" />
+                                    {missing.length}
+                                  </span>
+                                ) : null;
+                              })()}
                             </div>
                             {patient.last_treatment && (
                               <span className="mt-1 inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-blue-500/10 text-blue-400">
@@ -731,6 +761,18 @@ export default function PatientsView() {
                           {semanticResults.some(r => r.id === patient.id) && (
                             <Brain size={14} className="text-purple-500 shrink-0" />
                           )}
+                          {(() => {
+                            const missing = getMissingFields(patient);
+                            return missing.length > 0 ? (
+                              <span
+                                title={t('patients.missing_fields', { fields: missing.join(', ') })}
+                                className="inline-flex items-center ml-2 px-1.5 py-0.5 rounded text-xs bg-amber-500/10 text-amber-400 border border-amber-500/20 shrink-0"
+                              >
+                                <AlertCircle size={12} className="mr-1" />
+                                {missing.length}
+                              </span>
+                            ) : null;
+                          })()}
                         </div>
                         <p className="text-xs text-white/50 truncate">DNI: {patient.dni || '-'}</p>
                         {patient.last_treatment && (
@@ -830,7 +872,6 @@ export default function PatientsView() {
                         <User className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" size={18} />
                         <input
                           type="text"
-                          required
                           value={formData.last_name}
                           onChange={(e) => setFormData({ ...formData, last_name: e.target.value })}
                           className="w-full pl-10 pr-4 py-2.5 bg-white/[0.04] border border-white/[0.08] rounded-lg focus:bg-white/[0.06] focus:border-blue-500 focus:ring-0 transition-all text-sm text-white placeholder-white/20"

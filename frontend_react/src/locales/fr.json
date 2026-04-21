@@ -488,7 +488,9 @@
     "bulk_selected": "patients sélectionnés",
     "deselect_all": "Tout désélectionner",
     "bulk_assign_success": "Professionnel assigné avec succès",
-    "bulk_assign_error": "Erreur lors de l'assignation du professionnel"
+    "bulk_assign_error": "Erreur lors de l'assignation du professionnel",
+    "incomplete_profile": "Profil incomplet",
+    "missing_fields": "Manquant: {{fields}}"
   },
   "chats": {
     "badge_patient": "Patient",
