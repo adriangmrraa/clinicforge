@@ -22,50 +22,50 @@ const STATUS_STYLES: Record<string, { bg: string; border: string; text: string; 
     confirmed: {
         bg: 'bg-emerald-500/10',
         border: 'border-l-emerald-500',
-        text: 'text-emerald-900',
+        text: 'text-emerald-200',
         icon: CheckCircle
     },
     scheduled: {
         bg: 'bg-blue-500/10',
         border: 'border-l-blue-500',
-        text: 'text-blue-900',
+        text: 'text-blue-200',
         icon: Clock
     },
     pending: {
         bg: 'bg-amber-500/10',
         border: 'border-l-amber-500',
-        text: 'text-amber-900',
+        text: 'text-amber-200',
         icon: HelpCircle
     },
     in_progress: {
         bg: 'bg-purple-500/10',
         border: 'border-l-purple-500',
-        text: 'text-purple-900',
+        text: 'text-purple-200',
         icon: Clock
     },
     completed: {
         bg: 'bg-slate-500/10',
         border: 'border-l-slate-500',
-        text: 'text-slate-900',
+        text: 'text-slate-200',
         icon: CheckCircle
     },
     cancelled: {
         bg: 'bg-red-500/10',
         border: 'border-l-red-500',
-        text: 'text-red-900',
+        text: 'text-red-200',
         icon: AlertTriangle
     },
     no_show: {
         bg: 'bg-orange-500/10',
         border: 'border-l-orange-500',
-        text: 'text-orange-900',
+        text: 'text-orange-200',
         icon: AlertTriangle
     },
     // Urgency overrides
     emergency: {
         bg: 'bg-rose-500/10',
         border: 'border-l-rose-500',
-        text: 'text-rose-900',
+        text: 'text-rose-200',
         icon: AlertTriangle
     }
 };
@@ -99,6 +99,25 @@ export const AppointmentCard: React.FC<EventContentArg> = (eventInfo) => {
     const styles = STATUS_STYLES[styleKey] || STATUS_STYLES.scheduled;
     const StatusIcon = styles.icon;
 
+    const isMonthView = eventInfo.view.type === 'dayGridMonth';
+
+    if (isMonthView) {
+        return (
+            <div className={`
+              flex items-center gap-1 h-full w-full px-1.5 py-0.5
+              rounded border-l-2 ${styles.border} ${styles.bg}
+              overflow-hidden cursor-pointer
+            `}>
+                <span className={`text-[10px] font-mono shrink-0 ${styles.text}`}>
+                    {eventInfo.timeText}
+                </span>
+                <span className={`text-[10px] font-semibold truncate ${styles.text}`}>
+                    {eventInfo.event.title?.split(' - ')[0] || 'Sin nombre'}
+                </span>
+            </div>
+        );
+    }
+
     return (
         <div className={`
       flex flex-col h-full w-full p-2 
@@ -109,7 +128,7 @@ export const AppointmentCard: React.FC<EventContentArg> = (eventInfo) => {
     `}>
             {/* Top: Time & Status Icon + Payment Dot */}
             <div className="flex justify-between items-start mb-0.5">
-                <span className={`text-[10px] font-mono opacity-60 ${styles.text}`}>
+                <span className={`text-[11px] font-mono ${styles.text}`}>
                     {eventInfo.timeText}
                 </span>
                 <div className="flex items-center gap-1">
