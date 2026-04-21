@@ -413,7 +413,9 @@
     "status_no_show": "No Show",
     "select_patient_anamnesis": "Select a patient to view their anamnesis",
     "complete_treatment": "Complete Treatment (Send HSM Follow-up)",
-    "complete_treatment_hint": "Sends the post-treatment follow-up template configured in HSM Automation"
+    "complete_treatment_hint": "Sends the post-treatment follow-up template configured in HSM Automation",
+    "save_anyway": "Save anyway",
+    "drag_save_error": "Error moving appointment"
   },
   "patients": {
     "title": "Patient List",

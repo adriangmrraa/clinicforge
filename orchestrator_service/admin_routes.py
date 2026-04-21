@@ -884,6 +884,18 @@ class AppointmentCreate(BaseModel):
     notes: Optional[str] = None
     check_collisions: bool = True  # Por defecto verificar colisiones
 
+    @validator('patient_id', pre=True, always=True)
+    def coerce_empty_patient(cls, v):
+        if v == '' or v == 0:
+            return None
+        return v
+
+    @validator('professional_id', pre=True, always=True)
+    def coerce_empty_professional(cls, v):
+        if v == '' or v == 0:
+            raise ValueError('Se requiere un profesional')
+        return v
+
 
 class GCalendarBlockCreate(BaseModel):
     google_event_id: str

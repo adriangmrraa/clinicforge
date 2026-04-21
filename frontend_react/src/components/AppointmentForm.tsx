@@ -231,14 +231,14 @@ export default function AppointmentForm({
     };
 
     // Check collisions
-    const checkCollisions = async (profId: string, dateStr: string) => {
+    const checkCollisions = async (profId: string, dateStr: string, duration?: number) => {
         if (!profId || !dateStr) return;
         try {
             const response = await api.get('/admin/appointments/check-collisions', {
                 params: {
                     professional_id: profId,
                     datetime_str: dateStr,
-                    duration_minutes: formData.duration_minutes,
+                    duration_minutes: duration ?? formData.duration_minutes,
                     exclude_appointment_id: isEditing ? initialData.id : undefined
                 }
             });
@@ -284,13 +284,13 @@ export default function AppointmentForm({
         setFormData(prev => {
             const newData = { ...prev, [field]: value };
             if (field === 'professional_id' || field === 'appointment_datetime' || field === 'duration_minutes') {
-                checkCollisions(newData.professional_id || prev.professional_id, newData.appointment_datetime || prev.appointment_datetime);
+                checkCollisions(newData.professional_id || prev.professional_id, newData.appointment_datetime || prev.appointment_datetime, newData.duration_minutes);
             }
             return newData;
         });
     };
 
-    const handleSubmit = async () => {
+    const handleSubmit = async (forceOverride: boolean = false) => {
         if (!formData.patient_id || !formData.professional_id || !formData.appointment_datetime) {
             setError('Por favor complete los campos requeridos');
             return;
@@ -301,12 +301,27 @@ export default function AppointmentForm({
             // Send datetime as ISO so backend parses correctly (datetime-local gives local YYYY-MM-DDThh:mm)
             const payload = {
                 ...formData,
+                patient_id: formData.patient_id ? parseInt(formData.patient_id, 10) : null,
+                professional_id: formData.professional_id ? parseInt(formData.professional_id, 10) : null,
                 appointment_datetime: new Date(formData.appointment_datetime).toISOString(),
+                check_collisions: !forceOverride,
             };
             await onSubmit(payload);
             onClose();
         } catch (err: any) {
-            setError(err.response?.data?.message || 'Error al guardar');
+            // Detect Pydantic 422 validation errors and surface field name
+            if (err.response?.status === 422 && err.response?.data?.detail) {
+                const detail = err.response.data.detail;
+                if (Array.isArray(detail) && detail.length > 0) {
+                    const firstError = detail[0];
+                    const field = firstError.loc?.slice(1).join('.') ?? 'campo';
+                    setError(`Error en ${field}: ${firstError.msg}`);
+                } else {
+                    setError(typeof detail === 'string' ? detail : 'Error de validación');
+                }
+            } else {
+                setError(err.response?.data?.message || 'Error al guardar');
+            }
         } finally {
             setLoading(false);
         }
@@ -540,9 +555,18 @@ export default function AppointmentForm({
                             </div>
 
                             {collisionWarning && (
-                                <div className="p-3 bg-yellow-500/10 text-yellow-400 text-xs rounded-lg flex items-start gap-2 border border-yellow-500/20">
-                                    <AlertTriangle size={14} className="mt-0.5 flex-shrink-0" />
-                                    <span>{collisionWarning}</span>
+                                <div className="p-3 bg-yellow-500/10 text-yellow-400 text-xs rounded-lg border border-yellow-500/20 space-y-2">
+                                    <div className="flex items-start gap-2">
+                                        <AlertTriangle size={14} className="mt-0.5 flex-shrink-0" />
+                                        <span>{collisionWarning}</span>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => handleSubmit(true)}
+                                        className="w-full px-3 py-1.5 text-xs font-semibold text-yellow-400 border border-yellow-500/30 bg-yellow-500/10 hover:bg-yellow-500/20 rounded-lg transition-colors"
+                                    >
+                                        {t('agenda.save_anyway')}
+                                    </button>
                                 </div>
                             )}
 

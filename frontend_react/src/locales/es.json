@@ -423,7 +423,9 @@
     "schedule_followup": "Agendar Seguimiento (+6m)",
     "followup_notes_prefix": "Seguimiento recomendado tras consulta previa. ",
     "complete_treatment": "Finalizar Tratamiento (Enviar Seguimiento HSM)",
-    "complete_treatment_hint": "Envía la plantilla de seguimiento post-tratamiento configurada en HSM Automation"
+    "complete_treatment_hint": "Envía la plantilla de seguimiento post-tratamiento configurada en HSM Automation",
+    "save_anyway": "Guardar de todos modos",
+    "drag_save_error": "Error al mover el turno"
   },
   "patients": {
     "title": "Listado de Pacientes",

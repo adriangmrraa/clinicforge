@@ -610,6 +610,90 @@ export default function AgendaView() {
     setShowModal(true);
   };
 
+  const handleEventDrop = async (info: any) => {
+    // Guard: only handle appointment events
+    const eventType = info.event.extendedProps?.eventType;
+    if (eventType !== 'appointment' && eventType !== undefined) {
+      info.revert();
+      return;
+    }
+
+    const apt = info.event.extendedProps;
+    const appointmentId = apt?.id || info.event.id;
+
+    if (!appointmentId) {
+      info.revert();
+      return;
+    }
+
+    try {
+      // Get new datetime from the dropped position
+      const newDatetime = info.event.start.toISOString();
+
+      // Check if professional changed (resource drag in resourceTimeGridDay)
+      let professionalId = apt?.professional_id;
+      const newResources = info.event.getResources?.();
+      if (newResources && newResources.length > 0) {
+        professionalId = parseInt(newResources[0].id, 10);
+      }
+
+      await api.put(`/admin/appointments/${appointmentId}`, {
+        patient_id: apt?.patient_id,
+        professional_id: professionalId,
+        appointment_datetime: newDatetime,
+        appointment_type: apt?.appointment_type,
+        duration_minutes: apt?.duration_minutes || 30,
+        notes: apt?.notes || '',
+        check_collisions: false,
+      });
+
+      // Refresh data to sync state
+      fetchData(true);
+    } catch (err) {
+      info.revert();
+      console.error('Drag save error:', err);
+      alert(t('agenda.drag_save_error'));
+    }
+  };
+
+  const handleEventResize = async (info: any) => {
+    const eventType = info.event.extendedProps?.eventType;
+    if (eventType !== 'appointment' && eventType !== undefined) {
+      info.revert();
+      return;
+    }
+
+    const apt = info.event.extendedProps;
+    const appointmentId = apt?.id || info.event.id;
+
+    if (!appointmentId) {
+      info.revert();
+      return;
+    }
+
+    try {
+      const start = info.event.start;
+      const end = info.event.end;
+      const newDuration = Math.round((end.getTime() - start.getTime()) / 60000);
+
+      await api.put(`/admin/appointments/${appointmentId}`, {
+        patient_id: apt?.patient_id,
+        professional_id: apt?.professional_id,
+        appointment_datetime: start.toISOString(),
+        appointment_type: apt?.appointment_type,
+        duration_minutes: newDuration,
+        notes: apt?.notes || '',
+        check_collisions: false,
+      });
+
+      fetchData(true);
+    } catch (err) {
+      info.revert();
+      console.error('Resize save error:', err);
+      alert(t('agenda.drag_save_error'));
+    }
+  };
+
   const handleSave = async (data: any) => {
     // Capturar rango visible antes de operaciones async para refetch correcto
     const cal = calendarRef.current?.getApi();
@@ -1086,6 +1170,8 @@ export default function AgendaView() {
                   slotMinTime={dynamicSlotMin}
                   slotMaxTime={dynamicSlotMax}
                   eventContent={(eventInfo) => <AppointmentCard {...eventInfo} />}
+                  eventDrop={handleEventDrop}
+                  eventResize={handleEventResize}
                   eventDidMount={(info) => {
                     const { eventType, source, patient_phone, professional_name, notes } = info.event.extendedProps;
 
