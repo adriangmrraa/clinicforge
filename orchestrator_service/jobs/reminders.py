@@ -75,6 +75,7 @@ async def send_appointment_reminders():
         # Cache rules per tenant
         _rule_cache: dict[int, Optional[dict]] = {}
         _active_cache: dict[int, bool] = {}
+        _source_cache: dict[int, str] = {}  # "playbook" or "rule"
 
         sent_count = 0
         skip_count = 0
@@ -106,6 +107,7 @@ async def send_appointment_reminders():
                             "free_text_message": pb_row["message_text"],
                         }
                         _active_cache[tenant_id] = bool(pb_row["is_active"])
+                        _source_cache[tenant_id] = "playbook"
                     else:
                         # Fallback V1
                         rule_row = await db.pool.fetchrow("""
@@ -118,6 +120,7 @@ async def send_appointment_reminders():
                         """, tenant_id)
                         _rule_cache[tenant_id] = dict(rule_row) if rule_row else None
                         _active_cache[tenant_id] = bool(rule_row and rule_row["is_active"])
+                        _source_cache[tenant_id] = "rule"
 
                 if not _active_cache.get(tenant_id, True):
                     skip_count += 1
@@ -144,6 +147,7 @@ async def send_appointment_reminders():
                 day_of_week = _DAYS_ES[apt_time_local.weekday()]
 
                 sent = False
+                reason = "no_hsm_rule"
                 message_preview = ""
 
                 # --- Decision: HSM template or free text ---
@@ -191,7 +195,7 @@ async def send_appointment_reminders():
                         ]},
                     ]
 
-                    sent = await _send_template(
+                    sent, reason, wamid = await _send_template(
                         tenant_id, apt["phone_number"],
                         template_name, template_lang, components,
                         patient_name=f"{apt['first_name'] or ''} {apt.get('last_name') or ''}".strip(),
@@ -206,33 +210,23 @@ async def send_appointment_reminders():
                     )
                     message_preview = f"[HSM:{template_name}] {patient_name} - {day_of_week} {formatted_date} {formatted_time}"
 
-                # Fallback: free text (either from rule or generic)
                 if not sent:
-                    if rule and rule.get("free_text_message"):
-                        message = rule["free_text_message"]
-                        message = message.replace("{{first_name}}", patient_name)
-                        message = message.replace("{{last_name}}", apt.get("last_name") or "")
-                        message = message.replace("{{appointment_time}}", formatted_time)
-                        message = message.replace("{{appointment_date}}", formatted_date)
-                        message = message.replace("{{treatment_name}}", apt.get("appointment_type") or "")
-                    else:
-                        message = (
-                            f"Hola {patient_name}, te recordamos tu turno de mañana "
-                            f"a las {formatted_time}. ¿Nos confirmás tu asistencia?"
-                        )
-                    sent = await _send_text(tenant_id, apt["phone_number"], message, patient_name=f"{apt['first_name'] or ''} {apt.get('last_name') or ''}".strip())
-                    message_preview = message
+                    logger.warning(f"⚠️ Template failed for {apt['phone_number']}: {reason}")
+                    error_count += 1
+                    continue
 
                 if sent:
                     await db.pool.execute(
                         "UPDATE appointments SET reminder_sent = true, reminder_sent_at = NOW() WHERE id = $1 AND tenant_id = $2",
                         apt["appointment_id"], tenant_id,
                     )
-                    await _log_reminder(tenant_id, "sent", patient_name, apt["phone_number"], message_preview, rule_id=rule["id"] if rule else None, patient_id=apt.get("patient_id"), appointment_id=apt.get("appointment_id"))
+                    _rule_source = _source_cache.get(tenant_id, "rule")
+                    await _log_reminder(tenant_id, "sent", patient_name, apt["phone_number"], message_preview, rule_id=rule["id"] if rule else None, patient_id=apt.get("patient_id"), appointment_id=apt.get("appointment_id"), source=_rule_source)
                     logger.info(f"✅ Recordatorio enviado a {patient_name} ({apt['phone_number']}) para las {formatted_time}")
                     sent_count += 1
                 else:
-                    await _log_reminder(tenant_id, "failed", patient_name, apt["phone_number"], message_preview, error_detail="send_failed", rule_id=rule["id"] if rule else None, patient_id=apt.get("patient_id"), appointment_id=apt.get("appointment_id"))
+                    _rule_source = _source_cache.get(tenant_id, "rule")
+                    await _log_reminder(tenant_id, "failed", patient_name, apt["phone_number"], message_preview, error_detail="send_failed", rule_id=rule["id"] if rule else None, patient_id=apt.get("patient_id"), appointment_id=apt.get("appointment_id"), source=_rule_source)
                     error_count += 1
 
             except Exception as e:
@@ -250,7 +244,7 @@ async def _send_template(
     template_name: str, language_code: str, components: list,
     patient_name: str = "",
     appointment_info: dict = None,
-) -> bool:
+) -> tuple:
     """
     Send a YCloud HSM template. Clean implementation per YCloud v2 docs.
 
@@ -264,10 +258,11 @@ async def _send_template(
         from db import db as _db_ref
         import httpx
 
+        wamid = None
         api_key = await get_tenant_credential(tenant_id, YCLOUD_API_KEY)
         if not api_key:
             logger.warning(f"⚠️ No YCloud API key for tenant {tenant_id}")
-            return False
+            return False, "no_api_key", None
 
         # Resolve from_number: tenants.bot_phone_number first
         business_number = await _db_ref.pool.fetchval(
@@ -303,7 +298,7 @@ async def _send_template(
 
         if not real_lang:
             logger.error(f"❌ Template '{template_name}' not found in YCloud API (no APPROVED version)")
-            return False
+            return False, "template_not_found", None
 
         # Step 2: Build components matching the EXACT template structure
         import re
@@ -359,13 +354,13 @@ async def _send_template(
         # Step 3: Send ONCE with the correct language and components
         yc = YCloudClient(api_key=api_key, business_number=business_number)
         try:
-            await yc.send_template(
-                to=phone,
-                template_name=template_name,
+            ycloud_resp = await yc.send_template(
+                to=phone, template_name=template_name,
                 language_code=real_lang,
                 components=send_components if send_components else None,
             )
-            logger.info(f"✅ Template '{template_name}' sent to {phone} (lang={real_lang})")
+            wamid = ycloud_resp.get("id") if isinstance(ycloud_resp, dict) else None
+            logger.info(f"✅ Template '{template_name}' sent to {phone} (lang={real_lang}, wamid={wamid})")
         except httpx.HTTPStatusError as http_err:
             # Log the FULL error response for debugging
             try:
@@ -373,7 +368,7 @@ async def _send_template(
                 logger.error(f"❌ Template send error FULL: {err_json}")
             except Exception:
                 logger.error(f"❌ Template send error: {http_err.response.text}")
-            return False
+            return False, "http_error", None
 
         # Persist in chat_conversations + chat_messages so it appears in the UI
         try:
@@ -412,23 +407,24 @@ async def _send_template(
                 preview += f"\n👤 {patient_name}"
 
             await _db.pool.execute(
-                "INSERT INTO chat_messages (tenant_id, conversation_id, role, content, from_number, platform_metadata) VALUES ($1, $2, 'assistant', $3, $4, $5::jsonb)",
+                "INSERT INTO chat_messages (tenant_id, conversation_id, role, content, from_number, delivery_status, platform_metadata) VALUES ($1, $2, 'assistant', $3, $4, 'pending', $5::jsonb)",
                 tenant_id, conv_id, preview, phone,
                 _json.dumps({
                     "source": "reminder_template",
                     "template": template_name,
                     "patient_name": patient_name,
                     "appointment": apt_info,
+                    "wamid": wamid,
                 }),
             )
         except Exception as _persist_err:
             logger.warning(f"⚠️ Reminder persist failed (non-blocking): {_persist_err}")
 
-        return True
+        return True, "ok", wamid
 
     except Exception as e:
         logger.warning(f"⚠️ Template send failed for {phone}: {e}")
-        return False
+        return False, "exception", None
 
 
 async def _send_text(tenant_id: int, phone: str, message: str, patient_name: str = "") -> bool:
@@ -496,6 +492,7 @@ async def _log_reminder(
     message_preview: str = None, error_detail: str = None,
     skip_reason: str = None, rule_id: int = None,
     patient_id: int = None, appointment_id: str = None,
+    source: str = "rule",
 ):
     """Insert into automation_logs with patient and appointment linkage."""
     try:
@@ -508,14 +505,21 @@ async def _log_reminder(
             meta["patient_name"] = patient_name
 
         _status = str(status) if status else 'unknown'
-        # rule_id may be a playbook ID (not in automation_rules) — validate FK exists
-        _valid_rule_id = None
-        if rule_id:
-            _exists = await db.pool.fetchval(
-                "SELECT id FROM automation_rules WHERE id = $1", rule_id
-            )
-            if _exists:
-                _valid_rule_id = rule_id
+
+        if source == "playbook":
+            # Playbook IDs are not in automation_rules — skip FK check, store as meta
+            _valid_rule_id = None
+            if rule_id:
+                meta["playbook_id"] = rule_id
+        else:
+            # rule_id may be a playbook ID (not in automation_rules) — validate FK exists
+            _valid_rule_id = None
+            if rule_id:
+                _exists = await db.pool.fetchval(
+                    "SELECT id FROM automation_rules WHERE id = $1", rule_id
+                )
+                if _exists:
+                    _valid_rule_id = rule_id
 
         await db.pool.execute("""
             INSERT INTO automation_logs (

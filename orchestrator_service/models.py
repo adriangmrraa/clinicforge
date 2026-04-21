@@ -133,6 +133,7 @@ class ChatMessage(Base):
     platform_message_id = Column(String(255))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     correlation_id = Column(Text)
+    delivery_status = Column(String(20), nullable=False, server_default="delivered")
 
     __table_args__ = (
         CheckConstraint(

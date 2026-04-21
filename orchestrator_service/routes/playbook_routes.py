@@ -267,7 +267,7 @@ async def send_reminders_now(
                     ]},
                 ]
 
-                sent = await _send_template(
+                sent, reason, _wamid = await _send_template(
                     tenant_id, apt["phone_number"], template_name, template_lang, components,
                     patient_name=full_name,
                     appointment_info={
@@ -304,6 +304,7 @@ async def send_reminders_now(
                     rule_id=rule["id"] if rule else None,
                     patient_id=apt.get("patient_id"),
                     appointment_id=apt.get("appointment_id"),
+                    source="playbook",
                 )
                 sent_count += 1
                 logger.info(f"✅ Manual reminder sent to {full_name} ({apt['phone_number']})")
@@ -316,6 +317,7 @@ async def send_reminders_now(
                     rule_id=rule["id"] if rule else None,
                     patient_id=apt.get("patient_id"),
                     appointment_id=apt.get("appointment_id"),
+                    source="playbook",
                 )
                 skip_count += 1
 

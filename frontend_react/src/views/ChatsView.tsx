@@ -55,6 +55,7 @@ interface ChatMessage {
   created_at: string;
   attachments?: any[];
   is_derivhumano?: boolean;
+  delivery_status?: 'pending' | 'delivered' | 'failed' | null;
 }
 
 interface PatientContext {
@@ -1547,6 +1548,12 @@ export default function ChatsView() {
                         <MessageContent message={message} />
                         <p className={`text-xs mt-1 ${message.role === 'user' ? 'text-white/30' : 'opacity-70'}`}>
                           {safeFormatTime(message.created_at)}
+                          {message.role !== 'user' && message.delivery_status === 'pending' && (
+                            <Clock size={12} className="inline ml-1 text-white/40" />
+                          )}
+                          {message.role !== 'user' && message.delivery_status === 'failed' && (
+                            <AlertCircle size={12} className="inline ml-1 text-red-400" />
+                          )}
                         </p>
                       </div>
                     </div>
