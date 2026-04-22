@@ -191,6 +191,8 @@ export default function AgendaView() {
   const filterInitialRenderRef = useRef(true);
   // Rango visible actual (para indicador de UI)
   const [visibleRangeStr, setVisibleRangeStr] = useState<string>('');
+  // AbortController para cancelar requests en vuelo al navegar rápido entre meses/vistas
+  const fetchAbortControllerRef = useRef<AbortController | null>(null);
 
   const [formData, setFormData] = useState({
     patient_id: '',
@@ -201,15 +203,16 @@ export default function AgendaView() {
   });
 
   // Fetch Google Calendar blocks
-  const fetchGoogleBlocks = useCallback(async (startDate: string, endDate: string, professionalId?: string) => {
+  const fetchGoogleBlocks = useCallback(async (startDate: string, endDate: string, professionalId?: string | null, signal?: AbortSignal) => {
     try {
       const params: any = { start_date: startDate, end_date: endDate };
       if (professionalId && professionalId !== 'all') {
         params.professional_id = professionalId;
       }
-      const response = await api.get('/admin/calendar/blocks', { params });
+      const response = await api.get('/admin/calendar/blocks', { params, signal });
       return response.data;
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.name === 'AbortError' || error?.code === 'ERR_CANCELED') return [];
       console.error('Error fetching Google Calendar blocks:', error);
       return [];
     }
@@ -269,6 +272,15 @@ export default function AgendaView() {
     explicitStart?: Date,
     explicitEnd?: Date
   ) => {
+    // Cancelar cualquier fetch en vuelo antes de iniciar uno nuevo.
+    // Esto evita la race condition donde navegar rápido entre meses/vistas deja
+    // el spinner colgado o sobreescribe datos correctos con datos de un rango viejo.
+    if (fetchAbortControllerRef.current) {
+      fetchAbortControllerRef.current.abort();
+    }
+    const abortController = new AbortController();
+    fetchAbortControllerRef.current = abortController;
+
     try {
       if (!isBackground) setLoading(true);
       else setIsBackgroundSyncing(true);
@@ -313,7 +325,8 @@ export default function AgendaView() {
       // Guard: if professional user has no professional_id, abort to prevent leaking all appointments
       if (user?.role === 'professional' && !profFilter) {
         console.warn('Professional user without professional_id — aborting fetch');
-        setLoading(false);
+        if (!isBackground) setLoading(false);
+        else setIsBackgroundSyncing(false);
         return;
       }
 
@@ -323,10 +336,13 @@ export default function AgendaView() {
       }
 
       const [appointmentsRes, blocksRes, holidaysRes] = await Promise.all([
-        api.get('/admin/appointments', { params }),
-        fetchGoogleBlocks(startDateStr, endDateStr, profFilter),
-        api.get('/admin/holidays', { params: { days: 365 } }),
+        api.get('/admin/appointments', { params, signal: abortController.signal }),
+        fetchGoogleBlocks(startDateStr, endDateStr, profFilter, abortController.signal),
+        api.get('/admin/holidays', { params: { days: 365 }, signal: abortController.signal }),
       ]);
+
+      // Si fue abortado entre el disparo y la resolución, no actualizar el estado
+      if (abortController.signal.aborted) return;
 
       const newAppointments = appointmentsRes.data;
       setAppointments(newAppointments);
@@ -335,11 +351,16 @@ export default function AgendaView() {
       setHolidays(holidaysRes.data?.upcoming || []);
       // Los eventos se pasan via prop `events={calendarEvents}` — no manipular el calendario directamente
       // para evitar el loop datesSet → fetchData → re-render → datesSet
-    } catch (error) {
+    } catch (error: any) {
+      // Ignorar silenciosamente errores de abort — son intencionales (navegación rápida)
+      if (error?.name === 'AbortError' || error?.code === 'ERR_CANCELED') return;
       console.error('Error fetching data:', error);
     } finally {
-      if (!isBackground) setLoading(false);
-      else setIsBackgroundSyncing(false);
+      // Solo limpiar el loading si este fetch es el activo (no fue reemplazado por uno más nuevo)
+      if (fetchAbortControllerRef.current === abortController) {
+        if (!isBackground) setLoading(false);
+        else setIsBackgroundSyncing(false);
+      }
     }
   }, [fetchGoogleBlocks, selectedProfessionalId, user?.role, user?.professional_id]);
 
@@ -1180,7 +1201,9 @@ export default function AgendaView() {
                         professionalId: selectedProfessionalId,
                         viewType: dateInfo.view.type,
                       };
-                      fetchData(false, dateInfo.start, dateInfo.end);
+                      // Llamar via ref para usar siempre el closure más fresco de fetchData,
+                      // evitando que selectedProfessionalId quede stale en el callback de datesSet
+                      fetchDataRef.current?.(false, dateInfo.start, dateInfo.end);
                     }, 200);
                   }}
                   viewDidMount={(viewInfo) => {
