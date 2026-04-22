@@ -1277,7 +1277,7 @@ export default function AgendaView() {
                   dayMaxEvents={true}
                   weekends={true}
                   nowIndicator={true}
-                  stickyHeaderDates={true}
+                  stickyHeaderDates={false}
                   slotDuration="00:15:00"
                   slotLabelInterval="01:00"
                   initialDate={new Date()}
@@ -1312,7 +1312,7 @@ export default function AgendaView() {
                     right: window.innerWidth < 768
                       ? 'timeGridDay,dayGridMonth,listYear'
                       : (window.innerWidth < 1024 
-                          ? 'timeGridWeek,dayGridMonth,listYear,listThreeYears' 
+                          ? 'timeGridDay,timeGridWeek,dayGridMonth,listYear,listThreeYears'
                           : 'resourceTimeGridDay,timeGridWeek,dayGridMonth,listYear,listThreeYears'),
                   }}
                   height="auto"
