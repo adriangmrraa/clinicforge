@@ -106,10 +106,18 @@ function rebuildHtml(originalHtml: string, sections: Section[]): string {
   return doc.body.innerHTML;
 }
 
-/** Strip HTML to plain text for textarea editing */
+/** Strip HTML to plain text for textarea editing — preserves line breaks */
 function htmlToText(html: string): string {
   const doc = new DOMParser().parseFromString(html, 'text/html');
-  return doc.body.textContent?.trim() || '';
+  // Remove headings — they're structural, not user-edited text
+  doc.querySelectorAll('h2, h3').forEach(el => el.remove());
+  // Convert block elements to newlines before extracting text
+  doc.querySelectorAll('p, div.narrative > div').forEach(el => {
+    const text = el.textContent || '';
+    if (text.trim()) el.replaceWith(text + '\n');
+  });
+  doc.querySelectorAll('br').forEach(el => el.replaceWith('\n'));
+  return (doc.body.textContent || '').replace(/\n{3,}/g, '\n\n').trim();
 }
 
 /** Convert plain text back to simple HTML */
@@ -139,6 +147,7 @@ export default function DigitalRecordsTab({ patientId, patientEmail, refreshKey 
 
   // Section-based editing
   const [editSections, setEditSections] = useState<Section[]>([]);
+  const [editTexts, setEditTexts] = useState<Record<string, string>>({});
 
   useEffect(() => { fetchRecords(); }, [patientId, refreshKey]);
 
@@ -225,20 +234,28 @@ export default function DigitalRecordsTab({ patientId, patientEmail, refreshKey 
     if (!selectedRecord?.html_content) return;
     const sections = parseSections(selectedRecord.html_content);
     setEditSections(sections);
+    // Pre-extract text ONCE — no conversion on every keystroke
+    const texts: Record<string, string> = {};
+    sections.forEach(s => { if (s.editable) texts[s.id] = htmlToText(s.content); });
+    setEditTexts(texts);
     setViewState('editing');
   };
 
   const handleSectionTextChange = (sectionId: string, newText: string) => {
-    setEditSections(prev => prev.map(s =>
-      s.id === sectionId ? { ...s, content: textToHtml(newText, s.content) } : s
-    ));
+    setEditTexts(prev => ({ ...prev, [sectionId]: newText }));
   };
 
   const handleSaveEdit = async () => {
     if (!selectedRecord?.html_content) return;
     setSaving(true);
     try {
-      const newHtml = rebuildHtml(selectedRecord.html_content, editSections);
+      // Convert text→HTML ONCE at save time
+      const updatedSections = editSections.map(s =>
+        s.editable && editTexts[s.id] !== undefined
+          ? { ...s, content: textToHtml(editTexts[s.id], s.content) }
+          : s
+      );
+      const newHtml = rebuildHtml(selectedRecord.html_content, updatedSections);
       await api.patch(`/admin/patients/${patientId}/digital-records/${selectedRecord.id}`, { html_content: newHtml });
       const updated = { ...selectedRecord, html_content: newHtml, updated_at: new Date().toISOString() };
       setRecords(prev => prev.map(r => r.id === selectedRecord.id ? updated : r));
@@ -319,10 +336,10 @@ export default function DigitalRecordsTab({ patientId, patientEmail, refreshKey 
                 </div>
                 {section.editable ? (
                   <textarea
-                    value={htmlToText(section.content)}
+                    value={editTexts[section.id] ?? ''}
                     onChange={e => handleSectionTextChange(section.id, e.target.value)}
                     className="w-full bg-white/[0.04] border border-white/[0.08] text-white/90 rounded-lg p-2.5 sm:p-3 text-[13px] sm:text-sm leading-relaxed resize-y min-h-[70px] focus:outline-none focus:border-blue-500/30 focus:bg-white/[0.06] transition-colors"
-                    rows={Math.max(3, htmlToText(section.content).split('\n').length + 1)}
+                    rows={Math.max(3, (editTexts[section.id] ?? '').split('\n').length + 1)}
                   />
                 ) : (
                   <div className="text-[13px] sm:text-sm text-white/50 leading-relaxed overflow-x-auto">

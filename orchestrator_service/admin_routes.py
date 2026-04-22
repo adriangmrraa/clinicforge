@@ -6870,12 +6870,16 @@ async def list_treatment_types_legacy(
     response_model=List[AppointmentResponse],
 )
 async def list_appointments(
-    start_date: str,
-    end_date: str,
+    start_date: str = None,
+    end_date: str = None,
     professional_id: Optional[int] = None,
+    patient_id: Optional[int] = None,
+    status: Optional[str] = None,
+    limit: Optional[int] = None,
     tenant_id: int = Depends(get_resolved_tenant_id),
 ):
-    """Obtener turnos del calendario. Aislado por tenant_id (Regla de Oro)."""
+    """Obtener turnos del calendario. Aislado por tenant_id (Regla de Oro).
+    Soporta filtro por rango de fechas, profesional, paciente, estado y límite."""
     query = """
         SELECT a.id, a.patient_id, a.appointment_datetime, a.duration_minutes, a.status, a.urgency_level,
                a.source, a.appointment_type, a.notes,
@@ -6891,17 +6895,26 @@ async def list_appointments(
         JOIN patients p ON a.patient_id = p.id
         LEFT JOIN professionals prof ON a.professional_id = prof.id
         LEFT JOIN treatment_types tt ON a.appointment_type = tt.code AND a.tenant_id = tt.tenant_id
-        WHERE a.tenant_id = $1 AND a.appointment_datetime BETWEEN $2 AND $3
+        WHERE a.tenant_id = $1
     """
-    params = [
-        tenant_id,
-        datetime.fromisoformat(start_date),
-        datetime.fromisoformat(end_date),
-    ]
+    params: list = [tenant_id]
+    if start_date and end_date:
+        query += f" AND a.appointment_datetime BETWEEN ${len(params) + 1} AND ${len(params) + 2}"
+        params.append(datetime.fromisoformat(start_date))
+        params.append(datetime.fromisoformat(end_date))
     if professional_id:
         query += f" AND a.professional_id = ${len(params) + 1}"
         params.append(professional_id)
+    if patient_id:
+        query += f" AND a.patient_id = ${len(params) + 1}"
+        params.append(patient_id)
+    if status:
+        query += f" AND a.status = ${len(params) + 1}"
+        params.append(status)
     query += " ORDER BY a.appointment_datetime ASC"
+    if limit:
+        query += f" LIMIT ${len(params) + 1}"
+        params.append(limit)
     rows = await db.pool.fetch(query, *params)
     # Serialize all fields properly (UUID, Decimal, JSONB)
     from decimal import Decimal as _Decimal
