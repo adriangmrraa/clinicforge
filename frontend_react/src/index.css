@@ -382,63 +382,71 @@ select optgroup {
    ============================================ */
 
 @media print {
+  /* Page setup — landscape A4 for weekly view */
+  @page {
+    size: A4 landscape;
+    margin: 1.5cm;
+  }
+
   /* Reset dark mode: white background, black text */
-  body, html {
+  html, body {
     background: #fff !important;
     color: #000 !important;
     font-size: 11pt !important;
+    height: auto !important;
+    overflow: visible !important;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
 
-  /* Hide ALL UI chrome */
-  nav,
-  aside,
-  header,
-  footer,
-  [class*="Sidebar"],
-  [class*="sidebar"],
-  [class*="NovaWidget"],
-  [class*="nova-btn"],
-  [class*="OnboardingGuide"],
-  [class*="PageTips"],
-  [class*="MetaTokenBanner"] {
-    display: none !important;
-  }
-
-  /* Hide screen-only elements tagged with print:hidden */
-  .print-hidden {
-    display: none !important;
-  }
-
-  /* The main Layout flex wrapper — let it flow */
-  .flex.h-screen {
-    display: block !important;
-    height: auto !important;
-    overflow: visible !important;
-  }
-
-  /* Hide the main content area EXCEPT the agenda print content */
-  main > *:not(.agenda-print-root),
-  .agenda-print-root > *:not(.print-agenda-content) {
-    display: none !important;
-  }
-
-  /* Show the print-only agenda block */
-  .print-agenda-content {
-    display: block !important;
-    width: 100% !important;
-  }
-
-  /* Remove shadows */
+  /* Remove all shadows globally */
   * {
     box-shadow: none !important;
     text-shadow: none !important;
   }
 
-  /* Page setup — landscape A4 for weekly view */
-  @page {
-    size: A4 landscape;
-    margin: 1.5cm;
+  /* Hide screen-only elements tagged with print-hidden */
+  .print-hidden {
+    display: none !important;
+  }
+
+  /*
+   * Strategy: use position:fixed on .print-agenda-content so it floats
+   * on top of the entire DOM tree regardless of nesting depth.
+   * This avoids fragile ancestor selectors that break when Layout changes.
+   */
+  .print-agenda-content {
+    display: block !important;   /* overrides Tailwind `hidden` (display:none) */
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    z-index: 99999 !important;
+    background: #fff !important;
+    color: #000 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* Hide everything that is NOT the print overlay:
+     — layout chrome (sidebar, header, nav, nova widget)
+     — the FullCalendar interactive view
+     — any screen-only controls inside agenda-print-root */
+  nav,
+  aside,
+  header,
+  footer,
+  [class*="sidebar"],
+  [class*="Sidebar"],
+  [class*="nova-btn"],
+  [class*="NovaWidget"],
+  [class*="OnboardingGuide"],
+  [class*="PageTips"],
+  [class*="MetaTokenBanner"],
+  .fc,
+  .agenda-print-root > *:not(.print-agenda-content) {
+    display: none !important;
+    visibility: hidden !important;
   }
 }
