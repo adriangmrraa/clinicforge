@@ -966,7 +966,7 @@ export default function AgendaView() {
         </div>
       ) : (
         <div className="flex-1 min-h-0 px-4 lg:px-6 pb-4 lg:pb-6">
-            <div className="h-[calc(100vh-140px)] bg-white/[0.03] backdrop-blur-lg md:backdrop-blur-2xl border border-white/[0.06] shadow-2xl rounded-2xl md:rounded-3xl p-2 sm:p-4 overflow-y-auto">
+            <div className="h-[calc(100vh-140px)] bg-white/[0.03] backdrop-blur-lg md:backdrop-blur-2xl border border-white/[0.06] shadow-2xl rounded-2xl md:rounded-3xl p-2 sm:p-4 overflow-hidden flex flex-col">
               {/* Calendar */}
 
               {/* Custom FullCalendar Styles for Spacious TimeGrid */}
@@ -1058,27 +1058,20 @@ export default function AgendaView() {
             100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
           }
 
-          /* ===== STICKY HEADERS — semana/día (DLD-29) ===== */
-          /* El scroll ocurre en el contenedor externo (.overflow-y-auto),
-             no dentro de FullCalendar. Por eso sticky funciona aquí. */
+          /* ===== STICKY HEADERS — semana/día ===== */
+          /* FC maneja sticky internamente con stickyHeaderDates={true} + height="100%" */
 
           /* Toolbar de navegación (flechas, título, botones de vista) */
           .fc .fc-toolbar.fc-header-toolbar {
-            position: sticky !important;
-            top: 0 !important;
-            z-index: 20 !important;
             background-color: #0d1117 !important;
             margin-bottom: 0 !important;
             padding: 8px 0 8px 0 !important;
             border-bottom: 1px solid rgba(255,255,255,0.06) !important;
           }
 
-          /* Header de columnas de días (lun 20/4, mar 21/4...) — timegrid semana/día */
+          /* Header de columnas de días — FC lo hace sticky, solo ponemos bg color */
           .fc .fc-scrollgrid-section-header > td,
           .fc thead .fc-scrollgrid-section > td {
-            position: sticky !important;
-            top: var(--fc-toolbar-height, 57px) !important;
-            z-index: 19 !important;
             background-color: #0d1117 !important;
           }
 
@@ -1222,7 +1215,7 @@ export default function AgendaView() {
         `}</style>
 
               {/* Siempre montar el calendario para que las flechas y la vista no reviertan al hacer fetch */}
-              <div className="relative h-full min-h-[400px]">
+              <div className="relative flex-1 min-h-0 overflow-hidden">
                 {loading && appointments.length === 0 && (
                   <div className="absolute inset-0 flex items-center justify-center bg-[#0d1117]/80 z-10 rounded-2xl">
                     <div className="flex flex-col items-center gap-4">
@@ -1281,8 +1274,7 @@ export default function AgendaView() {
                           ? 'timeGridWeek,dayGridMonth,listYear,listThreeYears' 
                           : 'resourceTimeGridDay,timeGridWeek,dayGridMonth,listYear,listThreeYears'),
                   }}
-                  height="auto"
-                  contentHeight="auto"
+                  height="100%"
                   selectAllow={(selectInfo) => {
                     const now = new Date();
                     return selectInfo.start >= now;

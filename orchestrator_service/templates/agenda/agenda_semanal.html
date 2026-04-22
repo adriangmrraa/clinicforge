@@ -91,10 +91,11 @@
       <td class="time-slot">{{ slot }}</td>
       {% for day in days %}
       <td>
-        {% set cell = grid.get(slot, {}).get(day.index, []) %}
-        {% for name in cell %}
-        {{ name }}<br/>
-        {% endfor %}
+        {% if slot in grid and day.index in grid[slot] %}
+          {% for name in grid[slot][day.index] %}
+          {{ name }}{% if not loop.last %}<br/>{% endif %}
+          {% endfor %}
+        {% endif %}
       </td>
       {% endfor %}
     </tr>

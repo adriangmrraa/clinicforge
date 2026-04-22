@@ -34,7 +34,7 @@ _TEMPLATES_DIR = os.path.join(
 
 _jinja_env = Environment(
     loader=FileSystemLoader(_TEMPLATES_DIR),
-    autoescape=True,
+    autoescape=False,  # HTML template — no escaping needed
 )
 
 # ---------------------------------------------------------------------------
@@ -257,15 +257,13 @@ def _generate_image_sync(html: str, image_path: str) -> str:
     """
     Blocking WeasyPrint PNG call — MUST be called via asyncio.to_thread.
 
-    Renders the first page as a PNG image.
+    Renders all pages as a single PNG image.
     Falls back to writing an HTML file if WeasyPrint is not installed.
     """
     os.makedirs(os.path.dirname(image_path), exist_ok=True)
     try:
         from weasyprint import HTML as _WP_HTML  # lazy import — optional dep
-        doc = _WP_HTML(string=html, base_url=_TEMPLATES_DIR).render()
-        page = doc.pages[0]
-        page.paint(image_path, zoom=2)
+        _WP_HTML(string=html, base_url=_TEMPLATES_DIR).write_png(image_path)
         logger.info("_generate_image_sync: wrote image → %s", image_path)
         return image_path
     except ImportError:
