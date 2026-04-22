@@ -923,6 +923,35 @@ export default function AgendaView() {
             100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
           }
 
+          /* ===== STICKY HEADERS — semana/día (DLD-29) ===== */
+          /* El scroll ocurre en el contenedor externo (.overflow-y-auto),
+             no dentro de FullCalendar. Por eso sticky funciona aquí. */
+
+          /* Toolbar de navegación (flechas, título, botones de vista) */
+          .fc .fc-toolbar.fc-header-toolbar {
+            position: sticky !important;
+            top: 0 !important;
+            z-index: 20 !important;
+            background-color: #0d1117 !important;
+            margin-bottom: 0 !important;
+            padding: 8px 0 8px 0 !important;
+            border-bottom: 1px solid rgba(255,255,255,0.06) !important;
+          }
+
+          /* Header de columnas de días (lun 20/4, mar 21/4...) — timegrid semana/día */
+          .fc .fc-scrollgrid-section-header > td,
+          .fc thead .fc-scrollgrid-section > td {
+            position: sticky !important;
+            top: 57px !important; /* altura aprox del toolbar */
+            z-index: 19 !important;
+            background-color: #0d1117 !important;
+          }
+
+          /* Eje de tiempo (labels 08:00, 09:00...) en la columna izquierda — sticky horizontal */
+          .fc .fc-timegrid-axis {
+            background-color: #0d1117 !important;
+          }
+
           /* ===== DARK MODE OVERRIDES FOR FULLCALENDAR ===== */
           .fc {
             --fc-border-color: rgba(255,255,255,0.06);
