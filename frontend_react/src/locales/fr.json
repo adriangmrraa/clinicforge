@@ -440,6 +440,7 @@
     "email": "E-mail",
     "obra_social": "Assurance",
     "obra_social_placeholder": "Ex : OSDE, Swiss Medical, Particulier",
+    "insurance_number": "Nº d'affilié",
     "schedule_first_appointment": "Prendre premier rendez-vous (optionnel)",
     "treatment_service": "Traitement / service",
     "select_treatment": "Sélectionner un traitement...",

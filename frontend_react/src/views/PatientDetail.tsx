@@ -737,7 +737,7 @@ export default function PatientDetail() {
                   )}
                   {patient.insurance_provider ? (
                     <span className="bg-green-500/10 text-green-400 px-2 py-0.5 rounded">
-                      🏥 {patient.insurance_provider}
+                      🏥 {patient.insurance_provider}{patient.obra_social_number ? ` · ${patient.obra_social_number}` : ''}
                     </span>
                   ) : (
                     <span className="bg-white/[0.04] text-white/60 px-2 py-0.5 rounded">

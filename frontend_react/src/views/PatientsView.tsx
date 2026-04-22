@@ -14,6 +14,7 @@ interface Patient {
   phone_number: string;
   email?: string;
   obra_social?: string;
+  obra_social_number?: string;
   dni?: string;
   city?: string;
   birth_date?: string;
@@ -74,6 +75,7 @@ export default function PatientsView() {
     phone_number: '',
     email: '',
     obra_social: '',
+    insurance_number: '',
     dni: '',
     city: '',
     birth_date: '',
@@ -243,6 +245,7 @@ export default function PatientsView() {
         last_name: sanitize(formData.last_name),
         email: sanitize(formData.email),
         insurance: sanitize(formData.obra_social),
+        insurance_number: sanitize(formData.insurance_number),
         dni: sanitize(formData.dni),
         city: sanitize(formData.city),
         birth_date: sanitize(formData.birth_date),
@@ -324,6 +327,7 @@ export default function PatientsView() {
       phone_number: patient.phone_number || '',
       email: patient.email || '',
       obra_social: patient.obra_social || '',
+      insurance_number: patient.obra_social_number || '',
       dni: patient.dni || '',
       city: patient.city || '',
       birth_date: patient.birth_date || '',
@@ -341,6 +345,7 @@ export default function PatientsView() {
       phone_number: '',
       email: '',
       obra_social: '',
+      insurance_number: '',
       dni: '',
       city: '',
       birth_date: '',
@@ -690,7 +695,13 @@ export default function PatientsView() {
                       </td>
                       <td className="px-3 py-4 whitespace-nowrap">
                         <div className="text-sm text-white">{patient.dni || '-'}</div>
-                        <div className="text-sm text-white/50">{patient.obra_social || '-'}</div>
+                        <div className="text-sm text-white/50">
+                          {patient.obra_social
+                            ? patient.obra_social_number
+                              ? `${patient.obra_social} - ${t('patients.insurance_number')}: ${patient.obra_social_number}`
+                              : patient.obra_social
+                            : '-'}
+                        </div>
                       </td>
                       {/* Next appointment */}
                       <td className="px-3 py-4 whitespace-nowrap">
@@ -826,7 +837,11 @@ export default function PatientsView() {
                     </div>
                     <div>
                       <span className="block text-[10px] text-white/30 uppercase font-semibold">{t('patients.obra_social')}</span>
-                      {patient.obra_social || '-'}
+                      {patient.obra_social
+                        ? patient.obra_social_number
+                          ? `${patient.obra_social} · ${patient.obra_social_number}`
+                          : patient.obra_social
+                        : '-'}
                     </div>
                   </div>
 
@@ -944,6 +959,16 @@ export default function PatientsView() {
                       value={formData.obra_social}
                       onChange={(e) => setFormData({ ...formData, obra_social: e.target.value })}
                       placeholder={t('patients.obra_social_placeholder')}
+                      className="w-full px-4 py-2.5 bg-white/[0.04] border border-white/[0.08] rounded-lg focus:bg-white/[0.06] focus:border-blue-500 focus:ring-0 transition-all text-sm text-white placeholder-white/20"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-white/50 uppercase tracking-wider">{t('patients.insurance_number')}</label>
+                    <input
+                      type="text"
+                      value={formData.insurance_number}
+                      onChange={(e) => setFormData({ ...formData, insurance_number: e.target.value })}
+                      placeholder="Ej: 123456789"
                       className="w-full px-4 py-2.5 bg-white/[0.04] border border-white/[0.08] rounded-lg focus:bg-white/[0.06] focus:border-blue-500 focus:ring-0 transition-all text-sm text-white placeholder-white/20"
                     />
                   </div>

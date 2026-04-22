@@ -456,6 +456,7 @@
     "email": "Email",
     "obra_social": "Obra Social",
     "obra_social_placeholder": "Ej: OSDE, Swiss Medical, Particular",
+    "insurance_number": "Nro. de afiliado",
     "schedule_first_appointment": "Agendar Primer Turno (Opcional)",
     "treatment_service": "Tratamiento / Servicio",
     "select_treatment": "Seleccionar tratamiento...",

@@ -866,11 +866,12 @@ class PatientCreate(BaseModel):
     email: Optional[str] = None
     dni: Optional[str] = None
     insurance: Optional[str] = None  # Obra Social
+    insurance_number: Optional[str] = None  # Número de afiliado
     city: Optional[str] = None
     birth_date: Optional[date] = None
     notes: Optional[str] = None
 
-    @validator('last_name', 'email', 'dni', 'insurance', 'city', 'notes', pre=True, always=True)
+    @validator('last_name', 'email', 'dni', 'insurance', 'insurance_number', 'city', 'notes', pre=True, always=True)
     def empty_str_to_none(cls, v):
         if isinstance(v, str) and v.strip() == '':
             return None
@@ -4515,8 +4516,8 @@ async def create_patient(
     try:
         row = await db.pool.fetchrow(
             """
-            INSERT INTO patients (tenant_id, first_name, last_name, phone_number, email, dni, insurance_provider, city, birth_date, notes, status, created_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'active', NOW())
+            INSERT INTO patients (tenant_id, first_name, last_name, phone_number, email, dni, insurance_provider, insurance_id, city, birth_date, notes, status, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'active', NOW())
             RETURNING id, first_name, last_name, phone_number, status
         """,
             tenant_id,
@@ -4526,6 +4527,7 @@ async def create_patient(
             (p.email or "").strip() or None,
             (p.dni or "").strip() or None,
             (p.insurance or "").strip() or None,
+            (p.insurance_number or "").strip() or None,
             (p.city or "").strip() or None,
             p.birth_date,
             (p.notes or "").strip() or None,
@@ -5067,7 +5069,7 @@ async def list_patients(
     """
     query = """
         SELECT p.id, p.first_name, p.last_name, p.phone_number, p.email,
-               p.insurance_provider as obra_social, p.dni, p.city, p.birth_date, p.created_at, p.status,
+               p.insurance_provider as obra_social, p.insurance_id as obra_social_number, p.dni, p.city, p.birth_date, p.created_at, p.status,
                p.assigned_professional_id,
                ap.first_name as assigned_professional_name,
                EXISTS (SELECT 1 FROM appointments a WHERE a.patient_id = p.id AND a.tenant_id = p.tenant_id) as has_appointments,
@@ -5754,6 +5756,7 @@ async def get_patient(id: int, tenant_id: int = Depends(get_resolved_tenant_id))
         """
         SELECT id, first_name, last_name, phone_number, email,
                insurance_provider, insurance_provider as obra_social,
+               insurance_id as obra_social_number,
                dni, birth_date, city, first_touch_source as acquisition_source,
                meta_ad_id, meta_adset_id, meta_adset_name, meta_ad_name, meta_campaign_name,
                medical_history, created_at, status, notes, anamnesis_token,
@@ -5855,11 +5858,12 @@ async def update_patient(
                 email = $4,
                 dni = $5,
                 insurance_provider = $6,
-                city = $7,
-                birth_date = $8,
-                notes = $9,
+                insurance_id = $7,
+                city = $8,
+                birth_date = $9,
+                notes = $10,
                 updated_at = NOW()
-            WHERE id = $10 AND tenant_id = $11
+            WHERE id = $11 AND tenant_id = $12
         """,
             p.first_name,
             p.last_name,
@@ -5867,6 +5871,7 @@ async def update_patient(
             p.email,
             p.dni,
             p.insurance,
+            p.insurance_number,
             p.city,
             p.birth_date,
             p.notes,

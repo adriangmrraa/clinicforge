@@ -447,6 +447,7 @@
     "email": "Email",
     "obra_social": "Insurance",
     "obra_social_placeholder": "E.g. OSDE, Swiss Medical, Private",
+    "insurance_number": "Member ID",
     "schedule_first_appointment": "Schedule first appointment (optional)",
     "treatment_service": "Treatment / service",
     "select_treatment": "Select treatment...",
