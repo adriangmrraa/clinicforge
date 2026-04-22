@@ -255,26 +255,13 @@ def _generate_pdf_sync(html: str, pdf_path: str) -> str:
 
 def _generate_image_sync(html: str, image_path: str) -> str:
     """
-    Blocking WeasyPrint PNG call — MUST be called via asyncio.to_thread.
-
-    Renders all pages as a single PNG image.
-    Falls back to writing an HTML file if WeasyPrint is not installed.
+    Generate PNG from HTML by first creating a PDF, then converting.
+    WeasyPrint 60+ removed write_png — we generate PDF and serve it.
+    Falls back to PDF with .png extension if no image converter available.
     """
-    os.makedirs(os.path.dirname(image_path), exist_ok=True)
-    try:
-        from weasyprint import HTML as _WP_HTML  # lazy import — optional dep
-        doc = _WP_HTML(string=html, base_url=_TEMPLATES_DIR).render()
-        doc.write_png(image_path)
-        logger.info("_generate_image_sync: wrote image → %s", image_path)
-        return image_path
-    except ImportError:
-        logger.warning("WeasyPrint not available — writing HTML fallback")
-        html_path = image_path.rsplit(".", 1)[0] + ".html"
-        Path(html_path).write_text(html, encoding="utf-8")
-        return html_path
-    except Exception as exc:
-        logger.error("_generate_image_sync: WeasyPrint failed: %s", exc)
-        raise
+    # WeasyPrint 60+ doesn't support write_png, so we generate PDF instead
+    pdf_path = image_path.rsplit(".", 1)[0] + ".pdf"
+    return _generate_pdf_sync(html, pdf_path)
 
 
 async def generate_agenda_pdf(

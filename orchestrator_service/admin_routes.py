@@ -16838,51 +16838,28 @@ async def export_agenda(
 
     Todos los turnos están filtrados por tenant_id (Sovereignty Protocol §1).
     """
-    VALID_FORMATS = ("pdf", "png", "jpg")
-    fmt = format.lower()
-    if fmt not in VALID_FORMATS:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Formato inválido '{format}'. Opciones: {', '.join(VALID_FORMATS)}",
+    # All formats generate PDF (WeasyPrint 60+ removed write_png support)
+    from services.agenda_export_service import generate_agenda_pdf
+
+    try:
+        file_path = await generate_agenda_pdf(
+            db.pool,
+            resolved_tenant_id,
+            start_date,
+            end_date,
+            professional_id,
         )
-
-    if fmt == "pdf":
-        from services.agenda_export_service import generate_agenda_pdf
-
-        try:
-            file_path = await generate_agenda_pdf(
-                db.pool,
-                resolved_tenant_id,
-                start_date,
-                end_date,
-                professional_id,
-            )
-        except Exception as exc:
-            logger.error("export_agenda PDF error: %s", exc)
-            raise HTTPException(status_code=500, detail=f"Error generando PDF: {exc}")
-
-        filename = f"Agenda_{start_date}_{end_date}.pdf"
-        media_type = "application/pdf"
-    else:
-        from services.agenda_export_service import generate_agenda_image
-
-        try:
-            file_path = await generate_agenda_image(
-                db.pool,
-                resolved_tenant_id,
-                start_date,
-                end_date,
-                professional_id,
-                format=fmt,
-            )
-        except Exception as exc:
-            logger.error("export_agenda image error: %s", exc)
-            raise HTTPException(status_code=500, detail=f"Error generando imagen: {exc}")
-
-        filename = f"Agenda_{start_date}_{end_date}.{fmt}"
-        media_type = "image/png" if fmt == "png" else "image/jpeg"
+    except Exception as exc:
+        logger.error("export_agenda error: %s", exc)
+        raise HTTPException(status_code=500, detail=f"Error generando agenda: {exc}")
 
     if not os.path.exists(file_path):
         raise HTTPException(status_code=500, detail="Archivo generado no encontrado en disco")
 
-    return FileResponse(file_path, media_type=media_type, filename=filename)
+    file_size = os.path.getsize(file_path)
+    if file_size < 100:
+        logger.error("export_agenda: PDF too small (%d bytes), likely empty", file_size)
+        raise HTTPException(status_code=500, detail="PDF generado está vacío")
+
+    filename = f"Agenda_{start_date}_{end_date}.pdf"
+    return FileResponse(file_path, media_type="application/pdf", filename=filename)

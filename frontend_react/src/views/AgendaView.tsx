@@ -676,20 +676,19 @@ export default function AgendaView() {
     return { start, end, params };
   };
 
-  const handleExport = async (format: 'pdf' | 'png') => {
+  const handleExport = async () => {
     setShowExportMenu(false);
     setExporting(true);
     try {
       const ep = getExportParams();
       if (!ep) return;
-      ep.params.set('format', format);
 
       const resp = await api.get(`/admin/agenda/export?${ep.params.toString()}`, { responseType: 'blob' });
-      const blob = new Blob([resp.data], { type: format === 'pdf' ? 'application/pdf' : 'image/png' });
+      const blob = new Blob([resp.data], { type: 'application/pdf' });
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', `agenda_semanal_${ep.start}.${format}`);
+      link.setAttribute('download', `agenda_semanal_${ep.start}.pdf`);
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -953,16 +952,10 @@ export default function AgendaView() {
                     <div className="fixed inset-0 z-40" onClick={() => setShowExportMenu(false)} />
                     <div className="absolute right-0 top-10 z-50 bg-[#1a1f2e] border border-white/[0.1] rounded-lg shadow-xl py-1 min-w-[180px]">
                       <button
-                        onClick={() => handleExport('pdf')}
+                        onClick={handleExport}
                         className="w-full px-4 py-2 text-left text-sm text-white/80 hover:bg-white/[0.06] flex items-center gap-2"
                       >
                         <FileText size={14} /> Descargar PDF
-                      </button>
-                      <button
-                        onClick={() => handleExport('png')}
-                        className="w-full px-4 py-2 text-left text-sm text-white/80 hover:bg-white/[0.06] flex items-center gap-2"
-                      >
-                        <Image size={14} /> Descargar imagen (PNG)
                       </button>
                       <div className="border-t border-white/[0.06] my-1" />
                       <button
@@ -1094,7 +1087,7 @@ export default function AgendaView() {
           }
 
           /* ===== STICKY HEADERS — semana/día ===== */
-          /* FC maneja sticky internamente con stickyHeaderDates={true} + height="100%" */
+          /* FC maneja sticky internamente con stickyHeaderDates={true} + height="parent" */
 
           /* Toolbar de navegación (flechas, título, botones de vista) */
           .fc .fc-toolbar.fc-header-toolbar {
@@ -1309,7 +1302,7 @@ export default function AgendaView() {
                           ? 'timeGridWeek,dayGridMonth,listYear,listThreeYears' 
                           : 'resourceTimeGridDay,timeGridWeek,dayGridMonth,listYear,listThreeYears'),
                   }}
-                  height="100%"
+                  height="parent"
                   selectAllow={(selectInfo) => {
                     const now = new Date();
                     return selectInfo.start >= now;
