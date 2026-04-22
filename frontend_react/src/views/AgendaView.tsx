@@ -996,6 +996,11 @@ export default function AgendaView() {
             background-color: #0d1117 !important;
           }
 
+          /* Fix gap entre toolbar y grilla en vista Semana (DLD-34) */
+          .fc .fc-scrollgrid {
+            border-spacing: 0 !important;
+          }
+
           /* ===== DARK MODE OVERRIDES FOR FULLCALENDAR ===== */
           .fc {
             --fc-border-color: rgba(255,255,255,0.06);

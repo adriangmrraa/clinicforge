@@ -105,14 +105,14 @@ export const AppointmentCard: React.FC<EventContentArg> = (eventInfo) => {
     if (isMonthView) {
         return (
             <div className={`
-              flex items-center gap-1 h-full w-full px-1.5 py-0.5
+              flex items-center gap-1 h-full w-full px-1.5 py-0.5 md:py-1
               rounded border-l-2 ${styles.border} ${styles.bg}
               overflow-hidden cursor-pointer
             `}>
-                <span className={`text-[10px] font-mono shrink-0 ${styles.text}`}>
+                <span className={`text-[10px] md:text-xs font-mono shrink-0 ${styles.text}`}>
                     {eventInfo.timeText}
                 </span>
-                <span className={`text-[10px] font-semibold truncate ${styles.text}`}>
+                <span className={`text-[10px] md:text-xs font-semibold truncate ${styles.text}`}>
                     {eventInfo.event.title?.split(' - ')[0] || 'Sin nombre'}
                 </span>
             </div>
