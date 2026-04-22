@@ -382,6 +382,7 @@ export default function AgendaView() {
       await fetchDataRef.current?.();
     };
     initializeAgenda();
+    return () => { fetchAbortControllerRef.current?.abort(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Intencionalmente vacío: solo al montar
 
@@ -844,7 +845,7 @@ export default function AgendaView() {
               <button
                 onClick={() => window.print()}
                 title={t('agenda.print_agenda')}
-                className="print:hidden flex items-center justify-center w-8 h-8 rounded-lg bg-white/[0.04] border border-white/[0.08] text-white/50 hover:bg-white/[0.08] hover:text-white transition-colors"
+                className="print:hidden print-hidden flex items-center justify-center w-8 h-8 rounded-lg bg-white/[0.04] border border-white/[0.08] text-white/50 hover:bg-white/[0.08] hover:text-white transition-colors"
               >
                 <Printer size={15} />
               </button>
