@@ -499,6 +499,20 @@ export default function AgendaView() {
     }
   }, [location.state, appointments]);
 
+  // Measure toolbar height for sticky offset (DLD-29 fix)
+  useEffect(() => {
+    const measure = () => {
+      const toolbar = document.querySelector('.fc-header-toolbar');
+      if (toolbar) {
+        const h = toolbar.getBoundingClientRect().height;
+        document.documentElement.style.setProperty('--fc-toolbar-height', `${h}px`);
+      }
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, [currentView]);
+
   // Calendar events transformer
   const calendarEvents = useMemo(() => [
     ...filteredAppointments.map((apt) => ({
@@ -971,7 +985,7 @@ export default function AgendaView() {
           .fc .fc-scrollgrid-section-header > td,
           .fc thead .fc-scrollgrid-section > td {
             position: sticky !important;
-            top: 57px !important; /* altura aprox del toolbar */
+            top: var(--fc-toolbar-height, 57px) !important;
             z-index: 19 !important;
             background-color: #0d1117 !important;
           }
