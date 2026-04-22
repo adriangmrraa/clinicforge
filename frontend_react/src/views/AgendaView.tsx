@@ -9,7 +9,7 @@ import resourceTimeGridPlugin from '@fullcalendar/resource-timegrid';
 import AppointmentForm from '../components/AppointmentForm';
 import MobileAgenda from '../components/MobileAgenda';
 import HolidayDetailModal from '../components/HolidayDetailModal';
-import { RefreshCw, Stethoscope, Printer } from 'lucide-react';
+import { RefreshCw, Stethoscope, Download, FileText, Image, Loader2 } from 'lucide-react';
 import AppointmentCard from '../components/AppointmentCard';
 import api from '../api/axios';
 import { addDays, subDays, startOfDay, endOfDay } from 'date-fns';
@@ -170,6 +170,8 @@ export default function AgendaView() {
     if (savedView) return savedView;
     return window.innerWidth >= 1024 ? 'timeGridWeek' : (window.innerWidth >= 768 ? 'resourceTimeGridDay' : 'timeGridDay');
   });
+  const [showExportMenu, setShowExportMenu] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   // Mobile Detection
   useEffect(() => {
@@ -663,6 +665,36 @@ export default function AgendaView() {
     setShowModal(true);
   };
 
+  const handleExport = async (format: 'pdf' | 'png') => {
+    setShowExportMenu(false);
+    setExporting(true);
+    try {
+      const calApi = calendarRef.current?.getApi();
+      const view = calApi?.view;
+      const start = view?.activeStart?.toISOString()?.split('T')[0];
+      const end = view?.activeEnd?.toISOString()?.split('T')[0];
+      if (!start || !end) return;
+
+      const params = new URLSearchParams({ format, start_date: start, end_date: end });
+      if (selectedProfessionalId !== 'all') params.append('professional_id', selectedProfessionalId);
+
+      const resp = await api.get(`/admin/agenda/export?${params.toString()}`, { responseType: 'blob' });
+      const blob = new Blob([resp.data], { type: format === 'pdf' ? 'application/pdf' : 'image/png' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `agenda_semanal_${start}.${format}`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Error exporting agenda:', err);
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const handleEventClick = (info: any) => {
     const eventType = info.event.extendedProps.eventType;
     
@@ -878,14 +910,36 @@ export default function AgendaView() {
                 </div>
               )}
 
-              {/* Print Button */}
-              <button
-                onClick={() => window.print()}
-                title={t('agenda.print_agenda')}
-                className="print:hidden print-hidden flex items-center justify-center w-8 h-8 rounded-lg bg-white/[0.04] border border-white/[0.08] text-white/50 hover:bg-white/[0.08] hover:text-white transition-colors"
-              >
-                <Printer size={15} />
-              </button>
+              {/* Export Button */}
+              <div className="relative">
+                <button
+                  onClick={() => setShowExportMenu(!showExportMenu)}
+                  disabled={exporting}
+                  title="Descargar agenda"
+                  className="print:hidden flex items-center justify-center w-8 h-8 rounded-lg bg-white/[0.04] border border-white/[0.08] text-white/50 hover:bg-white/[0.08] hover:text-white transition-colors disabled:opacity-50"
+                >
+                  {exporting ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
+                </button>
+                {showExportMenu && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setShowExportMenu(false)} />
+                    <div className="absolute right-0 top-10 z-50 bg-[#1a1f2e] border border-white/[0.1] rounded-lg shadow-xl py-1 min-w-[180px]">
+                      <button
+                        onClick={() => handleExport('pdf')}
+                        className="w-full px-4 py-2 text-left text-sm text-white/80 hover:bg-white/[0.06] flex items-center gap-2"
+                      >
+                        <FileText size={14} /> Descargar PDF
+                      </button>
+                      <button
+                        onClick={() => handleExport('png')}
+                        className="w-full px-4 py-2 text-left text-sm text-white/80 hover:bg-white/[0.06] flex items-center gap-2"
+                      >
+                        <Image size={14} /> Descargar imagen (PNG)
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
 
           </div>
@@ -1189,7 +1243,7 @@ export default function AgendaView() {
                   dayMaxEvents={true}
                   weekends={true}
                   nowIndicator={true}
-                  stickyHeaderDates={false}
+                  stickyHeaderDates={true}
                   slotDuration="00:15:00"
                   slotLabelInterval="01:00"
                   initialDate={new Date()}
@@ -1314,78 +1368,6 @@ export default function AgendaView() {
             </div>
         </div>
       )}
-
-      {/* ===== PRINT-ONLY LAYOUT ===== */}
-      {/* Hidden on screen, visible only when printing */}
-      <div className="hidden print-agenda-content">
-        <div style={{ fontFamily: 'Arial, sans-serif', color: '#000', padding: '16px' }}>
-          {/* Print header */}
-          <div style={{ borderBottom: '2px solid #000', paddingBottom: '8px', marginBottom: '16px' }}>
-            <h1 style={{ fontSize: '18pt', fontWeight: 'bold', margin: 0 }}>
-              {localStorage.getItem('CLINIC_NAME') || 'ClinicForge'} — {t('agenda.print_title')}
-            </h1>
-            {visibleRangeStr && (
-              <p style={{ fontSize: '10pt', color: '#444', margin: '4px 0 0 0' }}>{visibleRangeStr}</p>
-            )}
-            {selectedProfessionalId !== 'all' && (
-              <p style={{ fontSize: '10pt', color: '#444', margin: '2px 0 0 0' }}>
-                {professionals.find(p => p.id.toString() === selectedProfessionalId)
-                  ? `Dr. ${professionals.find(p => p.id.toString() === selectedProfessionalId)!.first_name} ${professionals.find(p => p.id.toString() === selectedProfessionalId)!.last_name || ''}`
-                  : ''}
-              </p>
-            )}
-          </div>
-
-          {/* Appointments table */}
-          {filteredAppointments.length === 0 ? (
-            <p style={{ color: '#666', fontStyle: 'italic' }}>{t('agenda.print_no_appointments')}</p>
-          ) : (
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '9pt' }}>
-              <thead>
-                <tr style={{ backgroundColor: '#f0f0f0' }}>
-                  <th style={{ border: '1px solid #ccc', padding: '6px 8px', textAlign: 'left', fontWeight: 'bold' }}>{t('agenda.date_time')}</th>
-                  <th style={{ border: '1px solid #ccc', padding: '6px 8px', textAlign: 'left', fontWeight: 'bold' }}>{t('agenda.patient')}</th>
-                  <th style={{ border: '1px solid #ccc', padding: '6px 8px', textAlign: 'left', fontWeight: 'bold' }}>{t('agenda.appointment_type')}</th>
-                  <th style={{ border: '1px solid #ccc', padding: '6px 8px', textAlign: 'left', fontWeight: 'bold' }}>{t('agenda.professional')}</th>
-                  <th style={{ border: '1px solid #ccc', padding: '6px 8px', textAlign: 'left', fontWeight: 'bold' }}>{t('agenda.appointment_status')}</th>
-                  <th style={{ border: '1px solid #ccc', padding: '6px 8px', textAlign: 'left', fontWeight: 'bold' }}>{t('agenda.notes')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {[...filteredAppointments]
-                  .sort((a, b) => new Date(a.appointment_datetime).getTime() - new Date(b.appointment_datetime).getTime())
-                  .map((apt, idx) => {
-                    const dt = new Date(apt.appointment_datetime);
-                    const dateStr = dt.toLocaleDateString(language === 'es' ? 'es-AR' : language === 'fr' ? 'fr-FR' : 'en-US', {
-                      weekday: 'short', day: 'numeric', month: 'short', year: 'numeric'
-                    });
-                    const timeStr = dt.toLocaleTimeString(language === 'es' ? 'es-AR' : language === 'fr' ? 'fr-FR' : 'en-US', {
-                      hour: '2-digit', minute: '2-digit'
-                    });
-                    return (
-                      <tr key={apt.id} style={{ backgroundColor: idx % 2 === 0 ? '#fff' : '#fafafa' }}>
-                        <td style={{ border: '1px solid #ccc', padding: '5px 8px', whiteSpace: 'nowrap' }}>
-                          {dateStr}<br /><strong>{timeStr}</strong>
-                          {apt.duration_minutes ? ` (${apt.duration_minutes} min)` : ''}
-                        </td>
-                        <td style={{ border: '1px solid #ccc', padding: '5px 8px' }}>{apt.patient_name || '—'}</td>
-                        <td style={{ border: '1px solid #ccc', padding: '5px 8px' }}>{apt.appointment_type}</td>
-                        <td style={{ border: '1px solid #ccc', padding: '5px 8px' }}>{apt.professional_name ? `Dr. ${apt.professional_name}` : '—'}</td>
-                        <td style={{ border: '1px solid #ccc', padding: '5px 8px' }}>{apt.status}</td>
-                        <td style={{ border: '1px solid #ccc', padding: '5px 8px' }}>{apt.notes || ''}</td>
-                      </tr>
-                    );
-                  })}
-              </tbody>
-            </table>
-          )}
-
-          {/* Footer */}
-          <div style={{ marginTop: '16px', borderTop: '1px solid #ccc', paddingTop: '8px', fontSize: '8pt', color: '#888' }}>
-            {t('agenda.print_title')} — {new Date().toLocaleString(language === 'es' ? 'es-AR' : language === 'fr' ? 'fr-FR' : 'en-US')}
-          </div>
-        </div>
-      </div>
 
       {/* Clinical Inspector Drawer */}
         <AppointmentForm

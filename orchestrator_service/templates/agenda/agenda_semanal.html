@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<style>
+  @page {
+    size: A4 landscape;
+    margin: 1.5cm 2cm;
+    @bottom-left { content: "Agenda Semanal · {{ date_display }}"; font-size: 8pt; color: #999; }
+    @bottom-right { content: "Pág. " counter(page) " / " counter(pages); font-size: 8pt; color: #999; }
+  }
+  body {
+    font-family: 'Segoe UI', Arial, sans-serif;
+    font-size: 9pt;
+    color: #333;
+    margin: 0;
+    padding: 0;
+  }
+  h1 { font-size: 18pt; margin: 0; color: #222; }
+  .subtitle { font-size: 10pt; color: #666; margin: 4px 0 16px 0; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
+  th {
+    background: #444;
+    color: white;
+    padding: 8px 10px;
+    text-align: left;
+    font-size: 8.5pt;
+  }
+  td {
+    border: 1px solid #ddd;
+    padding: 6px 10px;
+    vertical-align: top;
+    font-size: 8.5pt;
+  }
+  tr:nth-child(even) td { background: #f8f8f8; }
+  .time-slot {
+    font-weight: bold;
+    text-align: center;
+    white-space: nowrap;
+    color: #555;
+    background: #f0f0f0;
+  }
+  .section-break { page-break-before: always; }
+  .day-header {
+    padding: 8px 12px;
+    color: white;
+    font-weight: bold;
+    font-size: 11pt;
+    border-radius: 4px;
+    margin: 16px 0 8px 0;
+  }
+  .day-color-0 { background: #5b4a9e; }
+  .day-color-1 { background: #2e6ca4; }
+  .day-color-2 { background: #1a6b5a; }
+  .day-color-3 { background: #6b5a1a; }
+  .day-color-4 { background: #8b4513; }
+  .day-color-5 { background: #4a4a4a; }
+  .day-color-6 { background: #4a4a4a; }
+  .grid-header th { font-size: 9pt; padding: 10px; }
+  .alpha-day { font-weight: bold; }
+  hr.section-divider { border: none; border-top: 1px solid #ddd; margin: 12px 0; }
+  .empty-state {
+    text-align: center;
+    color: #999;
+    padding: 24px;
+    font-style: italic;
+  }
+</style>
+</head>
+<body>
+
+<!-- =========================================================== -->
+<!-- SECCIÓN 1: Grilla Semanal                                   -->
+<!-- =========================================================== -->
+<h1>Agenda Semanal — Grilla semanal</h1>
+<p class="subtitle">{{ date_display }} · {{ total_turnos }} turnos · {{ total_personas }} personas</p>
+
+{% if time_slots and days %}
+<table>
+  <thead>
+    <tr class="grid-header">
+      <th style="background:#444; width:12%;">Horario</th>
+      {% for day in days %}
+      <th class="day-color-{{ day.index }}" style="width:{{ (88 / days|length)|round(0, 'floor') }}%;">{{ day.name }}</th>
+      {% endfor %}
+    </tr>
+  </thead>
+  <tbody>
+    {% for slot in time_slots %}
+    <tr>
+      <td class="time-slot">{{ slot }}</td>
+      {% for day in days %}
+      <td>
+        {% set cell = grid.get(slot, {}).get(day.index, []) %}
+        {% for name in cell %}
+        {{ name }}<br/>
+        {% endfor %}
+      </td>
+      {% endfor %}
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="empty-state">No hay turnos registrados para este período.</p>
+{% endif %}
+
+<!-- =========================================================== -->
+<!-- SECCIÓN 2: Listas por día                                   -->
+<!-- =========================================================== -->
+<div class="section-break">
+  <h1>Listas por día</h1>
+  <p class="subtitle">Ordenado por horario · incluye responsable</p>
+  <hr class="section-divider"/>
+
+  {% if daily_lists %}
+    {% for day_data in daily_lists %}
+    <div class="day-header day-color-{{ day_data.day_index }}">
+      {{ day_data.day_name }} — {{ day_data.count }} persona{% if day_data.count != 1 %}s{% endif %}
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th style="background:#444; width:45%;">Persona</th>
+          <th style="background:#444; width:25%;">Horario</th>
+          <th style="background:#444; width:30%;">Responsable</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in day_data.rows %}
+        <tr>
+          <td>{{ row.patient_name }}</td>
+          <td style="text-align:center;">{{ row.time_slot }}</td>
+          <td>{{ row.professional_name if row.professional_name else '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endfor %}
+  {% else %}
+    <p class="empty-state">No hay turnos registrados para este período.</p>
+  {% endif %}
+</div>
+
+<!-- =========================================================== -->
+<!-- SECCIÓN 3: Listado completo (orden alfabético)              -->
+<!-- =========================================================== -->
+<div class="section-break">
+  <h1>Listado completo (orden alfabético)</h1>
+  <p class="subtitle">{{ total_turnos }} turno{% if total_turnos != 1 %}s{% endif %} totales</p>
+
+  {% if alphabetical %}
+  <table>
+    <thead>
+      <tr>
+        <th style="background:#444; width:5%;">#</th>
+        <th style="background:#444; width:30%;">Persona</th>
+        <th style="background:#444; width:20%;">Día</th>
+        <th style="background:#444; width:20%;">Horario</th>
+        <th style="background:#444; width:25%;">Responsable</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in alphabetical %}
+      <tr>
+        <td style="text-align:center;">{{ row.number }}</td>
+        <td>{{ row.patient_name }}</td>
+        <td class="alpha-day" style="color:{{ row.day_color }};">{{ row.day_name }}</td>
+        <td style="text-align:center;">{{ row.time_slot }}</td>
+        <td>{{ row.professional_name if row.professional_name else '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty-state">No hay turnos registrados para este período.</p>
+  {% endif %}
+</div>
+
+</body>
+</html>

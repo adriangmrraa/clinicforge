@@ -16807,3 +16807,82 @@ async def delete_telegram_config(
         pass
 
     return {"configured": False}
+
+
+# =============================================================================
+# AGENDA EXPORT: PDF / Image (agenda_export_service)
+# =============================================================================
+
+
+@router.get(
+    "/agenda/export",
+    dependencies=[Depends(verify_admin_token)],
+    tags=["Agenda"],
+    summary="Exportar agenda semanal como PDF o imagen",
+)
+async def export_agenda(
+    start_date: str,
+    end_date: str,
+    format: str = "pdf",
+    professional_id: Optional[int] = None,
+    resolved_tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    """
+    Genera y descarga la agenda semanal en PDF, PNG o JPG.
+
+    Query params:
+      - start_date: YYYY-MM-DD (inicio del rango)
+      - end_date:   YYYY-MM-DD (fin del rango)
+      - format:     pdf | png | jpg  (default: pdf)
+      - professional_id: filtrar por profesional (opcional)
+
+    Todos los turnos están filtrados por tenant_id (Sovereignty Protocol §1).
+    """
+    VALID_FORMATS = ("pdf", "png", "jpg")
+    fmt = format.lower()
+    if fmt not in VALID_FORMATS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Formato inválido '{format}'. Opciones: {', '.join(VALID_FORMATS)}",
+        )
+
+    if fmt == "pdf":
+        from services.agenda_export_service import generate_agenda_pdf
+
+        try:
+            file_path = await generate_agenda_pdf(
+                db.pool,
+                resolved_tenant_id,
+                start_date,
+                end_date,
+                professional_id,
+            )
+        except Exception as exc:
+            logger.error("export_agenda PDF error: %s", exc)
+            raise HTTPException(status_code=500, detail=f"Error generando PDF: {exc}")
+
+        filename = f"Agenda_{start_date}_{end_date}.pdf"
+        media_type = "application/pdf"
+    else:
+        from services.agenda_export_service import generate_agenda_image
+
+        try:
+            file_path = await generate_agenda_image(
+                db.pool,
+                resolved_tenant_id,
+                start_date,
+                end_date,
+                professional_id,
+                format=fmt,
+            )
+        except Exception as exc:
+            logger.error("export_agenda image error: %s", exc)
+            raise HTTPException(status_code=500, detail=f"Error generando imagen: {exc}")
+
+        filename = f"Agenda_{start_date}_{end_date}.{fmt}"
+        media_type = "image/png" if fmt == "png" else "image/jpeg"
+
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=500, detail="Archivo generado no encontrado en disco")
+
+    return FileResponse(file_path, media_type=media_type, filename=filename)
