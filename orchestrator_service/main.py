@@ -10268,7 +10268,7 @@ import time as _time
 
 _admin_rate_limit_store: dict = {}  # {ip: [timestamps]}
 _admin_rate_limit_last_cleanup = _time.time()
-_ADMIN_RATE_LIMIT = int(os.getenv("ADMIN_RATE_LIMIT", "60"))  # requests per minute
+_ADMIN_RATE_LIMIT = int(os.getenv("ADMIN_RATE_LIMIT", "300"))  # requests per minute
 _ADMIN_RATE_WINDOW = 60  # seconds
 _ADMIN_RATE_MAX_IPS = 10000  # max tracked IPs before forced full purge
 
@@ -10278,7 +10278,8 @@ class AdminRateLimitMiddleware(BaseHTTPMiddleware):
         global _admin_rate_limit_last_cleanup
         if not request.url.path.startswith("/admin/"):
             return await call_next(request)
-        client_ip = request.client.host if request.client else "unknown"
+        forwarded_for = request.headers.get("x-forwarded-for")
+        client_ip = forwarded_for.split(",")[0].strip() if forwarded_for else (request.client.host if request.client else "unknown")
         now = _time.time()
         # Periodic cleanup: purge stale IPs every 5 minutes
         if (

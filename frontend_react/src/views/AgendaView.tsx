@@ -194,6 +194,12 @@ export default function AgendaView() {
   const [visibleRangeStr, setVisibleRangeStr] = useState<string>('');
   // AbortController para cancelar requests en vuelo al navegar rápido entre meses/vistas
   const fetchAbortControllerRef = useRef<AbortController | null>(null);
+  // Cache de datos estáticos entre cambios de vista (se invalidan por TTL o por eventos socket)
+  const CACHE_TTL = 5 * 60 * 1000; // 5 minutos
+  const HOLIDAYS_CACHE_TTL = 24 * 60 * 60 * 1000; // 24 horas
+  const professionalsCache = useRef<{ data: any[]; fetchedAt: number }>({ data: [], fetchedAt: 0 });
+  const patientsCache = useRef<{ data: any[]; fetchedAt: number }>({ data: [], fetchedAt: 0 });
+  const holidaysCache = useRef<{ data: any[]; fetchedAt: number }>({ data: [], fetchedAt: 0 });
 
   const [formData, setFormData] = useState({
     patient_id: '',
@@ -286,9 +292,6 @@ export default function AgendaView() {
       if (!isBackground) setLoading(true);
       else setIsBackgroundSyncing(true);
 
-      // Fetch settings first if needed or concurrently
-      fetchClinicSettings();
-
       // Prioridad: fechas explícitas → calendarRef → fallback mobile
       let startDate: Date;
       let endDate: Date;
@@ -310,14 +313,26 @@ export default function AgendaView() {
       const startDateStr = startDate.toISOString();
       const endDateStr = endDate.toISOString();
 
-      // Fetch professionals first to resolve filter (CEO: selectedProfessionalId; professional: only their id)
-      const [professionalsRes, patientsRes] = await Promise.all([
-        api.get('/admin/professionals'),
-        api.get('/admin/patients'),
-      ]);
-      const fetchedProfessionals = professionalsRes.data.filter((p: Professional) => p.is_active);
+      // Fetch professionals and patients con cache TTL — no cambian entre cambios de vista
+      const now = Date.now();
+      let fetchedProfessionals: any[];
+      let fetchedPatients: any[];
+
+      if (now - professionalsCache.current.fetchedAt > CACHE_TTL || now - patientsCache.current.fetchedAt > CACHE_TTL) {
+        const [professionalsRes, patientsRes] = await Promise.all([
+          api.get('/admin/professionals'),
+          api.get('/admin/patients'),
+        ]);
+        fetchedProfessionals = professionalsRes.data.filter((p: Professional) => p.is_active);
+        fetchedPatients = patientsRes.data;
+        professionalsCache.current = { data: fetchedProfessionals, fetchedAt: now };
+        patientsCache.current = { data: fetchedPatients, fetchedAt: now };
+      } else {
+        fetchedProfessionals = professionalsCache.current.data;
+        fetchedPatients = patientsCache.current.data;
+      }
       setProfessionals(fetchedProfessionals);
-      setPatients(patientsRes.data);
+      setPatients(fetchedPatients);
 
       const profFilter = user?.role === 'professional'
         ? user?.professional_id?.toString() ?? null
@@ -336,20 +351,42 @@ export default function AgendaView() {
         params.professional_id = profFilter;
       }
 
-      const [appointmentsRes, blocksRes, holidaysRes] = await Promise.all([
-        api.get('/admin/appointments', { params, signal: abortController.signal }),
-        fetchGoogleBlocks(startDateStr, endDateStr, profFilter, abortController.signal),
-        api.get('/admin/holidays', { params: { days: 365 }, signal: abortController.signal }),
-      ]);
+      // Holidays con cache de 24h — los feriados raramente cambian entre vistas
+      let fetchedHolidays: any[];
+      if (now - holidaysCache.current.fetchedAt > HOLIDAYS_CACHE_TTL) {
+        const [appointmentsRes, blocksRes, holidaysRes] = await Promise.all([
+          api.get('/admin/appointments', { params, signal: abortController.signal }),
+          fetchGoogleBlocks(startDateStr, endDateStr, profFilter, abortController.signal),
+          api.get('/admin/holidays', { params: { days: 365 }, signal: abortController.signal }),
+        ]);
 
-      // Si fue abortado entre el disparo y la resolución, no actualizar el estado
-      if (abortController.signal.aborted) return;
+        // Si fue abortado entre el disparo y la resolución, no actualizar el estado
+        if (abortController.signal.aborted) return;
 
-      const newAppointments = appointmentsRes.data;
-      setAppointments(newAppointments);
-      eventsRef.current = newAppointments;
-      setGoogleBlocks(blocksRes || []);
-      setHolidays(holidaysRes.data?.upcoming || []);
+        fetchedHolidays = holidaysRes.data?.upcoming || [];
+        holidaysCache.current = { data: fetchedHolidays, fetchedAt: now };
+
+        const newAppointments = appointmentsRes.data;
+        setAppointments(newAppointments);
+        eventsRef.current = newAppointments;
+        setGoogleBlocks(blocksRes || []);
+      } else {
+        fetchedHolidays = holidaysCache.current.data;
+
+        const [appointmentsRes, blocksRes] = await Promise.all([
+          api.get('/admin/appointments', { params, signal: abortController.signal }),
+          fetchGoogleBlocks(startDateStr, endDateStr, profFilter, abortController.signal),
+        ]);
+
+        // Si fue abortado entre el disparo y la resolución, no actualizar el estado
+        if (abortController.signal.aborted) return;
+
+        const newAppointments = appointmentsRes.data;
+        setAppointments(newAppointments);
+        eventsRef.current = newAppointments;
+        setGoogleBlocks(blocksRes || []);
+      }
+      setHolidays(fetchedHolidays);
       // Los eventos se pasan via prop `events={calendarEvents}` — no manipular el calendario directamente
       // para evitar el loop datesSet → fetchData → re-render → datesSet
     } catch (error: any) {
