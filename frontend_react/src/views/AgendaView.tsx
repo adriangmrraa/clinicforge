@@ -9,7 +9,7 @@ import resourceTimeGridPlugin from '@fullcalendar/resource-timegrid';
 import AppointmentForm from '../components/AppointmentForm';
 import MobileAgenda from '../components/MobileAgenda';
 import HolidayDetailModal from '../components/HolidayDetailModal';
-import { RefreshCw, Stethoscope } from 'lucide-react';
+import { RefreshCw, Stethoscope, Printer } from 'lucide-react';
 import AppointmentCard from '../components/AppointmentCard';
 import api from '../api/axios';
 import { addDays, subDays, startOfDay, endOfDay } from 'date-fns';
@@ -759,7 +759,7 @@ export default function AgendaView() {
   };
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden bg-transparent">
+    <div className="agenda-print-root flex flex-col h-screen overflow-hidden bg-transparent">
       {/* Header - Fixed, non-scrollable */}
       <div className="flex-shrink-0 px-4 lg:px-6 pt-4 lg:pt-6">
         {/* Header */}
@@ -824,9 +824,16 @@ export default function AgendaView() {
                   <RefreshCw size={16} className="text-blue-500 animate-spin opacity-60" />
                 </div>
               )}
-            </div>
 
-            {/* Pulse Indicator */}
+              {/* Print Button */}
+              <button
+                onClick={() => window.print()}
+                title={t('agenda.print_agenda')}
+                className="print:hidden flex items-center justify-center w-8 h-8 rounded-lg bg-white/[0.04] border border-white/[0.08] text-white/50 hover:bg-white/[0.08] hover:text-white transition-colors"
+              >
+                <Printer size={15} />
+              </button>
+            </div>
 
           </div>
         </div>
@@ -1099,6 +1106,7 @@ export default function AgendaView() {
             background: rgba(255,255,255,0.04) !important;
             color: #fff !important;
           }
+
         `}</style>
 
               {/* Siempre montar el calendario para que las flechas y la vista no reviertan al hacer fetch */}
@@ -1248,6 +1256,78 @@ export default function AgendaView() {
             </div>
         </div>
       )}
+
+      {/* ===== PRINT-ONLY LAYOUT ===== */}
+      {/* Hidden on screen, visible only when printing */}
+      <div className="hidden print-agenda-content">
+        <div style={{ fontFamily: 'Arial, sans-serif', color: '#000', padding: '16px' }}>
+          {/* Print header */}
+          <div style={{ borderBottom: '2px solid #000', paddingBottom: '8px', marginBottom: '16px' }}>
+            <h1 style={{ fontSize: '18pt', fontWeight: 'bold', margin: 0 }}>
+              {localStorage.getItem('CLINIC_NAME') || 'ClinicForge'} — {t('agenda.print_title')}
+            </h1>
+            {visibleRangeStr && (
+              <p style={{ fontSize: '10pt', color: '#444', margin: '4px 0 0 0' }}>{visibleRangeStr}</p>
+            )}
+            {selectedProfessionalId !== 'all' && (
+              <p style={{ fontSize: '10pt', color: '#444', margin: '2px 0 0 0' }}>
+                {professionals.find(p => p.id.toString() === selectedProfessionalId)
+                  ? `Dr. ${professionals.find(p => p.id.toString() === selectedProfessionalId)!.first_name} ${professionals.find(p => p.id.toString() === selectedProfessionalId)!.last_name || ''}`
+                  : ''}
+              </p>
+            )}
+          </div>
+
+          {/* Appointments table */}
+          {filteredAppointments.length === 0 ? (
+            <p style={{ color: '#666', fontStyle: 'italic' }}>{t('agenda.print_no_appointments')}</p>
+          ) : (
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '9pt' }}>
+              <thead>
+                <tr style={{ backgroundColor: '#f0f0f0' }}>
+                  <th style={{ border: '1px solid #ccc', padding: '6px 8px', textAlign: 'left', fontWeight: 'bold' }}>{t('agenda.date_time')}</th>
+                  <th style={{ border: '1px solid #ccc', padding: '6px 8px', textAlign: 'left', fontWeight: 'bold' }}>{t('agenda.patient')}</th>
+                  <th style={{ border: '1px solid #ccc', padding: '6px 8px', textAlign: 'left', fontWeight: 'bold' }}>{t('agenda.appointment_type')}</th>
+                  <th style={{ border: '1px solid #ccc', padding: '6px 8px', textAlign: 'left', fontWeight: 'bold' }}>{t('agenda.professional')}</th>
+                  <th style={{ border: '1px solid #ccc', padding: '6px 8px', textAlign: 'left', fontWeight: 'bold' }}>{t('agenda.appointment_status')}</th>
+                  <th style={{ border: '1px solid #ccc', padding: '6px 8px', textAlign: 'left', fontWeight: 'bold' }}>{t('agenda.notes')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[...filteredAppointments]
+                  .sort((a, b) => new Date(a.appointment_datetime).getTime() - new Date(b.appointment_datetime).getTime())
+                  .map((apt, idx) => {
+                    const dt = new Date(apt.appointment_datetime);
+                    const dateStr = dt.toLocaleDateString(language === 'es' ? 'es-AR' : language === 'fr' ? 'fr-FR' : 'en-US', {
+                      weekday: 'short', day: 'numeric', month: 'short', year: 'numeric'
+                    });
+                    const timeStr = dt.toLocaleTimeString(language === 'es' ? 'es-AR' : language === 'fr' ? 'fr-FR' : 'en-US', {
+                      hour: '2-digit', minute: '2-digit'
+                    });
+                    return (
+                      <tr key={apt.id} style={{ backgroundColor: idx % 2 === 0 ? '#fff' : '#fafafa' }}>
+                        <td style={{ border: '1px solid #ccc', padding: '5px 8px', whiteSpace: 'nowrap' }}>
+                          {dateStr}<br /><strong>{timeStr}</strong>
+                          {apt.duration_minutes ? ` (${apt.duration_minutes} min)` : ''}
+                        </td>
+                        <td style={{ border: '1px solid #ccc', padding: '5px 8px' }}>{apt.patient_name || '—'}</td>
+                        <td style={{ border: '1px solid #ccc', padding: '5px 8px' }}>{apt.appointment_type}</td>
+                        <td style={{ border: '1px solid #ccc', padding: '5px 8px' }}>{apt.professional_name ? `Dr. ${apt.professional_name}` : '—'}</td>
+                        <td style={{ border: '1px solid #ccc', padding: '5px 8px' }}>{apt.status}</td>
+                        <td style={{ border: '1px solid #ccc', padding: '5px 8px' }}>{apt.notes || ''}</td>
+                      </tr>
+                    );
+                  })}
+              </tbody>
+            </table>
+          )}
+
+          {/* Footer */}
+          <div style={{ marginTop: '16px', borderTop: '1px solid #ccc', paddingTop: '8px', fontSize: '8pt', color: '#888' }}>
+            {t('agenda.print_title')} — {new Date().toLocaleString(language === 'es' ? 'es-AR' : language === 'fr' ? 'fr-FR' : 'en-US')}
+          </div>
+        </div>
+      </div>
 
       {/* Clinical Inspector Drawer */}
         <AppointmentForm

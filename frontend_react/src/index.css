@@ -376,3 +376,69 @@ select optgroup {
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
 }
+
+/* ============================================
+   PRINT STYLES — Agenda
+   ============================================ */
+
+@media print {
+  /* Reset dark mode: white background, black text */
+  body, html {
+    background: #fff !important;
+    color: #000 !important;
+    font-size: 11pt !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Hide ALL UI chrome */
+  nav,
+  aside,
+  header,
+  footer,
+  [class*="Sidebar"],
+  [class*="sidebar"],
+  [class*="NovaWidget"],
+  [class*="nova-btn"],
+  [class*="OnboardingGuide"],
+  [class*="PageTips"],
+  [class*="MetaTokenBanner"] {
+    display: none !important;
+  }
+
+  /* Hide screen-only elements tagged with print:hidden */
+  .print-hidden {
+    display: none !important;
+  }
+
+  /* The main Layout flex wrapper — let it flow */
+  .flex.h-screen {
+    display: block !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  /* Hide the main content area EXCEPT the agenda print content */
+  main > *:not(.agenda-print-root),
+  .agenda-print-root > *:not(.print-agenda-content) {
+    display: none !important;
+  }
+
+  /* Show the print-only agenda block */
+  .print-agenda-content {
+    display: block !important;
+    width: 100% !important;
+  }
+
+  /* Remove shadows */
+  * {
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+
+  /* Page setup — landscape A4 for weekly view */
+  @page {
+    size: A4 landscape;
+    margin: 1.5cm;
+  }
+}

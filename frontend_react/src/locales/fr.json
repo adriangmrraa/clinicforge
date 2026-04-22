@@ -408,7 +408,10 @@
     "complete_treatment": "Finaliser le Traitement (Envoyer Suivi HSM)",
     "complete_treatment_hint": "Envoie le modèle de suivi post-traitement configuré dans HSM Automation",
     "save_anyway": "Enregistrer quand même",
-    "drag_save_error": "Erreur lors du déplacement"
+    "drag_save_error": "Erreur lors du déplacement",
+    "print_agenda": "Imprimer l'agenda",
+    "print_title": "Planning des Rendez-vous",
+    "print_no_appointments": "Aucun rendez-vous pour cette période"
   },
   "patients": {
     "title": "Liste des Patients",

@@ -425,7 +425,10 @@
     "complete_treatment": "Finalizar Tratamiento (Enviar Seguimiento HSM)",
     "complete_treatment_hint": "Envía la plantilla de seguimiento post-tratamiento configurada en HSM Automation",
     "save_anyway": "Guardar de todos modos",
-    "drag_save_error": "Error al mover el turno"
+    "drag_save_error": "Error al mover el turno",
+    "print_agenda": "Imprimir agenda",
+    "print_title": "Agenda de Turnos",
+    "print_no_appointments": "No hay turnos para este período"
   },
   "patients": {
     "title": "Listado de Pacientes",

@@ -415,7 +415,10 @@
     "complete_treatment": "Complete Treatment (Send HSM Follow-up)",
     "complete_treatment_hint": "Sends the post-treatment follow-up template configured in HSM Automation",
     "save_anyway": "Save anyway",
-    "drag_save_error": "Error moving appointment"
+    "drag_save_error": "Error moving appointment",
+    "print_agenda": "Print agenda",
+    "print_title": "Appointment Schedule",
+    "print_no_appointments": "No appointments for this period"
   },
   "patients": {
     "title": "Patient List",
