@@ -4,7 +4,7 @@ import {
   Plus, Trash2, Loader2, Receipt, X, RefreshCw,
   Banknote, ArrowRightLeft, CreditCard, Check, AlertCircle,
   User, Mail, Download, Sparkles,
-  CheckCircle2, Clock, Search, Edit2
+  CheckCircle2, Clock, Search, Edit2, Calendar
 } from 'lucide-react';
 import api from '../api/axios';
 
@@ -51,15 +51,31 @@ interface TreatmentPlanPayment {
   recorded_by_name?: string | null;
   notes: string | null;
   appointment_id?: number;
+  installment_id?: string | null;
+  installment_number?: number | null;
   payment_receipt_data?: {
     status?: 'verified' | 'pending' | 'review' | 'rejected';
     amount?: number;
   } | null;
 }
 
+interface TreatmentPlanInstallment {
+  id: string;
+  installment_number: number;
+  amount: number;
+  due_date: string;
+  status: 'pending' | 'paid' | 'overdue';
+  paid_at: string | null;
+  payment_id: string | null;
+}
+
 interface TreatmentPlanDetail extends TreatmentPlan {
   items: TreatmentPlanItem[];
   payments: TreatmentPlanPayment[];
+  installments?: TreatmentPlanInstallment[];
+  installments_count?: number;
+  installments_paid_count?: number;
+  next_due_date?: string | null;
 }
 
 interface Professional {
@@ -324,7 +340,7 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
   // ── Form data
   const [newPlanData, setNewPlanData] = useState({ name: '', professional_id: '', notes: '' });
   const [newItemData, setNewItemData] = useState({ treatment_type_code: '', custom_description: '', estimated_price: '' });
-  const [newPaymentData, setNewPaymentData] = useState({ amount: '', payment_method: 'cash', payment_date: new Date().toISOString().split('T')[0], notes: '' });
+  const [newPaymentData, setNewPaymentData] = useState({ amount: '', payment_method: 'cash', payment_date: new Date().toISOString().split('T')[0], notes: '', installment_id: '' });
   const [approveData, setApproveData] = useState({ approved_total: '' });
 
   // ── Modal support data
@@ -340,9 +356,16 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
   const [generatingPlan, setGeneratingPlan] = useState(false);
   const [syncingAppointments, setSyncingAppointments] = useState(false);
 
+  // ── Installments
+  const [showGenerateInstallments, setShowGenerateInstallments] = useState(false);
+  const [generateInstallmentsData, setGenerateInstallmentsData] = useState({ count: '3', start_date: new Date().toISOString().split('T')[0], frequency: 'monthly' });
+  const [generatingInstallments, setGeneratingInstallments] = useState(false);
+
   // ─── Mount: fetch billing-summary FIRST, then decide state ───────────────
 
   useEffect(() => {
+    setSelectedPlanId(null);
+    setPlanDetail(null);
     loadBillingSummary();
   }, [patientId, refreshKey]);
 
@@ -519,19 +542,55 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
   const handleRegisterPayment = async () => {
     if (!newPaymentData.amount || !planDetail) return;
     try {
-      await api.post(`/admin/treatment-plans/${planDetail.id}/payments`, {
+      const payload: Record<string, unknown> = {
         amount: parseFloat(newPaymentData.amount),
         payment_method: newPaymentData.payment_method,
         payment_date: newPaymentData.payment_date,
         notes: newPaymentData.notes || null,
-      });
+      };
+      if (newPaymentData.installment_id) {
+        payload.installment_id = newPaymentData.installment_id;
+      }
+      await api.post(`/admin/treatment-plans/${planDetail.id}/payments`, payload);
       setShowRegisterPayment(false);
-      setNewPaymentData({ amount: '', payment_method: 'cash', payment_date: new Date().toISOString().split('T')[0], notes: '' });
+      setNewPaymentData({ amount: '', payment_method: 'cash', payment_date: new Date().toISOString().split('T')[0], notes: '', installment_id: '' });
       await loadPlanDetail(planDetail.id);
     } catch (err) {
       console.error('Error registering payment:', err);
       setError(t('billing.error_save'));
     }
+  };
+
+  const handleGenerateInstallments = async () => {
+    if (!planDetail) return;
+    try {
+      setGeneratingInstallments(true);
+      await api.post(`/admin/treatment-plans/${planDetail.id}/installments/generate`, {
+        count: parseInt(generateInstallmentsData.count),
+        start_date: generateInstallmentsData.start_date,
+        frequency: generateInstallmentsData.frequency,
+      });
+      setShowGenerateInstallments(false);
+      setSuccess(t('installment.generated_success'));
+      await loadPlanDetail(planDetail.id);
+    } catch (err: unknown) {
+      console.error('Error generating installments:', err);
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      setError(msg || t('billing.error_save'));
+    } finally {
+      setGeneratingInstallments(false);
+    }
+  };
+
+  const openPaymentModalForInstallment = (installment: TreatmentPlanInstallment) => {
+    setNewPaymentData({
+      amount: String(installment.amount),
+      payment_method: 'cash',
+      payment_date: new Date().toISOString().split('T')[0],
+      notes: '',
+      installment_id: installment.id,
+    });
+    setShowRegisterPayment(true);
   };
 
   const handleApprovePlan = async () => {
@@ -1448,7 +1507,7 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
             <div className="flex justify-between items-center mb-4">
               <h4 className="text-sm font-semibold text-white">{t('billing.payments')}</h4>
               <button
-                onClick={() => { setNewPaymentData({ ...newPaymentData, amount: String(pendingTotal) }); setShowRegisterPayment(true); }}
+                onClick={() => { setNewPaymentData({ ...newPaymentData, amount: String(pendingTotal), installment_id: '' }); setShowRegisterPayment(true); }}
                 disabled={planDetail.status === 'cancelled'}
                 className="flex items-center gap-1 text-primary text-sm hover:text-primary-dark disabled:opacity-50"
               >
@@ -1577,6 +1636,80 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
               </>
             )}
           </div>
+          {/* Installments Section */}
+          <div className="bg-white/[0.02] border border-white/[0.06] rounded-xl p-4">
+            <div className="flex justify-between items-center mb-4">
+              <h4 className="text-sm font-semibold text-white">{t('installment.title')}</h4>
+              {(!planDetail.installments || planDetail.installments.length === 0) &&
+                (planDetail.status === 'approved' || planDetail.status === 'in_progress') && (
+                <button
+                  onClick={() => setShowGenerateInstallments(true)}
+                  disabled={planDetail.status === 'cancelled'}
+                  className="flex items-center gap-1 text-primary text-sm hover:text-primary-dark disabled:opacity-50"
+                >
+                  <Plus size={16} />
+                  {t('installment.generate')}
+                </button>
+              )}
+            </div>
+
+            {!planDetail.installments || planDetail.installments.length === 0 ? (
+              <p className="text-white/40 text-center py-4">{t('installment.no_installments')}</p>
+            ) : (
+              <div className="space-y-2">
+                {planDetail.installments.map((inst) => {
+                  const dueDate = new Date(inst.due_date);
+                  const dueDateStr = isNaN(dueDate.getTime())
+                    ? inst.due_date
+                    : dueDate.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+
+                  const badgeClass =
+                    inst.status === 'paid'
+                      ? 'bg-green-500/10 text-green-400'
+                      : inst.status === 'overdue'
+                      ? 'bg-red-500/10 text-red-400'
+                      : 'bg-amber-500/10 text-amber-400';
+
+                  const statusLabel =
+                    inst.status === 'paid'
+                      ? t('installment.paid')
+                      : inst.status === 'overdue'
+                      ? t('installment.overdue')
+                      : t('installment.pending');
+
+                  return (
+                    <div
+                      key={inst.id}
+                      className="flex flex-wrap items-center gap-3 py-2.5 px-3 bg-white/[0.02] border border-white/[0.06] rounded-lg"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-white font-medium">
+                          {t('installment.cuota')} {inst.installment_number} {t('installment.of')} {planDetail.installments_count ?? planDetail.installments!.length}
+                        </p>
+                        <div className="flex items-center gap-1 mt-0.5 text-xs text-white/50">
+                          <Calendar size={11} />
+                          {t('installment.due_date')}: {dueDateStr}
+                        </div>
+                      </div>
+                      <span className="text-sm font-semibold text-white">{formatCurrency(inst.amount)}</span>
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${badgeClass}`}>
+                        {statusLabel}
+                      </span>
+                      {(inst.status === 'pending' || inst.status === 'overdue') && (
+                        <button
+                          onClick={() => openPaymentModalForInstallment(inst)}
+                          className="flex items-center gap-1 text-xs bg-white/[0.06] border border-white/[0.08] text-white/70 px-2 py-1 rounded-lg hover:bg-white/[0.1] transition-colors"
+                        >
+                          <Banknote size={12} />
+                          {t('installment.pay_installment')}
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </>
       )}
 
@@ -1648,9 +1781,41 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
       )}
 
       {showRegisterPayment && (
-        <Modal onClose={() => setShowRegisterPayment(false)}>
+        <Modal onClose={() => { setShowRegisterPayment(false); setNewPaymentData({ amount: '', payment_method: 'cash', payment_date: new Date().toISOString().split('T')[0], notes: '', installment_id: '' }); }}>
           <h3 className="text-lg font-semibold text-white mb-4">{t('billing.register_payment')}</h3>
           <div className="space-y-4">
+            {/* Installment selector — only when plan has installments */}
+            {planDetail?.installments && planDetail.installments.length > 0 && (
+              <div>
+                <label className="block text-sm text-white/60 mb-1">{t('installment.select_installment')}</label>
+                <select
+                  value={newPaymentData.installment_id}
+                  onChange={(e) => {
+                    const instId = e.target.value;
+                    const inst = planDetail.installments?.find((i) => i.id === instId);
+                    setNewPaymentData({
+                      ...newPaymentData,
+                      installment_id: instId,
+                      amount: inst ? String(inst.amount) : newPaymentData.amount,
+                    });
+                  }}
+                  className="w-full px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-primary"
+                >
+                  <option value="">{t('installment.free_payment')}</option>
+                  {planDetail.installments
+                    .filter((i) => i.status === 'pending' || i.status === 'overdue')
+                    .map((i) => {
+                      const due = new Date(i.due_date);
+                      const dueFmt = isNaN(due.getTime()) ? i.due_date : due.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+                      return (
+                        <option key={i.id} value={i.id}>
+                          {t('installment.cuota')} {i.installment_number} — {formatCurrency(i.amount)} — {t('installment.due_date')} {dueFmt}
+                        </option>
+                      );
+                    })}
+                </select>
+              </div>
+            )}
             <div>
               <label className="block text-sm text-white/60 mb-1">{t('billing.amount')}</label>
               <input
@@ -1869,6 +2034,59 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
           </Modal>
         );
       })()}
+
+      {/* Generate Installments Modal */}
+      {showGenerateInstallments && (
+        <Modal onClose={() => setShowGenerateInstallments(false)}>
+          <h3 className="text-lg font-semibold text-white mb-4">{t('installment.generate_title')}</h3>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm text-white/60 mb-1">{t('installment.count')}</label>
+              <input
+                type="number"
+                min="1"
+                max="24"
+                value={generateInstallmentsData.count}
+                onChange={(e) => setGenerateInstallmentsData({ ...generateInstallmentsData, count: e.target.value })}
+                className="w-full px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-white/60 mb-1">{t('installment.start_date')}</label>
+              <input
+                type="date"
+                value={generateInstallmentsData.start_date}
+                onChange={(e) => setGenerateInstallmentsData({ ...generateInstallmentsData, start_date: e.target.value })}
+                className="w-full px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-white/60 mb-1">{t('installment.frequency')}</label>
+              <select
+                value={generateInstallmentsData.frequency}
+                onChange={(e) => setGenerateInstallmentsData({ ...generateInstallmentsData, frequency: e.target.value })}
+                className="w-full px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-primary"
+              >
+                <option value="monthly">{t('installment.monthly')}</option>
+                <option value="biweekly">{t('installment.biweekly')}</option>
+                <option value="weekly">{t('installment.weekly')}</option>
+              </select>
+            </div>
+            <button
+              onClick={handleGenerateInstallments}
+              disabled={generatingInstallments || !generateInstallmentsData.count || !generateInstallmentsData.start_date}
+              className="w-full flex items-center justify-center gap-2 bg-white text-[#0a0e1a] py-2 rounded-lg hover:opacity-90 disabled:opacity-50 font-medium"
+            >
+              {generatingInstallments ? (
+                <Loader2 size={16} className="animate-spin" />
+              ) : (
+                <Calendar size={16} />
+              )}
+              {t('installment.generate')}
+            </button>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

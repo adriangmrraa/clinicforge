@@ -82,6 +82,8 @@ from schemas.treatment_plan import (
     PlanStatus,
     RegisterPaymentBody,
     LinkPlanItemBody,
+    GenerateInstallmentsBody,
+    UpdateInstallmentBody,
 )
 
 
@@ -13502,6 +13504,58 @@ async def get_treatment_plan_detail(
             }
         )
 
+    # Query installments with overdue CASE
+    installments_rows = await db.pool.fetch(
+        """
+        SELECT
+            id,
+            plan_id,
+            tenant_id,
+            installment_number,
+            amount,
+            due_date,
+            CASE
+                WHEN due_date < CURRENT_DATE AND status = 'pending' THEN 'overdue'
+                ELSE status
+            END AS computed_status,
+            paid_at,
+            payment_id,
+            created_at,
+            updated_at
+        FROM treatment_plan_installments
+        WHERE plan_id = $1 AND tenant_id = $2
+        ORDER BY installment_number ASC
+        """,
+        plan_uuid,
+        tenant_id,
+    )
+
+    installments_list = [
+        {
+            "id": str(r["id"]),
+            "plan_id": str(r["plan_id"]),
+            "tenant_id": r["tenant_id"],
+            "installment_number": r["installment_number"],
+            "amount": float(r["amount"]),
+            "due_date": r["due_date"].isoformat() if r["due_date"] else None,
+            "status": r["computed_status"],
+            "paid_at": r["paid_at"].isoformat() if r["paid_at"] else None,
+            "payment_id": str(r["payment_id"]) if r["payment_id"] else None,
+            "created_at": r["created_at"].isoformat(),
+            "updated_at": r["updated_at"].isoformat(),
+        }
+        for r in installments_rows
+    ]
+
+    installments_count = len(installments_list)
+    installments_paid_count = sum(1 for i in installments_list if i["status"] == "paid")
+    next_due_date = None
+    pending_or_overdue = [
+        i["due_date"] for i in installments_list if i["status"] in ("pending", "overdue") and i["due_date"]
+    ]
+    if pending_or_overdue:
+        next_due_date = min(pending_or_overdue)
+
     approved = float(plan["approved_total"] or 0)
     paid = sum(float(p["amount"]) for p in payments_list)
     pending = max(approved - paid, 0) if approved > 0 else 0
@@ -13527,11 +13581,15 @@ async def get_treatment_plan_detail(
         "updated_at": plan["updated_at"].isoformat(),
         "items": items_list,
         "payments": payments_list,
+        "installments": installments_list,
         "professional_name": plan["professional_first_name"],
         "patient_name": patient_name,
         "paid_total": paid,
         "pending_total": pending,
         "progress_pct": progress_pct,
+        "installments_count": installments_count,
+        "installments_paid_count": installments_paid_count,
+        "next_due_date": next_due_date,
     }
 
 
@@ -14440,6 +14498,41 @@ async def register_plan_payment(
                 detail="El turno no pertenece al paciente de este plan",
             )
 
+    # 3b. Si installment_id se provee, validar que pertenece a este plan y está pendiente
+    installment_uuid = None
+    if body.installment_id:
+        try:
+            installment_uuid = uuid.UUID(body.installment_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="ID de cuota inválido")
+        installment = await db.pool.fetchrow(
+            """
+            SELECT id, plan_id, status
+            FROM treatment_plan_installments
+            WHERE id = $1 AND tenant_id = $2
+            """,
+            installment_uuid,
+            resolved_tenant_id,
+        )
+        if not installment:
+            raise HTTPException(status_code=404, detail="Cuota no encontrada")
+        try:
+            inst_plan_id = uuid.UUID(str(installment["plan_id"]))
+            req_plan_id = uuid.UUID(plan_id)
+        except ValueError:
+            inst_plan_id = str(installment["plan_id"])
+            req_plan_id = plan_id
+        if inst_plan_id != req_plan_id:
+            raise HTTPException(
+                status_code=422,
+                detail="La cuota no pertenece a este plan de tratamiento",
+            )
+        if installment["status"] == "paid":
+            raise HTTPException(
+                status_code=409,
+                detail="La cuota ya fue pagada",
+            )
+
     # 4. Generar payment_id
     payment_id = str(uuid.uuid4())
 
@@ -14452,9 +14545,9 @@ async def register_plan_payment(
                 INSERT INTO treatment_plan_payments (
                     id, plan_id, tenant_id, amount, payment_method,
                     payment_date, recorded_by, appointment_id, receipt_data, notes,
-                    created_at
+                    installment_id, created_at
                 )
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
                 """,
                 payment_id,
                 plan_id,
@@ -14470,7 +14563,21 @@ async def register_plan_payment(
                 body.appointment_id,
                 json.dumps(body.receipt_data) if body.receipt_data else None,
                 body.notes,
+                str(installment_uuid) if installment_uuid else None,
             )
+
+            # 5b. Si hay cuota vinculada, marcarla como pagada
+            if installment_uuid:
+                await conn.execute(
+                    """
+                    UPDATE treatment_plan_installments
+                    SET status = 'paid', paid_at = NOW(), payment_id = $1, updated_at = NOW()
+                    WHERE id = $2 AND tenant_id = $3
+                    """,
+                    payment_id,
+                    installment_uuid,
+                    resolved_tenant_id,
+                )
 
             # 6. Sync con accounting_transactions
             accounting_tx_id = str(uuid.uuid4())
@@ -14561,6 +14668,7 @@ async def register_plan_payment(
             "recorded_by": getattr(user_data, "email", None)
             or str(getattr(user_data, "id", "")),
             "appointment_id": body.appointment_id,
+            "installment_id": str(installment_uuid) if installment_uuid else None,
             "notes": body.notes,
             "created_at": datetime.now(timezone.utc).isoformat(),
         },
@@ -14691,6 +14799,384 @@ async def delete_plan_payment(
             "action": "payment_deleted",
         },
         request,
+    )
+
+    return None
+
+
+# =============================================================================
+# EP-INST-01: Generar cuotas para un plan de tratamiento
+# =============================================================================
+
+
+@router.post(
+    "/treatment-plans/{plan_id}/installments/generate",
+    tags=["Planes de Tratamiento"],
+    summary="Generar cuotas para un plan de tratamiento",
+    status_code=201,
+)
+async def generate_plan_installments(
+    plan_id: str,
+    body: GenerateInstallmentsBody,
+    request: Request,
+    user_data=Depends(verify_admin_token),
+    resolved_tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    """
+    Genera N cuotas para un plan aprobado o en progreso.
+    Si existen cuotas pendientes, las reemplaza. Falla si hay alguna pagada (409).
+    """
+    from datetime import timedelta
+    from dateutil.relativedelta import relativedelta
+
+    try:
+        plan_uuid = uuid.UUID(plan_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="ID de plan inválido")
+
+    # 1. Verificar que el plan existe y pertenece al tenant
+    plan = await db.pool.fetchrow(
+        "SELECT id, status, approved_total FROM treatment_plans WHERE id = $1 AND tenant_id = $2",
+        plan_uuid,
+        resolved_tenant_id,
+    )
+    if not plan:
+        raise HTTPException(status_code=404, detail="Plan no encontrado")
+
+    # 2. Validar estado: solo approved o in_progress
+    if plan["status"] not in ("approved", "in_progress"):
+        raise HTTPException(
+            status_code=400,
+            detail="Solo se pueden generar cuotas en planes aprobados o en progreso",
+        )
+
+    # 3. Verificar si hay cuotas ya pagadas — no se pueden reemplazar
+    paid_count = await db.pool.fetchval(
+        """
+        SELECT COUNT(*) FROM treatment_plan_installments
+        WHERE plan_id = $1 AND tenant_id = $2 AND status = 'paid'
+        """,
+        plan_uuid,
+        resolved_tenant_id,
+    )
+    if paid_count and paid_count > 0:
+        raise HTTPException(
+            status_code=409,
+            detail="No se pueden regenerar cuotas: existen cuotas ya pagadas",
+        )
+
+    # 4. Calcular montos
+    approved_total = float(plan["approved_total"] or 0)
+    count = body.count
+
+    if body.custom_amounts:
+        if len(body.custom_amounts) != count:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Se esperan {count} montos personalizados, se recibieron {len(body.custom_amounts)}",
+            )
+        amounts = [float(a) for a in body.custom_amounts]
+        total_custom = sum(amounts)
+        if abs(total_custom - approved_total) > 0.01:
+            raise HTTPException(
+                status_code=400,
+                detail=f"La suma de los montos personalizados ({total_custom}) no coincide con el total aprobado ({approved_total})",
+            )
+    else:
+        # Igual split: last absorbs remainder
+        base = round(approved_total / count, 2)
+        amounts = [base] * count
+        remainder = round(approved_total - base * count, 2)
+        amounts[-1] = round(amounts[-1] + remainder, 2)
+
+    # 5. Calcular fechas por frecuencia
+    start = body.start_date
+    due_dates = []
+    for i in range(count):
+        if i == 0:
+            due_dates.append(start)
+        else:
+            if body.frequency == "monthly" or body.frequency == "custom":
+                due_dates.append(start + relativedelta(months=i))
+            elif body.frequency == "biweekly":
+                due_dates.append(start + timedelta(days=14 * i))
+            elif body.frequency == "weekly":
+                due_dates.append(start + timedelta(days=7 * i))
+
+    # 6. Transacción: eliminar pendientes e insertar nuevas
+    async with db.pool.acquire() as conn:
+        async with conn.transaction():
+            await conn.execute(
+                """
+                DELETE FROM treatment_plan_installments
+                WHERE plan_id = $1 AND tenant_id = $2 AND status = 'pending'
+                """,
+                plan_uuid,
+                resolved_tenant_id,
+            )
+
+            inserted = []
+            for i in range(count):
+                inst_id = str(uuid.uuid4())
+                await conn.execute(
+                    """
+                    INSERT INTO treatment_plan_installments
+                        (id, tenant_id, plan_id, installment_number, amount, due_date, status, created_at, updated_at)
+                    VALUES ($1, $2, $3, $4, $5, $6, 'pending', NOW(), NOW())
+                    """,
+                    inst_id,
+                    resolved_tenant_id,
+                    plan_uuid,
+                    i + 1,
+                    amounts[i],
+                    due_dates[i],
+                )
+                inserted.append(
+                    {
+                        "id": inst_id,
+                        "plan_id": plan_id,
+                        "tenant_id": resolved_tenant_id,
+                        "installment_number": i + 1,
+                        "amount": amounts[i],
+                        "due_date": due_dates[i].isoformat(),
+                        "status": "pending",
+                        "paid_at": None,
+                        "payment_id": None,
+                    }
+                )
+
+    return {"installments": inserted}
+
+
+# =============================================================================
+# EP-INST-02: Listar cuotas de un plan
+# =============================================================================
+
+
+@router.get(
+    "/treatment-plans/{plan_id}/installments",
+    tags=["Planes de Tratamiento"],
+    summary="Listar cuotas de un plan de tratamiento",
+)
+async def get_plan_installments(
+    plan_id: str,
+    user_data=Depends(verify_admin_token),
+    resolved_tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    """
+    Lista todas las cuotas del plan con status calculado en tiempo real
+    (overdue = due_date < hoy y status = 'pending').
+    """
+    try:
+        plan_uuid = uuid.UUID(plan_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="ID de plan inválido")
+
+    # Verificar que el plan existe y pertenece al tenant
+    plan = await db.pool.fetchrow(
+        "SELECT id FROM treatment_plans WHERE id = $1 AND tenant_id = $2",
+        plan_uuid,
+        resolved_tenant_id,
+    )
+    if not plan:
+        raise HTTPException(status_code=404, detail="Plan no encontrado")
+
+    rows = await db.pool.fetch(
+        """
+        SELECT
+            id,
+            plan_id,
+            tenant_id,
+            installment_number,
+            amount,
+            due_date,
+            CASE
+                WHEN due_date < CURRENT_DATE AND status = 'pending' THEN 'overdue'
+                ELSE status
+            END AS computed_status,
+            status AS raw_status,
+            paid_at,
+            payment_id,
+            created_at,
+            updated_at
+        FROM treatment_plan_installments
+        WHERE plan_id = $1 AND tenant_id = $2
+        ORDER BY installment_number ASC
+        """,
+        plan_uuid,
+        resolved_tenant_id,
+    )
+
+    return [
+        {
+            "id": str(r["id"]),
+            "plan_id": str(r["plan_id"]),
+            "tenant_id": r["tenant_id"],
+            "installment_number": r["installment_number"],
+            "amount": float(r["amount"]),
+            "due_date": r["due_date"].isoformat() if r["due_date"] else None,
+            "status": r["computed_status"],
+            "paid_at": r["paid_at"].isoformat() if r["paid_at"] else None,
+            "payment_id": str(r["payment_id"]) if r["payment_id"] else None,
+            "created_at": r["created_at"].isoformat(),
+            "updated_at": r["updated_at"].isoformat(),
+        }
+        for r in rows
+    ]
+
+
+# =============================================================================
+# EP-INST-03: Editar una cuota (fecha/monto, solo si pendiente)
+# =============================================================================
+
+
+@router.patch(
+    "/treatment-plan-installments/{installment_id}",
+    tags=["Planes de Tratamiento"],
+    summary="Editar una cuota de plan (fecha o monto)",
+)
+async def update_plan_installment(
+    installment_id: str,
+    body: UpdateInstallmentBody,
+    user_data=Depends(verify_admin_token),
+    resolved_tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    """
+    Actualiza due_date y/o amount de una cuota.
+    Falla con 409 si la cuota ya está pagada.
+    """
+    try:
+        inst_uuid = uuid.UUID(installment_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="ID de cuota inválido")
+
+    installment = await db.pool.fetchrow(
+        """
+        SELECT id, status, plan_id
+        FROM treatment_plan_installments
+        WHERE id = $1 AND tenant_id = $2
+        """,
+        inst_uuid,
+        resolved_tenant_id,
+    )
+    if not installment:
+        raise HTTPException(status_code=404, detail="Cuota no encontrada")
+
+    if installment["status"] == "paid":
+        raise HTTPException(
+            status_code=409,
+            detail="No se puede modificar una cuota ya pagada",
+        )
+
+    update_fields = []
+    params: list = []
+    idx = 1
+
+    if body.due_date is not None:
+        update_fields.append(f"due_date = ${idx}")
+        params.append(body.due_date)
+        idx += 1
+
+    if body.amount is not None:
+        update_fields.append(f"amount = ${idx}")
+        params.append(body.amount)
+        idx += 1
+
+    if not update_fields:
+        raise HTTPException(status_code=400, detail="No se enviaron campos a actualizar")
+
+    update_fields.append(f"updated_at = NOW()")
+    params.append(inst_uuid)
+    params.append(resolved_tenant_id)
+
+    await db.pool.execute(
+        f"""
+        UPDATE treatment_plan_installments
+        SET {', '.join(update_fields)}
+        WHERE id = ${idx} AND tenant_id = ${idx + 1}
+        """,
+        *params,
+    )
+
+    updated = await db.pool.fetchrow(
+        """
+        SELECT id, plan_id, tenant_id, installment_number, amount, due_date,
+               CASE WHEN due_date < CURRENT_DATE AND status = 'pending' THEN 'overdue' ELSE status END AS status,
+               paid_at, payment_id, created_at, updated_at
+        FROM treatment_plan_installments
+        WHERE id = $1 AND tenant_id = $2
+        """,
+        inst_uuid,
+        resolved_tenant_id,
+    )
+
+    return {
+        "id": str(updated["id"]),
+        "plan_id": str(updated["plan_id"]),
+        "tenant_id": updated["tenant_id"],
+        "installment_number": updated["installment_number"],
+        "amount": float(updated["amount"]),
+        "due_date": updated["due_date"].isoformat() if updated["due_date"] else None,
+        "status": updated["status"],
+        "paid_at": updated["paid_at"].isoformat() if updated["paid_at"] else None,
+        "payment_id": str(updated["payment_id"]) if updated["payment_id"] else None,
+        "created_at": updated["created_at"].isoformat(),
+        "updated_at": updated["updated_at"].isoformat(),
+    }
+
+
+# =============================================================================
+# EP-INST-04: Eliminar todas las cuotas de un plan
+# =============================================================================
+
+
+@router.delete(
+    "/treatment-plans/{plan_id}/installments",
+    tags=["Planes de Tratamiento"],
+    summary="Eliminar todas las cuotas de un plan",
+    status_code=204,
+)
+async def delete_plan_installments(
+    plan_id: str,
+    user_data=Depends(verify_admin_token),
+    resolved_tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    """
+    Elimina TODAS las cuotas de un plan.
+    Falla con 409 si alguna está pagada.
+    """
+    try:
+        plan_uuid = uuid.UUID(plan_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="ID de plan inválido")
+
+    # Verificar que el plan existe y pertenece al tenant
+    plan = await db.pool.fetchrow(
+        "SELECT id FROM treatment_plans WHERE id = $1 AND tenant_id = $2",
+        plan_uuid,
+        resolved_tenant_id,
+    )
+    if not plan:
+        raise HTTPException(status_code=404, detail="Plan no encontrado")
+
+    paid_count = await db.pool.fetchval(
+        """
+        SELECT COUNT(*) FROM treatment_plan_installments
+        WHERE plan_id = $1 AND tenant_id = $2 AND status = 'paid'
+        """,
+        plan_uuid,
+        resolved_tenant_id,
+    )
+    if paid_count and paid_count > 0:
+        raise HTTPException(
+            status_code=409,
+            detail="No se pueden eliminar las cuotas: existen cuotas ya pagadas",
+        )
+
+    await db.pool.execute(
+        "DELETE FROM treatment_plan_installments WHERE plan_id = $1 AND tenant_id = $2",
+        plan_uuid,
+        resolved_tenant_id,
     )
 
     return None

@@ -48,6 +48,14 @@ class PaymentMethod(str, Enum):
     INSURANCE = "insurance"
 
 
+class InstallmentStatus(str, Enum):
+    """Estado de una cuota"""
+
+    PENDING = "pending"
+    PAID = "paid"
+    OVERDUE = "overdue"  # computed at read time, never stored
+
+
 # =============================================================================
 # REQUEST MODELS
 # =============================================================================
@@ -139,6 +147,7 @@ class RegisterPaymentBody(BaseModel):
     receipt_data: Optional[dict] = Field(None, description="Datos del comprobante")
     notes: Optional[str] = Field(None, description="Notas del pago")
     recorded_by: Optional[str] = Field(None, description="Email del usuario que registra (se extrae del JWT si no se envía)")
+    installment_id: Optional[str] = Field(None, description="ID de la cuota a pagar (opcional)")
 
     @field_validator("amount")
     @classmethod
@@ -154,6 +163,28 @@ class LinkPlanItemBody(BaseModel):
     plan_item_id: Optional[str] = Field(
         None, description="ID del ítem de plan (null para desvincular)"
     )
+
+
+class GenerateInstallmentsBody(BaseModel):
+    """Cuerpo para generar cuotas en un plan de tratamiento"""
+
+    count: int = Field(..., ge=1, le=24, description="Cantidad de cuotas")
+    start_date: date = Field(..., description="Fecha de la primera cuota")
+    frequency: str = Field(
+        ...,
+        pattern="^(monthly|biweekly|weekly|custom)$",
+        description="Frecuencia: monthly | biweekly | weekly | custom",
+    )
+    custom_amounts: Optional[List[Decimal]] = Field(
+        None, description="Montos personalizados por cuota (deben sumar el total aprobado)"
+    )
+
+
+class UpdateInstallmentBody(BaseModel):
+    """Cuerpo para editar una cuota (solo campos permitidos)"""
+
+    due_date: Optional[date] = Field(None, description="Nueva fecha de vencimiento")
+    amount: Optional[Decimal] = Field(None, gt=0, description="Nuevo monto")
 
 
 # =============================================================================
@@ -185,6 +216,25 @@ class TreatmentPlanItemResponse(BaseModel):
         from_attributes = True
 
 
+class InstallmentResponse(BaseModel):
+    """Respuesta para una cuota de plan de tratamiento"""
+
+    id: str
+    plan_id: str
+    tenant_id: int
+    installment_number: int
+    amount: Decimal
+    due_date: date
+    status: str  # pending | paid | overdue (overdue computed at read time, never stored)
+    paid_at: Optional[datetime] = None
+    payment_id: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
 class TreatmentPlanPaymentResponse(BaseModel):
     """Respuesta para un pago registrado"""
 
@@ -198,6 +248,9 @@ class TreatmentPlanPaymentResponse(BaseModel):
     appointment_id: Optional[str]
     receipt_data: Optional[dict]
     notes: Optional[str]
+    # Campos de cuota vinculada
+    installment_id: Optional[str] = None
+    installment_number: Optional[int] = None
     # Timestamps
     created_at: datetime
 
@@ -248,11 +301,15 @@ class TreatmentPlanDetailResponse(BaseModel):
     # Arrays completos
     items: List[TreatmentPlanItemResponse] = Field(default_factory=list)
     payments: List[TreatmentPlanPaymentResponse] = Field(default_factory=list)
+    installments: List[InstallmentResponse] = Field(default_factory=list)
     # Campos calculados
     paid_total: Decimal = Field(default=Decimal("0"), description="Total pagado")
     pending_total: Decimal = Field(default=Decimal("0"), description="Saldo pendiente")
     paid_percentage: float = Field(default=0.0, description="Porcentaje pagado")
     completed_items_count: int = Field(default=0, description="Ítems completados")
+    installments_count: int = Field(default=0, description="Total de cuotas generadas")
+    installments_paid_count: int = Field(default=0, description="Cuotas ya pagadas")
+    next_due_date: Optional[date] = Field(None, description="Próxima fecha de vencimiento pendiente/vencida")
     # Timestamps
     created_at: datetime
     updated_at: datetime

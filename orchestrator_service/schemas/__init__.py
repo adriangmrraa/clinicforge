@@ -7,6 +7,7 @@ from schemas.treatment_plan import (
     PlanStatus,
     ItemStatus,
     PaymentMethod,
+    InstallmentStatus,
     # Request models
     TreatmentPlanItemCreate,
     CreateTreatmentPlanBody,
@@ -15,11 +16,14 @@ from schemas.treatment_plan import (
     UpdatePlanItemBody,
     RegisterPaymentBody,
     LinkPlanItemBody,
+    GenerateInstallmentsBody,
+    UpdateInstallmentBody,
     # Response models
     TreatmentPlanResponse,
     TreatmentPlanDetailResponse,
     TreatmentPlanItemResponse,
     TreatmentPlanPaymentResponse,
+    InstallmentResponse,
     # Helper models
     PlanSummary,
     PaymentWithReceiptResponse,
@@ -30,6 +34,7 @@ __all__ = [
     "PlanStatus",
     "ItemStatus",
     "PaymentMethod",
+    "InstallmentStatus",
     # Request models
     "TreatmentPlanItemCreate",
     "CreateTreatmentPlanBody",
@@ -38,11 +43,14 @@ __all__ = [
     "UpdatePlanItemBody",
     "RegisterPaymentBody",
     "LinkPlanItemBody",
+    "GenerateInstallmentsBody",
+    "UpdateInstallmentBody",
     # Response models
     "TreatmentPlanResponse",
     "TreatmentPlanDetailResponse",
     "TreatmentPlanItemResponse",
     "TreatmentPlanPaymentResponse",
+    "InstallmentResponse",
     # Helper models
     "PlanSummary",
     "PaymentWithReceiptResponse",

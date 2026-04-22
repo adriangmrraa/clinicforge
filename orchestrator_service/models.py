@@ -1705,6 +1705,9 @@ class TreatmentPlan(Base):
     payments = relationship(
         "TreatmentPlanPayment", back_populates="plan", cascade="all, delete-orphan"
     )
+    installments = relationship(
+        "TreatmentPlanInstallment", back_populates="plan", cascade="all, delete-orphan"
+    )
 
 
 class TreatmentPlanItem(Base):
@@ -1773,8 +1776,52 @@ class TreatmentPlanPayment(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
 
+    installment_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("treatment_plan_installments.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
     plan = relationship("TreatmentPlan", back_populates="payments")
     tenant = relationship("Tenant")
+    installment = relationship("TreatmentPlanInstallment", back_populates="payments")
+
+
+class TreatmentPlanInstallment(Base):
+    __tablename__ = "treatment_plan_installments"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(
+        Integer, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    plan_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("treatment_plans.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    installment_number = Column(Integer, nullable=False)
+    amount = Column(Numeric(12, 2), nullable=False)
+    due_date = Column(Date, nullable=False)
+    status = Column(String(20), nullable=False, server_default="pending")
+    paid_at = Column(DateTime(timezone=True), nullable=True)
+    payment_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("treatment_plan_payments.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    created_at = Column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    plan = relationship("TreatmentPlan", back_populates="installments")
+    tenant = relationship("Tenant")
+    payments = relationship("TreatmentPlanPayment", back_populates="installment")
 
 
 # =============================================================================
