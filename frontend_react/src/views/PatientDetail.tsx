@@ -40,6 +40,7 @@ interface Patient {
   last_visit?: string;
   pending_balance?: number;
   anamnesis_token?: string;
+  patient_source?: string;
 }
 
 interface ClinicalRecord {
@@ -690,9 +691,19 @@ export default function PatientDetail() {
                 <ArrowLeft size={20} />
               </button>
               <div className="min-w-0">
-                <h1 className="text-xl lg:text-2xl font-bold text-white truncate">
-                  {patient.first_name} {patient.last_name}
-                </h1>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h1 className="text-xl lg:text-2xl font-bold text-white truncate">
+                    {patient.first_name} {patient.last_name}
+                  </h1>
+                  {patient.patient_source === 'art' && (
+                    <span
+                      title={t('patients.art_badge_tooltip')}
+                      className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-orange-500/10 text-orange-400 border border-orange-500/20"
+                    >
+                      {t('patients.art_badge')}
+                    </span>
+                  )}
+                </div>
                 <div className="flex flex-wrap items-center gap-2 mt-1">
                   {patient.dni && (
                     <span className="text-sm text-white/60">DNI: {patient.dni}</span>
@@ -775,6 +786,17 @@ export default function PatientDetail() {
             )}
           </div>
         </div>
+
+        {/* ART Incomplete Data Alert */}
+        {patient.patient_source === 'art' && (
+          <div className="mx-4 my-3 flex items-start gap-3 bg-orange-500/10 border border-orange-500/20 text-orange-300 px-4 py-3 rounded-lg">
+            <AlertTriangle size={18} className="shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-orange-400">{t('patients.art_badge')}</p>
+              <p className="text-xs text-orange-300/80 mt-0.5">{t('patients.art_incomplete_alert')}</p>
+            </div>
+          </div>
+        )}
 
         {/* Sistema de Pestañas con Scroll Isolation Horizontal */}
         <div className="border-t border-white/[0.06]">

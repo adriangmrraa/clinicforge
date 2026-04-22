@@ -495,7 +495,11 @@
     "bulk_assign_success": "Professionnel assigné avec succès",
     "bulk_assign_error": "Erreur lors de l'assignation du professionnel",
     "incomplete_profile": "Profil incomplet",
-    "missing_fields": "Manquant: {{fields}}"
+    "missing_fields": "Manquant: {{fields}}",
+    "art_badge": "ART",
+    "art_badge_tooltip": "Patient orienté par l'assurance accidents du travail",
+    "art_incomplete_alert": "Ce patient a été créé via une orientation ART. Les données réelles doivent être complétées lors de la consultation.",
+    "art_complete_data": "Compléter les données réelles"
   },
   "chats": {
     "badge_patient": "Patient",

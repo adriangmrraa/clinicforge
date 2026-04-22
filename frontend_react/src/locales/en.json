@@ -502,7 +502,11 @@
     "bulk_assign_success": "Professional assigned successfully",
     "bulk_assign_error": "Error assigning professional",
     "incomplete_profile": "Incomplete profile",
-    "missing_fields": "Missing: {{fields}}"
+    "missing_fields": "Missing: {{fields}}",
+    "art_badge": "ART",
+    "art_badge_tooltip": "Patient referred by ART (Workers' Insurance)",
+    "art_incomplete_alert": "This patient was created via ART referral. Real data should be completed when they arrive for their appointment.",
+    "art_complete_data": "Complete real data"
   },
   "chats": {
     "badge_patient": "Patient",

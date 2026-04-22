@@ -101,6 +101,7 @@ class AppointmentResponse(BaseModel):
     professional_name: Optional[str] = None
     professional_id: Optional[int] = None
     appointment_name: str
+    patient_source: Optional[str] = None
 
 
 class PreInstructions(BaseModel):
@@ -5068,7 +5069,8 @@ async def list_patients(
                p.assigned_professional_id,
                ap.first_name as assigned_professional_name,
                EXISTS (SELECT 1 FROM appointments a WHERE a.patient_id = p.id AND a.tenant_id = p.tenant_id) as has_appointments,
-               lt.treatment_name as last_treatment
+               lt.treatment_name as last_treatment,
+               COALESCE(p.patient_source, 'regular') as patient_source
         FROM patients p
         LEFT JOIN professionals ap ON ap.id = p.assigned_professional_id
         LEFT JOIN LATERAL (
@@ -5753,7 +5755,7 @@ async def get_patient(id: int, tenant_id: int = Depends(get_resolved_tenant_id))
                dni, birth_date, city, first_touch_source as acquisition_source,
                meta_ad_id, meta_adset_id, meta_adset_name, meta_ad_name, meta_campaign_name,
                medical_history, created_at, status, notes, anamnesis_token,
-               guardian_phone
+               guardian_phone, COALESCE(patient_source, 'regular') as patient_source
         FROM patients
         WHERE id = $1 AND tenant_id = $2
     """,
@@ -6876,7 +6878,8 @@ async def list_appointments(
                p.phone_number as patient_phone,
                prof.first_name as professional_name, prof.id as professional_id,
                COALESCE(tt.name, a.appointment_type, 'Consulta') as appointment_name,
-               CASE WHEN LOWER(COALESCE(p.notes, '') || ' ' || COALESCE(p.medical_history::text, '')) ~ '(diabetes|hipertension|cardiopatia|hemofilia|alergia penicilina|embarazo|anticoagulacion|vih|hepatitis|asma severa)' THEN true ELSE false END as has_medical_alerts
+               CASE WHEN LOWER(COALESCE(p.notes, '') || ' ' || COALESCE(p.medical_history::text, '')) ~ '(diabetes|hipertension|cardiopatia|hemofilia|alergia penicilina|embarazo|anticoagulacion|vih|hepatitis|asma severa)' THEN true ELSE false END as has_medical_alerts,
+               COALESCE(p.patient_source, 'regular') as patient_source
         FROM appointments a
         JOIN patients p ON a.patient_id = p.id
         LEFT JOIN professionals prof ON a.professional_id = prof.id

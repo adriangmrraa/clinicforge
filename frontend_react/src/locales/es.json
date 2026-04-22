@@ -517,7 +517,11 @@
     "bulk_assign_success": "Profesional asignado correctamente",
     "bulk_assign_error": "Error al asignar profesional",
     "incomplete_profile": "Perfil incompleto",
-    "missing_fields": "Faltan: {{fields}}"
+    "missing_fields": "Faltan: {{fields}}",
+    "art_badge": "ART",
+    "art_badge_tooltip": "Paciente derivado por ART",
+    "art_incomplete_alert": "Este paciente fue creado por derivación ART. Sus datos reales deben completarse cuando se presente a la consulta.",
+    "art_complete_data": "Completar datos reales"
   },
   "chats": {
     "badge_patient": "Paciente",

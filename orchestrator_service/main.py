@@ -2772,6 +2772,8 @@ async def book_appointment(
     professional_name: Optional[str] = None,
     patient_phone: Optional[str] = None,
     is_minor: Optional[bool] = False,
+    is_art: Optional[bool] = False,
+    art_company_name: Optional[str] = None,
     interpreted_date: Optional[str] = None,
 ):
     """
@@ -2785,6 +2787,14 @@ async def book_appointment(
     - Para un ADULTO tercero (amigo, esposa, conocido): OBLIGATORIAMENTE pasá patient_phone con el teléfono del paciente real. is_minor=false.
     - Para un MENOR (hijo/a): NO pases patient_phone. Pasá is_minor=true. El sistema usa el teléfono del padre/madre automáticamente.
     - Para SÍ MISMO: no pases patient_phone ni is_minor. Flujo normal.
+
+    TURNO ART (Aseguradora de Riesgos del Trabajo): Si quien llama es una empresa/ART derivando a un trabajador accidentado:
+    - Pasá is_art=true.
+    - Pasá el DNI del paciente real en dni (OBLIGATORIO).
+    - Pasá first_name y last_name del paciente real si los tenés (opcionales pero recomendados).
+    - Pasá art_company_name con el nombre de la empresa/ART si lo tenés.
+    - El sistema crea un paciente ficticio "Paciente ART [DNI]" con obra_social="ART" y patient_source="art".
+    - NO es necesario patient_phone — se usa el teléfono del chat como referencia del gestor ART.
 
     PROHIBIDO pedir fecha de nacimiento, email o ciudad al paciente. Solo pasá esos campos si el paciente los dio ESPONTÁNEAMENTE.
 
@@ -2801,8 +2811,10 @@ async def book_appointment(
     acquisition_source: (NO PEDIR — solo si el paciente dijo espontáneamente cómo los conoció).
     duration_minutes: (Opcional) Duración del turno en minutos. Por defecto 30 minutos.
     professional_name: (Opcional) Nombre del profesional.
-    patient_phone: (Opcional) Teléfono del paciente real si es un ADULTO TERCERO. NO usar para menores.
+    patient_phone: (Opcional) Teléfono del paciente real si es un ADULTO TERCERO. NO usar para menores ni ART.
     is_minor: (Opcional) True si el paciente es menor de edad (hijo/a del interlocutor). El sistema vincula al padre/madre automáticamente.
+    is_art: (Opcional) True si es una derivación ART (empresa/aseguradora llama por un trabajador). Requiere dni del paciente real.
+    art_company_name: (Opcional) Nombre de la empresa o aseguradora ART. Se guarda en notes del paciente.
     """
     chat_phone = current_customer_phone.get()
     if not chat_phone:
@@ -2871,9 +2883,20 @@ async def book_appointment(
             pass
 
     # --- Resolve patient phone based on booking type ---
-    is_third_party = bool(patient_phone) or bool(is_minor)
+    is_third_party = bool(patient_phone) or bool(is_minor) or bool(is_art)
     guardian_phone_value = None
-    if is_minor:
+    if is_art:
+        # ART derivation: create/find fictitious patient keyed by DNI
+        # Phone is synthetic: chat_phone + "-ART" suffix (unique per chat+DNI combo)
+        # If dni not provided, we cannot create the ART patient
+        if not dni:
+            return "❌ Para agendar un turno ART necesito el DNI del trabajador accidentado. Pedí el DNI."
+        _art_dni_clean = re.sub(r"\D", "", str(dni).strip())
+        phone = f"{chat_phone}-ART-{_art_dni_clean}"
+        logger.info(
+            f"📅 BOOK ART: creating/finding ART patient phone={phone} dni={_art_dni_clean} company={art_company_name}"
+        )
+    elif is_minor:
         # Minor: use parent phone + -M{N} suffix
         minor_count = (
             await db.pool.fetchval(
@@ -3270,7 +3293,23 @@ async def book_appointment(
         # 2a. Lectura temprana: verificar si paciente existe (read-only, sin persistir aún)
         # Spec 2026-03-13: No crear paciente hasta confirmar disponibilidad
         existing_patient = None
-        if is_minor and guardian_phone_value:
+        if is_art:
+            # ART: search by synthetic phone OR by DNI (in case patient was created before)
+            existing_patient = await db.pool.fetchrow(
+                "SELECT id, status, phone_number FROM patients WHERE tenant_id = $1 AND phone_number = $2",
+                tenant_id,
+                phone,
+            )
+            if not existing_patient and dni:
+                _art_dni_search = re.sub(r"\D", "", str(dni).strip())
+                existing_patient = await db.pool.fetchrow(
+                    "SELECT id, status, phone_number FROM patients WHERE tenant_id = $1 AND dni = $2 AND patient_source = 'art'",
+                    tenant_id,
+                    _art_dni_search,
+                )
+                if existing_patient:
+                    phone = existing_patient["phone_number"]
+        elif is_minor and guardian_phone_value:
             # Minor: search by guardian_phone + DNI or guardian_phone + name
             if dni:
                 existing_patient = await db.pool.fetchrow(
@@ -3305,19 +3344,27 @@ async def book_appointment(
         )
         # Validación temprana para pacientes nuevos: fallar antes de buscar profesionales
         if not existing_patient:
-            required_fields = [
-                ("Nombre", first_name),
-                ("Apellido", last_name),
-                ("DNI", dni),
-            ]
-            missing_fields = [
-                field_name
-                for field_name, field_value in required_fields
-                if not field_value
-            ]
-            if missing_fields:
-                fields_list = ", ".join(missing_fields)
-                return f"❌ Para agendar por primera vez necesito: {fields_list}. Formato esperado: Nombre y Apellido por separado; DNI solo números."
+            if is_art:
+                # ART: auto-fill name if not provided — "Paciente ART [DNI]"
+                _art_dni_for_name = re.sub(r"\D", "", str(dni).strip()) if dni else "SIN-DNI"
+                if not first_name:
+                    first_name = "Paciente ART"
+                if not last_name:
+                    last_name = _art_dni_for_name
+            else:
+                required_fields = [
+                    ("Nombre", first_name),
+                    ("Apellido", last_name),
+                    ("DNI", dni),
+                ]
+                missing_fields = [
+                    field_name
+                    for field_name, field_value in required_fields
+                    if not field_value
+                ]
+                if missing_fields:
+                    fields_list = ", ".join(missing_fields)
+                    return f"❌ Para agendar por primera vez necesito: {fields_list}. Formato esperado: Nombre y Apellido por separado; DNI solo números."
 
         # G1 GUARDRAIL: Seña pendiente — solo informativo, NO bloquea
         # La seña no es obligatoria. El paciente puede tener múltiples turnos sin pagar seña.
@@ -3559,12 +3606,28 @@ async def book_appointment(
             )
             patient_id = existing_patient["id"]
         else:
+            # Determine patient_source for new patients
+            _patient_source = "regular"
+            if is_art:
+                _patient_source = "art"
+            elif is_minor:
+                _patient_source = "minor"
+            elif patient_phone:
+                _patient_source = "third_party"
+
+            # For ART patients: set insurance_provider = 'ART' and notes with company name
+            _insurance_for_insert = "ART" if is_art else None
+            _notes_for_insert = None
+            if is_art and art_company_name:
+                _notes_for_insert = f"Derivado por ART: {art_company_name}"
+
             row = await db.pool.fetchrow(
                 """
                 INSERT INTO patients (
                     tenant_id, phone_number, first_name, last_name, dni,
-                    birth_date, email, city, first_touch_source, guardian_phone, status, created_at
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'active', NOW())
+                    birth_date, email, city, first_touch_source, guardian_phone, status,
+                    insurance_provider, notes, patient_source, created_at
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'active', $11, $12, $13, NOW())
                 RETURNING id
             """,
                 tenant_id,
@@ -3577,6 +3640,9 @@ async def book_appointment(
                 city_clean,
                 acquisition_source_clean,
                 guardian_phone_value,
+                _insurance_for_insert,
+                _notes_for_insert,
+                _patient_source,
             )
             patient_id = row["id"]
 
@@ -9360,7 +9426,19 @@ PASO 2c: MODALIDAD DE ATENCIÓN — Preguntá "¿Te atendés de forma particular
     • Si el interlocutor dice que el paciente no tiene teléfono, es menor de edad, o tiene menos de 18 años → tratalo como MENOR.
     • Pedir nombre, apellido y DNI del menor.
     • En book_appointment pasá: is_minor=true. NO pasar patient_phone.
-  REGLA DE NOMBRE (CRÍTICO): NUNCA cambies el nombre de la conversación/paciente del interlocutor cuando el turno es para un tercero o menor. El nombre de la conversación se mantiene como viene de WhatsApp/Instagram/Facebook.
+  ESCENARIO D — DERIVACIÓN ART (Aseguradora de Riesgos del Trabajo):
+    • TRIGGER: el que llama es una empresa, empleadora o ART derivando a un trabajador accidentado o con afección laboral. Señales: "soy de recursos humanos", "llamo de la empresa", "soy del área de RRHH", "tenemos un empleado accidentado", "ART", "aseguradora de riesgos", "accidente laboral", "enfermedad laboral", "obra social laboral", "derivado por la empresa".
+    • QUIÉN LLAMA: La empresa/ART, NO el paciente real.
+    • FLUJO OBLIGATORIO:
+      1. Confirmá que es una derivación ART: "Entendido, ¿podés darme el DNI del trabajador para registrarlo en el sistema?"
+      2. Pedí SOLO el DNI (OBLIGATORIO). Nombre y apellido son opcionales pero recomendados.
+      3. Si dan el nombre de la empresa/aseguradora, guardar en art_company_name.
+      4. En book_appointment pasá: is_art=true, dni=..., first_name=... (si lo tienen), last_name=... (si lo tienen), art_company_name=... (si lo tienen).
+      5. El sistema crea automáticamente un paciente ficticio "Paciente ART [DNI]" con obra_social ART.
+    • AVISO POST-BOOKING: Después de confirmar el turno, SIEMPRE informar: "El turno quedó registrado. Les recomendamos que el trabajador se presente con su DNI el día de la consulta para que el equipo complete sus datos reales en el sistema."
+    • NUNCA pidas teléfono del trabajador ni email. No es necesario.
+    • PROHIBIDO tratar este flujo como un turno normal — siempre validar que quien llama es la empresa/ART.
+  REGLA DE NOMBRE (CRÍTICO): NUNCA cambies el nombre de la conversación/paciente del interlocutor cuando el turno es para un tercero, menor o ART. El nombre de la conversación se mantiene como viene de WhatsApp/Instagram/Facebook.
 PASO 3: PROFESIONAL ASIGNADO — Según lo que devolvió 'list_services' o 'get_service_details':
   • Si el tratamiento tiene UN SOLO profesional asignado → informá al paciente: "Este tratamiento lo realiza el/la Dr/a. X". NO preguntes preferencia. Usá ese profesional directamente.
   • Si tiene VARIOS profesionales asignados → decí: "Este tratamiento lo realizan [nombres]. Preferís alguno/a?" Si el paciente elige uno → ejecutá check_availability con ese profesional. Si dice "no" / "cualquiera" / no responde claro → ejecutá check_availability SIN professional_name (el sistema asigna al primero disponible).
@@ -9440,9 +9518,10 @@ PASO 5: DATOS DE ADMISIÓN — ⚠️ VERIFICAR ANTES DE PEDIR DATOS:
   IMPORTANTE: Si el turno es para un TERCERO o MENOR, los datos son del PACIENTE (tercero/menor), NO del interlocutor.
   PROHIBIDO pedir nombre o DNI si ya aparecen en el CONTEXTO DEL PACIENTE. Esto es CRÍTICO para la experiencia del usuario.
 PASO 6: AGENDAR — 'book_appointment' con los datos del paciente. Para campos opcionales faltantes, pasar NULL.
-  • Para sí mismo: flujo normal (sin patient_phone ni is_minor).
+  • Para sí mismo: flujo normal (sin patient_phone ni is_minor ni is_art).
   • Para adulto tercero: pasá patient_phone con el teléfono del tercero.
   • Para menor: pasá is_minor=true.
+  • Para ART: pasá is_art=true, dni del trabajador, y art_company_name si lo tienen.
   ⚠️ REGLA CRÍTICA DE FECHA — INQUEBRANTABLE:
   Cuando el paciente eligió una de las opciones que ofreciste con check_availability, DEBÉS pasar 'interpreted_date' con la fecha EXACTA YYYY-MM-DD de esa opción. NO re-razones la fecha desde "mañana", "el lunes", "ese día" — usá la fecha que YA mostraste al paciente.
   • Ejemplo: ofreciste "1️⃣ Martes 07/04 — 10:00 hs" → paciente dijo "mañana a las 10" → pasá interpreted_date="2026-04-07" + date_time="10:00"

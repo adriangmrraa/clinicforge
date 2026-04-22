@@ -15,6 +15,7 @@ interface ExtendedProps {
     notes?: string;
     urgency_level?: string;
     has_medical_alerts?: boolean;
+    patient_source?: string;
 }
 
 // Status Visual Configuration
@@ -150,6 +151,16 @@ export const AppointmentCard: React.FC<EventContentArg> = (eventInfo) => {
               <div className="flex items-center gap-0.5 text-[8px] text-red-400 font-bold" title="Alerta médica">
                 <AlertTriangle size={8} /> ALERTA
               </div>
+            )}
+
+            {/* ART Badge */}
+            {props.patient_source === 'art' && (
+              <span
+                title={t('patients.art_badge_tooltip')}
+                className="inline-flex items-center px-1 py-0.5 rounded text-[8px] font-semibold bg-orange-500/20 text-orange-400 border border-orange-500/30"
+              >
+                {t('patients.art_badge')}
+              </span>
             )}
 
             {/* Bottom: Badge & Professional */}

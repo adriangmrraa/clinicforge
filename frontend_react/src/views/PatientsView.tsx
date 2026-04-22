@@ -26,6 +26,7 @@ interface Patient {
   last_treatment?: string;
   assigned_professional_id?: number | null;
   assigned_professional_name?: string | null;
+  patient_source?: string;
 }
 
 interface TreatmentType {
@@ -665,11 +666,21 @@ export default function PatientsView() {
                                 ) : null;
                               })()}
                             </div>
-                            {patient.last_treatment && (
-                              <span className="mt-1 inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-blue-500/10 text-blue-400">
-                                {patient.last_treatment}
-                              </span>
-                            )}
+                            <div className="flex items-center gap-1 mt-1 flex-wrap">
+                              {patient.patient_source === 'art' && (
+                                <span
+                                  title={t('patients.art_badge_tooltip')}
+                                  className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-orange-500/10 text-orange-400 border border-orange-500/20"
+                                >
+                                  {t('patients.art_badge')}
+                                </span>
+                              )}
+                              {patient.last_treatment && (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-blue-500/10 text-blue-400">
+                                  {patient.last_treatment}
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </td>
@@ -775,11 +786,21 @@ export default function PatientsView() {
                           })()}
                         </div>
                         <p className="text-xs text-white/50 truncate">DNI: {patient.dni || '-'}</p>
-                        {patient.last_treatment && (
-                          <span className="mt-1 inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-blue-500/10 text-blue-400 truncate max-w-full">
-                            {patient.last_treatment}
-                          </span>
-                        )}
+                        <div className="flex items-center gap-1 mt-1 flex-wrap">
+                          {patient.patient_source === 'art' && (
+                            <span
+                              title={t('patients.art_badge_tooltip')}
+                              className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-orange-500/10 text-orange-400 border border-orange-500/20"
+                            >
+                              {t('patients.art_badge')}
+                            </span>
+                          )}
+                          {patient.last_treatment && (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-blue-500/10 text-blue-400 truncate max-w-full">
+                              {patient.last_treatment}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
                     <div className="flex items-center gap-1">

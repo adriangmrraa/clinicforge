@@ -597,6 +597,11 @@ class Patient(Base):
     # Guardian (for minors — links to parent/mother phone)
     guardian_phone = Column(String(20), nullable=True)
 
+    # Patient source — identifies intake flow
+    # Values: 'regular' | 'art' | 'minor' | 'third_party'
+    # 'art' = derived by ART (Aseguradora de Riesgos del Trabajo)
+    patient_source = Column(String(20), nullable=False, server_default="regular")
+
     # Meta Direct PSIDs (for IG/FB identity linkage)
     instagram_psid = Column(Text, nullable=True)
     facebook_psid = Column(Text, nullable=True)
