@@ -683,7 +683,10 @@ export default function AgendaView() {
       const ep = getExportParams();
       if (!ep) return;
 
-      const resp = await api.get(`/admin/agenda/export?${ep.params.toString()}`, { responseType: 'blob' });
+      const resp = await api.get(`/admin/agenda/export?${ep.params.toString()}`, {
+        responseType: 'blob',
+        headers: { 'Accept': 'application/pdf' },
+      });
       const blob = new Blob([resp.data], { type: 'application/pdf' });
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
@@ -708,7 +711,10 @@ export default function AgendaView() {
       if (!ep) return;
       ep.params.set('format', 'pdf');
 
-      const resp = await api.get(`/admin/agenda/export?${ep.params.toString()}`, { responseType: 'blob' });
+      const resp = await api.get(`/admin/agenda/export?${ep.params.toString()}`, {
+        responseType: 'blob',
+        headers: { 'Accept': 'application/pdf' },
+      });
       const blob = new Blob([resp.data], { type: 'application/pdf' });
       const url = window.URL.createObjectURL(blob);
       const printWindow = window.open(url);
