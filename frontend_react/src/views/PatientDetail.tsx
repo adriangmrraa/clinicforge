@@ -90,6 +90,8 @@ export default function PatientDetail() {
   const { user } = useAuth();
   const idRef = useRef<string | undefined>(id);
   const socketRef = useRef<Socket | null>(null);
+  /** Debounce timer for RECORD_UPDATED socket events — coalesces Nova rapid-fire updates */
+  const patientRefreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Treatment completion state
   interface CompletedTreatment {
@@ -245,20 +247,26 @@ export default function PatientDetail() {
       }
     });
 
-    // Nova CRUD/odontogram updates — refresh all tabs for this patient
+    // Nova CRUD/odontogram updates — refresh all tabs for this patient (debounced to avoid rapid-fire refetches)
     socketRef.current.on('RECORD_UPDATED', (payload: { patient_id?: number }) => {
       const currentPatientId = id ? parseInt(id) : null;
       if (!payload.patient_id || payload.patient_id === currentPatientId) {
-        fetchPatientData();
-        setBillingRefreshKey(prev => prev + 1);
-        setDigitalRecordsRefreshKey(prev => prev + 1);
+        if (patientRefreshTimer.current) clearTimeout(patientRefreshTimer.current);
+        patientRefreshTimer.current = setTimeout(() => {
+          fetchPatientData();
+          setBillingRefreshKey(prev => prev + 1);
+          setDigitalRecordsRefreshKey(prev => prev + 1);
+        }, 2000);
       }
     });
 
     socketRef.current.on('ODONTOGRAM_UPDATED', (payload: { patient_id?: number }) => {
       const currentPatientId = id ? parseInt(id) : null;
       if (payload.patient_id && payload.patient_id === currentPatientId) {
-        fetchPatientData();
+        if (patientRefreshTimer.current) clearTimeout(patientRefreshTimer.current);
+        patientRefreshTimer.current = setTimeout(() => {
+          fetchPatientData();
+        }, 2000);
       }
     });
 
@@ -281,6 +289,7 @@ export default function PatientDetail() {
         socketRef.current.off('ODONTOGRAM_UPDATED');
         socketRef.current.off('PAYMENT_CONFIRMED');
       }
+      if (patientRefreshTimer.current) clearTimeout(patientRefreshTimer.current);
     };
   }, [id, patient?.phone_number]);
 

@@ -130,7 +130,7 @@ export default function ConfigView() {
             loadTenants();
             loadCredentials();
         }
-    }, [user, activeTab]);
+    }, [user?.role]);
 
     // Re-load integration config when tab or tenant changes
     useEffect(() => {

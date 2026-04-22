@@ -162,6 +162,8 @@ export default function ChatsView() {
   const fetchSessionsTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** AbortController to cancel in-flight fetchSessions requests */
   const fetchSessionsAbort = useRef<AbortController | null>(null);
+  /** Debounce timer for socket-triggered fetchChatsSummary calls */
+  const summaryRefreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Scroll Inteligente
   const scrollDependency = useMemo(() => [messages, chatwootMessages], [messages, chatwootMessages]);
@@ -264,9 +266,13 @@ export default function ChatsView() {
       if (selectedTenantIdRef.current != null) {
         debouncedFetchSessions(selectedTenantIdRef.current);
       }
-      chatsApi.fetchChatsSummary({ limit: 50, channel: currentChannelFilter === 'all' ? undefined : currentChannelFilter })
-        .then(list => setChatwootList(list))
-        .catch(err => console.error("Error refreshing chatwoot summary:", err));
+      // Debounced summary refresh — coalesce rapid-fire NEW_MESSAGE events into one fetch
+      if (summaryRefreshTimer.current) clearTimeout(summaryRefreshTimer.current);
+      summaryRefreshTimer.current = setTimeout(() => {
+        chatsApi.fetchChatsSummary({ limit: 50, channel: currentChannelFilter === 'all' ? undefined : currentChannelFilter })
+          .then(list => setChatwootList(list))
+          .catch(err => console.error("Error refreshing chatwoot summary:", err));
+      }, 3000);
     });
 
     // Evento: Estado de override cambiado (por clínica: solo actualizar si es la clínica seleccionada)
@@ -411,9 +417,10 @@ export default function ChatsView() {
         socketRef.current.off('MESSAGE_SENT');
         socketRef.current.off('PATIENT_CREATED');
       }
-      // Cancel pending debounced fetch and in-flight request
+      // Cancel pending debounced fetches and in-flight request
       if (fetchSessionsTimeout.current) clearTimeout(fetchSessionsTimeout.current);
       if (fetchSessionsAbort.current) fetchSessionsAbort.current.abort();
+      if (summaryRefreshTimer.current) clearTimeout(summaryRefreshTimer.current);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [t]);
@@ -445,7 +452,7 @@ export default function ChatsView() {
       }
     };
     load();
-    const interval = setInterval(load, 10000);
+    const interval = setInterval(load, 60000); // Fallback polling — socket events manejan real-time
     return () => clearInterval(interval);
   }, [channelFilter, selectedTenantId]);
 
