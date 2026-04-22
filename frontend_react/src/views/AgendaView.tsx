@@ -9,7 +9,7 @@ import resourceTimeGridPlugin from '@fullcalendar/resource-timegrid';
 import AppointmentForm from '../components/AppointmentForm';
 import MobileAgenda from '../components/MobileAgenda';
 import HolidayDetailModal from '../components/HolidayDetailModal';
-import { RefreshCw, Stethoscope, Download, FileText, Image, Loader2 } from 'lucide-react';
+import { RefreshCw, Stethoscope, Download, FileText, Image, Loader2, Printer } from 'lucide-react';
 import AppointmentCard from '../components/AppointmentCard';
 import api from '../api/axios';
 import { addDays, subDays, startOfDay, endOfDay } from 'date-fns';
@@ -665,31 +665,59 @@ export default function AgendaView() {
     setShowModal(true);
   };
 
+  const getExportParams = () => {
+    const calApi = calendarRef.current?.getApi();
+    const view = calApi?.view;
+    const start = view?.activeStart?.toISOString()?.split('T')[0];
+    const end = view?.activeEnd?.toISOString()?.split('T')[0];
+    if (!start || !end) return null;
+    const params = new URLSearchParams({ start_date: start, end_date: end });
+    if (selectedProfessionalId !== 'all') params.append('professional_id', selectedProfessionalId);
+    return { start, end, params };
+  };
+
   const handleExport = async (format: 'pdf' | 'png') => {
     setShowExportMenu(false);
     setExporting(true);
     try {
-      const calApi = calendarRef.current?.getApi();
-      const view = calApi?.view;
-      const start = view?.activeStart?.toISOString()?.split('T')[0];
-      const end = view?.activeEnd?.toISOString()?.split('T')[0];
-      if (!start || !end) return;
+      const ep = getExportParams();
+      if (!ep) return;
+      ep.params.set('format', format);
 
-      const params = new URLSearchParams({ format, start_date: start, end_date: end });
-      if (selectedProfessionalId !== 'all') params.append('professional_id', selectedProfessionalId);
-
-      const resp = await api.get(`/admin/agenda/export?${params.toString()}`, { responseType: 'blob' });
+      const resp = await api.get(`/admin/agenda/export?${ep.params.toString()}`, { responseType: 'blob' });
       const blob = new Blob([resp.data], { type: format === 'pdf' ? 'application/pdf' : 'image/png' });
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', `agenda_semanal_${start}.${format}`);
+      link.setAttribute('download', `agenda_semanal_${ep.start}.${format}`);
       document.body.appendChild(link);
       link.click();
       link.remove();
       window.URL.revokeObjectURL(url);
     } catch (err) {
       console.error('Error exporting agenda:', err);
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handlePrint = async () => {
+    setShowExportMenu(false);
+    setExporting(true);
+    try {
+      const ep = getExportParams();
+      if (!ep) return;
+      ep.params.set('format', 'pdf');
+
+      const resp = await api.get(`/admin/agenda/export?${ep.params.toString()}`, { responseType: 'blob' });
+      const blob = new Blob([resp.data], { type: 'application/pdf' });
+      const url = window.URL.createObjectURL(blob);
+      const printWindow = window.open(url);
+      if (printWindow) {
+        printWindow.addEventListener('load', () => { printWindow.print(); });
+      }
+    } catch (err) {
+      console.error('Error printing agenda:', err);
     } finally {
       setExporting(false);
     }
@@ -935,6 +963,13 @@ export default function AgendaView() {
                         className="w-full px-4 py-2 text-left text-sm text-white/80 hover:bg-white/[0.06] flex items-center gap-2"
                       >
                         <Image size={14} /> Descargar imagen (PNG)
+                      </button>
+                      <div className="border-t border-white/[0.06] my-1" />
+                      <button
+                        onClick={handlePrint}
+                        className="w-full px-4 py-2 text-left text-sm text-white/80 hover:bg-white/[0.06] flex items-center gap-2"
+                      >
+                        <Printer size={14} /> Imprimir
                       </button>
                     </div>
                   </>

@@ -263,7 +263,8 @@ def _generate_image_sync(html: str, image_path: str) -> str:
     os.makedirs(os.path.dirname(image_path), exist_ok=True)
     try:
         from weasyprint import HTML as _WP_HTML  # lazy import — optional dep
-        _WP_HTML(string=html, base_url=_TEMPLATES_DIR).write_png(image_path)
+        doc = _WP_HTML(string=html, base_url=_TEMPLATES_DIR).render()
+        doc.write_png(image_path)
         logger.info("_generate_image_sync: wrote image → %s", image_path)
         return image_path
     except ImportError:
