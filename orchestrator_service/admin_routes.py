@@ -908,8 +908,16 @@ class GCalendarBlockCreate(BaseModel):
 
 
 class ClinicalNote(BaseModel):
-    content: str
+    content: Optional[str] = None
     odontogram_data: Optional[Dict] = None
+    # Campos del formulario de evolución
+    record_type: Optional[str] = "evolution"
+    chief_complaint: Optional[str] = None
+    diagnosis: Optional[str] = None
+    treatment_plan: Optional[str] = None
+    notes: Optional[str] = None
+    vital_signs: Optional[Dict[str, str]] = None
+    patient_id: Optional[int] = None  # ignorado — se usa el del path param
 
 
 # Modelos para Ficha Médica - Documentos
@@ -6138,9 +6146,12 @@ async def get_clinical_records(
     """Obtener historia clínica de un paciente. Aislado por tenant_id (Regla de Oro)."""
     rows = await db.pool.fetch(
         """
-        SELECT cr.id, cr.diagnosis, cr.treatment_plan, cr.odontogram_data, cr.created_at 
+        SELECT cr.id, cr.diagnosis, cr.treatment_plan, cr.odontogram_data, cr.created_at,
+               cr.clinical_notes, cr.professional_id,
+               TRIM(pr.first_name || ' ' || COALESCE(pr.last_name, '')) AS professional_name
         FROM clinical_records cr
         JOIN patients p ON cr.patient_id = p.id
+        LEFT JOIN professionals pr ON cr.professional_id = pr.id
         WHERE cr.patient_id = $1 AND p.tenant_id = $2
         ORDER BY cr.created_at DESC
     """,
@@ -6169,6 +6180,24 @@ async def get_clinical_records(
             except (json.JSONDecodeError, ValueError, TypeError):
                 record_dict["treatment_plan"] = {}
 
+        # Reconstituir campos extendidos desde clinical_notes (JSON almacenado por el nuevo POST)
+        clinical_notes_raw = record_dict.pop("clinical_notes", None)
+        extended = {}
+        if clinical_notes_raw:
+            try:
+                extended = json.loads(clinical_notes_raw) if isinstance(clinical_notes_raw, str) else {}
+            except (json.JSONDecodeError, ValueError, TypeError):
+                # Fallback: notas en texto plano (registros legacy)
+                extended = {"notes": clinical_notes_raw}
+
+        record_dict["record_type"] = extended.get("record_type", "evolution")
+        record_dict["chief_complaint"] = extended.get("chief_complaint") or None
+        record_dict["notes"] = extended.get("notes") or None
+        record_dict["vital_signs"] = extended.get("vital_signs") or None
+        # professional_name puede venir null si no hay profesional asignado
+        if not record_dict.get("professional_name"):
+            record_dict["professional_name"] = ""
+
         records.append(record_dict)
 
     return records
@@ -6193,7 +6222,6 @@ async def add_clinical_note(
     # Incluir odontogram_data solo si tiene datos reales (no vacío)
     odontogram_json = None
     if note.odontogram_data and isinstance(note.odontogram_data, dict):
-        # Check it actually has teeth data, not just an empty shell
         has_data = (
             note.odontogram_data.get("teeth")
             or note.odontogram_data.get("permanent")
@@ -6202,17 +6230,43 @@ async def add_clinical_note(
         if has_data:
             odontogram_json = json.dumps(note.odontogram_data)
 
+    # Determinar el campo diagnosis: prioridad al campo `diagnosis` del form;
+    # fallback al legacy `content` para compatibilidad.
+    diagnosis_value = note.diagnosis or note.content or None
+
+    # Serializar en clinical_notes los campos extendidos del formulario
+    extended_data: Dict[str, Any] = {}
+    if note.record_type:
+        extended_data["record_type"] = note.record_type
+    if note.chief_complaint:
+        extended_data["chief_complaint"] = note.chief_complaint
+    if note.notes:
+        extended_data["notes"] = note.notes
+    if note.vital_signs:
+        # Solo guardar campos con valor
+        vs = {k: v for k, v in note.vital_signs.items() if v}
+        if vs:
+            extended_data["vital_signs"] = vs
+    clinical_notes_json = json.dumps(extended_data) if extended_data else None
+
+    # treatment_plan: puede venir como string del form
+    treatment_plan_value = "{}"
+    if note.treatment_plan:
+        # El front lo envía como string — lo guardamos directamente en el JSONB como texto
+        treatment_plan_value = json.dumps({"plan": note.treatment_plan})
+
     await db.pool.execute(
         """
-        INSERT INTO clinical_records (id, tenant_id, patient_id, diagnosis, treatment_plan, odontogram_data, created_at)
-        VALUES ($1, $2, $3, $4, $5, $6, NOW())
+        INSERT INTO clinical_records (id, tenant_id, patient_id, diagnosis, treatment_plan, odontogram_data, clinical_notes, created_at)
+        VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, NOW())
     """,
         str(uuid.uuid4()),
         tenant_id,
         id,
-        note.content,
-        "{}",
+        diagnosis_value,
+        treatment_plan_value,
         odontogram_json,
+        clinical_notes_json,
     )
     return {"status": "ok"}
 

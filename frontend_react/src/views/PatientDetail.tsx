@@ -44,16 +44,15 @@ interface Patient {
 
 interface ClinicalRecord {
   id: number;
-  patient_id: number;
-  professional_id: number;
-  professional_name: string;
+  patient_id?: number;
+  professional_id?: number;
+  professional_name?: string;
   appointment_id?: number;
-  record_type: string;
+  record_type?: string;
   chief_complaint?: string;
   diagnosis?: string;
   treatment_plan?: any;
   notes?: string;
-  vital_signs?: Record<string, string>;
   created_at: string;
   odontogram_data?: any;
 }
@@ -153,9 +152,6 @@ export default function PatientDetail() {
     diagnosis: '',
     treatment_plan: '',
     notes: '',
-    blood_pressure: '',
-    heart_rate: '',
-    temperature: '',
   });
 
   useEffect(() => {
@@ -297,14 +293,9 @@ export default function PatientDetail() {
         diagnosis: formData.diagnosis,
         treatment_plan: formData.treatment_plan,
         notes: formData.notes,
-        vital_signs: {
-          blood_pressure: formData.blood_pressure,
-          heart_rate: formData.heart_rate,
-          temperature: formData.temperature,
-        },
       };
 
-      await api.post('/admin/clinical-records', payload);
+      await api.post(`/admin/patients/${id}/records`, payload);
       fetchPatientData();
       setShowNoteForm(false);
       setFormData({
@@ -313,9 +304,6 @@ export default function PatientDetail() {
         diagnosis: '',
         treatment_plan: '',
         notes: '',
-        blood_pressure: '',
-        heart_rate: '',
-        temperature: '',
       });
     } catch (error) {
       console.error('Error saving clinical record:', error);
@@ -580,10 +568,10 @@ export default function PatientDetail() {
                     <div className="p-4 border-b border-white/[0.06]">
                       <div className="flex justify-between items-start">
                         <div className="flex items-center gap-3">
-                          {getRecordIcon(record.record_type)}
+                          {getRecordIcon(record.record_type || 'evolution')}
                           <div>
                             <span className="inline-flex items-center px-2 py-1 bg-blue-500/10 text-blue-400 text-xs font-medium rounded-full">
-                              {getRecordTypeLabel(record.record_type)}
+                              {getRecordTypeLabel(record.record_type || 'evolution')}
                             </span>
                             <span className="ml-2 text-sm text-white/40">
                               {new Date(record.created_at).toLocaleString(dateLocale)}
@@ -611,16 +599,20 @@ export default function PatientDetail() {
                         </div>
                       )}
 
-                      {record.treatment_plan && record.treatment_plan !== '{}' && (
-                        <div>
-                          <p className="text-xs font-medium text-white/40">{t('patient_detail.treatment_plan')}</p>
-                          <div className="text-sm text-white">
-                            {typeof record.treatment_plan === 'string'
-                              ? (record.treatment_plan === '{}' ? null : record.treatment_plan)
-                              : (Object.keys(record.treatment_plan).length > 0 ? JSON.stringify(record.treatment_plan, null, 2) : null)}
+                      {record.treatment_plan && record.treatment_plan !== '{}' && (() => {
+                        const tp = record.treatment_plan;
+                        // Si es objeto {plan: "texto"} extraer el texto directamente
+                        const displayText = typeof tp === 'object' && tp !== null && Object.keys(tp).length > 0
+                          ? (tp.plan || (Object.keys(tp).length === 1 ? Object.values(tp)[0] : JSON.stringify(tp, null, 2)))
+                          : (typeof tp === 'string' && tp !== '{}' ? tp : null);
+                        if (!displayText) return null;
+                        return (
+                          <div>
+                            <p className="text-xs font-medium text-white/40">{t('patient_detail.treatment_plan')}</p>
+                            <div className="text-sm text-white">{String(displayText)}</div>
                           </div>
-                        </div>
-                      )}
+                        );
+                      })()}
 
                       {record.notes && record.notes.trim() !== '' && record.notes !== '{}' && (
                         <div>
@@ -629,28 +621,6 @@ export default function PatientDetail() {
                         </div>
                       )}
 
-                      {record.vital_signs && (
-                        <div className="flex gap-4 pt-3 border-t border-white/[0.06]">
-                          {record.vital_signs.blood_pressure && (
-                            <div className="text-xs">
-                              <span className="text-white/30">{t('patient_detail.blood_pressure_short') || 'PA'}: </span>
-                              <span className="text-white">{record.vital_signs.blood_pressure}</span>
-                            </div>
-                          )}
-                          {record.vital_signs.heart_rate && (
-                            <div className="text-xs">
-                              <span className="text-white/30">{t('patient_detail.heart_rate_short') || 'FC'}: </span>
-                              <span className="text-white">{record.vital_signs.heart_rate} ppm</span>
-                            </div>
-                          )}
-                          {record.vital_signs.temperature && (
-                            <div className="text-xs">
-                              <span className="text-white/30">{t('patient_detail.temperature_short') || 'T°'}: </span>
-                              <span className="text-white">{record.vital_signs.temperature}°C</span>
-                            </div>
-                          )}
-                        </div>
-                      )}
                     </div>
                   </div>
                 ))}
@@ -970,42 +940,6 @@ export default function PatientDetail() {
                     rows={2}
                     className="w-full px-3 py-2 border border-white/[0.08] rounded-lg bg-white/[0.04] text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-primary"
                   />
-                </div>
-
-                <div className="mb-4 p-4 bg-white/[0.04] rounded-lg border border-white/[0.06]">
-                  <h3 className="text-sm font-medium text-white/60 mb-3">{t('patient_detail.vital_signs')}</h3>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    <div>
-                      <label className="block text-xs font-medium text-white/40 mb-1">{t('patient_detail.blood_pressure')}</label>
-                      <input
-                        type="text"
-                        placeholder={t('patient_detail.placeholder_bp')}
-                        value={formData.blood_pressure}
-                        onChange={(e) => setFormData({ ...formData, blood_pressure: e.target.value })}
-                        className="w-full px-3 py-2 border border-white/[0.08] rounded-lg bg-white/[0.04] text-white placeholder-white/30 text-sm h-11"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-white/40 mb-1">{t('patient_detail.heart_rate')}</label>
-                      <input
-                        type="text"
-                        placeholder={t('patient_detail.placeholder_hr')}
-                        value={formData.heart_rate}
-                        onChange={(e) => setFormData({ ...formData, heart_rate: e.target.value })}
-                        className="w-full px-3 py-2 border border-white/[0.08] rounded-lg bg-white/[0.04] text-white placeholder-white/30 text-sm"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-white/40 mb-1">{t('patient_detail.temperature')}</label>
-                      <input
-                        type="text"
-                        placeholder={t('patient_detail.placeholder_temp')}
-                        value={formData.temperature}
-                        onChange={(e) => setFormData({ ...formData, temperature: e.target.value })}
-                        className="w-full px-3 py-2 border border-white/[0.08] rounded-lg bg-white/[0.04] text-white placeholder-white/30 text-sm h-11"
-                      />
-                    </div>
-                  </div>
                 </div>
 
                 <div className="mb-4">
