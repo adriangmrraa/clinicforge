@@ -9753,7 +9753,7 @@ Usá solo las tools proporcionadas. Siempre terminá con una pregunta o frase qu
 # --- AGENT SETUP (prompt dinámico: system_prompt se inyecta en cada invocación) ---
 # Vault (spec §5.2): soporte api_key por tenant vía get_agent_executable_for_tenant(tenant_id)
 # Modelo: fuente de verdad en system_config.OPENAI_MODEL (configurable en dashboard tokens/métricas)
-DEFAULT_OPENAI_MODEL = os.getenv("DEFAULT_OPENAI_MODEL", "gpt-4o-mini")
+DEFAULT_OPENAI_MODEL = os.getenv("DEFAULT_OPENAI_MODEL", "gpt-5.4-mini")
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
 DEEPSEEK_BASE_URL = "https://api.deepseek.com"
 
