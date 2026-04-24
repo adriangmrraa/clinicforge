@@ -88,6 +88,42 @@ else
     echo "Migraciones aplicadas."
 fi
 
+# Patch: columns added outside Alembic (run_meta_ads_migrations.py) — idempotent
+echo "Aplicando patches de schema (IF NOT EXISTS)..."
+python -c "
+import os, psycopg2
+dsn = os.environ.get('POSTGRES_DSN', '').replace('postgresql+asyncpg://', 'postgresql://')
+if dsn.startswith('postgres://'):
+    dsn = dsn.replace('postgres://', 'postgresql://', 1)
+conn = psycopg2.connect(dsn)
+conn.autocommit = True
+cur = conn.cursor()
+patches = [
+    # Meta Ads attribution columns on patients (from run_meta_ads_migrations.py)
+    'ALTER TABLE patients ADD COLUMN IF NOT EXISTS acquisition_source TEXT',
+    'ALTER TABLE patients ADD COLUMN IF NOT EXISTS meta_ad_id TEXT',
+    'ALTER TABLE patients ADD COLUMN IF NOT EXISTS meta_ad_name TEXT',
+    'ALTER TABLE patients ADD COLUMN IF NOT EXISTS meta_ad_headline TEXT',
+    'ALTER TABLE patients ADD COLUMN IF NOT EXISTS meta_ad_body TEXT',
+    'ALTER TABLE patients ADD COLUMN IF NOT EXISTS meta_adset_id TEXT',
+    'ALTER TABLE patients ADD COLUMN IF NOT EXISTS meta_adset_name TEXT',
+    'ALTER TABLE patients ADD COLUMN IF NOT EXISTS meta_campaign_id TEXT',
+    'ALTER TABLE patients ADD COLUMN IF NOT EXISTS meta_campaign_name TEXT',
+    'CREATE INDEX IF NOT EXISTS idx_patients_acquisition_source ON patients(acquisition_source)',
+    'CREATE INDEX IF NOT EXISTS idx_patients_meta_ad_id ON patients(meta_ad_id)',
+    'CREATE INDEX IF NOT EXISTS idx_patients_meta_campaign_id ON patients(meta_campaign_id)',
+]
+applied = 0
+for p in patches:
+    try:
+        cur.execute(p)
+        applied += 1
+    except Exception as e:
+        print(f'  Patch skip: {e}')
+conn.close()
+print(f'Schema patches: {applied}/{len(patches)} applied')
+"
+
 # Asegurar permisos de escritura en directorios de uploads/media
 mkdir -p /app/uploads /app/media
 chmod -R 777 /app/uploads /app/media
