@@ -8366,7 +8366,7 @@ async def list_professionals(
     if len(allowed_ids) > 1:
         try:
             rows = await db.pool.fetch(
-                f"SELECT p.id, p.first_name, p.last_name, p.specialty, p.is_active, p.tenant_id, p.is_priority_professional {base_join} WHERE p.tenant_id = ANY($1::int[])",
+                f"SELECT p.id, p.first_name, p.last_name, p.specialty, p.registration_id, p.is_active, p.tenant_id, p.is_priority_professional {base_join} WHERE p.tenant_id = ANY($1::int[])",
                 allowed_ids,
             )
             return [dict(row) for row in rows]
@@ -8409,7 +8409,7 @@ async def list_professionals(
     tenant_id = resolved_tenant_id
     try:
         rows = await db.pool.fetch(
-            f"SELECT p.id, p.first_name, p.last_name, p.specialty, p.is_active, p.is_priority_professional {base_join} WHERE p.tenant_id = $1",
+            f"SELECT p.id, p.first_name, p.last_name, p.specialty, p.registration_id, p.is_active, p.is_priority_professional {base_join} WHERE p.tenant_id = $1",
             tenant_id,
         )
         return [dict(row) for row in rows]

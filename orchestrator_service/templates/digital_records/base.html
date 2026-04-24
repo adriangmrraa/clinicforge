@@ -265,16 +265,14 @@ h1, h2, h3 {
 {% block content %}{% endblock %}
 
 <!-- ── Signature ── -->
-<div class="signature-block">
+<div class="signature-block" data-section="firma" data-editable="true">
     <div class="line"></div>
-    <p class="name">{{ data.professional.full_name or '[Profesional]' }}</p>
-    {% if data.professional.mp %}
-    <p class="credential">M.P. {{ data.professional.mp }}</p>
-    {% else %}
-    <p class="placeholder">[M.P. Completar]</p>
-    {% endif %}
+    <p class="name" data-field="profesional_nombre">{{ data.professional.full_name or '[Profesional]' }}</p>
+    <p class="credential" data-field="profesional_mp">{{ 'M.P. ' ~ data.professional.mp if data.professional.mp else '[M.P. Completar]' }}</p>
     {% if data.professional.specialty %}
-    <p class="credential">{{ data.professional.specialty }}</p>
+    <p class="credential" data-field="profesional_especialidad">{{ data.professional.specialty }}</p>
+    {% else %}
+    <p class="credential" data-field="profesional_especialidad"></p>
     {% endif %}
 </div>
 

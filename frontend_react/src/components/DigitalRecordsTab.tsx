@@ -65,7 +65,16 @@ const SECTION_LABELS: Record<string, string> = {
   justificacion: 'Justificación Clínica',
   valor: 'Valor del Tratamiento',
   observaciones: 'Observaciones',
+  firma: 'Firma del Profesional',
 };
+
+interface ProfessionalOption {
+  id: number;
+  first_name: string;
+  last_name: string;
+  specialty?: string;
+  registration_id?: string;
+}
 
 interface Props {
   patientId: number;
@@ -151,6 +160,11 @@ export default function DigitalRecordsTab({ patientId, patientEmail, refreshKey 
   // Valor section: separate monto + descripcion
   const [editMonto, setEditMonto] = useState('');
   const [editDescripcionPago, setEditDescripcionPago] = useState('');
+  // Firma section: professional fields
+  const [editProfNombre, setEditProfNombre] = useState('');
+  const [editProfMp, setEditProfMp] = useState('');
+  const [editProfEspecialidad, setEditProfEspecialidad] = useState('');
+  const [professionals, setProfessionals] = useState<ProfessionalOption[]>([]);
 
   useEffect(() => { fetchRecords(); }, [patientId, refreshKey]);
 
@@ -233,7 +247,7 @@ export default function DigitalRecordsTab({ patientId, patientEmail, refreshKey 
     } catch (err) { console.error('Error deleting digital record:', err); }
   };
 
-  const handleStartEdit = () => {
+  const handleStartEdit = async () => {
     if (!selectedRecord?.html_content) return;
     const sections = parseSections(selectedRecord.html_content);
     setEditSections(sections);
@@ -249,12 +263,28 @@ export default function DigitalRecordsTab({ patientId, patientEmail, refreshKey 
           const montoText = (montoEl?.textContent || '').replace(/[^\d.,]/g, '').replace(/\./g, '').replace(',', '.').trim();
           setEditMonto(montoText || '');
           setEditDescripcionPago(descEl?.textContent?.trim() || '');
+        } else if (s.id === 'firma') {
+          // Extract professional fields from signature block
+          const doc = new DOMParser().parseFromString(s.content, 'text/html');
+          const nombreEl = doc.querySelector('[data-field="profesional_nombre"]');
+          const mpEl = doc.querySelector('[data-field="profesional_mp"]');
+          const espEl = doc.querySelector('[data-field="profesional_especialidad"]');
+          const nombre = nombreEl?.textContent?.trim() || '';
+          setEditProfNombre(nombre === '[Profesional]' ? '' : nombre);
+          const mpText = mpEl?.textContent?.trim() || '';
+          setEditProfMp(mpText === '[M.P. Completar]' ? '' : mpText.replace(/^M\.P\.\s*/, ''));
+          setEditProfEspecialidad(espEl?.textContent?.trim() || '');
         } else {
           texts[s.id] = htmlToText(s.content);
         }
       }
     });
     setEditTexts(texts);
+    // Load professionals list for selector
+    try {
+      const resp = await api.get('/admin/professionals');
+      setProfessionals(resp.data || []);
+    } catch { setProfessionals([]); }
     setViewState('editing');
   };
 
@@ -291,6 +321,18 @@ export default function DigitalRecordsTab({ patientId, patientEmail, refreshKey 
         </tr>
     </table>
     <div data-field="descripcion_pago" class="narrative" style="margin-top: 8px;">${descHtml}</div>`
+          };
+        }
+        if (s.id === 'firma') {
+          const profNombre = editProfNombre.trim() || '[Profesional]';
+          const mpLine = editProfMp.trim() ? `M.P. ${editProfMp.trim()}` : '[M.P. Completar]';
+          const espLine = editProfEspecialidad.trim() || '';
+          return {
+            ...s,
+            content: `<div class="line"></div>
+    <p class="name" data-field="profesional_nombre">${profNombre}</p>
+    <p class="credential" data-field="profesional_mp">${mpLine}</p>
+    <p class="credential" data-field="profesional_especialidad">${espLine}</p>`
           };
         }
         if (editTexts[s.id] !== undefined) {
@@ -378,7 +420,64 @@ export default function DigitalRecordsTab({ patientId, patientEmail, refreshKey 
                   )}
                 </div>
                 {section.editable ? (
-                  section.id === 'valor' ? (
+                  section.id === 'firma' ? (
+                    <div className="space-y-3">
+                      <div>
+                        <label className="text-[11px] text-white/50 font-medium mb-1 block">Seleccionar Profesional</label>
+                        <select
+                          value=""
+                          onChange={e => {
+                            const prof = professionals.find(p => p.id === Number(e.target.value));
+                            if (prof) {
+                              setEditProfNombre(`${prof.first_name} ${prof.last_name}`.trim());
+                              setEditProfMp(prof.registration_id || '');
+                              setEditProfEspecialidad(prof.specialty || '');
+                            }
+                          }}
+                          className="w-full bg-white/[0.04] border border-white/[0.08] text-white/90 rounded-lg p-2.5 text-sm focus:outline-none focus:border-blue-500/30 transition-colors"
+                        >
+                          <option value="" className="bg-[#0d1117]">— Elegir profesional —</option>
+                          {professionals.map(p => (
+                            <option key={p.id} value={p.id} className="bg-[#0d1117]">
+                              {p.first_name} {p.last_name}{p.specialty ? ` — ${p.specialty}` : ''}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-[11px] text-white/50 font-medium mb-1 block">Nombre del Profesional</label>
+                        <input
+                          type="text"
+                          value={editProfNombre}
+                          onChange={e => setEditProfNombre(e.target.value)}
+                          placeholder="Dr./Dra. Nombre Apellido"
+                          className="w-full bg-white/[0.04] border border-white/[0.08] text-white/90 rounded-lg p-2.5 text-sm focus:outline-none focus:border-blue-500/30 focus:bg-white/[0.06] transition-colors"
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-[11px] text-white/50 font-medium mb-1 block">M.P. (Matrícula)</label>
+                          <input
+                            type="text"
+                            value={editProfMp}
+                            onChange={e => setEditProfMp(e.target.value)}
+                            placeholder="Ej: 12345"
+                            className="w-full bg-white/[0.04] border border-white/[0.08] text-white/90 rounded-lg p-2.5 text-sm focus:outline-none focus:border-blue-500/30 focus:bg-white/[0.06] transition-colors"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[11px] text-white/50 font-medium mb-1 block">Especialidad</label>
+                          <input
+                            type="text"
+                            value={editProfEspecialidad}
+                            onChange={e => setEditProfEspecialidad(e.target.value)}
+                            placeholder="Ej: Odontología"
+                            className="w-full bg-white/[0.04] border border-white/[0.08] text-white/90 rounded-lg p-2.5 text-sm focus:outline-none focus:border-blue-500/30 focus:bg-white/[0.06] transition-colors"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ) : section.id === 'valor' ? (
                     <div className="space-y-3">
                       <div>
                         <label className="text-[11px] text-white/50 font-medium mb-1 block">Monto (USD)</label>

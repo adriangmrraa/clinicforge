@@ -347,18 +347,19 @@ async def gather_patient_data(
         # Fall back to the professional on the most recent clinical record
         effective_prof_id = clinical_rows[0].get("professional_id")
 
-        if effective_prof_id is not None:
-            prof_row = await pool.fetchrow(
-                """
-                SELECT p.id,
-                       p.first_name || ' ' || p.last_name AS full_name
-                FROM professionals p
-                JOIN users u ON p.user_id = u.id
-                WHERE p.id=$1 AND p.tenant_id=$2
-                """,
-                effective_prof_id,
-                tenant_id,
-            )
+    if effective_prof_id is not None:
+        prof_row = await pool.fetchrow(
+            """
+            SELECT p.id,
+                   p.first_name || ' ' || p.last_name AS full_name,
+                   p.specialty,
+                   p.registration_id
+            FROM professionals p
+            WHERE p.id=$1 AND p.tenant_id=$2
+            """,
+            effective_prof_id,
+            tenant_id,
+        )
 
     # ------------------------------------------------------------------
     # Validate patient exists
@@ -420,8 +421,8 @@ async def gather_patient_data(
     # ---- Professional ----
     professional_section = {
         "full_name": (prof_row.get("full_name") if prof_row else None) or None,
-        "mp": None,  # Not in DB yet — always placeholder
-        "specialty": None,  # Not in DB yet — always placeholder
+        "mp": (prof_row.get("registration_id") if prof_row else None) or None,
+        "specialty": (prof_row.get("specialty") if prof_row else None) or None,
     }
 
     # ---- Clinic ----
