@@ -160,6 +160,7 @@ export default function DigitalRecordsTab({ patientId, patientEmail, refreshKey 
   // Valor section: separate monto + descripcion
   const [editMonto, setEditMonto] = useState('');
   const [editDescripcionPago, setEditDescripcionPago] = useState('');
+  const [editCurrencyMode, setEditCurrencyMode] = useState<'USD' | 'ARS' | 'OBRA_SOCIAL'>('USD');
   // Firma section: professional fields
   const [editProfNombre, setEditProfNombre] = useState('');
   const [editProfMp, setEditProfMp] = useState('');
@@ -260,7 +261,21 @@ export default function DigitalRecordsTab({ patientId, patientEmail, refreshKey 
           const doc = new DOMParser().parseFromString(s.content, 'text/html');
           const montoEl = doc.querySelector('[data-field="monto"]');
           const descEl = doc.querySelector('[data-field="descripcion_pago"]');
-          const montoText = (montoEl?.textContent || '').replace(/[^\d.,]/g, '').replace(/\./g, '').replace(',', '.').trim();
+          // Detect currency mode
+          const currencyAttr = montoEl?.getAttribute('data-currency');
+          let detectedMode: 'USD' | 'ARS' | 'OBRA_SOCIAL' = 'USD';
+          if (currencyAttr) {
+            detectedMode = currencyAttr as 'USD' | 'ARS' | 'OBRA_SOCIAL';
+          } else {
+            const montoRaw = montoEl?.textContent || '';
+            if (/obra social/i.test(montoRaw)) detectedMode = 'OBRA_SOCIAL';
+            else if (montoRaw.startsWith('$')) detectedMode = 'ARS';
+            else detectedMode = 'USD';
+          }
+          setEditCurrencyMode(detectedMode);
+          const montoText = detectedMode === 'OBRA_SOCIAL'
+            ? ''
+            : (montoEl?.textContent || '').replace(/[^\d.,]/g, '').replace(/\./g, '').replace(',', '.').trim();
           setEditMonto(montoText || '');
           setEditDescripcionPago(descEl?.textContent?.trim() || '');
         } else if (s.id === 'firma') {
@@ -301,8 +316,25 @@ export default function DigitalRecordsTab({ patientId, patientEmail, refreshKey 
         if (!s.editable) return s;
         if (s.id === 'valor') {
           // Rebuild valor section with structured fields
-          const montoNum = parseFloat(editMonto) || 0;
-          const montoFormatted = montoNum > 0 ? `USD ${montoNum.toLocaleString('es-AR', { minimumFractionDigits: 0 })}` : '[Monto pendiente]';
+          let montoFormatted: string;
+          let montoColor: string;
+          if (editCurrencyMode === 'OBRA_SOCIAL') {
+            montoFormatted = 'Monto a cargo de la obra social';
+            montoColor = '#2b6cb0';
+          } else {
+            const montoNum = parseFloat(editMonto) || 0;
+            if (montoNum > 0) {
+              if (editCurrencyMode === 'ARS') {
+                montoFormatted = `$ ${montoNum.toLocaleString('es-AR', { minimumFractionDigits: 0 })}`;
+              } else {
+                montoFormatted = `USD ${montoNum.toLocaleString('es-AR', { minimumFractionDigits: 0 })}`;
+              }
+              montoColor = '#22543d';
+            } else {
+              montoFormatted = '[Monto pendiente]';
+              montoColor = '#22543d';
+            }
+          }
           const descHtml = editDescripcionPago.trim()
             ? editDescripcionPago.split('\n').filter(l => l.trim()).map(l => `<p>${l}</p>`).join('\n')
             : '';
@@ -316,7 +348,7 @@ export default function DigitalRecordsTab({ patientId, patientEmail, refreshKey 
     <table style="width: 100%; border-collapse: collapse; margin-bottom: 16px;">
         <tr>
             <td style="background: #f0fff4; border: 1px solid #38a169; padding: 20px; text-align: center;">
-                <span data-field="monto" style="font-size: 22pt; font-weight: bold; color: #22543d;">${montoFormatted}</span>
+                <span data-field="monto" data-currency="${editCurrencyMode}" style="font-size: 22pt; font-weight: bold; color: ${montoColor};">${montoFormatted}</span>
             </td>
         </tr>
     </table>
@@ -479,21 +511,44 @@ export default function DigitalRecordsTab({ patientId, patientEmail, refreshKey 
                     </div>
                   ) : section.id === 'valor' ? (
                     <div className="space-y-3">
+                      {/* Currency mode pills */}
                       <div>
-                        <label className="text-[11px] text-white/50 font-medium mb-1 block">Monto (USD)</label>
-                        <div className="relative">
-                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-emerald-400 font-bold text-sm">USD</span>
-                          <input
-                            type="number"
-                            min="0"
-                            step="1"
-                            value={editMonto}
-                            onChange={e => setEditMonto(e.target.value.replace(/[^\d]/g, ''))}
-                            placeholder="0"
-                            className="w-full bg-white/[0.04] border border-emerald-500/20 text-white/90 rounded-lg pl-14 pr-3 py-2.5 text-lg font-bold focus:outline-none focus:border-emerald-500/40 focus:bg-white/[0.06] transition-colors"
-                          />
+                        <label className="text-[11px] text-white/50 font-medium mb-1.5 block">Tipo de monto</label>
+                        <div className="flex gap-2">
+                          {(['USD', 'ARS', 'OBRA_SOCIAL'] as const).map(mode => (
+                            <button
+                              key={mode}
+                              type="button"
+                              onClick={() => setEditCurrencyMode(mode)}
+                              className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${editCurrencyMode === mode ? 'bg-blue-500/20 border-blue-500/40 text-blue-300' : 'bg-white/[0.04] border-white/[0.08] text-white/50 hover:text-white/70'}`}
+                            >
+                              {mode === 'OBRA_SOCIAL' ? 'Obra Social' : mode}
+                            </button>
+                          ))}
                         </div>
                       </div>
+                      {/* Monto input or obra social notice */}
+                      {editCurrencyMode === 'OBRA_SOCIAL' ? (
+                        <div className="flex items-center gap-2 bg-blue-500/10 border border-blue-500/20 rounded-lg px-3 py-2.5">
+                          <span className="text-blue-300 text-sm">Monto a cargo de la obra social</span>
+                        </div>
+                      ) : (
+                        <div>
+                          <label className="text-[11px] text-white/50 font-medium mb-1 block">Monto ({editCurrencyMode})</label>
+                          <div className="relative">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-emerald-400 font-bold text-sm">{editCurrencyMode === 'ARS' ? '$' : 'USD'}</span>
+                            <input
+                              type="number"
+                              min="0"
+                              step="1"
+                              value={editMonto}
+                              onChange={e => setEditMonto(e.target.value.replace(/[^\d]/g, ''))}
+                              placeholder="0"
+                              className="w-full bg-white/[0.04] border border-emerald-500/20 text-white/90 rounded-lg pl-14 pr-3 py-2.5 text-lg font-bold focus:outline-none focus:border-emerald-500/40 focus:bg-white/[0.06] transition-colors"
+                            />
+                          </div>
+                        </div>
+                      )}
                       <div>
                         <label className="text-[11px] text-white/50 font-medium mb-1 block">Descripción / Detalles del pago</label>
                         <textarea
