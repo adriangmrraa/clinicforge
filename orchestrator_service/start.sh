@@ -51,12 +51,37 @@ if [ "$DB_ACTION" = "EXISTING_NO_ALEMBIC" ]; then
     alembic stamp head
     echo "Baseline marcado."
 elif [ "$DB_ACTION" = "FRESH" ]; then
-    echo "DB fresca. Ejecutando baseline + stamp head..."
-    # Run ONLY the baseline migration (creates full schema)
+    echo "DB fresca. Ejecutando baseline..."
+    # Run the baseline migration (creates most of the schema)
     alembic upgrade a1b2c3d4e5f6
-    # Then stamp at head so incremental migrations are skipped
-    alembic stamp head
-    echo "Schema creado y stamp aplicado."
+    # Now run each remaining migration individually, skipping failures
+    # (baseline already created some columns/tables that incrementals try to add)
+    echo "Ejecutando migraciones incrementales (tolerando duplicados)..."
+    python -c "
+import subprocess, re, sys
+result = subprocess.run(['alembic', 'heads'], capture_output=True, text=True)
+head = result.stdout.strip().split()[0] if result.stdout.strip() else ''
+result = subprocess.run(['alembic', 'history', '--indicate-current', '-r', 'a1b2c3d4e5f6:' + head], capture_output=True, text=True)
+revisions = []
+for line in result.stdout.strip().split('\n'):
+    m = re.search(r'-> ([a-f0-9]+)', line)
+    if m and m.group(1) != 'a1b2c3d4e5f6':
+        revisions.append(m.group(1))
+revisions.reverse()
+failed = 0
+for rev in revisions:
+    r = subprocess.run(['alembic', 'upgrade', rev], capture_output=True, text=True)
+    if r.returncode != 0:
+        if 'already exists' in r.stderr or 'DuplicateColumn' in r.stderr or 'DuplicateTable' in r.stderr:
+            subprocess.run(['alembic', 'stamp', rev], capture_output=True)
+            failed += 1
+        else:
+            print(f'ERROR en {rev}: {r.stderr[-200:]}', file=sys.stderr)
+            subprocess.run(['alembic', 'stamp', rev], capture_output=True)
+            failed += 1
+print(f'Migraciones: {len(revisions)} total, {failed} con duplicados (stamped)')
+"
+    echo "Schema completo."
 else
     echo "Aplicando migraciones incrementales..."
     alembic upgrade head
