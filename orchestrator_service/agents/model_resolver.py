@@ -8,7 +8,7 @@ SAME source of truth as the solo engine.
 
 Contract:
     resolve_tenant_model(tenant_id) -> dict {
-        "model":    str,            # e.g. "gpt-5.4-mini" or "deepseek-chat"
+        "model":    str,            # e.g. "gpt-4o-mini" or "deepseek-chat"
         "api_key":  str,            # tenant-specific or fallback to env var
         "base_url": Optional[str],  # None for OpenAI, DeepSeek URL otherwise
         "provider": "openai" | "deepseek",
@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 # These MUST match the constants in main.py (single source of truth is main.py).
 # Kept here to avoid a circular import at module load time. If main.py changes
 # these values, update this module too.
-DEFAULT_OPENAI_MODEL = "gpt-4o-mini"
+DEFAULT_OPENAI_MODEL = os.getenv("DEFAULT_OPENAI_MODEL", "gpt-4o-mini")
 DEEPSEEK_MODELS = {"deepseek-chat", "deepseek-reasoner"}
 DEEPSEEK_BASE_URL = "https://api.deepseek.com"
 
