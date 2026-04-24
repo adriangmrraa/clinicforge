@@ -94,7 +94,7 @@ function parseSections(html: string): Section[] {
   return sections;
 }
 
-/** Reconstruct HTML from edited sections */
+/** Reconstruct HTML from edited sections — preserves full document including <head> CSS */
 function rebuildHtml(originalHtml: string, sections: Section[]): string {
   const doc = new DOMParser().parseFromString(originalHtml, 'text/html');
   sections.forEach(section => {
@@ -103,7 +103,7 @@ function rebuildHtml(originalHtml: string, sections: Section[]): string {
       el.innerHTML = section.content;
     }
   });
-  return doc.body.innerHTML;
+  return '<!DOCTYPE html>\n' + doc.documentElement.outerHTML;
 }
 
 /** Strip HTML to plain text for textarea editing — preserves line breaks */
