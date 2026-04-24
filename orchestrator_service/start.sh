@@ -2,10 +2,12 @@
 
 echo "Verificando estado de migraciones..."
 
-# Helper: drop all public tables and alembic_version, then run migrations fresh
-nuke_and_rebuild() {
-    echo "Dropeando todas las tablas para rebuild limpio..."
-    python -c "
+# Detect DB state:
+# - FRESH: no tables, no alembic → run baseline + stamp head
+# - STAMPED_BROKEN: alembic says head but columns missing → nuke + baseline + stamp
+# - EXISTING_NO_ALEMBIC: tables exist but no alembic → stamp head
+# - NORMAL: alembic + tables + columns OK → upgrade head
+DB_ACTION=$(python -c "
 import os, psycopg2
 dsn = os.environ.get('POSTGRES_DSN', '').replace('postgresql+asyncpg://', 'postgresql://')
 if dsn.startswith('postgres://'):
@@ -13,50 +15,52 @@ if dsn.startswith('postgres://'):
 conn = psycopg2.connect(dsn)
 conn.autocommit = True
 cur = conn.cursor()
-cur.execute(\"SELECT tablename FROM pg_tables WHERE schemaname = 'public'\")
-tables = [r[0] for r in cur.fetchall()]
-for t in tables:
-    cur.execute('DROP TABLE IF EXISTS public.\"' + t + '\" CASCADE')
-    print(f'  Dropped {t}')
-conn.close()
-print('Todas las tablas dropeadas.')
-"
-    echo "Ejecutando migraciones desde cero..."
-    alembic upgrade head
-    echo "Migraciones aplicadas correctamente."
-}
-
-# Detect DB state
-DB_ACTION=$(python -c "
-import os, psycopg2
-dsn = os.environ.get('POSTGRES_DSN', '').replace('postgresql+asyncpg://', 'postgresql://')
-if dsn.startswith('postgres://'):
-    dsn = dsn.replace('postgres://', 'postgresql://', 1)
-conn = psycopg2.connect(dsn)
-cur = conn.cursor()
 cur.execute(\"SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_name='alembic_version')\")
 has_alembic = cur.fetchone()[0]
 cur.execute(\"SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_name='tenants')\")
 has_tenants = cur.fetchone()[0]
-conn.close()
-if has_tenants and not has_alembic:
-    print('STAMP')
-else:
-    print('UPGRADE')
-" 2>/dev/null || echo "UPGRADE")
 
-if [ "$DB_ACTION" = "STAMP" ]; then
-    echo "DB existente detectada sin Alembic. Marcando baseline..."
+if has_tenants and not has_alembic:
+    print('EXISTING_NO_ALEMBIC')
+elif has_alembic and has_tenants:
+    # Check if schema is actually complete
+    cur.execute(\"SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_name='patients' AND column_name='acquisition_source')\")
+    has_recent = cur.fetchone()[0]
+    if has_recent:
+        print('NORMAL')
+    else:
+        # Stamped but schema incomplete — nuke everything
+        cur.execute(\"SELECT tablename FROM pg_tables WHERE schemaname = 'public'\")
+        for r in cur.fetchall():
+            cur.execute('DROP TABLE IF EXISTS public.\"' + r[0] + '\" CASCADE')
+        print('FRESH')
+elif has_alembic and not has_tenants:
+    # Alembic exists but no tables — drop alembic and start fresh
+    cur.execute('DROP TABLE IF EXISTS alembic_version CASCADE')
+    print('FRESH')
+else:
+    print('FRESH')
+
+conn.close()
+" 2>/dev/null || echo "FRESH")
+
+echo "DB_ACTION=$DB_ACTION"
+
+if [ "$DB_ACTION" = "EXISTING_NO_ALEMBIC" ]; then
+    echo "DB existente sin Alembic. Marcando baseline..."
     alembic stamp head
-    echo "Baseline marcado correctamente."
+    echo "Baseline marcado."
+elif [ "$DB_ACTION" = "FRESH" ]; then
+    echo "DB fresca. Ejecutando baseline + stamp head..."
+    # Run ONLY the baseline migration (creates full schema)
+    alembic upgrade a1b2c3d4e5f6
+    # Then stamp at head so incremental migrations are skipped
+    alembic stamp head
+    echo "Schema creado y stamp aplicado."
 else
-    echo "Aplicando migraciones..."
-    if ! alembic upgrade head 2>&1; then
-        echo "⚠️ Migraciones fallaron — detectado schema inconsistente. Rebuildeando..."
-        nuke_and_rebuild
-    else
-        echo "Migraciones aplicadas correctamente."
-    fi
+    echo "Aplicando migraciones incrementales..."
+    alembic upgrade head
+    echo "Migraciones aplicadas."
 fi
 
 # Asegurar permisos de escritura en directorios de uploads/media
