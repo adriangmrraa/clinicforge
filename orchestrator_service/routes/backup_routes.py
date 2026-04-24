@@ -411,40 +411,18 @@ async def download_backup(
 @router.post("/restore")
 async def restore_backup(
     file: UploadFile = File(...),
-    password: str = "",
     target_tenant_id: Optional[int] = None,
     user_data=Depends(verify_ceo_token),
     tenant_id: int = Depends(get_resolved_tenant_id),
 ):
-    """Upload a backup ZIP and restore it to the current (or target) tenant."""
+    """Upload a backup ZIP and restore it to the current (or target) tenant.
+    Security: CEO-only via verify_ceo_token (JWT + X-Admin-Token + role='ceo')."""
     import tempfile
-
-    # Password is required for restore (sensitive operation)
-    if not password:
-        raise HTTPException(400, "Se requiere contraseña para restaurar un backup")
 
     # Size check (5GB max)
     max_size = 5 * 1024 * 1024 * 1024
     if file.size and file.size > max_size:
         raise HTTPException(413, "El archivo excede el límite de 5GB")
-
-    # Verify password
-    from db import db
-
-    user_id = getattr(user_data, "id", None) or getattr(user_data, "user_id", None)
-    user_row = await db.pool.fetchrow(
-        "SELECT password_hash FROM users WHERE id = $1", str(user_id)
-    )
-    if not user_row:
-        raise HTTPException(401, "Usuario no encontrado")
-
-    import bcrypt
-
-    if not bcrypt.checkpw(
-        password.encode("utf-8"),
-        user_row["password_hash"].encode("utf-8"),
-    ):
-        raise HTTPException(401, "Contraseña incorrecta")
 
     # Stream upload to temp file (avoid loading entire file into memory)
     tmp_path = os.path.join(tempfile.gettempdir(), f"restore_{uuid.uuid4()}.zip")
