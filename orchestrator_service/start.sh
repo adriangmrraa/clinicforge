@@ -131,6 +131,14 @@ patches = [
     'CREATE INDEX IF NOT EXISTS idx_patients_acquisition_source ON patients(acquisition_source)',
     'CREATE INDEX IF NOT EXISTS idx_patients_meta_ad_id ON patients(meta_ad_id)',
     'CREATE INDEX IF NOT EXISTS idx_patients_meta_campaign_id ON patients(meta_campaign_id)',
+    # pg_trgm indexes (moved from baseline — require extension installed first)
+    'CREATE INDEX IF NOT EXISTS idx_patients_first_name_trgm ON patients USING gin(first_name gin_trgm_ops)',
+    'CREATE INDEX IF NOT EXISTS idx_patients_last_name_trgm ON patients USING gin(last_name gin_trgm_ops)',
+    # pgvector indexes (optional — only if vector extension available)
+    'ALTER TABLE faq_embeddings ALTER COLUMN embedding TYPE vector(1536) USING embedding::vector(1536)',
+    'ALTER TABLE document_embeddings ALTER COLUMN embedding TYPE vector(1536) USING embedding::vector(1536)',
+    'CREATE INDEX IF NOT EXISTS idx_faq_embeddings_vector ON faq_embeddings USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100)',
+    'CREATE INDEX IF NOT EXISTS idx_doc_embeddings_vector ON document_embeddings USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100)',
 ]
 applied = 0
 for p in patches:
