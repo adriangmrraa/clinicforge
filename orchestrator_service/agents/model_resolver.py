@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 # These MUST match the constants in main.py (single source of truth is main.py).
 # Kept here to avoid a circular import at module load time. If main.py changes
 # these values, update this module too.
-DEFAULT_OPENAI_MODEL = "gpt-5.4-mini"
+DEFAULT_OPENAI_MODEL = "gpt-4o-mini"
 DEEPSEEK_MODELS = {"deepseek-chat", "deepseek-reasoner"}
 DEEPSEEK_BASE_URL = "https://api.deepseek.com"
 
