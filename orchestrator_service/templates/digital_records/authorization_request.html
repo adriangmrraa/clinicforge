@@ -64,17 +64,14 @@
 <!-- Valor Estimado -->
 <div data-section="valor" data-editable="true">
     <h3 class="section-title">Valor Estimado del Tratamiento</h3>
-    {% if data.appointments and data.appointments | length > 0 and data.appointments[0].amount %}
     <table style="width: 100%; border-collapse: collapse; margin-bottom: 16px;">
         <tr>
             <td style="background: #f0fff4; border: 1px solid #38a169; padding: 20px; text-align: center;">
-                <span style="font-size: 22pt; font-weight: bold; color: #22543d;">$ {{ "{:,.0f}".format(data.appointments[0].amount).replace(",", ".") }}</span>
+                <span data-field="monto" style="font-size: 22pt; font-weight: bold; color: #22543d;">{% if data.appointments and data.appointments | length > 0 and data.appointments[0].amount %}USD {{ "{:,.0f}".format(data.appointments[0].amount).replace(",", ".") }}{% else %}[Monto pendiente]{% endif %}</span>
             </td>
         </tr>
     </table>
-    {% else %}
-    <p class="placeholder">[Valor pendiente de completar]</p>
-    {% endif %}
+    <div data-field="descripcion_pago" class="narrative" style="margin-top: 8px;">{{ ai.descripcion_pago | default('') }}</div>
 </div>
 
 <!-- Observaciones -->

@@ -148,6 +148,9 @@ export default function DigitalRecordsTab({ patientId, patientEmail, refreshKey 
   // Section-based editing
   const [editSections, setEditSections] = useState<Section[]>([]);
   const [editTexts, setEditTexts] = useState<Record<string, string>>({});
+  // Valor section: separate monto + descripcion
+  const [editMonto, setEditMonto] = useState('');
+  const [editDescripcionPago, setEditDescripcionPago] = useState('');
 
   useEffect(() => { fetchRecords(); }, [patientId, refreshKey]);
 
@@ -236,7 +239,21 @@ export default function DigitalRecordsTab({ patientId, patientEmail, refreshKey 
     setEditSections(sections);
     // Pre-extract text ONCE — no conversion on every keystroke
     const texts: Record<string, string> = {};
-    sections.forEach(s => { if (s.editable) texts[s.id] = htmlToText(s.content); });
+    sections.forEach(s => {
+      if (s.editable) {
+        if (s.id === 'valor') {
+          // Extract monto and descripcion from structured HTML
+          const doc = new DOMParser().parseFromString(s.content, 'text/html');
+          const montoEl = doc.querySelector('[data-field="monto"]');
+          const descEl = doc.querySelector('[data-field="descripcion_pago"]');
+          const montoText = (montoEl?.textContent || '').replace(/[^\d.,]/g, '').replace(/\./g, '').replace(',', '.').trim();
+          setEditMonto(montoText || '');
+          setEditDescripcionPago(descEl?.textContent?.trim() || '');
+        } else {
+          texts[s.id] = htmlToText(s.content);
+        }
+      }
+    });
     setEditTexts(texts);
     setViewState('editing');
   };
@@ -250,11 +267,37 @@ export default function DigitalRecordsTab({ patientId, patientEmail, refreshKey 
     setSaving(true);
     try {
       // Convert text→HTML ONCE at save time
-      const updatedSections = editSections.map(s =>
-        s.editable && editTexts[s.id] !== undefined
-          ? { ...s, content: textToHtml(editTexts[s.id], s.content) }
-          : s
-      );
+      const updatedSections = editSections.map(s => {
+        if (!s.editable) return s;
+        if (s.id === 'valor') {
+          // Rebuild valor section with structured fields
+          const montoNum = parseFloat(editMonto) || 0;
+          const montoFormatted = montoNum > 0 ? `USD ${montoNum.toLocaleString('es-AR', { minimumFractionDigits: 0 })}` : '[Monto pendiente]';
+          const descHtml = editDescripcionPago.trim()
+            ? editDescripcionPago.split('\n').filter(l => l.trim()).map(l => `<p>${l}</p>`).join('\n')
+            : '';
+          // Preserve the heading from original content
+          const doc = new DOMParser().parseFromString(s.content, 'text/html');
+          const heading = doc.querySelector('h2, h3');
+          const headingHtml = heading ? heading.outerHTML : '<h3 class="section-title">Valor Estimado del Tratamiento</h3>';
+          return {
+            ...s,
+            content: `${headingHtml}
+    <table style="width: 100%; border-collapse: collapse; margin-bottom: 16px;">
+        <tr>
+            <td style="background: #f0fff4; border: 1px solid #38a169; padding: 20px; text-align: center;">
+                <span data-field="monto" style="font-size: 22pt; font-weight: bold; color: #22543d;">${montoFormatted}</span>
+            </td>
+        </tr>
+    </table>
+    <div data-field="descripcion_pago" class="narrative" style="margin-top: 8px;">${descHtml}</div>`
+          };
+        }
+        if (editTexts[s.id] !== undefined) {
+          return { ...s, content: textToHtml(editTexts[s.id], s.content) };
+        }
+        return s;
+      });
       const newHtml = rebuildHtml(selectedRecord.html_content, updatedSections);
       await api.patch(`/admin/patients/${patientId}/digital-records/${selectedRecord.id}`, { html_content: newHtml });
       const updated = { ...selectedRecord, html_content: newHtml, updated_at: new Date().toISOString() };
@@ -335,12 +378,42 @@ export default function DigitalRecordsTab({ patientId, patientEmail, refreshKey 
                   )}
                 </div>
                 {section.editable ? (
-                  <textarea
-                    value={editTexts[section.id] ?? ''}
-                    onChange={e => handleSectionTextChange(section.id, e.target.value)}
-                    className="w-full bg-white/[0.04] border border-white/[0.08] text-white/90 rounded-lg p-2.5 sm:p-3 text-[13px] sm:text-sm leading-relaxed resize-y min-h-[70px] focus:outline-none focus:border-blue-500/30 focus:bg-white/[0.06] transition-colors"
-                    rows={Math.max(3, (editTexts[section.id] ?? '').split('\n').length + 1)}
-                  />
+                  section.id === 'valor' ? (
+                    <div className="space-y-3">
+                      <div>
+                        <label className="text-[11px] text-white/50 font-medium mb-1 block">Monto (USD)</label>
+                        <div className="relative">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-emerald-400 font-bold text-sm">USD</span>
+                          <input
+                            type="number"
+                            min="0"
+                            step="1"
+                            value={editMonto}
+                            onChange={e => setEditMonto(e.target.value.replace(/[^\d]/g, ''))}
+                            placeholder="0"
+                            className="w-full bg-white/[0.04] border border-emerald-500/20 text-white/90 rounded-lg pl-14 pr-3 py-2.5 text-lg font-bold focus:outline-none focus:border-emerald-500/40 focus:bg-white/[0.06] transition-colors"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="text-[11px] text-white/50 font-medium mb-1 block">Descripción / Detalles del pago</label>
+                        <textarea
+                          value={editDescripcionPago}
+                          onChange={e => setEditDescripcionPago(e.target.value)}
+                          placeholder="Ej: Incluye honorarios, materiales, anestesia general..."
+                          className="w-full bg-white/[0.04] border border-white/[0.08] text-white/90 rounded-lg p-2.5 sm:p-3 text-[13px] sm:text-sm leading-relaxed resize-y min-h-[70px] focus:outline-none focus:border-blue-500/30 focus:bg-white/[0.06] transition-colors"
+                          rows={3}
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <textarea
+                      value={editTexts[section.id] ?? ''}
+                      onChange={e => handleSectionTextChange(section.id, e.target.value)}
+                      className="w-full bg-white/[0.04] border border-white/[0.08] text-white/90 rounded-lg p-2.5 sm:p-3 text-[13px] sm:text-sm leading-relaxed resize-y min-h-[70px] focus:outline-none focus:border-blue-500/30 focus:bg-white/[0.06] transition-colors"
+                      rows={Math.max(3, (editTexts[section.id] ?? '').split('\n').length + 1)}
+                    />
+                  )
                 ) : (
                   <div className="text-[13px] sm:text-sm text-white/50 leading-relaxed overflow-x-auto">
                     <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(section.content, { ADD_TAGS: ['table', 'thead', 'tbody', 'tr', 'th', 'td', 'svg', 'path', 'circle', 'line', 'g', 'text', 'rect'] }) }} />
