@@ -3,9 +3,8 @@ set -e
 
 echo "Verificando estado de migraciones..."
 
-# Si la tabla alembic_version no existe pero tenants sí,
-# es una DB existente que nunca usó Alembic → stamp en vez de upgrade
-if ! python -c "
+# Detect DB state: STAMP (existing DB without Alembic) or UPGRADE (everything else)
+DB_ACTION=$(python -c "
 import os, psycopg2
 dsn = os.environ.get('POSTGRES_DSN', '').replace('postgresql+asyncpg://', 'postgresql://')
 if dsn.startswith('postgres://'):
@@ -19,18 +18,18 @@ has_tenants = cur.fetchone()[0]
 conn.close()
 if has_tenants and not has_alembic:
     print('STAMP')
-    exit(0)
 else:
     print('UPGRADE')
-    exit(1)
-" 2>/dev/null; then
-    echo "Aplicando migraciones..."
-    alembic upgrade head
-    echo "Migraciones aplicadas correctamente."
-else
+" 2>/dev/null || echo "UPGRADE")
+
+if [ "$DB_ACTION" = "STAMP" ]; then
     echo "DB existente detectada sin Alembic. Marcando baseline..."
     alembic stamp head
     echo "Baseline marcado correctamente."
+else
+    echo "Aplicando migraciones..."
+    alembic upgrade head
+    echo "Migraciones aplicadas correctamente."
 fi
 
 # Asegurar permisos de escritura en directorios de uploads/media
