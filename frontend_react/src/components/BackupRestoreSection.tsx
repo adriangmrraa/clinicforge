@@ -27,6 +27,7 @@ export const BackupRestoreSection: React.FC<BackupRestoreSectionProps> = ({ user
   // Restore states
   const [isRestoreModalOpen, setIsRestoreModalOpen] = useState(false);
   const [restoreFile, setRestoreFile] = useState<File | null>(null);
+  const [restorePassword, setRestorePassword] = useState('');
   const [restoreLoading, setRestoreLoading] = useState(false);
   const [restoreProgress, setRestoreProgress] = useState('');
   const [restoreResult, setRestoreResult] = useState<any>(null);
@@ -126,7 +127,7 @@ export const BackupRestoreSection: React.FC<BackupRestoreSectionProps> = ({ user
   };
 
   const handleRestore = async () => {
-    if (!restoreFile) return;
+    if (!restoreFile || !restorePassword) return;
     setRestoreLoading(true);
     setError(null);
     setRestoreProgress(t('backup.restore_validating'));
@@ -134,6 +135,7 @@ export const BackupRestoreSection: React.FC<BackupRestoreSectionProps> = ({ user
     try {
       const formData = new FormData();
       formData.append('file', restoreFile);
+      formData.append('password', restorePassword);
       const res = await api.post('/admin/backup/restore', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
@@ -149,6 +151,7 @@ export const BackupRestoreSection: React.FC<BackupRestoreSectionProps> = ({ user
   const closeRestoreModal = () => {
     setIsRestoreModalOpen(false);
     setRestoreFile(null);
+    setRestorePassword('');
     setRestoreResult(null);
     setError(null);
   };
@@ -305,6 +308,23 @@ export const BackupRestoreSection: React.FC<BackupRestoreSectionProps> = ({ user
                   <span className="text-white/40 text-xs">{(restoreFile.size / 1024 / 1024).toFixed(2)} MB</span>
                 </div>
               )}
+              {restoreFile && (
+                <div>
+                  <label className="block text-sm text-white/70 mb-2">
+                    <Lock size={14} className="inline mr-1" />
+                    {t('backup.modal_password_label')}
+                  </label>
+                  <input
+                    type="password"
+                    value={restorePassword}
+                    onChange={(e) => setRestorePassword(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && restorePassword && handleRestore()}
+                    className="w-full px-4 py-3 bg-white/[0.04] border border-white/[0.08] rounded-xl text-white outline-none focus:ring-2 focus:ring-amber-500"
+                    placeholder="••••••••"
+                    autoComplete="current-password"
+                  />
+                </div>
+              )}
               {restoreLoading && (
                 <div className="flex items-center gap-2 text-indigo-400">
                   <Loader2 size={16} className="animate-spin" />
@@ -318,7 +338,7 @@ export const BackupRestoreSection: React.FC<BackupRestoreSectionProps> = ({ user
               )}
               <button
                 onClick={handleRestore}
-                disabled={restoreLoading || !restoreFile}
+                disabled={restoreLoading || !restoreFile || !restorePassword}
                 className="w-full py-3 bg-amber-600 hover:bg-amber-700 disabled:bg-amber-600/50 text-white rounded-xl font-medium flex items-center justify-center gap-2 transition-all"
               >
                 {restoreLoading ? <Loader2 size={18} className="animate-spin" /> : <Upload size={18} />}

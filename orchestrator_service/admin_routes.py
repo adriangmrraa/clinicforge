@@ -1178,8 +1178,10 @@ async def get_integration_config(
             # Fallback: derive orchestrator URL from BFF URL
             scheme = request.headers.get("x-forwarded-proto", request.url.scheme)
             host = request.headers.get("x-forwarded-host", request.url.netloc)
-            if host and "-bff-" in host:
-                # Transform dentalforge-bff-service.gvdlcu.easypanel.host -> dentalforge-orchestrator.gvdlcu.easypanel.host
+            if host and ("bff-service" in host or "bff_service" in host):
+                # Transform dentalforge-bff-service.xxx -> dentalforge-orchestrator.xxx
+                api_base = f"{scheme}://{host.replace('bff-service', 'orchestrator').replace('bff_service', 'orchestrator')}"
+            elif host and "-bff-" in host:
                 api_base = f"{scheme}://{host.replace('-bff-', '-orchestrator-')}"
             else:
                 api_base = f"{scheme}://{host}"
@@ -1244,7 +1246,9 @@ async def get_integration_config(
             scheme = request.headers.get("x-forwarded-proto", request.url.scheme)
             host = request.headers.get("x-forwarded-host", request.url.netloc)
             # Transform BFF URL to orchestrator URL
-            if host and "-bff-" in host:
+            if host and ("bff-service" in host or "bff_service" in host):
+                api_base = f"{scheme}://{host.replace('bff-service', 'orchestrator').replace('bff_service', 'orchestrator')}"
+            elif host and "-bff-" in host:
                 api_base = f"{scheme}://{host.replace('-bff-', '-orchestrator-')}"
             else:
                 api_base = f"{scheme}://{host}"
