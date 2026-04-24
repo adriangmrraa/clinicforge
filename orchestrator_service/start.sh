@@ -1,5 +1,24 @@
 #!/bin/sh
 
+# Install PostgreSQL extensions BEFORE alembic (requires autocommit, outside transactions)
+echo "Instalando extensiones PostgreSQL..."
+python -c "
+import os, psycopg2
+dsn = os.environ.get('POSTGRES_DSN', '').replace('postgresql+asyncpg://', 'postgresql://')
+if dsn.startswith('postgres://'):
+    dsn = dsn.replace('postgres://', 'postgresql://', 1)
+conn = psycopg2.connect(dsn)
+conn.autocommit = True
+cur = conn.cursor()
+for ext in ['pg_trgm', 'vector']:
+    try:
+        cur.execute(f'CREATE EXTENSION IF NOT EXISTS {ext}')
+        print(f'  Extension {ext}: OK')
+    except Exception as e:
+        print(f'  Extension {ext}: not available ({e})')
+conn.close()
+" 2>/dev/null || echo "  Extension install skipped (connection failed)"
+
 echo "Verificando estado de migraciones..."
 
 # Detect DB state:

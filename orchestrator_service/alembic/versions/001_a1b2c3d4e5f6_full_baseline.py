@@ -23,15 +23,8 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     # =====================================================================
-    # EXTENSIONS
+    # EXTENSIONS — installed by start.sh BEFORE alembic runs (requires autocommit)
     # =====================================================================
-    # pgvector for RAG embeddings (optional — graceful fallback if unavailable)
-    try:
-        op.execute("CREATE EXTENSION IF NOT EXISTS vector")
-    except Exception:
-        pass
-    # pg_trgm for trigram-based fuzzy text search (055)
-    op.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
 
     # =====================================================================
     # TENANTS (must be first - many FKs reference it)
@@ -316,9 +309,7 @@ def upgrade() -> None:
     op.execute("CREATE INDEX IF NOT EXISTS idx_patients_fb_psid ON patients(tenant_id, facebook_psid)")
     # 024: assigned professional partial index
     op.execute("CREATE INDEX IF NOT EXISTS idx_patients_assigned_professional ON patients(tenant_id, assigned_professional_id) WHERE assigned_professional_id IS NOT NULL")
-    # 055: pg_trgm trigram indexes for fast name search
-    op.execute("CREATE INDEX IF NOT EXISTS idx_patients_first_name_trgm ON patients USING gin(first_name gin_trgm_ops)")
-    op.execute("CREATE INDEX IF NOT EXISTS idx_patients_last_name_trgm ON patients USING gin(last_name gin_trgm_ops)")
+    # 055: pg_trgm trigram indexes — created by start.sh after extensions are installed
     # 057: patient source partial index
     op.execute("CREATE INDEX IF NOT EXISTS idx_patients_source ON patients(patient_source) WHERE patient_source != 'regular'")
 
@@ -1041,13 +1032,7 @@ def upgrade() -> None:
     )
     """)
     op.execute("CREATE INDEX IF NOT EXISTS idx_faq_embeddings_tenant ON faq_embeddings(tenant_id)")
-    # If pgvector available, alter to vector(1536) and create ivfflat index
-    try:
-        op.execute("ALTER TABLE faq_embeddings ALTER COLUMN embedding TYPE vector(1536) USING embedding::vector(1536)")
-        op.execute("""CREATE INDEX IF NOT EXISTS idx_faq_embeddings_vector ON faq_embeddings
-            USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100)""")
-    except Exception:
-        pass
+    # pgvector ALTER + ivfflat indexes — created by start.sh after extensions are installed
 
     # =====================================================================
     # DOCUMENT EMBEDDINGS (009, fixed in 025)
@@ -1066,12 +1051,7 @@ def upgrade() -> None:
     )
     """)
     op.execute("CREATE INDEX IF NOT EXISTS idx_doc_embeddings_tenant ON document_embeddings(tenant_id)")
-    try:
-        op.execute("ALTER TABLE document_embeddings ALTER COLUMN embedding TYPE vector(1536) USING embedding::vector(1536)")
-        op.execute("""CREATE INDEX IF NOT EXISTS idx_doc_embeddings_vector ON document_embeddings
-            USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100)""")
-    except Exception:
-        pass
+    # pgvector ALTER + ivfflat indexes — created by start.sh after extensions are installed
 
     # =====================================================================
     # TENANT HOLIDAYS (010, 014)
