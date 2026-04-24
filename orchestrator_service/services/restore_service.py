@@ -23,6 +23,19 @@ logger = logging.getLogger(__name__)
 
 BACKUP_VERSION = "1.0"
 
+# Columns that reference excluded tables (like users) and must be nulled on restore
+FK_COLUMNS_TO_NULL = {
+    "professionals": {"user_id"},
+}
+
+# Tables where ON CONFLICT by unique constraint is unreliable (no guaranteed constraint)
+# Use plain INSERT with try/except instead
+TABLES_NO_CONFLICT = {
+    "treatment_type_professionals",
+    "automation_steps",
+    "automation_events",
+}
+
 # FK-safe insertion order (same as export)
 INSERT_ORDER = [
     "tenants",
@@ -255,6 +268,12 @@ async def _insert_table(
             # Decoerce all values
             clean_row = {k: _decoerce_value(v, k) for k, v in row.items()}
 
+            # Null out FK columns that reference excluded tables (e.g. users)
+            null_cols = FK_COLUMNS_TO_NULL.get(table_name, set())
+            for col in null_cols:
+                if col in clean_row:
+                    clean_row[col] = None
+
             # Validate column names (SQL injection prevention)
             safe_row = {k: v for k, v in clean_row.items() if _SAFE_COL.match(k)}
             if len(safe_row) != len(clean_row):
@@ -291,12 +310,12 @@ async def _insert_table(
                     conflict = f"ON CONFLICT (id) DO UPDATE SET {set_clause}"
                 else:
                     conflict = "ON CONFLICT (id) DO NOTHING"
-            elif table_name == "treatment_type_professionals":
-                conflict = "ON CONFLICT (treatment_type_id, professional_id) DO NOTHING"
+            elif table_name in TABLES_NO_CONFLICT:
+                # No reliable unique constraint — plain INSERT
+                conflict = ""
             elif "id" in columns:
                 conflict = "ON CONFLICT (id) DO NOTHING"
             else:
-                # Tables without unique constraint: plain INSERT, rely on try/except
                 conflict = ""
 
             sql = f"INSERT INTO {table_name} ({col_str}) VALUES ({val_str}) {conflict}"
@@ -445,6 +464,49 @@ async def restore_from_zip(
                 )
 
             source_tid = manifest.get("tenant_id", tenant_id)
+
+            # --- CLEAN existing data for the target tenant (reverse FK order) ---
+            # This ensures re-restores work cleanly without duplicates
+            cleanup_order = list(reversed(INSERT_ORDER))
+            for table_name in cleanup_order:
+                # Only clean tables that are in the backup
+                data_path = f"{prefix}/data/{table_name}.json"
+                try:
+                    zf.getinfo(data_path)
+                except KeyError:
+                    continue  # Not in backup, don't clean
+
+                # Don't delete tenant record itself (UPSERT handles it)
+                if table_name == "tenants":
+                    continue
+
+                try:
+                    # Check if table has tenant_id
+                    has_tid = await pool.fetchval(
+                        """SELECT EXISTS (
+                            SELECT 1 FROM information_schema.columns
+                            WHERE table_name = $1 AND column_name = 'tenant_id'
+                        )""",
+                        table_name,
+                    )
+                    if has_tid:
+                        deleted = await pool.execute(
+                            f"DELETE FROM {table_name} WHERE tenant_id = $1",
+                            target_tid,
+                        )
+                        logger.info(f"[restore] Cleaned {table_name}: {deleted}")
+                    elif table_name == "treatment_type_professionals":
+                        # Junction table: delete via JOIN
+                        await pool.execute(
+                            """DELETE FROM treatment_type_professionals
+                               WHERE treatment_type_id IN (
+                                   SELECT id FROM treatment_types WHERE tenant_id = $1
+                               )""",
+                            target_tid,
+                        )
+                        logger.info(f"[restore] Cleaned {table_name} via join")
+                except Exception as clean_err:
+                    logger.warning(f"[restore] Cleanup {table_name} failed: {clean_err}")
 
             # Insert tables in FK-safe order
             for table_name in INSERT_ORDER:
