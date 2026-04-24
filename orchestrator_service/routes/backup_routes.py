@@ -442,6 +442,7 @@ async def restore_backup(
             raise HTTPException(422, "El archivo no es un ZIP válido")
 
         # Run restore
+        from db import db
         from services.restore_service import restore_from_zip
 
         target = target_tenant_id or tenant_id
