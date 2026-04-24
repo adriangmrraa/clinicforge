@@ -341,9 +341,19 @@ export const BackupRestoreSection: React.FC<BackupRestoreSectionProps> = ({ user
                     <p className="text-xs text-white/40 mb-2">{t('backup.tables_restored')}</p>
                     <div className="flex flex-wrap gap-1">
                       {Object.entries(restoreResult.tables_restored).map(([table, count]) => (
-                        <span key={table} className="px-2 py-1 bg-indigo-500/20 text-indigo-300 text-xs rounded">
+                        <span key={table} className={`px-2 py-1 text-xs rounded ${Number(count) > 0 ? 'bg-indigo-500/20 text-indigo-300' : 'bg-red-500/20 text-red-300'}`}>
                           {table}: {String(count)}
                         </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {restoreResult.warnings && restoreResult.warnings.length > 0 && (
+                  <div className="mt-3 pt-3 border-t border-white/[0.08]">
+                    <p className="text-xs text-amber-400 mb-2">Advertencias ({restoreResult.warnings.length})</p>
+                    <div className="max-h-32 overflow-y-auto space-y-1">
+                      {restoreResult.warnings.slice(0, 20).map((w: string, i: number) => (
+                        <p key={i} className="text-xs text-white/40">{w}</p>
                       ))}
                     </div>
                   </div>

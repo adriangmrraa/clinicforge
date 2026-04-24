@@ -198,11 +198,27 @@ def _remap_tenant_id(rows: List[Dict], source_tid: int, target_tid: int) -> List
     return remapped
 
 
+async def _get_table_columns(pool, table_name: str) -> set:
+    """Get the set of actual column names for a table in the target DB."""
+    rows = await pool.fetch(
+        """
+        SELECT column_name FROM information_schema.columns
+        WHERE table_name = $1 AND table_schema = 'public'
+        """,
+        table_name,
+    )
+    return {r["column_name"] for r in rows}
+
+
 async def _insert_table(
     pool, table_name: str, rows: List[Dict], target_tenant_id: int
 ) -> Tuple[int, int, List[str]]:
     """
-    Insert rows into a table with ON CONFLICT DO NOTHING.
+    Insert rows into a table.
+
+    - tenants: UPSERT (update all fields on conflict) so restored config overwrites shell tenant
+    - Other tables with id: ON CONFLICT (id) DO NOTHING
+    - Columns that don't exist in target DB are silently filtered out
 
     Returns (inserted_count, skipped_count, warnings).
     """
@@ -221,25 +237,61 @@ async def _insert_table(
     # Column name whitelist regex (prevent SQL injection via crafted ZIP)
     _SAFE_COL = re.compile(r"^[a-z_][a-z0-9_]*$")
 
+    # Get actual columns in target DB to filter out columns that don't exist
+    try:
+        db_columns = await _get_table_columns(pool, table_name)
+    except Exception as e:
+        warnings.append(f"{table_name}: could not read schema — {str(e)[:80]}")
+        return 0, len(rows), warnings
+
+    if not db_columns:
+        warnings.append(f"{table_name}: table not found in target DB — skipped")
+        return 0, len(rows), warnings
+
+    filtered_cols_logged = False
+
     for row in rows:
         try:
             # Decoerce all values
             clean_row = {k: _decoerce_value(v, k) for k, v in row.items()}
 
             # Validate column names (SQL injection prevention)
-            columns = [c for c in clean_row.keys() if _SAFE_COL.match(c)]
-            if len(columns) != len(clean_row):
-                skipped += 1
+            safe_row = {k: v for k, v in clean_row.items() if _SAFE_COL.match(k)}
+            if len(safe_row) != len(clean_row):
                 warnings.append(f"{table_name}: unsafe column names filtered")
+
+            # Filter to only columns that exist in the target DB
+            original_count = len(safe_row)
+            safe_row = {k: v for k, v in safe_row.items() if k in db_columns}
+            if len(safe_row) < original_count and not filtered_cols_logged:
+                dropped = set(clean_row.keys()) - db_columns
+                logger.info(
+                    f"[restore] {table_name}: filtered out non-existent columns: {dropped}"
+                )
+                filtered_cols_logged = True
+
+            if not safe_row:
+                skipped += 1
                 continue
 
-            values = [clean_row[c] for c in columns]
+            columns = list(safe_row.keys())
+            values = [safe_row[c] for c in columns]
             placeholders = [f"${i + 1}" for i in range(len(columns))]
             col_str = ", ".join(columns)
             val_str = ", ".join(placeholders)
 
-            # Determine conflict target
-            if table_name == "treatment_type_professionals":
+            # Determine conflict strategy
+            if table_name == "tenants" and "id" in columns:
+                # UPSERT: overwrite existing tenant with backup data
+                update_cols = [c for c in columns if c != "id"]
+                if update_cols:
+                    set_clause = ", ".join(
+                        f"{c} = EXCLUDED.{c}" for c in update_cols
+                    )
+                    conflict = f"ON CONFLICT (id) DO UPDATE SET {set_clause}"
+                else:
+                    conflict = "ON CONFLICT (id) DO NOTHING"
+            elif table_name == "treatment_type_professionals":
                 conflict = "ON CONFLICT (treatment_type_id, professional_id) DO NOTHING"
             elif "id" in columns:
                 conflict = "ON CONFLICT (id) DO NOTHING"
@@ -250,7 +302,7 @@ async def _insert_table(
             sql = f"INSERT INTO {table_name} ({col_str}) VALUES ({val_str}) {conflict}"
 
             result = await pool.execute(sql, *values)
-            if "INSERT 0 1" in result:
+            if "INSERT 0 1" in result or "UPDATE" in result:
                 inserted += 1
             else:
                 skipped += 1
