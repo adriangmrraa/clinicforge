@@ -29,8 +29,19 @@ elif has_alembic and has_tenants:
     cur.execute(\"SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_name='patients' AND column_name='acquisition_source')\")
     has_recent_col = cur.fetchone()[0]
     if not has_recent_col:
-        # Stamped at head but migrations never actually ran — clear and re-run
+        # Stamped at head but migrations never actually ran — nuke and rebuild
+        # Drop all tables so baseline + incremental migrations don't conflict
         cur.execute('DELETE FROM alembic_version')
+        cur.execute(\"\"\"
+            DO $$
+            DECLARE r RECORD;
+            BEGIN
+                FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename != 'alembic_version')
+                LOOP
+                    EXECUTE 'DROP TABLE IF EXISTS public.' || quote_ident(r.tablename) || ' CASCADE';
+                END LOOP;
+            END $$;
+        \"\"\")
         conn.commit()
         print('UPGRADE')
     else:
