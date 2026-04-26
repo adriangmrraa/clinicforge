@@ -102,6 +102,23 @@ Always use scroll isolation for views with dense content:
 - Include both `upgrade()` and `downgrade()` functions
 - Update `models.py` ORM classes alongside every migration
 
+### 6. Agent Prompt Data Pipeline (MANDATORY)
+The AI agent's system prompt is built dynamically from DB fields, NOT hardcoded text. The pipeline is:
+
+```
+DB fields (tenants, treatment_types, professionals, etc.)
+  → buffer_task.py fetches & normalizes
+    → build_system_prompt() injects as parameters
+      → Agent uses the composed prompt
+```
+
+**Rules**:
+- **NEVER hardcode agent behavior that should be configurable**. Before writing a fix, check if a DB field already exists and is editable from the UI (ClinicsView, TreatmentsView, ProfileView, ConfigView).
+- If a "bug" is caused by wrong/missing data in a configurable field, the fix is to **update the data via UI or SQL**, not to hardcode a workaround in code.
+- If the code emits a tag/token for the LLM to interpret (e.g. `[TAG:...]`), it MUST either: (a) have explicit LLM instructions in the prompt explaining how to handle it, AND (b) have a safety-net regex strip in `buffer_task.py` to catch leaks.
+- New agent behaviors should follow the pipeline: add a DB column → fetch in buffer_task.py → pass to build_system_prompt() → use in prompt. Never skip the pipeline.
+- **Key configurable fields** that affect agent behavior: `system_prompt_template` (greeting pitch), `bot_name`, `consultation_price`, `is_high_ticket` (per treatment), `patient_display_name` (per treatment), `consultation_requirements` (per treatment), `working_hours`, `bank_*`, FAQs, insurance providers, derivation rules.
+
 ---
 
 ## Development Workflow

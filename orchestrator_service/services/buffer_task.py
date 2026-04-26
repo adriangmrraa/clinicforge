@@ -2439,6 +2439,11 @@ Si el paciente pide un turno para {min_apt_date} o después, continuar normalmen
         response_text = "Disculpas, estoy experimentando intermitencias. Consultame de nuevo en unos minutos."
         media_urls = []
 
+    # --- SAFETY STRIP: remove any leaked internal tags before sending ---
+    if response_text:
+        # Strip bracket tags like [CONSULTA_PREVIA_REQUISITOS:...], [INTERNAL_*:...], etc.
+        response_text = re.sub(r"\[(?:CONSULTA_PREVIA_REQUISITOS|INTERNAL_\w+)[:\s][^\]]*\]", "", response_text).strip()
+
     # --- SEND RESPONSE ---
     from response_sender import ResponseSender
 

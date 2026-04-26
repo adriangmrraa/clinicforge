@@ -1068,7 +1068,7 @@ async def _get_slots_for_extra_day(
         t_data = await db.pool.fetchrow(
             """
             SELECT id, default_duration_minutes FROM treatment_types
-            WHERE tenant_id = $1 AND (name ILIKE $2 OR code ILIKE $2) AND is_active = true AND is_available_for_booking = true
+            WHERE tenant_id = $1 AND (name ILIKE $2 OR code ILIKE $2 OR patient_display_name ILIKE $2) AND is_active = true AND is_available_for_booking = true
             LIMIT 1
         """,
             tenant_id,
@@ -1314,6 +1314,7 @@ async def pick_representative_slots(
     search_range_days: int = 1,
     time_preference: Optional[str] = None,
     specific_time: Optional[str] = None,
+    excluded_weekdays: Optional[set] = None,
 ) -> tuple:
     """
     Selecciona hasta max_options slots representativos.
@@ -1369,6 +1370,11 @@ async def pick_representative_slots(
         _prefetched_apts = None
         _prefetched_blocks = None
 
+    # Filter out excluded weekdays from slots
+    if excluded_weekdays and target_date.weekday() in excluded_weekdays:
+        slots = []  # Target date falls on an excluded day
+        total_today = 0
+
     if search_range_days <= 1:
         # ── MODO FECHA ESPECÍFICA: slots del mismo día (hasta max_options) ──
         day_name_en = DAYS_EN[target_date.weekday()]
@@ -1412,6 +1418,9 @@ async def pick_representative_slots(
             if len(days_with_slots) >= max_options * 2:  # Suficientes días para elegir
                 break
             extra_date = target_date + timedelta(days=day_offset)
+            # Skip excluded weekdays (patient rejected this day of the week)
+            if excluded_weekdays and extra_date.weekday() in excluded_weekdays:
+                continue
             extra_day_en = DAYS_EN[extra_date.weekday()]
             extra_day_cfg = tenant_wh.get(extra_day_en, {})
             if extra_day_cfg and not extra_day_cfg.get("enabled", True):
@@ -1573,6 +1582,7 @@ async def check_availability(
     treatment_name: Optional[str] = None,
     time_preference: Optional[str] = None,
     specific_time: Optional[str] = None,
+    exclude_days: Optional[str] = None,
 ):
     """
     Consulta la disponibilidad REAL de turnos para una fecha. Llamar UNA sola vez por pregunta del paciente.
@@ -1587,13 +1597,31 @@ async def check_availability(
     treatment_name: (Opcional) Tratamiento definido (ej. limpieza profunda, consulta).
     time_preference: Si el paciente pide horarios de un momento del día: 'mañana' (horario AM) o 'tarde'. Si no especifica no pasar.
     specific_time: (Opcional) Hora EXACTA que el paciente pidió, en formato HH:MM (ej: "16:30", "10:00"). Usar SOLO cuando el paciente pide una hora concreta ("a las 16:30", "quiero a las 10"). Si el paciente solo dice "mañana" o "tarde" sin hora exacta, NO pasar este campo — usar time_preference. Si se pasa, la tool verifica si ESE slot exacto está libre y lo incluye primero en las opciones.
+    exclude_days: (Opcional) Días de la semana que el paciente RECHAZÓ, separados por coma. Ej: "viernes", "lunes,miércoles". Si el paciente dijo "el viernes no puedo" o "los lunes no me sirven", pasá esos días acá para EXCLUIRLOS de los resultados. SIEMPRE pasar los días rechazados por el paciente en la conversación.
     La tool devuelve 2 opciones concretas de horario con sede. Presentá las opciones al paciente tal cual las recibís.
     """
     try:
         tid = current_tenant_id.get()
         logger.info(
-            f"📅 check_availability date_query={date_query!r} interpreted_date={interpreted_date!r} search_mode={search_mode!r} tenant_id={tid} treatment={treatment_name!r} prof={professional_name!r}"
+            f"📅 check_availability date_query={date_query!r} interpreted_date={interpreted_date!r} search_mode={search_mode!r} tenant_id={tid} treatment={treatment_name!r} prof={professional_name!r} exclude_days={exclude_days!r}"
         )
+
+        # Parse exclude_days into a set of weekday numbers (0=Monday..6=Sunday)
+        _excluded_weekdays = set()
+        if exclude_days:
+            _day_map = {
+                "lunes": 0, "martes": 1, "miércoles": 2, "miercoles": 2,
+                "jueves": 3, "viernes": 4, "sábado": 5, "sabado": 5, "domingo": 6,
+                "monday": 0, "tuesday": 1, "wednesday": 2,
+                "thursday": 3, "friday": 4, "saturday": 5, "sunday": 6,
+            }
+            for _d in exclude_days.lower().split(","):
+                _d = _d.strip()
+                if _d in _day_map:
+                    _excluded_weekdays.add(_day_map[_d])
+            if _excluded_weekdays:
+                logger.info(f"📅 Excluding weekdays: {_excluded_weekdays} from results")
+
         # 0. A) Limpiar nombre y obtener profesionales activos
         clean_name = professional_name
         if professional_name:
@@ -2072,7 +2100,7 @@ async def check_availability(
                 SELECT id, default_duration_minutes, base_price, name, priority,
                        is_high_ticket, consultation_duration_minutes, consultation_requirements
                 FROM treatment_types
-                WHERE tenant_id = $1 AND (name ILIKE $2 OR code ILIKE $2) AND is_active = true AND is_available_for_booking = true
+                WHERE tenant_id = $1 AND (name ILIKE $2 OR code ILIKE $2 OR patient_display_name ILIKE $2) AND is_active = true AND is_available_for_booking = true
                 LIMIT 1
             """,
                 tenant_id,
@@ -2529,6 +2557,7 @@ async def check_availability(
             search_range_days=search_range,
             time_preference=time_preference,
             specific_time=specific_time,
+            excluded_weekdays=_excluded_weekdays if _excluded_weekdays else None,
         )
 
         if options:
@@ -2558,7 +2587,7 @@ async def check_availability(
                     t_data.get("consultation_requirements") if t_data else None
                 )
                 if _consult_reqs:
-                    lines.append(f"[CONSULTA_PREVIA_REQUISITOS:{_consult_reqs}]")
+                    lines.append(f"ℹ️ {_consult_reqs}")
             else:
                 lines.append(f"🗓️ Opciones disponibles para tu {treatment_display}:\n")
 
@@ -3222,8 +3251,8 @@ async def book_appointment(
                 SELECT code, name, default_duration_minutes, base_price,
                        is_high_ticket, consultation_duration_minutes, consultation_requirements
                 FROM treatment_types
-                WHERE tenant_id = $1 AND (name ILIKE $2 OR code ILIKE $2) AND is_active = true AND is_available_for_booking = true
-                ORDER BY (LOWER(name) = LOWER($3) OR LOWER(code) = LOWER($3)) DESC, name ASC
+                WHERE tenant_id = $1 AND (name ILIKE $2 OR code ILIKE $2 OR patient_display_name ILIKE $2) AND is_active = true AND is_available_for_booking = true
+                ORDER BY (LOWER(name) = LOWER($3) OR LOWER(code) = LOWER($3) OR LOWER(patient_display_name) = LOWER($3)) DESC, name ASC
                 LIMIT 1
             """,
                 tenant_id,
@@ -3256,8 +3285,8 @@ async def book_appointment(
             t_data = await db.pool.fetchrow(
                 """
                 SELECT code, name, base_price FROM treatment_types
-                WHERE tenant_id = $1 AND (name ILIKE $2 OR code ILIKE $2) AND is_active = true AND is_available_for_booking = true
-                ORDER BY (LOWER(name) = LOWER($3) OR LOWER(code) = LOWER($3)) DESC, name ASC
+                WHERE tenant_id = $1 AND (name ILIKE $2 OR code ILIKE $2 OR patient_display_name ILIKE $2) AND is_active = true AND is_available_for_booking = true
+                ORDER BY (LOWER(name) = LOWER($3) OR LOWER(code) = LOWER($3) OR LOWER(patient_display_name) = LOWER($3)) DESC, name ASC
                 LIMIT 1
             """,
                 tenant_id,
@@ -4495,7 +4524,7 @@ async def triage_urgency(symptoms: str):
         "🔴 ACCIONES INMEDIATAS:\n"
         "1. Si es fuera de horario de atención: Dirigite a la guardia odontológica más cercana\n"
         "2. Si es en horario de atención: Vení HOY MISMO al consultorio\n"
-        "3. Si tenés dificultad para respirar o tragar: Llamá al 107 (emergencias médicas)\n\n"
+        "3. Si tenés dificultad para respirar o tragar: Contactá a emergencias médicas de tu zona\n\n"
         "📞 Contacto directo: Llamá al consultorio para prioridad inmediata",
         "high": "⚠️ URGENCIA ALTA - Requiere atención pronta\n\n"
         "🟡 Recomendaciones:\n"
@@ -5948,12 +5977,13 @@ async def confirm_slot(
     treatment_name: Optional[str] = None,
 ):
     """
-    Confirma y reserva temporalmente un turno por 120 segundos mientras se recopilan datos del paciente.
-    Llamar SIEMPRE cuando el paciente elige una de las opciones de check_availability, ANTES de pedir datos de admisión.
+    Confirma y reserva temporalmente un turno por 120 segundos antes de llamar a book_appointment.
+    Llamar SOLO DESPUÉS de haber recopilado los datos del paciente (nombre, apellido, DNI).
+    FLUJO CORRECTO: check_availability → paciente elige → pedir datos (nombre, DNI) → confirm_slot → book_appointment.
+    NUNCA llamar confirm_slot ANTES de tener los datos del paciente. El timer de 2 minutos empieza acá.
     date_time: Fecha y hora elegida (ej. "lunes 09:00", "2026-03-25 15:00", "hoy 14:00").
     professional_name: (Opcional) Profesional elegido.
     treatment_name: (Opcional) Tratamiento definido.
-    Si la reserva temporal fue exitosa, procedé a recopilar datos de admisión (nombre, DNI).
     """
     try:
         tenant_id = current_tenant_id.get()
@@ -6022,7 +6052,7 @@ async def confirm_slot(
             logger.warning("confirm_slot: Redis unavailable — DB conflict check in book_appointment will act as fallback (lock_source: db_fallback)")
 
         dia_name = DIAS_ES.get(DAYS_EN[apt_datetime.weekday()], "")
-        response = f"✅ Reservé temporalmente el turno de las {time_str} del {dia_name} {apt_datetime.strftime('%d/%m')} por {SLOT_LOCK_TTL_SECONDS // 60} minutos. Necesito tus datos para confirmar la reserva."
+        response = f"✅ Turno de las {time_str} del {dia_name} {apt_datetime.strftime('%d/%m')} reservado. Procedé a confirmar con book_appointment."
 
         # Bug #4 Phase B: Set conversation state to SLOT_LOCKED
         try:
@@ -9196,6 +9226,9 @@ PROHIBICIONES (OBLIGATORIO — LEER ANTES DE CADA RESPUESTA):
 7. PROHIBIDO usar nombres técnicos internos de tratamientos (R.I.S.A., All-on-4, CIMA, zigomático) con el paciente.
 8. PROHIBIDO incluir dirección, sede o link de Maps al mostrar OPCIONES de horarios. Solo incluir ubicación AL CONFIRMAR el turno (después de book_appointment).
 9. PROHIBIDO seguir ofreciendo horarios o servicios después de llamar derivhumano. Una vez derivado, solo decir "Te van a contactar en breve" y NO responder más consultas de agenda.
+10. PROHIBIDO mencionar números de emergencia específicos (107, 911, etc.). Solo decir "contactá a emergencias médicas de tu zona". El agente NO da indicaciones médicas de emergencia.
+11. PROHIBIDO mostrar clasificaciones internas de tratamientos al paciente (Simple, Compleja, etc.). Solo usar el nombre visible del tratamiento tal como lo devuelve la tool.
+12. PROHIBIDO exponer información técnica interna al paciente: tiempos de reserva ("2 minutos"), nombres de tools, estados del sistema, mensajes de error internos, timeouts, o cualquier detalle de la arquitectura. El paciente solo debe ver información relevante para su turno.
 
 POLÍTICA DE PUNTUACIÓN (ESTRICTA):
 • NUNCA uses signos de apertura (no uses ni el signo de pregunta de apertura ni el signo de exclamación de apertura). Solo usá los de cierre ? y ! al final (ej: "Cómo estás?", "Qué alegría!").
@@ -9321,7 +9354,7 @@ Sos AGENTE DE VENTAS. Cada mensaje tuyo: ejecutar tool O hacer 1 pregunta. Nada 
 REGLAS DE FLUJO:
 • NUNCA repitas preguntas ya respondidas (tratamiento, día, hora). "consulta" = tratamiento Consulta.
 • NO repitas "Hola [nombre]!" si ya saludaste. Ir directo al punto.
-• SIEMPRE: check_availability → paciente elige → confirm_slot → datos si faltan → book_appointment.
+• SIEMPRE: check_availability → paciente elige → datos si faltan (nombre, DNI) → confirm_slot → book_appointment. NUNCA reservar antes de tener los datos.
 
 POLÍTICAS:
 • TIEMPO ACTUAL: {current_time}. Usalo para resolver "hoy", "mañana", etc. No agendar en el pasado.
@@ -9508,15 +9541,16 @@ PASO 4: CONSULTAR DISPONIBILIDAD — Llamá 'check_availability' UNA vez con tre
   Si el paciente pide un horario ESPECÍFICO (ej: "a las 16:30", "quiero a las 10") → volver a llamar check_availability CON specific_time="16:30" para verificar si ESE slot está libre. La tool lo incluirá primero en las opciones si está disponible, o mostrará el más cercano si no.
     - Si está libre → pasar a PASO 4b con ese horario.
     - Si está ocupado → decir honestamente que está ocupado y ofrecer el más cercano disponible.
-  Si NINGUNA opción funciona → ejecutá check_availability para el siguiente día hábil INMEDIATAMENTE. No preguntes "querés que busque otro día?", HACELO.
-PASO 4b: RESERVA TEMPORAL — Cuando el paciente confirma un horario, llamá 'confirm_slot(date_time, professional_name, treatment_name)'.
-  Esto reserva el turno por 2 minutos (120s) mientras recopilás datos. Si falla (otro paciente lo reservó), volver a PASO 4.
-PASO 5: DATOS DE ADMISIÓN — ⚠️ VERIFICAR ANTES DE PEDIR DATOS:
+  Si NINGUNA opción funciona → ejecutá check_availability INMEDIATAMENTE con search_mode="month" y exclude_days con los días que el paciente rechazó (ej: exclude_days="viernes"). No preguntes "querés que busque otro día?", HACELO.
+  REGLA DE EXCLUSIÓN: Si el paciente rechazó un día de la semana ("el viernes no puedo", "los lunes no"), SIEMPRE pasá exclude_days en TODAS las llamadas siguientes a check_availability en esta conversación. NUNCA vuelvas a ofrecer un día rechazado.
+PASO 4b: DATOS DE ADMISIÓN — ⚠️ VERIFICAR ANTES DE PEDIR DATOS:
   PREGUNTA INTERNA (no decir al paciente): "El CONTEXTO DEL PACIENTE tiene 'Nombre registrado' o 'DNI registrado'?"
-  → SI tiene nombre y/o DNI → SALTEAR ESTE PASO COMPLETO. Ir directo a PASO 6. Ya tenés los datos, NO los pidas de nuevo.
+  → SI tiene nombre y/o DNI → SALTEAR ESTE PASO COMPLETO. Ir directo a PASO 4c. Ya tenés los datos, NO los pidas de nuevo.
   → NO tiene datos (es paciente nuevo / lead) → Pedir DE A UN DATO POR MENSAJE: a) nombre y apellido, b) DNI. NUNCA pedir teléfono (ya lo tenés del WhatsApp).
   IMPORTANTE: Si el turno es para un TERCERO o MENOR, los datos son del PACIENTE (tercero/menor), NO del interlocutor.
   PROHIBIDO pedir nombre o DNI si ya aparecen en el CONTEXTO DEL PACIENTE. Esto es CRÍTICO para la experiencia del usuario.
+PASO 4c: RESERVA TEMPORAL — SOLO después de tener los datos del paciente, llamá 'confirm_slot(date_time, professional_name, treatment_name)'.
+  Esto reserva el turno por 2 minutos (120s). Como ya tenés los datos, llamá book_appointment INMEDIATAMENTE después. Si falla (otro paciente lo reservó), volver a PASO 4.
 PASO 6: AGENDAR — 'book_appointment' con los datos del paciente. Para campos opcionales faltantes, pasar NULL.
   • Para sí mismo: flujo normal (sin patient_phone ni is_minor ni is_art).
   • Para adulto tercero: pasá patient_phone con el teléfono del tercero.
@@ -9687,7 +9721,7 @@ Si el CONTEXTO DEL PACIENTE contiene "Nombre registrado" y/o "DNI registrado":
 MÚLTIPLES TURNOS: El interlocutor puede sacar varios turnos para distintas personas en la misma conversación. Cada vez que pide un turno nuevo, volver a PASO 2b para preguntar "para quién es".
 
 FAST TRACK:
-• Tratamiento + día + hora → check → confirm_slot → book (si hay datos).
+• Tratamiento + día + hora → check → datos si faltan → confirm_slot → book.
 • "Quiero turno" sin tratamiento → preguntar SOLO tratamiento.
 • "Para el mes que viene" → primer día hábil del mes siguiente.
 • Nombre + apellido + DNI juntos → procesá todo junto.
