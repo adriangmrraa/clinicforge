@@ -1389,7 +1389,7 @@ async def pick_representative_slots(
             options.append(
                 {
                     "time": time_str,
-                    "date": target_date,
+                    "date": target_date.isoformat(),
                     "date_display": date_display,
                     "sede": sede_text,
                     "period": "mañana" if hour < 13 else "tarde",
@@ -1478,7 +1478,7 @@ async def pick_representative_slots(
                     options.append(
                         {
                             "time": time_str,
-                            "date": d,
+                            "date": d.isoformat(),
                             "date_display": display,
                             "sede": day_info["sede"],
                             "period": "mañana" if hour < 13 else "tarde",
@@ -1531,7 +1531,7 @@ async def pick_representative_slots(
                 options.append(
                     {
                         "time": time_str,
-                        "date": extra_date,
+                        "date": extra_date.isoformat(),
                         "date_display": extra_display,
                         "sede": extra_sede,
                         "period": "mañana" if hour < 13 else "tarde",

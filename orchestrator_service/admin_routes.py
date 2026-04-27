@@ -1587,7 +1587,7 @@ async def get_chat_sessions(
                 batch_unread_sql = """
                     WITH session_params AS (
                         SELECT
-                            unnest($1::int[])        AS conversation_id,
+                            unnest($1::uuid[])        AS conversation_id,
                             unnest($2::text[])       AS phone_number,
                             unnest($3::timestamptz[]) AS last_read_at
                     ),

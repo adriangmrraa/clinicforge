@@ -210,14 +210,9 @@ async def search_similar_faqs(
     # Try pgvector first (fast, DB-side similarity)
     if await check_pgvector_available():
         try:
-            # pgvector codec is registered in db.py:_init_connection, so we can
-            # pass the embedding as a Python list and asyncpg handles the conversion.
-            # As fallback we also accept the textual representation '[1,2,3]'.
-            try:
-                import numpy as np
-                embedding_param = np.array(query_embedding, dtype=np.float32)
-            except ImportError:
-                embedding_param = query_embedding  # asyncpg handles list[float]
+            # Pass embedding as textual vector literal and cast with ::vector
+            # to avoid asyncpg sending it as bytea (which causes 'bytea <=> unknown').
+            embedding_param = "[" + ",".join(str(x) for x in query_embedding) + "]"
 
             results = await db.pool.fetch("""
                 SELECT
@@ -226,12 +221,12 @@ async def search_similar_faqs(
                     cf.question,
                     cf.answer,
                     cf.category,
-                    1 - (fe.embedding <=> $1) AS similarity
+                    1 - (fe.embedding <=> $1::vector) AS similarity
                 FROM faq_embeddings fe
                 JOIN clinic_faqs cf ON cf.id = fe.faq_id
                 WHERE fe.tenant_id = $2
-                AND 1 - (fe.embedding <=> $1) >= $3
-                ORDER BY fe.embedding <=> $1
+                AND 1 - (fe.embedding <=> $1::vector) >= $3
+                ORDER BY fe.embedding <=> $1::vector
                 LIMIT $4
             """, embedding_param, tenant_id, threshold, top_k)
 

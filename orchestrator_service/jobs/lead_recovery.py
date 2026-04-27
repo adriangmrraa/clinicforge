@@ -77,9 +77,9 @@ async def _process_tenant(pool, rule: Dict[str, Any]):
     if isinstance(config, str):
         config = json.loads(config)
 
-    delay_t1 = config.get("delay_touch1_minutes", 120)
-    delay_t2 = config.get("delay_touch2_minutes", 480)
-    delay_t3 = config.get("delay_touch3_minutes", 480)
+    delay_t1 = int(config.get("delay_touch1_minutes", 120))
+    delay_t2 = int(config.get("delay_touch2_minutes", 480))
+    delay_t3 = int(config.get("delay_touch3_minutes", 480))
     hour_min = rule.get("send_hour_min") or config.get("send_hour_min", 8)
     hour_max = rule.get("send_hour_max") or config.get("send_hour_max", 20)
 

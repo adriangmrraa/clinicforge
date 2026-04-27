@@ -380,26 +380,24 @@ class EngineRouter:
 
     async def _load_mode_from_db(self, tenant_id: int) -> str:
         """Load engine mode from database."""
-        from database import AsyncSessionLocal
+        import db
 
-        async with AsyncSessionLocal() as session:
-            result = await session.execute(
-                select(Tenant.ai_engine_mode).where(Tenant.id == tenant_id)
+        mode = await db.pool.fetchval(
+            "SELECT ai_engine_mode FROM tenants WHERE id = $1", tenant_id
+        )
+
+        if mode is None:
+            logger.warning(f"Tenant {tenant_id} not found, defaulting to 'solo'")
+            return "solo"
+
+        # Validate mode
+        if mode not in ("solo", "multi"):
+            logger.warning(
+                f"Invalid ai_engine_mode '{mode}' for tenant {tenant_id}, defaulting to 'solo'"
             )
-            mode = result.scalar_one_or_none()
+            return "solo"
 
-            if mode is None:
-                logger.warning(f"Tenant {tenant_id} not found, defaulting to 'solo'")
-                return "solo"
-
-            # Validate mode
-            if mode not in ("solo", "multi"):
-                logger.warning(
-                    f"Invalid ai_engine_mode '{mode}' for tenant {tenant_id}, defaulting to 'solo'"
-                )
-                return "solo"
-
-            return mode
+        return mode
 
     def _is_tripped(self, tenant_id: int) -> bool:
         """Check if circuit breaker is tripped for a tenant."""
