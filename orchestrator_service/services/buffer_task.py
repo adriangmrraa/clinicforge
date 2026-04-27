@@ -2441,8 +2441,9 @@ Si el paciente pide un turno para {min_apt_date} o después, continuar normalmen
 
     # --- SAFETY STRIP: remove any leaked internal tags before sending ---
     if response_text:
+        import re as _re_safety
         # Strip bracket tags like [CONSULTA_PREVIA_REQUISITOS:...], [INTERNAL_*:...], etc.
-        response_text = re.sub(r"\[(?:CONSULTA_PREVIA_REQUISITOS|INTERNAL_\w+)[:\s][^\]]*\]", "", response_text).strip()
+        response_text = _re_safety.sub(r"\[(?:CONSULTA_PREVIA_REQUISITOS|INTERNAL_\w+)[:\s][^\]]*\]", "", response_text).strip()
 
     # --- SEND RESPONSE ---
     from response_sender import ResponseSender
