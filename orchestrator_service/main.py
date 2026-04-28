@@ -2612,15 +2612,6 @@ async def check_availability(
                         line += f" ({sede_raw})"
                 lines.append(line)
 
-            if professional_name:
-                lines.append(f"\nConsultando con Dr/a. {professional_name}.")
-
-            # Duration info
-            if _is_ht:
-                lines.append(f"\n⏱️ La evaluación dura {duration} min.")
-            if not _is_ht:
-                lines.append(f"\n⏱️ Duración: {duration} min")
-
             # Debt info
             if unpaid_count > 0:
                 lines.append(
@@ -9415,12 +9406,6 @@ PROHIBIDO pedir: fecha de nacimiento, email, ciudad. Esos datos NO se piden dura
 Los demás datos se completan en la ficha médica (anamnesis) o en consultorio. NUNCA envíes lista de preguntas juntas.
 Si el paciente da nombre + apellido + DNI en un solo mensaje → procesá todo junto sin pedir más datos.
 
-POST-CONFIRMACIÓN — "CÓMO NOS CONOCISTE" (OBLIGATORIO para pacientes NUEVOS):
-Después de confirmar el turno (PASO 7) y enviar los datos de seña (si aplica), en un MENSAJE SEPARADO preguntá:
-"Por cierto, cómo nos conociste? Redes, recomendación, Google...?"
-Si el paciente responde → guardá con book_appointment usando acquisition_source o actualizá el paciente.
-Es una pregunta casual, no un formulario. Si no responde, no insistir.
-
 REGLAS DE PRIORIDAD EN AGENDA:
 - Cuando un tratamiento tiene prioridad 'high' o 'medium-high', ofrecé los turnos MÁS CERCANOS disponibles con el profesional prioritario.
 - Entre las opciones disponibles, priorizá siempre los horarios del profesional marcado como prioritario.
@@ -9584,8 +9569,8 @@ REGLA ANTI-RE-BOOKING (INQUEBRANTABLE):
   NO re-agendés. NO re-verifiqués disponibilidad. El turno YA ESTÁ HECHO.
   Solo volver a agendar si el paciente EXPLÍCITAMENTE dice "quiero OTRO turno" o "quiero CAMBIAR el turno".
 
-=== SECUENCIA POST-BOOKING (6 BLOQUES) ===
-Después de que book_appointment confirme el turno, respondé con EXACTAMENTE estos 6 bloques separados por doble salto de línea. Cada bloque es un párrafo independiente que se envía como burbuja separada en WhatsApp.
+=== SECUENCIA POST-BOOKING (5 BLOQUES) ===
+Después de que book_appointment confirme el turno, respondé con EXACTAMENTE estos 5 bloques separados por doble salto de línea. Cada bloque es un párrafo independiente que se envía como burbuja separada en WhatsApp.
 
 BLOQUE 1 — CONFIRMACIÓN (celebratorio)
 Tono: cálido, seguro, profesional. Celebrá la decisión del paciente.
@@ -9596,13 +9581,6 @@ BLOQUE 2 — EMAIL (solo si falta)
 Si el paciente no tiene email registrado, pedirlo de forma natural.
 "Si querés, pasame tu email así te mando la confirmación por escrito."
 Si ya tiene email → OMITIR este bloque.
-
-BLOQUE 2b — FECHA DE NACIMIENTO (solo si falta):
-Condición: el paciente NO tiene fecha de nacimiento registrada Y ya le pediste el email (o ya lo tiene).
-Acción: En un MENSAJE SEPARADO (no junto con el email), pedí la fecha de nacimiento de forma natural.
-Ejemplo: "Para completar tu ficha, ¿me pasás tu fecha de nacimiento? 📅"
-Si ya tiene fecha de nacimiento → OMITIR este bloque completamente.
-REGLA: Nunca pidas email Y fecha de nacimiento en el MISMO mensaje. Un dato por turno.
 
 BLOQUE 3 — SEÑA (valor primero)
 Tono: informativo, sin presión. Posicionar la seña como beneficio, no como obligación.
@@ -9625,10 +9603,6 @@ Tono: casual, conversacional. NO parecer encuesta.
 "Por cierto, cómo nos conociste? Redes, recomendación, Google...?"
 Solo para pacientes SIN nombre registrado en contexto. Si no responde, no insistir.
 Si el paciente tiene nombre registrado → OMITIR este bloque.
-
-BLOQUE 6 — CIERRE
-Tono: cálido, disponible.
-"Cualquier duda que tengas antes de la consulta, escribime por acá. Te esperamos!"
 
 === REGLAS DE LOS BLOQUES ===
 - Cada bloque DEBE estar separado por doble salto de línea
