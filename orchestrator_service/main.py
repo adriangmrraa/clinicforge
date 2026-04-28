@@ -89,7 +89,7 @@ CLINIC_HOURS_END = os.getenv("CLINIC_HOURS_END", "19:00")
 ARG_TZ = timezone(timedelta(hours=-3))
 
 # R6 — TTL consistency: single source of truth for slot lock duration
-SLOT_LOCK_TTL_SECONDS = 120
+SLOT_LOCK_TTL_SECONDS = 300
 
 
 def get_active_tz():
@@ -3694,21 +3694,21 @@ async def book_appointment(
             if _r_check:
                 _date_str = apt_datetime.strftime("%Y-%m-%d")
                 _time_str = apt_datetime.strftime("%H:%M")
-                _lock_key = (
-                    f"slot_lock:{tenant_id}:{target_prof['id']}:{_date_str}:{_time_str}"
-                )
-                _lock_holder = await _r_check.get(_lock_key)
-                if _lock_holder:
-                    _lock_holder_str = (
-                        _lock_holder.decode()
-                        if isinstance(_lock_holder, bytes)
-                        else _lock_holder
-                    )
-                    if _lock_holder_str and _lock_holder_str != phone:
-                        logger.warning(
-                            f"❌ Soft-lock conflict: slot reserved by {_lock_holder_str}, requester is {phone}"
-                        )
-                        return "❌ Ese turno acaba de ser reservado por otro paciente. Volvamos a buscar disponibilidad."
+                _patient_lock_key = None
+                for _check_pid in [target_prof['id'], 0]:
+                    _lk = f"slot_lock:{tenant_id}:{_check_pid}:{_date_str}:{_time_str}"
+                    _lock_holder = await _r_check.get(_lk)
+                    if _lock_holder:
+                        _holder_str = str(_lock_holder)
+                        if _holder_str != phone:
+                            logger.warning("Soft-lock conflict: slot reserved by %s, requester %s", _holder_str, phone)
+                            return "❌ Ese turno acaba de ser reservado por otro paciente. Volvamos a buscar disponibilidad."
+                        else:
+                            _patient_lock_key = _lk
+                            break
+                if _patient_lock_key:
+                    await _r_check.expire(_patient_lock_key, SLOT_LOCK_TTL_SECONDS)
+                    logger.info("Soft-lock TTL refreshed: %s (%ds)", _patient_lock_key, SLOT_LOCK_TTL_SECONDS)
         except Exception as _lock_check_err:
             logger.warning(
                 f"Soft-lock pre-check failed (non-blocking): {_lock_check_err}"
@@ -5977,10 +5977,10 @@ async def confirm_slot(
     treatment_name: Optional[str] = None,
 ):
     """
-    Confirma y reserva temporalmente un turno por 120 segundos antes de llamar a book_appointment.
+    Confirma y reserva temporalmente un turno por 300 segundos antes de llamar a book_appointment.
     Llamar SOLO DESPUÉS de haber recopilado los datos del paciente (nombre, apellido, DNI).
     FLUJO CORRECTO: check_availability → paciente elige → pedir datos (nombre, DNI) → confirm_slot → book_appointment.
-    NUNCA llamar confirm_slot ANTES de tener los datos del paciente. El timer de 2 minutos empieza acá.
+    NUNCA llamar confirm_slot ANTES de tener los datos del paciente. El timer de 5 minutos empieza acá.
     date_time: Fecha y hora elegida (ej. "lunes 09:00", "2026-03-25 15:00", "hoy 14:00").
     professional_name: (Opcional) Profesional elegido.
     treatment_name: (Opcional) Tratamiento definido.
@@ -6020,7 +6020,7 @@ async def confirm_slot(
             if prof_row:
                 prof_id = prof_row["id"]
 
-        # Crear soft lock en Redis (120s para dar tiempo a que el paciente complete admisión)
+        # Crear soft lock en Redis (300s para dar tiempo a que el paciente complete admisión)
         date_str = apt_datetime.strftime("%Y-%m-%d")
         time_str = apt_datetime.strftime("%H:%M")
         lock_key = f"slot_lock:{tenant_id}:{prof_id}:{date_str}:{time_str}"
@@ -6036,16 +6036,16 @@ async def confirm_slot(
                     # Key already exists — check who holds it
                     existing = await r.get(lock_key)
                     if existing:
-                        lock_holder = (
-                            existing.decode()
-                            if isinstance(existing, bytes)
-                            else str(existing)
-                        )
+                        lock_holder = str(existing)
                         if lock_holder != phone:
                             return f"⚠️ El turno de las {time_str} del {date_str} acaba de ser reservado por otro paciente. Consultemos otra opción."
                         else:
                             return f"✅ Ya tenés reservado el turno para {date_str} a las {time_str}. Continuemos con tus datos."
                 logger.info(f"🔒 Soft lock created: {lock_key} for {phone} ({SLOT_LOCK_TTL_SECONDS}s)")
+                # Extend slot_offer TTL to stay in sync with the new lock
+                _offer_key = f"slot_offer:{tenant_id}:{phone}"
+                await r.expire(_offer_key, SLOT_LOCK_TTL_SECONDS)
+                logger.info("slot_offer TTL refreshed: %s (%ds)", _offer_key, SLOT_LOCK_TTL_SECONDS)
         except Exception as e:
             logger.warning(f"Redis soft lock failed (non-blocking): {e}")
             # R3 — Redis-down fallback: log warning, let book_appointment's DB conflict check handle it
@@ -8824,7 +8824,7 @@ REGLA SUPREMA DE HERRAMIENTAS (TOOLS) — LEER 3 VECES:
 REGLA ANTI-CONFIRMACIÓN-FALSA (CRÍTICO):
 • PROHIBIDO decir "tu turno está confirmado" o "nos vemos" sin haber ejecutado 'book_appointment' y recibido ✅.
 • PROHIBIDO decir "turno confirmado" después de 'check_availability' — esa tool solo MUESTRA opciones, no agenda.
-• PROHIBIDO decir "turno confirmado" después de 'confirm_slot' — esa tool solo RESERVA temporalmente por 2 minutos (120s).
+• PROHIBIDO decir "turno confirmado" después de 'confirm_slot' — esa tool solo RESERVA temporalmente por 5 minutos (300s).
 • La ÚNICA forma de confirmar un turno es ejecutar 'book_appointment' y recibir ✅ en la respuesta.
 • Si la respuesta de 'book_appointment' contiene [INTERNAL_SEÑA_DATA], DEBÉS presentar los datos bancarios OBLIGATORIAMENTE.
 • Si decís "confirmado" sin haber recibido ✅ de book_appointment, estás MINTIENDO al paciente.
@@ -9228,7 +9228,7 @@ PROHIBICIONES (OBLIGATORIO — LEER ANTES DE CADA RESPUESTA):
 9. PROHIBIDO seguir ofreciendo horarios o servicios después de llamar derivhumano. Una vez derivado, solo decir "Te van a contactar en breve" y NO responder más consultas de agenda.
 10. PROHIBIDO mencionar números de emergencia específicos (107, 911, etc.). Solo decir "contactá a emergencias médicas de tu zona". El agente NO da indicaciones médicas de emergencia.
 11. PROHIBIDO mostrar clasificaciones internas de tratamientos al paciente (Simple, Compleja, etc.). Solo usar el nombre visible del tratamiento tal como lo devuelve la tool.
-12. PROHIBIDO exponer información técnica interna al paciente: tiempos de reserva ("2 minutos"), nombres de tools, estados del sistema, mensajes de error internos, timeouts, o cualquier detalle de la arquitectura. El paciente solo debe ver información relevante para su turno.
+12. PROHIBIDO exponer información técnica interna al paciente: tiempos de reserva ("5 minutos"), nombres de tools, estados del sistema, mensajes de error internos, timeouts, o cualquier detalle de la arquitectura. El paciente solo debe ver información relevante para su turno.
 
 POLÍTICA DE PUNTUACIÓN (ESTRICTA):
 • NUNCA uses signos de apertura (no uses ni el signo de pregunta de apertura ni el signo de exclamación de apertura). Solo usá los de cierre ? y ! al final (ej: "Cómo estás?", "Qué alegría!").
@@ -9348,6 +9348,7 @@ Sos AGENTE DE VENTAS. Cada mensaje tuyo: ejecutar tool O hacer 1 pregunta. Nada 
 • Paciente dice "buscame fecha"/"agendame"/"dale" → EJECUTAR, no preguntar.
 • Paciente dice "cualquiera"/"no tengo preferencia" → elegí próximo día hábil y ejecutá.
 • PROHIBIDO: "te gustaría agendar?", listar tratamientos si ya dijo cuál, "estoy aquí para ayudarte!", 2+ preguntas sin tool.
+• PROHIBIDO preguntar "¿Querés que te busque turno?", "¿Te gustaría que lo reserve?", "¿Seguimos con el turno?" o cualquier variación. Si el paciente pidió turno, BUSCÁ. Si eligió horario, AGENDÁ. Sin preguntar.
 • Obras sociales: confirmar cobertura, aclarar coseguro, y SEGUIR la conversación. No cortar ni derivar.
 • PROHIBIDO cierre duro ("¿Querés agendar?"). Usá cierre consultivo: "Lo ideal es una evaluación. Si querés, te ayudo a coordinar."
 
@@ -9440,6 +9441,10 @@ PASO OBLIGATORIO PREVIO: ANTES de buscar disponibilidad o dar fechas, SIEMPRE pr
 FIN REGLA TEMPORAL.
 
 FLUJO DE AGENDAMIENTO (ORDEN ESTRICTO):
+=== REGLA CERO — AVANZAR SIN PEDIR PERMISO ===
+Si el paciente expresó intención de agendar (pidió turno, mencionó tratamiento, dijo fecha), ejecutá check_availability INMEDIATAMENTE. No preguntes "¿querés que busque?".
+Si el paciente eligió un slot de los ofrecidos (dijo "ese", "el primero", "el del jueves", un número), avanzá DIRECTAMENTE a pedir datos + confirm_slot + book_appointment. NUNCA vuelvas a preguntar si quiere agendar.
+UNA confirmación por slot es suficiente. La selección del paciente ES la confirmación.
 PASO 1: SALUDO E IDENTIDAD - Usá el GREETING correspondiente al tipo de paciente.
 PASO 2: DEFINIR SERVICIO - Si el paciente ya lo dijo, NO lo volvás a preguntar. PERO siempre validá que el servicio exista llamando 'list_services'. Si el paciente dijo un término coloquial (ej: "cirugía", "arreglar diente"), mapealo al nombre canónico y validá. Si no existe en list_services, mostrar los servicios disponibles.
 PASO 2b: PARA QUIÉN ES EL TURNO — Preguntá "El turno es para vos o para otra persona?" SOLO si hay ambigüedad.
@@ -9550,7 +9555,7 @@ PASO 4b: DATOS DE ADMISIÓN — ⚠️ VERIFICAR ANTES DE PEDIR DATOS:
   IMPORTANTE: Si el turno es para un TERCERO o MENOR, los datos son del PACIENTE (tercero/menor), NO del interlocutor.
   PROHIBIDO pedir nombre o DNI si ya aparecen en el CONTEXTO DEL PACIENTE. Esto es CRÍTICO para la experiencia del usuario.
 PASO 4c: RESERVA TEMPORAL — SOLO después de tener los datos del paciente, llamá 'confirm_slot(date_time, professional_name, treatment_name)'.
-  Esto reserva el turno por 2 minutos (120s). Como ya tenés los datos, llamá book_appointment INMEDIATAMENTE después. Si falla (otro paciente lo reservó), volver a PASO 4.
+  Esto reserva el turno por 5 minutos (300s). Como ya tenés los datos, llamá book_appointment INMEDIATAMENTE después. Si falla (otro paciente lo reservó), volver a PASO 4.
 PASO 6: AGENDAR — 'book_appointment' con los datos del paciente. Para campos opcionales faltantes, pasar NULL.
   • Para sí mismo: flujo normal (sin patient_phone ni is_minor ni is_art).
   • Para adulto tercero: pasá patient_phone con el teléfono del tercero.
