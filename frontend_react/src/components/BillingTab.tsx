@@ -299,6 +299,7 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
   // ── UI
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
 
   // ── Modal visibility
   const [showCreatePlan, setShowCreatePlan] = useState(false);
@@ -555,9 +556,10 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
       setShowRegisterPayment(false);
       setNewPaymentData({ amount: '', payment_method: 'cash', payment_date: new Date().toISOString().split('T')[0], notes: '', installment_id: '' });
       await loadPlanDetail(planDetail.id);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error registering payment:', err);
-      setError(t('billing.error_save'));
+      const detail = err?.response?.data?.detail;
+      setPaymentError(detail ?? t('billing.error_save'));
     }
   };
 
@@ -590,6 +592,7 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
       notes: '',
       installment_id: installment.id,
     });
+    setPaymentError(null);
     setShowRegisterPayment(true);
   };
 
@@ -1507,8 +1510,8 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
             <div className="flex justify-between items-center mb-4">
               <h4 className="text-sm font-semibold text-white">{t('billing.payments')}</h4>
               <button
-                onClick={() => { setNewPaymentData({ ...newPaymentData, amount: String(pendingTotal), installment_id: '' }); setShowRegisterPayment(true); }}
-                disabled={planDetail.status === 'cancelled'}
+                onClick={() => { setPaymentError(null); setNewPaymentData({ ...newPaymentData, amount: String(pendingTotal), installment_id: '' }); setShowRegisterPayment(true); }}
+                disabled={planDetail.status !== 'approved' && planDetail.status !== 'in_progress'}
                 className="flex items-center gap-1 text-primary text-sm hover:text-primary-dark disabled:opacity-50"
               >
                 <Plus size={16} />
@@ -1752,13 +1755,13 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
             </div>
             <div>
               <label className="block text-sm text-white/60 mb-1">{t('billing.custom_description')}</label>
-              <input
-                type="text"
+              <textarea
+                rows={3}
                 value={newItemData.custom_description}
                 onChange={(e) => setNewItemData({ ...newItemData, custom_description: e.target.value })}
                 placeholder={t('billing.custom_description_placeholder')}
                 className="w-full px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-primary"
-              />
+              ></textarea>
             </div>
             <div>
               <label className="block text-sm text-white/60 mb-1">{t('billing.estimated_price')}</label>
@@ -1867,9 +1870,14 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
                 placeholder={t('billing.notes_placeholder') || 'Notas opcionales...'}
               />
             </div>
+            {paymentError && (
+              <div className="bg-red-500/10 border border-red-500/20 text-red-400 rounded-lg p-3 text-sm">
+                {paymentError}
+              </div>
+            )}
             <button
               onClick={handleRegisterPayment}
-              disabled={!newPaymentData.amount}
+              disabled={!newPaymentData.amount || parseFloat(newPaymentData.amount) <= 0}
               className="w-full bg-white text-[#0a0e1a] py-2 rounded-lg hover:opacity-90 disabled:opacity-50 font-medium"
             >
               {t('billing.register_payment')}
