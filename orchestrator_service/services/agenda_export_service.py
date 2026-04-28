@@ -19,6 +19,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+import pytz
+
 from jinja2 import Environment, FileSystemLoader
 
 logger = logging.getLogger(__name__)
@@ -64,6 +66,7 @@ async def gather_agenda_data(
     start_date: str,
     end_date: str,
     professional_id: Optional[int] = None,
+    include_cancelled: bool = False,
 ) -> dict:
     """
     Gather appointments for the date range and build 3 display structures.
@@ -80,10 +83,13 @@ async def gather_agenda_data(
     Returns a dict with keys: grid, daily_lists, alphabetical, time_slots,
     days, total_turnos, total_personas, date_display.
     """
-    # Convert date strings to datetime for asyncpg
+    # Convert date strings to timezone-aware datetimes for asyncpg
     try:
-        start_dt = datetime.fromisoformat(f"{start_date}T00:00:00")
-        end_dt = datetime.fromisoformat(f"{end_date}T23:59:59")
+        _tz = pytz.timezone('America/Argentina/Buenos_Aires')
+        y1, m1, d1 = map(int, start_date.split('-'))
+        y2, m2, d2 = map(int, end_date.split('-'))
+        start_dt = _tz.localize(datetime(y1, m1, d1, 0, 0, 0))
+        end_dt = _tz.localize(datetime(y2, m2, d2, 23, 59, 59))
     except ValueError as exc:
         logger.error("gather_agenda_data: invalid date range %s – %s: %s", start_date, end_date, exc)
         raise
@@ -102,8 +108,10 @@ async def gather_agenda_data(
         LEFT JOIN professionals prof ON a.professional_id = prof.id AND prof.tenant_id = $1
         WHERE a.tenant_id = $1
           AND a.appointment_datetime BETWEEN $2 AND $3
-          AND a.status NOT IN ('cancelled')
     """
+
+    if not include_cancelled:
+        base_sql += "\n        AND a.status NOT IN ('cancelled')"
 
     args: list = [tenant_id, start_dt, end_dt]
 
@@ -270,6 +278,7 @@ async def generate_agenda_pdf(
     start_date: str,
     end_date: str,
     professional_id: Optional[int] = None,
+    include_cancelled: bool = False,
 ) -> str:
     """
     Generate a weekly agenda PDF and save it to disk.
@@ -284,7 +293,7 @@ async def generate_agenda_pdf(
     suffix = f"_prof{professional_id}" if professional_id is not None else ""
     pdf_path = str(upload_dir / f"agenda_{safe_start}_{safe_end}{suffix}.pdf")
 
-    data = await gather_agenda_data(pool, tenant_id, start_date, end_date, professional_id)
+    data = await gather_agenda_data(pool, tenant_id, start_date, end_date, professional_id, include_cancelled)
     html = render_agenda_html(data)
 
     result = await asyncio.to_thread(_generate_pdf_sync, html, pdf_path)

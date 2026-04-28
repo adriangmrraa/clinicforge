@@ -3835,6 +3835,7 @@ async def _registrar_nota_clinica(
             (id, tenant_id, patient_id, professional_id, record_date,
              diagnosis, clinical_notes, odontogram_data)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
+        ON CONFLICT DO NOTHING
         """,
         record_id,
         tenant_id,

@@ -669,9 +669,12 @@ export default function AgendaView() {
     const calApi = calendarRef.current?.getApi();
     const view = calApi?.view;
     const start = view?.activeStart?.toISOString()?.split('T')[0];
-    const end = view?.activeEnd?.toISOString()?.split('T')[0];
+    const rawEnd = view?.activeEnd;
+    const adjustedEnd = rawEnd ? new Date(rawEnd.getTime() - 86400000) : undefined;
+    const end = adjustedEnd?.toISOString()?.split('T')[0];
     if (!start || !end) return null;
     const params = new URLSearchParams({ start_date: start, end_date: end });
+    params.set('include_cancelled', 'true');
     if (selectedProfessionalId !== 'all') params.append('professional_id', selectedProfessionalId);
     return { start, end, params };
   };

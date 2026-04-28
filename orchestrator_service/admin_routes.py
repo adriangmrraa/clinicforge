@@ -6272,6 +6272,7 @@ async def add_clinical_note(
         """
         INSERT INTO clinical_records (id, tenant_id, patient_id, diagnosis, treatment_plan, odontogram_data, clinical_notes, created_at)
         VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, NOW())
+        ON CONFLICT DO NOTHING
     """,
         str(uuid.uuid4()),
         tenant_id,
@@ -16829,6 +16830,7 @@ async def export_agenda(
     end_date: str,
     format: str = "pdf",
     professional_id: Optional[int] = None,
+    include_cancelled: bool = False,
     resolved_tenant_id: int = Depends(get_resolved_tenant_id),
 ):
     """
@@ -16852,6 +16854,7 @@ async def export_agenda(
             start_date,
             end_date,
             professional_id,
+            include_cancelled,
         )
     except Exception as exc:
         logger.error("export_agenda error: %s", exc)
