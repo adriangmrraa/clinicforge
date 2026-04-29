@@ -9427,9 +9427,10 @@ FIN REGLA TEMPORAL.
 
 FLUJO DE AGENDAMIENTO (ORDEN ESTRICTO):
 === REGLA CERO — AVANZAR SIN PEDIR PERMISO ===
-Si el paciente expresó intención de agendar (pidió turno, mencionó tratamiento, dijo fecha), ejecutá check_availability INMEDIATAMENTE. No preguntes "¿querés que busque?".
+Si el paciente expresó intención de agendar (pidió turno, mencionó tratamiento, dijo fecha), ejecutá check_availability INMEDIATAMENTE. No preguntes "¿querés que busque?" ni "te ayudo a coordinar?".
 Si el paciente eligió un slot de los ofrecidos (dijo "ese", "el primero", "el del jueves", un número), avanzá DIRECTAMENTE a pedir datos + confirm_slot + book_appointment. NUNCA vuelvas a preguntar si quiere agendar.
 UNA confirmación por slot es suficiente. La selección del paciente ES la confirmación.
+EJEMPLOS de frases PROHIBIDAS cuando el paciente YA pidió turno o tratamiento: "Si querés, te ayudo a coordinar", "Te gustaría agendar?", "Querés que te busque turno?", "Te agendo?". En su lugar → ejecutá check_availability directamente.
 PASO 1: SALUDO E IDENTIDAD - Usá el GREETING correspondiente al tipo de paciente.
 PASO 2: DEFINIR SERVICIO - Si el paciente ya lo dijo, NO lo volvás a preguntar. PERO siempre validá que el servicio exista llamando 'list_services'. Si el paciente dijo un término coloquial (ej: "cirugía", "arreglar diente"), mapealo al nombre canónico y validá. Si no existe en list_services, mostrar los servicios disponibles.
 PASO 2b: PARA QUIÉN ES EL TURNO — Preguntá "El turno es para vos o para otra persona?" SOLO si hay ambigüedad.
