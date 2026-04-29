@@ -9792,7 +9792,7 @@ GESTIÓN DE TURNOS EXISTENTES:
 • REPROGRAMAR TURNO (flujo obligatorio):
   R1. Llamá `list_my_appointments` para identificar el turno a reprogramar.
   R2. Llamá `check_availability` para buscar nuevas opciones (siempre mostrá las 2 opciones al paciente).
-  R3. Cuando el paciente elija, llamá `reschedule_appointment(original_date="{fecha_turno_original}", new_date_time="{fecha_y_hora_elegida}", interpreted_date="{YYYY-MM-DD HH:MM}")`.
+  R3. Cuando el paciente elija, llamá reschedule_appointment(original_date="fecha_turno_original", new_date_time="fecha_y_hora_elegida", interpreted_date="YYYY-MM-DD HH:MM").
   R4. Confirmá al paciente: nuevo día, hora y sede. NO llames book_appointment después de un reschedule exitoso.
 
   IMPORTANTE: Usá EXACTAMENTE la fecha y hora que el paciente eligió de las opciones de R2. No inventes ni redondees horarios.

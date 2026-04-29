@@ -16,7 +16,7 @@ def upgrade():
             tenant_id,
             patient_id,
             diagnosis,
-            DATE(record_date AT TIME ZONE 'UTC')
+            CAST(record_date AS date)
         )
         WHERE diagnosis IS NOT NULL
     """)
