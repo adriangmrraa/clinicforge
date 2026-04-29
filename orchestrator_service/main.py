@@ -3566,6 +3566,23 @@ async def book_appointment(
             )
             return f"❌ Lo siento, no hay disponibilidad a las {apt_datetime.strftime('%H:%M')} para el tratamiento de {final_duration} min. ¿Probamos otro horario?"
 
+        # Patient same-day duplicate guard (DLD-59)
+        if existing_patient:
+            try:
+                existing_same_day = await db.pool.fetchval(
+                    """SELECT COUNT(*) FROM appointments
+                    WHERE tenant_id = $1 AND patient_id = $2
+                    AND DATE(appointment_datetime) = DATE($3)
+                    AND status IN ('scheduled', 'confirmed')""",
+                    tenant_id, existing_patient["id"], apt_datetime
+                )
+                if existing_same_day and existing_same_day > 0:
+                    return ("⚠️ Ya tenés un turno agendado para ese día. "
+                            "Si querés cambiar el horario, pedime que lo reprograme en lugar de agendar uno nuevo.")
+            except Exception as e:
+                logger.warning(f"[BOOK] Same-day check failed (continuing): {e}")
+                # Fail-open: don't block booking if the check fails
+
         # 3b. CHAIR CONSTRAINT — check total concurrent appointments doesn't exceed max_chairs
         try:
             max_chairs = await db.pool.fetchval(
@@ -4752,11 +4769,12 @@ async def cancel_appointment(date_query: str):
 
 
 @tool
-async def reschedule_appointment(original_date: str, new_date_time: str):
+async def reschedule_appointment(original_date: str, new_date_time: str, interpreted_date: str = ""):
     """
     Reprograma un turno existente a una nueva fecha/hora.
     original_date: Fecha del turno actual (ej: 'hoy', 'lunes')
     new_date_time: Nueva fecha y hora deseada (ej: 'mañana 15:00')
+    interpreted_date: (Opcional) Fecha y hora exacta elegida por el paciente en formato YYYY-MM-DD HH:MM. Usar cuando el paciente elige de opciones ofrecidas por check_availability.
     """
     phone = current_customer_phone.get()
     if not phone:
@@ -4768,6 +4786,43 @@ async def reschedule_appointment(original_date: str, new_date_time: str):
         if orig_date is None:
             return f"No pude entender la fecha original '{original_date}'. ¿Podrías indicarme qué turno querés reprogramar?"
         new_dt = parse_datetime(new_date_time)
+        logger.info(f"[RESCHEDULE] interpreted_date={interpreted_date}, new_date_time={new_date_time}")
+        # Si interpreted_date está presente y tiene formato válido YYYY-MM-DD HH:MM, usarlo como target datetime
+        if interpreted_date and interpreted_date.strip():
+            try:
+                _id_str = interpreted_date.strip()
+                if re.match(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$", _id_str):
+                    new_dt = datetime.strptime(_id_str, "%Y-%m-%d %H:%M").replace(tzinfo=get_active_tz())
+                    logger.info(f"[RESCHEDULE] Using interpreted_date as target datetime: {new_dt}")
+            except Exception as _id_err:
+                logger.warning(f"[RESCHEDULE] Failed to parse interpreted_date='{interpreted_date}': {_id_err}, falling back to new_date_time")
+
+        # B2: slot_offer validation — WARNING ONLY, never blocks the reschedule
+        try:
+            from services.relay import get_redis as _get_redis_resched_validate
+            _r_rv = _get_redis_resched_validate()
+            if _r_rv:
+                _offer_key_rv = f"slot_offer:{tenant_id}:{phone}"
+                _offer_raw_rv = await _r_rv.get(_offer_key_rv)
+                if _offer_raw_rv is None:
+                    logger.info(f"[RESCHEDULE] slot_offer key missing (expired or never set) — continuing")
+                else:
+                    _offered_slots_rv = json.loads(
+                        _offer_raw_rv.decode() if isinstance(_offer_raw_rv, bytes) else _offer_raw_rv
+                    )
+                    _req_date_rv = new_dt.strftime("%Y-%m-%d")
+                    _req_time_rv = new_dt.strftime("%H:%M")
+                    _slot_match_rv = any(
+                        s.get("date") == _req_date_rv and s.get("time") == _req_time_rv
+                        for s in _offered_slots_rv
+                    )
+                    if not _slot_match_rv:
+                        logger.warning(
+                            f"[RESCHEDULE] WARNING: target slot {_req_date_rv} {_req_time_rv} was not in offered slots: {_offered_slots_rv} — proceeding anyway"
+                        )
+        except Exception as _rv_err:
+            logger.warning(f"[RESCHEDULE] slot_offer check failed (non-blocking): {_rv_err}")
+
         apt = await db.pool.fetchrow(
             """
             SELECT a.id, a.google_calendar_event_id, a.professional_id, a.duration_minutes, a.appointment_datetime
@@ -4965,9 +5020,15 @@ async def reschedule_appointment(original_date: str, new_date_time: str):
 
         return f"Listo! Tu turno ha sido reprogramado para el {new_date_time}. Te esperamos."
 
+    except asyncpg.exceptions.PostgresError as e:
+        logger.error(f"[RESCHEDULE] DB error: {e}", exc_info=True)
+        return "⚠️ Error de base de datos al reprogramar. Por favor, intentá de nuevo en unos minutos."
+    except asyncio.TimeoutError:
+        logger.error("[RESCHEDULE] Operation timed out")
+        return "⚠️ La operación tardó demasiado. Por favor, intentá de nuevo."
     except Exception as e:
-        logger.error(f"Error en reschedule_appointment: {e}")
-        return "⚠️ No pude reprogramar el turno. Por favor, intenta de nuevo."
+        logger.error(f"[RESCHEDULE] Unexpected error: {e}", exc_info=True)
+        return "⚠️ No pude reprogramar el turno. Por favor, contactá al equipo para asistencia."
 
 
 @tool
@@ -9150,13 +9211,27 @@ PASO 2 — SI EL PACIENTE ACEPTA:
 
 PASO 3 — AGENDAR CONSULTA:
 → Ejecutá check_availability(treatment_name='Consulta') INMEDIATAMENTE.
-→ Presentá las opciones al paciente sin esperar confirmación previa.
+→ Presentá las opciones al paciente sin esperar confirmación previa."""
 
-## ESTUDIOS PREVIOS (TODOS LOS TRATAMIENTOS)
-Para CUALQUIER tratamiento complejo (cirugías, rehabilitación, endodoncias complejas, implantes, prótesis, extracciones, muelas de juicio), DESPUÉS DE CONFIRMAR EL TURNO con book_appointment:
-"Perfecto 😊 Si contás con estudios (radiografías, tomografías, etc.), podés enviarlos antes de tu consulta para optimizar la evaluación y planificación de tu caso."
-Si el paciente envía los estudios → respondé: "Recibimos tu caso, lo estamos evaluando."
-Si no tiene → no insistir, continuar normalmente."""
+    # ESTUDIOS PREVIOS: data-driven section built from treatment_types.consultation_requirements
+    estudios_previos_section = ""
+    _treatments_with_requirements = [
+        t for t in (treatment_types or [])
+        if isinstance(t, dict) and t.get("consultation_requirements")
+    ]
+    if _treatments_with_requirements:
+        _req_lines = "\n".join(
+            f"- {t.get('patient_display_name') or t.get('name') or t.get('code')}: {t['consultation_requirements']}"
+            for t in _treatments_with_requirements
+        )
+        estudios_previos_section = f"""## ESTUDIOS PREVIOS (POR TRATAMIENTO)
+DESPUÉS DE CONFIRMAR EL TURNO, si el tratamiento requiere estudios previos, mencioná:
+"Si contás con estudios (radiografías, tomografías, etc.), traelos el día de la consulta. Nos ayudan a preparar mejor tu atención 😊"
+
+Tratamientos que requieren estudios:
+{_req_lines}
+
+Para tratamientos NO listados arriba (limpieza, blanqueamiento, consulta general, etc.), NO pedir estudios previos."""
 
     # MANEJO ADJUNTOS: only when media detected or unknown intent
     adjuntos_section = ""
@@ -9233,6 +9308,8 @@ INFORMACIÓN DEL CONSULTORIO:
 {holidays_section}
 
 {implant_flow_section}
+
+{estudios_previos_section}
 
 ## FLUJOS EMOCIONALES (F1-F8) — CONTENER > ORIENTAR > CLASIFICAR > POSICIONAR > CONVERTIR
 
@@ -9569,6 +9646,7 @@ REGLA ANTI-RE-BOOKING (INQUEBRANTABLE):
   Si el paciente pregunta algo después de la confirmación (seña, horario, dirección, etc.), respondé con la INFO DEL TURNO YA CONFIRMADO.
   NO re-agendés. NO re-verifiqués disponibilidad. El turno YA ESTÁ HECHO.
   Solo volver a agendar si el paciente EXPLÍCITAMENTE dice "quiero OTRO turno" o "quiero CAMBIAR el turno".
+  Después de un reschedule_appointment exitoso, NUNCA llames book_appointment en la misma conversación. El turno ya fue movido.
 
 === SECUENCIA POST-BOOKING (5 BLOQUES) ===
 Después de que book_appointment confirme el turno, respondé con EXACTAMENTE estos 5 bloques separados por doble salto de línea. Cada bloque es un párrafo independiente que se envía como burbuja separada en WhatsApp.
@@ -9711,7 +9789,13 @@ ANTI-ALUCINACIÓN: NUNCA inventes disponibilidad. Solo check_availability es fue
 GESTIÓN DE TURNOS EXISTENTES:
 • CONSULTAR: Llamar PRIMERO 'list_my_appointments' antes de responder.
 • CANCELAR: 'cancel_appointment(date_query)'. Sin fecha especificada → mostrar lista → pedir cuál.
-• REPROGRAMAR: 'reschedule_appointment(original_date, new_date_time)'. Sin datos → 'list_my_appointments' primero.
+• REPROGRAMAR TURNO (flujo obligatorio):
+  R1. Llamá `list_my_appointments` para identificar el turno a reprogramar.
+  R2. Llamá `check_availability` para buscar nuevas opciones (siempre mostrá las 2 opciones al paciente).
+  R3. Cuando el paciente elija, llamá `reschedule_appointment(original_date="{fecha_turno_original}", new_date_time="{fecha_y_hora_elegida}", interpreted_date="{YYYY-MM-DD HH:MM}")`.
+  R4. Confirmá al paciente: nuevo día, hora y sede. NO llames book_appointment después de un reschedule exitoso.
+
+  IMPORTANTE: Usá EXACTAMENTE la fecha y hora que el paciente eligió de las opciones de R2. No inventes ni redondees horarios.
 
 FORMATO CANÓNICO PARA TOOLS:
 • date_time: "día hora" (ej: "miércoles 17:00"). "5 pm" → 17:00.

@@ -536,7 +536,7 @@ async def process_buffer_task(
         try:
             tt_rows = await pool.fetch(
                 """
-                SELECT code, name, patient_display_name
+                SELECT code, name, patient_display_name, consultation_requirements
                 FROM treatment_types
                 WHERE tenant_id = $1 AND is_active = true
                 ORDER BY name
