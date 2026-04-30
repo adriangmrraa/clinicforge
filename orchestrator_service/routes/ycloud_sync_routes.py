@@ -324,7 +324,15 @@ async def update_sync_config(
         if not tenant_row:
             raise HTTPException(404, "Tenant no encontrado")
 
-        config = dict(tenant_row["config"] or {})
+        config = tenant_row["config"] or {}
+        if isinstance(config, str):
+            import json
+            try:
+                config = json.loads(config)
+            except Exception:
+                config = {}
+        if not isinstance(config, dict):
+            config = {}
 
         # Update fields
         if body.sync_enabled is not None:
