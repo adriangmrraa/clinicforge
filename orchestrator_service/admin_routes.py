@@ -14609,10 +14609,9 @@ async def register_plan_payment(
                 INSERT INTO accounting_transactions (
                     id, tenant_id, patient_id, amount,
                     transaction_type, payment_method, status,
-                    description, reference_id, reference_type,
-                    created_at, updated_at
+                    description, created_at
                 )
-                VALUES ($1, $2, $3, $4, 'payment', $5, 'completed', $6, $7, 'treatment_plan_payment', NOW(), NOW())
+                VALUES ($1, $2, $3, $4, 'payment', $5, 'completed', $6, NOW())
                 """,
                 accounting_tx_id,
                 resolved_tenant_id,
@@ -14621,8 +14620,7 @@ async def register_plan_payment(
                 body.payment_method.value
                 if hasattr(body.payment_method, "value")
                 else body.payment_method,
-                f"Pago plan: {plan['name']}",
-                payment_id,
+                f"Pago plan: {plan['name']} (payment_id: {payment_id})",
             )
 
             # 7. Actualizar accounting_transaction_id en el pago
