@@ -4549,7 +4549,7 @@ async def _registrar_pago_plan(args: Dict, tenant_id: int, user_role: str) -> st
         """
         INSERT INTO treatment_plan_payments
             (id, plan_id, amount, payment_method, payment_date,
-             notes, recorded_by_user_id, tenant_id)
+             notes, recorded_by, tenant_id)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         """,
         payment_id,
@@ -4558,7 +4558,7 @@ async def _registrar_pago_plan(args: Dict, tenant_id: int, user_role: str) -> st
         method,
         payment_date if payment_date else _today().isoformat(),
         notes,
-        args.get("recorded_by_user_id"),  # Podría ser None, el sistema lo maneja
+        args.get("recorded_by"),
         tenant_id,
     )
 

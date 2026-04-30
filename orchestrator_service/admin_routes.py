@@ -12824,41 +12824,34 @@ async def generate_plan_from_appointments(
                     await conn.execute(
                         """
                         INSERT INTO treatment_plan_payments
-                        (id, plan_id, plan_item_id, tenant_id, amount, payment_method,
-                         notes, created_at, updated_at)
-                        VALUES ($1, $2, $3, $4, $5, 'transfer', $6, NOW(), NOW())
+                        (id, plan_id, tenant_id, amount, payment_method,
+                         notes, created_at)
+                        VALUES ($1, $2, $3, $4, 'transfer', $5, NOW())
                         """,
                         payment_id,
                         plan_id,
-                        item_id,
                         tenant_id,
                         payment_amount,
-                        f"migrated:apt:{apt_id}",
+                        f"migrated:apt:{apt_id} (item:{item_id})",
                     )
 
-                    # 6e. Sync a accounting_transactions (si no existe)
-                    existing_tx = await conn.fetchval(
-                        "SELECT id FROM accounting_transactions WHERE reference_id=$1 AND tenant_id=$2",
-                        str(payment_id),
+                    # 6e. Sync a accounting_transactions
+                    tx_id = uuid.uuid4()
+                    await conn.execute(
+                        """
+                        INSERT INTO accounting_transactions
+                        (id, tenant_id, patient_id, amount,
+                         transaction_type, payment_method, status,
+                         description, transaction_date, created_at)
+                        VALUES ($1, $2, $3, $4, 'payment', 'transfer', 'completed',
+                                $5, NOW(), NOW())
+                        """,
+                        tx_id,
                         tenant_id,
+                        patient_id,
+                        payment_amount,
+                        f"Pago migrado desde turno {apt_id} (payment_id: {payment_id})",
                     )
-                    if not existing_tx:
-                        tx_id = uuid.uuid4()
-                        await conn.execute(
-                            """
-                            INSERT INTO accounting_transactions
-                            (id, tenant_id, patient_id, amount, type, category,
-                             description, reference_id, transaction_date, created_at)
-                            VALUES ($1, $2, $3, $4, 'income', 'treatment_payment',
-                                    $5, $6, NOW(), NOW())
-                            """,
-                            tx_id,
-                            tenant_id,
-                            patient_id,
-                            payment_amount,
-                            f"Pago migrado desde turno {apt_id}",
-                            str(payment_id),
-                        )
 
                     payments_migrated += 1
 
@@ -13086,16 +13079,15 @@ async def sync_appointments_to_plan(
                     await conn.execute(
                         """
                         INSERT INTO treatment_plan_payments
-                        (id, plan_id, plan_item_id, tenant_id, amount, payment_method,
-                         notes, created_at, updated_at)
-                        VALUES ($1, $2, $3, $4, $5, 'transfer', $6, NOW(), NOW())
+                        (id, plan_id, tenant_id, amount, payment_method,
+                         notes, created_at)
+                        VALUES ($1, $2, $3, $4, 'transfer', $5, NOW())
                         """,
                         payment_id,
                         plan_uuid,
-                        item_id,
                         tenant_id,
                         payment_amount,
-                        f"migrated:apt:{apt_id}",
+                        f"migrated:apt:{apt_id} (item:{item_id})",
                     )
                     payments_migrated += 1
 
