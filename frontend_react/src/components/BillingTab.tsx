@@ -361,6 +361,7 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
   const [showGenerateInstallments, setShowGenerateInstallments] = useState(false);
   const [generateInstallmentsData, setGenerateInstallmentsData] = useState({ count: '3', start_date: new Date().toISOString().split('T')[0], frequency: 'monthly' });
   const [generatingInstallments, setGeneratingInstallments] = useState(false);
+  const [submittingPayment, setSubmittingPayment] = useState(false);
 
   // ─── Mount: fetch billing-summary FIRST, then decide state ───────────────
 
@@ -542,9 +543,16 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
 
   const handleRegisterPayment = async () => {
     if (!newPaymentData.amount || !planDetail) return;
+    const parsedAmount = parseFloat(newPaymentData.amount);
+    if (isNaN(parsedAmount) || parsedAmount <= 0) {
+      setPaymentError(t('billing.invalid_amount') || 'Monto inválido');
+      return;
+    }
+    setSubmittingPayment(true);
+    setPaymentError(null);
     try {
       const payload: Record<string, unknown> = {
-        amount: parseFloat(newPaymentData.amount),
+        amount: parsedAmount,
         payment_method: newPaymentData.payment_method,
         payment_date: newPaymentData.payment_date,
         notes: newPaymentData.notes || null,
@@ -555,11 +563,14 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
       await api.post(`/admin/treatment-plans/${planDetail.id}/payments`, payload);
       setShowRegisterPayment(false);
       setNewPaymentData({ amount: '', payment_method: 'cash', payment_date: new Date().toISOString().split('T')[0], notes: '', installment_id: '' });
+      setSuccess(t('billing.payment_registered') || 'Pago registrado correctamente');
       await loadPlanDetail(planDetail.id);
     } catch (err: any) {
       console.error('Error registering payment:', err);
       const detail = err?.response?.data?.detail;
       setPaymentError(detail ?? t('billing.error_save'));
+    } finally {
+      setSubmittingPayment(false);
     }
   };
 
@@ -1509,14 +1520,21 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
           <div className="bg-white/[0.02] border border-white/[0.06] rounded-xl p-4">
             <div className="flex justify-between items-center mb-4">
               <h4 className="text-sm font-semibold text-white">{t('billing.payments')}</h4>
-              <button
-                onClick={() => { setPaymentError(null); setNewPaymentData({ ...newPaymentData, amount: String(pendingTotal), installment_id: '' }); setShowRegisterPayment(true); }}
-                disabled={planDetail.status !== 'approved' && planDetail.status !== 'in_progress'}
-                className="flex items-center gap-1 text-primary text-sm hover:text-primary-dark disabled:opacity-50"
-              >
-                <Plus size={16} />
-                {t('billing.register_payment')}
-              </button>
+              <div className="relative group">
+                <button
+                  onClick={() => { setPaymentError(null); setNewPaymentData({ ...newPaymentData, amount: String(pendingTotal), installment_id: '' }); setShowRegisterPayment(true); }}
+                  disabled={planDetail.status !== 'approved' && planDetail.status !== 'in_progress'}
+                  className="flex items-center gap-1 text-primary text-sm hover:text-primary-dark disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Plus size={16} />
+                  {t('billing.register_payment')}
+                </button>
+                {planDetail.status !== 'approved' && planDetail.status !== 'in_progress' && (
+                  <div className="absolute right-0 top-full mt-1 bg-[#1a1a2e] border border-white/10 rounded-lg px-3 py-1.5 text-xs text-white/60 whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                    {t('billing.approve_first') || 'Aprobá el plan primero para registrar pagos'}
+                  </div>
+                )}
+              </div>
             </div>
 
             {planDetail.payments.length === 0 ? (
@@ -1756,11 +1774,15 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
             <div>
               <label className="block text-sm text-white/60 mb-1">{t('billing.custom_description')}</label>
               <textarea
-                rows={3}
+                rows={4}
                 value={newItemData.custom_description}
-                onChange={(e) => setNewItemData({ ...newItemData, custom_description: e.target.value })}
+                onChange={(e) => {
+                  setNewItemData({ ...newItemData, custom_description: e.target.value });
+                  e.target.style.height = 'auto';
+                  e.target.style.height = e.target.scrollHeight + 'px';
+                }}
                 placeholder={t('billing.custom_description_placeholder')}
-                className="w-full px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-primary"
+                className="w-full px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-primary resize-none"
               ></textarea>
             </div>
             <div>
@@ -1877,10 +1899,11 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
             )}
             <button
               onClick={handleRegisterPayment}
-              disabled={!newPaymentData.amount || parseFloat(newPaymentData.amount) <= 0}
-              className="w-full bg-white text-[#0a0e1a] py-2 rounded-lg hover:opacity-90 disabled:opacity-50 font-medium"
+              disabled={!newPaymentData.amount || parseFloat(newPaymentData.amount) <= 0 || submittingPayment}
+              className="w-full flex items-center justify-center gap-2 bg-white text-[#0a0e1a] py-2 rounded-lg hover:opacity-90 disabled:opacity-50 font-medium"
             >
-              {t('billing.register_payment')}
+              {submittingPayment && <Loader2 size={16} className="animate-spin" />}
+              {submittingPayment ? t('billing.registering') || 'Registrando...' : t('billing.register_payment')}
             </button>
           </div>
         </Modal>
