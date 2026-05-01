@@ -2952,7 +2952,7 @@ async def book_appointment(
         # For themselves: current flow
         phone = chat_phone
     try:
-        logger.info(f"🎯 book_appointment ENTRY | tenant={tenant_id} phone={phone} chat_phone={chat_phone} date_time={date_time!r} slot_index={slot_index} interpreted_date={interpreted_date!r} patient_name={patient_name!r}")
+        logger.info(f"🎯 book_appointment ENTRY | tenant={tenant_id} phone={phone} chat_phone={chat_phone} date_time={date_time!r} slot_index={slot_index} interpreted_date={interpreted_date!r} first_name={first_name!r} last_name={last_name!r}")
         # PRIORIDAD: slot_index > interpreted_date > conversacion state > parse_datetime
         apt_datetime = None
 

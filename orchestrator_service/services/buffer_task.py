@@ -111,6 +111,8 @@ def _detect_selection_intent(msg: str) -> bool:
     if _SELECTION_INTENT_PATTERN is None:
         # Patterns for selecting an offered slot
         patterns = [
+            # Bare number: just "1" or "2" (most common selection)
+            r"^[1-9]$",
             # Numeric ordinals: "el 1", "el 1ro", "el 1°", "el 2do", "el 3er", etc.
             r"\bel\s+[0-9]+(?:ro|do|er|°)?\b",
             # Spanish ordinal words
