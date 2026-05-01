@@ -1465,14 +1465,20 @@ async def pick_representative_slots(
                 )
                 selected_days = [days_with_slots[i] for i in indices]
 
+            # If only 1 day has slots, pick multiple slots from that day
+            # to always offer max_options (e.g. 2) choices to the patient
+            slots_per_day = 1 if len(selected_days) >= max_options else max(1, max_options - len(options))
+
             for day_info in selected_days:
                 if len(options) >= max_options:
                     break
                 d = day_info["date"]
                 day_en = day_info["day_en"]
                 display = f"{DIAS_ES.get(day_en, '')} {d.strftime('%d/%m')}"
-                # 1 slot por día para maximizar variedad de fechas
-                picked = _pick_from_slots(day_info["slots"], 1)
+                # Pick enough slots to fill max_options when few days available
+                remaining = max_options - len(options)
+                pick_count = min(slots_per_day, remaining) if len(selected_days) >= max_options else remaining
+                picked = _pick_from_slots(day_info["slots"], pick_count, specific_time=specific_time)
                 for time_str in picked:
                     hour = int(time_str.split(":")[0])
                     options.append(
@@ -9617,10 +9623,13 @@ PASO 4: CONSULTAR DISPONIBILIDAD — Llamá 'check_availability' UNA vez con tre
   • PROHIBIDO agregar dirección, sede, Maps o ubicación junto con las opciones de turno. Esa información se envía ÚNICAMENTE DESPUÉS de que el paciente elige y el turno se confirma con book_appointment.
   • Formato correcto: "1️⃣ Lunes 05/05 — 10:00 hs\n2️⃣ Martes 06/05 — 15:30 hs\n\nCuál te queda mejor?"
   • Formato PROHIBIDO: "1️⃣ Lunes 05/05 — 10:00 hs (Sede Centro, Av. Córdoba 123)" ← NUNCA incluir dirección acá.
-  REGLA INQUEBRANTABLE DE SELECCIÓN: Cuando el paciente elige una opción (dice "1", "2", "3", "la primera", "la segunda", etc.), \
+  REGLA INQUEBRANTABLE DE SELECCIÓN: Cuando el paciente elige una opción o CONFIRMA la que le ofreciste \
+  (dice "1", "2", "la primera", "la segunda", "dale", "ese", "agendame ahí", "sí", "perfecto", "ese me va", "me queda bien", "va", "listo", etc.), \
   usá EXACTAMENTE la fecha y hora de ESA opción tal como la mostraste. NO cambies la fecha ni la hora. \
   Si el paciente dijo "2" y la opción 2 era "Martes 14/04 — 10:00 hs", pasá interpreted_date="2026-04-14" y date_time="10:00". \
   NUNCA inventes otra fecha/hora distinta a la opción que el paciente eligió.
+  PROHIBIDO volver a llamar check_availability cuando el paciente ACEPTA una opción. Ir DIRECTO a PASO 4b.
+  Si solo ofreciste 1 opción y el paciente la acepta ("dale", "sí", "agendame ahí"), esa ES la opción elegida → PASO 4b. NO ofrecer más opciones.
   Si el paciente elige una opción → pasar a PASO 4b.
   Si el paciente pide un horario ESPECÍFICO (ej: "a las 16:30", "quiero a las 10") → volver a llamar check_availability CON specific_time="16:30" para verificar si ESE slot está libre. La tool lo incluirá primero en las opciones si está disponible, o mostrará el más cercano si no.
     - Si está libre → pasar a PASO 4b con ese horario.
