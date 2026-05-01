@@ -6210,10 +6210,13 @@ async def confirm_slot(
                     # Key already exists — check who holds it
                     existing = await r.get(lock_key)
                     if existing:
-                        lock_holder = str(existing)
+                        lock_holder = existing.decode() if isinstance(existing, bytes) else str(existing)
                         if lock_holder != phone:
                             return f"⚠️ El turno de las {time_str} del {date_str} acaba de ser reservado por otro paciente. Consultemos otra opción."
                         else:
+                            # Same patient — refresh the lock TTL and continue
+                            await r.set(lock_key, phone, ex=SLOT_LOCK_TTL_SECONDS)
+                            logger.info(f"🔒 Same patient re-confirmed slot, lock refreshed: {lock_key}")
                             return f"✅ Ya tenés reservado el turno para {date_str} a las {time_str}. Continuemos con tus datos."
                 logger.info(f"🔒 Soft lock created: {lock_key} for {phone} ({SLOT_LOCK_TTL_SECONDS}s)")
                 # Extend slot_offer TTL to stay in sync with the new lock
