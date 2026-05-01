@@ -1774,7 +1774,7 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
             <div>
               <label className="block text-sm text-white/60 mb-1">{t('billing.custom_description')}</label>
               <textarea
-                rows={4}
+                rows={8}
                 value={newItemData.custom_description}
                 onChange={(e) => {
                   setNewItemData({ ...newItemData, custom_description: e.target.value });
@@ -1782,7 +1782,7 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
                   e.target.style.height = e.target.scrollHeight + 'px';
                 }}
                 placeholder={t('billing.custom_description_placeholder')}
-                className="w-full px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-primary resize-none"
+                className="w-full px-3 py-3 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-primary resize-none min-h-[180px] text-sm leading-relaxed"
               ></textarea>
             </div>
             <div>
@@ -2187,7 +2187,7 @@ function CreatePlanModal({ newPlanData, setNewPlanData, professionals, onCreate,
 function Modal({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end md:items-center justify-center p-0 md:p-4">
-      <div className="bg-[#0d1117] border border-white/[0.08] rounded-t-2xl md:rounded-xl w-full md:w-auto md:max-w-md p-6 relative">
+      <div className="bg-[#0d1117] border border-white/[0.08] rounded-t-2xl md:rounded-xl w-full md:w-auto md:max-w-lg p-6 relative max-h-[90vh] overflow-y-auto">
         <button
           onClick={onClose}
           className="absolute top-4 right-4 text-white/40 hover:text-white/70"
