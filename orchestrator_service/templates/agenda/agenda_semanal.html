@@ -42,12 +42,12 @@
   }
   .section-break { page-break-before: always; }
   .day-header {
-    padding: 8px 12px;
+    padding: 10px 14px;
     color: white;
     font-weight: bold;
-    font-size: 11pt;
+    font-size: 12pt;
     border-radius: 4px;
-    margin: 16px 0 8px 0;
+    margin: 20px 0 10px 0;
   }
   .day-color-0 { background: #5b4a9e; }
   .day-color-1 { background: #2e6ca4; }
@@ -65,6 +65,26 @@
     padding: 24px;
     font-style: italic;
   }
+  .prof-header {
+    background: #f0f0f0;
+    padding: 6px 12px;
+    font-weight: bold;
+    font-size: 9.5pt;
+    color: #333;
+    border-left: 4px solid #888;
+    margin: 8px 0 4px 0;
+  }
+  .prof-initials {
+    display: inline-block;
+    background: #444;
+    color: white;
+    font-size: 8pt;
+    font-weight: bold;
+    padding: 2px 6px;
+    border-radius: 3px;
+    margin-left: 6px;
+  }
+  .dni { color: #888; font-size: 8pt; }
 </style>
 </head>
 <body>
@@ -107,36 +127,43 @@
 {% endif %}
 
 <!-- =========================================================== -->
-<!-- SECCIÓN 2: Listas por día                                   -->
+<!-- SECCIÓN 2: Listas por día (agrupado por profesional)        -->
 <!-- =========================================================== -->
 <div class="section-break">
-  <h1>Listas por día</h1>
-  <p class="subtitle">Ordenado por horario · incluye responsable</p>
-  <hr class="section-divider"/>
+  <h1>Agenda por día y profesional</h1>
+  <p class="subtitle">Organizado por día → profesional → horario</p>
 
   {% if daily_lists %}
     {% for day_data in daily_lists %}
     <div class="day-header day-color-{{ day_data.day_index }}">
-      {{ day_data.day_name }} — {{ day_data.count }} persona{% if day_data.count != 1 %}s{% endif %}
+      {{ day_data.day_name }} {{ day_data.date_display }} — {{ day_data.count }} turno{% if day_data.count != 1 %}s{% endif %}
+    </div>
+
+    {% for prof in day_data.professionals %}
+    <div class="prof-header">
+      {{ prof.professional_name if prof.professional_name else 'Sin profesional asignado' }}
+      <span class="prof-initials">{{ prof.initials }}</span>
     </div>
     <table>
       <thead>
         <tr>
-          <th style="background:#444; width:45%;">Persona</th>
-          <th style="background:#444; width:25%;">Horario</th>
-          <th style="background:#444; width:30%;">Responsable</th>
+          <th style="background:#444; width:15%;">Horario</th>
+          <th style="background:#444; width:50%;">Paciente</th>
+          <th style="background:#444; width:35%;">DNI</th>
         </tr>
       </thead>
       <tbody>
-        {% for row in day_data.rows %}
+        {% for row in prof.rows %}
         <tr>
+          <td style="text-align:center; font-weight:bold;">{{ row.time_slot }}</td>
           <td>{{ row.patient_name }}</td>
-          <td style="text-align:center;">{{ row.time_slot }}</td>
-          <td>{{ row.professional_name if row.professional_name else '—' }}</td>
+          <td class="dni">{{ row.patient_dni if row.patient_dni else '—' }}</td>
         </tr>
         {% endfor %}
       </tbody>
     </table>
+    {% endfor %}
+
     {% endfor %}
   {% else %}
     <p class="empty-state">No hay turnos registrados para este período.</p>
@@ -154,11 +181,13 @@
   <table>
     <thead>
       <tr>
-        <th style="background:#444; width:5%;">#</th>
-        <th style="background:#444; width:30%;">Persona</th>
-        <th style="background:#444; width:20%;">Día</th>
-        <th style="background:#444; width:20%;">Horario</th>
-        <th style="background:#444; width:25%;">Responsable</th>
+        <th style="background:#444; width:4%;">#</th>
+        <th style="background:#444; width:25%;">Paciente</th>
+        <th style="background:#444; width:15%;">DNI</th>
+        <th style="background:#444; width:15%;">Día</th>
+        <th style="background:#444; width:10%;">Horario</th>
+        <th style="background:#444; width:20%;">Profesional</th>
+        <th style="background:#444; width:6%;">Inic.</th>
       </tr>
     </thead>
     <tbody>
@@ -166,9 +195,11 @@
       <tr>
         <td style="text-align:center;">{{ row.number }}</td>
         <td>{{ row.patient_name }}</td>
+        <td class="dni">{{ row.patient_dni if row.patient_dni else '—' }}</td>
         <td class="alpha-day" style="color:{{ row.day_color }};">{{ row.day_name }}</td>
         <td style="text-align:center;">{{ row.time_slot }}</td>
         <td>{{ row.professional_name if row.professional_name else '—' }}</td>
+        <td style="text-align:center; font-weight:bold;">{{ row.initials }}</td>
       </tr>
       {% endfor %}
     </tbody>

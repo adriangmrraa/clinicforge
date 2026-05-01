@@ -55,6 +55,16 @@ DAY_COLORS = {
 }
 
 
+def _professional_initials(first_name: str, last_name: str) -> str:
+    """Generate initials from professional name, e.g. 'Laura Delgado' → 'LD'."""
+    parts = []
+    for part in (first_name, last_name):
+        cleaned = part.strip()
+        if cleaned:
+            parts.append(cleaned[0].upper())
+    return "".join(parts) if parts else "?"
+
+
 # =============================================================================
 # LAYER 1: DATA GATHERING
 # =============================================================================
@@ -102,7 +112,10 @@ async def gather_agenda_data(
             a.duration_minutes,
             a.status,
             (p.first_name || ' ' || COALESCE(p.last_name, '')) AS patient_name,
-            COALESCE(prof.first_name, '') AS professional_name
+            COALESCE(p.dni, '') AS patient_dni,
+            COALESCE(prof.first_name, '') AS professional_first_name,
+            COALESCE(prof.last_name, '') AS professional_last_name,
+            (COALESCE(prof.first_name, '') || ' ' || COALESCE(prof.last_name, '')) AS professional_name
         FROM appointments a
         JOIN patients p ON a.patient_id = p.id AND p.tenant_id = $1
         LEFT JOIN professionals prof ON a.professional_id = prof.id AND prof.tenant_id = $1
@@ -142,7 +155,11 @@ async def gather_agenda_data(
         hour: int = dt.hour
         slot_label: str = f"{hour:02d}:00-{hour + 1:02d}:00"
         patient_name: str = (row["patient_name"] or "").strip() or "Sin nombre"
+        patient_dni: str = (row["patient_dni"] or "").strip()
+        prof_first: str = (row["professional_first_name"] or "").strip()
+        prof_last: str = (row["professional_last_name"] or "").strip()
         professional_name: str = (row["professional_name"] or "").strip()
+        initials: str = _professional_initials(prof_first, prof_last)
         day_name: str = DAY_NAMES[day_idx]
 
         hours_seen.add(hour)
@@ -151,21 +168,29 @@ async def gather_agenda_data(
         # grid
         grid[slot_label][day_idx].append(patient_name)
 
-        # daily_lists
+        # daily_lists — grouped by day, then by professional
         if day_idx not in daily_lists_map:
             daily_lists_map[day_idx] = {
                 "day_name": day_name,
                 "day_index": day_idx,
                 "color": DAY_COLORS.get(day_idx, "#4a4a4a"),
+                "date_display": dt.strftime("%d/%m"),
                 "count": 0,
-                "rows": [],
+                "professionals": {},  # keyed by professional_name
             }
         daily_lists_map[day_idx]["count"] += 1
-        daily_lists_map[day_idx]["rows"].append(
+        prof_key = professional_name or "Sin profesional"
+        if prof_key not in daily_lists_map[day_idx]["professionals"]:
+            daily_lists_map[day_idx]["professionals"][prof_key] = {
+                "professional_name": professional_name,
+                "initials": initials,
+                "rows": [],
+            }
+        daily_lists_map[day_idx]["professionals"][prof_key]["rows"].append(
             {
                 "patient_name": patient_name,
+                "patient_dni": patient_dni,
                 "time_slot": dt.strftime("%H:%M"),
-                "professional_name": professional_name,
             }
         )
 
@@ -173,11 +198,13 @@ async def gather_agenda_data(
         alphabetical_raw.append(
             {
                 "patient_name": patient_name,
+                "patient_dni": patient_dni,
                 "day_name": day_name,
                 "day_index": day_idx,
                 "day_color": DAY_COLORS.get(day_idx, "#4a4a4a"),
                 "time_slot": dt.strftime("%H:%M"),
                 "professional_name": professional_name,
+                "initials": initials,
             }
         )
 
@@ -185,9 +212,14 @@ async def gather_agenda_data(
     alphabetical_raw.sort(key=lambda x: x["patient_name"].lower())
     alphabetical = [{"number": i + 1, **item} for i, item in enumerate(alphabetical_raw)]
 
-    # ── Sort daily_lists by day_index ─────────────────────────────────────────
-    daily_lists = [daily_lists_map[k] for k in sorted(daily_lists_map.keys())]
-    # Each day's rows are already time-ordered because the DB query is ORDER BY datetime ASC
+    # ── Sort daily_lists by day_index + convert professionals dict to list ───
+    daily_lists = []
+    for k in sorted(daily_lists_map.keys()):
+        day_data = daily_lists_map[k]
+        # Convert professionals dict to sorted list
+        day_data["professionals"] = list(day_data["professionals"].values())
+        daily_lists.append(day_data)
+    # Each professional's rows are already time-ordered (DB query ORDER BY datetime ASC)
 
     # ── Build time_slots list (hourly, sorted) ────────────────────────────────
     if hours_seen:
