@@ -217,6 +217,11 @@ app.use(async (req: Request, res: Response) => {
             }
         }
 
+        const setCookieHeaders = response.headers['set-cookie'];
+        if (setCookieHeaders) {
+            res.setHeader('set-cookie', setCookieHeaders);
+        }
+
         if (isBinaryRequest) {
             const size = response.data?.byteLength || response.data?.length || 0;
             console.log(`[Proxy] Binary response: status=${response.status} type=${response.headers['content-type']} size=${size} bytes`);

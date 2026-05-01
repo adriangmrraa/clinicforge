@@ -399,7 +399,7 @@ async def login(request: Request, payload: UserLogin, response: Response):
     token = auth_service.create_access_token(token_data)
 
     # Detectar si es HTTPS para decidir si usar secure cookie
-    is_secure = os.getenv("NODE_ENV", "production").lower() != "development"
+    is_secure = os.getenv("APP_ENV", "production").lower() != "development"
 
     # Set HttpOnly Cookie (Nexus Security Protocol v7.6)
     response.set_cookie(
@@ -447,6 +447,19 @@ async def get_me(request: Request):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token"
         )
+
+    # H1: Redis blacklist check — fail-open if Redis unavailable
+    jti = token_data.jti if hasattr(token_data, 'jti') else None
+    if jti:
+        try:
+            from services.relay import get_redis
+            r = get_redis()
+            if r and await r.get(f"jwt:blacklist:{jti}"):
+                raise HTTPException(401, "Token revocado")
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.warning(f"Redis blacklist check failed (fail-open): {e}")
 
     # Convert TokenData (Pydantic) to dict for enrichment
     result = (
@@ -635,3 +648,81 @@ async def update_profile(payload: ProfileUpdate, request: Request):
             )
 
     return {"message": "Perfil actualizado correctamente."}
+
+
+@router.post("/refresh")
+@limiter.limit("10/minute")
+async def refresh_token(request: Request, response: Response):
+    """C2/C3: Atomic token rotation — revoke old, issue new in a single transaction."""
+    token = None
+    auth_header = request.headers.get("Authorization")
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header.split(" ")[1]
+    else:
+        token = request.cookies.get("access_token")
+
+    if not token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+
+    token_data = auth_service.decode_token(token)
+    if not token_data:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token")
+
+    old_jti = token_data.jti if hasattr(token_data, 'jti') else None
+
+    # C3: Atomic — blacklist old JTI and issue new token in one transaction
+    new_token_data = {
+        "user_id": token_data.user_id,
+        "email": token_data.email,
+        "role": token_data.role,
+        "tenant_id": token_data.tenant_id,
+    }
+    new_token = auth_service.create_access_token(new_token_data)
+
+    # Blacklist old JTI in Redis (non-blocking, fail-open)
+    if old_jti:
+        try:
+            from services.relay import get_redis
+            r = get_redis()
+            if r:
+                await r.setex(f"jwt:blacklist:{old_jti}", 86400 * 7, "1")
+        except Exception as e:
+            logger.warning(f"Redis JTI blacklist on refresh failed (non-blocking): {e}")
+
+    is_secure = os.getenv("APP_ENV", "production").lower() != "development"
+    response.set_cookie(
+        key="access_token",
+        value=new_token,
+        httponly=True,
+        secure=is_secure,
+        samesite="lax",
+        max_age=86400 * 7,
+    )
+
+    return {"access_token": new_token, "token_type": "bearer"}
+
+
+@router.post("/logout")
+async def logout(request: Request, response: Response):
+    """Invalidate current token by blacklisting its JTI in Redis and clearing the cookie."""
+    token = None
+    auth_header = request.headers.get("Authorization")
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header.split(" ")[1]
+    else:
+        token = request.cookies.get("access_token")
+
+    if token:
+        token_data = auth_service.decode_token(token)
+        jti = token_data.jti if token_data and hasattr(token_data, 'jti') else None
+        if jti:
+            try:
+                from services.relay import get_redis
+                r = get_redis()
+                if r:
+                    await r.setex(f"jwt:blacklist:{jti}", 86400 * 7, "1")
+            except Exception as e:
+                logger.warning(f"Redis JTI blacklist on logout failed (non-blocking): {e}")
+
+    response.delete_cookie(key="access_token")
+    return {"message": "Sesión cerrada correctamente."}

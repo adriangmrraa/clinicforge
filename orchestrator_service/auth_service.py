@@ -1,4 +1,5 @@
 import os
+import uuid
 import logging
 import jwt
 from datetime import datetime, timedelta
@@ -30,6 +31,7 @@ class TokenData(BaseModel):
     email: str
     role: str
     tenant_id: int
+    jti: Optional[str] = None
 
 class AuthService:
     @staticmethod
@@ -51,8 +53,8 @@ class AuthService:
             expire = datetime.utcnow() + expires_delta
         else:
             expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-        
-        to_encode.update({"exp": expire})
+
+        to_encode.update({"exp": expire, "jti": str(uuid.uuid4())})
         encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
         return encoded_jwt
 
@@ -73,7 +75,8 @@ class AuthService:
                 user_id=user_id,
                 email=email,
                 role=role,
-                tenant_id=tenant_id
+                tenant_id=tenant_id,
+                jti=payload.get("jti")
             )
         except jwt.ExpiredSignatureError:
             logger.warning("JWT expired")

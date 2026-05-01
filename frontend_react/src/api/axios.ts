@@ -8,6 +8,9 @@ export const WS_URL = getEnv('VITE_WS_URL') || API_URL;
 const MAX_RETRIES = 3;
 const BASE_DELAY = 1000;
 
+// M3: Shared refresh promise to deduplicate concurrent 401 responses
+let refreshPromise: Promise<any> | null = null;
+
 // ============================================
 // MULTI-TENANCY: Tenant ID Management
 // ============================================
@@ -151,17 +154,33 @@ api.interceptors.response.use(
 
     // Manejo específico de errores
     if (status === 401) {
-      // JWT expirado o inválido — limpiar TODO y redirigir
-      console.warn('[API] Unauthorized - Limpiando JWT y estado de sesión');
-      localStorage.removeItem('access_token');
-      localStorage.removeItem('USER_PROFILE');
-      localStorage.removeItem('X-Tenant-ID');
+      // H3: Do NOT intercept 401 from logout (would loop) or already-auth endpoints
+      const isAuthEndpoint = originalConfig.url?.startsWith('/auth/') && !originalConfig.url?.includes('/auth/logout');
+      if (isAuthEndpoint) {
+        return Promise.reject(error);
+      }
 
-      const publicRoutes = ['/privacy', '/terms', '/demo'];
-      const isPublicRoute = publicRoutes.some(route => window.location.pathname.startsWith(route));
+      // M3: Deduplicate concurrent 401s — only one refresh in flight at a time
+      if (!refreshPromise) {
+        refreshPromise = api.post('/auth/refresh').finally(() => { refreshPromise = null; });
+      }
 
-      if (!window.location.pathname.includes('/login') && !isPublicRoute) {
-        window.location.href = '/login';
+      try {
+        await refreshPromise;
+        return api(originalConfig);
+      } catch {
+        // Refresh failed — clear session and redirect
+        console.warn('[API] Unauthorized - Limpiando JWT y estado de sesión');
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('USER_PROFILE');
+        localStorage.removeItem('X-Tenant-ID');
+
+        const publicRoutes = ['/privacy', '/terms', '/demo'];
+        const isPublicRoute = publicRoutes.some(route => window.location.pathname.startsWith(route));
+
+        if (!window.location.pathname.includes('/login') && !isPublicRoute) {
+          window.location.href = '/login';
+        }
       }
     } else if (status === 403) {
       console.warn('[API] ⚠️ Forbidden - Posible error de tenant');
