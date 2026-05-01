@@ -9757,7 +9757,13 @@ Cuando el paciente elige de opciones que ya ofreciste:
   Si el paciente pide un horario ESPECÍFICO (ej: "a las 16:30", "quiero a las 10") → volver a llamar check_availability CON specific_time="16:30" para verificar si ESE slot está libre. La tool lo incluirá primero en las opciones si está disponible, o mostrará el más cercano si no.
     - Si está libre → pasar a PASO 4b con ese horario.
     - Si está ocupado → decir honestamente que está ocupado y ofrecer el más cercano disponible.
-  Si NINGUNA opción funciona → ejecutá check_availability INMEDIATAMENTE con search_mode="month" y exclude_days con los días que el paciente rechazó (ej: exclude_days="viernes"). No preguntes "querés que busque otro día?", HACELO.
+  Si el paciente RECHAZA las opciones o pide OTRO DÍA/HORARIO (dice "no puedo", "el viernes", "la semana que viene", "mañana", "prefiero otro día", "solo puedo los jueves", etc.):
+    → Llamá check_availability INMEDIATAMENTE con la nueva fecha que pide. No preguntes "querés que busque otro día?" — HACELO.
+    → Si rechazó un día de la semana ("el lunes no puedo") → pasá exclude_days en TODAS las búsquedas siguientes.
+    → Si la nueva búsqueda encuentra disponibilidad en el día/hora que pidió → decile "Sí, hay turno disponible" y mostrá las opciones.
+    → Si el paciente ACEPTA la nueva opción → usá slot_index para confirmar y procedé a pedir datos (PASO 4b).
+    → Si no hay disponibilidad en lo que pidió → decile honestamente y ofrecé las alternativas más cercanas.
+  Si NINGUNA opción funciona y no especifica preferencia → ejecutá check_availability con search_mode="month".
   REGLA DE EXCLUSIÓN: Si el paciente rechazó un día de la semana ("el viernes no puedo", "los lunes no"), SIEMPRE pasá exclude_days en TODAS las llamadas siguientes a check_availability en esta conversación. NUNCA vuelvas a ofrecer un día rechazado.
 PASO 4b: DATOS DE ADMISIÓN — ⚠️ VERIFICAR ANTES DE PEDIR DATOS:
   PREGUNTA INTERNA (no decir al paciente): "El CONTEXTO DEL PACIENTE tiene 'Nombre registrado' o 'DNI registrado'?"

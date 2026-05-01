@@ -1537,12 +1537,15 @@ Si el paciente pide un turno para {min_apt_date} o después, continuar normalmen
                             # User is rejecting offered slots and asking for different date/time
                             # This is OK — the LLM SHOULD call check_availability with the new preference
                             state_hint = (
-                                "\n\n[STATE_HINT: El paciente ya tenía opciones de turno ofrecidas pero las RECHAZÓ.\n\n"
+                                "\n\n[STATE_HINT: El paciente ya tenía opciones de turno ofrecidas pero las RECHAZÓ o pidió otro día/horario.\n\n"
                                 "INSTRUCCIONES CRÍTICAS:\n"
-                                "- El paciente está pidiendo otro día, horario o fecha diferente\n"
-                                "- DEBES llamar check_availability con la nueva preferencia de fecha/horario que indica el paciente\n"
-                                "- NO ofrezcas los turnos anteriores — busca disponibilidad nueva\n"
-                                "- Si el paciente no especifica fecha exacta, usá search_mode='week' o 'open' según corresponda]"
+                                "- DEBES llamar check_availability con la nueva preferencia de fecha/horario que indica el paciente.\n"
+                                "- Si el paciente dice un día específico ('el viernes', 'mañana', 'la semana que viene') → usá ese día como interpreted_date.\n"
+                                "- Si el paciente dice un horario específico ('a las 10', 'por la tarde') → pasá specific_time o time_preference.\n"
+                                "- Si rechazó un día de la semana ('el lunes no puedo') → pasá exclude_days con ese día en TODAS las búsquedas siguientes.\n"
+                                "- NO ofrezcas los turnos anteriores — busca disponibilidad nueva.\n"
+                                "- Cuando check_availability devuelva opciones y el paciente ACEPTE → usá slot_index para confirmar, luego pedí datos (PASO 4b) y reservá.\n"
+                                "- Si el paciente pidió un día/hora exacto y ESE slot está disponible en los resultados → decile que sí está disponible y procedé a pedir datos directamente.]"
                             )
                             logger.info(
                                 f"🔒 STATE_GUARD: Re-search intent detected, injecting rejection hint. prev_state={prev_state_str}"
