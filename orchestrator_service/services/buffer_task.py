@@ -1501,7 +1501,10 @@ Si el paciente pide un turno para {min_apt_date} o después, continuar normalmen
                     # If previous state was OFFERED_SLOTS and user is selecting a slot
                     if prev_state_str == "OFFERED_SLOTS":
                         user_msg = "\n".join(messages)
-                        if _detect_selection_intent(user_msg):
+                        _is_selection = _detect_selection_intent(user_msg)
+                        _is_research = _detect_research_intent(user_msg)
+                        logger.info(f"🔒 STATE_GUARD EVAL | state={prev_state_str} msg={user_msg[:80]!r} selection={_is_selection} research={_is_research}")
+                        if _is_selection:
                             # Build a detailed hint including the actual offered slots
                             _last_offered_slots = prev_state.get("last_offered_slots") or []
                             if _last_offered_slots:

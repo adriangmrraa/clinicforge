@@ -2952,6 +2952,7 @@ async def book_appointment(
         # For themselves: current flow
         phone = chat_phone
     try:
+        logger.info(f"🎯 book_appointment ENTRY | tenant={tenant_id} phone={phone} chat_phone={chat_phone} date_time={date_time!r} slot_index={slot_index} interpreted_date={interpreted_date!r} patient_name={patient_name!r}")
         # PRIORIDAD: slot_index > interpreted_date > conversacion state > parse_datetime
         apt_datetime = None
 
@@ -6087,6 +6088,7 @@ async def confirm_slot(
     try:
         tenant_id = current_tenant_id.get()
         phone = current_customer_phone.get()
+        logger.info(f"🎯 confirm_slot ENTRY | tenant={tenant_id} phone={phone} date_time={date_time!r} slot_index={slot_index} interpreted_date={interpreted_date!r} prof={professional_name!r} treatment={treatment_name!r}")
         if not phone:
             return "❌ No pude identificar tu número para reservar el turno."
 
@@ -6162,8 +6164,10 @@ async def confirm_slot(
 
         # Priority 3: existing parse_datetime (backward compat)
         if apt_datetime is None:
+            logger.info(f"⚠️ confirm_slot: slot_index and interpreted_date failed, falling back to parse_datetime({date_time!r})")
             apt_datetime = parse_datetime(date_time)
         now = get_now_arg()
+        logger.info(f"🕐 confirm_slot DATETIME CHECK | apt_datetime={apt_datetime} (tz={apt_datetime.tzinfo}) vs now={now} (tz={now.tzinfo}) | is_past={apt_datetime <= now}")
         if apt_datetime <= now:
             return "❌ Ese horario ya pasó. Pedí otro horario o día."
 
@@ -6223,6 +6227,7 @@ async def confirm_slot(
 
         dia_name = DIAS_ES.get(DAYS_EN[apt_datetime.weekday()], "")
         response = f"✅ Turno de las {time_str} del {dia_name} {apt_datetime.strftime('%d/%m')} reservado. Procedé a confirmar con book_appointment."
+        logger.info(f"✅ confirm_slot SUCCESS | lock_key={lock_key} date={date_str} time={time_str} prof_id={prof_id} phone={phone}")
 
         # Bug #4 Phase B: Set conversation state to SLOT_LOCKED
         try:
