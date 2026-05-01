@@ -113,6 +113,16 @@ def _detect_selection_intent(msg: str) -> bool:
         patterns = [
             # Bare number: just "1" or "2" (most common selection)
             r"^[1-9]$",
+            # Time confirmation: "a las 15", "a las 10 hs", "a las 15 está bien", "las 13 me queda"
+            r"\ba\s+las\s+\d{1,2}\b",
+            r"\blas\s+\d{1,2}\s*(hs|horas)?\s*(est[aá]\s+bien|me\s+queda|va|dale|sí|si)\b",
+            # "está bien", "va bien", "me va" as standalone confirmations
+            r"\best[aá]\s+bien\b",
+            r"\bva\s+bien\b",
+            r"\bme\s+va\b",
+            r"\bok\b",
+            r"\bbueno\b",
+            r"\bdale\s+[ea]s[ea]\b",  # "dale esa", "dale ese"
             # Numeric ordinals: "el 1", "el 1ro", "el 1°", "el 2do", "el 3er", etc.
             r"\bel\s+[0-9]+(?:ro|do|er|°)?\b",
             # Spanish ordinal words
