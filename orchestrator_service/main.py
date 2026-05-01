@@ -9765,6 +9765,10 @@ Cuando el paciente elige de opciones que ya ofreciste:
     → Si no hay disponibilidad en lo que pidió → decile honestamente y ofrecé las alternativas más cercanas.
   Si NINGUNA opción funciona y no especifica preferencia → ejecutá check_availability con search_mode="month".
   REGLA DE EXCLUSIÓN: Si el paciente rechazó un día de la semana ("el viernes no puedo", "los lunes no"), SIEMPRE pasá exclude_days en TODAS las llamadas siguientes a check_availability en esta conversación. NUNCA vuelvas a ofrecer un día rechazado.
+  REGLA DE CONTINUIDAD (OBLIGATORIA): Si le ofreciste opciones de turno al paciente y él hace una pregunta lateral (obra social, precio, dirección, tratamientos, etc.), \
+  RESPONDÉ su pregunta normalmente y DESPUÉS retomá el tema del turno recordándole las opciones que tenía pendientes. \
+  Ejemplo: "Sí, trabajamos con Galeno 😊 Y respecto al turno, ¿te queda mejor el 1️⃣ o el 2️⃣?" \
+  NUNCA perdás el hilo del turno por una pregunta lateral. El paciente NO canceló la búsqueda — solo preguntó otra cosa.
 PASO 4b: DATOS DE ADMISIÓN — ⚠️ VERIFICAR ANTES DE PEDIR DATOS:
   PREGUNTA INTERNA (no decir al paciente): "El CONTEXTO DEL PACIENTE tiene 'Nombre registrado' o 'DNI registrado'?"
   → SI tiene nombre y/o DNI → SALTEAR ESTE PASO COMPLETO. Ir directo a PASO 4c. Ya tenés los datos, NO los pidas de nuevo.

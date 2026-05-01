@@ -1551,10 +1551,25 @@ Si el paciente pide un turno para {min_apt_date} o después, continuar normalmen
                                 f"🔒 STATE_GUARD: Re-search intent detected, injecting rejection hint. prev_state={prev_state_str}"
                             )
                         else:
-                            # No clear intent detected — inject a clarification hint so the LLM asks
+                            # No clear selection or rejection — could be a lateral question or ambiguous response
+                            # Build slots reminder so the LLM can re-offer after answering
+                            _last_offered_amb = prev_state.get("last_offered_slots") or []
+                            _slots_reminder = ""
+                            if _last_offered_amb:
+                                _rem_lines = []
+                                for _ri, _rs in enumerate(_last_offered_amb, 1):
+                                    _rem_lines.append(f"  {_ri}️⃣ {_rs.get('date_display', _rs.get('date', ''))} — {_rs.get('time', '')} hs")
+                                _slots_reminder = "\n" + "\n".join(_rem_lines)
+
                             state_hint = (
-                                "\n\n[STATE_HINT: El paciente ya tiene opciones de turno ofrecidas pero no es claro si acepta o rechaza.\n"
-                                "INSTRUCCIONES: Preguntá directamente: '¿Querés alguna de estas opciones o preferís otro día/horario?']"
+                                f"\n\n[STATE_HINT: El paciente tiene opciones de turno PENDIENTES de respuesta:{_slots_reminder}\n\n"
+                                "El paciente parece estar haciendo una pregunta lateral o un comentario NO relacionado con la selección de turno.\n"
+                                "INSTRUCCIONES:\n"
+                                "1. Respondé la pregunta o comentario del paciente normalmente.\n"
+                                "2. DESPUÉS de responder, recordale las opciones pendientes de forma natural.\n"
+                                "   Ejemplo: 'Y respecto al turno, ¿te queda mejor el 1️⃣ o el 2️⃣?'\n"
+                                "3. NO pierdas el contexto del turno — el paciente NO canceló la búsqueda.\n"
+                                "4. Si es ambiguo si acepta o rechaza los turnos, preguntá: '¿Querés alguna de estas opciones o preferís otro día?']"
                             )
                             logger.info(
                                 f"🔒 STATE_GUARD: No clear intent detected, injecting clarification hint. prev_state={prev_state_str}, user_msg={user_msg[:50]}..."
