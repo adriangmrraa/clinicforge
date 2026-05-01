@@ -11,6 +11,7 @@ from typing import Any
 from fastapi import APIRouter, BackgroundTasks, Header, HTTPException, Query, Request
 
 from core.credentials import resolve_tenant_from_webhook_token
+from core.rate_limiter import limiter
 from core.security_utils import generate_signed_url
 from db import get_pool, db
 from services.channels.service import ChannelService
@@ -20,6 +21,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+@limiter.limit("20/minute")
 @router.post("/admin/chatwoot/webhook")
 async def receive_chatwoot_webhook(
     request: Request,

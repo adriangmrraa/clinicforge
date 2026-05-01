@@ -10,6 +10,7 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, Header
 
 from db import get_pool
 from core.credentials import get_tenant_credential
+from core.rate_limiter import limiter
 from services.channels.service import ChannelService
 
 logger = logging.getLogger(__name__)
@@ -74,6 +75,7 @@ async def _fetch_sender_name(sender_id: str, recipient_id: str, platform: str, t
     return ""
 
 
+@limiter.limit("30/minute")
 @router.post("/admin/meta-direct/webhook")
 async def receive_meta_direct_webhook(
     request: Request,

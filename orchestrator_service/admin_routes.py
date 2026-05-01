@@ -26,9 +26,8 @@ from fastapi import (
     File,
     Form,
 )
-from slowapi import Limiter
-from slowapi.util import get_remote_address
 from fastapi.responses import JSONResponse, StreamingResponse, FileResponse, Response
+from core.rate_limiter import limiter
 from pydantic import BaseModel, Field, validator
 from db import db
 from gcal_service import gcal_service
@@ -42,7 +41,6 @@ from email_service import (
 )
 
 logger = logging.getLogger(__name__)
-limiter = Limiter(key_func=get_remote_address)
 
 # Configuración
 from core.credentials import (

@@ -1,8 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends, Request, status, Response
 from pydantic import BaseModel, EmailStr
 from typing import Optional, List
-from slowapi import Limiter
-from slowapi.util import get_remote_address
 import os
 import uuid
 import json
@@ -12,8 +10,7 @@ import asyncpg
 from db import db
 from auth_service import auth_service
 from email_service import email_service
-
-limiter = Limiter(key_func=get_remote_address)
+from core.rate_limiter import limiter
 
 router = APIRouter(prefix="/auth", tags=["Nexus Auth"])
 logger = logging.getLogger("auth_routes")
