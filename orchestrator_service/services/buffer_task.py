@@ -132,6 +132,23 @@ def _detect_selection_intent(msg: str) -> bool:
             r"\b\d{1,2}\s*(de\s+)?(ene|feb|mar|abr|may|jun|jul|ago|sep|oct|nov|dic)",  # "12 de mayo"
             r"\bde\s+la\s+tarde\b",  # "el de la tarde"
             r"\bde\s+la\s+ma[ñn]ana\b",  # "el de la mañana"
+            # Additional selection signals
+            r"(?:^|\s)(ese|eso|esa)\b",  # "ese", "eso", "esa"
+            r"\bdal[ea]\b",  # "dale", "dala"
+            r"\bcualquiera\b",  # "cualquiera"
+            r"\bel\s+m[aá]s\s+temprano\b",  # "el más temprano"
+            r"\bel\s+m[aá]s\s+cercano\b",  # "el más cercano"
+            r"\bel\s+de\s+la\s+(mañana|tarde|noche)\b",  # "el de la tarde"
+            r"\bel\s+de\s+las\s+\d{1,2}\b",  # "el de las 13"
+            r"\blisto\b",  # "listo"
+            r"\bperfecto\b",  # "perfecto"
+            r"\bconfirm[oa]\b",  # "confirmo", "confirma"
+            r"\bsi\s*,?\s*(dale|va|listo|ese|por\s+favor)\b",  # "sí dale", "sí va"
+            r"\bvamos\s+con\s+(el|la|ese)\b",  # "vamos con el primero"
+            r"\bme\s+queda\s+(bien|mejor|perfecto)\b",  # "me queda bien"
+            r"\bquiero\s+el\b",  # "quiero el primero"
+            r"\bagend[aá](me|lo)\b",  # "agendame", "agendalo"
+            r"\breserv[aá](me|lo)\b",  # "reservame", "reservalo"
         ]
         combined = "|".join(patterns)
         _SELECTION_INTENT_PATTERN = re.compile(combined, re.IGNORECASE)
@@ -1465,12 +1482,12 @@ Si el paciente pide un turno para {min_apt_date} o después, continuar normalmen
                             state_hint = (
                                 f"\n\n[STATE_HINT: El paciente ya tiene opciones de turno ofrecidas.{_slots_block}\n\n"
                                 "INSTRUCCIONES CRÍTICAS:\n"
-                                "- Si el paciente dice 'el primero', 'el 1', 'opción 1', o menciona el día/hora de la Opción 1 → corresponde a Opción 1\n"
-                                "- Si dice 'el segundo', 'el 2', 'opción 2', o menciona el día/hora de la Opción 2 → corresponde a Opción 2\n"
-                                "- (Y así para las demás opciones)\n"
-                                "- Llamá confirm_slot con la FECHA ISO y HORA exactas del slot seleccionado (ej: date_time=\"2026-05-04 13:00\")\n"
-                                "- NO llamés check_availability de nuevo\n"
-                                "- NO pasés texto libre como 'el lunes' al date_time — SIEMPRE pasá la fecha ISO exacta del slot]"
+                                "- Si el paciente selecciona una opción, llamá confirm_slot con slot_index=N (N = número de opción).\n"
+                                "- 'el primero', 'el 1', 'opción 1', o el día/hora de Opción 1 → slot_index=1\n"
+                                "- 'el segundo', 'el 2', 'opción 2', o el día/hora de Opción 2 → slot_index=2\n"
+                                "- 'cualquiera' → slot_index=1 (el primero disponible)\n"
+                                "- SIEMPRE usá slot_index. NUNCA pasés texto libre en date_time cuando el paciente elige de opciones ofrecidas.\n"
+                                "- NO llamés check_availability de nuevo.]"
                             )
                             logger.info(
                                 f"🔒 STATE_GUARD: Injecting hint for slot selection with {len(_last_offered_slots)} slots. prev_state={prev_state_str}"

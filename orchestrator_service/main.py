@@ -2804,6 +2804,7 @@ async def book_appointment(
     is_art: Optional[bool] = False,
     art_company_name: Optional[str] = None,
     interpreted_date: Optional[str] = None,
+    slot_index: Optional[int] = None,
 ):
     """
     Registra un turno en la BD.
@@ -2827,6 +2828,7 @@ async def book_appointment(
 
     PROHIBIDO pedir fecha de nacimiento, email o ciudad al paciente. Solo pasá esos campos si el paciente los dio ESPONTÁNEAMENTE.
 
+    slot_index: (Recomendado) Número de la opción que el paciente eligió (1, 2, etc.) de las opciones que ofreciste con check_availability. Ejemplo: si ofreciste dos turnos y el paciente dijo "el primero" → slot_index=1.
     date_time: Hora del turno en formato 'HH:MM' o el texto del paciente (ej. '10:00', 'mañana a las 10', 'lunes 15:30').
     interpreted_date: OBLIGATORIO cuando el paciente eligió una opción que ofreciste con check_availability. Pasá la fecha exacta YYYY-MM-DD de la opción que el paciente eligió. Esto evita que se re-razone la fecha y se cometan errores.
       - Ejemplo: ofreciste "1️⃣ Martes 07/04 — 10:00 hs" y el paciente dijo "mañana a las 10" → interpreted_date="2026-04-07"
@@ -2950,11 +2952,43 @@ async def book_appointment(
         # For themselves: current flow
         phone = chat_phone
     try:
-        # PRIORIDAD: si el agente pasó interpreted_date (porque el paciente eligió una opción
-        # ya ofrecida por check_availability), usar esa fecha directamente y solo extraer
-        # la HORA del date_time. Esto evita re-razonamiento erróneo de "mañana", "lunes", etc.
+        # PRIORIDAD: slot_index > interpreted_date > conversacion state > parse_datetime
         apt_datetime = None
-        if interpreted_date:
+
+        # Priority 0: slot_index — deterministic, reads exact slot from Redis
+        if slot_index is not None:
+            try:
+                from services.relay import get_redis as _get_redis_idx
+
+                _r_idx = _get_redis_idx()
+                if _r_idx:
+                    _offer_key_idx = f"slot_offer:{tenant_id}:{chat_phone}"
+                    _offer_raw_idx = await _r_idx.get(_offer_key_idx)
+                    if _offer_raw_idx:
+                        _offered_idx = json.loads(
+                            _offer_raw_idx
+                            if isinstance(_offer_raw_idx, str)
+                            else _offer_raw_idx.decode()
+                        )
+                        _idx = slot_index - 1  # 1-based to 0-based
+                        if 0 <= _idx < len(_offered_idx):
+                            _slot_idx = _offered_idx[_idx]
+                            apt_datetime = datetime.strptime(
+                                f"{_slot_idx['date']} {_slot_idx['time']}", "%Y-%m-%d %H:%M"
+                            )
+                            logger.info(
+                                f"✅ book_appointment: slot_index={slot_index} → {_slot_idx['date']} {_slot_idx['time']} (deterministic)"
+                            )
+                        else:
+                            logger.warning(
+                                f"book_appointment: slot_index={slot_index} out of range (offered {len(_offered_idx)} slots)"
+                            )
+            except Exception as _e_idx:
+                logger.warning(
+                    f"book_appointment: slot_index resolution failed: {_e_idx}"
+                )
+
+        if apt_datetime is None and interpreted_date:
             try:
                 id_str_book = str(interpreted_date).strip()
                 if re.match(r"^\d{4}-\d{2}-\d{2}$", id_str_book):
@@ -6036,13 +6070,17 @@ async def confirm_slot(
     date_time: str,
     professional_name: Optional[str] = None,
     treatment_name: Optional[str] = None,
+    slot_index: Optional[int] = None,
+    interpreted_date: Optional[str] = None,
 ):
     """
     Confirma y reserva temporalmente un turno por 300 segundos antes de llamar a book_appointment.
     Llamar SOLO DESPUÉS de haber recopilado los datos del paciente (nombre, apellido, DNI).
     FLUJO CORRECTO: check_availability → paciente elige → pedir datos (nombre, DNI) → confirm_slot → book_appointment.
     NUNCA llamar confirm_slot ANTES de tener los datos del paciente. El timer de 5 minutos empieza acá.
-    date_time: Fecha y hora elegida (ej. "lunes 09:00", "2026-03-25 15:00", "hoy 14:00").
+    slot_index: (Recomendado) Número de la opción que el paciente eligió (1, 2, etc.) de las opciones que ofreciste con check_availability. Ejemplo: si ofreciste dos turnos y el paciente dijo "el primero" → slot_index=1.
+    interpreted_date: (Alternativa) Fecha ISO YYYY-MM-DD del turno seleccionado. Usar si conocés la fecha exacta.
+    date_time: (Fallback) Texto libre con la fecha/hora. Solo usar si no tenés slot_index ni interpreted_date.
     professional_name: (Opcional) Profesional elegido.
     treatment_name: (Opcional) Tratamiento definido.
     """
@@ -6052,8 +6090,77 @@ async def confirm_slot(
         if not phone:
             return "❌ No pude identificar tu número para reservar el turno."
 
-        # Parsear fecha/hora
-        apt_datetime = parse_datetime(date_time)
+        # Parsear fecha/hora con prioridad: slot_index > interpreted_date > parse_datetime
+        apt_datetime = None
+
+        # Priority 1: slot_index — deterministic, reads exact slot from Redis
+        if slot_index is not None:
+            try:
+                from services.relay import get_redis as _get_redis_confirm
+
+                _r_confirm = _get_redis_confirm()
+                if _r_confirm:
+                    _offer_key_confirm = f"slot_offer:{tenant_id}:{phone}"
+                    _offer_raw_confirm = await _r_confirm.get(_offer_key_confirm)
+                    if _offer_raw_confirm:
+                        _offered_confirm = json.loads(
+                            _offer_raw_confirm
+                            if isinstance(_offer_raw_confirm, str)
+                            else _offer_raw_confirm.decode()
+                        )
+                        _idx_confirm = slot_index - 1  # 1-based to 0-based
+                        if 0 <= _idx_confirm < len(_offered_confirm):
+                            _slot_confirm = _offered_confirm[_idx_confirm]
+                            _date_str_confirm = _slot_confirm["date"]
+                            _time_str_confirm = _slot_confirm["time"]
+                            apt_datetime = datetime.strptime(
+                                f"{_date_str_confirm} {_time_str_confirm}", "%Y-%m-%d %H:%M"
+                            )
+                            logger.info(
+                                f"✅ confirm_slot: slot_index={slot_index} → {_date_str_confirm} {_time_str_confirm} (deterministic)"
+                            )
+                        else:
+                            logger.warning(
+                                f"confirm_slot: slot_index={slot_index} out of range (offered {len(_offered_confirm)} slots)"
+                            )
+            except Exception as _e_confirm_idx:
+                logger.warning(
+                    f"confirm_slot: slot_index resolution failed: {_e_confirm_idx}, falling back"
+                )
+
+        # Priority 2: interpreted_date — ISO date from LLM reasoning
+        if apt_datetime is None and interpreted_date:
+            try:
+                _id_str_confirm = str(interpreted_date).strip()
+                if len(_id_str_confirm) == 10:  # YYYY-MM-DD only
+                    _id_date_confirm = datetime.strptime(_id_str_confirm, "%Y-%m-%d").date()
+                    _time_match_confirm = re.search(r"(\d{1,2}):(\d{2})", date_time or "")
+                    if _time_match_confirm:
+                        apt_datetime = datetime.combine(
+                            _id_date_confirm,
+                            datetime.strptime(
+                                f"{_time_match_confirm.group(1)}:{_time_match_confirm.group(2)}",
+                                "%H:%M",
+                            ).time(),
+                        )
+                    else:
+                        apt_datetime = datetime.combine(
+                            _id_date_confirm, datetime.min.time()
+                        )
+                else:
+                    apt_datetime = datetime.strptime(_id_str_confirm[:16], "%Y-%m-%d %H:%M")
+                logger.info(
+                    f"✅ confirm_slot: interpreted_date={interpreted_date} → {apt_datetime}"
+                )
+            except Exception as _e_confirm_id:
+                logger.warning(
+                    f"confirm_slot: interpreted_date parse failed: {_e_confirm_id}, falling back"
+                )
+                apt_datetime = None
+
+        # Priority 3: existing parse_datetime (backward compat)
+        if apt_datetime is None:
+            apt_datetime = parse_datetime(date_time)
         now = get_now_arg()
         if apt_datetime <= now:
             return "❌ Ese horario ya pasó. Pedí otro horario o día."
@@ -9636,6 +9743,14 @@ PASO 4: CONSULTAR DISPONIBILIDAD — Llamá 'check_availability' UNA vez con tre
   usá EXACTAMENTE la fecha y hora de ESA opción tal como la mostraste. NO cambies la fecha ni la hora. \
   Si el paciente dijo "2" y la opción 2 era "Martes 14/04 — 10:00 hs", pasá interpreted_date="2026-04-14" y date_time="10:00". \
   NUNCA inventes otra fecha/hora distinta a la opción que el paciente eligió.
+
+REGLA DE SELECCIÓN DE TURNO (OBLIGATORIO):
+Cuando el paciente elige de opciones que ya ofreciste:
+- SIEMPRE usá slot_index=1 o slot_index=2 en confirm_slot y book_appointment
+- NUNCA pasés "el lunes" o "el primero" como date_time — usá slot_index
+- El slot_index se refiere a la opción numerada (1️⃣ = slot_index=1, 2️⃣ = slot_index=2)
+- Si el paciente dice algo ambiguo como "sí" sin especificar cuál, preguntá: "¿El 1 o el 2?"
+- Si el paciente dice "cualquiera" → slot_index=1 (el primero disponible)
   PROHIBIDO volver a llamar check_availability cuando el paciente ACEPTA una opción. Ir DIRECTO a PASO 4b.
   Si solo ofreciste 1 opción y el paciente la acepta ("dale", "sí", "agendame ahí"), esa ES la opción elegida → PASO 4b. NO ofrecer más opciones.
   Si el paciente elige una opción → pasar a PASO 4b.
