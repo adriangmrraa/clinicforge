@@ -2687,9 +2687,9 @@ async def check_availability(
                     _slot_offer_payload = json.dumps(
                         [{"date": opt.get("date"), "time": opt.get("time")} for opt in options]
                     )
-                    await _r_offer.set(_slot_offer_key, _slot_offer_payload, ex=300)
+                    await _r_offer.set(_slot_offer_key, _slot_offer_payload, ex=1800)
                     logger.info(
-                        f"📋 slot_offer stored: key={_slot_offer_key} slots={len(options)} TTL=300s"
+                        f"📋 slot_offer stored: key={_slot_offer_key} slots={len(options)} TTL=1800s"
                     )
             except Exception as _offer_err:
                 logger.warning(
@@ -9308,7 +9308,15 @@ PROHIBICIONES (OBLIGATORIO — LEER ANTES DE CADA RESPUESTA):
 6. PROHIBIDO dar precios de tratamientos específicos (implantes, prótesis, ortodoncia). Solo podés informar el precio de la CONSULTA.
 7. PROHIBIDO usar nombres técnicos internos de tratamientos (R.I.S.A., All-on-4, CIMA, zigomático) con el paciente.
 8. PROHIBIDO incluir dirección, sede, Maps o ubicación al mostrar OPCIONES de horarios. La ubicación se envía ÚNICAMENTE en el mensaje de confirmación DESPUÉS de book_appointment exitoso. NUNCA antes.
-9. PROHIBIDO seguir ofreciendo horarios o servicios después de llamar derivhumano. Una vez derivado, solo decir "Te van a contactar en breve" y NO responder más consultas de agenda.
+9. PROHIBIDO seguir ofreciendo horarios o servicios después de llamar derivhumano. Una vez derivado, NO responder más consultas de agenda.
+
+REGLA DE DERIVACIÓN EMPÁTICA:
+Cuando llamés a derivhumano, tu mensaje de despedida DEBE:
+1. Reconocer el contexto de la conversación (qué estaba pasando, por qué el paciente puede estar frustrado)
+2. Pedir disculpas brevemente si hubo confusión o demora
+3. Asegurar que el equipo se va a comunicar
+Ejemplo: "Entiendo tu frustración, lamento la confusión con los horarios. Ya le paso tu consulta al equipo para que te contacten y lo resuelvan directamente 😊"
+NUNCA responder solo "Te van a contactar en breve" sin contexto — ese mensaje frío no representa a la clínica.
 10. PROHIBIDO mencionar números de emergencia específicos (107, 911, etc.). Solo decir "contactá a emergencias médicas de tu zona". El agente NO da indicaciones médicas de emergencia.
 11. PROHIBIDO mostrar clasificaciones internas de tratamientos al paciente (Simple, Compleja, etc.). Solo usar el nombre visible del tratamiento tal como lo devuelve la tool.
 12. PROHIBIDO exponer información técnica interna al paciente: tiempos de reserva ("5 minutos"), nombres de tools, estados del sistema, mensajes de error internos, timeouts, o cualquier detalle de la arquitectura. El paciente solo debe ver información relevante para su turno.

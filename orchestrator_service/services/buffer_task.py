@@ -1445,14 +1445,35 @@ Si el paciente pide un turno para {min_apt_date} o después, continuar normalmen
                     if prev_state_str == "OFFERED_SLOTS":
                         user_msg = "\n".join(messages)
                         if _detect_selection_intent(user_msg):
+                            # Build a detailed hint including the actual offered slots
+                            _last_offered_slots = prev_state.get("last_offered_slots") or []
+                            if _last_offered_slots:
+                                _slots_lines = []
+                                for _idx, _slot in enumerate(_last_offered_slots, 1):
+                                    _date_display = _slot.get("date_display") or _slot.get("date", "")
+                                    _time = _slot.get("time", "")
+                                    _prof = _slot.get("professional", "")
+                                    _date_iso = _slot.get("date", "")
+                                    _prof_suffix = f" (profesional: {_prof})" if _prof else ""
+                                    _slots_lines.append(
+                                        f"  Opción {_idx}: {_date_display} — {_time} hs{_prof_suffix} [ISO: {_date_iso} {_time}]"
+                                    )
+                                _slots_block = "\nSLOTS OFRECIDOS:\n" + "\n".join(_slots_lines)
+                            else:
+                                _slots_block = ""
+
                             state_hint = (
-                                "\n\n[STATE_HINT: El paciente ya tiene opciones de turnosOFFERED_SLOTS. "
-                                "El paciente está SELECCIONANDO uno de los turnos ofrecidos. "
-                                "DEBES ir a 'confirm_slot' para confirmar la selección, NO a 'check_availability'. "
-                                "Usa 'confirm_slot' con los datos del turno que el paciente seleccionó.]"
+                                f"\n\n[STATE_HINT: El paciente ya tiene opciones de turno ofrecidas.{_slots_block}\n\n"
+                                "INSTRUCCIONES CRÍTICAS:\n"
+                                "- Si el paciente dice 'el primero', 'el 1', 'opción 1', o menciona el día/hora de la Opción 1 → corresponde a Opción 1\n"
+                                "- Si dice 'el segundo', 'el 2', 'opción 2', o menciona el día/hora de la Opción 2 → corresponde a Opción 2\n"
+                                "- (Y así para las demás opciones)\n"
+                                "- Llamá confirm_slot con la FECHA ISO y HORA exactas del slot seleccionado (ej: date_time=\"2026-05-04 13:00\")\n"
+                                "- NO llamés check_availability de nuevo\n"
+                                "- NO pasés texto libre como 'el lunes' al date_time — SIEMPRE pasá la fecha ISO exacta del slot]"
                             )
                             logger.info(
-                                f"🔒 STATE_GUARD: Injecting hint for slot selection. prev_state={prev_state_str}"
+                                f"🔒 STATE_GUARD: Injecting hint for slot selection with {len(_last_offered_slots)} slots. prev_state={prev_state_str}"
                             )
                         elif _detect_research_intent(user_msg):
                             # User wants to search again - this is OK, no hint needed
