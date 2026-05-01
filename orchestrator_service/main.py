@@ -2975,7 +2975,7 @@ async def book_appointment(
                             _slot_idx = _offered_idx[_idx]
                             apt_datetime = datetime.strptime(
                                 f"{_slot_idx['date']} {_slot_idx['time']}", "%Y-%m-%d %H:%M"
-                            )
+                            ).replace(tzinfo=get_active_tz())
                             logger.info(
                                 f"✅ book_appointment: slot_index={slot_index} → {_slot_idx['date']} {_slot_idx['time']} (deterministic)"
                             )
@@ -6115,7 +6115,7 @@ async def confirm_slot(
                             _time_str_confirm = _slot_confirm["time"]
                             apt_datetime = datetime.strptime(
                                 f"{_date_str_confirm} {_time_str_confirm}", "%Y-%m-%d %H:%M"
-                            )
+                            ).replace(tzinfo=get_active_tz())
                             logger.info(
                                 f"✅ confirm_slot: slot_index={slot_index} → {_date_str_confirm} {_time_str_confirm} (deterministic)"
                             )
@@ -6132,6 +6132,7 @@ async def confirm_slot(
         if apt_datetime is None and interpreted_date:
             try:
                 _id_str_confirm = str(interpreted_date).strip()
+                _tz_confirm = get_active_tz()
                 if len(_id_str_confirm) == 10:  # YYYY-MM-DD only
                     _id_date_confirm = datetime.strptime(_id_str_confirm, "%Y-%m-%d").date()
                     _time_match_confirm = re.search(r"(\d{1,2}):(\d{2})", date_time or "")
@@ -6142,13 +6143,14 @@ async def confirm_slot(
                                 f"{_time_match_confirm.group(1)}:{_time_match_confirm.group(2)}",
                                 "%H:%M",
                             ).time(),
+                            tzinfo=_tz_confirm,
                         )
                     else:
                         apt_datetime = datetime.combine(
-                            _id_date_confirm, datetime.min.time()
+                            _id_date_confirm, datetime.min.time(), tzinfo=_tz_confirm
                         )
                 else:
-                    apt_datetime = datetime.strptime(_id_str_confirm[:16], "%Y-%m-%d %H:%M")
+                    apt_datetime = datetime.strptime(_id_str_confirm[:16], "%Y-%m-%d %H:%M").replace(tzinfo=_tz_confirm)
                 logger.info(
                     f"✅ confirm_slot: interpreted_date={interpreted_date} → {apt_datetime}"
                 )
