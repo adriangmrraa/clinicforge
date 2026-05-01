@@ -75,8 +75,17 @@ class AuthService:
                 role=role,
                 tenant_id=tenant_id
             )
+        except jwt.ExpiredSignatureError:
+            logger.warning("JWT expired")
+            return None
+        except jwt.InvalidSignatureError:
+            logger.error("JWT invalid signature — possible tampering")
+            return None
+        except jwt.DecodeError:
+            logger.error("JWT decode error — malformed token")
+            return None
         except Exception as e:
-            logger.error(f"Error decoding token: {e}")
+            logger.error(f"JWT unexpected error: {type(e).__name__}")
             return None
 
     @staticmethod

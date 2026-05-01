@@ -7,11 +7,20 @@ export function getSocket(): Socket {
   if (!socket) {
     socket = io(WS_URL, {
       transports: ['websocket'],
-      reconnectionAttempts: Infinity,
+      reconnectionAttempts: 10,
       reconnectionDelay: 1000,
       reconnectionDelayMax: 10000,
       auth: {
         token: localStorage.getItem('access_token') || ''
+      }
+    });
+
+    socket.on('connect_error', (err) => {
+      const isAuthError = ['requerida', 'inválido', 'expirado'].some(k => err.message?.includes(k));
+      console.warn('[Socket.IO] Connection error:', err.message);
+      if (isAuthError) {
+        console.warn('[Socket.IO] Auth error — stopping reconnection');
+        socket?.disconnect();
       }
     });
   }
