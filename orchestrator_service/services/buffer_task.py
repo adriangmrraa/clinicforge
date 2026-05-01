@@ -154,13 +154,25 @@ def _detect_selection_intent(msg: str) -> bool:
         _SELECTION_INTENT_PATTERN = re.compile(combined, re.IGNORECASE)
 
     text = msg.strip()
-    return _SELECTION_INTENT_PATTERN.search(text) is not None
+    if not _SELECTION_INTENT_PATTERN.search(text):
+        return False
+
+    # Rejection override: if the message starts with "no" or contains strong rejection
+    # signals, treat it as rejection rather than selection even if a pattern matched.
+    # e.g. "no, el miércoles" or "no puedo el lunes" should NOT be selection.
+    import re as _re
+    strong_rejection = r"^no\b|\bno\s+puedo\b|\bno\s+me\b|\bprefiero\s+otr[oa]\b|\bsolo\s+puedo\b|\brecién\s+puedo\b|\búnicamente\b|\bninguno\b|\bninguna\b"
+    if _re.search(strong_rejection, text, _re.IGNORECASE):
+        return False  # rejection override — "no, el lunes" is NOT a selection
+
+    return True
 
 
 def _detect_research_intent(msg: str) -> bool:
     """
     Detect if user wants to SEARCH AGAIN / look for different slots.
     Used for Bug #4 Phase C - Input-side state guard.
+    Expanded with 20+ new patterns to catch natural rejection expressions.
     """
     import re
 
@@ -168,21 +180,49 @@ def _detect_research_intent(msg: str) -> bool:
     if _RESEARCH_INTENT_PATTERN is None:
         # Patterns for searching for different slots
         patterns = [
-            r"\botra\s+fecha\b",  # "otra fecha"
-            r"\botro\s+día\b",  # "otro día"
-            r"\botra\s+hora\b",  # "otra hora"
-            r"\botro\s+turno\b",  # "otro turno"
-            r"\bbuscá\s+en\s+otra\b",  # "buscá en otra semana"
-            r"\bno\s+me\s+sirve\b",  # "no me sirve"
-            r"\bOTRO\b",  # "otro" (uppercase)
-            r"\bCAMBIAR\b",  # "cambiar" (uppercase)
-            r"\bOTRA\b",  # "otra" (uppercase)
-            r"\bdiferente\b",  # "diferente"
+            # --- Original patterns ---
+            r"\botra\s+fecha\b",         # "otra fecha"
+            r"\botro\s+día\b",           # "otro día"
+            r"\botra\s+hora\b",          # "otra hora"
+            r"\botro\s+turno\b",         # "otro turno"
+            r"\bbuscá\s+en\s+otra\b",    # "buscá en otra semana"
+            r"\bno\s+me\s+sirve\b",      # "no me sirve"
+            r"\botro\b",                 # "otro" / "otra" (any case, replaces OTRO/OTRA)
+            r"\bcambiar\b",              # "cambiar" (any case)
+            r"\bdiferente\b",            # "diferente"
+            # --- Explicit rejection ---
+            r"\bno\s+puedo\b",                   # "no puedo"
+            r"\bno\s+me\s+(queda|va|viene)\b",   # "no me queda", "no me va", "no me viene"
+            r"\bninguno\b",                       # "ninguno"
+            r"\bninguna\b",                       # "ninguna"
+            r"^no\b",                             # starts with "no" → "no, el viernes..."
+            r"\bimposible\b",                     # "imposible"
+            r"\bno\s+tengo\s+disponibilidad\b",   # "no tengo disponibilidad"
+            # --- Request for different day/time ---
+            r"\bprefiero\b",                      # "prefiero otro día"
+            r"\bmejor\b.{0,20}\b(día|fecha|hora|semana)\b",  # "mejor otro día"
+            r"\bsolo\s+puedo\b",                  # "solo puedo los jueves"
+            r"\brecién\s+puedo\b",                # "recién puedo el viernes"
+            r"\búnicamente\b",                    # "únicamente el viernes"
+            r"\bla\s+semana\s+que\s+viene\b",     # "la semana que viene"
+            r"\bsemana\s+próxima\b",              # "semana próxima"
+            r"\bsemana\s+proxima\b",              # "semana proxima" (no accent)
+            r"\bmás\s+(temprano|tarde|adelante)\b",  # "más temprano", "más tarde", "más adelante"
+            r"\bmas\s+(temprano|tarde|adelante)\b",  # same without accent
+            r"\ba\s+la\s+(mañana|manana|tarde|noche)\b",  # "a la tarde tenés?"
+            r"\btenés\s+(algo|turno)\b",          # "tenés algo el viernes?"
+            r"\bhay\s+(algo|turno)\b",            # "hay algo más temprano?"
+            r"\bpuedo\s+solo\b",                  # "puedo solo el viernes"
+            r"\bnecesito\s+que\s+sea\b",          # "necesito que sea por la tarde"
+            r"\bprefiero\s+otro\b",               # "prefiero otro horario"
+            r"\bprefiero\s+otra\b",               # "prefiero otra fecha"
+            r"\bmejor\s+otro\b",                  # "mejor otro día"
+            r"\bmejor\s+otra\b",                  # "mejor otra semana"
         ]
         combined = "|".join(patterns)
         _RESEARCH_INTENT_PATTERN = re.compile(combined, re.IGNORECASE)
 
-    text = msg.lower().strip()
+    text = msg.strip()
     return _RESEARCH_INTENT_PATTERN.search(text) is not None
 
 
@@ -1482,25 +1522,39 @@ Si el paciente pide un turno para {min_apt_date} o después, continuar normalmen
                             state_hint = (
                                 f"\n\n[STATE_HINT: El paciente ya tiene opciones de turno ofrecidas.{_slots_block}\n\n"
                                 "INSTRUCCIONES CRÍTICAS:\n"
-                                "- Si el paciente selecciona una opción, llamá confirm_slot con slot_index=N (N = número de opción).\n"
+                                "- El paciente está SELECCIONANDO uno de los turnos ofrecidos.\n"
+                                "- DEBES llamar confirm_slot con slot_index=N (N = número de opción).\n"
                                 "- 'el primero', 'el 1', 'opción 1', o el día/hora de Opción 1 → slot_index=1\n"
                                 "- 'el segundo', 'el 2', 'opción 2', o el día/hora de Opción 2 → slot_index=2\n"
-                                "- 'cualquiera' → slot_index=1 (el primero disponible)\n"
-                                "- SIEMPRE usá slot_index. NUNCA pasés texto libre en date_time cuando el paciente elige de opciones ofrecidas.\n"
+                                "- 'cualquiera' o no especifica → slot_index=1\n"
+                                "- SIEMPRE usá slot_index. NUNCA pasés texto libre en date_time.\n"
                                 "- NO llamés check_availability de nuevo.]"
                             )
                             logger.info(
                                 f"🔒 STATE_GUARD: Injecting hint for slot selection with {len(_last_offered_slots)} slots. prev_state={prev_state_str}"
                             )
                         elif _detect_research_intent(user_msg):
-                            # User wants to search again - this is OK, no hint needed
+                            # User is rejecting offered slots and asking for different date/time
+                            # This is OK — the LLM SHOULD call check_availability with the new preference
+                            state_hint = (
+                                "\n\n[STATE_HINT: El paciente ya tenía opciones de turno ofrecidas pero las RECHAZÓ.\n\n"
+                                "INSTRUCCIONES CRÍTICAS:\n"
+                                "- El paciente está pidiendo otro día, horario o fecha diferente\n"
+                                "- DEBES llamar check_availability con la nueva preferencia de fecha/horario que indica el paciente\n"
+                                "- NO ofrezcas los turnos anteriores — busca disponibilidad nueva\n"
+                                "- Si el paciente no especifica fecha exacta, usá search_mode='week' o 'open' según corresponda]"
+                            )
                             logger.info(
-                                f"🔒 STATE_GUARD: Re-search intent detected, no hint needed. prev_state={prev_state_str}"
+                                f"🔒 STATE_GUARD: Re-search intent detected, injecting rejection hint. prev_state={prev_state_str}"
                             )
                         else:
-                            # Neither selection nor research intent - log for debugging
+                            # No clear intent detected — inject a clarification hint so the LLM asks
+                            state_hint = (
+                                "\n\n[STATE_HINT: El paciente ya tiene opciones de turno ofrecidas pero no es claro si acepta o rechaza.\n"
+                                "INSTRUCCIONES: Preguntá directamente: '¿Querés alguna de estas opciones o preferís otro día/horario?']"
+                            )
                             logger.info(
-                                f"🔒 STATE_GUARD: No clear intent detected. prev_state={prev_state_str}, user_msg={user_msg[:50]}..."
+                                f"🔒 STATE_GUARD: No clear intent detected, injecting clarification hint. prev_state={prev_state_str}, user_msg={user_msg[:50]}..."
                             )
             except Exception as state_err:
                 logger.warning(f"[STATE_GUARD] Failed to get state: {state_err}")
