@@ -116,22 +116,32 @@ def _detect_selection_intent(msg: str) -> bool:
             # Time confirmation: "a las 15", "a las 10 hs", "a las 15 está bien", "las 13 me queda"
             r"\ba\s+las\s+\d{1,2}\b",
             r"\blas\s+\d{1,2}\s*(hs|horas)?\s*(est[aá]\s+bien|me\s+queda|va|dale|sí|si)\b",
-            # "está bien", "va bien", "me va" as standalone confirmations
+            # "está bien", "va bien", "me va", "me viene bien" as standalone confirmations
             r"\best[aá]\s+bien\b",
             r"\bva\s+bien\b",
             r"\bme\s+va\b",
+            r"\bme\s+viene\s+(bien|perfecto|mejor|b[aá]rbaro)\b",  # "me viene bien"
             r"\bok\b",
             r"\bbueno\b",
             r"\bdale\s+[ea]s[ea]\b",  # "dale esa", "dale ese"
-            # Numeric ordinals: "el 1", "el 1ro", "el 1°", "el 2do", "el 3er", etc.
-            r"\bel\s+[0-9]+(?:ro|do|er|°)?\b",
-            # Spanish ordinal words
-            r"\bel\s+primero\b",  # "el primero"
+            # Numeric ordinals: "el 1", "el 1ro", "la 1", "la 2", etc.
+            r"\b[el]l\s+[0-9]+(?:ro|do|er|°)?\b",  # "el 1", "el 1ro"
+            r"\bla\s+[0-9]+(?:ra|da|°)?\b",  # "la 1", "la 2", "la 1ra"
+            # "opción/opcion" + number: "opción 1", "la opción 2", "opcion 1"
+            r"\b(?:la\s+)?opci[oó]n\s+[0-9]+\b",
+            # "turno" + number: "turno 1", "el turno 2"
+            r"\b(?:el\s+)?turno\s+[0-9]+\b",
+            # Day names as selection: "el lunes", "lunes", "el miércoles", "miercoles"
+            r"\b(?:el\s+)?(lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bado|domingo)\b",
+            # Spanish ordinal words (with and without noun)
+            r"\bel\s+primer(?:o|(?=\s))\b",  # "el primero", "el primer turno"
             r"\bla\s+primera\b",  # "la primera"
-            r"\bel\s+segundo\b",  # "el segundo"
+            r"\bel\s+segund(?:o|(?=\s))\b",  # "el segundo", "el segundo turno"
             r"\bla\s+segunda\b",  # "la segunda"
-            r"\bel\s+tercero\b",  # "el tercero"
+            r"\bel\s+tercer(?:o|(?=\s))\b",  # "el tercero", "el tercer turno"
             r"\bla\s+tercera\b",  # "la tercera"
+            # Ordinal word forms: "uno", "dos", "el uno", "la dos"
+            r"\b(?:el|la)\s+(uno|dos|tres)\b",  # "el uno", "la dos"
             r"\bconfirmo\b",  # "confirmo", "confirmar"
             # "si" / "sí" as standalone affirmation (NOT as conjunction meaning "if")
             # Only match at start of short messages to avoid "si atienden" false positives
@@ -152,6 +162,8 @@ def _detect_selection_intent(msg: str) -> bool:
             r"\bel\s+m[aá]s\s+cercano\b",  # "el más cercano"
             r"\bel\s+de\s+la\s+(mañana|tarde|noche)\b",  # "el de la tarde"
             r"\bel\s+de\s+las\s+\d{1,2}\b",  # "el de las 13"
+            r"\b(?:ese|esa)\s+de\s+las\s+\d{1,2}\b",  # "ese de las 13"
+            r"\bel\s+turno\s+de\s+las\s+\d{1,2}\b",  # "el turno de las 13"
             r"\blisto\b",  # "listo"
             r"\bperfecto\b",  # "perfecto"
             r"\bconfirm[oa]\b",  # "confirmo", "confirma"
@@ -159,6 +171,8 @@ def _detect_selection_intent(msg: str) -> bool:
             r"\bvamos\s+con\s+(el|la|ese)\b",  # "vamos con el primero"
             r"\bme\s+queda\s+(bien|mejor|perfecto)\b",  # "me queda bien"
             r"\bquiero\s+el\b",  # "quiero el primero"
+            r"\bquiero\s+el\s+del\b",  # "quiero el del lunes"
+            r"\bprefiero\s+el\b",  # "prefiero el lunes" (NOT "prefiero otro" — caught by rejection)
             r"\bagend[aá](me|lo)\b",  # "agendame", "agendalo"
             r"\breserv[aá](me|lo)\b",  # "reservame", "reservalo"
         ]
