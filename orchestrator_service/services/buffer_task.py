@@ -113,8 +113,12 @@ def _detect_selection_intent(msg: str) -> bool:
         patterns = [
             # Bare number: just "1" or "2" (most common selection)
             r"^[1-9]$",
+            # Emoji numbers: 1️⃣, 2️⃣, 3️⃣ (the bot sends these, patients copy them)
+            r"[1-9]\uFE0F?\u20E3",
             # Time confirmation: "a las 15", "a las 10 hs", "a las 15 está bien", "las 13 me queda"
             r"\ba\s+las\s+\d{1,2}\b",
+            # Time in words: "a las tres", "a las dos"
+            r"\ba\s+las\s+(una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce|trece|catorce|quince|diecis[eé]is|diecisiete|dieciocho)\b",
             r"\blas\s+\d{1,2}\s*(hs|horas)?\s*(est[aá]\s+bien|me\s+queda|va|dale|sí|si)\b",
             # "está bien", "va bien", "me va", "me viene bien" as standalone confirmations
             r"\best[aá]\s+bien\b",
