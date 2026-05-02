@@ -1611,8 +1611,18 @@ async def check_availability(
     """
     try:
         tid = current_tenant_id.get()
+        _ca_phone = current_customer_phone.get()
+        # Log if check_availability is called when state suggests it shouldn't be
+        try:
+            from services.conversation_state import get_state as _ca_get_state
+            _ca_state = await _ca_get_state(tid, _ca_phone) if _ca_phone else {}
+            _ca_state_str = _ca_state.get("state", "IDLE") if isinstance(_ca_state, dict) else "IDLE"
+            if _ca_state_str in ("OFFERED_SLOTS", "SLOT_LOCKED", "BOOKED", "PAYMENT_PENDING"):
+                logger.warning(f"📊 BOOKING_FLOW | ⚠️ check_availability called in state={_ca_state_str} — possible loop! phone={_ca_phone}")
+        except Exception:
+            _ca_state_str = "?"
         logger.info(
-            f"📅 check_availability date_query={date_query!r} interpreted_date={interpreted_date!r} search_mode={search_mode!r} tenant_id={tid} treatment={treatment_name!r} prof={professional_name!r} exclude_days={exclude_days!r}"
+            f"📅 check_availability date_query={date_query!r} interpreted_date={interpreted_date!r} search_mode={search_mode!r} tenant_id={tid} state={_ca_state_str} treatment={treatment_name!r} prof={professional_name!r} exclude_days={exclude_days!r}"
         )
 
         # Parse exclude_days into a set of weekday numbers (0=Monday..6=Sunday)
@@ -2851,6 +2861,7 @@ async def book_appointment(
     if not chat_phone:
         return "❌ Error: No pude identificar tu teléfono. Reinicia la conversación."
     tenant_id = current_tenant_id.get()
+    logger.info(f"📊 BOOKING_FLOW | book_appointment ENTRY | tenant={tenant_id} phone={chat_phone} slot_index={slot_index} interpreted_date={interpreted_date!r} date_time={date_time!r} name={first_name!r} {last_name!r} dni={dni!r} treatment={treatment_reason!r}")
 
     # Safety net: if LLM passes generic "consulta"/"consulta general" but conversation
     # state has a specific treatment from check_availability, use that instead.

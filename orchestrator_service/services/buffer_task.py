@@ -1510,6 +1510,10 @@ Si el paciente pide un turno para {min_apt_date} o después, continuar normalmen
                         else "IDLE"
                     )
 
+                    logger.info(
+                        f"📊 BOOKING_FLOW | phone={phone} | state={prev_state_str} | msg={chr(10).join(messages)[:120]!r}"
+                    )
+
                     # If previous state was OFFERED_SLOTS and user is selecting a slot
                     if prev_state_str == "OFFERED_SLOTS":
                         user_msg = "\n".join(messages)
@@ -1594,6 +1598,21 @@ Si el paciente pide un turno para {min_apt_date} o después, continuar normalmen
 
         if state_hint:
             user_input += state_hint
+            logger.info(f"📊 BOOKING_FLOW | STATE_HINT injected ({len(state_hint)} chars): {state_hint[:200]!r}")
+        else:
+            # Log when NO hint was injected — helps detect missing guards
+            if get_state is not None and current_customer_phone is not None:
+                try:
+                    _dbg_phone = current_customer_phone.get()
+                    if _dbg_phone:
+                        _dbg_state = await get_state(tenant_id, _dbg_phone)
+                        _dbg_state_str = _dbg_state.get("state", "IDLE") if isinstance(_dbg_state, dict) else "IDLE"
+                        if _dbg_state_str not in ("IDLE",):
+                            logger.warning(
+                                f"📊 BOOKING_FLOW | ⚠️ NO STATE_HINT for non-IDLE state={_dbg_state_str} | phone={_dbg_phone} | msg={chr(10).join(messages)[:100]!r}"
+                            )
+                except Exception:
+                    pass
 
         # --- DETECCIÓN DE CONTEXTO ESPECIAL ---
         # Verificar si hay contexto especial (multimedia, seguimientos, etc.)
@@ -2292,8 +2311,18 @@ Si el paciente pide un turno para {min_apt_date} o después, continuar normalmen
                 intermediate_steps = response.get("intermediate_steps", [])
                 tool_was_called = len(intermediate_steps) > 0
                 cb_tokens = token_cb.total_tokens if token_cb else 0
+
+                # --- BOOKING_FLOW: Log all tools called by LLM ---
+                _tools_names = []
+                for _step in intermediate_steps:
+                    if isinstance(_step, tuple) and len(_step) > 0:
+                        _tn = _step[0].get("name", "") if hasattr(_step[0], "get") else ""
+                        if not _tn and hasattr(_step[0], "tool"):
+                            _tn = _step[0].tool
+                        if _tn:
+                            _tools_names.append(_tn)
                 logger.info(
-                    f"🤖 Agent Response: {response_text[:50]}... | cb_tokens={cb_tokens} | tools_called={tool_was_called}"
+                    f"📊 BOOKING_FLOW | LLM_RESULT | tools={_tools_names} | response={response_text[:150]!r} | tokens={cb_tokens}"
                 )
 
                 # --- Bug #4 Phase D: Output-side state guard ---
