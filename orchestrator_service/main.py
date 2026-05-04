@@ -4309,18 +4309,14 @@ async def book_appointment(
 @tool
 async def triage_urgency(symptoms: str):
     """
-    Analiza síntomas para clasificar urgencia según protocolos médicos del profesional.
+    Clasifica la urgencia de los síntomas reportados por el paciente.
 
-    CRITERIOS OBLIGATORIOS PARA EMERGENCY/HIGH (protocolo estricto):
-    1. Dolor intenso que no cede con analgésicos.
-    2. Inflamación importante en cara o cuello con dificultad para abrir la boca, hablar o tragar.
-    3. Sangrado abundante que no se controla con presión local.
-    4. Traumatismo en cara o boca (golpe, caída, accidente).
-    5. Fiebre asociada a dolor dental o inflamación.
-    6. Pérdida brusca de una prótesis fija o fractura que impida comer o hablar.
+    RETORNA: Clasificación interna con nivel de urgencia y acción recomendada.
+    IMPORTANTE: El resultado es para USO INTERNO del agente, NO para copiar al paciente.
+    El agente debe usar esta clasificación para decidir cómo actuar (F2 flow) y
+    formular su PROPIA respuesta empática al paciente.
 
-    Solo marcar como emergency o high si se cumple AL MENOS UNO de estos 6 criterios.
-    Devuelve: Nivel de urgencia (emergency, high, normal, low) + recomendación
+    Niveles: emergency (turno hoy), high (48-72h), normal (conveniencia), low (sin urgencia).
     """
     phone = current_customer_phone.get()
 
@@ -4583,30 +4579,30 @@ async def triage_urgency(symptoms: str):
             logger.error(f"Error persisting triage: {e}")
 
     responses = {
-        "emergency": "🚨 URGENCIA MEDICA DETECTADA - Protocolo de emergencia activado.\n\n"
-        "🔴 ACCIONES INMEDIATAS:\n"
-        "1. Si es fuera de horario de atención: Dirigite a la guardia odontológica más cercana\n"
-        "2. Si es en horario de atención: Vení HOY MISMO al consultorio\n"
-        "3. Si tenés dificultad para respirar o tragar: Contactá a emergencias médicas de tu zona\n\n"
-        "📞 Contacto directo: Llamá al consultorio para prioridad inmediata",
-        "high": "⚠️ URGENCIA ALTA - Requiere atención pronta\n\n"
-        "🟡 Recomendaciones:\n"
-        "1. Agendá un turno para las próximas 48-72 horas\n"
-        "2. Si empeora, contactá al consultorio para reprogramar a prioridad\n"
-        "3. Seguí las indicaciones de primeros auxilios según síntomas\n\n"
-        "📅 Acción: Buscá disponibilidad para esta semana",
-        "normal": "✅ CONSULTA PROGRAMADA\n\n"
-        "🟢 Recomendaciones:\n"
-        "1. Podés agendar en la fecha que te venga bien\n"
-        "2. Mantené buena higiene oral mientras tanto\n"
-        "3. Si aparecen síntomas de urgencia, volvé a contactarnos\n\n"
-        "📅 Acción: Buscá disponibilidad según tu conveniencia",
-        "low": "ℹ️ CONSULTA RECOMENDADA\n\n"
-        "🔵 Recomendaciones:\n"
-        "1. Lo ideal es agendar una consulta para evaluarlo\n"
-        "2. Mantené tus controles periódicos\n"
-        "3. Si la molestia persiste o aumenta, volvé a contactarnos\n\n"
-        "📅 Acción: Buscá disponibilidad para una consulta de evaluación",
+        "emergency": (
+            "[CLASIFICACIÓN INTERNA — NO MOSTRAR AL PACIENTE]\n"
+            "URGENCIA: emergency\n"
+            "ACCIÓN: Escalación inmediata. Si hay dificultad para respirar o tragar, derivar a emergencias médicas. "
+            "Si no, ofrecer turno HOY MISMO con check_availability. Aplicar contención emocional F2:M1 primero."
+        ),
+        "high": (
+            "[CLASIFICACIÓN INTERNA — NO MOSTRAR AL PACIENTE]\n"
+            "URGENCIA: high\n"
+            "ACCIÓN: Ofrecer turno dentro de 48-72h. Primero contención emocional (F2:M1), luego check_availability. "
+            "Validar la preocupación del paciente antes de buscar turno."
+        ),
+        "normal": (
+            "[CLASIFICACIÓN INTERNA — NO MOSTRAR AL PACIENTE]\n"
+            "URGENCIA: normal\n"
+            "ACCIÓN: Agendar según conveniencia del paciente. Sin lenguaje de urgencia. "
+            "El profesional evaluará en consultorio."
+        ),
+        "low": (
+            "[CLASIFICACIÓN INTERNA — NO MOSTRAR AL PACIENTE]\n"
+            "URGENCIA: low\n"
+            "ACCIÓN: Sugerir evaluación en consulta sin urgencia. No presionar. "
+            "Si el paciente quiere agendar, proceder normalmente."
+        ),
     }
 
     return responses.get(urgency_level, responses["normal"])
@@ -7477,16 +7473,10 @@ async def check_insurance_coverage(insurance_provider: str) -> str:
             if len(rows) == 1:
                 row = rows[0]
             elif len(rows) > 1:
-                names = ", ".join(r["provider_name"] for r in rows)
-                return f"Encontré varias obras sociales similares: {names}. ¿Cuál es la tuya?"
+                return json.dumps({"status": "multiple_matches", "matches": [r["provider_name"] for r in rows], "next_action": "ask_which_one"}, ensure_ascii=False)
         # 3. No match at all → convert to particular + reintegro
         if not row:
-            return (
-                f"Actualmente no trabajamos de forma directa con {insurance_provider}. "
-                "Pero si querés, podés realizarte el tratamiento de forma particular. "
-                "Nosotros te entregamos la documentación necesaria para que gestiones "
-                "un reintegro con tu obra social, si querés 😊 ¿Te paso turnos disponibles?"
-            )
+            return json.dumps({"status": "not_found", "provider_name": insurance_provider.strip(), "alternative": "particular_con_reintegro", "next_action": "offer_particular"}, ensure_ascii=False)
         # 4. Format response based on status
         status = row["status"]
         name = row["provider_name"]
@@ -7494,8 +7484,7 @@ async def check_insurance_coverage(insurance_provider: str) -> str:
             return row["ai_response_template"]
         prepaid_note = " (prepaga)" if row.get("is_prepaid") else ""
         if status == "accepted":
-            copay = " Según el plan puede haber un coseguro que se abona el día de la consulta." if row.get("requires_copay") else ""
-            return f"Sí, trabajamos con {name}{prepaid_note}.{copay} ¿Querés que te pase turnos disponibles?"
+            return json.dumps({"status": "accepted", "provider_name": name, "is_prepaid": bool(row.get("is_prepaid")), "has_copay": bool(row.get("requires_copay")), "copay_note": "según el plan puede haber un coseguro que se abona el día de la consulta" if row.get("requires_copay") else None, "next_action": "offer_slots"}, ensure_ascii=False)
         elif status == "restricted":
             # Migration 034: read coverage_by_treatment JSONB instead of the
             # old free-text restrictions field.
@@ -7515,37 +7504,17 @@ async def check_insurance_coverage(insurance_provider: str) -> str:
                 else []
             )
             if covered_codes:
-                summary = ", ".join(covered_codes[:5])
-                suffix = " y otros" if len(covered_codes) > 5 else ""
-                return (
-                    f"Trabajamos con {name}{prepaid_note} con cobertura limitada: "
-                    f"{summary}{suffix}. ¿Querés que te pase el detalle de coseguro y carencia de algún tratamiento?"
-                )
-            return (
-                f"Trabajamos con {name}{prepaid_note}, pero con restricciones. "
-                "¿Querés que consulte qué tratamientos están cubiertos para vos?"
-            )
+                return json.dumps({"status": "restricted", "provider_name": name, "is_prepaid": bool(row.get("is_prepaid")), "covered_treatments": covered_codes[:5], "has_more": len(covered_codes) > 5, "next_action": "clarify_coverage"}, ensure_ascii=False)
+            return json.dumps({"status": "restricted", "provider_name": name, "is_prepaid": bool(row.get("is_prepaid")), "covered_treatments": [], "next_action": "ask_clinic"}, ensure_ascii=False)
         elif status == "external_derivation":
-            target = row.get("external_target", "")
-            return (
-                f"Para {name}, trabajamos a través de {target}. "
-                "Te paso el contacto para que coordines directamente."
-            )
+            return json.dumps({"status": "external_derivation", "provider_name": name, "external_target": row.get("external_target", ""), "next_action": "provide_contact"}, ensure_ascii=False)
         else:  # rejected → particular + reintegro
-            return (
-                f"Actualmente no trabajamos de forma directa con {name}. "
-                "Pero no te preocupes, podés realizarte el tratamiento de forma particular. "
-                "Nosotros te entregamos toda la documentación necesaria para que gestiones "
-                "un reintegro con tu obra social, si querés 😊 ¿Te paso turnos disponibles?"
-            )
+            return json.dumps({"status": "rejected", "provider_name": name, "alternative": "particular_con_reintegro", "next_action": "offer_particular"}, ensure_ascii=False)
     except Exception as e:
         logger.warning(
             f"check_insurance_coverage error (tabla puede no existir aún): {e}"
         )
-        return (
-            f"No pude verificar la cobertura de '{insurance_provider}' en este momento. "
-            "Te recomiendo consultar directamente con la clínica."
-        )
+        return json.dumps({"status": "error", "provider_name": insurance_provider.strip(), "next_action": "suggest_contact_clinic"}, ensure_ascii=False)
 
 
 def _format_pre_instructions_dict(pre: dict, treatment_name: str) -> str:
@@ -7685,6 +7654,35 @@ async def get_treatment_instructions(treatment_code: str, timing: str = "all") -
         timing: 'pre', 'post', 'all', o timing específico como '24h', '72h'
     """
     tenant_id = current_tenant_id.get()
+    phone = current_customer_phone.get()
+
+    # Check if we already sent instructions for this treatment in this conversation
+    try:
+        _already_sent = await db.pool.fetchval(
+            """
+            SELECT 1 FROM chat_messages cm
+            JOIN chat_conversations cc ON cm.conversation_id = cc.id
+            WHERE cc.tenant_id = $1
+              AND cc.external_user_id = $2
+              AND cm.role = 'assistant'
+              AND cm.content LIKE $3
+              AND cm.created_at > NOW() - INTERVAL '24 hours'
+            LIMIT 1
+            """,
+            tenant_id,
+            phone,
+            f"%PRE-TRATAMIENTO%{treatment_code}%" if timing in ("pre", "all") else f"%POST-TRATAMIENTO%{treatment_code}%",
+        )
+        if _already_sent:
+            return (
+                f"[YA ENVIADO] Ya le enviaste las instrucciones de {treatment_code} al paciente en esta conversación. "
+                "NO las repitas. Si pregunta de nuevo, decile: "
+                "'Te las pasé más arriba en el chat. ¿Hay algo puntual que no te haya quedado claro?'"
+            )
+    except Exception as _e:
+        # Non-critical — if check fails, proceed normally
+        pass
+
     try:
         row = await db.pool.fetchrow(
             "SELECT name, patient_display_name, pre_instructions, post_instructions FROM treatment_types WHERE tenant_id = $1 AND code = $2",
@@ -9469,7 +9467,7 @@ PRIORIDAD: F2 SIEMPRE tiene prioridad sobre Regla Cero y Proactividad. Si hay do
 PROTOCOLO:
   M1 — Contener (GENUINO, no de trámite): "Entiendo, si estás con dolor lo ideal es verte cuanto antes." Variantes: "Uy, entiendo. Si estás con molestia lo mejor es revisarlo pronto." SIN precio, SIN dirección, SIN turnos. Este mensaje debe sentirse HUMANO, no como paso obligatorio.
   M2 — Orientar: UNA sola pregunta: "Hace cuánto tiempo estás con dolor y si notás inflamación?"
-  M3 — Resolver: Llamar triage_urgency + check_availability. Mostrar 2 opciones de turno.
+  M3 — Resolver: Llamar triage_urgency (devuelve clasificación interna, NO texto para el paciente). Usá el nivel de urgencia para decidir: emergency→turno hoy, high→48-72h, normal/low→conveniencia. Luego llamá check_availability y mostrá 2 opciones.
 PROHIBIDO: emojis de calendario en M1, precio antes de M3, dirección antes de confirmar turno, frases del tipo "X turnos disponibles" o contar slots, saltar M1 por apuro.
 Máximo 2 mensajes antes de ofrecer turno (M1 + M2, luego M3 con turnos).
 
@@ -9885,6 +9883,11 @@ INSTRUCCIONES DE TRATAMIENTO (POST-AGENDAMIENTO):
 • Si la respuesta de get_treatment_instructions contiene [ALARM_ESCALATION:...] Y el paciente describió alguno de los síntomas de alarma listados → llamá derivhumano(urgency='alta') ANTES de responder. Usá el escalation_message del protocolo si está disponible. NUNCA descartes un síntoma de alarma como "es normal".
 • Si get_treatment_instructions devuelve EXACTAMENTE "Este tratamiento no tiene cuidados configurados. Te recomiendo contactar directamente a la clínica para más indicaciones." → repetí esa frase TAL CUAL al paciente y ofrecé derivar a la clínica. PROHIBIDO improvisar consejos médicos cuando no hay protocolo configurado.
 
+REGLA ANTI-REPETICIÓN DE INSTRUCCIONES MÉDICAS:
+• Las instrucciones de tratamiento (pre/post) se envían UNA SOLA VEZ por conversación. Son contenido médico exacto, NO se reformulan.
+• Si la tool devuelve "[YA ENVIADO]", NO llames la tool de nuevo. Respondé: "Te las pasé más arriba en el chat. ¿Hay algo puntual que no te haya quedado claro?"
+• Si el paciente pregunta sobre instrucciones de un DIFERENTE tratamiento, ahí sí llamá la tool.
+
 INTELIGENCIA DE PRECIOS Y PAGOS:
 • PROHIBIDO mostrar precios de tratamientos al paciente. El base_price es un dato INTERNO de gestión para dashboards. El precio final se define en la consulta de evaluación y se carga en el presupuesto.
 • Si el paciente pregunta "cuánto sale" un tratamiento → "El valor exacto se define en la consulta de evaluación, donde se arma un plan personalizado según tu caso." NUNCA des un número de tratamiento.
@@ -9900,6 +9903,19 @@ Cuando se habla de atención, turnos, o el paciente responde a "¿particular o c
   CAMINO 2 — TIENE OS NO ACEPTADA: Si check_insurance_coverage no la encuentra → ofrecer particular + documentación para reintegro: "Podemos atenderte de forma particular y te damos la documentación para que gestiones reintegro con tu obra social."
   CAMINO 3 — SIN OS / PARTICULAR: Informar valor particular directo: "La consulta tiene un valor de {price_text}." + continuar con agendamiento.
 Este flujo aplica SIEMPRE que se hable de atención, no solo en ATM o un tratamiento específico.
+
+RESPUESTAS DE check_insurance_coverage (FORMATO JSON):
+La tool check_insurance_coverage devuelve datos en formato JSON, NO texto para copiar. Cuando la llames:
+• Leé los campos del JSON (status, provider_name, has_copay, etc.)
+• Formulá tu propia respuesta NATURAL basada en los datos
+• NUNCA copies el JSON al paciente
+• Si status="accepted": "Sí, trabajamos con [provider_name] 😊" + si has_copay: "Según tu plan puede haber coseguro, se abona el día de la consulta."
+• Si status="not_found" o "rejected": "No trabajamos directamente con [provider_name], pero podemos atenderte de forma particular y te damos documentación para reintegro."
+• Si status="restricted": "Trabajamos con [provider_name] con cobertura para algunos tratamientos."
+• Si status="multiple_matches": "Encontré varias opciones parecidas: [matches]. ¿Cuál es la tuya?"
+• Si status="external_derivation": "Para [provider_name] trabajamos a través de [external_target]."
+• Si status="error": "No pude verificar tu cobertura en este momento, te recomiendo consultarlo en la clínica."
+• REGLA ANTI-REPETICIÓN: Si ya informaste sobre esta OS en la conversación, NO vuelvas a llamar check_insurance_coverage. Respondé DIRECTAMENTE reformulando brevemente.
 
 OBRAS SOCIALES, COSEGURO Y COBERTURA — REGLAS BLOQUEANTES:
 • PROHIBIDO informar montos específicos de coseguro. Solo decir que la consulta puede tener coseguro según cobertura.
