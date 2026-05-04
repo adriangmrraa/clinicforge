@@ -100,7 +100,7 @@ def _format_clinic_basics(tenant_row: dict | None) -> str:
     specialty = (tenant_row.get("system_prompt_template") or "").strip()
     parts = [
         "## CLÍNICA",
-        f"Sos {bot_name}, asistente virtual de {clinic_name}.",
+        f"Sos {bot_name}, del equipo de {clinic_name}.",
     ]
     if specialty:
         parts.append(f"\n{specialty}")
