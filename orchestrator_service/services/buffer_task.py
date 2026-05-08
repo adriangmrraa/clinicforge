@@ -2617,8 +2617,20 @@ Si el paciente pide un turno para {min_apt_date} o después, continuar normalmen
         # Strip bracket tags like [CONSULTA_PREVIA_REQUISITOS:...], [INTERNAL_*:...], [BOOK_HINT:...], etc.
         response_text = _re_safety.sub(r"\[(?:CONSULTA_PREVIA_REQUISITOS|INTERNAL_\w+|BOOK_HINT)[:\s][^\]]*\]", "", response_text).strip()
 
+    # --- SUPPRESS ERROR FALLBACK: don't send internal error messages to patients ---
+    _ERROR_FALLBACKS = (
+        "Disculpas, estoy experimentando intermitencias",
+    )
+    if response_text and any(response_text.startswith(fb) for fb in _ERROR_FALLBACKS):
+        logger.warning(f"🔇 Suppressing error fallback message (not sending to patient): {response_text[:80]}")
+        response_text = ""
+
     # --- SEND RESPONSE ---
     from response_sender import ResponseSender
+
+    if not response_text and not media_urls:
+        logger.info(f"🔇 No response to send (empty text, no media) — skipping send for {external_user_id}")
+        return
 
     if provider == "chatwoot":
         account_id = row.get("external_account_id")
