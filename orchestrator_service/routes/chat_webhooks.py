@@ -23,6 +23,7 @@ router = APIRouter()
 
 @limiter.limit("20/minute")
 @router.post("/admin/chatwoot/webhook")
+@limiter.limit("50/minute")
 async def receive_chatwoot_webhook(
     request: Request,
     background_tasks: BackgroundTasks,
@@ -73,6 +74,7 @@ async def receive_chatwoot_webhook(
 
 
 @router.post("/admin/ycloud/webhook")
+@limiter.limit("100/minute")
 async def receive_ycloud_webhook(
     request: Request,
     background_tasks: BackgroundTasks,
@@ -103,7 +105,9 @@ async def receive_ycloud_webhook(
     event_type = payload.get("event_type") or payload.get("type", "")
     if event_type in ("whatsapp.message.echo", "whatsapp.smb.message.echoes"):
         from datetime import datetime, timezone, timedelta
-        user_phone = payload.get("from_number") or payload.get("to")
+        # YCloud echo payload: whatsappMessage.from = clínica, whatsappMessage.to = paciente
+        wamsg = payload.get("whatsappMessage") or {}
+        user_phone = wamsg.get("to") or payload.get("from_number") or payload.get("to")
         if user_phone:
             pool = get_pool()
             override_until = datetime.now(timezone.utc) + timedelta(hours=24)
@@ -117,17 +121,33 @@ async def receive_ycloud_webhook(
                 override_until, tenant_id, user_phone,
             )
             # Persist the echo as an assistant message in chat_messages for UI visibility
-            text = payload.get("text") or ""
+            text_obj = wamsg.get("text") or {}
+            text = text_obj.get("body") if isinstance(text_obj, dict) else str(text_obj) if text_obj else ""
+            if not text:
+                text = payload.get("text") or ""
             if text:
                 conv_row = await pool.fetchrow(
                     "SELECT id FROM chat_conversations WHERE tenant_id = $1 AND external_user_id = $2 ORDER BY updated_at DESC LIMIT 1",
                     tenant_id, user_phone,
                 )
                 if conv_row:
+                    clinic_phone = wamsg.get("from") or ""
                     await pool.execute(
                         "INSERT INTO chat_messages (tenant_id, conversation_id, role, content, from_number, platform_metadata) VALUES ($1, $2, 'assistant', $3, $4, '{\"source\": \"whatsapp_business_app\"}'::jsonb)",
-                        tenant_id, conv_row["id"], text, user_phone,
+                        tenant_id, conv_row["id"], text, clinic_phone,
                     )
+                    # Emit Socket.IO event so the UI shows the message in real-time
+                    try:
+                        from main import sio
+                        await sio.emit("NEW_MESSAGE", {
+                            "conversation_id": conv_row["id"],
+                            "tenant_id": tenant_id,
+                            "role": "assistant",
+                            "content": text,
+                            "source": "whatsapp_business_app",
+                        }, room=f"tenant:{tenant_id}")
+                    except Exception:
+                        pass
             logger.info(f"👤 WhatsApp Business echo → manual mode activated for {user_phone} (tenant={tenant_id})")
             try:
                 from main import sio
