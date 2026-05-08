@@ -22,15 +22,15 @@
   th {
     background: #444;
     color: white;
-    padding: 8px 10px;
+    padding: 5px 8px;
     text-align: left;
-    font-size: 8.5pt;
+    font-size: 8pt;
   }
   td {
     border: 1px solid #ddd;
-    padding: 6px 10px;
+    padding: 4px 8px;
     vertical-align: top;
-    font-size: 8.5pt;
+    font-size: 8pt;
   }
   tr:nth-child(even) td { background: #f8f8f8; }
   .time-slot {
@@ -40,15 +40,16 @@
     color: #555;
     background: #f0f0f0;
   }
-  .section-break { page-break-before: always; }
+  .section-break { margin-top: 16px; }
   .day-header {
-    padding: 10px 14px;
+    padding: 8px 12px;
     color: white;
     font-weight: bold;
-    font-size: 12pt;
+    font-size: 11pt;
     border-radius: 4px;
-    margin: 20px 0 10px 0;
+    margin: 12px 0 6px 0;
   }
+  .professional-block { page-break-inside: avoid; }
   .day-color-0 { background: #5b4a9e; }
   .day-color-1 { background: #2e6ca4; }
   .day-color-2 { background: #1a6b5a; }
@@ -140,6 +141,7 @@
     </div>
 
     {% for prof in day_data.professionals %}
+    <div class="professional-block">
     <div class="prof-header">
       {{ prof.professional_name if prof.professional_name else 'Sin profesional asignado' }}
       <span class="prof-initials">{{ prof.initials }}</span>
@@ -162,6 +164,7 @@
         {% endfor %}
       </tbody>
     </table>
+    </div>
     {% endfor %}
 
     {% endfor %}
@@ -170,44 +173,7 @@
   {% endif %}
 </div>
 
-<!-- =========================================================== -->
-<!-- SECCIÓN 3: Listado completo (orden alfabético)              -->
-<!-- =========================================================== -->
-<div class="section-break">
-  <h1>Listado completo (orden alfabético)</h1>
-  <p class="subtitle">{{ total_turnos }} turno{% if total_turnos != 1 %}s{% endif %} totales</p>
-
-  {% if alphabetical %}
-  <table>
-    <thead>
-      <tr>
-        <th style="background:#444; width:4%;">#</th>
-        <th style="background:#444; width:25%;">Paciente</th>
-        <th style="background:#444; width:15%;">DNI</th>
-        <th style="background:#444; width:15%;">Día</th>
-        <th style="background:#444; width:10%;">Horario</th>
-        <th style="background:#444; width:20%;">Profesional</th>
-        <th style="background:#444; width:6%;">Inic.</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for row in alphabetical %}
-      <tr>
-        <td style="text-align:center;">{{ row.number }}</td>
-        <td>{{ row.patient_name }}</td>
-        <td class="dni">{{ row.patient_dni if row.patient_dni else '—' }}</td>
-        <td class="alpha-day" style="color:{{ row.day_color }};">{{ row.day_name }}</td>
-        <td style="text-align:center;">{{ row.time_slot }}</td>
-        <td>{{ row.professional_name if row.professional_name else '—' }}</td>
-        <td style="text-align:center; font-weight:bold;">{{ row.initials }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  {% else %}
-  <p class="empty-state">No hay turnos registrados para este período.</p>
-  {% endif %}
-</div>
+<!-- Sección alfabética removida (DLD-71: compactar a ≤3 páginas) -->
 
 </body>
 </html>

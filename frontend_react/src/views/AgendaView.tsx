@@ -668,10 +668,18 @@ export default function AgendaView() {
   const getExportParams = () => {
     const calApi = calendarRef.current?.getApi();
     const view = calApi?.view;
-    const start = view?.activeStart?.toISOString()?.split('T')[0];
+    // DLD-71: usar fecha local sin conversión a UTC para evitar desfasaje de día
+    const formatLocalDate = (d: Date) => {
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    };
+    const start = view?.activeStart ? formatLocalDate(view.activeStart) : undefined;
     const rawEnd = view?.activeEnd;
-    const adjustedEnd = rawEnd ? new Date(rawEnd.getTime() - 86400000) : undefined;
-    const end = adjustedEnd?.toISOString()?.split('T')[0];
+    // activeEnd es exclusivo (día siguiente al último visible) — restar 1 día en tiempo local
+    const adjustedEnd = rawEnd ? new Date(rawEnd.getFullYear(), rawEnd.getMonth(), rawEnd.getDate() - 1) : undefined;
+    const end = adjustedEnd ? formatLocalDate(adjustedEnd) : undefined;
     if (!start || !end) return null;
     const params = new URLSearchParams({ start_date: start, end_date: end });
     params.set('include_cancelled', 'true');

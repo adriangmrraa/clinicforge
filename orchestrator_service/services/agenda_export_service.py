@@ -19,8 +19,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-import pytz
-
 from jinja2 import Environment, FileSystemLoader
 
 logger = logging.getLogger(__name__)
@@ -93,13 +91,15 @@ async def gather_agenda_data(
     Returns a dict with keys: grid, daily_lists, alphabetical, time_slots,
     days, total_turnos, total_personas, date_display.
     """
-    # Convert date strings to timezone-aware datetimes for asyncpg
+    # DLD-71: usar timezone del tenant (no hardcoded Buenos Aires)
+    from services.tz_resolver import get_tenant_tz
+    _tz = await get_tenant_tz(tenant_id)
+
     try:
-        _tz = pytz.timezone('America/Argentina/Buenos_Aires')
         y1, m1, d1 = map(int, start_date.split('-'))
         y2, m2, d2 = map(int, end_date.split('-'))
-        start_dt = _tz.localize(datetime(y1, m1, d1, 0, 0, 0))
-        end_dt = _tz.localize(datetime(y2, m2, d2, 23, 59, 59))
+        start_dt = datetime(y1, m1, d1, 0, 0, 0, tzinfo=_tz)
+        end_dt = datetime(y2, m2, d2, 23, 59, 59, tzinfo=_tz)
     except ValueError as exc:
         logger.error("gather_agenda_data: invalid date range %s – %s: %s", start_date, end_date, exc)
         raise
@@ -151,6 +151,9 @@ async def gather_agenda_data(
 
     for row in rows:
         dt: datetime = row["appointment_datetime"]
+        # DLD-71: asyncpg devuelve UTC — convertir a timezone del tenant antes de formatear
+        if dt.tzinfo is not None:
+            dt = dt.astimezone(_tz)
         day_idx: int = dt.weekday()  # 0=Monday … 6=Sunday
         hour: int = dt.hour
         slot_label: str = f"{hour:02d}:00-{hour + 1:02d}:00"
@@ -229,9 +232,12 @@ async def gather_agenda_data(
     else:
         time_slots = []
 
-    # ── Days present in the data (for grid header) ────────────────────────────
-    days_seen = sorted({row["appointment_datetime"].weekday() for row in rows})
-    days = [{"name": DAY_NAMES[d], "index": d} for d in days_seen]
+    # ── Days for grid header — always Mon-Sat, Sunday only if has appointments ─
+    days_with_data = {row["appointment_datetime"].astimezone(_tz).weekday() for row in rows} if rows else set()
+    all_days = list(range(6))  # Mon(0)-Sat(5) always shown
+    if 6 in days_with_data:
+        all_days.append(6)  # Sunday only if appointments exist
+    days = [{"name": DAY_NAMES[d], "index": d} for d in all_days]
 
     # ── Date display ─────────────────────────────────────────────────────────
     try:
