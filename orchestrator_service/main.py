@@ -2006,6 +2006,13 @@ async def check_availability(
             )
             target_date = today_date
 
+        # DLD-67: no agendar para el mismo día — mínimo 1 día de margen operativo
+        if target_date == today_date:
+            logger.info(
+                f"📅 check_availability: date {target_date} is today — advancing to tomorrow (1-day lead time, DLD-67)"
+            )
+            target_date += timedelta(days=1)
+
         # 0. B) Auto-avanzar si el día está cerrado (clínica o profesional)
         # En vez de retornar error, buscamos el próximo día válido automáticamente.
         days_en = [
