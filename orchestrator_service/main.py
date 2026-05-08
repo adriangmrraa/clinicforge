@@ -3608,6 +3608,33 @@ async def book_appointment(
             logger.info(
                 f"📅 BOOK CONFLICT CHECK: prof={cand['first_name']} (id={cand['id']}) conflict={conflict} at {apt_datetime.strftime('%H:%M')}-{end_apt.strftime('%H:%M')}"
             )
+            # DLD-74: chequear soft-lock en Redis antes de aceptar el candidato
+            if not conflict:
+                try:
+                    from services.relay import get_redis as _get_redis_lock
+                    _r_lock = _get_redis_lock()
+                    if _r_lock:
+                        _date_str = apt_datetime.strftime("%Y-%m-%d")
+                        _time_str = apt_datetime.strftime("%H:%M")
+                        # Chequear lock específico del profesional
+                        _lock_key = f"slot_lock:{tenant_id}:{cand['id']}:{_date_str}:{_time_str}"
+                        _lock_owner = await _r_lock.get(_lock_key)
+                        if _lock_owner:
+                            _holder = _lock_owner.decode() if isinstance(_lock_owner, bytes) else str(_lock_owner)
+                            if _holder != chat_phone:
+                                logger.info(f"📅 BOOK SOFTLOCK: prof {cand['id']} locked by {_holder}, skipping")
+                                conflict = True
+                        # Chequear lock genérico (prof_id=0)
+                        if not conflict:
+                            _generic_key = f"slot_lock:{tenant_id}:0:{_date_str}:{_time_str}"
+                            _generic_owner = await _r_lock.get(_generic_key)
+                            if _generic_owner:
+                                _g_holder = _generic_owner.decode() if isinstance(_generic_owner, bytes) else str(_generic_owner)
+                                if _g_holder != chat_phone:
+                                    logger.info(f"📅 BOOK SOFTLOCK: generic lock by {_g_holder}, skipping prof {cand['id']}")
+                                    conflict = True
+                except Exception as _e_lock:
+                    logger.warning(f"book_appointment: soft-lock check failed (non-fatal): {_e_lock}")
             if not conflict:
                 target_prof = cand
                 logger.info(
