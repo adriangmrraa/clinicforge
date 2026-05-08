@@ -7151,6 +7151,11 @@ async def check_collisions(
         target_datetime = datetime.fromisoformat(datetime_str)
     except (ValueError, TypeError):
         raise HTTPException(status_code=400, detail="Formato de fecha inválido. Usá ISO 8601: YYYY-MM-DDTHH:MM")
+    # DLD-72: localizar datetime naive a timezone del tenant para evitar desfasaje
+    if target_datetime.tzinfo is None:
+        from services.tz_resolver import get_tenant_tz
+        _tz = await get_tenant_tz(tenant_id)
+        target_datetime = target_datetime.replace(tzinfo=_tz)
     target_end = target_datetime + timedelta(minutes=duration_minutes)
 
     exclude_uuid = None
@@ -7210,6 +7215,12 @@ async def create_appointment_manual(
 ):
     """Agendar turno manualmente. Aislado por tenant_id (Regla de Oro)."""
     try:
+        # DLD-72: localizar datetime naive a timezone del tenant
+        if apt.appointment_datetime and apt.appointment_datetime.tzinfo is None:
+            from services.tz_resolver import get_tenant_tz
+            _tz = await get_tenant_tz(tenant_id)
+            apt.appointment_datetime = apt.appointment_datetime.replace(tzinfo=_tz)
+
         if apt.check_collisions:
             collision_response = await check_collisions(
                 apt.professional_id,
@@ -7653,6 +7664,12 @@ async def update_appointment(
 ):
     """Actualizar datos de un turno (fecha, profesional, tipo, notas)."""
     try:
+        # DLD-72: localizar datetime naive a timezone del tenant
+        if apt.appointment_datetime and apt.appointment_datetime.tzinfo is None:
+            from services.tz_resolver import get_tenant_tz
+            _tz = await get_tenant_tz(tenant_id)
+            apt.appointment_datetime = apt.appointment_datetime.replace(tzinfo=_tz)
+
         # Parse UUID safely (matches GET single-appointment pattern)
         try:
             apt_uuid = uuid.UUID(id)
