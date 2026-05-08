@@ -6,6 +6,7 @@ import type { Socket } from 'socket.io-client';
 import api from '../api/axios';
 import { ToothSVG, type SurfaceName } from './odontogram/ToothSVG';
 import { SurfacePath } from './odontogram/SurfacePath';
+import { getPathForSurface, shouldSwapMesialDistal } from './odontogram/utils';
 import { OdontogramLegend } from './odontogram/OdontogramLegend';
 import { OdontogramTabs, type DentitionType } from './odontogram/OdontogramTabs';
 import SymbolSelectorModal from './odontogram/SymbolSelectorModal';
@@ -316,7 +317,7 @@ export default function Odontogram({ patientId, recordId, initialData, onSave, r
             <div className="shrink-0">
               <svg viewBox="0 0 120 120" className="w-[88px] h-[88px] sm:w-28 sm:h-28">
                 {SURFACE_KEYS.map(sk => (
-                  <SurfacePath key={sk} pathD={ZOOM_PATHS[sk]} surfaceName={sk}
+                  <SurfacePath key={sk} pathD={getPathForSurface(selectedTooth!, sk, ZOOM_PATHS)} surfaceName={sk}
                     state={selectedToothData.surfaces[sk]} isSelected={false}
                     onClick={() => handleSurfaceSelect(sk)} />
                 ))}
@@ -326,12 +327,12 @@ export default function Odontogram({ patientId, recordId, initialData, onSave, r
                 <line x1="22" y1="98" x2="45" y2="75" stroke="#06060e" strokeWidth="2.5" opacity="0.9" />
                 <circle cx="60" cy="60" r="21" fill="none" stroke="#06060e" strokeWidth="2" opacity="0.85" />
                 <circle cx="60" cy="60" r="54" fill="none" stroke="rgba(255,255,255,0.10)" strokeWidth="1" />
-                {/* Surface labels on the zoomed tooth */}
+                {/* Surface labels on the zoomed tooth — DLD-73: swap M/D for Q1/Q4 */}
                 <text x="60" y="63" textAnchor="middle" className="fill-white/15 text-[7px] font-bold select-none pointer-events-none">O</text>
                 <text x="60" y="18" textAnchor="middle" className="fill-white/12 text-[6px] select-none pointer-events-none">V</text>
                 <text x="60" y="108" textAnchor="middle" className="fill-white/12 text-[6px] select-none pointer-events-none">L</text>
-                <text x="12" y="63" textAnchor="middle" className="fill-white/12 text-[6px] select-none pointer-events-none">M</text>
-                <text x="108" y="63" textAnchor="middle" className="fill-white/12 text-[6px] select-none pointer-events-none">D</text>
+                <text x="12" y="63" textAnchor="middle" className="fill-white/12 text-[6px] select-none pointer-events-none">{shouldSwapMesialDistal(selectedTooth!) ? 'D' : 'M'}</text>
+                <text x="108" y="63" textAnchor="middle" className="fill-white/12 text-[6px] select-none pointer-events-none">{shouldSwapMesialDistal(selectedTooth!) ? 'M' : 'D'}</text>
               </svg>
             </div>
 

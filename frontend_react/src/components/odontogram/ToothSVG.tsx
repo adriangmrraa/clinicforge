@@ -1,6 +1,7 @@
 import React from 'react';
 import { SurfacePath } from './SurfacePath';
 import { STATE_FILLS } from '../../constants/odontogramStates';
+import { getPathForSurface } from './utils';
 
 export type SurfaceName = 'occlusal' | 'vestibular' | 'lingual' | 'mesial' | 'distal';
 
@@ -81,7 +82,7 @@ export function ToothSVG({
       {SURFACES.map(surface => (
         <SurfacePath
           key={surface}
-          pathD={SURFACE_PATHS[surface]}
+          pathD={getPathForSurface(toothId, surface, SURFACE_PATHS)}
           surfaceName={surface}
           state={getSurfaceState(surface)}
           isSelected={selectedSurface === surface}

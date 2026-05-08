@@ -33,6 +33,20 @@ SURFACE_PATHS = {
 
 SURFACE_KEYS = ["occlusal", "vestibular", "lingual", "mesial", "distal"]
 
+
+def _get_surface_path(tooth_id: int, surface_name: str) -> str:
+    """DLD-73: Return the correct SVG path, swapping mesial/distal for Q1/Q4.
+
+    Mesial always points toward the midline. The base paths have mesial=LEFT.
+    For Q1 (11-18) and Q4 (41-48), the midline is to the RIGHT, so we swap.
+    """
+    quadrant = tooth_id // 10
+    # Q1/Q4 = permanent right side, Q5/Q8 = deciduous right side (same anatomy)
+    if quadrant in (1, 4, 5, 8) and surface_name in ("mesial", "distal"):
+        swapped = "distal" if surface_name == "mesial" else "mesial"
+        return SURFACE_PATHS[swapped]
+    return SURFACE_PATHS[surface_name]
+
 # ---------------------------------------------------------------------------
 # Print colors — high contrast for white background (42 states)
 # Falls back to healthy for unknown states.
@@ -175,7 +189,7 @@ def _render_tooth_group(tooth_id: int, tooth_data: dict, tx: float, ty: float,
         sf = _fills(s_state)
         opacity = "0.35" if is_absent else "0.9"
         parts.append(
-            f'  <path d="{SURFACE_PATHS[sk]}" fill="{sf["fill"]}" stroke="{sf["stroke"]}" '
+            f'  <path d="{_get_surface_path(tooth_id, sk)}" fill="{sf["fill"]}" stroke="{sf["stroke"]}" '
             f'stroke-width="1" opacity="{opacity}"/>'
         )
 

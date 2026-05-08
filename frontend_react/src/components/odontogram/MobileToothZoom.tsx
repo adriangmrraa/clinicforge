@@ -3,6 +3,7 @@ import { useTranslation } from '../../context/LanguageContext';
 import { SurfacePath } from './SurfacePath';
 import { type SurfaceName } from './ToothSVG';
 import { STATE_FILLS } from '../../constants/odontogramStates';
+import { getPathForSurface } from './utils';
 
 /**
  * 3x scale of SURFACE_PATHS (120x120 viewBox, center 60,60)
@@ -96,7 +97,7 @@ export function MobileToothZoom({
         {SURFACES.map(surface => (
           <SurfacePath
             key={surface}
-            pathD={ZOOM_SURFACE_PATHS[surface]}
+            pathD={getPathForSurface(toothId, surface, ZOOM_SURFACE_PATHS)}
             surfaceName={surface}
             state={getSurfaceState(surface)}
             isSelected={selectedSurface === surface}
