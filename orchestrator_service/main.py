@@ -3044,7 +3044,8 @@ async def book_appointment(
             try:
                 from services.conversation_state import get_state
 
-                _conv_state = await get_state(tenant_id, phone)
+                # DLD-74: usar chat_phone — el estado de conversación está indexado por el interlocutor original
+                _conv_state = await get_state(tenant_id, chat_phone)
                 _offered = _conv_state.get("last_offered_slots", [])
                 if _offered and date_time:
                     _dt_lower = date_time.lower().strip()
