@@ -3789,9 +3789,10 @@ async def book_appointment(
                     _lk = f"slot_lock:{tenant_id}:{_check_pid}:{_date_str}:{_time_str}"
                     _lock_holder = await _r_check.get(_lk)
                     if _lock_holder:
-                        _holder_str = str(_lock_holder)
-                        if _holder_str != phone:
-                            logger.warning("Soft-lock conflict: slot reserved by %s, requester %s", _holder_str, phone)
+                        _holder_str = _lock_holder.decode() if isinstance(_lock_holder, bytes) else str(_lock_holder)
+                        # DLD-74: usar chat_phone (no phone) — phone se muta para menores/ART
+                        if _holder_str != chat_phone:
+                            logger.warning("Soft-lock conflict: slot reserved by %s, requester %s", _holder_str, chat_phone)
                             return "❌ Ese turno acaba de ser reservado por otro paciente. Volvamos a buscar disponibilidad."
                         else:
                             _patient_lock_key = _lk
