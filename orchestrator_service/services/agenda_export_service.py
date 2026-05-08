@@ -75,6 +75,7 @@ async def gather_agenda_data(
     end_date: str,
     professional_id: Optional[int] = None,
     include_cancelled: bool = False,
+    view_type: str = "week",
 ) -> dict:
     """
     Gather appointments for the date range and build 3 display structures.
@@ -257,6 +258,7 @@ async def gather_agenda_data(
         "total_personas": len(patient_names_seen),
         "date_display": date_display,
         "generated_at": datetime.now().strftime("%d/%m/%Y a las %H:%M"),
+        "view_type": view_type,
     }
 
 
@@ -317,6 +319,7 @@ async def generate_agenda_pdf(
     end_date: str,
     professional_id: Optional[int] = None,
     include_cancelled: bool = False,
+    view_type: str = "week",
 ) -> str:
     """
     Generate a weekly agenda PDF and save it to disk.
@@ -331,7 +334,7 @@ async def generate_agenda_pdf(
     suffix = f"_prof{professional_id}" if professional_id is not None else ""
     pdf_path = str(upload_dir / f"agenda_{safe_start}_{safe_end}{suffix}.pdf")
 
-    data = await gather_agenda_data(pool, tenant_id, start_date, end_date, professional_id, include_cancelled)
+    data = await gather_agenda_data(pool, tenant_id, start_date, end_date, professional_id, include_cancelled, view_type=view_type)
     html = render_agenda_html(data)
 
     result = await asyncio.to_thread(_generate_pdf_sync, html, pdf_path)

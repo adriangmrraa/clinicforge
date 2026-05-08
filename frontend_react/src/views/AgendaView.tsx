@@ -668,6 +668,7 @@ export default function AgendaView() {
   const getExportParams = () => {
     const calApi = calendarRef.current?.getApi();
     const view = calApi?.view;
+    const viewType = view?.type === 'dayGridMonth' ? 'month' : 'week';
     // DLD-71: usar fecha local sin conversión a UTC para evitar desfasaje de día
     const formatLocalDate = (d: Date) => {
       const y = d.getFullYear();
@@ -675,16 +676,36 @@ export default function AgendaView() {
       const day = String(d.getDate()).padStart(2, '0');
       return `${y}-${m}-${day}`;
     };
-    const start = view?.activeStart ? formatLocalDate(view.activeStart) : undefined;
-    const rawEnd = view?.activeEnd;
-    // activeEnd es exclusivo (día siguiente al último visible) — restar 1 día en tiempo local
-    const adjustedEnd = rawEnd ? new Date(rawEnd.getFullYear(), rawEnd.getMonth(), rawEnd.getDate() - 1) : undefined;
-    const end = adjustedEnd ? formatLocalDate(adjustedEnd) : undefined;
+
+    let start: string | undefined;
+    let end: string | undefined;
+
+    if (viewType === 'month' && view?.activeStart) {
+      // Vista mensual: desde HOY hasta fin del mes visualizado
+      const today = new Date();
+      // activeStart puede ser del mes anterior (padding de grilla) — avanzar 7 días para entrar al mes real
+      const midMonth = new Date(view.activeStart);
+      midMonth.setDate(midMonth.getDate() + 7);
+      const firstOfMonth = new Date(midMonth.getFullYear(), midMonth.getMonth(), 1);
+      const lastOfMonth = new Date(midMonth.getFullYear(), midMonth.getMonth() + 1, 0);
+      // Usar max(today, firstOfMonth) para no incluir turnos pasados
+      const effectiveStart = today > firstOfMonth ? today : firstOfMonth;
+      start = formatLocalDate(effectiveStart);
+      end = formatLocalDate(lastOfMonth);
+    } else {
+      // Vista semanal: semana completa Lun-Sáb (comportamiento existente)
+      start = view?.activeStart ? formatLocalDate(view.activeStart) : undefined;
+      const rawEnd = view?.activeEnd;
+      const adjustedEnd = rawEnd ? new Date(rawEnd.getFullYear(), rawEnd.getMonth(), rawEnd.getDate() - 1) : undefined;
+      end = adjustedEnd ? formatLocalDate(adjustedEnd) : undefined;
+    }
+
     if (!start || !end) return null;
     const params = new URLSearchParams({ start_date: start, end_date: end });
     params.set('include_cancelled', 'true');
+    params.set('view_type', viewType);
     if (selectedProfessionalId !== 'all') params.append('professional_id', selectedProfessionalId);
-    return { start, end, params };
+    return { start, end, params, viewType };
   };
 
   const handleExport = async () => {
@@ -702,7 +723,8 @@ export default function AgendaView() {
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', `agenda_semanal_${ep.start}.pdf`);
+      const prefix = ep.viewType === 'month' ? 'agenda_mensual' : 'agenda_semanal';
+      link.setAttribute('download', `${prefix}_${ep.start}.pdf`);
       document.body.appendChild(link);
       link.click();
       link.remove();

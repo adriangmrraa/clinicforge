@@ -6,7 +6,7 @@
   @page {
     size: A4 landscape;
     margin: 1.5cm 2cm;
-    @bottom-left { content: "Agenda Semanal · {{ date_display }}"; font-size: 8pt; color: #999; }
+    @bottom-left { content: "Agenda · {{ date_display }}"; font-size: 8pt; color: #999; }
     @bottom-right { content: "Pág. " counter(page) " / " counter(pages); font-size: 8pt; color: #999; }
   }
   body {
@@ -93,7 +93,7 @@
 <!-- =========================================================== -->
 <!-- SECCIÓN 1: Grilla Semanal                                   -->
 <!-- =========================================================== -->
-<h1>Agenda Semanal — Grilla semanal</h1>
+<h1>{% if view_type == 'month' %}Agenda Mensual{% else %}Agenda Semanal{% endif %} — Grilla</h1>
 <p class="subtitle">{{ date_display }} · {{ total_turnos }} turnos · {{ total_personas }} personas</p>
 
 {% if time_slots and days %}
@@ -131,7 +131,7 @@
 <!-- SECCIÓN 2: Listas por día (agrupado por profesional)        -->
 <!-- =========================================================== -->
 <div class="section-break">
-  <h1>Agenda por día y profesional</h1>
+  <h1>{% if view_type == 'month' %}Agenda Mensual{% else %}Agenda{% endif %} por día y profesional</h1>
   <p class="subtitle">Organizado por día → profesional → horario</p>
 
   {% if daily_lists %}

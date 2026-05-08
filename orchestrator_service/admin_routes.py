@@ -16836,6 +16836,7 @@ async def export_agenda(
     format: str = "pdf",
     professional_id: Optional[int] = None,
     include_cancelled: bool = False,
+    view_type: str = "week",
     resolved_tenant_id: int = Depends(get_resolved_tenant_id),
 ):
     """
@@ -16860,6 +16861,7 @@ async def export_agenda(
             end_date,
             professional_id,
             include_cancelled,
+            view_type=view_type,
         )
     except Exception as exc:
         logger.error("export_agenda error: %s", exc)
