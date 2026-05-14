@@ -9146,7 +9146,12 @@ REGLA ANTI-MARKDOWN (WHATSAPP):
             )
             sede_section += "\nREGLA CRÍTICA: La sede se determina por el DÍA del turno, NO por elección del paciente. Incluí la sede correcta en la confirmación del turno."
 
-    # Precio de consulta
+    # Precio de consulta — compute price_text FIRST (used in price_section and greeting)
+    price_text = (
+        f"${int(consultation_price):,}".replace(",", ".")
+        if consultation_price and float(consultation_price) > 0
+        else ""
+    )
     price_section = ""
     if consultation_price and float(consultation_price) > 0:
         price_section = (
@@ -9362,12 +9367,6 @@ SI NO HAY PRECIO CONFIGURADO: No pedir seña. Agendar normalmente y pasar direct
         financing_notes=financing_notes,
         cash_discount_percent=cash_discount_percent,
         accepts_crypto=accepts_crypto,
-    )
-
-    price_text = (
-        f"${int(consultation_price):,}".replace(",", ".")
-        if consultation_price and float(consultation_price) > 0
-        else ""
     )
 
     # --- CONDITIONAL SECTIONS based on intent_tags ---
