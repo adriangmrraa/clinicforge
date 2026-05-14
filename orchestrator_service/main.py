@@ -9196,11 +9196,6 @@ Si el paciente pregunta si la consulta se descuenta del tratamiento: "La consult
         if specialty_pitch
         else f"{prof_display_full} se especializa en rehabilitación oral con implantes, prótesis y cirugía guiada."
     )
-    # Dynamic consultation price for greeting (Bug #1 — Dra. Delgado approved text)
-    price_greeting_line = ""
-    if consultation_price and float(consultation_price) > 0:
-        price_greeting_line = f"La consulta de evaluación tiene un valor de {price_text}. Ahí la doctora evalúa tu caso y te orienta sobre las opciones de tratamiento más adecuadas para vos."
-    greeting_with_price = f"{price_greeting_line}\n\n{greeting_specialty}" if price_greeting_line else greeting_specialty
     greeting_rule = ""
     if not is_greeting_pending:
         # Patient was already greeted in this session — skip institutional greeting
@@ -9215,8 +9210,8 @@ A) Si el paciente envía un saludo simple (hola, buen día, buenas) o un mensaje
 
 Soy {bot_name}, del equipo de {clinic_name}.
 
-{greeting_with_price}"
-IMPORTANTE: NO agregar "¿En qué te puedo ayudar?" ni preguntas extra si el greeting ya contiene una pregunta o invitación. Solo 3 burbujas: saludo + presentación + precio/specialty.
+{greeting_specialty}"
+IMPORTANTE: NO agregar "¿En qué te puedo ayudar?" ni preguntas extra si el greeting_specialty ya contiene una pregunta o invitación. Solo 3 burbujas: saludo + presentación + specialty.
 
 B) Si el paciente YA mencionó qué necesita (quiere turno, pregunta precio, menciona tratamiento, habla de un familiar, envía audio con contenido, etc.) → presentate BREVE y respondé a lo que pidió:
 "Hola 😊 Soy {bot_name}, del equipo de {clinic_name}. [Respondé directamente a lo que el paciente dijo/pidió]"
