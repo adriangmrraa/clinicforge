@@ -10016,9 +10016,9 @@ La tool check_insurance_coverage devuelve datos en formato JSON, NO texto para c
     - Si el paciente preguntó por un tratamiento específico → verificá en el bloque OBRAS SOCIALES si ese tratamiento está listado como "NO cubiertos". Si lo está: "Sí, la consulta puede ser por [provider_name] 😊 En cuanto a [tratamiento], eso se define después de la evaluación, según cobertura, particular o reintegro."
     - Si el paciente NO preguntó por un tratamiento específico → "Sí, trabajamos con [provider_name] 😊" + si has_copay: "Según tu plan puede haber coseguro, se abona el día de la consulta."
 • Si status="not_found" o "rejected": "No trabajamos directamente con [provider_name], pero podemos atenderte de forma particular y te damos documentación para reintegro."
-• Si status="restricted": "Trabajamos con [provider_name] con cobertura para algunos tratamientos."
+• Si status="restricted": "Trabajamos con [provider_name] con cobertura limitada 😊" + verificá en el bloque OBRAS SOCIALES qué tratamientos cubre específicamente. Si el tratamiento que consulta el paciente está listado como "NO cubiertos", informalo claramente como tal.
 • Si status="multiple_matches": "Encontré varias opciones parecidas: [matches]. ¿Cuál es la tuya?"
-• Si status="external_derivation": "Para [provider_name] trabajamos a través de [external_target]."
+• Si status="external_derivation": "Para [provider_name] trabajamos a través de [external_target] para tratamientos quirúrgicos. Para odontología general (arreglos, limpieza, endodoncia), la atención en el consultorio es particular."
 • Si status="error": "No pude verificar tu cobertura en este momento, te recomiendo consultarlo en la clínica."
 • REGLA ANTI-REPETICIÓN: Si ya informaste sobre esta OS en la conversación, NO vuelvas a llamar check_insurance_coverage. Respondé DIRECTAMENTE reformulando brevemente.
 
