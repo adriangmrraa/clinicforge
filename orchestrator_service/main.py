@@ -1670,6 +1670,7 @@ async def check_availability(
         # 0. PATIENT LOOKUP — combined query for assigned_professional_id + past unpaid debt.
         #    Single round-trip to keep check_availability fast.
         forced_prof_id: Optional[int] = None
+        _ca_patient_id: Optional[int] = None
         unpaid_count: int = 0
         unpaid_total: float = 0.0
         if not clean_name:
@@ -1706,6 +1707,7 @@ async def check_availability(
                         phone_for_lookup,
                     )
                     if patient_row:
+                        _ca_patient_id = patient_row["id"]
                         if patient_row["assigned_professional_id"]:
                             forced_prof_id = int(
                                 patient_row["assigned_professional_id"]
@@ -2386,6 +2388,52 @@ async def check_availability(
         # Unir globales a todos
         for pid in busy_map:
             busy_map[pid].update(global_busy)
+
+        # Patient self-conflict guard: if the patient already has an appointment
+        # at a specific time, block that time for ALL professionals — the same
+        # patient cannot be in two places at once, even with different professionals.
+        if _ca_patient_id:
+            try:
+                _ca_patient_apts = await db.pool.fetch(
+                    """SELECT appointment_datetime as start, duration_minutes
+                    FROM appointments
+                    WHERE tenant_id = $1 AND patient_id = $2
+                      AND status IN ('scheduled', 'confirmed')
+                      AND (appointment_datetime < $4
+                           AND (appointment_datetime + interval '1 minute' * COALESCE(duration_minutes, 60)) > $3)
+                    """,
+                    tenant_id,
+                    _ca_patient_id,
+                    start_day,
+                    end_day,
+                )
+                for _pa in _ca_patient_apts:
+                    _pa_start = _pa["start"].astimezone(get_active_tz())
+                    _pa_dur = _pa["duration_minutes"] or 60
+                    if _pa_dur <= 0:
+                        _pa_dur = 30
+                    _pa_end = _pa_start + timedelta(minutes=_pa_dur)
+                    _pa_check = _pa_start.replace(second=0, microsecond=0)
+                    while _pa_check < _pa_end:
+                        _pa_hm = _pa_check.strftime("%H:%M")
+                        for _pid in busy_map:
+                            busy_map[_pid].add(_pa_hm)
+                        _pa_check += timedelta(minutes=15)
+                    # 30-min boundaries (defensive, same as appointments loop)
+                    _pa_boundary = _pa_start.replace(
+                        minute=(_pa_start.minute // 30) * 30, second=0, microsecond=0
+                    )
+                    while _pa_boundary < _pa_end:
+                        _pa_bhm = _pa_boundary.strftime("%H:%M")
+                        for _pid in busy_map:
+                            busy_map[_pid].add(_pa_bhm)
+                        _pa_boundary += timedelta(minutes=30)
+                if _ca_patient_apts:
+                    logger.info(
+                        f"📅 patient conflict guard: blocked {len(_ca_patient_apts)} apt(s) for patient_id={_ca_patient_id} across all professionals"
+                    )
+            except Exception as _pa_err:
+                logger.warning(f"📅 patient conflict guard skipped: {_pa_err}")
 
         # 3. Determinar rango horario del día desde tenant working_hours
         day_start = CLINIC_HOURS_START
