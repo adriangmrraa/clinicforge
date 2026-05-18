@@ -5122,7 +5122,8 @@ async def reschedule_appointment(original_date: str, new_date_time: str, interpr
 async def list_professionals():
     """
     Lista los profesionales que trabajan en la clínica (odontólogos/as activos y aprobados).
-    Usar SIEMPRE que el paciente pregunte qué profesionales hay, quién atiende, con quién puede sacar turno, etc.
+    Usar SOLO cuando el paciente pregunte de forma GENERAL qué profesionales hay.
+    NO usar para saber quién hace un tratamiento específico — para eso usá 'list_services' con el nombre del tratamiento.
     Devuelve nombres y especialidad reales de la base de datos. NUNCA inventes nombres.
     """
     tenant_id = current_tenant_id.get()
@@ -5162,8 +5163,8 @@ async def list_professionals():
 @tool
 async def list_services(category: str = None, patient_term: str = ""):
     """
-    Lista los tratamientos/servicios disponibles para reservar. Devuelve SOLO los nombres (sin descripción ni duración).
-    USAR para consultas generales ("qué servicios tienen", "qué tratamientos hacen", "qué se puede agendar").
+    Lista los tratamientos/servicios disponibles para reservar, incluyendo qué profesionales están asignados a cada uno.
+    USAR para consultas como "qué servicios tienen", "qué tratamientos hacen", "quién hace [tratamiento]".
     Para detalles o imágenes de UN tratamiento concreto, usar 'get_service_details'.
     NUNCA inventar tratamientos — solo devolver los de esta tool.
     category: Filtro opcional (consultas, prevencion, operatoria, estetica_facial, endolifting, cirugia, implantes, regeneracion_osea, rehabilitacion, ortodoncia)
