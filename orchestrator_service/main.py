@@ -5388,11 +5388,11 @@ async def get_service_details(code: str):
 
         display_name = row.get("patient_display_name") or row["name"]
 
-        # If ai_response_template exists, use it as the primary response
+        # If ai_response_template exists, use it as the primary response.
+        # NOTE: assigned_profs are NOT appended here because professional
+        # assignment is determined by derivation rules (see PASO 3).
         if row.get("ai_response_template"):
             res = f"{row['ai_response_template']}\n"
-            if assigned_profs:
-                res += f"\nProfesionales: {', '.join(assigned_profs)}\n"
         else:
             res = f"{display_name} es uno de los servicios que ofrecemos.\nDuración aproximada: {row['default_duration_minutes']} min\nPara más información sobre este tratamiento, lo ideal es coordinar una consulta de evaluación. ¿Te agendo un turno?"
             if assigned_profs:
@@ -8397,7 +8397,7 @@ def _format_insurance_providers(
 
     if derivation:
         lines.append("")
-        lines.append("Derivación externa:")
+        lines.append("Cobertura con centro externo:")
         for p in derivation:
             target = p.get("external_target") or "otro centro"
             msg = (
@@ -8405,7 +8405,7 @@ def _format_insurance_providers(
                 or f"Para ese tratamiento trabajamos a través de {target} 😊 Te paso el contacto para que coordines directamente."
             )
             lines.append(
-                f'  • {p["provider_name"]} → Derivar a {target}. Mensaje: "{msg}"'
+                f'  • {p["provider_name"]} → Centro externo: {target}. Mensaje: "{msg}"'
             )
 
     if rejected:
@@ -9809,8 +9809,19 @@ PASO 2c: MODALIDAD DE ATENCIÓN — Preguntá "¿Te atendés de forma particular
     • NUNCA pidas teléfono del trabajador ni email. No es necesario.
     • PROHIBIDO tratar este flujo como un turno normal — siempre validar que quien llama es la empresa/ART.
   REGLA DE NOMBRE (CRÍTICO): NUNCA cambies el nombre de la conversación/paciente del interlocutor cuando el turno es para un tercero, menor o ART. El nombre de la conversación se mantiene como viene de WhatsApp/Instagram/Facebook.
-PASO 3: PROFESIONAL ASIGNADO — Según lo que devolvió 'list_services' o 'get_service_details':
-  • Si el tratamiento tiene UN SOLO profesional asignado → informá al paciente: "Este tratamiento lo realiza el/la Dr/a. X". NO preguntes preferencia. Usá ese profesional directamente.
+PASO 3: PROFESIONAL ASIGNADO — Consultar en este orden:
+
+  PRIMERO — Verificar DERIVACIÓN DE PACIENTES (bloque arriba):
+  • Buscá si el tratamiento (o su categoría) aparece en alguna regla de derivación.
+  • Si la regla dice "sin filtro de profesional (equipo)":
+    Respondé: "Ese tratamiento lo realiza nuestro equipo odontológico. ¿Te ayudo a coordinar un turno?"
+    NO menciones nombres de profesionales individuales.
+  • Si la regla dice "agendar con [Nombre]" (profesional específico):
+    Respondé: "Ese tratamiento lo realiza el/la Dr/a. [Nombre]."
+    Mencioná SOLO ese profesional. NO nombres otros.
+
+  SOLO SI ninguna regla coincide → usá lo que devuelve 'list_services' o 'get_service_details':
+  • Si tiene UN SOLO profesional asignado → informá al paciente: "Este tratamiento lo realiza el/la Dr/a. X". NO preguntes preferencia. Usá ese profesional directamente.
   • Si tiene VARIOS profesionales asignados → decí: "Este tratamiento lo realizan [nombres]. Preferís alguno/a?" Si el paciente elige uno → ejecutá check_availability con ese profesional. Si dice "no" / "cualquiera" / no responde claro → ejecutá check_availability SIN professional_name (el sistema asigna al primero disponible).
   • Si NO tiene profesionales asignados (no aparece "con: ...") → preguntá preferencia de profesional o asigná el primero disponible, como siempre.
 PASO 4: CONSULTAR DISPONIBILIDAD — Llamá 'check_availability' UNA vez con treatment_name y, si el paciente eligió profesional, con professional_name.
@@ -10024,6 +10035,7 @@ La tool check_insurance_coverage devuelve datos en formato JSON, NO texto para c
 • Si status="restricted": "Trabajamos con [provider_name] con cobertura limitada 😊" + verificá en el bloque OBRAS SOCIALES qué tratamientos cubre específicamente. Si el tratamiento que consulta el paciente está listado como "NO cubiertos", informalo claramente como tal.
 • Si status="multiple_matches": "Encontré varias opciones parecidas: [matches]. ¿Cuál es la tuya?"
 • Si status="external_derivation": "Para [provider_name] trabajamos a través de [external_target] para tratamientos quirúrgicos. Para odontología general (arreglos, limpieza, endodoncia), la atención en el consultorio es particular."
+  IMPORTANTE: Si el paciente ya había elegido un día/horario antes de preguntar por cobertura, continuá con el agendamiento después de informar. Pedí nombre y DNI para agendar. No derivar a humano solo por external_derivation.
 • Si status="error": "No pude verificar tu cobertura en este momento, te recomiendo consultarlo en la clínica."
 • REGLA ANTI-REPETICIÓN: Si ya informaste sobre esta OS en la conversación, NO vuelvas a llamar check_insurance_coverage. Respondé DIRECTAMENTE reformulando brevemente.
 
