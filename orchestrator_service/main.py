@@ -9813,9 +9813,9 @@ PASO 2c: MODALIDAD DE ATENCIÓN — Preguntá "¿Te atendés de forma particular
 PASO 3: PROFESIONAL ASIGNADO — Prioridad (primera que coincida):
 
   1. ¿El paciente tiene "PROFESIONAL ASIGNADO" en su contexto? → Usá ESE profesional. Punto.
-  2. ¿El tratamiento tiene profesionales designados (vía list_services/get_service_details)?
-     → Esos son los ÚNICOS que pueden hacerlo. Si tiene 1 → nombrá solo ese. Si tiene varios → ofrecé opciones.
-  3. ¿Hay regla de derivación que coincida? → Si dice "equipo" → "nuestro equipo" sin nombres. Si dice profesional → nombrá solo ese.
+  2. ¿Hay regla de derivación que coincida? → Si dice "equipo" → "nuestro equipo" sin nombres individuales. Si dice profesional → nombrá solo ese.
+  3. ¿El tratamiento tiene profesionales designados (vía list_services/get_service_details)?
+     → Si no hay regla de derivación: usá esos profesionales. Si tiene 1 → nombrá solo ese. Si varios → ofrecé opciones.
   4. Fallback → sin filtro.
 
   ANTI-CESIÓN: Si el paciente insiste con un profesional que NO está en ninguna de las fuentes arriba para ese tratamiento:
