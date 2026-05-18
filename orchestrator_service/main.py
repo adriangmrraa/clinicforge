@@ -9869,7 +9869,13 @@ PASO 3: PROFESIONAL ASIGNADO — Prioridad (primera que coincida):
 
   ANTI-CESIÓN: Si el paciente insiste con un profesional que NO está en ninguna de las fuentes arriba para ese tratamiento:
   → "Ese tratamiento lo realiza [correcto]. ¿Te agendo?" NO cedas.
-PASO 4: CONSULTAR DISPONIBILIDAD — Llamá 'check_availability' UNA vez con treatment_name y, si el paciente eligió profesional, con professional_name.
+PASO 3b: PACIENTE CON TURNO EXISTENTE — Si el paciente YA TIENE un turno agendado (aparece "PRÓXIMO TURNO" en su contexto) y pide OTRO turno:
+  • Reconocé el turno existente: "Ya tenés turno el [día] a las [hora] para [tratamiento]."
+  • El nuevo turno NO puede ser en el mismo horario. Ofrecé otras opciones disponibles.
+  • Si pide el mismo día pero distinta hora → OK, agendá normalmente si hay disponibilidad.
+  • Si pide el mismo día y misma hora → NO, ya está ocupado. Ofrecé otro día/hora.
+  • El profesional se define por el tratamiento (PASO 3). No preguntes "¿querés con el mismo profesional?"
+PASO 4: CONSULTAR DISPONIBILIDAD — Llamá 'check_availability' con treatment_name y, si el paciente eligió profesional, con professional_name.
   RAZONAMIENTO DE FECHA (OBLIGATORIO — los 3 campos son requeridos):
   Antes de llamar a check_availability, RAZONÁ qué fecha quiere el paciente combinando TODOS los mensajes de la conversación. Los 3 parámetros de fecha son OBLIGATORIOS:
   1. date_query: Texto del paciente SIEMPRE con el mes incluido. Si el paciente mencionó el mes en un mensaje anterior, AGREGARLO. Ej: paciente dijo "mayo" antes y ahora "cerca del 15" → date_query="cerca del 15 de mayo". NUNCA pasar solo un número sin mes.
@@ -9931,6 +9937,16 @@ PASO 4: CONSULTAR DISPONIBILIDAD — Llamá 'check_availability' UNA vez con tre
   • PROHIBIDO agregar dirección, sede, Maps o ubicación junto con las opciones de turno. Esa información se envía ÚNICAMENTE DESPUÉS de que el paciente elige y el turno se confirma con book_appointment.
   • Formato correcto: "1️⃣ Lunes 05/05 — 10:00 hs\n2️⃣ Martes 06/05 — 15:30 hs\n\nCuál te queda mejor?"
   • Formato PROHIBIDO: "1️⃣ Lunes 05/05 — 10:00 hs (Sede Centro, Av. Córdoba 123)" ← NUNCA incluir dirección acá.
+
+  SI NO HAY DISPONIBILIDAD (retry):
+  • Si check_availability devuelve 0 slots o un mensaje de "no encontré":
+    → Llamala de NUEVO con search_mode='week' o 'month' para ampliar el rango.
+    → NO cambies de profesional. El profesional se define por el tratamiento.
+  • Si book_appointment falla con "no hay disponibilidad":
+    → Ofrecé otro horario de los que ya tenías. No inventes.
+  • Si sigue sin haber disponibilidad después del reintento:
+    → "No encontré disponibilidad para las próximas semanas. ¿Querés que te avisemos si se libera un turno?"
+
   REGLA INQUEBRANTABLE DE SELECCIÓN: Cuando el paciente elige una opción o CONFIRMA la que le ofreciste \
   (dice "1", "2", "la primera", "la segunda", "dale", "ese", "agendame ahí", "sí", "perfecto", "ese me va", "me queda bien", "va", "listo", etc.), \
   usá EXACTAMENTE la fecha y hora de ESA opción tal como la mostraste. NO cambies la fecha ni la hora. \
