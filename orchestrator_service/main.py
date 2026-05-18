@@ -3704,18 +3704,19 @@ async def book_appointment(
             )
             return f"❌ Lo siento, no hay disponibilidad a las {apt_datetime.strftime('%H:%M')} para el tratamiento de {final_duration} min. ¿Probamos otro horario?"
 
-        # Patient same-day duplicate guard (DLD-59)
+        # Patient duplicate guard: block ONLY if time overlaps with existing appointment (DLD-59)
         if existing_patient:
             try:
                 existing_same_day = await db.pool.fetchval(
                     """SELECT COUNT(*) FROM appointments
                     WHERE tenant_id = $1 AND patient_id = $2
-                    AND DATE(appointment_datetime) = DATE($3)
-                    AND status IN ('scheduled', 'confirmed')""",
-                    tenant_id, existing_patient["id"], apt_datetime
+                    AND status IN ('scheduled', 'confirmed')
+                    AND appointment_datetime < $4
+                    AND (appointment_datetime + interval '1 minute' * COALESCE(duration_minutes, 60)) > $3""",
+                    tenant_id, existing_patient["id"], apt_datetime, end_apt
                 )
                 if existing_same_day and existing_same_day > 0:
-                    return ("⚠️ Ya tenés un turno agendado para ese día. "
+                    return ("⚠️ Ya tenés un turno agendado en ese horario. "
                             "Si querés cambiar el horario, pedime que lo reprograme en lugar de agendar uno nuevo.")
             except Exception as e:
                 logger.warning(f"[BOOK] Same-day check failed (continuing): {e}")
