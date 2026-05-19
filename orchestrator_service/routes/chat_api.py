@@ -84,7 +84,8 @@ async def chats_summary(
     sql = f"""
         SELECT c.id, c.tenant_id, c.channel, c.provider, c.external_user_id, c.display_name,
                c.last_message_preview AS last_message, c.last_message_at AS last_message_at,
-               c.last_user_message_at, c.status, c.human_override_until, c.last_derivhumano_at, c.meta, c.last_read_at
+               c.last_user_message_at, c.status, c.human_override_until, c.last_derivhumano_at, c.meta, c.last_read_at,
+               c.linked_patient_id
         FROM chat_conversations c
         WHERE {where}
         ORDER BY c.last_message_at DESC NULLS LAST
@@ -167,6 +168,7 @@ async def chats_summary(
                 else None,
                 "meta": meta,
                 "unread_count": unread or 0,
+                "linked_patient_id": r["linked_patient_id"],
             }
         )
     logger.info(

@@ -79,8 +79,11 @@ interface PatientContext {
   diagnosis?: string;
   // Meta Ads (Spec 10)
   patient?: {
+    id?: number;
     first_name?: string;
     last_name?: string;
+    status?: string;
+    phone_number?: string;
     acquisition_source?: string;
     meta_ad_headline?: string;
     meta_ad_body?: string;
@@ -1293,7 +1296,7 @@ export default function ChatsView() {
                           <span className={`font-semibold truncate text-white`}>
                             {item.name || item.external_user_id || 'Chatwoot'}
                           </span>
-                          {(item as any).patient_id ? (
+                          {item.linked_patient_id ? (
                             <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 shrink-0">
                               {t('chats.badge_patient')}
                             </span>
@@ -1774,7 +1777,7 @@ export default function ChatsView() {
                   const nameFromApi = apiPatient ? [apiPatient.first_name, apiPatient.last_name].filter(Boolean).join(' ').trim() : '';
                   const displayName = (patientContext as any)?.patient_name || nameFromApi || selectedSession?.patient_name || selectedChatwoot?.name || selectedSession?.phone_number || selectedChatwoot?.external_user_id;
                   const displayPhone = selectedSession?.phone_number || selectedChatwoot?.external_user_id || '';
-                  const patientId = selectedSession?.patient_id || (patientContext as any)?.patient_id;
+                  const patientId = selectedSession?.patient_id || (patientContext as any)?.patient?.id;
                   const isGuest = apiPatient?.status === 'guest';
 
                   return (
@@ -1977,8 +1980,8 @@ export default function ChatsView() {
         initialPhone={selectedSession?.phone_number || selectedChatwoot?.external_user_id || ''}
         initialName={selectedSession?.patient_name || selectedChatwoot?.name || ''}
         editPatientId={
-          (selectedSession?.patient_id || (patientContext as any)?.patient_id) && (patientContext as any)?.patient?.status === 'guest'
-            ? (selectedSession?.patient_id || (patientContext as any)?.patient_id)
+          (selectedSession?.patient_id || (patientContext as any)?.patient?.id) && (patientContext as any)?.patient?.status === 'guest'
+            ? (selectedSession?.patient_id || (patientContext as any)?.patient?.id)
             : undefined
         }
         editPatientData={
@@ -2008,7 +2011,7 @@ export default function ChatsView() {
           if (phone) fetchPatientContext(phone, tid ?? undefined);
         }}
         onPatientCreated={handlePatientCreated}
-        patientId={selectedSession?.patient_id || (patientContext as any)?.patient_id}
+        patientId={selectedSession?.patient_id || (patientContext as any)?.patient?.id}
         patientPhone={selectedSession?.phone_number || selectedChatwoot?.external_user_id || ''}
         patientName={selectedSession?.patient_name || selectedChatwoot?.name || ''}
         tenantId={selectedTenantId || selectedSession?.tenant_id || 0}
@@ -2025,7 +2028,7 @@ export default function ChatsView() {
           const tid = selectedSession?.tenant_id || selectedTenantId;
           if (phone) fetchPatientContext(phone, tid ?? undefined);
         }}
-        currentPatientId={(patientContext as any)?.patient_id || 0}
+        currentPatientId={(patientContext as any)?.patient?.id || 0}
         currentPatientName={selectedSession?.patient_name || selectedChatwoot?.name || ''}
         tenantId={selectedTenantId || selectedSession?.tenant_id || 0}
         conversationId={selectedChatwoot?.id || undefined}

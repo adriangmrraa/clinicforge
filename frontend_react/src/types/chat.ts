@@ -22,6 +22,7 @@ export interface ChatSummaryItem {
   avatar_url?: string | null;
   meta?: { username?: string; inbox_name?: string; customer_avatar?: string };
   last_derivhumano_at?: string | null;
+  linked_patient_id?: number | null;
 }
 
 /** Mensaje de la API /admin/chats/{id}/messages */
