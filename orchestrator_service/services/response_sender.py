@@ -145,13 +145,20 @@ class ResponseSender:
             if not sender_number:
                 sender_number = await get_tenant_credential(tenant_id, YCLOUD_WHATSAPP_NUMBER)
 
-            # Normalizar el número antes de enviar (garantiza formato E.164 correcto)
+            # Normalización inline del número (sin depender de main.py que puede estar cachead en memoria)
             if sender_number:
                 try:
-                    from main import normalize_phone_for_tenant
-                    sender_number = normalize_phone_for_tenant(str(sender_number), "AR")
-                except Exception:
-                    pass
+                    raw = re.sub(r"\D", "", str(sender_number))
+                    # Si arranca con "1549..." → error común, sacar el 1 de más
+                    if raw.startswith("1549") and len(raw) > 12:
+                        raw = raw[1:]  # queda "549..."
+                    # Si arranca con "549" → agregar + (formato Argentina)
+                    if raw.startswith("549"):
+                        sender_number = "+" + raw
+                    else:
+                        sender_number = "+549" + raw
+                except Exception as e:
+                    logger.warning(f"⚠️ Normalización inline falló, usando valor raw: {e}")
                 logger.info(f"📞 YCloud from_number (normalized): {sender_number}")
 
             if not api_key or not sender_number:
