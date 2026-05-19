@@ -1728,6 +1728,13 @@ async def get_chat_messages(
     """Historial de mensajes para un número en la clínica indicada. Aislado por tenant_id."""
     if tenant_id not in allowed_ids:
         raise HTTPException(status_code=403, detail="No tienes acceso a esta clínica.")
+    # Normalizar teléfono según país del tenant
+    try:
+        from main import normalize_phone_for_tenant
+        cc = (await db.pool.fetchval("SELECT country_code FROM tenants WHERE id = $1", tenant_id)) or "AR"
+        phone = normalize_phone_for_tenant(phone, cc)
+    except Exception:
+        pass
     has_tenant = await db.check_column_exists("chat_messages", "tenant_id")
     if has_tenant:
         rows = await db.pool.fetch(
@@ -2506,6 +2513,13 @@ async def send_chat_message(
     """Envía un mensaje manual por WhatsApp; guarda en BD con tenant_id. Ventana 24h por clínica."""
     if payload.tenant_id not in allowed_ids:
         raise HTTPException(status_code=403, detail="No tienes acceso a esta clínica.")
+    # Normalizar teléfono según país del tenant
+    try:
+        from main import normalize_phone_for_tenant
+        cc = (await db.pool.fetchval("SELECT country_code FROM tenants WHERE id = $1", payload.tenant_id)) or "AR"
+        payload.phone = normalize_phone_for_tenant(payload.phone, cc)
+    except Exception:
+        pass
     try:
         has_tenant = await db.check_column_exists("chat_messages", "tenant_id")
         if has_tenant:
@@ -2994,11 +3008,20 @@ async def create_tenant(data: Dict[str, Any], user_data=Depends(verify_admin_tok
     VALUES ($1, $2, $3::jsonb, $4, $5, $6::jsonb, $7, NOW())
     RETURNING id
     """
+    # Normalizar bot_phone_number según país
+    raw_bot_phone = data.get("bot_phone_number")
+    if raw_bot_phone:
+        try:
+            from main import normalize_phone_for_tenant
+            cc = str(data.get("country_code", "AR") or "AR").upper().strip()[:2]
+            raw_bot_phone = normalize_phone_for_tenant(str(raw_bot_phone), cc)
+        except Exception:
+            pass
     try:
         new_id = await db.pool.fetchval(
             query,
             data.get("clinic_name"),
-            data.get("bot_phone_number"),
+            raw_bot_phone,
             config_json,
             address,
             maps_url,
@@ -3027,7 +3050,18 @@ async def update_tenant(
         params.append(data["clinic_name"])
         updates.append(f"clinic_name = ${len(params)}")
     if "bot_phone_number" in data and data["bot_phone_number"] is not None:
-        params.append(data["bot_phone_number"])
+        raw_bot = data["bot_phone_number"]
+        try:
+            from main import normalize_phone_for_tenant
+            cc = str(data.get("country_code", "AR") or "AR").upper().strip()[:2]
+            if cc == "AR" or not cc:
+                # Si no viene country_code en el payload, usar el de la DB
+                existing_cc = await db.pool.fetchval("SELECT country_code FROM tenants WHERE id = $1", tenant_id)
+                cc = existing_cc or "AR"
+            raw_bot = normalize_phone_for_tenant(str(raw_bot), cc)
+        except Exception:
+            pass
+        params.append(raw_bot)
         updates.append(f"bot_phone_number = ${len(params)}")
     if "calendar_provider" in data and data["calendar_provider"] is not None:
         cp = (
@@ -4901,9 +4935,16 @@ async def import_patients_preview(
         if not phone:
             phone = f"SIN-TEL-{tel_counter:03d}"
             tel_counter += 1
+        else:
+            # Normalizar según país del tenant (AR → +549...)
+            try:
+                from main import normalize_phone_for_tenant
+                ccode = (await db.pool.fetchval("SELECT country_code FROM tenants WHERE id = $1", tenant_id)) or "AR"
+                phone = normalize_phone_for_tenant(phone, ccode)
+            except Exception:
+                pass
 
         # Dedup within file
-        if phone in phones_in_file and not phone.startswith("SIN-TEL-"):
             error_details.append(
                 {"row": i, "reason": f"Teléfono duplicado dentro del archivo: {phone}"}
             )
@@ -5012,6 +5053,7 @@ async def import_patients_execute(
     updated = 0
     skipped = 0
     errors = 0
+    tenant_country = (await db.pool.fetchval("SELECT country_code FROM tenants WHERE id = $1", tenant_id)) or "AR"
 
     # Separate rows by action and pre-process dates once
     new_records = []   # tuples for bulk INSERT
@@ -5031,12 +5073,22 @@ async def import_patients_execute(
             except (ValueError, TypeError):
                 birth = _parse_birth_date(row["birth_date"])
 
+        # Normalizar teléfono según país del tenant
+        raw_phone = (row.get("phone_number") or "").strip()
+        normalized_phone = raw_phone
+        if raw_phone:
+            try:
+                from main import normalize_phone_for_tenant
+                normalized_phone = normalize_phone_for_tenant(raw_phone, tenant_country)
+            except Exception:
+                pass
+
         if status == "new":
             new_records.append((
                 tenant_id,
                 first_name,
                 (row.get("last_name") or "").strip(),
-                (row.get("phone_number") or "").strip(),
+                normalized_phone,
                 row.get("email") or None,
                 (row.get("dni") or "").strip() or None,
                 row.get("insurance") or None,
@@ -5048,7 +5100,7 @@ async def import_patients_execute(
             if body.duplicate_action == "skip":
                 skipped += 1
             elif body.duplicate_action == "update":
-                phone = (row.get("phone_number") or "").strip()
+                phone = normalized_phone
                 update_records.append((
                     tenant_id,
                     (row.get("last_name") or "").strip() or None,
