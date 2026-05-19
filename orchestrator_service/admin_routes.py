@@ -1486,7 +1486,7 @@ async def get_chat_sessions(
                     FROM patients p
                     LEFT JOIN LATERAL (
                         SELECT content, created_at FROM chat_messages
-                        WHERE from_number = p.phone_number
+                        WHERE replace(regexp_replace(from_number, '[^0-9]', '', 'g'), '549', '54') = replace(regexp_replace(p.phone_number, '[^0-9]', '', 'g'), '549', '54')
                         ORDER BY created_at DESC LIMIT 1
                     ) cm ON true
                     LEFT JOIN LATERAL (
@@ -1495,11 +1495,11 @@ async def get_chat_sessions(
                         ORDER BY created_at DESC LIMIT 1
                     ) urgency ON true
                     WHERE p.tenant_id = $1
-                    AND EXISTS (SELECT 1 FROM chat_messages WHERE from_number = p.phone_number)
+                    AND EXISTS (SELECT 1 FROM chat_messages WHERE replace(regexp_replace(from_number, '[^0-9]', '', 'g'), '549', '54') = replace(regexp_replace(p.phone_number, '[^0-9]', '', 'g'), '549', '54'))
                     AND NOT EXISTS (
                         SELECT 1 FROM chat_conversations cw
                         WHERE cw.tenant_id = $1
-                        AND cw.external_user_id = p.phone_number
+                        AND replace(regexp_replace(cw.external_user_id, '\D', '', 'g'), '549', '54') = replace(regexp_replace(p.phone_number, '[^0-9]', '', 'g'), '549', '54')
                         AND cw.channel IN ('instagram', 'facebook')
                     )
                     """
@@ -1534,10 +1534,10 @@ async def get_chat_sessions(
                         cc.last_user_message_at as conv_last_user_msg_at,
                         cc.id as conversation_id
                     FROM patients p
-                    LEFT JOIN chat_conversations cc ON cc.tenant_id = p.tenant_id AND cc.channel = 'whatsapp' AND cc.external_user_id = p.phone_number
+                    LEFT JOIN chat_conversations cc ON cc.tenant_id = p.tenant_id AND cc.channel = 'whatsapp' AND replace(regexp_replace(cc.external_user_id, '\D', '', 'g'), '549', '54') = replace(regexp_replace(p.phone_number, '[^0-9]', '', 'g'), '549', '54')
                     LEFT JOIN LATERAL (
                         SELECT content, created_at FROM chat_messages
-                        WHERE tenant_id = $1 AND from_number = p.phone_number AND conversation_id = cc.id
+                        WHERE tenant_id = $1 AND replace(regexp_replace(from_number, '[^0-9]', '', 'g'), '549', '54') = replace(regexp_replace(p.phone_number, '[^0-9]', '', 'g'), '549', '54') AND conversation_id = cc.id
                         ORDER BY created_at DESC LIMIT 1
                     ) cm ON true
                     LEFT JOIN LATERAL (
@@ -1546,11 +1546,11 @@ async def get_chat_sessions(
                         ORDER BY created_at DESC LIMIT 1
                     ) urgency ON true
                     WHERE p.tenant_id = $1
-                    AND EXISTS (SELECT 1 FROM chat_messages WHERE tenant_id = $1 AND from_number = p.phone_number)
+                    AND EXISTS (SELECT 1 FROM chat_messages WHERE tenant_id = $1 AND replace(regexp_replace(from_number, '[^0-9]', '', 'g'), '549', '54') = replace(regexp_replace(p.phone_number, '[^0-9]', '', 'g'), '549', '54'))
                     AND NOT EXISTS (
                         SELECT 1 FROM chat_conversations cw
                         WHERE cw.tenant_id = $1
-                        AND cw.external_user_id = p.phone_number
+                        AND replace(regexp_replace(cw.external_user_id, '\D', '', 'g'), '549', '54') = replace(regexp_replace(p.phone_number, '[^0-9]', '', 'g'), '549', '54')
                         AND cw.channel IN ('instagram', 'facebook')
                     )
                     """
