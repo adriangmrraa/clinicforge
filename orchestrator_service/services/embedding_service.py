@@ -210,10 +210,8 @@ async def search_similar_faqs(
     # Try pgvector first (fast, DB-side similarity)
     if await check_pgvector_available():
         try:
-            # Pass embedding as textual vector literal and cast with ::vector
-            # to avoid asyncpg sending it as bytea (which causes 'bytea <=> unknown').
-            embedding_param = "[" + ",".join(str(x) for x in query_embedding) + "]"
-
+            # pgvector codec is registered in db.py:_init_connection,
+            # so we pass the embedding as native list[float] (no string casting needed).
             results = await db.pool.fetch("""
                 SELECT
                     fe.faq_id,
@@ -221,14 +219,14 @@ async def search_similar_faqs(
                     cf.question,
                     cf.answer,
                     cf.category,
-                    1 - (fe.embedding <=> $1::vector) AS similarity
+                    1 - (fe.embedding <=> $1) AS similarity
                 FROM faq_embeddings fe
                 JOIN clinic_faqs cf ON cf.id = fe.faq_id
                 WHERE fe.tenant_id = $2
-                AND 1 - (fe.embedding <=> $1::vector) >= $3
-                ORDER BY fe.embedding <=> $1::vector
+                AND 1 - (fe.embedding <=> $1) >= $3
+                ORDER BY fe.embedding <=> $1
                 LIMIT $4
-            """, embedding_param, tenant_id, threshold, top_k)
+            """, query_embedding, tenant_id, threshold, top_k)
 
             logger.info(f"📚 RAG pgvector: found {len(results)} FAQs above threshold {threshold} for tenant {tenant_id}")
 

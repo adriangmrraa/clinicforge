@@ -321,7 +321,12 @@ def normalize_phone_for_tenant(phone: str, country_code: str = DEFAULT_COUNTRY) 
         else:
             return "+" + code + rest
     
-    # Caso 4: no tiene código de país → anteponer prefijo
+    # Caso 4: empieza con 1 seguido del prefijo completo (error común tipo "15492995244868")
+    if digits.startswith("1" + full_prefix_digits) and len(digits) > len(full_prefix_digits):
+        # Strip leading "1", el resto ya tiene el formato correcto
+        return prefix + digits[len(full_prefix_digits) + 1:]
+
+    # Caso 5: no tiene código de país → anteponer prefijo
     return prefix + digits
 
 
