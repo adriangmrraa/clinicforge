@@ -501,9 +501,27 @@ export default function ChatsView() {
 
     // Cargar contexto clínico para cualquier canal (WhatsApp, Instagram, Facebook)
     // El backend resuelve por phone_number O por external_ids JSONB
-    if (selectedChatwoot.external_user_id) {
-      fetchPatientContext(selectedChatwoot.external_user_id);
-    }
+    const loadPatientContext = async () => {
+      if (!selectedChatwoot.external_user_id) return;
+      try {
+        const params: Record<string, any> = {};
+        const response = await api.get(`/admin/patients/phone/${encodeURIComponent(selectedChatwoot.external_user_id)}/context`, { params });
+        setPatientContext(response.data);
+        // Si encontró paciente, actualizar el badge de la conversación en la lista
+        const patientData = (response.data as any)?.patient;
+        if (patientData?.id) {
+          setChatwootList(prev => prev.map(item =>
+            item.id === selectedChatwoot.id
+              ? { ...item, linked_patient_id: patientData.id }
+              : item
+          ));
+        }
+      } catch (error) {
+        console.error('Error fetching patient context:', error);
+        setPatientContext(null);
+      }
+    };
+    loadPatientContext();
 
     let isInitial = true;
     const load = async () => {
@@ -1253,7 +1271,7 @@ export default function ChatsView() {
                             <span className={`font-semibold truncate text-white`}>
                               {session.patient_name || session.phone_number}
                             </span>
-                            {session.patient_id ? (
+                            {session.patient_id || (selectedSession?.phone_number === session.phone_number && (patientContext as any)?.patient?.id) ? (
                               <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 shrink-0">
                                 {t('chats.badge_patient')}
                               </span>
@@ -1318,7 +1336,7 @@ export default function ChatsView() {
                           <span className={`font-semibold truncate text-white`}>
                             {item.name || item.external_user_id || 'Chatwoot'}
                           </span>
-                          {item.linked_patient_id ? (
+                          {item.linked_patient_id || (selectedChatwoot?.id === item.id && (patientContext as any)?.patient?.id) ? (
                             <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 shrink-0">
                               {t('chats.badge_patient')}
                             </span>
