@@ -5264,14 +5264,36 @@ async def list_patients(
             patient_ids,
         )
 
-        # Batch query: pending balance per patient
+        # Batch query: pending balance per patient (combines standalone appointments + treatment plan balances)
         balances = await db.pool.fetch(
             """
-            SELECT patient_id, COALESCE(SUM(billing_amount), 0) as pending
-            FROM appointments
-            WHERE tenant_id = $1 AND payment_status IN ('pending','partial') AND status NOT IN ('cancelled')
-              AND patient_id = ANY($2::int[])
-            GROUP BY patient_id
+            WITH plan_balances AS (
+                SELECT
+                    tp.patient_id,
+                    COALESCE(SUM(COALESCE(tp.approved_total, 0)), 0)
+                    - COALESCE(SUM(tpp.amount), 0) as plan_pending
+                FROM treatment_plans tp
+                LEFT JOIN treatment_plan_payments tpp ON tpp.plan_id = tp.id
+                WHERE tp.tenant_id = $1
+                  AND tp.patient_id = ANY($2::int[])
+                  AND tp.status IN ('approved','in_progress','completed')
+                GROUP BY tp.patient_id
+            ),
+            standalone_apts AS (
+                SELECT patient_id, COALESCE(SUM(billing_amount), 0) as apt_pending
+                FROM appointments
+                WHERE tenant_id = $1
+                  AND payment_status IN ('pending','partial')
+                  AND status NOT IN ('cancelled')
+                  AND patient_id = ANY($2::int[])
+                  AND plan_item_id IS NULL
+                GROUP BY patient_id
+            )
+            SELECT
+                COALESCE(pb.patient_id, sa.patient_id) as patient_id,
+                COALESCE(pb.plan_pending, 0) + COALESCE(sa.apt_pending, 0) as pending
+            FROM plan_balances pb
+            FULL OUTER JOIN standalone_apts sa ON pb.patient_id = sa.patient_id
         """,
             tenant_id,
             patient_ids,
@@ -5913,17 +5935,41 @@ async def get_patient(id: int, tenant_id: int = Depends(get_resolved_tenant_id))
                 MIN(CASE WHEN status IN ('scheduled', 'confirmed') AND appointment_datetime > NOW()
                     THEN appointment_datetime END) as next_appointment_date,
                 MAX(CASE WHEN status = 'completed'
-                    THEN appointment_datetime END) as last_visit,
-                COALESCE(SUM(CASE
-                    WHEN status IN ('scheduled', 'confirmed', 'completed')
-                         AND (payment_status = 'pending' OR payment_status = 'partial')
-                         AND billing_amount IS NOT NULL
-                    THEN billing_amount ELSE 0 END), 0) as pending_balance
+                    THEN appointment_datetime END) as last_visit
             FROM appointments
             WHERE patient_id = $1 AND tenant_id = $2
         """,
             id,
             tenant_id,
+        )
+        # Separate query: combinación de planes de tratamiento + turnos standalone
+        pending_row = await db.pool.fetchrow(
+            """
+            WITH plan_balances AS (
+                SELECT
+                    COALESCE(SUM(COALESCE(tp.approved_total, 0)), 0)
+                    - COALESCE(SUM(tpp.amount), 0) as plan_pending
+                FROM treatment_plans tp
+                LEFT JOIN treatment_plan_payments tpp ON tpp.plan_id = tp.id
+                WHERE tp.tenant_id = $1
+                  AND tp.patient_id = $2
+                  AND tp.status IN ('approved','in_progress','completed')
+            ),
+            standalone_apts AS (
+                SELECT COALESCE(SUM(billing_amount), 0) as apt_pending
+                FROM appointments
+                WHERE tenant_id = $1
+                  AND patient_id = $2
+                  AND payment_status IN ('pending','partial')
+                  AND status NOT IN ('cancelled')
+                  AND plan_item_id IS NULL
+            )
+            SELECT
+                COALESCE((SELECT plan_pending FROM plan_balances), 0)
+                + COALESCE((SELECT apt_pending FROM standalone_apts), 0) as pending_balance
+        """,
+            tenant_id,
+            id,
         )
         if apt_summary:
             patient_dict["appointment_count"] = apt_summary["appointment_count"] or 0
@@ -5937,7 +5983,7 @@ async def get_patient(id: int, tenant_id: int = Depends(get_resolved_tenant_id))
                 if apt_summary["last_visit"]
                 else None
             )
-            patient_dict["pending_balance"] = float(apt_summary["pending_balance"] or 0)
+            patient_dict["pending_balance"] = float(pending_row["pending_balance"] or 0) if pending_row else 0
     except Exception as e:
         logger.warning(f"Patient summary enrichment failed (non-fatal): {e}")
         patient_dict["appointment_count"] = 0
