@@ -526,6 +526,28 @@ export default function ChatsView() {
     return () => clearInterval(interval);
   }, [selectedChatwoot]);
 
+  // Cuando el contexto clínico encuentra un paciente, actualizar el badge
+  // de la conversación en la lista (tanto Chatwoot como YCloud)
+  useEffect(() => {
+    const apiPatient = (patientContext as any)?.patient;
+    if (!apiPatient?.id) return;
+
+    if (selectedChatwoot) {
+      setChatwootList(prev => prev.map(item =>
+        item.id === selectedChatwoot.id
+          ? { ...item, linked_patient_id: apiPatient.id }
+          : item
+      ));
+    }
+    if (selectedSession) {
+      setSessions(prev => prev.map(s =>
+        s.phone_number === selectedSession.phone_number && !s.patient_id
+          ? { ...s, patient_id: apiPatient.id, patient_name: [apiPatient.first_name, apiPatient.last_name].filter(Boolean).join(' ').trim() || s.patient_name }
+          : s
+      ));
+    }
+  }, [patientContext, selectedChatwoot?.id, selectedSession?.phone_number]);
+
   // useEffect(() => {
   //   scrollToBottom();
   // }, [messages, chatwootMessages]); // Handled by useSmartScroll
