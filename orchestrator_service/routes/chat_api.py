@@ -479,14 +479,6 @@ async def unified_send_message(
                     tenant_id, "YCLOUD_WHATSAPP_NUMBER"
                 )
 
-            # Normalizar el número antes de enviar
-            if from_number:
-                try:
-                    from main import normalize_phone_for_tenant
-                    from_number = normalize_phone_for_tenant(str(from_number), "AR")
-                except Exception:
-                    pass
-
             client = YCloudClient(api_key)
             # En YCloud, external_user_id es el teléfono (phone_number)
             if message:
