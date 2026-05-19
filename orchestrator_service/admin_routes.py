@@ -4514,18 +4514,36 @@ async def create_patient(
     p: PatientCreate,
     tenant_id: int = Depends(get_resolved_tenant_id),
 ):
-    """Crear un paciente nuevo en la sede actual. Aislado por tenant_id (Regla de Oro)."""
+    """Crear un paciente nuevo en la sede actual. Aislado por tenant_id (Regla de Oro).
+    Si ya existe un paciente con el mismo teléfono normalizado, hace UPSERT (actualiza datos).
+    Automáticamente vincula conversaciones de chat existentes (linked_patient_id)."""
     try:
+        # Normalizar teléfono a E.164
+        raw_phone = (p.phone_number or "").strip()
+        if not raw_phone:
+            raise HTTPException(status_code=422, detail="El número de teléfono es requerido.")
+        normalized_phone = normalize_phone(raw_phone)
+
+        # Upsert paciente: si ya existe por teléfono, actualizar datos y promover status
         row = await db.pool.fetchrow(
             """
             INSERT INTO patients (tenant_id, first_name, last_name, phone_number, email, dni, insurance_provider, insurance_id, city, birth_date, notes, status, created_at)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'active', NOW())
+            ON CONFLICT (tenant_id, phone_number)
+            DO UPDATE SET
+                first_name = CASE WHEN patients.first_name = 'Visitante' OR patients.first_name IS NULL THEN EXCLUDED.first_name ELSE patients.first_name END,
+                last_name = COALESCE(EXCLUDED.last_name, patients.last_name),
+                email = COALESCE(EXCLUDED.email, patients.email),
+                dni = COALESCE(EXCLUDED.dni, patients.dni),
+                insurance_provider = COALESCE(EXCLUDED.insurance_provider, patients.insurance_provider),
+                insurance_id = COALESCE(EXCLUDED.insurance_id, patients.insurance_id),
+                status = 'active'
             RETURNING id, first_name, last_name, phone_number, status
         """,
             tenant_id,
             (p.first_name or "").strip() or "Sin nombre",
             (p.last_name or "").strip() or "",
-            (p.phone_number or "").strip(),
+            normalized_phone,
             (p.email or "").strip() or None,
             (p.dni or "").strip() or None,
             (p.insurance or "").strip() or None,
@@ -4534,6 +4552,22 @@ async def create_patient(
             p.birth_date,
             (p.notes or "").strip() or None,
         )
+
+        # Vincular conversaciones de chat existentes por teléfono (con y sin +)
+        try:
+            phone_without_plus = normalized_phone.lstrip("+")
+            linked = await db.pool.execute("""
+                UPDATE chat_conversations
+                SET linked_patient_id = $1, linked_at = NOW()
+                WHERE tenant_id = $2
+                  AND channel = 'whatsapp'
+                  AND (external_user_id = $3 OR external_user_id = $4)
+                  AND linked_patient_id IS NULL
+            """, row["id"], tenant_id, normalized_phone, phone_without_plus)
+            if linked and linked != "UPDATE 0":
+                logger.info(f"✅ Linked {linked} conversations to patient {row['id']}")
+        except Exception as link_err:
+            logger.warning(f"⚠️ Error linking conversations for patient {row['id']}: {link_err}")
 
         # Emit PATIENT_CREATED socket event for real-time UI updates
         try:
@@ -4544,7 +4578,7 @@ async def create_patient(
                 to_json_safe(
                     {
                         "patient_id": row["id"],
-                        "phone_number": row["phone_number"],
+                        "phone_number": normalized_phone,
                         "tenant_id": tenant_id,
                         "first_name": row["first_name"],
                         "last_name": row["last_name"] or "",
@@ -4577,6 +4611,8 @@ async def create_patient(
             status_code=409,
             detail="Paciente duplicado (mismo DNI o teléfono en esta sede).",
         )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error creating patient: {e}")
         raise HTTPException(status_code=400, detail=str(e))

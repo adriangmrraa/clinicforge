@@ -163,7 +163,10 @@ class Database:
         Obtiene conversación existente o crea una nueva (Spec 20).
         Garantiza UNA sola conversación por external_user_id + channel.
         Soporta persistencia de IDs de Chatwoot (Spec 34) para respuesta de la IA.
+        Automáticamente vincula el paciente existente por teléfono (linked_patient_id).
         """
+        import re
+        
         # 1. Buscar conversación existente
         # ✅ Fase 2: Buscar por ID de Chatwoot primero para evitar splits de ID numérico vs Handle
         existing = None
@@ -178,6 +181,8 @@ class Database:
                 SELECT id, external_user_id FROM chat_conversations
                 WHERE tenant_id = $1 AND channel = $2 AND external_user_id = $3
             """, tenant_id, channel, external_user_id)
+        
+        conv_id = None
         
         if existing:
             # Si existe pero no tenía IDs de Chatwoot, o cambió el user_id (split fix), actualizamos
@@ -211,31 +216,58 @@ class Database:
                         updated_at = NOW()
                     WHERE id = $2
                 """, json.dumps({"customer_avatar": avatar_url}), existing['id'])
-            return existing['id']
+            conv_id = existing['id']
+        else:
+            # 2. Crear nueva conversación (ON CONFLICT para race conditions)
+            conv_id = await self.pool.fetchval("""
+                INSERT INTO chat_conversations (
+                    tenant_id, channel, external_user_id, display_name,
+                    external_chatwoot_id, external_account_id,
+                    last_message_at, updated_at, meta, provider
+                )
+                VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW(), $7::jsonb, $8)
+                ON CONFLICT (tenant_id, channel, external_user_id) 
+                DO UPDATE SET 
+                    updated_at = NOW(),
+                    display_name = COALESCE(EXCLUDED.display_name, chat_conversations.display_name),
+                    external_chatwoot_id = COALESCE(EXCLUDED.external_chatwoot_id, chat_conversations.external_chatwoot_id),
+                    external_account_id = COALESCE(EXCLUDED.external_account_id, chat_conversations.external_account_id),
+                    provider = COALESCE(EXCLUDED.provider, chat_conversations.provider),
+                    meta = chat_conversations.meta || EXCLUDED.meta
+                RETURNING id
+            """, tenant_id, channel, external_user_id, display_name or external_user_id, 
+               external_chatwoot_id, external_account_id, 
+               json.dumps({"customer_avatar": avatar_url}) if avatar_url else '{}',
+               provider)
+            logger.info(f"✅ New conversation created: {conv_id} with Chatwoot IDs: {external_chatwoot_id}/{external_account_id}")
+
+        # 3. Vincular paciente existente por teléfono (solo WhatsApp, no IG/FB)
+        if channel == 'whatsapp' and external_user_id:
+            try:
+                # Normalizar teléfono: limpiar non-digits y agregar +
+                digits = re.sub(r"\D", "", external_user_id)
+                normalized = "+" + digits
+                raw = external_user_id
+                
+                # Buscar paciente existente por teléfono (RAW y normalizado)
+                patient = await self.pool.fetchrow("""
+                    SELECT id FROM patients
+                    WHERE tenant_id = $1
+                      AND (phone_number = $2 OR phone_number = $3)
+                      AND status != 'deleted'
+                    LIMIT 1
+                """, tenant_id, normalized, raw)
+                
+                if patient:
+                    # Setear linked_patient_id si no está ya seteado
+                    await self.pool.execute("""
+                        UPDATE chat_conversations
+                        SET linked_patient_id = $1, linked_at = NOW()
+                        WHERE id = $2 AND linked_patient_id IS NULL
+                    """, patient["id"], conv_id)
+            except Exception as link_err:
+                logger.warning(f"⚠️ Error linking patient to conversation {conv_id}: {link_err}")
         
-        # 2. Crear nueva conversación (ON CONFLICT para race conditions)
-        conv_id = await self.pool.fetchval("""
-            INSERT INTO chat_conversations (
-                tenant_id, channel, external_user_id, display_name,
-                external_chatwoot_id, external_account_id,
-                last_message_at, updated_at, meta, provider
-            )
-            VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW(), $7::jsonb, $8)
-            ON CONFLICT (tenant_id, channel, external_user_id) 
-            DO UPDATE SET 
-                updated_at = NOW(),
-                display_name = COALESCE(EXCLUDED.display_name, chat_conversations.display_name),
-                external_chatwoot_id = COALESCE(EXCLUDED.external_chatwoot_id, chat_conversations.external_chatwoot_id),
-                external_account_id = COALESCE(EXCLUDED.external_account_id, chat_conversations.external_account_id),
-                provider = COALESCE(EXCLUDED.provider, chat_conversations.provider),
-                meta = chat_conversations.meta || EXCLUDED.meta
-            RETURNING id
-        """, tenant_id, channel, external_user_id, display_name or external_user_id, 
-           external_chatwoot_id, external_account_id, 
-           json.dumps({"customer_avatar": avatar_url}) if avatar_url else '{}',
-           provider)
-        
-        logger.info(f"✅ New conversation created: {conv_id} with Chatwoot IDs: {external_chatwoot_id}/{external_account_id}")
         return conv_id
 
     async def ensure_patient_exists(self, phone_number: Optional[str], tenant_id: int, first_name: str = 'Visitante', status: str = 'guest', external_id: Optional[dict] = None, create_if_missing: bool = True):

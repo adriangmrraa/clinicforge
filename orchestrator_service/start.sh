@@ -151,6 +151,49 @@ conn.close()
 print(f'Schema patches: {applied}/{len(patches)} applied')
 "
 
+# Auto-link: vincular pacientes existentes con conversaciones de chat huérfanas
+echo "Vinculando pacientes con conversaciones de chat..."
+python << 'PYEOF' 2>&1 || echo "  Auto-link skipped (non-critical)"
+import os, re, psycopg2
+dsn = os.environ.get("POSTGRES_DSN", "").replace("postgresql+asyncpg://", "postgresql://")
+if dsn.startswith("postgres://"):
+    dsn = dsn.replace("postgres://", "postgresql://", 1)
+conn = psycopg2.connect(dsn)
+conn.autocommit = True
+cur = conn.cursor()
+
+def norm(p):
+    return "+" + re.sub(r"\D", "", p)
+
+linked = skipped = already = 0
+cur.execute("SELECT id, phone_number FROM patients WHERE phone_number IS NOT NULL AND phone_number != %s ORDER BY id", ("",))
+for pat_id, phone in cur.fetchall():
+    raw = re.sub(r"\D", "", phone)
+    normalized = norm(phone)
+    cur.execute("""
+        SELECT id, linked_patient_id FROM chat_conversations
+        WHERE channel = 'whatsapp'
+          AND (external_user_id = %s OR external_user_id = %s)
+        ORDER BY updated_at DESC LIMIT 1
+    """, (normalized, raw))
+    conv = cur.fetchone()
+    if not conv:
+        skipped += 1
+        continue
+    conv_id, linked_id = conv
+    if linked_id == pat_id:
+        already += 1
+        continue
+    if linked_id is not None:
+        skipped += 1
+        continue
+    cur.execute("UPDATE chat_conversations SET linked_patient_id = %s, linked_at = NOW() WHERE id = %s", (pat_id, conv_id))
+    linked += 1
+
+conn.close()
+print(f"  Pacientes linkeados: {linked} | Saltados: {skipped} | Ya linkeados: {already}")
+PYEOF
+
 # Asegurar permisos de escritura en directorios de uploads/media
 mkdir -p /app/uploads /app/media
 chmod -R 777 /app/uploads /app/media
