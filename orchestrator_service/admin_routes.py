@@ -385,60 +385,33 @@ def normalize_phone(phone: str) -> str:
 
 
 def generate_phone_variants(phone: str) -> list[str]:
-    """Genera múltiples variantes de formato para un teléfono argentino.
-    Útil para matchear pacientes creados manualmente con conversaciones YCloud,
-    donde los formatos pueden diferir (5491144445555 vs 01144445555 vs +5491144445555).
+    """Genera variantes de formato para matchear números de teléfono.
+    
+    Ej: +542996114843 (paciente, sin 9) → también +5492996114843 (YCloud, con 9)
+    Ej: +5492996114843 (YCloud) → también +542996114843 (sin 9)
+    Ej: 01144445555 (local) → también 5491144445555 (internacional)
     """
     digits = re.sub(r"\D", "", phone)
-    variants = set()
-    variants.add(digits)
-    variants.add("+" + digits)
+    variants = {digits, "+" + digits, phone}
     
-    # Variantes con código de país 549 (Argentina)
-    # Si arranca con 549 → ya tiene código de país
-    if digits.startswith("549"):
-        variants.add(digits)  # 5491144445555
-        variants.add("+" + digits)  # +5491144445555
-        # Sin el 549
-        without_549 = digits[3:]  # 1144445555
-        variants.add(without_549)
-        variants.add("+" + without_549)
-        # Si el resto arranca con 11 (celular), también sin el 11
-        if without_549.startswith("11"):
-            without_11 = without_549[2:]  # 44445555
-            variants.add(without_11)
+    # 549/54: Argentina (9 de celular)
+    if digits.startswith("549") and len(digits) > 3:
+        variants.add("54" + digits[3:])
+        variants.add("+54" + digits[3:])
+    elif digits.startswith("54") and len(digits) > 3:
+        variants.add("549" + digits[2:])
+        variants.add("+549" + digits[2:])
     
-    # Si arranca con 011 (formato local)
-    if digits.startswith("011"):
-        rest = digits[3:]  # 44445555
-        variants.add("54911" + rest)  # 5491144445555 (YCloud format)
-        variants.add("+54911" + rest)  # +5491144445555
-        variants.add("11" + rest)  # 1144445555
-    
-    # Si arranca con 11 (celular sin 0)
-    if digits.startswith("11"):
-        variants.add("549" + digits)  # 549115551234
-        variants.add("+549" + digits)  # +549115551234
-        # Sin el 11
-        variants.add(digits[2:])  # 5551234
-    
-    # Si arranca con +549 (E.164 completo)
-    if phone.startswith("+549"):
-        without_plus = digits  # 5491144445555
-        variants.add(without_plus)
-        variants.add("+" + digits)
-        # Sin código de país
-        without_code = digits[3:]  # 1144445555
-        variants.add(without_code)
-        if without_code.startswith("11"):
-            variants.add(without_code[2:])  # 44445555
-    
-    # Si arranca con +54 (código de país sin 9)
-    if phone.startswith("+54") and not phone.startswith("+549"):
-        without_plus = digits  # 541144445555
-        variants.add(without_plus)
-        # Agregar el 9
-        variants.add("549" + digits[2:])  # 5491144445555
+    # 011 / 11: formato local argentino
+    if digits.startswith("011") and len(digits) > 3:
+        rest = digits[3:]
+        variants.add("54911" + rest)
+        variants.add("+54911" + rest)
+        variants.add("11" + rest)
+        variants.add("+11" + rest)
+    elif digits.startswith("11") and len(digits) > 3:
+        variants.add("549" + digits)
+        variants.add("+549" + digits)
     
     return list(variants)
 

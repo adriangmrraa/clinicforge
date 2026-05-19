@@ -244,24 +244,24 @@ class Database:
         # 3. Vincular paciente existente por teléfono (solo WhatsApp, no IG/FB)
         if channel == 'whatsapp' and external_user_id:
             try:
-                # Generar múltiples variantes de formato para matchear (argentino)
+                # Generar variantes de formato para matchear números de teléfono
                 digits = re.sub(r"\D", "", external_user_id)
                 variants = {digits, "+" + digits, external_user_id}
-                if digits.startswith("549"):
-                    without_549 = digits[3:]
-                    variants.add(without_549)
-                    variants.add("+" + without_549)
-                    if without_549.startswith("11"):
-                        variants.add(without_549[2:])
-                if digits.startswith("011"):
+                if digits.startswith("549") and len(digits) > 3:
+                    variants.add("54" + digits[3:])
+                    variants.add("+54" + digits[3:])
+                elif digits.startswith("54") and len(digits) > 3:
+                    variants.add("549" + digits[2:])
+                    variants.add("+549" + digits[2:])
+                if digits.startswith("011") and len(digits) > 3:
                     rest = digits[3:]
                     variants.add("54911" + rest)
                     variants.add("+54911" + rest)
                     variants.add("11" + rest)
-                if digits.startswith("11"):
+                    variants.add("+11" + rest)
+                elif digits.startswith("11") and len(digits) > 3:
                     variants.add("549" + digits)
                     variants.add("+549" + digits)
-                    variants.add(digits[2:])
                 
                 variants_list = list(variants)
                 placeholders = ", ".join(f"${i+2}" for i in range(len(variants_list)))

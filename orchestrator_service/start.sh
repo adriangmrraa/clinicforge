@@ -157,25 +157,20 @@ python << 'PYEOF' 2>&1 || echo "  Auto-link skipped (non-critical)"
 import os, re, psycopg2
 
 def generate_phone_variants(phone):
-    """Genera multiples variantes de formato para telefono argentino."""
+    """Genera variantes de formato para matchear telefonos.
+    +542996114843 (paciente) → tambien +5492996114843 (YCloud, con 9)
+    +5492996114843 (YCloud) → tambien +542996114843 (sin 9)"""
     digits = re.sub(r"\D", "", phone)
-    variants = {digits, "+" + digits}
-    if digits.startswith("549"):
-        w = digits[3:]
-        variants.update([w, "+" + w])
-        if w.startswith("11"):
-            variants.add(w[2:])
-    if digits.startswith("011"):
+    variants = {digits, "+" + digits, phone}
+    if digits.startswith("549") and len(digits) > 3:
+        variants.update(["54" + digits[3:], "+54" + digits[3:]])
+    elif digits.startswith("54") and len(digits) > 3:
+        variants.update(["549" + digits[2:], "+549" + digits[2:]])
+    if digits.startswith("011") and len(digits) > 3:
         r = digits[3:]
-        variants.update(["54911" + r, "+54911" + r, "11" + r])
-    if digits.startswith("11"):
-        variants.update(["549" + digits, "+549" + digits, digits[2:]])
-    if phone.startswith("+549"):
-        variants.update([digits, "+" + digits])
-        w = digits[3:]
-        variants.update([w, "+" + w])
-        if w.startswith("11"):
-            variants.add(w[2:])
+        variants.update(["54911" + r, "+54911" + r, "11" + r, "+11" + r])
+    elif digits.startswith("11") and len(digits) > 3:
+        variants.update(["549" + digits, "+549" + digits])
     return list(variants)
 
 dsn = os.environ.get("POSTGRES_DSN", "").replace("postgresql+asyncpg://", "postgresql://")
