@@ -294,9 +294,20 @@ class Database:
     async def ensure_patient_exists(self, phone_number: Optional[str], tenant_id: int, first_name: str = 'Visitante', status: str = 'guest', external_id: Optional[dict] = None, create_if_missing: bool = True):
         """
         Asegura que exista un registro de paciente/lead.
+        Normaliza el teléfono según el país de la clínica.
         Soporta búsqueda por phone_number (WhatsApp) o por external_id (Meta/IG/FB).
         Si create_if_missing=False, retorna None cuando no existe (no crea "Visitante").
         """
+        # Normalizar teléfono según país del tenant
+        if phone_number:
+            try:
+                tenant_row = await self.pool.fetchrow("SELECT country_code FROM tenants WHERE id = $1", tenant_id)
+                tenant_country = tenant_row["country_code"] if tenant_row else "AR"
+                from main import normalize_phone_for_tenant
+                phone_number = normalize_phone_for_tenant(phone_number, tenant_country)
+            except Exception:
+                pass  # Si falla la normalización, usar el original
+        
         # 1. Intentar buscar por external_id si viene (ej: {"instagram": "user_id"})
         if external_id:
             for platform, platform_id in external_id.items():

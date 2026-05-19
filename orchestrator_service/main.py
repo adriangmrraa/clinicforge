@@ -255,6 +255,76 @@ def normalize_phone_digits(phone: Optional[str]) -> str:
     return re.sub(r"\D", "", str(phone))
 
 
+# --- MAPA DE PAÍSES PARA NORMALIZACIÓN DE TELÉFONOS ---
+# Se usa en create_patient, update_patient, ensure_patient_exists, Nova, etc.
+
+COUNTRY_PHONE_MAP: dict[str, dict] = {
+    "AR": {"prefix": "+549", "code": "54", "has_mobile_9": True},
+    "US": {"prefix": "+1", "code": "1", "has_mobile_9": False},
+    "ES": {"prefix": "+34", "code": "34", "has_mobile_9": False},
+    "MX": {"prefix": "+52", "code": "52", "has_mobile_9": False},
+    "CO": {"prefix": "+57", "code": "57", "has_mobile_9": False},
+    "CL": {"prefix": "+56", "code": "56", "has_mobile_9": False},
+    "PE": {"prefix": "+51", "code": "51", "has_mobile_9": False},
+    "BR": {"prefix": "+55", "code": "55", "has_mobile_9": False},
+    "UY": {"prefix": "+598", "code": "598", "has_mobile_9": False},
+    "PY": {"prefix": "+595", "code": "595", "has_mobile_9": False},
+    "BO": {"prefix": "+591", "code": "591", "has_mobile_9": False},
+}
+
+DEFAULT_COUNTRY = "AR"
+
+
+def normalize_phone_for_tenant(phone: str, country_code: str = DEFAULT_COUNTRY) -> str:
+    """Normaliza un número de teléfono usando el código de país del tenant.
+    
+    Para Argentina (AR):
+      "3704868421"       → "+5493704868421"   (agrega prefijo +549)
+      "+542996114843"    → "+5492996114843"   (agrega 9 entre 54 y código de área)
+      "+5492996114843"   → "+5492996114843"   (ya normalizado, idempotente)
+      "542996114843"     → "+5492996114843"   (agrega + y 9)
+    
+    Para otros países aplica el prefijo correspondiente.
+    """
+    if not phone or not phone.strip():
+        return phone or ""
+    
+    country = COUNTRY_PHONE_MAP.get(country_code, COUNTRY_PHONE_MAP[DEFAULT_COUNTRY])
+    prefix = country["prefix"]  # ej: "+549"
+    code = country["code"]      # ej: "54"
+    has_9 = country["has_mobile_9"]
+    
+    digits = re.sub(r"\D", "", phone)
+    if not digits:
+        return phone
+    
+    # Caso 1: ya empieza con el prefijo completo → idempotente
+    full_prefix_digits = re.sub(r"\D", "", prefix)
+    if digits.startswith(full_prefix_digits):
+        return prefix + digits[len(full_prefix_digits):]
+    
+    # Caso 2: empieza con + y el código de país (ej: +54...)
+    if phone.startswith("+" + code):
+        rest = digits[len(code):]
+        if has_9:
+            # +542996114843 → +5492996114843 (insertar 9)
+            return prefix + rest
+        else:
+            return "+" + code + rest
+    
+    # Caso 3: empieza con código de país sin + (ej: 54...)
+    if digits.startswith(code) and len(digits) > len(code):
+        rest = digits[len(code):]
+        if has_9:
+            # 542996114843 → +5492996114843
+            return prefix + rest
+        else:
+            return "+" + code + rest
+    
+    # Caso 4: no tiene código de país → anteponer prefijo
+    return prefix + digits
+
+
 # --- HELPERS PARA PARSING DE FECHAS ---
 
 

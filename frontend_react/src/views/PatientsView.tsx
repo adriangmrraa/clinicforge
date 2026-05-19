@@ -6,6 +6,7 @@ import { useTranslation } from '../context/LanguageContext';
 import { useAuth } from '../context/AuthContext';
 import PageHeader from '../components/PageHeader';
 import GlassCard, { CARD_IMAGES } from '../components/GlassCard';
+import PhoneInput from '../components/PhoneInput';
 
 interface Patient {
   id: number;
@@ -917,16 +918,12 @@ export default function PatientsView() {
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-xs font-semibold text-white/50 uppercase tracking-wider">{t('patients.phone_req')}</label>
-                    <div className="relative">
-                      <Phone className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" size={18} />
-                      <input
-                        type="tel"
-                        required
-                        value={formData.phone_number}
-                        onChange={(e) => setFormData({ ...formData, phone_number: e.target.value })}
-                        className="w-full pl-10 pr-4 py-2.5 bg-white/[0.04] border border-white/[0.08] rounded-lg focus:bg-white/[0.06] focus:border-blue-500 focus:ring-0 transition-all text-sm text-white placeholder-white/20"
-                      />
-                    </div>
+                    <PhoneInput
+                      value={formData.phone_number}
+                      onChange={(val) => setFormData({ ...formData, phone_number: val })}
+                      prefix="+549"
+                      required
+                    />
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-xs font-semibold text-white/50 uppercase tracking-wider">{t('patients.dni')}</label>

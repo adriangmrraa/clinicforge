@@ -2366,6 +2366,15 @@ async def _registrar_paciente(args: Dict, tenant_id: int) -> str:
     first_name = args.get("first_name", "").strip()
     last_name = args.get("last_name", "").strip()
     phone = args.get("phone_number", "").strip()
+    # Normalizar teléfono según país del tenant
+    if phone:
+        try:
+            tenant_row = await db.pool.fetchrow("SELECT country_code FROM tenants WHERE id = $1", tenant_id)
+            tenant_country = tenant_row["country_code"] if tenant_row else "AR"
+            from main import normalize_phone_for_tenant
+            phone = normalize_phone_for_tenant(phone, tenant_country)
+        except Exception:
+            pass
 
     if not first_name or not phone:
         return "Necesito al menos el nombre y el telefono para registrar un paciente."

@@ -134,6 +134,14 @@ async def register(request: Request, payload: UserRegister):
             uid = uuid.UUID(user_id)
             wh_json = json.dumps(_default_working_hours())
             phone_val = (payload.phone_number or "").strip() or None
+            if phone_val:
+                try:
+                    tenant_row = await db.pool.fetchrow("SELECT country_code FROM tenants WHERE id = $1", tenant_id)
+                    tenant_country = tenant_row["country_code"] if tenant_row else "AR"
+                    from main import normalize_phone_for_tenant
+                    phone_val = normalize_phone_for_tenant(phone_val, tenant_country)
+                except Exception:
+                    pass
             specialty_val = (payload.specialty or "").strip() or None
             reg_id = (payload.registration_id or "").strip() or None
             gcal_id = (payload.google_calendar_id or "").strip() or None

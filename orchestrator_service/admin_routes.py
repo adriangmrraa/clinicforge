@@ -4553,11 +4553,15 @@ async def create_patient(
     Si ya existe un paciente con el mismo teléfono normalizado, hace UPSERT (actualiza datos).
     Automáticamente vincula conversaciones de chat existentes (linked_patient_id)."""
     try:
-        # Normalizar teléfono a E.164
+        # Normalizar teléfono según país del tenant
         raw_phone = (p.phone_number or "").strip()
         if not raw_phone:
             raise HTTPException(status_code=422, detail="El número de teléfono es requerido.")
-        normalized_phone = normalize_phone(raw_phone)
+        # Obtener country_code del tenant
+        tenant_row = await db.pool.fetchrow("SELECT country_code FROM tenants WHERE id = $1", tenant_id)
+        tenant_country = tenant_row["country_code"] if tenant_row else "AR"
+        from main import normalize_phone_for_tenant
+        normalized_phone = normalize_phone_for_tenant(raw_phone, tenant_country)
 
         # Upsert paciente: si ya existe por teléfono, actualizar datos y promover status
         row = await db.pool.fetchrow(
@@ -5923,8 +5927,19 @@ async def get_patient(id: int, tenant_id: int = Depends(get_resolved_tenant_id))
 async def update_patient(
     id: int, p: PatientCreate, tenant_id: int = Depends(get_resolved_tenant_id)
 ):
-    """Actualizar datos de un paciente. Aislado por tenant_id (Regla de Oro)."""
+    """Actualizar datos de un paciente. Aislado por tenant_id (Regla de Oro).
+    Normaliza el teléfono según el país de la clínica antes de guardar."""
     try:
+        # Normalizar teléfono según país del tenant
+        raw_phone = (p.phone_number or "").strip()
+        if raw_phone:
+            tenant_row = await db.pool.fetchrow("SELECT country_code FROM tenants WHERE id = $1", tenant_id)
+            tenant_country = tenant_row["country_code"] if tenant_row else "AR"
+            from main import normalize_phone_for_tenant
+            normalized_phone = normalize_phone_for_tenant(raw_phone, tenant_country)
+        else:
+            normalized_phone = None
+
         result = await db.pool.execute(
             """
             UPDATE patients
@@ -5943,7 +5958,7 @@ async def update_patient(
         """,
             p.first_name,
             p.last_name,
-            p.phone_number,
+            normalized_phone if raw_phone else p.phone_number,
             p.email,
             p.dni,
             p.insurance,
