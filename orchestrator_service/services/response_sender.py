@@ -144,7 +144,16 @@ class ResponseSender:
             sender_number = await pool.fetchval("SELECT bot_phone_number FROM tenants WHERE id = $1", tenant_id)
             if not sender_number:
                 sender_number = await get_tenant_credential(tenant_id, YCLOUD_WHATSAPP_NUMBER)
-            
+
+            # Normalizar el número antes de enviar (garantiza formato E.164 correcto)
+            if sender_number:
+                try:
+                    from main import normalize_phone_for_tenant
+                    sender_number = normalize_phone_for_tenant(str(sender_number), "AR")
+                except Exception:
+                    pass
+                logger.info(f"📞 YCloud from_number (normalized): {sender_number}")
+
             if not api_key or not sender_number:
                 logger.error(f"❌ Missing YCloud Credentials for tenant {tenant_id}")
                 return

@@ -275,6 +275,13 @@ async def _action_send_template(pool, tenant_id, phone, step, variables) -> bool
         if not biz_num:
             biz_num = await get_tenant_credential(tenant_id, YCLOUD_WHATSAPP_NUMBER)
 
+        if biz_num:
+            try:
+                from main import normalize_phone_for_tenant
+                biz_num = normalize_phone_for_tenant(str(biz_num), "AR")
+            except Exception:
+                pass
+
         # Fetch template from YCloud to get REAL language code and variable structure
         real_lang = step.get("template_lang") or "es"
         tpl_components = None
@@ -415,6 +422,12 @@ async def _action_send_text(pool, tenant_id, phone, step, variables) -> bool:
             from ycloud_client import YCloudClient
             api_key = await get_tenant_credential(tenant_id, YCLOUD_API_KEY)
             biz_num = await get_tenant_credential(tenant_id, YCLOUD_WHATSAPP_NUMBER)
+            if biz_num:
+                try:
+                    from main import normalize_phone_for_tenant
+                    biz_num = normalize_phone_for_tenant(str(biz_num), "AR")
+                except Exception:
+                    pass
             if not api_key:
                 return False
             yc = YCloudClient(api_key=api_key, business_number=biz_num)
@@ -531,6 +544,12 @@ Respondé SOLO con el mensaje a enviar, o "NO_ENVIAR" si no corresponde."""
             from ycloud_client import YCloudClient
             api_key = await get_tenant_credential(tenant_id, YCLOUD_API_KEY)
             biz_num = await get_tenant_credential(tenant_id, YCLOUD_WHATSAPP_NUMBER)
+            if biz_num:
+                try:
+                    from main import normalize_phone_for_tenant
+                    biz_num = normalize_phone_for_tenant(str(biz_num), "AR")
+                except Exception:
+                    pass
             if not api_key:
                 return False
             yc = YCloudClient(api_key=api_key, business_number=biz_num)

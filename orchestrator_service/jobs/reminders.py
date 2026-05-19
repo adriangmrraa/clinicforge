@@ -272,6 +272,13 @@ async def _send_template(
             from core.credentials import YCLOUD_WHATSAPP_NUMBER
             business_number = await get_tenant_credential(tenant_id, YCLOUD_WHATSAPP_NUMBER)
 
+        if business_number:
+            try:
+                from main import normalize_phone_for_tenant
+                business_number = normalize_phone_for_tenant(str(business_number), "AR")
+            except Exception:
+                pass
+
         logger.info(f"📱 Reminder from_number={business_number} tenant={tenant_id}")
 
         # Step 1: Fetch template from YCloud to get the REAL language code and structure
@@ -448,6 +455,13 @@ async def _send_text(tenant_id: int, phone: str, message: str, patient_name: str
         if not business_number:
             from core.credentials import YCLOUD_WHATSAPP_NUMBER
             business_number = await get_tenant_credential(tenant_id, YCLOUD_WHATSAPP_NUMBER)
+
+        if business_number:
+            try:
+                from main import normalize_phone_for_tenant
+                business_number = normalize_phone_for_tenant(str(business_number), "AR")
+            except Exception:
+                pass
 
         # Send via YCloud
         yc = YCloudClient(api_key=api_key, business_number=business_number)

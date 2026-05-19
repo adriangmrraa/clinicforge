@@ -7271,6 +7271,14 @@ async def _enviar_mensaje(args: Dict, tenant_id: int, user_role: str) -> str:
                 else os.getenv("BOT_PHONE_NUMBER", "")
             )
 
+            # Normalizar el número antes de enviar
+            if bot_phone:
+                try:
+                    from main import normalize_phone_for_tenant
+                    bot_phone = normalize_phone_for_tenant(str(bot_phone), "AR")
+                except Exception:
+                    pass
+
             if not phone:
                 return f"El paciente {display} no tiene teléfono cargado."
 
