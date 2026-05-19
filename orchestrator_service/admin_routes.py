@@ -384,6 +384,65 @@ def normalize_phone(phone: str) -> str:
     return "+" + clean
 
 
+def generate_phone_variants(phone: str) -> list[str]:
+    """Genera múltiples variantes de formato para un teléfono argentino.
+    Útil para matchear pacientes creados manualmente con conversaciones YCloud,
+    donde los formatos pueden diferir (5491144445555 vs 01144445555 vs +5491144445555).
+    """
+    digits = re.sub(r"\D", "", phone)
+    variants = set()
+    variants.add(digits)
+    variants.add("+" + digits)
+    
+    # Variantes con código de país 549 (Argentina)
+    # Si arranca con 549 → ya tiene código de país
+    if digits.startswith("549"):
+        variants.add(digits)  # 5491144445555
+        variants.add("+" + digits)  # +5491144445555
+        # Sin el 549
+        without_549 = digits[3:]  # 1144445555
+        variants.add(without_549)
+        variants.add("+" + without_549)
+        # Si el resto arranca con 11 (celular), también sin el 11
+        if without_549.startswith("11"):
+            without_11 = without_549[2:]  # 44445555
+            variants.add(without_11)
+    
+    # Si arranca con 011 (formato local)
+    if digits.startswith("011"):
+        rest = digits[3:]  # 44445555
+        variants.add("54911" + rest)  # 5491144445555 (YCloud format)
+        variants.add("+54911" + rest)  # +5491144445555
+        variants.add("11" + rest)  # 1144445555
+    
+    # Si arranca con 11 (celular sin 0)
+    if digits.startswith("11"):
+        variants.add("549" + digits)  # 549115551234
+        variants.add("+549" + digits)  # +549115551234
+        # Sin el 11
+        variants.add(digits[2:])  # 5551234
+    
+    # Si arranca con +549 (E.164 completo)
+    if phone.startswith("+549"):
+        without_plus = digits  # 5491144445555
+        variants.add(without_plus)
+        variants.add("+" + digits)
+        # Sin código de país
+        without_code = digits[3:]  # 1144445555
+        variants.add(without_code)
+        if without_code.startswith("11"):
+            variants.add(without_code[2:])  # 44445555
+    
+    # Si arranca con +54 (código de país sin 9)
+    if phone.startswith("+54") and not phone.startswith("+549"):
+        without_plus = digits  # 541144445555
+        variants.add(without_plus)
+        # Agregar el 9
+        variants.add("549" + digits[2:])  # 5491144445555
+    
+    return list(variants)
+
+
 # --- Helper para emitir eventos de Socket.IO ---
 async def emit_appointment_event(
     event_type: str, data: Dict[str, Any], request: Request
@@ -488,18 +547,21 @@ async def get_patient_clinical_context(
 
     patient = None
     if not is_pure_platform_id:
-        normalized_phone = normalize_phone(phone)
+        # Generar múltiples variantes de formato para matchear (argentino)
+        phone_variants = generate_phone_variants(phone)
+        # Loggear para debug
+        logger.info(f"🔍 Buscando paciente por teléfono: variants={phone_variants}")
+        placeholders = ", ".join(f"${i+2}" for i in range(len(phone_variants)))
         patient = await db.pool.fetchrow(
-            """
+            f"""
             SELECT id, first_name, last_name, phone_number, status, urgency_level, urgency_reason, preferred_schedule,
                    acquisition_source, meta_ad_id, meta_ad_headline, meta_ad_body, external_ids, medical_history
             FROM patients 
-            WHERE tenant_id = $1 AND (phone_number = $2 OR phone_number = $3)
+            WHERE tenant_id = $1 AND phone_number IN ({placeholders})
             AND status != 'deleted'
         """,
             tenant_id,
-            normalized_phone,
-            phone,
+            *phone_variants,
         )
 
     if not patient:
@@ -4553,19 +4615,22 @@ async def create_patient(
             (p.notes or "").strip() or None,
         )
 
-        # Vincular conversaciones de chat existentes por teléfono (con y sin +)
+        # Vincular conversaciones de chat existentes por teléfono (múltiples formatos)
         try:
-            phone_without_plus = normalized_phone.lstrip("+")
-            linked = await db.pool.execute("""
+            phone_variants = generate_phone_variants(raw_phone)
+            # También incluir el normalized_phone y raw_phone originales
+            all_variants = list(set(phone_variants + [normalized_phone, raw_phone]))
+            placeholders = ", ".join(f"${i+3}" for i in range(len(all_variants)))
+            linked = await db.pool.execute(f"""
                 UPDATE chat_conversations
                 SET linked_patient_id = $1, linked_at = NOW()
                 WHERE tenant_id = $2
                   AND channel = 'whatsapp'
-                  AND (external_user_id = $3 OR external_user_id = $4)
+                  AND external_user_id IN ({placeholders})
                   AND linked_patient_id IS NULL
-            """, row["id"], tenant_id, normalized_phone, phone_without_plus)
+            """, row["id"], tenant_id, *all_variants)
             if linked and linked != "UPDATE 0":
-                logger.info(f"✅ Linked {linked} conversations to patient {row['id']}")
+                logger.info(f"✅ Linked conversations for patient {row['id']}")
         except Exception as link_err:
             logger.warning(f"⚠️ Error linking conversations for patient {row['id']}: {link_err}")
 

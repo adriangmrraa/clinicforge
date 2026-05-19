@@ -155,6 +155,29 @@ print(f'Schema patches: {applied}/{len(patches)} applied')
 echo "Vinculando pacientes con conversaciones de chat..."
 python << 'PYEOF' 2>&1 || echo "  Auto-link skipped (non-critical)"
 import os, re, psycopg2
+
+def generate_phone_variants(phone):
+    """Genera multiples variantes de formato para telefono argentino."""
+    digits = re.sub(r"\D", "", phone)
+    variants = {digits, "+" + digits}
+    if digits.startswith("549"):
+        w = digits[3:]
+        variants.update([w, "+" + w])
+        if w.startswith("11"):
+            variants.add(w[2:])
+    if digits.startswith("011"):
+        r = digits[3:]
+        variants.update(["54911" + r, "+54911" + r, "11" + r])
+    if digits.startswith("11"):
+        variants.update(["549" + digits, "+549" + digits, digits[2:]])
+    if phone.startswith("+549"):
+        variants.update([digits, "+" + digits])
+        w = digits[3:]
+        variants.update([w, "+" + w])
+        if w.startswith("11"):
+            variants.add(w[2:])
+    return list(variants)
+
 dsn = os.environ.get("POSTGRES_DSN", "").replace("postgresql+asyncpg://", "postgresql://")
 if dsn.startswith("postgres://"):
     dsn = dsn.replace("postgres://", "postgresql://", 1)
@@ -162,20 +185,17 @@ conn = psycopg2.connect(dsn)
 conn.autocommit = True
 cur = conn.cursor()
 
-def norm(p):
-    return "+" + re.sub(r"\D", "", p)
-
 linked = skipped = already = 0
 cur.execute("SELECT id, phone_number FROM patients WHERE phone_number IS NOT NULL AND phone_number != %s ORDER BY id", ("",))
 for pat_id, phone in cur.fetchall():
-    raw = re.sub(r"\D", "", phone)
-    normalized = norm(phone)
-    cur.execute("""
+    variants = generate_phone_variants(phone)
+    placeholders = ", ".join("%s" for _ in variants)
+    cur.execute(f"""
         SELECT id, linked_patient_id FROM chat_conversations
         WHERE channel = 'whatsapp'
-          AND (external_user_id = %s OR external_user_id = %s)
+          AND external_user_id IN ({placeholders})
         ORDER BY updated_at DESC LIMIT 1
-    """, (normalized, raw))
+    """, variants)
     conv = cur.fetchone()
     if not conv:
         skipped += 1

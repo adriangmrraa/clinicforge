@@ -244,19 +244,40 @@ class Database:
         # 3. Vincular paciente existente por teléfono (solo WhatsApp, no IG/FB)
         if channel == 'whatsapp' and external_user_id:
             try:
-                # Normalizar teléfono: limpiar non-digits y agregar +
+                # Generar múltiples variantes de formato para matchear (argentino)
                 digits = re.sub(r"\D", "", external_user_id)
-                normalized = "+" + digits
-                raw = external_user_id
+                variants = {digits, "+" + digits, external_user_id}
+                if digits.startswith("549"):
+                    without_549 = digits[3:]
+                    variants.add(without_549)
+                    variants.add("+" + without_549)
+                    if without_549.startswith("11"):
+                        variants.add(without_549[2:])
+                if digits.startswith("011"):
+                    rest = digits[3:]
+                    variants.add("54911" + rest)
+                    variants.add("+54911" + rest)
+                    variants.add("11" + rest)
+                if digits.startswith("11"):
+                    variants.add("549" + digits)
+                    variants.add("+549" + digits)
+                    variants.add(digits[2:])
                 
-                # Buscar paciente existente por teléfono (RAW y normalizado)
-                patient = await self.pool.fetchrow("""
+                variants_list = list(variants)
+                placeholders = ", ".join(f"${i+2}" for i in range(len(variants_list)))
+                
+                # Buscar paciente existente por múltiples formatos de teléfono
+                patient = await self.pool.fetchrow(
+                    f"""
                     SELECT id FROM patients
                     WHERE tenant_id = $1
-                      AND (phone_number = $2 OR phone_number = $3)
+                      AND phone_number IN ({placeholders})
                       AND status != 'deleted'
                     LIMIT 1
-                """, tenant_id, normalized, raw)
+                """,
+                    tenant_id,
+                    *variants_list,
+                )
                 
                 if patient:
                     # Setear linked_patient_id si no está ya seteado
