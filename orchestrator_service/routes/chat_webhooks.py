@@ -114,9 +114,11 @@ async def receive_chatwoot_webhook(
                             logger.error(f"🔊 ECHO (legacy) media download FAILED | key={mitem['key']} id={mitem['id']} error={me}", exc_info=True)
                     display_text = text or (f"[{media_items[0]['key'].upper()}]" if media_items else "")
                     content_attrs_json = json.dumps(content_attrs) if content_attrs else "[]"
+                    # from_number = user_phone (patient) para que coincida con el filtro del frontend
+                    # (el bot tambien guarda assistant messages con from_number = patient_phone)
                     await pool.execute(
                         "INSERT INTO chat_messages (tenant_id, conversation_id, role, content, from_number, platform_metadata, content_attributes) VALUES ($1, $2, 'assistant', $3, $4, '{\"source\": \"whatsapp_business_app\"}'::jsonb, $5::jsonb)",
-                        tenant_id, conv_row["id"], display_text, clinic_phone, content_attrs_json,
+                        tenant_id, conv_row["id"], display_text, user_phone, content_attrs_json,
                     )
                     # Emit Socket.IO (same format as main echo handler)
                     try:
@@ -305,9 +307,10 @@ async def receive_ycloud_webhook(
                 conv_id_str = str(conv_row["id"])
                 content_attrs_json = json.dumps(content_attrs) if content_attrs else "[]"
                 logger.info(f"🔊 ECHO inserting chat_message | conv={conv_id_str} content='{display_text[:50]}' attrs_len={len(content_attrs)}")
+                # from_number = user_phone (patient) para que coincida con el filtro del frontend
                 await pool.execute(
                     "INSERT INTO chat_messages (tenant_id, conversation_id, role, content, from_number, platform_metadata, content_attributes) VALUES ($1, $2, 'assistant', $3, $4, '{\"source\": \"whatsapp_business_app\"}'::jsonb, $5::jsonb)",
-                    tenant_id, conv_row["id"], display_text, clinic_phone, content_attrs_json,
+                    tenant_id, conv_row["id"], display_text, user_phone, content_attrs_json,
                 )
                 # Emit Socket.IO event with the SAME format as normal messages
                 try:
