@@ -139,6 +139,9 @@ patches = [
     'ALTER TABLE document_embeddings ALTER COLUMN embedding TYPE vector(1536) USING embedding::vector(1536)',
     'CREATE INDEX IF NOT EXISTS idx_faq_embeddings_vector ON faq_embeddings USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100)',
     'CREATE INDEX IF NOT EXISTS idx_doc_embeddings_vector ON document_embeddings USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100)',
+    # Professional blocks on tenant_holidays (migration 060 — safety net)
+    'ALTER TABLE tenant_holidays ADD COLUMN IF NOT EXISTS professional_id INTEGER REFERENCES professionals(id) ON DELETE CASCADE',
+    'ALTER TABLE tenant_holidays ADD COLUMN IF NOT EXISTS scope VARCHAR(20) NOT NULL DEFAULT \'global\'',
 ]
 applied = 0
 for p in patches:
