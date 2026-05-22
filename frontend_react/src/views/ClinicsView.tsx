@@ -194,6 +194,9 @@ interface HolidayItem {
     custom_hours?: { start: string; end: string } | null;
     custom_hours_start?: string | null;
     custom_hours_end?: string | null;
+    professional_id?: number;
+    professional_name?: string;
+    scope?: string;
 }
 
 interface NewHolidayForm {
@@ -203,6 +206,8 @@ interface NewHolidayForm {
     custom_hours_start: string;
     custom_hours_end: string;
     is_recurring: boolean;
+    professional_id: string;
+    scope: string;
 }
 
 const emptyHolidayForm: NewHolidayForm = {
@@ -212,6 +217,8 @@ const emptyHolidayForm: NewHolidayForm = {
     custom_hours_start: '09:00',
     custom_hours_end: '13:00',
     is_recurring: false,
+    professional_id: '',
+    scope: 'global',
 };
 
 export default function ClinicsView() {
@@ -282,6 +289,7 @@ export default function ClinicsView() {
     const [editingHolidayId, setEditingHolidayId] = useState<number | null>(null);
     const [editHolidayForm, setEditHolidayForm] = useState<NewHolidayForm>({ ...emptyHolidayForm });
     const [deletingHolidayId, setDeletingHolidayId] = useState<number | null>(null);
+    const [professionals, setProfessionals] = useState<any[]>([]);
 
     const resetHolidaysState = () => {
         setHolidaysSectionOpen(false);
@@ -315,6 +323,13 @@ export default function ClinicsView() {
         }
     }, [holidaysSectionOpen, editingClinica?.id]);
 
+    // Fetch professionals list when editing a clinic (used for professional-scoped holidays)
+    useEffect(() => {
+        if (editingClinica) {
+            api.get('/admin/professionals').then(r => setProfessionals(r.data || [])).catch(() => {});
+        }
+    }, [editingClinica?.id]);
+
     // Validate the holiday form per REQ-5.7
     const validateHolidayForm = (form: NewHolidayForm): string | null => {
         if (!form.date) return t('clinics.holidays.date_label') + ' ✖';
@@ -344,6 +359,8 @@ export default function ClinicsView() {
                 name: newHoliday.name.trim(),
                 holiday_type: newHoliday.holiday_type,
                 is_recurring: newHoliday.is_recurring,
+                professional_id: newHoliday.scope === 'professional' ? (newHoliday.professional_id ? parseInt(newHoliday.professional_id) : null) : null,
+                scope: newHoliday.scope,
             };
             if (newHoliday.holiday_type === 'override_open') {
                 payload.custom_hours_start = newHoliday.custom_hours_start;
@@ -352,8 +369,6 @@ export default function ClinicsView() {
             await api.post('/admin/holidays', payload);
             setNewHoliday({ ...emptyHolidayForm });
             setAddSuccess(true);
-            await fetchHolidays();
-            setTimeout(() => setAddSuccess(false), 2000);
         } catch (e: unknown) {
             const err = e as { response?: { status?: number } };
             if (err?.response?.status === 409) {
@@ -361,9 +376,17 @@ export default function ClinicsView() {
             } else {
                 setAddError(t('clinics.holidays.fetch_error'));
             }
+            setAddingSaving(false);
+            return;
+        }
+        try {
+            await fetchHolidays();
+        } catch (e) {
+            console.error('Error refreshing holidays:', e);
         } finally {
             setAddingSaving(false);
         }
+        setTimeout(() => setAddSuccess(false), 2000);
     };
 
     const handleDeleteHoliday = async (id: number) => {
@@ -388,6 +411,8 @@ export default function ClinicsView() {
             custom_hours_start: h.custom_hours?.start || h.custom_hours_start || '09:00',
             custom_hours_end: h.custom_hours?.end || h.custom_hours_end || '13:00',
             is_recurring: h.is_recurring || false,
+            professional_id: h.professional_id ? h.professional_id.toString() : '',
+            scope: h.scope || 'global',
         });
     };
 
@@ -404,6 +429,8 @@ export default function ClinicsView() {
                 name: editHolidayForm.name.trim(),
                 holiday_type: editHolidayForm.holiday_type,
                 is_recurring: editHolidayForm.is_recurring,
+                professional_id: editHolidayForm.scope === 'professional' ? (editHolidayForm.professional_id ? parseInt(editHolidayForm.professional_id) : null) : null,
+                scope: editHolidayForm.scope,
             };
             if (editHolidayForm.holiday_type === 'override_open') {
                 payload.custom_hours_start = editHolidayForm.custom_hours_start;
@@ -2175,6 +2202,27 @@ export default function ClinicsView() {
                                                                     <input type="text" placeholder={t('clinics.holidays.name_label')} value={editHolidayForm.name}
                                                                         onChange={e => setEditHolidayForm(prev => ({ ...prev, name: e.target.value }))}
                                                                         className="w-full px-2 py-1.5 bg-white/[0.04] border border-white/[0.08] rounded text-white text-xs" />
+                                                                    <div className="space-y-1">
+                                                                        <label className="text-xs font-semibold uppercase tracking-wider text-white/60">
+                                                                            {t('clinics.holidays.professional_label') || 'Profesional'}
+                                                                        </label>
+                                                                        <select value={editHolidayForm.scope === 'professional' ? editHolidayForm.professional_id : ''}
+                                                                            onChange={e => {
+                                                                                if (e.target.value === '') {
+                                                                                    setEditHolidayForm(prev => ({ ...prev, scope: 'global', professional_id: '' }));
+                                                                                } else {
+                                                                                    setEditHolidayForm(prev => ({ ...prev, scope: 'professional', professional_id: e.target.value }));
+                                                                                }
+                                                                            }}
+                                                                            className="w-full px-2 py-1.5 bg-[#0d1117] border border-white/[0.08] rounded text-white text-xs outline-none focus:ring-1 focus:ring-amber-400/40">
+                                                                            <option value="">{t('clinics.holidays.all_professionals') || 'Toda la clínica'}</option>
+                                                                            {professionals.filter((p: any) => p.is_active !== false).map((p: any) => (
+                                                                                <option key={p.id} value={p.id.toString()}>
+                                                                                    {p.first_name} {p.last_name || ''}
+                                                                                </option>
+                                                                            ))}
+                                                                        </select>
+                                                                    </div>
                                                                     {editHolidayForm.holiday_type === 'override_open' && (
                                                                         <div className="grid grid-cols-2 gap-2">
                                                                             <input type="time" value={editHolidayForm.custom_hours_start}
@@ -2225,9 +2273,14 @@ export default function ClinicsView() {
                                                                             {h.holiday_type === 'closure' ? t('clinics.holidays.type_closure') : t('clinics.holidays.type_override_open')}
                                                                         </span>
                                                                         <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${h.source === 'custom' ? 'bg-amber-500/10 text-amber-400' : 'bg-white/[0.05] text-white/40'}`}>
-                                                                            {h.source === 'custom' ? t('clinics.holidays.source_custom') : t('clinics.holidays.source_national')}
-                                                                        </span>
-                                                                        {h.custom_hours && (
+                                                                             {h.source === 'custom' ? t('clinics.holidays.source_custom') : t('clinics.holidays.source_national')}
+                                                                         </span>
+                                                                         {h.professional_name && (
+                                                                             <span className="text-[10px] px-1.5 py-0.5 rounded font-semibold bg-purple-500/10 text-purple-400">
+                                                                                 {h.professional_name}
+                                                                             </span>
+                                                                         )}
+                                                                         {h.custom_hours && (
                                                                             <span className="text-[10px] text-white/40">
                                                                                 {h.custom_hours.start}–{h.custom_hours.end}
                                                                             </span>
@@ -2282,6 +2335,27 @@ export default function ClinicsView() {
                                                             className="px-2 py-1.5 bg-white/[0.04] border border-white/[0.08] rounded text-white text-xs" />
                                                     </div>
                                                 )}
+                                                <div className="space-y-1">
+                                                    <label className="text-xs font-semibold uppercase tracking-wider text-white/60">
+                                                        {t('clinics.holidays.professional_label') || 'Profesional'}
+                                                    </label>
+                                                    <select value={newHoliday.scope === 'professional' ? newHoliday.professional_id : ''}
+                                                        onChange={e => {
+                                                            if (e.target.value === '') {
+                                                                setNewHoliday(prev => ({ ...prev, scope: 'global', professional_id: '' }));
+                                                            } else {
+                                                                setNewHoliday(prev => ({ ...prev, scope: 'professional', professional_id: e.target.value }));
+                                                            }
+                                                        }}
+                                                        className="w-full px-2 py-1.5 bg-[#0d1117] border border-white/[0.08] rounded text-white text-xs outline-none focus:ring-1 focus:ring-amber-400/40">
+                                                        <option value="">{t('clinics.holidays.all_professionals') || 'Toda la clínica'}</option>
+                                                        {professionals.filter((p: any) => p.is_active !== false).map((p: any) => (
+                                                            <option key={p.id} value={p.id.toString()}>
+                                                                {p.first_name} {p.last_name || ''}
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                </div>
                                                 <label className="flex items-center gap-2 cursor-pointer">
                                                     <input type="checkbox" checked={newHoliday.is_recurring}
                                                         onChange={e => setNewHoliday(prev => ({ ...prev, is_recurring: e.target.checked }))}

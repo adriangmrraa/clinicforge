@@ -150,9 +150,15 @@ def _format_holidays_inline(upcoming_holidays: list) -> str:
     if not upcoming_holidays:
         return ""
     hol_lines = []
-    for h in upcoming_holidays[:7]:
+    for h in upcoming_holidays[:10]:
         ch = h.get("custom_hours")
-        if ch:
+        prof_name = h.get("professional_name")
+        scope = h.get("scope", "global")
+        if scope == "professional" and prof_name:
+            hol_lines.append(
+                f"• {h['date']}: {h['name']} — BLOQUEADO ({prof_name})"
+            )
+        elif ch:
             hol_lines.append(
                 f"• {h['date']}: {h['name']} — HORARIO ESPECIAL {ch['start']}–{ch['end']}"
             )
@@ -160,8 +166,11 @@ def _format_holidays_inline(upcoming_holidays: list) -> str:
             hol_lines.append(f"• {h['date']}: {h['name']} — CERRADO")
     section = "\n## FERIADOS PRÓXIMOS\n" + "\n".join(hol_lines)
     section += (
-        "\nREGLA: Si feriado CERRADO → informale al paciente y ofrecé el próximo "
-        "día hábil. Si HORARIO ESPECIAL → ofrecer turnos en ese rango."
+        "\nREGLA: Feriado CERRADO → informale al paciente y ofrecé el próximo "
+        "día hábil. Feriado HORARIO ESPECIAL → ofrecer turnos en ese rango. "
+        "BLOQUEADO → no ofrecer turnos con ese profesional, ofrecer con otro "
+        "disponible. La tool check_availability y book_appointment ya aplican "
+        "estas reglas automáticamente."
     )
     return section
 

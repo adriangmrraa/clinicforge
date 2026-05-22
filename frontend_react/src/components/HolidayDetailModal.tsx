@@ -11,9 +11,10 @@ interface HolidayDetailModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSaved: () => void;
+  professionals?: any[];
 }
 
-export default function HolidayDetailModal({ holiday, isOpen, onClose, onSaved }: HolidayDetailModalProps) {
+export default function HolidayDetailModal({ holiday, isOpen, onClose, onSaved, professionals }: HolidayDetailModalProps) {
   const { t } = useTranslation();
 
   const isWorkingDay = holiday?.holiday_type === 'override_open';
@@ -23,12 +24,14 @@ export default function HolidayDetailModal({ holiday, isOpen, onClose, onSaved }
   const [endTime, setEndTime] = useState('13:00');
   const [saving, setSaving] = useState(false);
   const [timeError, setTimeError] = useState(false);
+  const [selectedProfId, setSelectedProfId] = useState<string>('');
 
   useEffect(() => {
     if (holiday) {
       setWorkingToggle(holiday.holiday_type === 'override_open');
       setStartTime(holiday.custom_hours_start || holiday.custom_hours?.start || '09:00');
       setEndTime(holiday.custom_hours_end || holiday.custom_hours?.end || '13:00');
+      setSelectedProfId(holiday.professional_id?.toString() || '');
       setTimeError(false);
     }
   }, [holiday]);
@@ -61,28 +64,39 @@ export default function HolidayDetailModal({ holiday, isOpen, onClose, onSaved }
 
       if (workingToggle && !currentlyWorking) {
         // Switching to working day — toggle creates override_open record
-        const toggleRes = await api.post('/admin/holidays/toggle', {
-          date: holiday.date,
-          name: holiday.name,
-        });
+        const togglePayload: any = { date: holiday.date, name: holiday.name };
+        if (selectedProfId) {
+          togglePayload.professional_id = parseInt(selectedProfId);
+          togglePayload.scope = 'professional';
+        } else {
+          togglePayload.scope = 'global';
+        }
+        const toggleRes = await api.post('/admin/holidays/toggle', togglePayload);
         activeHolidayId = toggleRes.data?.holiday_id;
       } else if (!workingToggle && currentlyWorking) {
         // Switching to closure — toggle removes override_open
-        await api.post('/admin/holidays/toggle', {
-          date: holiday.date,
-          name: holiday.name,
-        });
+        const togglePayload: any = { date: holiday.date, name: holiday.name };
+        if (selectedProfId) {
+          togglePayload.professional_id = parseInt(selectedProfId);
+          togglePayload.scope = 'professional';
+        }
+        await api.post('/admin/holidays/toggle', togglePayload);
         onSaved();
         return;
       }
 
       if (workingToggle && activeHolidayId) {
         // Save custom hours on the override_open record
-        await api.put(`/admin/holidays/${activeHolidayId}`, {
+        const putPayload: any = {
           holiday_type: 'override_open',
           custom_hours_start: startTime,
           custom_hours_end: endTime,
-        });
+        };
+        if (selectedProfId) {
+          putPayload.professional_id = parseInt(selectedProfId);
+          putPayload.scope = 'professional';
+        }
+        await api.put(`/admin/holidays/${activeHolidayId}`, putPayload);
       }
 
       onSaved();
@@ -138,6 +152,27 @@ export default function HolidayDetailModal({ holiday, isOpen, onClose, onSaved }
             </span>
           )}
         </div>
+
+        {/* Professional selector */}
+        {(!holiday.professional_id || holiday.scope === 'global') && professionals && professionals.length > 0 && (
+          <div className="px-6 pb-4 space-y-2">
+            <label className="text-xs font-semibold uppercase tracking-wider text-white/60">
+              Profesional
+            </label>
+            <select
+              value={selectedProfId}
+              onChange={e => setSelectedProfId(e.target.value)}
+              className="w-full bg-white/[0.04] border border-white/[0.08] text-white rounded-xl px-4 py-3 text-sm"
+            >
+              <option value="">Toda la clínica</option>
+              {professionals.map((p: any) => (
+                <option key={p.id} value={p.id.toString()}>
+                  {p.first_name} {p.last_name || ''}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
 
         {/* Divider */}
         <div className="h-px bg-white/[0.06] mx-6" />

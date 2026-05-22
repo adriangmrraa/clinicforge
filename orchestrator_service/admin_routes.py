@@ -3507,12 +3507,12 @@ async def update_tenant(
     "/holidays", tags=["Feriados"], summary="Listar feriados (nacionales + custom)"
 )
 async def list_holidays(
-    user_data=Depends(verify_admin_token), days: int = Query(365, ge=1, le=730)
+    user_data=Depends(verify_admin_token),
+    days: int = Query(365, ge=1, le=730),
+    tenant_id: int = Depends(get_resolved_tenant_id),
 ):
     """Lista feriados nacionales (librería) + custom del tenant para los próximos N días."""
     from services.holiday_service import get_upcoming_holidays
-
-    tenant_id = user_data.tenant_id
     holidays = await get_upcoming_holidays(db.pool, tenant_id, days_ahead=days)
     # Enrich upcoming entries with custom_hours if present
     for h in holidays:
@@ -3546,20 +3546,24 @@ async def list_holidays(
 @router.get(
     "/holidays/upcoming", tags=["Feriados"], summary="Próximos 30 días de feriados"
 )
-async def upcoming_holidays(user_data=Depends(verify_admin_token)):
+async def upcoming_holidays(
+    user_data=Depends(verify_admin_token),
+    tenant_id: int = Depends(get_resolved_tenant_id),
+):
     """Feriados en los próximos 30 días, ordenados por fecha."""
     from services.holiday_service import get_upcoming_holidays
-
-    tenant_id = user_data.tenant_id
     return await get_upcoming_holidays(db.pool, tenant_id, days_ahead=30)
 
 
 @router.post("/holidays", tags=["Feriados"], summary="Crear feriado custom")
-async def create_holiday(data: Dict[str, Any], user_data=Depends(verify_admin_token)):
+async def create_holiday(
+    data: Dict[str, Any],
+    user_data=Depends(verify_admin_token),
+    tenant_id: int = Depends(get_resolved_tenant_id),
+):
     """Crea un feriado custom (closure o override_open) para el tenant."""
     from datetime import date as date_type
-
-    tenant_id = user_data.tenant_id
+    from datetime import datetime as dt
     holiday_date = data.get("date")
     name = data.get("name")
     holiday_type = data.get("holiday_type", "closure")
@@ -3582,19 +3586,66 @@ async def create_holiday(data: Dict[str, Any], user_data=Depends(verify_admin_to
             status_code=422, detail="Formato de fecha inválido. Usar YYYY-MM-DD"
         )
 
+    # Parse and validate custom hours for override_open
+    custom_hours_start = None
+    custom_hours_end = None
+    if holiday_type == "override_open":
+        raw_start = data.get("custom_hours_start")
+        raw_end = data.get("custom_hours_end")
+        if not raw_start or not raw_end:
+            raise HTTPException(
+                status_code=422,
+                detail="custom_hours_start y custom_hours_end son obligatorios para override_open",
+            )
+        try:
+            custom_hours_start = dt.strptime(str(raw_start), "%H:%M").time()
+            custom_hours_end = dt.strptime(str(raw_end), "%H:%M").time()
+        except (ValueError, TypeError):
+            raise HTTPException(
+                status_code=422,
+                detail="Formato de horario inválido. Usar HH:MM",
+            )
+        if custom_hours_start >= custom_hours_end:
+            raise HTTPException(
+                status_code=422,
+                detail="El horario de inicio debe ser anterior al de fin",
+            )
+
+    # Parse professional_id and scope
+    professional_id = data.get("professional_id")
+    scope = data.get("scope", "global")
+    if scope not in ("global", "professional"):
+        raise HTTPException(
+            status_code=422,
+            detail="scope debe ser 'global' o 'professional'",
+        )
+    if scope == "professional" and not professional_id:
+        raise HTTPException(
+            status_code=422,
+            detail="professional_id es obligatorio cuando scope='professional'",
+        )
+    if scope == "global":
+        professional_id = None
+
     try:
         new_id = await db.pool.fetchval(
-            """INSERT INTO tenant_holidays (tenant_id, date, name, holiday_type, is_recurring)
-               VALUES ($1, $2, $3, $4, $5) RETURNING id""",
+            """INSERT INTO tenant_holidays (tenant_id, date, name, holiday_type, is_recurring,
+                                             custom_hours_start, custom_hours_end,
+                                             professional_id, scope)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id""",
             tenant_id,
             parsed_date,
             name.strip(),
             holiday_type,
             bool(is_recurring),
+            custom_hours_start,
+            custom_hours_end,
+            professional_id,
+            scope,
         )
         return {"id": new_id, "status": "created"}
     except Exception as e:
-        if "uq_tenant_holidays_tenant_date_type" in str(e):
+        if "uq_tenant_holidays_tenant_date_type" in str(e) or "uq_tenant_holidays_tenant_date_type_prof" in str(e):
             raise HTTPException(
                 status_code=409,
                 detail="Ya existe un feriado con ese tipo para esa fecha",
@@ -3628,38 +3679,60 @@ async def toggle_holiday(
             status_code=422, detail="Formato de fecha inválido. Usar YYYY-MM-DD"
         )
 
-    existing = await db.pool.fetchrow(
-        "SELECT id FROM tenant_holidays WHERE tenant_id = $1 AND date = $2 AND holiday_type = 'override_open'",
-        tenant_id,
-        parsed_date,
-    )
-
-    if existing:
-        await db.pool.execute(
-            "DELETE FROM tenant_holidays WHERE id = $1 AND tenant_id = $2",
-            existing["id"],
-            tenant_id,
-        )
-        return {"status": "toggled_closed", "holiday_id": None}
-    else:
-        new_id = await db.pool.fetchval(
-            """INSERT INTO tenant_holidays (tenant_id, date, name, holiday_type, is_recurring)
-               VALUES ($1, $2, $3, 'override_open', false) RETURNING id""",
+    # Use transaction for atomic toggle (prevents TOCTOU race condition)
+    async with db.pool.transaction() as conn:
+        existing = await conn.fetchrow(
+            "SELECT id FROM tenant_holidays WHERE tenant_id = $1 AND date = $2 AND holiday_type = 'override_open'",
             tenant_id,
             parsed_date,
-            name.strip() if isinstance(name, str) else str(name),
         )
-        return {"status": "toggled_open", "holiday_id": new_id}
+
+        if existing:
+            await conn.execute(
+                "DELETE FROM tenant_holidays WHERE id = $1 AND tenant_id = $2",
+                existing["id"],
+                tenant_id,
+            )
+            return {"status": "toggled_closed", "holiday_id": None}
+        else:
+            professional_id = data.get("professional_id")
+            scope = data.get("scope", "global")
+            if scope not in ("global", "professional"):
+                raise HTTPException(
+                    status_code=422,
+                    detail="scope debe ser 'global' o 'professional'",
+                )
+            if scope == "professional" and not professional_id:
+                raise HTTPException(
+                    status_code=422,
+                    detail="professional_id es obligatorio cuando scope='professional'",
+                )
+            if scope == "global":
+                professional_id = None
+
+            new_id = await conn.fetchval(
+                """INSERT INTO tenant_holidays (tenant_id, date, name, holiday_type, is_recurring,
+                                                 professional_id, scope)
+                   VALUES ($1, $2, $3, 'override_open', false, $4, $5) RETURNING id""",
+                tenant_id,
+                parsed_date,
+                name.strip() if isinstance(name, str) else str(name),
+                professional_id,
+                scope,
+            )
+            return {"status": "toggled_open", "holiday_id": new_id}
 
 
 @router.put(
     "/holidays/{holiday_id}", tags=["Feriados"], summary="Actualizar feriado custom"
 )
 async def update_holiday(
-    holiday_id: int, data: Dict[str, Any], user_data=Depends(verify_admin_token)
+    holiday_id: int,
+    data: Dict[str, Any],
+    user_data=Depends(verify_admin_token),
+    tenant_id: int = Depends(get_resolved_tenant_id),
 ):
     """Actualiza un feriado custom del tenant."""
-    tenant_id = user_data.tenant_id
     existing = await db.pool.fetchrow(
         "SELECT id FROM tenant_holidays WHERE id = $1 AND tenant_id = $2",
         holiday_id,
@@ -3733,6 +3806,26 @@ async def update_holiday(
             params.append(parsed_end)
             updates.append(f"custom_hours_end = ${len(params)}")
 
+    # Professional_id + scope handling
+    if "scope" in data or "professional_id" in data:
+        new_scope = data.get("scope")
+        new_prof_id = data.get("professional_id")
+        if new_scope is not None:
+            if new_scope not in ("global", "professional"):
+                raise HTTPException(
+                    status_code=422,
+                    detail="scope debe ser 'global' o 'professional'",
+                )
+            params.append(new_scope)
+            updates.append(f"scope = ${len(params)}")
+        if new_prof_id is not None:
+            params.append(new_prof_id)
+            updates.append(f"professional_id = ${len(params)}")
+        elif "professional_id" in data and new_prof_id is None:
+            # Explicitly setting professional_id to null (scope change to global)
+            params.append(None)
+            updates.append(f"professional_id = ${len(params)}")
+
     if not updates:
         return {"status": "updated"}
 
@@ -3746,9 +3839,12 @@ async def update_holiday(
 @router.delete(
     "/holidays/{holiday_id}", tags=["Feriados"], summary="Eliminar feriado custom"
 )
-async def delete_holiday(holiday_id: int, user_data=Depends(verify_admin_token)):
+async def delete_holiday(
+    holiday_id: int,
+    user_data=Depends(verify_admin_token),
+    tenant_id: int = Depends(get_resolved_tenant_id),
+):
     """Elimina un feriado custom del tenant."""
-    tenant_id = user_data.tenant_id
     result = await db.pool.execute(
         "DELETE FROM tenant_holidays WHERE id = $1 AND tenant_id = $2",
         holiday_id,
@@ -7441,6 +7537,30 @@ async def create_appointment_manual(
             raise HTTPException(
                 status_code=400, detail="Profesional inválido o inactivo"
             )
+
+        # Holiday check: reject if global closure or professional has a block
+        from services.holiday_service import is_holiday as check_apt_holiday
+
+        apt_date = apt.appointment_datetime.date()
+        # Global holiday check
+        _is_hol, _hol_name, _custom_hours = await check_apt_holiday(
+            db.pool, tenant_id, apt_date
+        )
+        if _is_hol and not _custom_hours:
+            raise HTTPException(
+                status_code=422,
+                detail=f"No se puede agendar el {apt_date}: es feriado ({_hol_name}). La clínica está cerrada.",
+            )
+        # Professional block check
+        if apt.professional_id:
+            _is_blocked, _blk_name, _ = await check_apt_holiday(
+                db.pool, tenant_id, apt_date, professional_id=apt.professional_id
+            )
+            if _is_blocked:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"No se puede agendar con ese profesional el {apt_date}: {_blk_name}. Elegí otro profesional.",
+                )
 
         # 2. Resolver patient_id (solo dentro del tenant)
         pid = apt.patient_id

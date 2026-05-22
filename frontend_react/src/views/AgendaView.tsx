@@ -76,6 +76,9 @@ export interface Holiday {
   custom_hours_start?: string | null;
   custom_hours_end?: string | null;
   custom_hours?: { start: string; end: string } | null;
+  professional_id?: number;
+  professional_name?: string;
+  scope?: string;
 }
 
 // ==================== SOURCE COLORS ====================
@@ -484,8 +487,15 @@ export default function AgendaView() {
     return googleBlocks.filter((block: GoogleCalendarBlock) => block.professional_id?.toString() === selectedProfessionalId);
   }, [googleBlocks, selectedProfessionalId]);
 
-  // Holidays shown to all users (not filtered by professional)
-  const filteredHolidays = holidays;
+  // Holidays filtered by professional scope
+  const filteredHolidays = holidays.filter(h => {
+    if (!h.scope || h.scope === 'global') return true;
+    if (h.scope === 'professional' && h.professional_id) {
+      if (!selectedProfessionalId || selectedProfessionalId === 'all') return true;
+      return h.professional_id.toString() === selectedProfessionalId;
+    }
+    return true;
+  });
 
   // Professional user: lock filter to their id (fallback for old sessions without professional_id in JWT)
   useEffect(() => {
@@ -578,11 +588,13 @@ export default function AgendaView() {
     })),
     ...filteredHolidays.map((holiday) => ({
       id: holiday.id || `holiday-${holiday.date}`,
-      title: `🎉 ${holiday.name}`,
+      title: holiday.professional_name
+        ? `🎉 ${holiday.name} (${holiday.professional_name})`
+        : `🎉 ${holiday.name}`,
       start: holiday.date,
       allDay: true,
-      backgroundColor: '#ef4444', // Red for holidays
-      borderColor: '#ef4444',
+      backgroundColor: holiday.scope === 'professional' ? '#9333ea' : '#ef4444',
+      borderColor: holiday.scope === 'professional' ? '#9333ea' : '#ef4444',
       textColor: '#ffffff',
       extendedProps: { ...holiday, eventType: 'holiday' },
     })),
@@ -1460,7 +1472,11 @@ export default function AgendaView() {
         holiday={selectedHoliday}
         isOpen={!!selectedHoliday}
         onClose={() => setSelectedHoliday(null)}
-        onSaved={() => { setSelectedHoliday(null); fetchData(); }}
+        onSaved={() => {
+          setSelectedHoliday(null);
+          holidaysCache.current = { data: [], fetchedAt: 0 };
+          fetchData();
+        }}
       />
     </div>
   );

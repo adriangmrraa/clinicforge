@@ -1576,6 +1576,10 @@ class TenantHoliday(Base):
     tenant_id = Column(
         Integer, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
     )
+    professional_id = Column(
+        Integer, ForeignKey("professionals.id", ondelete="CASCADE"), nullable=True
+    )
+    scope = Column(String(20), nullable=False, default="global", server_default="global")
     date = Column(Date, nullable=False)
     name = Column(Text, nullable=False)
     holiday_type = Column(String(20), nullable=False)
@@ -1587,17 +1591,22 @@ class TenantHoliday(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (
-        UniqueConstraint(
-            "tenant_id",
-            "date",
-            "holiday_type",
-            name="uq_tenant_holidays_tenant_date_type",
-        ),
         CheckConstraint(
             "holiday_type IN ('closure', 'override_open')",
             name="ck_tenant_holidays_type",
         ),
+        CheckConstraint(
+            "scope IN ('global', 'professional')",
+            name="ck_tenant_holidays_scope",
+        ),
         Index("idx_tenant_holidays_tenant_date", "tenant_id", "date"),
+        Index(
+            "idx_tenant_holidays_professional",
+            "tenant_id",
+            "professional_id",
+            "date",
+            postgresql_where=text("professional_id IS NOT NULL"),
+        ),
     )
 
 

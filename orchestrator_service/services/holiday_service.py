@@ -132,9 +132,17 @@ async def is_holiday(
     pool,
     tenant_id: int,
     check_date: date,
+    professional_id: Optional[int] = None,
 ) -> Tuple[bool, Optional[str], Optional[Dict[str, str]]]:
     """
     Check if a date is a holiday for the given tenant.
+
+    Args:
+        pool: Database pool
+        tenant_id: Tenant ID
+        check_date: Date to check
+        professional_id: Optional — if provided, checks per-professional blocks (scope='professional')
+                         If omitted, only checks global holidays (scope='global' or professional_id IS NULL)
 
     Returns: Tuple[bool, Optional[str], Optional[Dict[str, str]]]
 
@@ -145,11 +153,16 @@ async def is_holiday(
       - override_open, w/ hrs  → (True, name, {"start": "HH:MM", "end": "HH:MM"})
       - Library holiday        → (True, name, None)
 
-    Priority chain:
-      1. override_open → (False, None, None) or (True, name, custom_hours)
-      2. closure       → (True, name, None)
-      3. library       → (True, name, None)
-      4. default       → (False, None, None)
+    Priority chain (professional context — professional_id provided):
+      1. professional scope='closure'          → (True, name, None)
+      2. professional scope='override_open'    → (False/True, name, hours)
+      3. Fall through to global chain below
+
+    Priority chain (global context — no professional_id):
+      1. override_open (global or professional_id IS NULL)
+      2. closure (global or professional_id IS NULL)
+      3. library holiday
+      4. default
     """
     # Fetch tenant country_code + language in one query
     tenant_row = await pool.fetchrow(
@@ -167,18 +180,39 @@ async def is_holiday(
     language = tenant_row['language'] or 'es'
 
     # Check custom holidays (both exact date AND recurring by month/day)
-    custom_rows = await pool.fetch(
-        """
-        SELECT name, holiday_type, custom_hours_start, custom_hours_end
-        FROM tenant_holidays
-        WHERE tenant_id = $1
-          AND (
-            date = $2
-            OR (is_recurring = true AND EXTRACT(MONTH FROM date) = $3 AND EXTRACT(DAY FROM date) = $4)
-          )
-        """,
-        tenant_id, check_date, check_date.month, check_date.day
-    )
+    # When professional_id is provided, include scope='professional' blocks for that prof
+    # When not provided, include only global entries (scope='global' or professional_id IS NULL)
+    if professional_id is not None:
+        custom_rows = await pool.fetch(
+            """
+            SELECT name, holiday_type, custom_hours_start, custom_hours_end, scope
+            FROM tenant_holidays
+            WHERE tenant_id = $1
+              AND (
+                date = $2
+                OR (is_recurring = true AND EXTRACT(MONTH FROM date) = $3 AND EXTRACT(DAY FROM date) = $4)
+              )
+              AND (
+                (scope = 'professional' AND professional_id = $5)
+                OR (scope = 'global' AND professional_id IS NULL)
+              )
+            """,
+            tenant_id, check_date, check_date.month, check_date.day, professional_id
+        )
+    else:
+        custom_rows = await pool.fetch(
+            """
+            SELECT name, holiday_type, custom_hours_start, custom_hours_end, scope
+            FROM tenant_holidays
+            WHERE tenant_id = $1
+              AND (
+                date = $2
+                OR (is_recurring = true AND EXTRACT(MONTH FROM date) = $3 AND EXTRACT(DAY FROM date) = $4)
+              )
+              AND (scope = 'global' OR professional_id IS NULL)
+            """,
+            tenant_id, check_date, check_date.month, check_date.day
+        )
 
     # Priority 1: override_open takes precedence
     for row in custom_rows:
@@ -200,10 +234,13 @@ async def is_holiday(
         if row['holiday_type'] == 'closure':
             return (True, row['name'], None)
 
-    # Priority 3: library holiday
-    country_hols = _get_country_holidays(country_code, check_date.year, language)
-    if country_hols and check_date in country_hols:
-        return (True, country_hols.get(check_date), None)
+    # Priority 3: library holiday (only for global context)
+    # Professional-specific blocks don't affect library holidays — a prof block
+    # on a national holiday means the prof is simply blocked, clinic may be closed.
+    if professional_id is None:
+        country_hols = _get_country_holidays(country_code, check_date.year, language)
+        if country_hols and check_date in country_hols:
+            return (True, country_hols.get(check_date), None)
 
     # Priority 4: not a holiday
     return (False, None, None)
@@ -237,15 +274,19 @@ async def get_upcoming_holidays(pool, tenant_id: int, days_ahead: int = 30) -> L
     today = date.today()
     end_date = today + timedelta(days=days_ahead)
 
-    # Get all custom holidays in range
+    # Get all custom holidays in range (include professional_id and prof name)
     custom_rows = await pool.fetch(
         """
-        SELECT id, date, name, holiday_type, is_recurring, custom_hours_start, custom_hours_end
-        FROM tenant_holidays
-        WHERE tenant_id = $1
+        SELECT th.id, th.date, th.name, th.holiday_type, th.is_recurring,
+               th.custom_hours_start, th.custom_hours_end,
+               th.professional_id, th.scope,
+               CONCAT(p.first_name, ' ', COALESCE(p.last_name, '')) AS professional_name
+        FROM tenant_holidays th
+        LEFT JOIN professionals p ON th.professional_id = p.id
+        WHERE th.tenant_id = $1
           AND (
-            (date >= $2 AND date <= $3)
-            OR is_recurring = true
+            (th.date >= $2 AND th.date <= $3)
+            OR th.is_recurring = true
           )
         """,
         tenant_id, today, end_date
@@ -279,6 +320,10 @@ async def get_upcoming_holidays(pool, tenant_id: int, days_ahead: int = 30) -> L
             if today <= row['date'] <= end_date:
                 projected_dates.append(row['date'])
 
+        prof_id = row.get('professional_id')
+        prof_name = row.get('professional_name') or None
+        scope = row.get('scope', 'global')
+
         for d in projected_dates:
             if row['holiday_type'] == 'override_open':
                 override_dates.add(d)
@@ -290,6 +335,9 @@ async def get_upcoming_holidays(pool, tenant_id: int, days_ahead: int = 30) -> L
                     'id': row['id'],
                     'name': row['name'],
                     'custom_hours': custom_hours,
+                    'professional_id': prof_id,
+                    'professional_name': prof_name,
+                    'scope': scope,
                 }
 
     # Get library holidays
@@ -316,6 +364,9 @@ async def get_upcoming_holidays(pool, tenant_id: int, days_ahead: int = 30) -> L
                         'source': 'custom',
                         'holiday_type': 'override_open',
                         'custom_hours': hours,
+                        'professional_id': None,
+                        'professional_name': None,
+                        'scope': 'global',
                     })
                 # else: plain override_open → clinic works normally, skip
             else:
@@ -326,6 +377,9 @@ async def get_upcoming_holidays(pool, tenant_id: int, days_ahead: int = 30) -> L
                     'source': 'library',
                     'holiday_type': 'library',
                     'custom_hours': None,
+                    'professional_id': None,
+                    'professional_name': None,
+                    'scope': 'global',
                 })
 
     # Add custom closures
@@ -338,6 +392,9 @@ async def get_upcoming_holidays(pool, tenant_id: int, days_ahead: int = 30) -> L
                 'source': 'custom',
                 'holiday_type': 'closure',
                 'custom_hours': info['custom_hours'],
+                'professional_id': info.get('professional_id'),
+                'professional_name': info.get('professional_name'),
+                'scope': info.get('scope', 'global'),
             })
 
     # Sort by date, deduplicate (prefer custom over library for same date)

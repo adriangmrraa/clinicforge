@@ -2582,6 +2582,29 @@ async def check_availability(
                     f"🪑 Chair constraint: max_chairs={max_chairs}, full_slots={sorted(chairs_full_slots)}"
                 )
 
+        # --- Per-professional block check: marcar TODO el día ocupado para profesionales bloqueados ---
+        from services.holiday_service import is_holiday as check_prof_holiday
+
+        for prof in active_professionals:
+            prof_id = prof["id"]
+            _is_blocked, _blk_name, _blk_hours = await check_prof_holiday(
+                db.pool, tid, target_date, professional_id=prof_id
+            )
+            if _is_blocked:
+                # Professional has a block on this date — mark ALL day slots as busy
+                all_slots = set()
+                current_slot = datetime.combine(target_date, datetime.min.time()).replace(hour=int(day_start.split(":")[0]), minute=int(day_start.split(":")[1]))
+                end_dt = datetime.combine(target_date, datetime.min.time()).replace(hour=int(day_end.split(":")[0]), minute=int(day_end.split(":")[1]))
+                while current_slot < end_dt:
+                    all_slots.add(current_slot.strftime("%H:%M"))
+                    current_slot += timedelta(minutes=15)
+                if prof_id in busy_map:
+                    busy_map[prof_id].update(all_slots)
+                logger.info(
+                    f"📅 PROFESSIONAL BLOCK: prof={prof_id} ({prof.get('first_name')}) "
+                    f"blocked={_blk_name} all_slots=({len(all_slots)})"
+                )
+
         # Diagnóstico: resumen de busy_map antes de generar slots
         for _dpid in busy_map:
             _morning_busy = sorted(s for s in busy_map[_dpid] if s < "13:00")
@@ -3637,6 +3660,18 @@ async def book_appointment(
         target_prof = None
 
         for cand in candidates:
+            # Per-professional block check: skip if this professional is blocked on this date
+            from services.holiday_service import is_holiday as check_prof_block
+
+            _is_blocked, _blk_name, _ = await check_prof_block(
+                db.pool, tenant_id, apt_datetime.date(), professional_id=cand["id"]
+            )
+            if _is_blocked:
+                logger.info(
+                    f"📅 BOOK PROFESSIONAL BLOCK: prof={cand['id']} ({cand.get('first_name')}) blocked={_blk_name}"
+                )
+                continue
+
             wh = cand.get("working_hours")
             if isinstance(wh, str):
                 try:
@@ -9301,20 +9336,26 @@ Si el paciente tiene obra social aceptada, agregar: "Si tenés obra social, la c
 Si el paciente pregunta si la consulta se descuenta del tratamiento: "La consulta corresponde a una evaluación completa. Ahí la doctora analiza tu situación, te orienta sobre las opciones de tratamiento y define cuál sería la alternativa más adecuada para vos. Una vez realizada la evaluación, se informa el plan y el presupuesto correspondiente. Te ayudo a coordinar un turno."
 """
 
-    # Feriados próximos
+    # Feriados próximos + bloqueos de profesionales
     holidays_section = ""
     if upcoming_holidays:
         hol_lines = []
-        for h in upcoming_holidays[:7]:
+        for h in upcoming_holidays[:10]:
             ch = h.get("custom_hours")
-            if ch:
+            prof_name = h.get("professional_name")
+            scope = h.get("scope", "global")
+            if scope == "professional" and prof_name:
+                # Professional-specific block — agent must NOT offer this professional
+                label = f"BLOQUEADO ({prof_name})"
+                hol_lines.append(f"• {h['date']}: {h['name']} — {label}")
+            elif ch:
                 hol_lines.append(
                     f"• {h['date']}: {h['name']} — HORARIO ESPECIAL {ch['start']}–{ch['end']}"
                 )
             else:
                 hol_lines.append(f"• {h['date']}: {h['name']} — CERRADO")
         holidays_section = "\n\n## FERIADOS PRÓXIMOS\n" + "\n".join(hol_lines)
-        holidays_section += "\nREGLA: Si feriado CERRADO → informale al paciente y ofrecé el próximo día hábil. Si HORARIO ESPECIAL → ofrecer turnos en ese rango. La tool check_availability ya auto-avanza pasando feriados cerrados y usa el horario especial en feriados con atención."
+        holidays_section += "\nREGLA: Feriado CERRADO → informale al paciente y ofrecé el próximo día hábil. Feriado HORARIO ESPECIAL → ofrecer turnos en ese rango. BLOQUEADO → no ofrecer turnos con ese profesional, ofrecer con otro disponible. La tool check_availability y book_appointment ya aplican estas reglas automáticamente."
 
     # Greeting diferenciado — Bug #8: only inject if greeting pending
     greeting_specialty = (

@@ -53,6 +53,7 @@ export default function AppointmentForm({
     const [collisionWarning, setCollisionWarning] = useState<string | null>(null);
     const [treatmentTypes, setTreatmentTypes] = useState<any[]>([]);
     const [anamnesisRefreshKey, setAnamnesisRefreshKey] = useState(0);
+    const [blockedProfs, setBlockedProfs] = useState<number[]>([]);
     const socketRef = useRef<Socket | null>(null);
     const [patientSearch, setPatientSearch] = useState('');
     const [patientDropdownOpen, setPatientDropdownOpen] = useState(false);
@@ -255,6 +256,29 @@ export default function AppointmentForm({
             console.error('Error checking collisions:', err);
         }
     };
+
+    // Blocked professionals by date
+    const appointmentDate = formData.appointment_datetime?.split('T')[0] || '';
+
+    useEffect(() => {
+      if (appointmentDate) {
+        api.get('/admin/holidays', { params: { days: 365 } })
+          .then(res => {
+            const holidays = res.data?.upcoming || [];
+            const blocked = holidays
+              .filter((h: any) =>
+                h.scope === 'professional' &&
+                h.professional_id &&
+                h.date === appointmentDate
+              )
+              .map((h: any) => h.professional_id);
+            setBlockedProfs(blocked);
+          })
+          .catch(() => setBlockedProfs([]));
+      } else {
+        setBlockedProfs([]);
+      }
+    }, [appointmentDate]);
 
     // Socket for real-time anamnesis refresh
     useEffect(() => {
@@ -514,9 +538,14 @@ export default function AppointmentForm({
                                         onChange={(e) => handleChange('professional_id', e.target.value)}
                                     >
                                         <option value="">{t('agenda.select_professional')}</option>
-                                        {professionals.map(p => (
-                                            <option key={p.id} value={p.id}>Dr. {p.first_name} {p.last_name}</option>
-                                        ))}
+                                        {(() => {
+                                            const availableProfs = professionals.filter((p: any) =>
+                                                p.is_active !== false && !blockedProfs.includes(p.id)
+                                            );
+                                            return availableProfs.map(p => (
+                                                <option key={p.id} value={p.id}>Dr. {p.first_name} {p.last_name}</option>
+                                            ));
+                                        })()}
                                     </select>
                                 </div>
                             </div>

@@ -96,6 +96,9 @@ export default function ScheduleAppointmentModal({
   const isForMinorBooking = isForMinor;
   const displayPhone = isForMinorBooking ? '' : patientPhone;  // Empty for minor = use parent's phone in API
 
+  // Blocked professionals by date
+  const [blockedProfs, setBlockedProfs] = useState<number[]>([]);
+
   // Common state
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -180,6 +183,33 @@ export default function ScheduleAppointmentModal({
   const filteredProfessionals = selectedTreatment?.professional_ids?.length
     ? professionals.filter(p => selectedTreatment.professional_ids!.includes(p.id))
     : professionals;
+
+  // Remove blocked professionals
+  const availableProfs = filteredProfessionals.filter((p: any) =>
+    p.is_active !== false && !blockedProfs.includes(p.id)
+  );
+
+  // ── Blocked professionals by date ──
+
+  useEffect(() => {
+    if (appointmentDate) {
+      api.get('/admin/holidays', { params: { days: 365 } })
+        .then(res => {
+          const holidays = res.data?.upcoming || [];
+          const blocked = holidays
+            .filter((h: any) =>
+              h.scope === 'professional' &&
+              h.professional_id &&
+              h.date === appointmentDate
+            )
+            .map((h: any) => h.professional_id);
+          setBlockedProfs(blocked);
+        })
+        .catch(() => setBlockedProfs([]));
+    } else {
+      setBlockedProfs([]);
+    }
+  }, [appointmentDate]);
 
   // ── Collision check (debounced) ──
 
@@ -423,7 +453,7 @@ export default function ScheduleAppointmentModal({
                   className={selectCls}
                 >
                   <option value="">{t('schedule_modal.select_professional')}</option>
-                  {filteredProfessionals.map(p => (
+                  {availableProfs.map(p => (
                     <option key={p.id} value={p.id}>
                       {[p.first_name, p.last_name].filter(Boolean).join(' ')}{p.specialty ? ` — ${p.specialty}` : ''}
                     </option>

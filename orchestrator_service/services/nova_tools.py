@@ -4152,6 +4152,14 @@ async def _agendar_turno(args: Dict, tenant_id: int) -> str:
     elif _is_hol:
         return f"No se puede agendar el {target_date}: es feriado ({_hol_name}). Elegí otro día."
 
+    # Per-professional block check
+    if prof_id:
+        _is_blocked, _blk_name, _ = await check_is_holiday(
+            db.pool, tenant_id, appt_dt.date(), professional_id=prof_id
+        )
+        if _is_blocked:
+            return f"No se puede agendar con ese profesional el {target_date}: {_blk_name}. Elegí otro profesional."
+
     appt_id = uuid.uuid4()
     await db.pool.execute(
         """
