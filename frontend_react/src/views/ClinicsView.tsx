@@ -2167,7 +2167,7 @@ export default function ClinicsView() {
 
                                     {holidaysSectionOpen && (
                                         <div className="space-y-4 pt-4">
-                                            {/* List */}
+                                            {/* List — solo custom, no library */}
                                             {holidaysLoading ? (
                                                 <div className="flex items-center justify-center py-4">
                                                     <Loader2 size={18} className="text-amber-400 animate-spin" />
@@ -2176,13 +2176,13 @@ export default function ClinicsView() {
                                                 <div className="text-xs text-red-400 px-3 py-2 bg-red-500/10 border border-red-500/20 rounded-lg">
                                                     {holidaysFetchError}
                                                 </div>
-                                            ) : holidayList.length === 0 ? (
+                                            ) : holidayList.filter(h => h.source === 'custom').length === 0 ? (
                                                 <div className="text-xs text-white/40 px-3 py-3 bg-white/[0.02] border border-white/[0.06] rounded-lg text-center">
                                                     {t('clinics.holidays.empty_message')}
                                                 </div>
                                             ) : (
                                                 <div className="space-y-1.5 max-h-60 overflow-y-auto pr-1">
-                                                    {holidayList.map((h, idx) => {
+                                                    {holidayList.filter(h => h.source === 'custom').map((h, idx) => {
                                                         const isEditing = editingHolidayId === h.id;
                                                         const isConfirmDelete = deletingHolidayId === h.id;
                                                         if (isEditing) {
