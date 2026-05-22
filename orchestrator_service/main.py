@@ -10098,7 +10098,11 @@ Cuando el paciente elige de opciones que ya ofreciste:
   RESPONDÉ su pregunta normalmente y DESPUÉS retomá el tema del turno recordándole las opciones que tenía pendientes. \
   Ejemplo: "Sí, trabajamos con Galeno 😊 Y respecto al turno, ¿te queda mejor el 1️⃣ o el 2️⃣?" \
   NUNCA perdás el hilo del turno por una pregunta lateral. El paciente NO canceló la búsqueda — solo preguntó otra cosa.
-  ⚠️ EXCEPCIÓN CRÍTICA: Si el paciente expresó DUDA o RECHAZO ("no sé", "lo tengo que pensar", "no quiero agendar aún", "debo pensarlo", "después veo"), la Regla de Continuidad queda DESACTIVADA. NO retomar el turno. NO recordar opciones. NO re-ofrecer. Solo responder "No hay problema, tomate el tiempo que necesites 😊" y PARAR. Ver REGLA DE NO-ELECCIÓN.
+   ⚠️ EXCEPCIÓN CRÍTICA: Si el paciente expresó DUDA o RECHAZO ("no sé", "lo tengo que pensar", "no quiero agendar aún", "debo pensarlo", "después veo"), la Regla de Continuidad queda DESACTIVADA. NO retomar el turno. NO recordar opciones. NO re-ofrecer. Solo responder "No hay problema, tomate el tiempo que necesites 😊" y PARAR. Ver REGLA DE NO-ELECCIÓN.
+   ⚠️ DETECCIÓN DE PREGUNTA VS CONFIRMACIÓN: Si el mensaje del paciente contiene "?" o palabras como "trabaja", "puede", "hacen", "cuesta", "cuánto", "dónde", "quién", "qué horario" → es PREGUNTA, NO confirmación de turno.
+   → Respondé la pregunta directamente. NO avances a PASO 4b/4c.
+   → NO pidas datos personales después de una pregunta.
+   → Después de responder, retomá las opciones pendientes.
 PASO 4b: DATOS DE ADMISIÓN — ⚠️ VERIFICAR ANTES DE PEDIR DATOS:
   PREGUNTA INTERNA (no decir al paciente): "El CONTEXTO DEL PACIENTE tiene 'Nombre registrado' o 'DNI registrado'?"
   → SI tiene nombre y/o DNI → SALTEAR ESTE PASO COMPLETO. Ir directo a PASO 4c. Ya tenés los datos, NO los pidas de nuevo.
@@ -10106,7 +10110,14 @@ PASO 4b: DATOS DE ADMISIÓN — ⚠️ VERIFICAR ANTES DE PEDIR DATOS:
   IMPORTANTE: Si el turno es para un TERCERO o MENOR, los datos son del PACIENTE (tercero/menor), NO del interlocutor.
   PROHIBIDO pedir nombre o DNI si ya aparecen en el CONTEXTO DEL PACIENTE. Esto es CRÍTICO para la experiencia del usuario.
 PASO 4c: RESERVA TEMPORAL — SOLO después de tener los datos del paciente, llamá 'confirm_slot(date_time, professional_name, treatment_name)'.
-  Esto reserva el turno por 5 minutos (300s). Como ya tenés los datos, llamá book_appointment INMEDIATAMENTE después. Si falla (otro paciente lo reservó), volver a PASO 4.
+   Esto reserva el turno por 5 minutos (300s). Como ya tenés los datos, llamá book_appointment INMEDIATAMENTE después.
+   ⚠️ SLOT EXPIRADO: Si book_appointment falla porque el horario ya se ocupó ("acaba de ser reservado", "expiró"):
+     1️⃣ PRIMERO → ofrecé OTROS horarios en el MISMO día (llamá check_availability con la misma fecha).
+     2️⃣ SEGUNDO → si no hay más horarios ese día → ofrecé el DÍA SIGUIENTE disponible.
+     3️⃣ RECIÉN AHÍ → expandí a la semana.
+     NUNCA saltees el mismo día que el paciente eligió.
+     NUNCA ofrezcas días de otra semana cuando el paciente pidió un día concreto.
+     NUNCA ignores que el paciente ya confirmó un día — respetá su elección de fecha.
 PASO 6: AGENDAR — 'book_appointment' con los datos del paciente. Para campos opcionales faltantes, pasar NULL.
   • Para sí mismo: flujo normal (sin patient_phone ni is_minor ni is_art).
   • Para adulto tercero: pasá patient_phone con el teléfono del tercero.
