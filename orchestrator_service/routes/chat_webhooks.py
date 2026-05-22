@@ -51,9 +51,11 @@ async def receive_chatwoot_webhook(
     if is_ycloud:
         event_type = payload.get("event_type") or payload.get("type", "")
         if "echo" in event_type.lower():
+            logger.info(f"🔊 ECHO (legacy endpoint) | event_type={event_type} tenant={tenant_id}")
             from datetime import datetime, timezone, timedelta
             wamsg = payload.get("whatsappMessage") or payload.get("message") or {}
             user_phone = wamsg.get("to") or payload.get("from_number") or payload.get("to")
+            logger.info(f"🔊 ECHO (legacy) | user_phone={user_phone} wamsg_keys={list(wamsg.keys()) if wamsg else 'empty'}")
             if user_phone:
                 pool = get_pool()
                 override_until = datetime.now(timezone.utc) + timedelta(hours=24)
@@ -182,6 +184,8 @@ async def receive_ycloud_webhook(
         # Try multiple payload structures since different echo types have different formats
         wamsg = payload.get("whatsappMessage") or payload.get("message") or {}
         user_phone = wamsg.get("to") or payload.get("from_number") or payload.get("to")
+        logger.info(f"🔊 ECHO DETECTED | event_type={event_type} tenant={tenant_id} user_phone={user_phone}")
+        logger.info(f"🔊 ECHO RAW payload keys={list(payload.keys())} wamsg_keys={list(wamsg.keys()) if wamsg else 'empty'} msg_type={wamsg.get('type')}")
         if user_phone:
             pool = get_pool()
             override_until = datetime.now(timezone.utc) + timedelta(hours=24)
@@ -207,6 +211,8 @@ async def receive_ycloud_webhook(
 
             # Extract media content (audio, image, document)
             media_items = []
+            msg_type = wamsg.get("type") or ""
+            logger.info(f"🔊 ECHO media scan | msg_type={msg_type} wamsg_keys={list(wamsg.keys())}")
             for media_key in ("voice", "audio", "image", "document", "video", "sticker"):
                 media_data = wamsg.get(media_key) or {}
                 if media_data and isinstance(media_data, dict):
@@ -220,6 +226,8 @@ async def receive_ycloud_webhook(
                             "mime_type": mime_type,
                             "caption": caption,
                         })
+                        logger.info(f"🔊 ECHO media FOUND | key={media_key} id={media_id} mime={mime_type} caption={caption}")
+            logger.info(f"🔊 ECHO media total={len(media_items)} text_len={len(text)}")
 
             conv_row = await pool.fetchrow(
                 "SELECT id FROM chat_conversations WHERE tenant_id = $1 AND external_user_id = $2 ORDER BY updated_at DESC LIMIT 1",
@@ -234,21 +242,34 @@ async def receive_ycloud_webhook(
                         from ycloud_client import YCloudClient, MediaSizeError, RateLimitError
                         from services.media_downloader import download_media
 
+                        logger.info(f"🔊 ECHO downloading media | key={mitem['key']} id={mitem['id']}")
                         client = YCloudClient()
                         media_info = await client.get_media_url(mitem["id"])
+                        logger.info(f"🔊 ECHO get_media_url response | url={media_info.get('url')[:80] if media_info and media_info.get('url') else 'NONE'} mime={media_info.get('mime_type') if media_info else 'N/A'}")
                         if media_info and media_info.get("url"):
-                            local_url = await download_media(
-                                media_info["url"], tenant_id, mitem["key"]
-                            )
+                            try:
+                                local_url = await download_media(
+                                    media_info["url"], tenant_id, mitem["key"]
+                                )
+                                logger.info(f"🔊 ECHO download_media success | local_url={local_url}")
+                            except Exception as dl_err:
+                                logger.error(f"🔊 ECHO download_media FAILED | key={mitem['key']} error={dl_err}")
+                                raise
                             content_attrs.append({
                                 "url": local_url,
                                 "type": mitem["key"],
                                 "mime_type": mitem["mime_type"] or media_info.get("mime_type", ""),
                                 "file_name": media_info.get("filename", f"echo_{mitem['key']}"),
                             })
-                            logger.info(f"📎 Echo media downloaded: {mitem['key']} → {local_url}")
+                            logger.info(f"🔊 ECHO media attached | key={mitem['key']} local_url={local_url}")
+                        else:
+                            logger.warning(f"🔊 ECHO get_media_url returned no URL for {mitem['id']}")
+                    except RateLimitError as rle:
+                        logger.error(f"🔊 ECHO media rate limited: {rle}")
+                    except MediaSizeError as mse:
+                        logger.error(f"🔊 ECHO media too large: {mse}")
                     except Exception as me:
-                        logger.warning(f"📎 Echo media download failed for {mitem['key']}: {me}")
+                        logger.error(f"🔊 ECHO media download FAILED | key={mitem['key']} id={mitem['id']} error={me}", exc_info=True)
 
                 # Use media type as content text when there's no text but there is media
                 display_text = text
@@ -256,6 +277,7 @@ async def receive_ycloud_webhook(
                     display_text = f"[{media_items[0]['key'].upper()}]"
 
                 content_attrs_json = json.dumps(content_attrs) if content_attrs else "[]"
+                logger.info(f"🔊 ECHO inserting chat_message | conv={conv_row['id']} content='{display_text[:50]}' attrs_len={len(content_attrs)}")
                 await pool.execute(
                     "INSERT INTO chat_messages (tenant_id, conversation_id, role, content, from_number, platform_metadata, content_attributes) VALUES ($1, $2, 'assistant', $3, $4, '{\"source\": \"whatsapp_business_app\"}'::jsonb, $5::jsonb)",
                     tenant_id, conv_row["id"], display_text, clinic_phone, content_attrs_json,
@@ -272,10 +294,11 @@ async def receive_ycloud_webhook(
                     }
                     if content_attrs:
                         socket_payload["attachments"] = content_attrs
+                    logger.info(f"🔊 ECHO emitting Socket.IO NEW_MESSAGE | conv={conv_row['id']} attachments={len(content_attrs)}")
                     await sio.emit("NEW_MESSAGE", socket_payload, room=f"tenant:{tenant_id}")
-                except Exception:
-                    pass
-            logger.info(f"👤 WhatsApp Business echo → manual mode activated for {user_phone} (tenant={tenant_id}) media={len(media_items)}")
+                except Exception as sock_err:
+                    logger.error(f"🔊 ECHO Socket.IO emit failed: {sock_err}")
+            logger.info(f"🔊 ECHO COMPLETE | phone={user_phone} tenant={tenant_id} media={len(media_items)} text_len={len(text)}")
             try:
                 from main import sio
                 await sio.emit("HUMAN_OVERRIDE_CHANGED", {"phone_number": user_phone, "tenant_id": tenant_id, "enabled": True, "until": override_until.isoformat()}, room=f"tenant:{tenant_id}")
