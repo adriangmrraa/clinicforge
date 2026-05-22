@@ -84,6 +84,7 @@ async def receive_chatwoot_webhook(
                                 "key": media_key,
                                 "id": media_id,
                                 "mime_type": media_data.get("mime_type") or "",
+                                "link": media_data.get("link") or "",
                             })
                 conv_row = await pool.fetchrow(
                     "SELECT id FROM chat_conversations WHERE tenant_id = $1 AND external_user_id = $2 ORDER BY updated_at DESC LIMIT 1",
@@ -94,27 +95,23 @@ async def receive_chatwoot_webhook(
                     content_attrs = []
                     for mitem in media_items:
                         try:
-                            from ycloud_client import YCloudClient
                             from services.media_downloader import download_media
-                            from core.credentials import get_tenant_credential
-                            ycloud_api_key = await get_tenant_credential(tenant_id, "YCLOUD_API_KEY")
-                            if not ycloud_api_key:
-                                logger.error(f"🔊 ECHO (legacy) no YCLOUD_API_KEY for tenant={tenant_id}")
-                                continue
-                            client = YCloudClient(api_key=ycloud_api_key)
-                            media_info = await client.get_media_url(mitem["id"])
-                            if media_info and media_info.get("url"):
+                            media_url = mitem.get("link") or ""
+                            if media_url:
                                 local_url = await download_media(
-                                    media_info["url"], tenant_id, mitem["key"]
+                                    media_url, tenant_id, mitem["key"]
                                 )
                                 content_attrs.append({
                                     "url": local_url,
                                     "type": mitem["key"],
-                                    "mime_type": mitem["mime_type"] or media_info.get("mime_type", ""),
-                                    "file_name": media_info.get("filename", f"echo_{mitem['key']}"),
+                                    "mime_type": mitem["mime_type"] or "",
+                                    "file_name": f"echo_{mitem['key']}",
                                 })
+                                logger.info(f"🔊 ECHO (legacy) media attached | key={mitem['key']} local_url={local_url}")
+                            else:
+                                logger.warning(f"🔊 ECHO (legacy) no download link for {mitem['id']}")
                         except Exception as me:
-                            logger.warning(f"📎 Legacy echo media download failed: {me}")
+                            logger.error(f"🔊 ECHO (legacy) media download FAILED | key={mitem['key']} id={mitem['id']} error={me}", exc_info=True)
                     display_text = text or (f"[{media_items[0]['key'].upper()}]" if media_items else "")
                     content_attrs_json = json.dumps(content_attrs) if content_attrs else "[]"
                     await pool.execute(
@@ -225,13 +222,16 @@ async def receive_ycloud_webhook(
                     if media_id:
                         mime_type = media_data.get("mime_type") or ""
                         caption = media_data.get("caption") or ""
+                        # YCloud provides a signed download link directly in the echo payload
+                        media_link = media_data.get("link") or ""
                         media_items.append({
                             "key": media_key,
                             "id": media_id,
                             "mime_type": mime_type,
                             "caption": caption,
+                            "link": media_link,
                         })
-                        logger.info(f"🔊 ECHO media FOUND | key={media_key} id={media_id} mime={mime_type} caption={caption}")
+                        logger.info(f"🔊 ECHO media FOUND | key={media_key} id={media_id} mime={mime_type} has_link={bool(media_link)}")
             logger.info(f"🔊 ECHO media total={len(media_items)} text_len={len(text)}")
 
             conv_row = await pool.fetchrow(
@@ -244,22 +244,16 @@ async def receive_ycloud_webhook(
                 # Process media items: download and build content_attributes
                 for mitem in media_items:
                     try:
-                        from ycloud_client import YCloudClient, MediaSizeError, RateLimitError
                         from services.media_downloader import download_media
-                        from core.credentials import get_tenant_credential
 
-                        logger.info(f"🔊 ECHO downloading media | key={mitem['key']} id={mitem['id']}")
-                        ycloud_api_key = await get_tenant_credential(tenant_id, "YCLOUD_API_KEY")
-                        if not ycloud_api_key:
-                            logger.error(f"🔊 ECHO no YCLOUD_API_KEY for tenant={tenant_id}")
-                            continue
-                        client = YCloudClient(api_key=ycloud_api_key)
-                        media_info = await client.get_media_url(mitem["id"])
-                        logger.info(f"🔊 ECHO get_media_url response | url={media_info.get('url')[:80] if media_info and media_info.get('url') else 'NONE'} mime={media_info.get('mime_type') if media_info else 'N/A'}")
-                        if media_info and media_info.get("url"):
+                        # Echo payload already contains a signed download link (YCloud provides it)
+                        # No need to call get_media_url() — use the link directly from the payload
+                        media_url = mitem.get("link") or ""
+                        logger.info(f"🔊 ECHO downloading media | key={mitem['key']} id={mitem['id']} has_link={bool(media_url)}")
+                        if media_url:
                             try:
                                 local_url = await download_media(
-                                    media_info["url"], tenant_id, mitem["key"]
+                                    media_url, tenant_id, mitem["key"]
                                 )
                                 logger.info(f"🔊 ECHO download_media success | local_url={local_url}")
                             except Exception as dl_err:
@@ -268,16 +262,12 @@ async def receive_ycloud_webhook(
                             content_attrs.append({
                                 "url": local_url,
                                 "type": mitem["key"],
-                                "mime_type": mitem["mime_type"] or media_info.get("mime_type", ""),
-                                "file_name": media_info.get("filename", f"echo_{mitem['key']}"),
+                                "mime_type": mitem["mime_type"] or "",
+                                "file_name": f"echo_{mitem['key']}",
                             })
                             logger.info(f"🔊 ECHO media attached | key={mitem['key']} local_url={local_url}")
                         else:
-                            logger.warning(f"🔊 ECHO get_media_url returned no URL for {mitem['id']}")
-                    except RateLimitError as rle:
-                        logger.error(f"🔊 ECHO media rate limited: {rle}")
-                    except MediaSizeError as mse:
-                        logger.error(f"🔊 ECHO media too large: {mse}")
+                            logger.warning(f"🔊 ECHO no download link for {mitem['id']}")
                     except Exception as me:
                         logger.error(f"🔊 ECHO media download FAILED | key={mitem['key']} id={mitem['id']} error={me}", exc_info=True)
 
