@@ -214,12 +214,12 @@ export default function ChatsView() {
       // 1. Validar clínica seleccionada
       if (selectedTenantIdRef.current != null && data.tenant_id !== selectedTenantIdRef.current) return;
 
-      console.log('📨 NEW_MESSAGE socket event:', data);
-
       // Leer valores actuales desde refs (siempre frescos)
       const currentSession = selectedSessionRef.current;
       const currentChatwoot = selectedChatwootRef.current;
       const currentChannelFilter = channelFilterRef.current;
+
+      console.log('📨 NEW_MESSAGE socket event:', { ...data, currentSessionPhone: currentSession?.phone_number, match: currentSession?.phone_number === data.phone_number, isActiveChat: (data.channel === 'whatsapp' && currentSession?.phone_number === data.phone_number) });
 
       // 2. Notificaciones sonoras inteligentes:
       // - Solo si el sonido está activado
