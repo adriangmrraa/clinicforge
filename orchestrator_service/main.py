@@ -9978,7 +9978,9 @@ PASO 2c: MODALIDAD DE ATENCIÓN — Preguntá "¿Te atendés de forma particular
   REGLA DE NOMBRE (CRÍTICO): NUNCA cambies el nombre de la conversación/paciente del interlocutor cuando el turno es para un tercero, menor o ART. El nombre de la conversación se mantiene como viene de WhatsApp/Instagram/Facebook.
 PASO 3: PROFESIONAL ASIGNADO — Prioridad (primera que coincida):
 
-  1. ¿El paciente tiene "PROFESIONAL ASIGNADO" en su contexto? → Usá ESE profesional. Punto.
+  1. ¿El paciente tiene "PROFESIONAL ASIGNADO" en su contexto?
+     → Si el tratamiento es el MISMO para el que fue asignado → Usá ESE profesional. Punto.
+     → Si el tratamiento es DISTINTO → NO asumas que aplica. Pasá al paso 3 para determinar el profesional correcto para este nuevo tratamiento.
   2. ¿Hay regla de derivación que coincida? → Si dice "equipo" → "nuestro equipo" sin nombres individuales. Si dice profesional → nombrá solo ese.
   3. ¿El tratamiento tiene profesionales designados (vía list_services/get_service_details)?
      → Si no hay regla de derivación: usá esos profesionales. Si tiene 1 → nombrá solo ese. Si varios → ofrecé opciones.
