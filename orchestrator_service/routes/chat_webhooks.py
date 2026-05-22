@@ -118,7 +118,33 @@ async def receive_chatwoot_webhook(
                         "INSERT INTO chat_messages (tenant_id, conversation_id, role, content, from_number, platform_metadata, content_attributes) VALUES ($1, $2, 'assistant', $3, $4, '{\"source\": \"whatsapp_business_app\"}'::jsonb, $5::jsonb)",
                         tenant_id, conv_row["id"], display_text, clinic_phone, content_attrs_json,
                     )
-                logger.info(f"👤 Echo handled on legacy endpoint for {user_phone} (tenant={tenant_id}) media={len(media_items)}")
+                    # Emit Socket.IO (same format as main echo handler)
+                    try:
+                        from main import sio
+                        from core.security_utils import generate_signed_url
+                        from urllib.parse import urlencode
+                        signed_echo_attachments = []
+                        for att in content_attrs:
+                            att_url = att.get("url")
+                            if att_url:
+                                clean_url = att_url.split("?")[0]
+                                signature, expires = generate_signed_url(clean_url, tenant_id)
+                                proxy_params = {"url": clean_url, "tenant_id": tenant_id, "signature": signature, "expires": expires}
+                                signed_url = f"/admin/chat/media/proxy?{urlencode(proxy_params)}"
+                                signed_echo_attachments.append({**att, "url": signed_url})
+                            else:
+                                signed_echo_attachments.append(att)
+                        await sio.emit("NEW_MESSAGE", {
+                            "phone_number": user_phone,
+                            "tenant_id": tenant_id,
+                            "message": display_text,
+                            "attachments": signed_echo_attachments,
+                            "role": "assistant",
+                            "channel": "whatsapp",
+                        }, room=f"tenant:{tenant_id}")
+                    except Exception:
+                        pass
+                logger.info(f"🔊 ECHO (legacy) COMPLETE | phone={user_phone} tenant={tenant_id} media={len(media_items)}")
             return {"status": "echo_handled", "manual_mode": True}
         
         provider = "ycloud"
@@ -283,20 +309,39 @@ async def receive_ycloud_webhook(
                     "INSERT INTO chat_messages (tenant_id, conversation_id, role, content, from_number, platform_metadata, content_attributes) VALUES ($1, $2, 'assistant', $3, $4, '{\"source\": \"whatsapp_business_app\"}'::jsonb, $5::jsonb)",
                     tenant_id, conv_row["id"], display_text, clinic_phone, content_attrs_json,
                 )
-                # Emit Socket.IO event so the UI shows the message in real-time
+                # Emit Socket.IO event with the SAME format as normal messages
                 try:
                     from main import sio
-                    socket_payload = {
-                        "conversation_id": conv_id_str,
+                    from core.security_utils import generate_signed_url
+                    from urllib.parse import urlencode
+
+                    # Sign attachment URLs (same as normal flow)
+                    signed_echo_attachments = []
+                    for att in content_attrs:
+                        att_url = att.get("url")
+                        if att_url:
+                            clean_url = att_url.split("?")[0]
+                            signature, expires = generate_signed_url(clean_url, tenant_id)
+                            proxy_params = {
+                                "url": clean_url,
+                                "tenant_id": tenant_id,
+                                "signature": signature,
+                                "expires": expires,
+                            }
+                            signed_url = f"/admin/chat/media/proxy?{urlencode(proxy_params)}"
+                            signed_echo_attachments.append({**att, "url": signed_url})
+                        else:
+                            signed_echo_attachments.append(att)
+
+                    await sio.emit("NEW_MESSAGE", {
+                        "phone_number": user_phone,
                         "tenant_id": tenant_id,
+                        "message": display_text,
+                        "attachments": signed_echo_attachments,
                         "role": "assistant",
-                        "content": display_text,
-                        "source": "whatsapp_business_app",
-                    }
-                    if content_attrs:
-                        socket_payload["attachments"] = content_attrs
-                    logger.info(f"🔊 ECHO emitting Socket.IO NEW_MESSAGE | conv={conv_id_str} attachments={len(content_attrs)}")
-                    await sio.emit("NEW_MESSAGE", socket_payload, room=f"tenant:{tenant_id}")
+                        "channel": "whatsapp",
+                    }, room=f"tenant:{tenant_id}")
+                    logger.info(f"🔊 ECHO Socket.IO emitted | phone={user_phone} attachments={len(signed_echo_attachments)}")
                 except Exception as sock_err:
                     logger.error(f"🔊 ECHO Socket.IO emit failed: {sock_err}")
             logger.info(f"🔊 ECHO COMPLETE | phone={user_phone} tenant={tenant_id} media={len(media_items)} text_len={len(text)}")
