@@ -45,7 +45,47 @@ async def receive_chatwoot_webhook(
     # 1. Detectar Provider (Backward Compatibility)
     provider = "chatwoot"
     # YCloud payloads have "type": "message" or "image", Chatwoot has "event"
-    if payload.get("type") and payload.get("message") and not payload.get("event"):
+    is_ycloud = payload.get("type") and payload.get("message") and not payload.get("event")
+    
+    # Handle echoes on legacy endpoint too (YCloud may be configured to send here)
+    if is_ycloud:
+        event_type = payload.get("event_type") or payload.get("type", "")
+        if "echo" in event_type.lower():
+            # Forward to the dedicated echo handler
+            from datetime import datetime, timezone, timedelta
+            wamsg = payload.get("whatsappMessage") or payload.get("message") or {}
+            user_phone = wamsg.get("to") or payload.get("from_number") or payload.get("to")
+            if user_phone:
+                pool = get_pool()
+                override_until = datetime.now(timezone.utc) + timedelta(hours=24)
+                await pool.execute(
+                    "UPDATE patients SET human_handoff_requested = true, human_override_until = $1, updated_at = NOW() WHERE tenant_id = $2 AND phone_number = $3",
+                    override_until, tenant_id, user_phone,
+                )
+                await pool.execute(
+                    "UPDATE chat_conversations SET human_override_until = $1, updated_at = NOW() WHERE tenant_id = $2 AND external_user_id = $3",
+                    override_until, tenant_id, user_phone,
+                )
+                text = ""
+                text_obj = wamsg.get("text") or {}
+                if isinstance(text_obj, dict):
+                    text = text_obj.get("body") or text_obj.get("text") or ""
+                elif isinstance(text_obj, str):
+                    text = text_obj
+                if text:
+                    conv_row = await pool.fetchrow(
+                        "SELECT id FROM chat_conversations WHERE tenant_id = $1 AND external_user_id = $2 ORDER BY updated_at DESC LIMIT 1",
+                        tenant_id, user_phone,
+                    )
+                    if conv_row:
+                        clinic_phone = wamsg.get("from") or ""
+                        await pool.execute(
+                            "INSERT INTO chat_messages (tenant_id, conversation_id, role, content, from_number, platform_metadata) VALUES ($1, $2, 'assistant', $3, $4, '{\"source\": \"whatsapp_business_app\"}'::jsonb)",
+                            tenant_id, conv_row["id"], text, clinic_phone,
+                        )
+                logger.info(f"👤 Echo handled on legacy endpoint for {user_phone} (tenant={tenant_id})")
+            return {"status": "echo_handled", "manual_mode": True}
+        
         provider = "ycloud"
         logger.info(
             f"⚠️ YCloud payload received on Chatwoot endpoint. Tenant: {tenant_id}"
@@ -103,10 +143,13 @@ async def receive_ycloud_webhook(
     # Handle echo events (doctor/staff sent message from WhatsApp Business app)
     # This activates manual mode so the AI stops responding.
     event_type = payload.get("event_type") or payload.get("type", "")
-    if event_type in ("whatsapp.message.echo", "whatsapp.smb.message.echoes"):
+    # Use substring matching to catch ALL echo variants:
+    # whatsapp.message.echo, whatsapp.smb.message.echoes, messages.smb.echoes, message.echo, etc.
+    if "echo" in event_type.lower():
         from datetime import datetime, timezone, timedelta
         # YCloud echo payload: whatsappMessage.from = clínica, whatsappMessage.to = paciente
-        wamsg = payload.get("whatsappMessage") or {}
+        # Try multiple payload structures since different echo types have different formats
+        wamsg = payload.get("whatsappMessage") or payload.get("message") or {}
         user_phone = wamsg.get("to") or payload.get("from_number") or payload.get("to")
         if user_phone:
             pool = get_pool()
@@ -121,10 +164,15 @@ async def receive_ycloud_webhook(
                 override_until, tenant_id, user_phone,
             )
             # Persist the echo as an assistant message in chat_messages for UI visibility
+            # Try multiple text extraction paths for different payload formats
+            text = ""
             text_obj = wamsg.get("text") or {}
-            text = text_obj.get("body") if isinstance(text_obj, dict) else str(text_obj) if text_obj else ""
+            if isinstance(text_obj, dict):
+                text = text_obj.get("body") or text_obj.get("text") or ""
+            elif isinstance(text_obj, str):
+                text = text_obj
             if not text:
-                text = payload.get("text") or ""
+                text = payload.get("text") or payload.get("content") or ""
             if text:
                 conv_row = await pool.fetchrow(
                     "SELECT id FROM chat_conversations WHERE tenant_id = $1 AND external_user_id = $2 ORDER BY updated_at DESC LIMIT 1",
