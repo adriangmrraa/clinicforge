@@ -1271,7 +1271,7 @@ export default function ChatsView() {
                             <span className={`font-semibold truncate text-white`}>
                               {session.patient_name || session.phone_number}
                             </span>
-                            {session.patient_id || (selectedSession?.phone_number === session.phone_number && (patientContext as any)?.patient?.id) ? (
+                            {session.patient_id ? (
                               <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 shrink-0">
                                 {t('chats.badge_patient')}
                               </span>
@@ -1336,7 +1336,7 @@ export default function ChatsView() {
                           <span className={`font-semibold truncate text-white`}>
                             {item.name || item.external_user_id || 'Chatwoot'}
                           </span>
-                          {item.linked_patient_id || (selectedChatwoot?.id === item.id && (patientContext as any)?.patient?.id) ? (
+                          {item.linked_patient_id ? (
                             <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 shrink-0">
                               {t('chats.badge_patient')}
                             </span>
