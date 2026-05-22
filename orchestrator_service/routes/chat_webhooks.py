@@ -96,7 +96,12 @@ async def receive_chatwoot_webhook(
                         try:
                             from ycloud_client import YCloudClient
                             from services.media_downloader import download_media
-                            client = YCloudClient()
+                            from core.credentials import get_tenant_credential
+                            ycloud_api_key = await get_tenant_credential(tenant_id, "YCLOUD_API_KEY")
+                            if not ycloud_api_key:
+                                logger.error(f"🔊 ECHO (legacy) no YCLOUD_API_KEY for tenant={tenant_id}")
+                                continue
+                            client = YCloudClient(api_key=ycloud_api_key)
                             media_info = await client.get_media_url(mitem["id"])
                             if media_info and media_info.get("url"):
                                 local_url = await download_media(
@@ -241,9 +246,14 @@ async def receive_ycloud_webhook(
                     try:
                         from ycloud_client import YCloudClient, MediaSizeError, RateLimitError
                         from services.media_downloader import download_media
+                        from core.credentials import get_tenant_credential
 
                         logger.info(f"🔊 ECHO downloading media | key={mitem['key']} id={mitem['id']}")
-                        client = YCloudClient()
+                        ycloud_api_key = await get_tenant_credential(tenant_id, "YCLOUD_API_KEY")
+                        if not ycloud_api_key:
+                            logger.error(f"🔊 ECHO no YCLOUD_API_KEY for tenant={tenant_id}")
+                            continue
+                        client = YCloudClient(api_key=ycloud_api_key)
                         media_info = await client.get_media_url(mitem["id"])
                         logger.info(f"🔊 ECHO get_media_url response | url={media_info.get('url')[:80] if media_info and media_info.get('url') else 'NONE'} mime={media_info.get('mime_type') if media_info else 'N/A'}")
                         if media_info and media_info.get("url"):
@@ -276,8 +286,9 @@ async def receive_ycloud_webhook(
                 if not display_text and media_items:
                     display_text = f"[{media_items[0]['key'].upper()}]"
 
+                conv_id_str = str(conv_row["id"])
                 content_attrs_json = json.dumps(content_attrs) if content_attrs else "[]"
-                logger.info(f"🔊 ECHO inserting chat_message | conv={conv_row['id']} content='{display_text[:50]}' attrs_len={len(content_attrs)}")
+                logger.info(f"🔊 ECHO inserting chat_message | conv={conv_id_str} content='{display_text[:50]}' attrs_len={len(content_attrs)}")
                 await pool.execute(
                     "INSERT INTO chat_messages (tenant_id, conversation_id, role, content, from_number, platform_metadata, content_attributes) VALUES ($1, $2, 'assistant', $3, $4, '{\"source\": \"whatsapp_business_app\"}'::jsonb, $5::jsonb)",
                     tenant_id, conv_row["id"], display_text, clinic_phone, content_attrs_json,
@@ -286,7 +297,7 @@ async def receive_ycloud_webhook(
                 try:
                     from main import sio
                     socket_payload = {
-                        "conversation_id": conv_row["id"],
+                        "conversation_id": conv_id_str,
                         "tenant_id": tenant_id,
                         "role": "assistant",
                         "content": display_text,
@@ -294,7 +305,7 @@ async def receive_ycloud_webhook(
                     }
                     if content_attrs:
                         socket_payload["attachments"] = content_attrs
-                    logger.info(f"🔊 ECHO emitting Socket.IO NEW_MESSAGE | conv={conv_row['id']} attachments={len(content_attrs)}")
+                    logger.info(f"🔊 ECHO emitting Socket.IO NEW_MESSAGE | conv={conv_id_str} attachments={len(content_attrs)}")
                     await sio.emit("NEW_MESSAGE", socket_payload, room=f"tenant:{tenant_id}")
                 except Exception as sock_err:
                     logger.error(f"🔊 ECHO Socket.IO emit failed: {sock_err}")
