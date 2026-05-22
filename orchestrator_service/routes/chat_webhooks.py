@@ -51,7 +51,6 @@ async def receive_chatwoot_webhook(
     if is_ycloud:
         event_type = payload.get("event_type") or payload.get("type", "")
         if "echo" in event_type.lower():
-            # Forward to the dedicated echo handler
             from datetime import datetime, timezone, timedelta
             wamsg = payload.get("whatsappMessage") or payload.get("message") or {}
             user_phone = wamsg.get("to") or payload.get("from_number") or payload.get("to")
@@ -66,24 +65,56 @@ async def receive_chatwoot_webhook(
                     "UPDATE chat_conversations SET human_override_until = $1, updated_at = NOW() WHERE tenant_id = $2 AND external_user_id = $3",
                     override_until, tenant_id, user_phone,
                 )
+                # Extract text + media (same logic as main echo handler)
                 text = ""
                 text_obj = wamsg.get("text") or {}
                 if isinstance(text_obj, dict):
                     text = text_obj.get("body") or text_obj.get("text") or ""
                 elif isinstance(text_obj, str):
                     text = text_obj
-                if text:
-                    conv_row = await pool.fetchrow(
-                        "SELECT id FROM chat_conversations WHERE tenant_id = $1 AND external_user_id = $2 ORDER BY updated_at DESC LIMIT 1",
-                        tenant_id, user_phone,
+                media_items = []
+                for media_key in ("voice", "audio", "image", "document", "video", "sticker"):
+                    media_data = wamsg.get(media_key) or {}
+                    if media_data and isinstance(media_data, dict):
+                        media_id = media_data.get("id") or ""
+                        if media_id:
+                            media_items.append({
+                                "key": media_key,
+                                "id": media_id,
+                                "mime_type": media_data.get("mime_type") or "",
+                            })
+                conv_row = await pool.fetchrow(
+                    "SELECT id FROM chat_conversations WHERE tenant_id = $1 AND external_user_id = $2 ORDER BY updated_at DESC LIMIT 1",
+                    tenant_id, user_phone,
+                )
+                if conv_row:
+                    clinic_phone = wamsg.get("from") or ""
+                    content_attrs = []
+                    for mitem in media_items:
+                        try:
+                            from ycloud_client import YCloudClient
+                            from services.media_downloader import download_media
+                            client = YCloudClient()
+                            media_info = await client.get_media_url(mitem["id"])
+                            if media_info and media_info.get("url"):
+                                local_url = await download_media(
+                                    media_info["url"], tenant_id, mitem["key"]
+                                )
+                                content_attrs.append({
+                                    "url": local_url,
+                                    "type": mitem["key"],
+                                    "mime_type": mitem["mime_type"] or media_info.get("mime_type", ""),
+                                    "file_name": media_info.get("filename", f"echo_{mitem['key']}"),
+                                })
+                        except Exception as me:
+                            logger.warning(f"📎 Legacy echo media download failed: {me}")
+                    display_text = text or (f"[{media_items[0]['key'].upper()}]" if media_items else "")
+                    content_attrs_json = json.dumps(content_attrs) if content_attrs else "[]"
+                    await pool.execute(
+                        "INSERT INTO chat_messages (tenant_id, conversation_id, role, content, from_number, platform_metadata, content_attributes) VALUES ($1, $2, 'assistant', $3, $4, '{\"source\": \"whatsapp_business_app\"}'::jsonb, $5::jsonb)",
+                        tenant_id, conv_row["id"], display_text, clinic_phone, content_attrs_json,
                     )
-                    if conv_row:
-                        clinic_phone = wamsg.get("from") or ""
-                        await pool.execute(
-                            "INSERT INTO chat_messages (tenant_id, conversation_id, role, content, from_number, platform_metadata) VALUES ($1, $2, 'assistant', $3, $4, '{\"source\": \"whatsapp_business_app\"}'::jsonb)",
-                            tenant_id, conv_row["id"], text, clinic_phone,
-                        )
-                logger.info(f"👤 Echo handled on legacy endpoint for {user_phone} (tenant={tenant_id})")
+                logger.info(f"👤 Echo handled on legacy endpoint for {user_phone} (tenant={tenant_id}) media={len(media_items)}")
             return {"status": "echo_handled", "manual_mode": True}
         
         provider = "ycloud"
@@ -163,9 +194,9 @@ async def receive_ycloud_webhook(
                 "UPDATE chat_conversations SET human_override_until = $1, updated_at = NOW() WHERE tenant_id = $2 AND external_user_id = $3",
                 override_until, tenant_id, user_phone,
             )
-            # Persist the echo as an assistant message in chat_messages for UI visibility
-            # Try multiple text extraction paths for different payload formats
+            # Extract text content
             text = ""
+            msg_type = wamsg.get("type") or ""
             text_obj = wamsg.get("text") or {}
             if isinstance(text_obj, dict):
                 text = text_obj.get("body") or text_obj.get("text") or ""
@@ -173,30 +204,78 @@ async def receive_ycloud_webhook(
                 text = text_obj
             if not text:
                 text = payload.get("text") or payload.get("content") or ""
-            if text:
-                conv_row = await pool.fetchrow(
-                    "SELECT id FROM chat_conversations WHERE tenant_id = $1 AND external_user_id = $2 ORDER BY updated_at DESC LIMIT 1",
-                    tenant_id, user_phone,
-                )
-                if conv_row:
-                    clinic_phone = wamsg.get("from") or ""
-                    await pool.execute(
-                        "INSERT INTO chat_messages (tenant_id, conversation_id, role, content, from_number, platform_metadata) VALUES ($1, $2, 'assistant', $3, $4, '{\"source\": \"whatsapp_business_app\"}'::jsonb)",
-                        tenant_id, conv_row["id"], text, clinic_phone,
-                    )
-                    # Emit Socket.IO event so the UI shows the message in real-time
+
+            # Extract media content (audio, image, document)
+            media_items = []
+            for media_key in ("voice", "audio", "image", "document", "video", "sticker"):
+                media_data = wamsg.get(media_key) or {}
+                if media_data and isinstance(media_data, dict):
+                    media_id = media_data.get("id") or ""
+                    if media_id:
+                        mime_type = media_data.get("mime_type") or ""
+                        caption = media_data.get("caption") or ""
+                        media_items.append({
+                            "key": media_key,
+                            "id": media_id,
+                            "mime_type": mime_type,
+                            "caption": caption,
+                        })
+
+            conv_row = await pool.fetchrow(
+                "SELECT id FROM chat_conversations WHERE tenant_id = $1 AND external_user_id = $2 ORDER BY updated_at DESC LIMIT 1",
+                tenant_id, user_phone,
+            )
+            if conv_row:
+                clinic_phone = wamsg.get("from") or ""
+                content_attrs = []
+                # Process media items: download and build content_attributes
+                for mitem in media_items:
                     try:
-                        from main import sio
-                        await sio.emit("NEW_MESSAGE", {
-                            "conversation_id": conv_row["id"],
-                            "tenant_id": tenant_id,
-                            "role": "assistant",
-                            "content": text,
-                            "source": "whatsapp_business_app",
-                        }, room=f"tenant:{tenant_id}")
-                    except Exception:
-                        pass
-            logger.info(f"👤 WhatsApp Business echo → manual mode activated for {user_phone} (tenant={tenant_id})")
+                        from ycloud_client import YCloudClient, MediaSizeError, RateLimitError
+                        from services.media_downloader import download_media
+
+                        client = YCloudClient()
+                        media_info = await client.get_media_url(mitem["id"])
+                        if media_info and media_info.get("url"):
+                            local_url = await download_media(
+                                media_info["url"], tenant_id, mitem["key"]
+                            )
+                            content_attrs.append({
+                                "url": local_url,
+                                "type": mitem["key"],
+                                "mime_type": mitem["mime_type"] or media_info.get("mime_type", ""),
+                                "file_name": media_info.get("filename", f"echo_{mitem['key']}"),
+                            })
+                            logger.info(f"📎 Echo media downloaded: {mitem['key']} → {local_url}")
+                    except Exception as me:
+                        logger.warning(f"📎 Echo media download failed for {mitem['key']}: {me}")
+
+                # Use media type as content text when there's no text but there is media
+                display_text = text
+                if not display_text and media_items:
+                    display_text = f"[{media_items[0]['key'].upper()}]"
+
+                content_attrs_json = json.dumps(content_attrs) if content_attrs else "[]"
+                await pool.execute(
+                    "INSERT INTO chat_messages (tenant_id, conversation_id, role, content, from_number, platform_metadata, content_attributes) VALUES ($1, $2, 'assistant', $3, $4, '{\"source\": \"whatsapp_business_app\"}'::jsonb, $5::jsonb)",
+                    tenant_id, conv_row["id"], display_text, clinic_phone, content_attrs_json,
+                )
+                # Emit Socket.IO event so the UI shows the message in real-time
+                try:
+                    from main import sio
+                    socket_payload = {
+                        "conversation_id": conv_row["id"],
+                        "tenant_id": tenant_id,
+                        "role": "assistant",
+                        "content": display_text,
+                        "source": "whatsapp_business_app",
+                    }
+                    if content_attrs:
+                        socket_payload["attachments"] = content_attrs
+                    await sio.emit("NEW_MESSAGE", socket_payload, room=f"tenant:{tenant_id}")
+                except Exception:
+                    pass
+            logger.info(f"👤 WhatsApp Business echo → manual mode activated for {user_phone} (tenant={tenant_id}) media={len(media_items)}")
             try:
                 from main import sio
                 await sio.emit("HUMAN_OVERRIDE_CHANGED", {"phone_number": user_phone, "tenant_id": tenant_id, "enabled": True, "until": override_until.isoformat()}, room=f"tenant:{tenant_id}")
