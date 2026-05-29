@@ -2949,6 +2949,113 @@ async def check_availability(
         return f"No pude consultar la disponibilidad para {date_query}. ¿Probamos una fecha diferente?"
 
 
+def _match_option_number(patient_text: str, offered_slots: list) -> Optional[int]:
+    """
+    Resuelve qué opción eligió el paciente según el texto.
+    Jerarquía (first match wins):
+      R1 - Día de semana: si texto contiene día y solo 1 opción cae ese día
+      R2 - Día + número de día: día + "N" donde el nro del mes coincide
+      R3 - Ordinal: "primero","segundo","opción N", o número SIN contexto fecha
+      R4 - Hora: "el de las 10", hora exacta matchea
+    Returns: 0-based index o None
+    """
+    text = patient_text.lower().strip()
+    if not text or not offered_slots:
+        return None
+
+    days_es = {
+        "lunes": 0, "martes": 1, "miércoles": 2, "miercoles": 2,
+        "jueves": 3, "viernes": 4, "sábado": 5, "sabado": 5, "domingo": 6,
+    }
+
+    # R1 - Día de semana: si el texto menciona un día y solo 1 opción cae ese día
+    mentioned_days = [d for d in days_es if d in text]
+    if mentioned_days:
+        day_num = days_es[mentioned_days[0]]
+        matching = [
+            (i, s) for i, s in enumerate(offered_slots)
+            if s.get("date") and date.fromisoformat(s["date"]).weekday() == day_num
+        ]
+        if len(matching) == 1:
+            logger.debug(f"_match_option_number R1 (day): text={patient_text!r} -> idx={matching[0][0]}")
+            return matching[0][0]
+
+    # R2 - Día de semana + número de día (ej: "martes dos", "martes 2 de junio")
+    if mentioned_days:
+        day_num = days_es[mentioned_days[0]]
+        day_match = re.search(r'(?:del?\s+)?(\d{1,2})\s*(?:de\s+\w+)?(?:\s|$|,|\.)', text)
+        if day_match:
+            target_day = int(day_match.group(1))
+            matching = [
+                (i, s) for i, s in enumerate(offered_slots)
+                if s.get("date")
+                and date.fromisoformat(s["date"]).weekday() == day_num
+                and date.fromisoformat(s["date"]).day == target_day
+            ]
+            if len(matching) == 1:
+                logger.debug(f"_match_option_number R2 (day+num): text={patient_text!r} -> idx={matching[0][0]}")
+                return matching[0][0]
+
+    # R3 - Ordinal / opción N (SOLO cuando NO hay día de semana en el texto)
+    ordinal_map = {
+        "primero": 0, "primer": 0, "primera": 0,
+        "segundo": 1, "segunda": 1,
+        "tercero": 2, "tercer": 2, "tercera": 2,
+    }
+    for word, idx in ordinal_map.items():
+        if word in text and idx < len(offered_slots):
+            logger.debug(f"_match_option_number R3 (ordinal): text={patient_text!r} -> idx={idx}")
+            return idx
+
+    opt_match = re.search(r'(?:opci[oó]n|option)\s*(\d+)', text)
+    if opt_match:
+        idx = int(opt_match.group(1)) - 1
+        if 0 <= idx < len(offered_slots):
+            logger.debug(f"_match_option_number R3 (opt_match): text={patient_text!r} -> idx={idx}")
+            return idx
+
+    # Número solo (sin contexto de fecha, sin día de semana)
+    if not mentioned_days and not re.search(
+        r'\b(de|del|enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)\b', text
+    ):
+        num_match = re.fullmatch(r'\s*(\d+)\s*', text)
+        if num_match:
+            idx = int(num_match.group(1)) - 1
+            if 0 <= idx < len(offered_slots):
+                logger.debug(f"_match_option_number R3 (bare number): text={patient_text!r} -> idx={idx}")
+                return idx
+
+    # R4 - Hora
+    time_match = re.search(r'(?:las?\s+)?(\d{1,2})\s*(?:[:h](\d{2}))?(?:\s*hs?)?', text)
+    if time_match:
+        target_h = int(time_match.group(1))
+        target_m = int(time_match.group(2)) if time_match.group(2) else 0
+        for i, s in enumerate(offered_slots):
+            st = s.get("time", "")
+            if ":" in st:
+                parts = st.split(":")
+                if int(parts[0]) == target_h and int(parts[1]) == target_m:
+                    logger.debug(f"_match_option_number R4 (time): text={patient_text!r} -> idx={i}")
+                    return i
+
+    # Periodo (mañana/tarde) como desempate
+    if "tarde" in text:
+        for i, s in enumerate(offered_slots):
+            st = s.get("time", "")
+            if ":" in st and int(st.split(":")[0]) >= 12:
+                logger.debug(f"_match_option_number R4 (period tarde): text={patient_text!r} -> idx={i}")
+                return i
+    if "mañana" in text and "tarde" not in text:
+        for i, s in enumerate(offered_slots):
+            st = s.get("time", "")
+            if ":" in st and int(st.split(":")[0]) < 12:
+                logger.debug(f"_match_option_number R4 (period morning): text={patient_text!r} -> idx={i}")
+                return i
+
+    logger.debug(f"_match_option_number no match: text={patient_text!r}")
+    return None
+
+
 @tool
 async def book_appointment(
     date_time: str,
@@ -3201,67 +3308,27 @@ async def book_appointment(
                 _conv_state = await get_state(tenant_id, chat_phone)
                 _offered = _conv_state.get("last_offered_slots", [])
                 if _offered and date_time:
-                    _dt_lower = date_time.lower().strip()
-                    # Try to match by time (e.g. "13:00", "18:30")
-                    _time_match = re.search(r"(\d{1,2})[:h](\d{2})", _dt_lower)
-                    _target_time = None
-                    if _time_match:
-                        _target_time = f"{int(_time_match.group(1)):02d}:{int(_time_match.group(2)):02d}"
-                    else:
-                        _hour_only = re.search(
-                            r"(\d{1,2})\s*(?:hs?|horas?)?", _dt_lower
+                    logger.info(f"📅 BOOK SLOT MATCH: attempting resolution | text={date_time!r} | offered={_offered}")
+                    _matched_idx = _match_option_number(date_time, _offered)
+                    if _matched_idx is not None:
+                        s = _offered[_matched_idx]
+                        base_date = date.fromisoformat(s["date"])
+                        h, m = int(s["time"].split(":")[0]), int(s["time"].split(":")[1])
+                        apt_datetime = datetime.combine(
+                            base_date, datetime.min.time()
+                        ).replace(
+                            hour=h, minute=m, second=0, microsecond=0,
+                            tzinfo=get_active_tz(),
                         )
-                        if _hour_only:
-                            _target_time = f"{int(_hour_only.group(1)):02d}:00"
-
-                    for slot in _offered:
-                        slot_time = slot.get("time", "")
-                        slot_date = slot.get("date", "")
-                        # Match by exact time
-                        if _target_time and slot_time == _target_time and slot_date:
-                            base_date = date.fromisoformat(slot_date)
-                            h, m = (
-                                int(slot_time.split(":")[0]),
-                                int(slot_time.split(":")[1]),
-                            )
-                            apt_datetime = datetime.combine(
-                                base_date, datetime.min.time()
-                            ).replace(
-                                hour=h,
-                                minute=m,
-                                second=0,
-                                microsecond=0,
-                                tzinfo=get_active_tz(),
-                            )
-                            logger.info(
-                                f"📅 BOOK SLOT MATCH: matched time={_target_time} → slot {slot_date} {slot_time}"
-                            )
-                            break
-                        # Match by option number ("1", "2", "3", "opción 1", etc.)
-                        _opt_num = re.search(r"(?:opci[oó]n\s*)?(\d)", _dt_lower)
-                        if _opt_num:
-                            idx = int(_opt_num.group(1)) - 1
-                            if 0 <= idx < len(_offered):
-                                s = _offered[idx]
-                                if s.get("date") and s.get("time"):
-                                    base_date = date.fromisoformat(s["date"])
-                                    h, m = (
-                                        int(s["time"].split(":")[0]),
-                                        int(s["time"].split(":")[1]),
-                                    )
-                                    apt_datetime = datetime.combine(
-                                        base_date, datetime.min.time()
-                                    ).replace(
-                                        hour=h,
-                                        minute=m,
-                                        second=0,
-                                        microsecond=0,
-                                        tzinfo=get_active_tz(),
-                                    )
-                                    logger.info(
-                                        f"📅 BOOK SLOT MATCH: option #{idx + 1} → {s['date']} {s['time']}"
-                                    )
-                                    break
+                        logger.info(
+                            f"📅 BOOK SLOT MATCH: _match_option_number -> idx={_matched_idx} "
+                            f"| slot={s['date']} {s['time']}"
+                        )
+                    else:
+                        logger.info(
+                            f"📅 BOOK SLOT MATCH: no rule matched | text={date_time!r} | "
+                            f"falling to parse_datetime"
+                        )
             except Exception as _slot_err:
                 logger.warning(f"📅 BOOK: slot match fallback failed: {_slot_err}")
 
@@ -7659,7 +7726,22 @@ async def check_insurance_coverage(insurance_provider: str) -> str:
             tenant_id,
             insurance_provider.strip(),
         )
-        # 2. If no exact match, try partial (ILIKE)
+        # 2. If no exact match, try trigram similarity (handles "ISSN" → "Instituto de Seguridad Social...")
+        if not row:
+            trigram_rows = await db.pool.fetch(
+                "SELECT *, similarity(provider_name, $2) AS sim "
+                "FROM tenant_insurance_providers "
+                "WHERE tenant_id = $1 AND is_active = true AND provider_name % $2 "
+                "ORDER BY sim DESC LIMIT 2",
+                tenant_id,
+                insurance_provider.strip(),
+            )
+            if len(trigram_rows) == 1:
+                row = trigram_rows[0]
+            elif len(trigram_rows) > 1:
+                return json.dumps({"status": "multiple_matches", "matches": [r["provider_name"] for r in trigram_rows], "next_action": "ask_which_one"}, ensure_ascii=False)
+
+        # 3. If still no match, try partial (ILIKE)
         if not row:
             rows = await db.pool.fetch(
                 "SELECT * FROM tenant_insurance_providers WHERE tenant_id = $1 AND provider_name ILIKE $2 AND is_active = true",
@@ -9922,6 +10004,16 @@ Si ofreciste 2 opciones y el paciente dice un DÍA DE LA SEMANA (ej: "martes"), 
 - Si AMBAS opciones caen en el mismo día (ej: martes 10hs y martes 13hs) → ahí sí preguntar cuál horario prefiere.
 NUNCA derivar a humano porque el paciente dijo un día que matchea una sola opción. Eso es una selección válida.
 
+ADEMÁS, cuando el paciente dice DÍA + NÚMERO (ej: "martes dos", "martes 2 de junio"):
+- El número ES EL DÍA DEL MES, no el número de opción. No confundir.
+- Si solo UNA opción cae en ese día de semana → seleccionarla (inequívoco por la regla de arriba).
+- Si AMBAS caen en el mismo día → el número de día desambigua cuál fecha.
+  Ej: 1️⃣ Martes 02/06 — 10:00 / 2️⃣ Martes 16/06 — 15:00 → "martes dos" → día 2 → Opción 1.
+
+ADEMÁS, cuando el paciente dice "el primero", "el segundo", "el de las 10", "el de la tarde":
+- "primero" / "segundo" / "tercero" → número de opción (1, 2, 3).
+- "el de las X" / "el de la mañana/tarde" → resolver por hora. Elegí la opción cuya hora coincide.
+
 === REGLA DE MENSAJE COMBINADO (SLOT + OBRA SOCIAL) ===
 Si el paciente elige un turno Y menciona obra social en el mismo mensaje o en mensajes consecutivos (ej: "Martes. Tengo OSDE. Me cubre?"), procesá AMBOS temas en una sola respuesta:
 1. PRIMERO: Confirmá el turno seleccionado ("Perfecto, te agendo el [día] [fecha] a las [hora] hs.")
@@ -10070,7 +10162,13 @@ PASO 4: CONSULTAR DISPONIBILIDAD — Llamá 'check_availability' con treatment_n
   (dice "1", "2", "la primera", "la segunda", "dale", "ese", "agendame ahí", "sí", "perfecto", "ese me va", "me queda bien", "va", "listo", etc.), \
   usá EXACTAMENTE la fecha y hora de ESA opción tal como la mostraste. NO cambies la fecha ni la hora. \
   Si el paciente dijo "2" y la opción 2 era "Martes 14/04 — 10:00 hs", pasá interpreted_date="2026-04-14" y date_time="10:00". \
-  NUNCA inventes otra fecha/hora distinta a la opción que el paciente eligió.
+   NUNCA inventes otra fecha/hora distinta a la opción que el paciente eligió.
+   ADEMÁS, si el paciente dice el DÍA DE LA SEMANA (ej: "martes", "el jueves") →
+   resolvé usando la REGLA DE RESOLUCIÓN DE SLOT (ver arriba).
+   ADEMÁS, si el paciente dice DÍA + NÚMERO (ej: "martes dos") →
+   NO confundir con número de opción. El número ES el día del mes, no la opción.
+   ADEMÁS, si el paciente dice "el de las X" o "el de la mañana/tarde" →
+   resolución por hora.
 
 REGLA DE SELECCIÓN DE TURNO (OBLIGATORIO):
 Cuando el paciente elige de opciones que ya ofreciste:
@@ -10079,6 +10177,9 @@ Cuando el paciente elige de opciones que ya ofreciste:
 - El slot_index se refiere a la opción numerada (1️⃣ = slot_index=1, 2️⃣ = slot_index=2)
 - Si el paciente dice algo ambiguo como "sí" sin especificar cuál, preguntá: "¿El 1 o el 2?"
 - Si el paciente dice "cualquiera" → slot_index=1 (el primero disponible)
+- Si el paciente dice DÍA DE SEMANA (ej: "martes") y solo UNA opción cae ese día → usá slot_index de ESA opción. No es número de opción, es día de semana.
+- Si el paciente dice DÍA + NÚMERO (ej: "martes dos") → usá slot_index de la opción cuyo día de mes coincide. El número es el día, no la opción.
+- Si el paciente dice "el de las X", "el de la mañana", "el de la tarde" → match por hora, usá slot_index de la opción que coincide.
   PROHIBIDO volver a llamar check_availability cuando el paciente ACEPTA una opción. Ir DIRECTO a PASO 4b.
   Si solo ofreciste 1 opción y el paciente la acepta ("dale", "sí", "agendame ahí"), esa ES la opción elegida → PASO 4b. NO ofrecer más opciones.
   Si el paciente elige una opción → pasar a PASO 4b.
