@@ -9615,10 +9615,11 @@ async def create_insurance_provider(
     _validate_insurance_provider(data)
     provider_name = data.provider_name.strip()
 
-    # Duplicate check (case-insensitive)
+    # Duplicate check (trigram similarity first, then case-insensitive fallback)
     existing = await db.pool.fetchval(
-        "SELECT id FROM tenant_insurance_providers WHERE tenant_id = $1 AND provider_name ILIKE $2",
+        "SELECT id FROM tenant_insurance_providers WHERE tenant_id = $1 AND (provider_name % $2 OR LOWER(provider_name) = LOWER($3)) LIMIT 1",
         tenant_id,
+        provider_name,
         provider_name,
     )
     if existing:

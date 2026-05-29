@@ -9282,7 +9282,23 @@ async def _consultar_obra_social(args: Dict, tenant_id: int) -> str:
             nombre,
         )
 
-        # 2. If no exact match, try partial ILIKE
+        # 2. If no exact match, try trigram similarity (handles "ISSN" → "Instituto de Seguridad Social...")
+        if not row:
+            trigram_rows = await db.pool.fetch(
+                "SELECT *, similarity(provider_name, $2) AS sim "
+                "FROM tenant_insurance_providers "
+                "WHERE tenant_id = $1 AND is_active = true AND provider_name % $2 "
+                "ORDER BY sim DESC LIMIT 2",
+                tenant_id,
+                nombre,
+            )
+            if len(trigram_rows) == 1:
+                row = trigram_rows[0]
+            elif len(trigram_rows) > 1:
+                names = ", ".join(r["provider_name"] for r in trigram_rows)
+                return f"Encontré varias obras sociales similares: {names}. ¿Cuál querés consultar?"
+
+        # 3. If still no match, try partial ILIKE
         if not row:
             rows = await db.pool.fetch(
                 "SELECT * FROM tenant_insurance_providers "
