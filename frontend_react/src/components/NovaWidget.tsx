@@ -182,11 +182,13 @@ export const NovaWidget: React.FC = () => {
   const wsRef = useRef<WebSocket | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const captureCtxRef = useRef<AudioContext | null>(null);
-  const processorRef = useRef<ScriptProcessorNode | null>(null);
+  const processorRef = useRef<ScriptProcessorNode | AudioWorkletNode | null>(null);
   const playbackCtxRef = useRef<AudioContext | null>(null);
   const nextPlayTimeRef = useRef(0);
   const micPausedRef = useRef(false);
   const novaPlayingRef = useRef(false);
+  const novaPlayingWatchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const micPausedWatchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const transcriptBufferRef = useRef('');
   const sedeDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -475,13 +477,42 @@ export const NovaWidget: React.FC = () => {
   }, []);
 
   const stopRealtimeAudio = useCallback(() => {
-    if (wsRef.current) { wsRef.current.close(); wsRef.current = null; }
-    if (streamRef.current) { streamRef.current.getTracks().forEach(t => t.stop()); streamRef.current = null; }
-    if (processorRef.current) { processorRef.current.disconnect(); processorRef.current = null; }
-    if (captureCtxRef.current && captureCtxRef.current.state !== 'closed') {
-      captureCtxRef.current.close();
+    // Clear watchdogs
+    if (novaPlayingWatchdogRef.current) {
+      clearTimeout(novaPlayingWatchdogRef.current);
+      novaPlayingWatchdogRef.current = null;
     }
-    captureCtxRef.current = null;
+    if (micPausedWatchdogRef.current) {
+      clearTimeout(micPausedWatchdogRef.current);
+      micPausedWatchdogRef.current = null;
+    }
+
+    // Close WS
+    if (wsRef.current) {
+      wsRef.current.onclose = null;
+      wsRef.current.onerror = null;
+      wsRef.current.close();
+      wsRef.current = null;
+    }
+
+    // Stop tracks
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
+    }
+
+    // Disconnect processor
+    if (processorRef.current) {
+      processorRef.current.disconnect();
+      processorRef.current = null;
+    }
+
+    // Close capture context
+    if (captureCtxRef.current) {
+      captureCtxRef.current.close();
+      captureCtxRef.current = null;
+    }
+
     cancelPlayback();
     novaPlayingRef.current = false;
     micPausedRef.current = false;
@@ -510,27 +541,34 @@ export const NovaWidget: React.FC = () => {
       wsRef.current = ws;
       ws.binaryType = 'arraybuffer';
 
-      ws.onopen = () => {
+      ws.onopen = async () => {
         setVoiceActive(true);
         setVoiceState('listening');
 
         const source = captureCtx.createMediaStreamSource(stream);
-        const processor = captureCtx.createScriptProcessor(4096, 1, 1);
-        processorRef.current = processor;
 
-        processor.onaudioprocess = (e) => {
-          if (micPausedRef.current) return;
-          if (novaPlayingRef.current) return;
-          if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+        // --- Shared audio processing callback (resample + PCM16) ---
+        const processAudio = (input: Float32Array) => {
+          // Gate checks with debug logging
+          if (micPausedRef.current) {
+            console.warn('[Nova Voice] Gate: micPaused blocked at', Date.now());
+            return;
+          }
+          if (novaPlayingRef.current) {
+            console.warn('[Nova Voice] Gate: novaPlaying blocked at', Date.now());
+            return;
+          }
+          if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+            console.warn('[Nova Voice] Gate: WS not open at', Date.now());
+            return;
+          }
 
-          const input = e.inputBuffer.getChannelData(0);
           const ratio = nativeSampleRate / 24000;
           const newLength = Math.floor(input.length / ratio);
           const resampled = new Float32Array(newLength);
           for (let i = 0; i < newLength; i++) {
             resampled[i] = input[Math.floor(i * ratio)];
           }
-
           const pcm16 = new Int16Array(resampled.length);
           for (let i = 0; i < resampled.length; i++) {
             pcm16[i] = Math.max(-32768, Math.min(32767, resampled[i] * 32768));
@@ -538,8 +576,73 @@ export const NovaWidget: React.FC = () => {
           wsRef.current!.send(pcm16.buffer);
         };
 
-        source.connect(processor);
-        processor.connect(captureCtx.destination);
+        // --- Try AudioWorkletNode first (modern, non-deprecated) ---
+        let workletSupported = false;
+        if (captureCtx.audioWorklet) {
+          try {
+            const workletCode = `
+              class CaptureProcessor extends AudioWorkletProcessor {
+                constructor() {
+                  super();
+                  this._nativeRate = sampleRate;
+                  this._ratio = sampleRate / 24000;
+                }
+                process(inputs) {
+                  const input = inputs[0];
+                  if (!input || !input[0] || !input[0].length) return true;
+                  const samples = input[0];
+                  const ratio = this._ratio;
+                  const newLength = Math.floor(samples.length / ratio);
+                  const resampled = new Float32Array(newLength);
+                  for (let i = 0; i < newLength; i++) {
+                    resampled[i] = samples[Math.floor(i * ratio)];
+                  }
+                  const pcm16 = new Int16Array(resampled.length);
+                  for (let i = 0; i < resampled.length; i++) {
+                    pcm16[i] = Math.max(-32768, Math.min(32767, resampled[i] * 32768));
+                  }
+                  this.port.postMessage(pcm16.buffer, [pcm16.buffer]);
+                  return true;
+                }
+              }
+              registerProcessor('capture-processor', CaptureProcessor);
+            `;
+            const blob = new Blob([workletCode], { type: 'application/javascript' });
+            const url = URL.createObjectURL(blob);
+            await captureCtx.audioWorklet.addModule(url);
+            URL.revokeObjectURL(url);
+            const workletNode = new AudioWorkletNode(captureCtx, 'capture-processor');
+            source.connect(workletNode);
+            workletNode.port.onmessage = (e) => {
+              processAudio(new Float32Array(e.data));
+            };
+            processorRef.current = workletNode;
+            workletSupported = true;
+          } catch (workletErr) {
+            console.warn('[Nova Voice] AudioWorklet init failed, falling back to ScriptProcessor:', workletErr);
+          }
+        }
+
+        // --- Fallback: ScriptProcessorNode (deprecated but widely supported) ---
+        if (!workletSupported) {
+          const processor = captureCtx.createScriptProcessor(4096, 1, 1);
+          processorRef.current = processor;
+          processor.onaudioprocess = (e) => {
+            processAudio(e.inputBuffer.getChannelData(0));
+          };
+          source.connect(processor);
+          processor.connect(captureCtx.destination);
+        }
+      };
+
+      // Watchdog: reset novaPlayingRef after 10s of no response
+      const startNovaPlayingWatchdog = () => {
+        if (novaPlayingWatchdogRef.current) clearTimeout(novaPlayingWatchdogRef.current);
+        novaPlayingWatchdogRef.current = setTimeout(() => {
+          console.warn('[Nova Voice] Watchdog: novaPlaying reset after 10s timeout');
+          novaPlayingRef.current = false;
+          if (!micPausedRef.current) setVoiceState('listening');
+        }, 10000);
       };
 
       ws.onmessage = (evt) => {
@@ -550,6 +653,8 @@ export const NovaWidget: React.FC = () => {
             micPausedRef.current = true;
             setVoiceState('speaking');
           }
+          // Renew watchdog on each audio chunk
+          startNovaPlayingWatchdog();
           playRealtimeAudio(evt.data);
           return;
         }
@@ -570,6 +675,11 @@ export const NovaWidget: React.FC = () => {
           }
 
           if (msg.type === 'nova_audio_done') {
+            // Clear watchdog — Nova finished speaking
+            if (novaPlayingWatchdogRef.current) {
+              clearTimeout(novaPlayingWatchdogRef.current);
+              novaPlayingWatchdogRef.current = null;
+            }
             const ctx = playbackCtxRef.current;
             const remainingMs = ctx
               ? Math.max(0, (nextPlayTimeRef.current - ctx.currentTime) * 1000)
@@ -584,6 +694,11 @@ export const NovaWidget: React.FC = () => {
           }
 
           if (msg.type === 'response_done') {
+            // Clear watchdog — response complete
+            if (novaPlayingWatchdogRef.current) {
+              clearTimeout(novaPlayingWatchdogRef.current);
+              novaPlayingWatchdogRef.current = null;
+            }
             if (transcriptBufferRef.current) {
               setMessages(prev => [...prev, {
                 id: msgId(), role: 'assistant', text: transcriptBufferRef.current, timestamp: Date.now(),
@@ -601,6 +716,11 @@ export const NovaWidget: React.FC = () => {
           }
 
           if (msg.type === 'user_speech_started') {
+            // Clear watchdog — user is speaking, Nova stopped
+            if (novaPlayingWatchdogRef.current) {
+              clearTimeout(novaPlayingWatchdogRef.current);
+              novaPlayingWatchdogRef.current = null;
+            }
             novaPlayingRef.current = false;
             // Don't override manual pause
             if (!micPausedRef.current) {
@@ -619,14 +739,26 @@ export const NovaWidget: React.FC = () => {
 
       ws.onerror = () => {
         console.error('[Nova Voice] WebSocket error');
+        setToastMessage('Error de conexión. Intentá de nuevo.');
+        setToastVisible(true);
         stopRealtimeAudio();
       };
 
-      ws.onclose = () => {
+      ws.onclose = (evt) => {
+        if (evt.code !== 1000) {
+          console.warn('[Nova Voice] WS closed unexpectedly:', evt.code, evt.reason);
+          setToastMessage('Se perdió la conexión.');
+          setToastVisible(true);
+        }
         stopRealtimeAudio();
       };
     } catch (err) {
       console.error('[Nova Voice] Failed to start:', err);
+      const msg = err instanceof DOMException && err.name === 'NotAllowedError'
+        ? 'Necesito acceso al micrófono para funcionar. Permití el micrófono en la configuración del navegador.'
+        : 'No se pudo iniciar el micrófono. Verificá que ningún otro programa lo esté usando.';
+      setToastMessage(msg);
+      setToastVisible(true);
       stopRealtimeAudio();
     }
   }, [currentPage, micPaused, playRealtimeAudio, cancelPlayback, stopRealtimeAudio]);
@@ -643,6 +775,20 @@ export const NovaWidget: React.FC = () => {
     const next = !micPaused;
     setMicPaused(next);
     micPausedRef.current = next;
+    // Watchdog: auto-unpause after 30s if user doesn't manually unpause
+    if (next) {
+      if (micPausedWatchdogRef.current) clearTimeout(micPausedWatchdogRef.current);
+      micPausedWatchdogRef.current = setTimeout(() => {
+        console.warn('[Nova Voice] Watchdog: micPaused reset after 30s timeout');
+        micPausedRef.current = false;
+        setMicPaused(false);
+      }, 30000);
+    } else {
+      if (micPausedWatchdogRef.current) {
+        clearTimeout(micPausedWatchdogRef.current);
+        micPausedWatchdogRef.current = null;
+      }
+    }
   };
 
   // Auto-start voice when widget opens, cleanup on close
