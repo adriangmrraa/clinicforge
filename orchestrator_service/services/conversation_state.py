@@ -21,7 +21,8 @@ VALID_STATES = [
     "PAYMENT_PENDING",
     "PAYMENT_VERIFIED",
 ]
-CONVSTATE_TTL = 1800  # 30 minutes
+CONVSTATE_TTL = 1800      # 30 minutes (default for IDLE, OFFERED_SLOTS, SLOT_LOCKED)
+BOOKED_TTL = 86400         # 24 hours (BOOKED / PAYMENT_PENDING — DLD-89/92: no expirar durante la conversación)
 REDIS_KEY_PREFIX = "convstate"
 
 
@@ -123,8 +124,10 @@ async def set_state(
             "updated_at": __import__("datetime").datetime.now().isoformat(),
         }
 
-        await r.setex(key, CONVSTATE_TTL, json.dumps(state_data))
-        logger.info(f"[conversation_state] State set to {state} for {key}")
+        # DLD-89/92: BOOKED y PAYMENT_PENDING usan TTL de 24h para no expirar durante la conversación
+        _ttl = BOOKED_TTL if state in ("BOOKED", "PAYMENT_PENDING") else CONVSTATE_TTL
+        await r.setex(key, _ttl, json.dumps(state_data))
+        logger.info(f"[conversation_state] State set to {state} for {key} (TTL={_ttl}s)")
 
     except Exception as e:
         logger.warning(f"[conversation_state] set_state failed: {e}")

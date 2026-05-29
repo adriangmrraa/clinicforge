@@ -1692,7 +1692,28 @@ async def check_availability(
             from services.conversation_state import get_state as _ca_get_state
             _ca_state = await _ca_get_state(tid, _ca_phone) if _ca_phone else {}
             _ca_state_str = _ca_state.get("state", "IDLE") if isinstance(_ca_state, dict) else "IDLE"
-            if _ca_state_str in ("OFFERED_SLOTS", "SLOT_LOCKED", "BOOKED", "PAYMENT_PENDING"):
+            if _ca_state_str in ("BOOKED", "PAYMENT_PENDING"):
+                # DLD-89/92: Bloquear check_availability si el paciente ya tiene turno confirmado
+                # y no hay señal explícita de que QUIERE otro turno
+                _intent_signals = r'\b(otro turno|nuevo turno|otra fecha|otro día|quiero cambiar|reagend|reprogram|mover el turno|cancel|dame otro|agendame otro|necesito otro|sacá otro|quiero uno más|turno para)\b'
+                _ca_input_text = f"{date_query} {treatment_name or ''} {professional_name or ''}"
+                if not re.search(_intent_signals, _ca_input_text, re.IGNORECASE):
+                    logger.warning(
+                        f"📊 BOOKING_FLOW | 🚫 check_availability BLOCKED: state={_ca_state_str} "
+                        f"— no new-booking intent detected. phone={_ca_phone}"
+                    )
+                    return (
+                        "BOOKING_ALREADY_EXISTS: El paciente ya tiene un turno confirmado en esta conversación. "
+                        "No se debe ofrecer un nuevo turno a menos que el paciente lo solicite explícitamente "
+                        "(diciendo 'quiero otro turno', 'necesito reagendar', etc.). "
+                        "Respondé la consulta del paciente sin ofrecer turnos nuevos."
+                    )
+                else:
+                    logger.info(
+                        f"📊 BOOKING_FLOW | check_availability ALLOWED despite state={_ca_state_str} "
+                        f"— new-booking intent detected. phone={_ca_phone}"
+                    )
+            elif _ca_state_str in ("OFFERED_SLOTS", "SLOT_LOCKED"):
                 logger.warning(f"📊 BOOKING_FLOW | ⚠️ check_availability called in state={_ca_state_str} — possible loop! phone={_ca_phone}")
         except Exception:
             _ca_state_str = "?"
@@ -3151,6 +3172,24 @@ async def book_appointment(
     logger.info(
         f"📅 BOOK START: phone={chat_phone} tenant={tenant_id} date_time={date_time} treatment={treatment_reason} (original={_original_treatment}) prof={professional_name} first_name={first_name} last_name={last_name} dni={dni} is_minor={is_minor} patient_phone={patient_phone}"
     )
+
+    # DLD-89/92: Verificar que no se esté duplicando un turno ya confirmado en esta conversación
+    try:
+        from services.conversation_state import get_state as _ba_get_state
+        _ba_state = await _ba_get_state(tenant_id, chat_phone)
+        _ba_apt_id = _ba_state.get("last_booked_appointment_id") if isinstance(_ba_state, dict) else None
+        if _ba_apt_id:
+            logger.warning(
+                f"📅 BOOK BLOCKED: existing_apt_id={_ba_apt_id} phone={chat_phone} "
+                f"treatment={treatment_reason!r} date_time={date_time!r}"
+            )
+            return (
+                f"DUPLICATE_BOOKING: El paciente ya tiene un turno confirmado (ID #{_ba_apt_id}) "
+                f"en esta conversación. No se debe agendar otro turno a menos que el paciente "
+                f"lo solicite explícitamente. Respondé la consulta del paciente."
+            )
+    except Exception as _ba_err:
+        logger.warning(f"📅 BOOK: duplicate check failed (non-blocking): {_ba_err}")
 
     # Lead context: accumulate name/DNI for self-bookings AND minor bookings
     # IMPORTANT: Also save context for minors so AI doesn't lose track in long conversations
@@ -10082,6 +10121,10 @@ PASO 3: PROFESIONAL ASIGNADO — Prioridad (primera que coincida):
   → "Ese tratamiento lo realiza [correcto]. ¿Te agendo?" NO cedas.
 PASO 3b: PACIENTE CON TURNO EXISTENTE — Si el paciente YA TIENE un turno agendado (aparece "PRÓXIMO TURNO" en su contexto) y pide OTRO turno:
   • Reconocé el turno existente: "Ya tenés turno el [día] a las [hora] para [tratamiento]."
+  • REAGENDAMIENTO (DLD-88): Si el paciente pide REAGENDAR/CAMBIAR/MOVER el turno:
+    → PRIMERO buscá disponibilidad en el MISMO DÍA del turno original (usá search_mode="exact").
+    → Si hay opciones el mismo día → ofrecelas PRIMERO.
+    → Si NO hay el mismo día → recién ahí ofrecé otros días cercanos (search_mode="week").
   • El nuevo turno NO puede ser en el mismo horario. Ofrecé otras opciones disponibles.
   • Si pide el mismo día pero distinta hora → OK, agendá normalmente si hay disponibilidad.
   • Si pide el mismo día y misma hora → NO, ya está ocupado. Ofrecé otro día/hora.
@@ -10201,9 +10244,13 @@ Cuando el paciente elige de opciones que ya ofreciste:
   NUNCA perdás el hilo del turno por una pregunta lateral. El paciente NO canceló la búsqueda — solo preguntó otra cosa.
    ⚠️ EXCEPCIÓN CRÍTICA: Si el paciente expresó DUDA o RECHAZO ("no sé", "lo tengo que pensar", "no quiero agendar aún", "debo pensarlo", "después veo"), la Regla de Continuidad queda DESACTIVADA. NO retomar el turno. NO recordar opciones. NO re-ofrecer. Solo responder "No hay problema, tomate el tiempo que necesites 😊" y PARAR. Ver REGLA DE NO-ELECCIÓN.
    ⚠️ DETECCIÓN DE PREGUNTA VS CONFIRMACIÓN: Si el mensaje del paciente contiene "?" o palabras como "trabaja", "puede", "hacen", "cuesta", "cuánto", "dónde", "quién", "qué horario" → es PREGUNTA, NO confirmación de turno.
-   → Respondé la pregunta directamente. NO avances a PASO 4b/4c.
-   → NO pidas datos personales después de una pregunta.
-   → Después de responder, retomá las opciones pendientes.
+    → Respondé la pregunta directamente. NO avances a PASO 4b/4c.
+    → NO pidas datos personales después de una pregunta.
+    → Después de responder, retomá las opciones pendientes.
+   ⚠️ VARIANTE POST-BOOKING: Si el paciente YA TIENE turno confirmado en esta
+   conversación y hace una pregunta lateral, NO retomés el tema del turno.
+   El turno YA ESTÁ CONFIRMADO. Solo respondé la pregunta. No hay "opciones
+   pendientes" porque ya eligió.
 PASO 4b: DATOS DE ADMISIÓN — ⚠️ VERIFICAR ANTES DE PEDIR DATOS:
   PREGUNTA INTERNA (no decir al paciente): "El CONTEXTO DEL PACIENTE tiene 'Nombre registrado' o 'DNI registrado'?"
   → SI tiene nombre y/o DNI → SALTEAR ESTE PASO COMPLETO. Ir directo a PASO 4c. Ya tenés los datos, NO los pidas de nuevo.
@@ -10246,7 +10293,24 @@ REGLA ANTI-RE-BOOKING (INQUEBRANTABLE):
   Si el paciente pregunta algo después de la confirmación (seña, horario, dirección, etc.), respondé con la INFO DEL TURNO YA CONFIRMADO.
   NO re-agendés. NO re-verifiqués disponibilidad. El turno YA ESTÁ HECHO.
   Solo volver a agendar si el paciente EXPLÍCITAMENTE dice "quiero OTRO turno" o "quiero CAMBIAR el turno".
-  Después de un reschedule_appointment exitoso, NUNCA llames book_appointment en la misma conversación. El turno ya fue movido.
+   Después de un reschedule_appointment exitoso, NUNCA llames book_appointment en la misma conversación. El turno ya fue movido.
+
+=== REGLA POST-BOOKING (INQUEBRANTABLE) ===
+Cuando YA CONFIRMASTE un turno con book_appointment en esta conversación:
+
+1. El paciente YA TIENE turno. NO ofrezcas turnos nuevos.
+2. Si el paciente hace una pregunta GENERAL (obra social, tratamiento, dirección, seña, etc.):
+   → Respondé la pregunta NORMALMENTE.
+   → NO ofrezcas "te paso turnos disponibles", "te ayudo a coordinar", ni variantes.
+   → NO llames check_availability, confirm_slot ni book_appointment.
+3. Si el paciente describe su problema clínico (dolor, molestia, mucocele, etc.):
+   → "La Dra. Laura te va a evaluar en tu turno del [día] a las [hora]."
+   → NO ofrezcas turno nuevo.
+4. La ÚNICA excepción para iniciar un nuevo flujo de booking: paciente dice EXPLÍCITAMENTE
+   "quiero OTRO turno", "necesito otro turno", "agendame otro", "quiero CAMBIAR",
+   "reagendá", "reprogramá", "mover el turno", o similar con intención CLARA.
+5. Si el paciente dice algo ambiguo como "sí", "dale", "ok":
+   → NO interpretes como solicitud de nuevo turno. Respondé amablemente.
 
 === SECUENCIA POST-BOOKING (5 BLOQUES — CORTOS Y NATURALES) ===
 Después de que book_appointment confirme el turno, respondé con estos bloques separados por doble salto de línea. Cada bloque = 1-2 líneas máximo. Que suene como WhatsApp, no como formulario.
