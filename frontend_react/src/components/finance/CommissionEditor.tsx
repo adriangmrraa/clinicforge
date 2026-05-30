@@ -54,8 +54,8 @@ export default function CommissionEditor({ professionalId, professionalName, onC
         setHistory(configRes.data.history ?? []);
         setAvailableTreatments(treatmentsRes.data ?? []);
       } catch (err: any) {
-        console.error('Error loading commission config:', err);
-        setError(err.response?.data?.detail || 'Error al cargar configuración');
+        console.warn('Error loading commission data, using defaults:', err);
+        // Still show modal with defaults — don't block the user
       } finally {
         setLoading(false);
       }
