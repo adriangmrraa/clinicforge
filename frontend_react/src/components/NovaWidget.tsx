@@ -561,9 +561,9 @@ export const NovaWidget: React.FC = () => {
 
           const ratio = nativeSampleRate / 24000;
           const newLength = Math.floor(rawInput.length / ratio);
-          // Acumular samples resampleados con gain 0.3 para evitar saturación
+          // Acumular samples resampleados con gain bajo para evitar saturación
           for (let i = 0; i < newLength; i++) {
-            _audioBuffer.push(Math.max(-1, Math.min(1, rawInput[Math.floor(i * ratio)] * 0.3)));
+            _audioBuffer.push(rawInput[Math.floor(i * ratio)] * 0.15);
           }
           // Solo enviar cuando tengamos al menos 20ms acumulados
           if (_audioBuffer.length < _MIN_AUDIO_SAMPLES) return;
@@ -598,10 +598,9 @@ export const NovaWidget: React.FC = () => {
                   const samples = input[0];
                   const ratio = this._ratio;
                   const newLength = Math.floor(samples.length / ratio);
-                  // Acumular samples hasta tener al menos 20ms (gain 0.3 anti-saturación)
+                  // Acumular samples hasta tener al menos 20ms (gain bajo para evitar saturación)
                   for (let i = 0; i < newLength; i++) {
-                    const s = Math.max(-1, Math.min(1, samples[Math.floor(i * ratio)] * 0.3));
-                    this._buffer.push(s);
+                    this._buffer.push(samples[Math.floor(i * ratio)] * 0.15);
                   }
                   if (this._buffer.length >= this._MIN_SAMPLES) {
                     const len = this._buffer.length;
