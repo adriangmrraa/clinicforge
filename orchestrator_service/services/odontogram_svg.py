@@ -146,17 +146,20 @@ def _fdi_label(tooth_id: int) -> str:
     return f"{tooth_id // 10}.{tooth_id % 10}"
 
 
-def _fills(state: str) -> dict:
+def _fills(state: str, custom_color: str = None) -> dict:
+    if custom_color:
+        return {"fill": f"{custom_color}33", "stroke": custom_color}
     return PRINT_FILLS.get(state, PRINT_FILLS["healthy"])
 
 
-def _surface_state(surface_data) -> str:
-    """Extract state string from v3 surface format."""
+def _surface_state(surface_data) -> dict:
+    """Extract state + optional custom color from v3 surface format.
+    Returns {"state": str, "color": str | None}."""
     if isinstance(surface_data, dict):
-        return surface_data.get("state", "healthy")
+        return {"state": surface_data.get("state", "healthy"), "color": surface_data.get("color")}
     if isinstance(surface_data, str):
-        return surface_data
-    return "healthy"
+        return {"state": surface_data, "color": None}
+    return {"state": "healthy", "color": None}
 
 
 def _render_tooth_group(tooth_id: int, tooth_data: dict, tx: float, ty: float,
@@ -185,8 +188,10 @@ def _render_tooth_group(tooth_id: int, tooth_data: dict, tx: float, ty: float,
 
     # Render each surface with its own color
     for sk in SURFACE_KEYS:
-        s_state = _surface_state(surfaces.get(sk, {})) if surfaces else state
-        sf = _fills(s_state)
+        sd = _surface_state(surfaces.get(sk, {})) if surfaces else {"state": state, "color": None}
+        s_state = sd["state"]
+        s_color = sd.get("color")
+        sf = _fills(s_state, s_color)
         opacity = "0.35" if is_absent else "0.9"
         parts.append(
             f'  <path d="{_get_surface_path(tooth_id, sk)}" fill="{sf["fill"]}" stroke="{sf["stroke"]}" '
