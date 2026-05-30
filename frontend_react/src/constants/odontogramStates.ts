@@ -165,9 +165,9 @@ export function buildStateFills(): Record<string, { fill: string; stroke: string
       };
     } else {
       fills[state.id] = {
-        fill: `${hex}1F`,
+        fill: `${hex}50`,
         stroke: hex,
-        glow: `drop-shadow(0 0 4px ${hex}4D)`,
+        glow: `drop-shadow(0 0 6px ${hex}66)`,
       };
     }
   }
