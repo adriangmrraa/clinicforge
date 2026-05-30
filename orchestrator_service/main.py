@@ -12153,8 +12153,8 @@ async def _nova_realtime_handler(websocket: WebSocket, session_id: str):
                                         "threshold": 0.5,
                                         "prefix_padding_ms": 800,
                                         "silence_duration_ms": 5000,
-                                        "interrupt_response": false,
-                                        "create_response": true,
+                                        "interrupt_response": False,
+                                        "create_response": True,
                                     },
                                 },
                                 "output": {
