@@ -233,7 +233,7 @@ async def gather_liquidation_pdf_data(
             p.email AS professional_email,
             t.clinic_name,
             t.address AS clinic_address,
-            t.phone AS clinic_phone,
+            t.clinic_location AS clinic_phone,
             t.logo_url,
             COALESCE(t.config->>'ui_language', 'es') AS ui_language
         FROM liquidation_records lr

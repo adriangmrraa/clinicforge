@@ -1,34 +1,265 @@
-event": "EP-FC-03 OK: count=0"}
-{"event": "\ud83d\udd0c Client connected: WWlf7iK_kV7HyPhJAAAF \u2192 room tenant:1"}
-{"event": "[weekly_backup] Waiting for Telegram bots to initialize..."}
-{"event": "[weekly_backup] No active Telegram bots after waiting, skipping"}
+consola dle navegador:
+
+index-BR1stL3k.js:242  GET https://dentalforgepruebas-bff-service.gvdlcu.easypanel.host/admin/liquidations/36/pdf 500 (Internal Server Error)
+(anonymous) @ index-BR1stL3k.js:242
+xhr @ index-BR1stL3k.js:242
+Ta @ index-BR1stL3k.js:244
+Promise.then
+_request @ index-BR1stL3k.js:248
+request @ index-BR1stL3k.js:244
+Le.<computed> @ index-BR1stL3k.js:248
+(anonymous) @ index-BR1stL3k.js:240
+Me @ FinancialCommandCenterView-bVfjNsiM.js:1
+onClick @ FinancialCommandCenterView-bVfjNsiM.js:2
+mf @ vendor-react-Da6bm625.js:29
+yf @ vendor-react-Da6bm625.js:29
+gf @ vendor-react-Da6bm625.js:29
+zo @ vendor-react-Da6bm625.js:29
+ks @ vendor-react-Da6bm625.js:29
+(anonymous) @ vendor-react-Da6bm625.js:29
+ji @ vendor-react-Da6bm625.js:32
+Qa @ vendor-react-Da6bm625.js:29
+Hl @ vendor-react-Da6bm625.js:29
+di @ vendor-react-Da6bm625.js:29
+If @ vendor-react-Da6bm625.js:29
+index-BR1stL3k.js:248 [API] 🔥 Error del servidor: 500 /admin/liquidations/36/pdf
+(anonymous) @ index-BR1stL3k.js:248
+Promise.then
+_request @ index-BR1stL3k.js:248
+request @ index-BR1stL3k.js:244
+Le.<computed> @ index-BR1stL3k.js:248
+(anonymous) @ index-BR1stL3k.js:240
+Me @ FinancialCommandCenterView-bVfjNsiM.js:1
+onClick @ FinancialCommandCenterView-bVfjNsiM.js:2
+mf @ vendor-react-Da6bm625.js:29
+yf @ vendor-react-Da6bm625.js:29
+gf @ vendor-react-Da6bm625.js:29
+zo @ vendor-react-Da6bm625.js:29
+ks @ vendor-react-Da6bm625.js:29
+(anonymous) @ vendor-react-Da6bm625.js:29
+ji @ vendor-react-Da6bm625.js:32
+Qa @ vendor-react-Da6bm625.js:29
+Hl @ vendor-react-Da6bm625.js:29
+di @ vendor-react-Da6bm625.js:29
+If @ vendor-react-Da6bm625.js:29
+FinancialCommandCenterView-bVfjNsiM.js:1 Error downloading PDF: AxiosError: Request failed with status code 500
+    at gn (index-BR1stL3k.js:242:10042)
+    at XMLHttpRequest.h (index-BR1stL3k.js:242:15553)
+Me @ FinancialCommandCenterView-bVfjNsiM.js:1
+await in Me
+onClick @ FinancialCommandCenterView-bVfjNsiM.js:2
+mf @ vendor-react-Da6bm625.js:29
+yf @ vendor-react-Da6bm625.js:29
+gf @ vendor-react-Da6bm625.js:29
+zo @ vendor-react-Da6bm625.js:29
+ks @ vendor-react-Da6bm625.js:29
+(anonymous) @ vendor-react-Da6bm625.js:29
+ji @ vendor-react-Da6bm625.js:32
+Qa @ vendor-react-Da6bm625.js:29
+Hl @ vendor-react-Da6bm625.js:29
+di @ vendor-react-Da6bm625.js:29
+If @ vendor-react-Da6bm625.js:29
+index-BR1stL3k.js:242  PATCH https://dentalforgepruebas-bff-service.gvdlcu.easypanel.host/admin/liquidations/42 500 (Internal Server Error)
+(anonymous) @ index-BR1stL3k.js:242
+xhr @ index-BR1stL3k.js:242
+Ta @ index-BR1stL3k.js:244
+Promise.then
+_request @ index-BR1stL3k.js:248
+request @ index-BR1stL3k.js:244
+(anonymous) @ index-BR1stL3k.js:248
+(anonymous) @ index-BR1stL3k.js:240
+Oe @ FinancialCommandCenterView-bVfjNsiM.js:1
+onClick @ FinancialCommandCenterView-bVfjNsiM.js:2
+mf @ vendor-react-Da6bm625.js:29
+yf @ vendor-react-Da6bm625.js:29
+gf @ vendor-react-Da6bm625.js:29
+zo @ vendor-react-Da6bm625.js:29
+ks @ vendor-react-Da6bm625.js:29
+(anonymous) @ vendor-react-Da6bm625.js:29
+ji @ vendor-react-Da6bm625.js:32
+Qa @ vendor-react-Da6bm625.js:29
+Hl @ vendor-react-Da6bm625.js:29
+di @ vendor-react-Da6bm625.js:29
+If @ vendor-react-Da6bm625.js:29
+index-BR1stL3k.js:248 [API] 🔥 Error del servidor: 500 /admin/liquidations/42
+(anonymous) @ index-BR1stL3k.js:248
+Promise.then
+_request @ index-BR1stL3k.js:248
+request @ index-BR1stL3k.js:244
+(anonymous) @ index-BR1stL3k.js:248
+(anonymous) @ index-BR1stL3k.js:240
+Oe @ FinancialCommandCenterView-bVfjNsiM.js:1
+onClick @ FinancialCommandCenterView-bVfjNsiM.js:2
+mf @ vendor-react-Da6bm625.js:29
+yf @ vendor-react-Da6bm625.js:29
+gf @ vendor-react-Da6bm625.js:29
+zo @ vendor-react-Da6bm625.js:29
+ks @ vendor-react-Da6bm625.js:29
+(anonymous) @ vendor-react-Da6bm625.js:29
+ji @ vendor-react-Da6bm625.js:32
+Qa @ vendor-react-Da6bm625.js:29
+Hl @ vendor-react-Da6bm625.js:29
+di @ vendor-react-Da6bm625.js:29
+If @ vendor-react-Da6bm625.js:29
+FinancialCommandCenterView-bVfjNsiM.js:1 Error updating status: AxiosError: Request failed with status code 500
+    at gn (index-BR1stL3k.js:242:10042)
+    at XMLHttpRequest.h (index-BR1stL3k.js:242:15553)
+Oe @ FinancialCommandCenterView-bVfjNsiM.js:1
+await in Oe
+onClick @ FinancialCommandCenterView-bVfjNsiM.js:2
+mf @ vendor-react-Da6bm625.js:29
+yf @ vendor-react-Da6bm625.js:29
+gf @ vendor-react-Da6bm625.js:29
+zo @ vendor-react-Da6bm625.js:29
+ks @ vendor-react-Da6bm625.js:29
+(anonymous) @ vendor-react-Da6bm625.js:29
+ji @ vendor-react-Da6bm625.js:32
+Qa @ vendor-react-Da6bm625.js:29
+Hl @ vendor-react-Da6bm625.js:29
+di @ vendor-react-Da6bm625.js:29
+If @ vendor-react-Da6bm625.js:29
+index-BR1stL3k.js:242  GET https://dentalforgepruebas-bff-service.gvdlcu.easypanel.host/admin/liquidations/42/pdf 500 (Internal Server Error)
+(anonymous) @ index-BR1stL3k.js:242
+xhr @ index-BR1stL3k.js:242
+Ta @ index-BR1stL3k.js:244
+Promise.then
+_request @ index-BR1stL3k.js:248
+request @ index-BR1stL3k.js:244
+Le.<computed> @ index-BR1stL3k.js:248
+(anonymous) @ index-BR1stL3k.js:240
+Me @ FinancialCommandCenterView-bVfjNsiM.js:1
+onClick @ FinancialCommandCenterView-bVfjNsiM.js:2
+mf @ vendor-react-Da6bm625.js:29
+yf @ vendor-react-Da6bm625.js:29
+gf @ vendor-react-Da6bm625.js:29
+zo @ vendor-react-Da6bm625.js:29
+ks @ vendor-react-Da6bm625.js:29
+(anonymous) @ vendor-react-Da6bm625.js:29
+ji @ vendor-react-Da6bm625.js:32
+Qa @ vendor-react-Da6bm625.js:29
+Hl @ vendor-react-Da6bm625.js:29
+di @ vendor-react-Da6bm625.js:29
+If @ vendor-react-Da6bm625.js:29
+index-BR1stL3k.js:248 [API] 🔥 Error del servidor: 500 /admin/liquidations/42/pdf
+(anonymous) @ index-BR1stL3k.js:248
+Promise.then
+_request @ index-BR1stL3k.js:248
+request @ index-BR1stL3k.js:244
+Le.<computed> @ index-BR1stL3k.js:248
+(anonymous) @ index-BR1stL3k.js:240
+Me @ FinancialCommandCenterView-bVfjNsiM.js:1
+onClick @ FinancialCommandCenterView-bVfjNsiM.js:2
+mf @ vendor-react-Da6bm625.js:29
+yf @ vendor-react-Da6bm625.js:29
+gf @ vendor-react-Da6bm625.js:29
+zo @ vendor-react-Da6bm625.js:29
+ks @ vendor-react-Da6bm625.js:29
+(anonymous) @ vendor-react-Da6bm625.js:29
+ji @ vendor-react-Da6bm625.js:32
+Qa @ vendor-react-Da6bm625.js:29
+Hl @ vendor-react-Da6bm625.js:29
+di @ vendor-react-Da6bm625.js:29
+If @ vendor-react-Da6bm625.js:29
+FinancialCommandCenterView-bVfjNsiM.js:1 Error downloading PDF: AxiosError: Request failed with status code 500
+    at gn (index-BR1stL3k.js:242:10042)
+    at XMLHttpRequest.h (index-BR1stL3k.js:242:15553)
+Me @ FinancialCommandCenterView-bVfjNsiM.js:1
+await in Me
+onClick @ FinancialCommandCenterView-bVfjNsiM.js:2
+mf @ vendor-react-Da6bm625.js:29
+yf @ vendor-react-Da6bm625.js:29
+gf @ vendor-react-Da6bm625.js:29
+zo @ vendor-react-Da6bm625.js:29
+ks @ vendor-react-Da6bm625.js:29
+(anonymous) @ vendor-react-Da6bm625.js:29
+ji @ vendor-react-Da6bm625.js:32
+Qa @ vendor-react-Da6bm625.js:29
+Hl @ vendor-react-Da6bm625.js:29
+di @ vendor-react-Da6bm625.js:29
+If @ vendor-react-Da6bm625.js:29
+index-BR1stL3k.js:242  POST https://dentalforgepruebas-bff-service.gvdlcu.easypanel.host/admin/liquidations/42/send-email 500 (Internal Server Error)
+(anonymous) @ index-BR1stL3k.js:242
+xhr @ index-BR1stL3k.js:242
+Ta @ index-BR1stL3k.js:244
+Promise.then
+_request @ index-BR1stL3k.js:248
+request @ index-BR1stL3k.js:244
+(anonymous) @ index-BR1stL3k.js:248
+(anonymous) @ index-BR1stL3k.js:240
+Ie @ FinancialCommandCenterView-bVfjNsiM.js:1
+mf @ vendor-react-Da6bm625.js:29
+yf @ vendor-react-Da6bm625.js:29
+gf @ vendor-react-Da6bm625.js:29
+zo @ vendor-react-Da6bm625.js:29
+ks @ vendor-react-Da6bm625.js:29
+(anonymous) @ vendor-react-Da6bm625.js:29
+ji @ vendor-react-Da6bm625.js:32
+Qa @ vendor-react-Da6bm625.js:29
+Hl @ vendor-react-Da6bm625.js:29
+di @ vendor-react-Da6bm625.js:29
+If @ vendor-react-Da6bm625.js:29
+index-BR1stL3k.js:248 [API] 🔥 Error del servidor: 500 /admin/liquidations/42/send-email
+(anonymous) @ index-BR1stL3k.js:248
+Promise.then
+_request @ index-BR1stL3k.js:248
+request @ index-BR1stL3k.js:244
+(anonymous) @ index-BR1stL3k.js:248
+(anonymous) @ index-BR1stL3k.js:240
+Ie @ FinancialCommandCenterView-bVfjNsiM.js:1
+mf @ vendor-react-Da6bm625.js:29
+yf @ vendor-react-Da6bm625.js:29
+gf @ vendor-react-Da6bm625.js:29
+zo @ vendor-react-Da6bm625.js:29
+ks @ vendor-react-Da6bm625.js:29
+(anonymous) @ vendor-react-Da6bm625.js:29
+ji @ vendor-react-Da6bm625.js:32
+Qa @ vendor-react-Da6bm625.js:29
+Hl @ vendor-react-Da6bm625.js:29
+di @ vendor-react-Da6bm625.js:29
+If @ vendor-react-Da6bm625.js:29
+FinancialCommandCenterView-bVfjNsiM.js:1 Error sending email: AxiosError: Request failed with status code 500
+    at gn (index-BR1stL3k.js:242:10042)
+    at XMLHttpRequest.h (index-BR1stL3k.js:242:15553)
+
+
+------
+
+logs orchestrator:
+
+
+event": "=== EP-FC-12: GET /admin/liquidations/36/pdf ==="}
+{"event": "EP-FC-12: liquidation_id=36, tenant_id=1"}
+{"event": "EP-FC-12 ERROR: column t.phone does not exist", "exc_info": ["<class 'asyncpg.exceptions.UndefinedColumnError'>", "UndefinedColumnError('column t.phone does not exist')", "<traceback object at 0x7f0a5234dd00>"]}
 {"event": "=== EP-FC-02: POST /admin/liquidations/generate-bulk ==="}
 {"event": "EP-FC-02: tenant_id=1, body={\"period_start\":\"2026-05-01\",\"period_end\":\"2026-05-31\"}"}
-{"event": "generate_liquidation: zombie placeholder 26 found for prof 3, period 2026-05-01-2026-05-31. Deleting and regenerating."}
-{"event": "generate_bulk_liquidations: error for professional 3: could not determine data type of parameter $2", "exc_info": ["<class 'asyncpg.exceptions.IndeterminateDatatypeError'>", "IndeterminateDatatypeError('could not determine data type of parameter $2')", "<traceback object at 0x759dc1e90200>"]}
-{"event": "generate_liquidation: zombie placeholder 28 found for prof 4, period 2026-05-01-2026-05-31. Deleting and regenerating."}
-{"event": "generate_bulk_liquidations: error for professional 4: could not determine data type of parameter $2", "exc_info": ["<class 'asyncpg.exceptions.IndeterminateDatatypeError'>", "IndeterminateDatatypeError('could not determine data type of parameter $2')", "<traceback object at 0x759dc1e90180>"]}
-{"event": "generate_liquidation: zombie placeholder 30 found for prof 22, period 2026-05-01-2026-05-31. Deleting and regenerating."}
-{"event": "generate_bulk_liquidations: error for professional 22: could not determine data type of parameter $2", "exc_info": ["<class 'asyncpg.exceptions.IndeterminateDatatypeError'>", "IndeterminateDatatypeError('could not determine data type of parameter $2')", "<traceback object at 0x759dc1e90c80>"]}
+{"event": "generate_liquidation: zombie placeholder 32 found for prof 3, period 2026-05-01-2026-05-31. Deleting and regenerating."}
+{"event": "generate_bulk_liquidations: error for professional 3: could not determine data type of parameter $2", "exc_info": ["<class 'asyncpg.exceptions.IndeterminateDatatypeError'>", "IndeterminateDatatypeError('could not determine data type of parameter $2')", "<traceback object at 0x7f0a523c5f00>"]}
+{"event": "generate_liquidation: zombie placeholder 34 found for prof 4, period 2026-05-01-2026-05-31. Deleting and regenerating."}
+{"event": "generate_bulk_liquidations: error for professional 4: could not determine data type of parameter $2", "exc_info": ["<class 'asyncpg.exceptions.IndeterminateDatatypeError'>", "IndeterminateDatatypeError('could not determine data type of parameter $2')", "<traceback object at 0x7f0a523c6340>"]}
+{"event": "generate_liquidation: zombie placeholder 36 found for prof 22, period 2026-05-01-2026-05-31. Deleting and regenerating."}
+{"event": "generate_bulk_liquidations: error for professional 22: could not determine data type of parameter $2", "exc_info": ["<class 'asyncpg.exceptions.IndeterminateDatatypeError'>", "IndeterminateDatatypeError('could not determine data type of parameter $2')", "<traceback object at 0x7f0a523c6400>"]}
 {"event": "EP-FC-02 OK: generated_count=0, skipped_count=0"}
 {"event": "=== EP-FC-03: GET /admin/liquidations ==="}
 {"event": "EP-FC-03: tenant_id=1, professional_id=None, status=None, period_start=2026-05-01, period_end=2026-05-31, page=1, page_size=20"}
 {"event": "EP-FC-03 OK: count=0"}
-{"event": "=== EP-FC-12: GET /admin/liquidations/36/pdf ==="}
-{"event": "EP-FC-12: liquidation_id=36, tenant_id=1"}
-{"event": "EP-FC-12 ERROR: column p.license_number does not exist", "exc_info": ["<class 'asyncpg.exceptions.UndefinedColumnError'>", "UndefinedColumnError('column p.license_number does not exist')", "<traceback object at 0x759dc1e938c0>"]}
-{"event": "=== EP-FC-13: POST /admin/liquidations/36/send-email ==="}
-{"event": "EP-FC-13: liquidation_id=36, tenant_id=1, to_email=gamarraadrian200@gmail.com"}
-{"event": "EP-FC-13 ERROR: column p.license_number does not exist", "exc_info": ["<class 'asyncpg.exceptions.UndefinedColumnError'>", "UndefinedColumnError('column p.license_number does not exist')", "<traceback object at 0x759dc1e9aa40>"]}
-{"event": "=== EP-FC-05: PATCH /admin/liquidations/36 ==="}
-{"event": "EP-FC-05: liquidation_id=36, tenant_id=1, new_status=approve"}
-{"event": "EP-FC-05 INVALID STATUS: approve"}
-{"event": "=== EP-FC-04: GET /admin/liquidations/36 ==="}
-{"event": "EP-FC-04: liquidation_id=36, tenant_id=1"}
-{"event": "EP-FC-04 ERROR: column \"liquidation_id\" does not exist", "exc_info": ["<class 'asyncpg.exceptions.UndefinedColumnError'>", "UndefinedColumnError('column \"liquidation_id\" does not exist')", "<traceback object at 0x759dc1eb4140>"]}
-{"event": "=== EP-FC-04: GET /admin/liquidations/36 ==="}
-{"event": "EP-FC-04: liquidation_id=36, tenant_id=1"}
-{"event": "EP-FC-04 ERROR: column \"liquidation_id\" does not exist", "exc_info": ["<class 'asyncpg.exceptions.UndefinedColumnError'>", "UndefinedColumnError('column \"liquidation_id\" does not exist')", "<traceback object at 0x759dc1ed5ac0>"]}
-{"event": "=== EP-FC-04: GET /admin/liquidations/36 ==="}
-{"event": "EP-FC-04: liquidation_id=36, tenant_id=1"}
-{"event": "EP-FC-04 ERROR: column \"liquidation_id\" does not exist", "exc_info": ["<class 'asyncpg.exceptions.UndefinedColumnError'>", "UndefinedColumnError('column \"liquidation_id\" does not exist')", "<traceback object at 0x759dc1e9bc40>"]}
+{"event": "=== EP-FC-04: GET /admin/liquidations/42 ==="}
+{"event": "EP-FC-04: liquidation_id=42, tenant_id=1"}
+{"event": "EP-FC-04 OK: liquidation_id=42, status=None"}
+{"event": "=== EP-FC-04: GET /admin/liquidations/40 ==="}
+{"event": "EP-FC-04: liquidation_id=40, tenant_id=1"}
+{"event": "EP-FC-04 OK: liquidation_id=40, status=None"}
+{"event": "=== EP-FC-04: GET /admin/liquidations/42 ==="}
+{"event": "EP-FC-04: liquidation_id=42, tenant_id=1"}
+{"event": "EP-FC-04 OK: liquidation_id=42, status=None"}
+{"event": "=== EP-FC-05: PATCH /admin/liquidations/42 ==="}
+{"event": "EP-FC-05: liquidation_id=42, tenant_id=1, new_status=approved"}
+{"event": "EP-FC-05 ERROR: 'str' object has no attribute 'get'", "exc_info": ["<class 'AttributeError'>", "AttributeError(\"'str' object has no attribute 'get'\")", "<traceback object at 0x7f0a523e3080>"]}
+{"event": "=== EP-FC-04: GET /admin/liquidations/42 ==="}
+{"event": "EP-FC-04: liquidation_id=42, tenant_id=1"}
+{"event": "EP-FC-04 OK: liquidation_id=42, status=None"}
+{"event": "=== EP-FC-12: GET /admin/liquidations/42/pdf ==="}
+{"event": "EP-FC-12: liquidation_id=42, tenant_id=1"}
+{"event": "EP-FC-12 ERROR: column t.phone does not exist", "exc_info": ["<class 'asyncpg.exceptions.UndefinedColumnError'>", "UndefinedColumnError('column t.phone does not exist')", "<traceback object at 0x7f0a523e2900>"]}
+{"event": "=== EP-FC-13: POST /admin/liquidations/42/send-email ==="}
+{"event": "EP-FC-13: liquidation_id=42, tenant_id=1, to_email=gamarraadrian200@gmail.com"}
+{"event": "EP-FC-13 ERROR: column t.phone does not exist", "exc_info": ["<class 'asyncpg.exceptions.UndefinedColumnError'>", "UndefinedColumnError('column t.phone does not exist')", "<traceback object at 0x7f0a523c7b80>"]}

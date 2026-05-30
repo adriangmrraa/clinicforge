@@ -15986,7 +15986,7 @@ async def update_liquidation_status(
             tenant_id=tenant_id,
             liquidation_id=liquidation_id,
             new_status=body.status,
-            user_email=user_data.email or "admin",
+            user_email=getattr(user_data, 'email', None) or str(user_data) if not isinstance(user_data, str) else user_data or "admin",
             notes=body.notes,
         )
         if not result:
