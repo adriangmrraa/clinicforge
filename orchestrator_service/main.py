@@ -12163,6 +12163,12 @@ async def _nova_realtime_handler(websocket: WebSocket, session_id: str):
                         data = await websocket.receive()
                         if "bytes" in data and data["bytes"]:
                             audio_b64 = base64.b64encode(data["bytes"]).decode()
+                            _ba_size = len(data["bytes"])
+                            if not hasattr(client_to_openai, "_ba_count"):
+                                client_to_openai._ba_count = 0
+                            client_to_openai._ba_count += 1
+                            if client_to_openai._ba_count % 100 == 1:
+                                logger.info(f"🎙️ NOVA AUDIO FROM CLIENT: chunk={client_to_openai._ba_count} size={_ba_size}B")
                             await openai_ws.send(
                                 json_mod.dumps(
                                     {
