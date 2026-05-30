@@ -11,10 +11,12 @@ down_revision = '058'
 
 def upgrade():
     # Step 1: Remove existing duplicates, keeping the newest record (highest id)
+    # NOTE: clinical_records.id is UUID — PostgreSQL doesn't support MAX(uuid).
+    # Cast to text for aggregation; UUIDs are unique so any ordered MAX works for dedup.
     op.execute("""
         DELETE FROM clinical_records
         WHERE id NOT IN (
-            SELECT MAX(id)
+            SELECT MAX(id::text)::uuid
             FROM clinical_records
             WHERE diagnosis IS NOT NULL
             GROUP BY tenant_id, patient_id, diagnosis, CAST(record_date AS date)
