@@ -12133,16 +12133,13 @@ async def _nova_realtime_handler(websocket: WebSocket, session_id: str):
                 "Authorization": f"Bearer {api_key}",
             },
         ) as openai_ws:
-            # Send session update (GA format — see OpenAI Realtime migration docs)
-            _nova_voice = os.getenv("NOVA_VOICE", "coral")
+            # Send session update — gpt-realtime-2 only accepts instructions + tools
             await openai_ws.send(
                 json_mod.dumps(
                     {
                         "type": "session.update",
                         "session": {
-                            "type": "realtime",
                             "instructions": config.get("system_prompt", ""),
-                            "voice": _nova_voice,
                             "tools": _voice_tools,
                             "tool_choice": "auto",
                         },
@@ -12154,9 +12151,7 @@ async def _nova_realtime_handler(websocket: WebSocket, session_id: str):
                 f"🎙️ NOVA: session.update sent with {len(_voice_tools)} tools: {tool_names}"
             )
             prompt_len = len(config.get("system_prompt", ""))
-            logger.info(
-                f"🎙️ NOVA: prompt={prompt_len} chars, output_modalities=[audio], voice={_nova_voice}"
-            )
+            logger.info(f"🎙️ NOVA: prompt={prompt_len} chars, tools={len(_voice_tools)}")
             logger.info(f"🎙️ NOVA: Waiting for OpenAI events...")
 
             async def client_to_openai():
