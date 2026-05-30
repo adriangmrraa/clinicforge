@@ -12139,9 +12139,6 @@ async def _nova_realtime_handler(websocket: WebSocket, session_id: str):
                 "session": {
                     "type": "realtime",
                     "instructions": config.get("system_prompt", ""),
-                    "input_audio_transcription": {
-                        "model": "gpt-4o-transcribe",
-                    },
                     "tools": _voice_tools,
                     "tool_choice": "auto",
                 },
