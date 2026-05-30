@@ -659,6 +659,12 @@ export const NovaWidget: React.FC = () => {
         // Text = JSON control message
         try {
           const msg = JSON.parse(evt.data as string);
+          console.log('[Nova Voice] WS message:', msg.type, msg);
+
+          // DEBUG: mostrar cualquier transcript o texto que llegue
+          if (msg.type === 'transcript' || msg.type === 'response.output_audio_transcript.done') {
+            console.log('[Nova Voice] TRANSCRIPT:', msg);
+          }
 
           if (msg.type === 'transcript') {
             if (msg.role === 'user') {
@@ -738,6 +744,13 @@ export const NovaWidget: React.FC = () => {
             console.error('[Nova Voice] Server error:', errMsg);
             setToastMessage(`Nova: ${errMsg}`);
             setToastVisible(true);
+          }
+
+          // Fallback: si el mensaje tiene un transcript directo, mostrarlo
+          if (msg.transcript && !msg.type?.startsWith('response.')) {
+            setMessages(prev => [...prev, {
+              id: msgId(), role: 'assistant', text: msg.transcript, timestamp: Date.now(),
+            }]);
           }
         } catch {
           // Ignore parse errors

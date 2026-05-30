@@ -12237,12 +12237,12 @@ async def _nova_realtime_handler(websocket: WebSocket, session_id: str):
                                 f"🎙️ NOVA SESSION DUMP: {json_mod.dumps(event, ensure_ascii=False)}"
                             )
 
-                        if etype == "response.audio.delta":
+                        if etype in ("response.audio.delta", "response.output_audio.delta"):
                             audio_b64 = event.get("delta", "")
                             if audio_b64:
                                 await websocket.send_bytes(base64.b64decode(audio_b64))
 
-                        elif etype == "response.audio.done":
+                        elif etype in ("response.audio.done", "response.output_audio.done"):
                             logger.info(
                                 "🎙️ NOVA: Audio response DONE — sending nova_audio_done to client"
                             )
@@ -12250,7 +12250,7 @@ async def _nova_realtime_handler(websocket: WebSocket, session_id: str):
                                 json_mod.dumps({"type": "nova_audio_done"})
                             )
 
-                        elif etype == "response.audio_transcript.delta":
+                        elif etype in ("response.audio_transcript.delta", "response.output_audio_transcript.delta"):
                             text = event.get("delta", "")
                             if text:
                                 await websocket.send_text(
